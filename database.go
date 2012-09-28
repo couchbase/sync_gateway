@@ -14,8 +14,6 @@ import "github.com/couchbaselabs/go-couchbase"
 import "github.com/dustin/gomemcached"
 
 
-const kExpiration = 0  //FIX: What should this be??
-
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
 var DefaultBucket *couchbase.Bucket
@@ -71,7 +69,7 @@ func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, *HTTPErro
     err := bucket.Get(name, &body)
     if err == nil { return nil, &HTTPError{Status: 412} }
     body = make(Body)
-    err = bucket.Set(name, kExpiration, body)
+    err = bucket.Set(name, 0, body)
     if err != nil {
         return nil, convertError(err)
     }
@@ -167,7 +165,7 @@ func (db *Database) Put (docid string, body Body) (string, *HTTPError) {
     body["_rev"] = newRev
 
     // Now finally put the new value:
-    err = convertError( db.bucket.Set(db.realDocID(docid), kExpiration, body) )
+    err = convertError( db.bucket.Set(db.realDocID(docid), 0, body) )
     if err != nil { return "", err }
     return newRev, nil
 }
