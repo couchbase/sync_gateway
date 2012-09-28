@@ -14,7 +14,7 @@ func readJSON(rq *http.Request) (Body, *HTTPError) {
     if err != nil { return nil, &HTTPError{Status: http.StatusBadRequest} }
     var parsed Body
     err = json.Unmarshal(body, &parsed)
-    if err != nil { return nil, &HTTPError{Status: http.StatusBadRequest} }
+    if err != nil { return nil, &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"} }
     return parsed, nil
 }
 
@@ -41,15 +41,59 @@ func writeError(err *HTTPError, r http.ResponseWriter) {
 }
 
 
+func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) {
+    value, err := db.Get(docid)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    if value == nil {
+        r.WriteHeader(http.StatusNotFound)
+        return
+    }
+    r.Header().Set("Etag", value["_rev"].(string))
+    writeJSON(value, r)
+}
+
+
+func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid string) {
+    body, err := readJSON(rq)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    newRev, err := db.Put(docid, body)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    r.Header().Set("Etag", newRev)
+    writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r)
+}
+
+
+func (db *Database) HandlePostDoc(r http.ResponseWriter, rq *http.Request) {
+    body, err := readJSON(rq)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    docid, newRev, err := db.Post(body)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    r.Header().Set("Location", docid)
+    r.Header().Set("Etag", newRev)
+    writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r)
+}
 
 
 // Handles HTTP requests for a database.
 func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []string) {
     method := rq.Method
-    docid := path[0]
-    log.Printf("%s %s %s\n", db.Name, method, docid)
-    switch docid {
-        case "": {
+    switch len(path) {
+        case 0: {
             // Root level
             if method == "GET" {
                 response := make(map[string]interface{})
@@ -57,53 +101,52 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
                 response["doc_count"] = db.DocCount()
                 writeJSON(response,r)
                 return
-            }
-        }
-        case "_all_docs": {
-            ids, err := db.AllDocIDs()
-            if err != nil {
-                r.WriteHeader(http.StatusInternalServerError)
-                return
-            }
-            writeJSON(ids, r)
-            return
-        }
-        case "_revs_diff": {
-            if method == "POST" {
-                revs, err := readJSON(rq)
-                if err != nil {
-                    r.WriteHeader(http.StatusBadRequest)
-                    return
-                }
-                writeJSON(db.RevsDiff(revs), r)
+            } else if method == "POST" {
+                db.HandlePostDoc(r, rq)
                 return
             }
         }
-        default: {
-            // Accessing a document:
-            if method == "GET" {
-                value, err := db.Get(docid)
-                if err != nil {
-                    r.WriteHeader(http.StatusInternalServerError)
-                    return
+        case 1: {
+            docid := path[0]
+            log.Printf("%s %s %s\n", db.Name, method, docid)
+            switch docid {
+                case "_all_docs": {
+                    if method == "GET" {
+                        ids, err := db.AllDocIDs()
+                        if err != nil {
+                            r.WriteHeader(http.StatusInternalServerError)
+                            return
+                        }
+                        writeJSON(ids, r)
+                        return
+                    }
                 }
-                if value == nil {
-                    r.WriteHeader(http.StatusNotFound)
-                    return
+                case "_revs_diff": {
+                    if method == "POST" {
+                        revs, err := readJSON(rq)
+                        if err != nil {
+                            r.WriteHeader(http.StatusBadRequest)
+                            return
+                        }
+                        writeJSON(db.RevsDiff(revs), r)
+                        return
+                    }
                 }
-                writeJSON(value, r)
-                return
-            } else if method == "PUT" {
-                body, err := readJSON(rq)
-                if err != nil {
-                    r.WriteHeader(http.StatusBadRequest)
-                    return
+                default: {
+                    if docid[0] != '_' {
+                        // Accessing a document:
+                        if method == "GET" {
+                            db.HandleGetDoc(r, rq, docid)
+                            return
+                        } else if method == "PUT" {
+                            db.HandlePutDoc(r, rq, docid)
+                            return
+                        }
+                    }
                 }
-                err = db.Put(docid, body)
-                if err != nil { r.WriteHeader(err.Status) }
-                return
             }
         }
+        default:
     }
     // Fall through to here if the request was not recognized:
     r.WriteHeader(http.StatusBadRequest)
@@ -127,8 +170,11 @@ func handleRoot(r http.ResponseWriter, rq *http.Request) {
 func InitREST(bucket *couchbase.Bucket) {
     http.HandleFunc("/", func (r http.ResponseWriter, rq *http.Request) {
         path := strings.Split(rq.URL.Path[1:], "/")
-        log.Printf("%s %v", rq.Method, path)
-        if len(path) == 0 || path[0] == "" {
+        for len(path) > 0 && path[len(path)-1] == "" {
+            path = path[0:len(path)-1]
+        }
+        log.Printf("%s %v (%d)", rq.Method, path, len(path))
+        if len(path) == 0 {
             handleRoot(r, rq)
             return
         }
