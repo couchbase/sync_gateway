@@ -2,6 +2,10 @@
 
 package couchglue
 
+import (
+    "encoding/json"
+)
+
 
 /*  A revision map is stored in the _revmap property of a document.
     It's a flat structure that maps each revision ID to its parent's ID.
@@ -9,13 +13,50 @@ package couchglue
 type RevMap map[string]string
 
 
-// Returns the RevMap of a document Body (the value of its "_revmap" property.)
-func (body Body) revMap() RevMap {
-    revmap := body["_revmap"]
-    if revmap == nil {
-        return nil
+// The form in which a RevMap is stored in JSON.
+type RevTreeList struct {
+    Revs    []string    `json:"revs"`
+    Parents []int       `json:"parents"`
+}
+
+
+func makeRevMap() RevMap {
+    return RevMap{}
+}
+
+
+func (revmap RevMap) MarshalJSON() ([]byte, error) {
+    revs := make([]string, 0, len(revmap))
+    parents := make([]int, 0, len(revmap))
+    revIndexes := map[string]int {"": -1}
+    
+    for rev,_:= range(revmap) {
+        revIndexes[rev] = len(revs)
+        revs = append(revs, rev)
     }
-    return revmap.(RevMap)
+    for _,rev := range(revs) {
+        parent := revmap[rev]
+        parents = append(parents, revIndexes[parent])
+    }
+    
+    return json.Marshal(RevTreeList{Revs: revs, Parents: parents})
+}
+
+
+func (revmap RevMap) UnmarshalJSON(inputjson []byte) (err error ){
+    var rep RevTreeList
+    err = json.Unmarshal(inputjson, &rep)
+    if err != nil { return }
+        
+    for i,rev:= range(rep.Revs) {
+        parentIndex := rep.Parents[i]
+        if parentIndex >= 0 {
+            revmap[rev] = rep.Revs[parentIndex]
+        } else {
+            revmap[rev] = ""
+        }
+    }
+    return
 }
 
 

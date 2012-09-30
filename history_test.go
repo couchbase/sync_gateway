@@ -3,75 +3,88 @@
 package couchglue
 
 import (
-    "reflect"
+    "encoding/json"
+    "fmt"
     "sort"
     "testing"
+    "github.com/sdegutis/go.assert"
 )
 
-var testmap = RevMap{"3-three": "2-two", "2-two": "1-one", "1-one": ""}
-var testbody = Body{"_id": "foo", "_rev": "3-three", "_revmap": testmap}
-var branchymap = RevMap{"3-three": "2-two", "2-two": "1-one", "1-one": "",
-                        "3-drei": "2-zwei", "2-zwei": "1-one"}
+var testmap = RevMap{ "3-three": "2-two", "2-two": "1-one", "1-one": "" }
+var branchymap = RevMap{ "3-three": "2-two", "2-two": "1-one", "1-one": "", "3-drei": "2-two" }
 
-func TestBodyAccess(t *testing.T) {
-    gotmap := testbody.revMap()
-    if !reflect.DeepEqual(gotmap, testmap) {
-        t.Errorf("revMap() accessor failed: gotmap=%v, testmap=%v", gotmap, testmap)
-    }
+const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1]}`
 
-    nobody := Body{"_id": "foo", "_rev": "3-three"}
-    if nobody.revMap() != nil {
-        t.Errorf("revMap() false positive")
-    }
+
+func testUnmarshal(t *testing.T, jsonString string) RevMap {
+    gotmap := RevMap{}
+    assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevMap from JSON")
+    assert.DeepEquals(t, gotmap, testmap)
+    return gotmap
+}
+
+func TestUnmarshal(t *testing.T) {
+    gotmap := testUnmarshal(t, testJSON)
+    fmt.Printf("Unmarshaled to %v\n", gotmap)
+}
+
+func TestMarshal(t *testing.T) {
+    bytes, err := json.Marshal(testmap)
+    assertNoError(t, err, "Couldn't write RevMap to JSON")
+    fmt.Printf("Marshaled RevMap as %s\n", string(bytes))
+    testUnmarshal(t, string(bytes))
 }
 
 func TestRevMapAccess(t *testing.T) {
-    if !testmap.contains("3-three") {
-        t.Errorf("contains 3 failed")
-    }
-    if !testmap.contains("1-one") {
-        t.Errorf("contains 1 failed")
-    }
-    if testmap.contains("foo") {
-        t.Errorf("contains false positive")
-    }
+    assertTrue(t, testmap.contains("3-three"), "contains 3 failed")
+    assertTrue(t, testmap.contains("1-one"), "contains 1 failed")
+    assertFalse(t, testmap.contains("foo"), "contains false positive")
 }
 
 func TestParentAccess(t *testing.T) {
     parent := testmap.getParent("3-three")
-    if parent != "2-two" {
-        t.Errorf("parent of 3 failed")
-    }
+    assert.Equals(t, parent, "2-two")
     parent = testmap.getParent("1-one")
-    if parent != "" {
-        t.Errorf("parent of 1 failed")
-    }
+    assert.Equals(t, parent, "")
 }
 
 func TestGetHistory(t *testing.T) {
     history := testmap.getHistory("3-three")
-    if !reflect.DeepEqual(history, []string{"3-three", "2-two", "1-one"}) {
-        t.Errorf("history of 3 failed")
-    }
+    assert.DeepEquals(t, history, []string{"3-three", "2-two", "1-one"})
 }
 
 func TestGetLeaves(t *testing.T) {
     leaves := testmap.getLeaves()
-    if !reflect.DeepEqual(leaves, []string{"3-three"}) {
-        t.Errorf("getLeaves failed")
-    }
+    assert.DeepEquals(t, leaves, []string{"3-three"})
     leaves = branchymap.getLeaves()
     sort.Strings(leaves)
-    if !reflect.DeepEqual(leaves, []string{"3-drei", "3-three"}) {
-        t.Errorf("getLeaves failed on branchy")
-    }
+    assert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
 }
 
 
 func TestAddRevision(t *testing.T) {
     tempmap := testmap.copy()
+    assert.DeepEquals(t, tempmap, testmap)
+
     tempmap.addRevision("4-four", "3-three")
-    if tempmap.getParent("4-four") != "3-three" {
-        t.Errorf("failed to add revision")
+    assert.Equals(t, tempmap.getParent("4-four"), "3-three")
+}
+
+
+func assertNoError(t *testing.T, err error, message string) {
+    if err != nil {
+        t.Errorf("%s: %v", message, err)
+    }
+}
+
+func assertTrue(t *testing.T, success bool, message string) {
+    if !success {
+        t.Errorf("%s", message)
+    }
+}
+
+func assertFalse(t *testing.T, failure bool, message string) {
+    if failure {
+        t.Errorf("%s", message)
     }
 }

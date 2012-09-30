@@ -2,10 +2,6 @@
 
 package couchglue
 
-import "crypto/rand"
-import "crypto/sha1"
-import "encoding/json"
-import "fmt"
 import "log"
 import "net/http"
 import "regexp"
@@ -107,86 +103,6 @@ func (db *Database) AllDocIDs() ([]string, *HTTPError) {
         docids = append(docids, key[1].(string))
     }
     return docids, nil
-}
-
-
-func (db *Database) RevsDiff (revs interface{}) interface{} {
-    // http://wiki.apache.org/couchdb/HttpPostRevsDiff
-    return nil //TEMP
-}
-
-
-// Returns the raw value of a document, or nil if there isn't one.
-func (db *Database) Get (docid string) (Body, *HTTPError) {
-    var body Body
-    err := db.bucket.Get(db.realDocID(docid), &body)
-    if err != nil { return nil, convertError(err) }
-    body["_id"] = docid
-    return body, nil
-}
-
-
-// Stores a raw value in a document. Returns an HTTP status code.
-func (db *Database) Put (docid string, body Body) (string, *HTTPError) {
-    // Verify that the _rev key in the body matches the current stored value:
-    var matchRev string
-    if body["_rev"] != nil {
-        matchRev = body["_rev"].(string)
-    }
-    oldBody, err := db.Get(docid)
-    if err != nil {
-        if err.Status != 404 { return "", err }
-        if matchRev != "" {
-            return "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
-        }
-    } else {
-        if matchRev != oldBody["_rev"] {
-            return "", &HTTPError{Status: http.StatusConflict, Message: "Incorrect revision ID"}
-        }
-    }
-
-    delete(body, "_id")
-    
-    // Make up a new _rev:
-    generation := 0
-    if matchRev != "" {
-        n, _ := fmt.Sscanf(matchRev, "%d-", &generation)
-        if n < 1 || generation < 1 {
-            return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
-        }
-    }
-    json,_ := json.Marshal(body)
-    digester := sha1.New()
-    digester.Write(json)
-    digest := digester.Sum(nil)
-    
-    newRev := fmt.Sprintf("%d-%x", generation+1, digest)
-    
-    body["_rev"] = newRev
-
-    // Now finally put the new value:
-    err = convertError( db.bucket.Set(db.realDocID(docid), 0, body) )
-    if err != nil { return "", err }
-    return newRev, nil
-}
-
-
-func createUUID() string {
-    bytes := make([]byte, 20)
-    n, err := rand.Read(bytes)
-    if n < 20 { log.Panic("Failed to generate random ID: %s", err) }
-    return fmt.Sprintf("%x", bytes)
-}
-
-
-func (db *Database) Post (body Body) (string, string, *HTTPError) {
-    if body["_rev"] != nil {
-        return "", "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
-    }
-    docid := createUUID()
-    rev, err := db.Put(docid, body)
-    if err != nil { docid = "" }
-    return docid, rev, err
 }
 
 

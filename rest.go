@@ -9,13 +9,19 @@ import "strings"
 import "github.com/couchbaselabs/go-couchbase"
 
 
-func readJSON(rq *http.Request) (Body, *HTTPError) {
+func readJSONInto(rq *http.Request, into interface{}) *HTTPError {
     body, err := ioutil.ReadAll(rq.Body)
-    if err != nil { return nil, &HTTPError{Status: http.StatusBadRequest} }
-    var parsed Body
-    err = json.Unmarshal(body, &parsed)
-    if err != nil { return nil, &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"} }
-    return parsed, nil
+    if err != nil { return &HTTPError{Status: http.StatusBadRequest} }
+    err = json.Unmarshal(body, into)
+    if err != nil { return &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"} }
+    return nil
+}
+
+func readJSON(rq *http.Request) (Body, *HTTPError) {
+    var body Body
+    err := readJSONInto(rq, &body)
+    if err != nil { return nil, err }
+    return body, nil
 }
 
 
@@ -123,12 +129,17 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
                 }
                 case "_revs_diff": {
                     if method == "POST" {
-                        revs, err := readJSON(rq)
+                        var input RevsDiffInput
+                        err := readJSONInto(rq, &input)
                         if err != nil {
-                            r.WriteHeader(http.StatusBadRequest)
+                            writeError(err, r)
                             return
                         }
-                        writeJSON(db.RevsDiff(revs), r)
+                        output, err := db.RevsDiff(input)
+                        writeJSON(output, r)
+                        if err != nil {
+                            writeError(err, r)
+                        }
                         return
                     }
                 }
