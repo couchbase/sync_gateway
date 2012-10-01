@@ -54,8 +54,7 @@ func (db *Database) Put (docid string, body Body) (string, error) {
     }
     doc, err := db.getDoc(docid)
     if err != nil {
-        httpstatus,_ := ErrorAsHTTPStatus(err)
-        if httpstatus != 404 { return "", err }
+        if !isMissingDocError(err) { return "", err }
         if matchRev != "" {
             return "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
         }
@@ -99,6 +98,35 @@ func (db *Database) Post (body Body) (string, string, error) {
 }
 
 
+func (db *Database) PutExistingRev (docid string, body Body, docHistory []string) error {
+    doc, err := db.getDoc(docid)
+    if err != nil { return err }
+        
+    // Find the point where this doc's history branches from the current rev:
+    currentRev := doc.Body["_rev"]
+    currentRevIndex := -1
+    for i, revid := range(docHistory) {
+        if revid == currentRev {
+            currentRevIndex = i
+            break
+        }
+    }
+    if currentRevIndex < 0 {
+        // Ouch. The input rev doesn't inherit from my current revision, so it creates a branch.
+        // My data structure doesn't support storing multiple revision bodies yet.
+        return &HTTPError{Status: 500, Message: "Sorry, can't branch yet"}
+    }
+    
+    for i := currentRevIndex - 1; i >= 0; i-- {
+        doc.History.addRevision(docHistory[i], docHistory[i + 1])
+    }
+    body["_id"] = docid
+    body["_rev"] = docHistory[0]
+    doc.Body = body
+    return db.bucket.Set(db.realDocID(docid), 0, doc)
+}
+
+
 type RevsDiffInput map[string] []string
 
 
@@ -121,7 +149,13 @@ func (db *Database) RevsDiff (input RevsDiffInput) (map[string]interface{}, erro
 
 func (db *Database) RevDiff (docid string, revids []string) (missing, possible []string, err error) {
     doc, err := db.getDoc(docid)
-    if err != nil { return }
+    if err != nil {
+        if isMissingDocError(err) {
+            err = nil
+            missing = revids
+        }
+        return
+    }
     revmap := doc.History
     found := make(map[string]bool)
     maxMissingGen := 0
@@ -139,8 +173,8 @@ func (db *Database) RevDiff (docid string, revids []string) (missing, possible [
             }
         }
     }
-    possible = make([]string, 0, 5)
-    if len(missing) > 0 {
+    if missing != nil {
+        possible = make([]string, 0, 5)
         for revid,_ := range(revmap) {
             if !found[revid] && getRevGeneration(revid) < maxMissingGen {
                 possible = append(possible, revid)
@@ -175,4 +209,10 @@ func getRevGeneration(revid string) int {
     n, _ := fmt.Sscanf(revid, "%d-", &generation)
     if n < 1 || generation < 1 { return -1 }
     return generation
+}
+
+
+func isMissingDocError(err error) bool {
+    httpstatus,_ := ErrorAsHTTPStatus(err)
+    return httpstatus == 404
 }
