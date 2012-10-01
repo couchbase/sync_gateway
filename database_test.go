@@ -30,5 +30,24 @@ func TestDatabase(t *testing.T) {
     body := Body {"key1": "value1", "key2": 1234}
     revid, err := db.Put("doc1", body)
     assertNoError(t, err, "Couldn't create document")
+    assert.Equals(t, revid, body["_rev"])
     assert.Equals(t, revid, "1-6865ee3d9953ee26fa392728624f60a2806f0184")
+    
+    body["key1"] = "new value"
+    body["key2"] = float64(4321)  // otherwise the DeepEquals call below fails
+    revid, err = db.Put("doc1", body)
+    assertNoError(t, err, "Couldn't update document")
+    assert.Equals(t, revid, body["_rev"])
+    assert.Equals(t, revid, "2-625cf10785173f55abfa3956a97010e9e7c2416e")
+    
+    gotbody, err := db.Get("doc1")
+    assertNoError(t, err, "Couldn't get document")
+    assert.DeepEquals(t, gotbody, body)
+    
+    missing, possible, err := db.RevDiff("doc1", 
+                                         []string{"1-6865ee3d9953ee26fa392728624f60a2806f0184",
+                                                  "3-foo"})
+    assertNoError(t, err, "RevDiff failed")
+    assert.DeepEquals(t, missing, []string{"3-foo"})
+    assert.DeepEquals(t, possible, []string{"2-625cf10785173f55abfa3956a97010e9e7c2416e"})
 }

@@ -18,14 +18,13 @@ type Body  map[string] interface{}
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type Document struct {
-    rev     string
-    history RevMap
-    body    Body
+    History RevMap      `json:"history"`
+    Body    Body        `json:"current"`
 }
 
 
 func NewDocument() *Document {
-    return &Document{ history: make(RevMap), body: make(Body) }
+    return &Document{ History: make(RevMap), Body: make(Body) }
 }
 
 
@@ -33,7 +32,7 @@ func (db *Database) getDoc (docid string) (*Document, error) {
     doc := NewDocument()
     err := db.bucket.Get(db.realDocID(docid), doc)
     if err != nil { return nil, err }
-    doc.body["_id"] = docid
+    doc.Body["_id"] = docid
     return doc, nil
 }
 
@@ -42,7 +41,7 @@ func (db *Database) getDoc (docid string) (*Document, error) {
 func (db *Database) Get (docid string) (Body, error) {
     doc, err := db.getDoc(docid)
     if doc == nil { return nil, err }
-    return doc.body, nil
+    return doc.Body, nil
 }
 
 
@@ -62,7 +61,7 @@ func (db *Database) Put (docid string, body Body) (string, error) {
         }
         doc = NewDocument()
     } else {
-        parentRev, _ := doc.body["_rev"].(string)
+        parentRev, _ := doc.Body["_rev"].(string)
         if matchRev != parentRev {
             return "", &HTTPError{Status: http.StatusConflict, Message: "Incorrect revision ID; should be " + parentRev}
         }
@@ -77,10 +76,10 @@ func (db *Database) Put (docid string, body Body) (string, error) {
     }
     newRev := createRevID(generation+1, body)
     
+    body["_id"] = docid
     body["_rev"] = newRev
-    doc.body = body
-    doc.history.addRevision(newRev, matchRev)
-    log.Printf("PUTting Doc = %v", doc)//TEMP
+    doc.Body = body
+    doc.History.addRevision(newRev, matchRev)
 
     // Now finally put the new value:
     err = db.bucket.Set(db.realDocID(docid), 0, doc)
@@ -123,26 +122,39 @@ func (db *Database) RevsDiff (input RevsDiffInput) (map[string]interface{}, erro
 func (db *Database) RevDiff (docid string, revids []string) (missing, possible []string, err error) {
     doc, err := db.getDoc(docid)
     if err != nil { return }
-    revmap := doc.history
+    revmap := doc.History
+    found := make(map[string]bool)
+    maxMissingGen := 0
     for _,revid := range(revids) {
-        if !revmap.contains(revid) {
+        if revmap.contains(revid) {
+            found[revid] = true
+        } else {
             if missing == nil {
                 missing = make([]string, 0, 5)
             }
-            missing = append(missing, revid)
+            gen := getRevGeneration(revid)
+            if gen > 0 {
+                missing = append(missing, revid)
+                if gen > maxMissingGen { maxMissingGen = gen }
+            }
         }
     }
+    possible = make([]string, 0, 5)
     if len(missing) > 0 {
-        possible = revmap.getLeaves()
+        for revid,_ := range(revmap) {
+            if !found[revid] && getRevGeneration(revid) < maxMissingGen {
+                possible = append(possible, revid)
+            }
+        }
     }
     return
 }
 
 
 func createUUID() string {
-    bytes := make([]byte, 20)
+    bytes := make([]byte, 16)
     n, err := rand.Read(bytes)
-    if n < 20 { log.Panic("Failed to generate random ID: %s", err) }
+    if n < 16 { log.Panic("Failed to generate random ID: %s", err) }
     return fmt.Sprintf("%x", bytes)
 }
 

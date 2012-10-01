@@ -14,8 +14,6 @@ import (
 
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
-var DefaultBucket *couchbase.Bucket
-
 
 type HTTPError struct {
     error
@@ -29,11 +27,13 @@ func (err *HTTPError) Error() string {
 
 
 type Database struct {
-    Name    string
-    bucket  *couchbase.Bucket
+    Name        string              `json:"name"`
+    DocPrefix   string              `json:"docPrefix"`
+    bucket      *couchbase.Bucket
 }
 
 
+// Helper function to open a Couchbase connection and return a specific bucket.
 func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchbase.Bucket, err error) {
 	c, err := couchbase.Connect(couchbaseURL )
 	if err != nil {return}
@@ -47,47 +47,49 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 }
 
 
-func makeDatabase(bucket *couchbase.Bucket, name string) *Database {
-    if (bucket == nil) { bucket = DefaultBucket; }
-    if !kDBNameMatch.MatchString(name) { return nil }
-    db := new(Database)
-    db.bucket = bucket
-    db.Name = name
-    return db
+func dbInternalDocName(dbName string) string {
+    if !kDBNameMatch.MatchString(dbName) {
+         return ""
+    }
+    return "cdb:" + dbName
 }
 
 
+// Makes a Database object given its name and bucket. Returns nil if there is no such database.
 func GetDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-    if (bucket == nil) { bucket = DefaultBucket; }
-    if !kDBNameMatch.MatchString(name) {
+    docname := dbInternalDocName(name)
+    if docname == "" {
          return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
     }
-    var body Body
-    err := bucket.Get(name, &body)
+    var db Database
+    err := bucket.Get(docname, &db)
     if err != nil { return nil, err }
-    return makeDatabase(bucket, name), nil
+    db.bucket = bucket
+    return &db, nil
 }
 
 
+// Creates a new database in a bucket and returns a Database object for it. Fails if the database exists.
 func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-    if (bucket == nil) { bucket = DefaultBucket; }
-    if !kDBNameMatch.MatchString(name) {
-        return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
+    docname := dbInternalDocName(name)
+    if docname == "" {
+         return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
     }
-    var body Body
-    err := bucket.Get(name, &body)
+    var db Database
+    err := bucket.Get(docname, &db)
     if err == nil { return nil, &HTTPError{Status: 412, Message: "Database already exists"} }
-    body = make(Body)
-    err = bucket.Set(name, 0, body)
+
+    db = Database{bucket: bucket, Name: name, DocPrefix: fmt.Sprintf("doc:%s/%s:", name, createUUID())}
+    err = bucket.Set(docname, 0, db)
     if err != nil {
         return nil, err
     }
-    return makeDatabase(bucket, name), nil
+    return &db, nil
 }
 
 
 func (db *Database) realDocID (docid string) string {
-    return db.Name + ":" + docid
+    return db.DocPrefix + docid
 }
 
 
@@ -96,13 +98,6 @@ func (db *Database) DocCount() int {
     if (err != nil) { return -1}
     return vres.TotalRows
 }
-
-func (db *Database) allDocIDsOpts() Body {
-    startkey := [1]string{db.Name}
-    endkey := [2]interface{}{db.Name, make(Body)}
-    return Body{"startkey": startkey, "endkey": endkey}
-}
-
 
 // Returns all document IDs as an array.
 func (db *Database) AllDocIDs() ([]string, error) {
@@ -119,11 +114,19 @@ func (db *Database) AllDocIDs() ([]string, error) {
 }
 
 
+func (db *Database) allDocIDsOpts() Body {
+    startkey := [1]string{db.DocPrefix}
+    endkey := [2]interface{}{db.DocPrefix, make(Body)}
+    return Body{"startkey": startkey, "endkey": endkey}
+}
+
+
+// Deletes a database (and all documents)
 func (db *Database) Delete() error {
     docIDs, err := db.AllDocIDs()
     if err != nil {return err}
     //FIX: Is there a way to do this in one operation?
-    err = db.bucket.Delete(db.Name)
+    err = db.bucket.Delete(dbInternalDocName(db.Name))
     if err != nil {return err}
     for _,docID := range(docIDs) {
         db.bucket.Delete(docID)
@@ -132,6 +135,7 @@ func (db *Database) Delete() error {
 }
 
 
+// Attempts to map an error to an HTTP status code and message. Defaults to 500.
 func ErrorAsHTTPStatus(err error) (int, string) {
     if err == nil { return 200, "OK" }
 	switch err := err.(type) {
@@ -145,7 +149,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
             }
     	default:
             log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)
-    		return http.StatusInternalServerError, fmt.Sprintf("Go error: %v", err)
+    		return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
     }
     panic("unreachable")
 }
