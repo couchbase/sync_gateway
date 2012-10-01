@@ -16,20 +16,10 @@ func main() {
 	bucketName := flag.String("bucket", "couchdb", "Name of bucket")
 	flag.Parse()
     
-	c, err := couchbase.Connect(*couchbaseURL )
-	if err != nil {
-		log.Fatalf("Error connecting to <%s>:  %v", *couchbaseURL , err)
-	}
-	log.Printf("Connected to <%s>, ver=%s\n", *couchbaseURL, c.Info.ImplementationVersion)
-	pool, err := c.GetPool(*poolName)
-	if err != nil {
-		log.Fatalf("Can't get pool '%s':  %v", *poolName, err)
-	}
-	bucket, err := pool.GetBucket(*bucketName)
+	bucket, err := couchglue.ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
 	if err != nil {
 		log.Fatalf("Error getting bucket '%s':  %v\n", *bucketName, err)
 	}
-    log.Printf("Using pool %s, bucket %s", *poolName, *bucketName)
     
     couchglue.InitREST(bucket)
     

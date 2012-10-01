@@ -12,6 +12,11 @@ import (
 )
 
 
+// The body of a CouchDB document.
+type Body  map[string] interface{}
+    
+
+// A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type Document struct {
     rev     string
     history RevMap
@@ -19,17 +24,22 @@ type Document struct {
 }
 
 
-func (db *Database) getDoc (docid string) (*Document, *HTTPError) {
-    var doc Document
-    err := db.bucket.Get(db.realDocID(docid), &doc)
-    if err != nil { return nil, convertError(err) }
+func NewDocument() *Document {
+    return &Document{ history: make(RevMap), body: make(Body) }
+}
+
+
+func (db *Database) getDoc (docid string) (*Document, error) {
+    doc := NewDocument()
+    err := db.bucket.Get(db.realDocID(docid), doc)
+    if err != nil { return nil, err }
     doc.body["_id"] = docid
-    return &doc, nil
+    return doc, nil
 }
 
 
 // Returns the body of a document, or nil if there isn't one.
-func (db *Database) Get (docid string) (Body, *HTTPError) {
+func (db *Database) Get (docid string) (Body, error) {
     doc, err := db.getDoc(docid)
     if doc == nil { return nil, err }
     return doc.body, nil
@@ -37,7 +47,7 @@ func (db *Database) Get (docid string) (Body, *HTTPError) {
 
 
 // Stores a raw value in a document. Returns an HTTP status code.
-func (db *Database) Put (docid string, body Body) (string, *HTTPError) {
+func (db *Database) Put (docid string, body Body) (string, error) {
     // Verify that the _rev key in the body matches the current stored value:
     var matchRev string
     if body["_rev"] != nil {
@@ -45,13 +55,16 @@ func (db *Database) Put (docid string, body Body) (string, *HTTPError) {
     }
     doc, err := db.getDoc(docid)
     if err != nil {
-        if err.Status != 404 { return "", err }
+        httpstatus,_ := ErrorAsHTTPStatus(err)
+        if httpstatus != 404 { return "", err }
         if matchRev != "" {
             return "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
         }
+        doc = NewDocument()
     } else {
-        if matchRev != doc.body["_rev"] {
-            return "", &HTTPError{Status: http.StatusConflict, Message: "Incorrect revision ID"}
+        parentRev, _ := doc.body["_rev"].(string)
+        if matchRev != parentRev {
+            return "", &HTTPError{Status: http.StatusConflict, Message: "Incorrect revision ID; should be " + parentRev}
         }
     }
 
@@ -70,13 +83,13 @@ func (db *Database) Put (docid string, body Body) (string, *HTTPError) {
     log.Printf("PUTting Doc = %v", doc)//TEMP
 
     // Now finally put the new value:
-    err = convertError( db.bucket.Set(db.realDocID(docid), 0, doc) )
+    err = db.bucket.Set(db.realDocID(docid), 0, doc)
     if err != nil { return "", err }
     return newRev, nil
 }
 
 
-func (db *Database) Post (body Body) (string, string, *HTTPError) {
+func (db *Database) Post (body Body) (string, string, error) {
     if body["_rev"] != nil {
         return "", "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
     }
@@ -93,7 +106,7 @@ type RevsDiffInput map[string] []string
 // Given a set of revisions, looks up which ones are not known.
 // The input is a map from doc ID to array of revision IDs.
 // The output is a map from doc ID to a map with "missing" and "possible_ancestors" arrays of rev IDs.
-func (db *Database) RevsDiff (input RevsDiffInput) (map[string]interface{}, *HTTPError) {
+func (db *Database) RevsDiff (input RevsDiffInput) (map[string]interface{}, error) {
     // http://wiki.apache.org/couchdb/HttpPostRevsDiff
     output := make(map[string]interface{})
     for docid,revs := range(input) {
@@ -107,7 +120,7 @@ func (db *Database) RevsDiff (input RevsDiffInput) (map[string]interface{}, *HTT
 }
 
 
-func (db *Database) RevDiff (docid string, revids []string) (missing, possible []string, err *HTTPError) {
+func (db *Database) RevDiff (docid string, revids []string) (missing, possible []string, err error) {
     doc, err := db.getDoc(docid)
     if err != nil { return }
     revmap := doc.history

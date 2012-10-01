@@ -9,7 +9,7 @@ import "strings"
 import "github.com/couchbaselabs/go-couchbase"
 
 
-func readJSONInto(rq *http.Request, into interface{}) *HTTPError {
+func readJSONInto(rq *http.Request, into interface{}) error {
     body, err := ioutil.ReadAll(rq.Body)
     if err != nil { return &HTTPError{Status: http.StatusBadRequest} }
     err = json.Unmarshal(body, into)
@@ -17,11 +17,9 @@ func readJSONInto(rq *http.Request, into interface{}) *HTTPError {
     return nil
 }
 
-func readJSON(rq *http.Request) (Body, *HTTPError) {
+func readJSON(rq *http.Request) (Body, error) {
     var body Body
-    err := readJSONInto(rq, &body)
-    if err != nil { return nil, err }
-    return body, nil
+    return body, readJSONInto(rq, &body)
 }
 
 
@@ -37,10 +35,11 @@ func writeJSON(value interface{}, r http.ResponseWriter) {
 }
 
 
-func writeError(err *HTTPError, r http.ResponseWriter) {
+func writeError(err error, r http.ResponseWriter) {
     if err != nil {
-        r.WriteHeader(err.Status)
-        info := Body{"error": err.Status, "reason": err.Error()}
+        status, message := ErrorAsHTTPStatus(err)
+        r.WriteHeader(status)
+        info := Body{"error": status, "reason": message}
         json,_ := json.Marshal(info)
         r.Write(json)
     }

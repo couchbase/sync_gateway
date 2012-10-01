@@ -2,21 +2,21 @@
 
 package couchglue
 
-import "log"
-import "net/http"
-import "regexp"
+import (
+    "fmt"
+    "log"
+    "net/http"
+    "regexp"
 
-import "github.com/couchbaselabs/go-couchbase"
-import "github.com/dustin/gomemcached"
-
+    "github.com/couchbaselabs/go-couchbase"
+    "github.com/dustin/gomemcached"
+)
 
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
 var DefaultBucket *couchbase.Bucket
 
 
-type Body  map[string] interface{}
-    
 type HTTPError struct {
     error
     Status  int
@@ -34,6 +34,19 @@ type Database struct {
 }
 
 
+func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchbase.Bucket, err error) {
+	c, err := couchbase.Connect(couchbaseURL )
+	if err != nil {return}
+	pool, err := c.GetPool(poolName)
+	if err != nil {return}
+	bucket, err = pool.GetBucket(bucketName)
+	if err != nil {return}
+    fmt.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
+    err = nil
+    return
+}
+
+
 func makeDatabase(bucket *couchbase.Bucket, name string) *Database {
     if (bucket == nil) { bucket = DefaultBucket; }
     if !kDBNameMatch.MatchString(name) { return nil }
@@ -44,30 +57,30 @@ func makeDatabase(bucket *couchbase.Bucket, name string) *Database {
 }
 
 
-func GetDatabase(bucket *couchbase.Bucket, name string) (*Database, *HTTPError) {
+func GetDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
     if (bucket == nil) { bucket = DefaultBucket; }
     if !kDBNameMatch.MatchString(name) {
          return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
     }
     var body Body
     err := bucket.Get(name, &body)
-    if err != nil { return nil, convertError(err) }
+    if err != nil { return nil, err }
     return makeDatabase(bucket, name), nil
 }
 
 
-func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, *HTTPError) {
+func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
     if (bucket == nil) { bucket = DefaultBucket; }
     if !kDBNameMatch.MatchString(name) {
         return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
     }
     var body Body
     err := bucket.Get(name, &body)
-    if err == nil { return nil, &HTTPError{Status: 412} }
+    if err == nil { return nil, &HTTPError{Status: 412, Message: "Database already exists"} }
     body = make(Body)
     err = bucket.Set(name, 0, body)
     if err != nil {
-        return nil, convertError(err)
+        return nil, err
     }
     return makeDatabase(bucket, name), nil
 }
@@ -92,9 +105,9 @@ func (db *Database) allDocIDsOpts() Body {
 
 
 // Returns all document IDs as an array.
-func (db *Database) AllDocIDs() ([]string, *HTTPError) {
+func (db *Database) AllDocIDs() ([]string, error) {
     vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts())
-    if (err != nil) { return nil, convertError(err)}
+    if (err != nil) { return nil, err}
     
     rows := vres.Rows
     docids := make([]string, len(rows))
@@ -106,19 +119,33 @@ func (db *Database) AllDocIDs() ([]string, *HTTPError) {
 }
 
 
-func convertError(err error) *HTTPError {
-    if err == nil { return nil }
-    var status int
-	switch err.(type) {
+func (db *Database) Delete() error {
+    docIDs, err := db.AllDocIDs()
+    if err != nil {return err}
+    //FIX: Is there a way to do this in one operation?
+    err = db.bucket.Delete(db.Name)
+    if err != nil {return err}
+    for _,docID := range(docIDs) {
+        db.bucket.Delete(docID)
+    }
+    return nil
+}
+
+
+func ErrorAsHTTPStatus(err error) (int, string) {
+    if err == nil { return 200, "OK" }
+	switch err := err.(type) {
+        case *HTTPError:
+            return err.Status, err.Message
     	case *gomemcached.MCResponse:
-    		switch err.(*gomemcached.MCResponse).Status {
-                case gomemcached.KEY_ENOENT:     status = http.StatusNotFound
-                case gomemcached.KEY_EEXISTS:    status = http.StatusConflict
-                default:                         status = http.StatusBadGateway
+    		switch err.Status {
+                case gomemcached.KEY_ENOENT:     return http.StatusNotFound, "Not Found"
+                case gomemcached.KEY_EEXISTS:    return http.StatusConflict, "Conflict"
+                default:                         return http.StatusBadGateway, fmt.Sprintf("MC status %d", err.Status)
             }
     	default:
             log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)
-    		status = http.StatusInternalServerError
+    		return http.StatusInternalServerError, fmt.Sprintf("Go error: %v", err)
     }
-    return &HTTPError{Status: status, Message: err.Error()}
+    panic("unreachable")
 }

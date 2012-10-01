@@ -20,11 +20,6 @@ type RevTreeList struct {
 }
 
 
-func makeRevMap() RevMap {
-    return RevMap{}
-}
-
-
 func (revmap RevMap) MarshalJSON() ([]byte, error) {
     revs := make([]string, 0, len(revmap))
     parents := make([]int, 0, len(revmap))
