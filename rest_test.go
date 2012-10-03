@@ -143,3 +143,20 @@ func TestRevsDiff(t *testing.T) {
                                "possible_ancestors":[]string{"10-ten", "9-nine"}},
         "rd9": RevDiffResponse{"missing":[]string{"1-a", "2-b", "3-c"}} })
 }
+
+
+func TestLocalDocs(t *testing.T) {
+    response := callREST("GET", "/resttest/_local/loc1", "")
+    assert.Equals(t, response.Code, 404)
+    
+    response = callREST("PUT", "/resttest/_local/loc1", `{"hi": "there"}`)
+    assert.Equals(t, response.Code, 201)
+    response = callREST("GET", "/resttest/_local/loc1", "")
+    assert.Equals(t, response.Code, 200)
+    assert.Equals(t, response.Body.String(), `{"hi":"there"}`)
+    
+    response = callREST("DELETE", "/resttest/_local/loc1", "")
+    assert.Equals(t, response.Code, 200)
+    response = callREST("GET", "/resttest/_local/loc1", "")
+    assert.Equals(t, response.Code, 404)
+}

@@ -191,6 +191,41 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
 }
 
 
+func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
+    value, err := db.GetLocal(docid)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    if value == nil {
+        r.WriteHeader(http.StatusNotFound)
+        return
+    }
+    writeJSON(value, r)
+}
+
+
+func (db *Database) HandlePutLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
+    body, err := readJSON(rq)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    
+    err = db.PutLocal(docid, body)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    r.WriteHeader(http.StatusCreated)
+}
+
+
+func (db *Database) HandleDeleteLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
+    writeError(db.DeleteLocal(docid), r)
+}
+
+
 // Handles HTTP requests for a database.
 func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []string) {
     method := rq.Method
@@ -265,6 +300,23 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
                             return
                         }
                     }
+                }
+            }
+        }
+        case 2: {
+            if path[0] == "_local" {
+                docid := path[1]
+                log.Printf("%s %s local doc %q", db.Name, method, docid)
+                switch method {
+                case "GET":
+                    db.HandleGetLocalDoc(r, rq, docid)
+                    return
+                case "PUT":
+                    db.HandlePutLocalDoc(r, rq, docid)
+                    return
+                case "DELETE":
+                    db.HandleDeleteLocalDoc(r, rq, docid)
+                    return
                 }
             }
         }

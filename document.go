@@ -210,6 +210,29 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 }
 
 
+func (db *Database) realLocalDocID(docid string) string {
+    return db.realDocID("_local/"+docid)
+}
+
+
+func (db *Database) GetLocal(docid string) (Body, error) {
+    body := Body{}
+    err := db.bucket.Get(db.realLocalDocID(docid), &body)
+    if err != nil { return nil, err }
+    return body, nil
+}
+
+
+func (db *Database) PutLocal(docid string, body Body) error {
+    return db.bucket.Set(db.realLocalDocID(docid), 0, body)
+}
+
+func (db *Database) DeleteLocal(docid string) error {
+    return db.bucket.Delete(db.realLocalDocID(docid))
+}
+
+
+
 func createUUID() string {
     bytes := make([]byte, 16)
     n, err := rand.Read(bytes)
