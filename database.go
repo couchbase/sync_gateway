@@ -101,6 +101,8 @@ func (db *Database) DocCount() int {
 
 // Returns all document IDs as an array.
 func (db *Database) AllDocIDs() ([]string, error) {
+    return make([]string, 0), nil
+    /*
     vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts())
     if (err != nil) { return nil, err}
     
@@ -111,6 +113,7 @@ func (db *Database) AllDocIDs() ([]string, error) {
         docids = append(docids, key[1].(string))
     }
     return docids, nil
+    */
 }
 
 

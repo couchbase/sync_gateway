@@ -24,7 +24,10 @@ func TestDatabase(t *testing.T) {
     assertNoError(t, err, "Couldn't create database")
     defer func() {
         err = db.Delete()
-        assertNoError(t, err, "Couldn't delete database")
+        status,_ := ErrorAsHTTPStatus(err)
+        if status != 200 && status != 404 {
+            assertNoError(t, err, "Couldn't delete database")
+        }
     }()
     
     // Test creating & updating a document:

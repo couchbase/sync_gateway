@@ -4,6 +4,7 @@ package couchglue
 
 import (
     "encoding/json"
+    "fmt"
 )
 
 
@@ -101,8 +102,12 @@ func (revmap RevMap) getLeaves() []string {
 // Records a revision in a RevMap.
 func (revmap RevMap) addRevision(revid string, parentid string) {
     if revid == "" { panic("empty revid is illegal") }
-    if parentid != "" && !revmap.contains(parentid) { panic("parent id is missing") }
-    if revmap.contains(revid) { panic("already contains this rev") }
+    if parentid != "" && !revmap.contains(parentid) {
+        panic(fmt.Sprintf("parent id %q is missing", parentid))
+    }
+    if revmap.contains(revid) {
+        panic(fmt.Sprintf("already contains rev %q", revid))
+    }
     revmap[revid] = parentid
 }
 

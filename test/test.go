@@ -6,7 +6,7 @@ import "couchglue"
 import "flag"
 import "log"
 import "net/http"
-import "github.com/couchbaselabs/go-couchbase"
+//import "github.com/couchbaselabs/go-couchbase"
 
 
 func main() {

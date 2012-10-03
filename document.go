@@ -28,7 +28,7 @@ func NewDocument() *Document {
 }
 
 
-func (db *Database) getDoc (docid string) (*Document, error) {
+func (db *Database) getDoc(docid string) (*Document, error) {
     doc := NewDocument()
     err := db.bucket.Get(db.realDocID(docid), doc)
     if err != nil { return nil, err }
@@ -38,15 +38,18 @@ func (db *Database) getDoc (docid string) (*Document, error) {
 
 
 // Returns the body of a document, or nil if there isn't one.
-func (db *Database) Get (docid string) (Body, error) {
+func (db *Database) Get(docid string) (Body, error) {
     doc, err := db.getDoc(docid)
     if doc == nil { return nil, err }
+    if doc.Body["_deleted"] == true {
+        return nil, &HTTPError{Status: 404, Message: "Deleted"}
+    }
     return doc.Body, nil
 }
 
 
 // Stores a raw value in a document. Returns an HTTP status code.
-func (db *Database) Put (docid string, body Body) (string, error) {
+func (db *Database) Put(docid string, body Body) (string, error) {
     // Verify that the _rev key in the body matches the current stored value:
     var matchRev string
     if body["_rev"] != nil {
@@ -74,7 +77,8 @@ func (db *Database) Put (docid string, body Body) (string, error) {
         return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
     }
     newRev := createRevID(generation+1, body)
-    
+
+    stripSpecialProperties(body)    
     body["_id"] = docid
     body["_rev"] = newRev
     doc.Body = body
@@ -87,7 +91,7 @@ func (db *Database) Put (docid string, body Body) (string, error) {
 }
 
 
-func (db *Database) Post (body Body) (string, string, error) {
+func (db *Database) Post(body Body) (string, string, error) {
     if body["_rev"] != nil {
         return "", "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
     }
@@ -98,32 +102,46 @@ func (db *Database) Post (body Body) (string, string, error) {
 }
 
 
-func (db *Database) PutExistingRev (docid string, body Body, docHistory []string) error {
-    doc, err := db.getDoc(docid)
-    if err != nil { return err }
-        
-    // Find the point where this doc's history branches from the current rev:
-    currentRev := doc.Body["_rev"]
+func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
     currentRevIndex := -1
-    for i, revid := range(docHistory) {
-        if revid == currentRev {
-            currentRevIndex = i
-            break
+    doc, err := db.getDoc(docid)
+    if err != nil {
+        if !isMissingDocError(err) { return err }
+        // Creating new document:
+        doc = NewDocument()
+        currentRevIndex = len(docHistory)
+        docHistory = append(docHistory, "")
+    } else {
+        // Find the point where this doc's history branches from the current rev:
+        currentRev := doc.Body["_rev"]
+        for i, revid := range(docHistory) {
+            if revid == currentRev {
+                currentRevIndex = i
+                break
+            }
+        }
+        if currentRevIndex < 0 {
+            // Ouch. The input rev doesn't inherit from my current revision, so it creates a branch.
+            // My data structure doesn't support storing multiple revision bodies yet.
+            return &HTTPError{Status: http.StatusNotImplemented, Message: "Sorry, can't branch yet"}
         }
     }
-    if currentRevIndex < 0 {
-        // Ouch. The input rev doesn't inherit from my current revision, so it creates a branch.
-        // My data structure doesn't support storing multiple revision bodies yet.
-        return &HTTPError{Status: 500, Message: "Sorry, can't branch yet"}
-    }
+    
     
     for i := currentRevIndex - 1; i >= 0; i-- {
         doc.History.addRevision(docHistory[i], docHistory[i + 1])
     }
+    stripSpecialProperties(body)    
     body["_id"] = docid
     body["_rev"] = docHistory[0]
     doc.Body = body
     return db.bucket.Set(db.realDocID(docid), 0, doc)
+}
+
+
+func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
+    body := Body{"_deleted": true, "_rev": revid}
+    return db.Put(docid, body)
 }
 
 
@@ -133,21 +151,25 @@ type RevsDiffInput map[string] []string
 // Given a set of revisions, looks up which ones are not known.
 // The input is a map from doc ID to array of revision IDs.
 // The output is a map from doc ID to a map with "missing" and "possible_ancestors" arrays of rev IDs.
-func (db *Database) RevsDiff (input RevsDiffInput) (map[string]interface{}, error) {
+func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error) {
     // http://wiki.apache.org/couchdb/HttpPostRevsDiff
     output := make(map[string]interface{})
     for docid,revs := range(input) {
         missing, possible, err := db.RevDiff(docid, revs)
         if err != nil {return nil, err}
         if missing != nil {
-            output[docid] = map[string]interface{} { "missing": missing, "possible_ancestors": possible }
+            docOutput := map[string]interface{} { "missing": missing }
+            if possible != nil {
+                docOutput["possible_ancestors"] = possible
+            }
+            output[docid] = docOutput
         }
     }
     return output, nil
 }
 
 
-func (db *Database) RevDiff (docid string, revids []string) (missing, possible []string, err error) {
+func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
     doc, err := db.getDoc(docid)
     if err != nil {
         if isMissingDocError(err) {
@@ -180,6 +202,9 @@ func (db *Database) RevDiff (docid string, revids []string) (missing, possible [
                 possible = append(possible, revid)
             }
         }
+        if len(possible) == 0 {
+            possible = nil
+        }
     }
     return
 }
@@ -200,6 +225,15 @@ func createRevID(generation int, body Body) string {
     digester := sha1.New()
     digester.Write(json)
     return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
+}
+
+
+func stripSpecialProperties(body Body) {
+    for key,_ := range(body) {
+        if key[0] == '_' && key != "_rev" {
+            delete(body, key)
+        }
+    }
 }
 
 

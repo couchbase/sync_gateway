@@ -1,12 +1,34 @@
 package couchglue
 
-import "encoding/json"
-import "io/ioutil"
-import "log"
-import "net/http"
-import "strings"
+import (
+    "encoding/json"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "net/http"
+    "strings"
+    
+    "github.com/couchbaselabs/go-couchbase"
+)
 
-import "github.com/couchbaselabs/go-couchbase"
+
+// Parses a CouchDB _revisions property into a list of revision IDs
+func parseRevisions(body Body) []string {
+    revisions, ok := body["_revisions"].(map[string]interface{})
+    if !ok {
+        log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
+        return nil
+    }
+    start := int(revisions["start"].(float64))
+    ids := revisions["ids"].([]interface{})
+    if start <= len(ids) { return nil }
+    result := make([]string, 0, len(ids))
+    for _,id := range(ids) {
+        result = append(result, fmt.Sprintf("%d-%s", start, id))
+        start--
+    }
+    return result
+}
 
 
 func readJSONInto(rq *http.Request, into interface{}) error {
@@ -42,6 +64,7 @@ func writeError(err error, r http.ResponseWriter) {
         info := Body{"error": status, "reason": message}
         json,_ := json.Marshal(info)
         r.Write(json)
+        log.Printf("Returning response %d: %s", status, message)
     }
 }
 
@@ -67,13 +90,27 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
         writeError(err, r)
         return
     }
-    newRev, err := db.Put(docid, body)
-    if err != nil {
-        writeError(err, r)
-        return
-    }
-    r.Header().Set("Etag", newRev)
-    writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r)
+    
+    query := rq.URL.Query()
+    if query.Get("new_edits") != "false" {
+        // Regular PUT:
+        newRev, err := db.Put(docid, body)
+        if err != nil {
+            writeError(err, r)
+            return
+        }
+        r.Header().Set("Etag", newRev)
+        writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r)
+    } else {
+        // Replicator-style PUT with new_edits=false:
+        revisions := parseRevisions(body)
+        if revisions == nil {
+            writeError(&HTTPError{Status: http.StatusBadRequest, Message: "Bad _revisions"}, r)
+        }
+        err := db.PutExistingRev(docid, body, revisions)
+        if err != nil { writeError(err, r) }
+    }    
+    r.WriteHeader(http.StatusCreated)
 }
 
 
@@ -94,20 +131,85 @@ func (db *Database) HandlePostDoc(r http.ResponseWriter, rq *http.Request) {
 }
 
 
+func (db *Database) HandleDeleteDoc(r http.ResponseWriter, rq *http.Request, docid string) {
+    revid := rq.URL.Query().Get("rev")
+    newRev, err := db.DeleteDoc(docid, revid)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r)
+}
+
+
+func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
+    body, err := readJSON(rq)
+    if err != nil {
+        writeError(err, r)
+        return
+    }
+    newEdits,ok := body["new_edits"].(bool)
+    if !ok {newEdits = true}
+    
+    result := make([]Body, 0, 5)
+    for _,item := range(body["docs"].([]interface{})) {
+        doc := item.(map[string]interface{})
+        docid,_ := doc["_id"].(string)
+        var err error
+        var revid string
+        if newEdits {
+            if docid != "" {
+                revid, err = db.Put(docid, doc)
+            } else {
+                docid, revid, err = db.Post(doc)
+            }
+        } else {
+            revisions := parseRevisions(doc)
+            if revisions == nil {
+                err = &HTTPError{Status: http.StatusBadRequest, Message: "Bad _revisions"}
+            } else {
+                revid = revisions[0]
+                err = db.PutExistingRev(docid, doc, revisions)
+            }
+        }
+        
+        status:= Body{}
+        if docid != "" {
+            status["id"] = docid
+        }
+        if err != nil {
+            _, msg := ErrorAsHTTPStatus(err)
+            status["error"] = msg
+        } else {
+            status["rev"] = revid
+        }
+        result = append(result, status)
+    }
+
+    r.WriteHeader(http.StatusCreated)
+    writeJSON(Body{"docs": result}, r)
+}
+
+
 // Handles HTTP requests for a database.
 func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []string) {
     method := rq.Method
     switch len(path) {
         case 0: {
             // Root level
-            if method == "GET" {
+            switch method {
+            case "GET":
                 response := make(map[string]interface{})
                 response["db_name"] = db.Name
                 response["doc_count"] = db.DocCount()
                 writeJSON(response,r)
                 return
-            } else if method == "POST" {
+            case "POST":
                 db.HandlePostDoc(r, rq)
+                return
+            case "DELETE":
+                writeError(db.Delete(), r)
+                r.Write([]byte("ok"))
                 return
             }
         }
@@ -123,6 +225,12 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
                             return
                         }
                         writeJSON(ids, r)
+                        return
+                    }
+                }
+                case "_bulk_docs": {
+                    if method == "POST" {
+                        db.HandleBulkDocs(r, rq)
                         return
                     }
                 }
@@ -145,20 +253,24 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
                 default: {
                     if docid[0] != '_' {
                         // Accessing a document:
-                        if method == "GET" {
+                        switch method {
+                        case "GET":
                             db.HandleGetDoc(r, rq, docid)
                             return
-                        } else if method == "PUT" {
+                        case "PUT":
                             db.HandlePutDoc(r, rq, docid)
+                            return
+                        case "DELETE":
+                            db.HandleDeleteDoc(r, rq, docid)
                             return
                         }
                     }
                 }
             }
         }
-        default:
     }
     // Fall through to here if the request was not recognized:
+    log.Printf("WARNING: Unhandled %s %s\n", method, rq.URL)
     r.WriteHeader(http.StatusBadRequest)
 }
 
@@ -176,21 +288,21 @@ func handleRoot(r http.ResponseWriter, rq *http.Request) {
 }
 
 
-// Initialize REST handlers. Call this once on launch.
-func InitREST(bucket *couchbase.Bucket) {
-    http.HandleFunc("/", func (r http.ResponseWriter, rq *http.Request) {
+
+
+
+// Creates an http.Handler that will handle the REST API for the given bucket.
+func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
+    return http.HandlerFunc(func (r http.ResponseWriter, rq *http.Request) {
         path := strings.Split(rq.URL.Path[1:], "/")
         for len(path) > 0 && path[len(path)-1] == "" {
             path = path[0:len(path)-1]
         }
-        log.Printf("%s %v (%d)", rq.Method, path, len(path))
         if len(path) == 0 {
             handleRoot(r, rq)
             return
         }
-        
         dbName := path[0]
-        log.Printf("dbName = %s", dbName)
         
         if rq.Method == "PUT" && len(path) == 1 {
             _, err := CreateDatabase(bucket, dbName)
@@ -209,4 +321,10 @@ func InitREST(bucket *couchbase.Bucket) {
             db.Handle(r, rq, path[1:])
         }
     })
+}
+
+
+// Initialize REST handlers. Call this once on launch.
+func InitREST(bucket *couchbase.Bucket) {
+    http.Handle("/", NewRESTHandler(bucket))
 }
