@@ -19,9 +19,10 @@ func parseRevisions(body Body) []string {
         log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
         return nil
     }
+    log.Printf("_revisions: %v", revisions)
     start := int(revisions["start"].(float64))
     ids := revisions["ids"].([]interface{})
-    if start <= len(ids) { return nil }
+    if start < len(ids) { return nil }
     result := make([]string, 0, len(ids))
     for _,id := range(ids) {
         result = append(result, fmt.Sprintf("%d-%s", start, id))
@@ -32,10 +33,18 @@ func parseRevisions(body Body) []string {
 
 
 func readJSONInto(rq *http.Request, into interface{}) error {
+    contentType := rq.Header.Get("Content-Type")
+    if contentType != "" && contentType != "application/json" {
+        return &HTTPError{Status: http.StatusNotAcceptable,
+                          Message: "Invalid content type "+contentType}
+    }
     body, err := ioutil.ReadAll(rq.Body)
     if err != nil { return &HTTPError{Status: http.StatusBadRequest} }
     err = json.Unmarshal(body, into)
-    if err != nil { return &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"} }
+    if err != nil {
+        log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
+        return &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"}
+    }
     return nil
 }
 
@@ -184,6 +193,7 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
             status["rev"] = revid
         }
         result = append(result, status)
+        log.Printf("\t%v", status)
     }
 
     r.WriteHeader(http.StatusCreated)
@@ -232,6 +242,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
     switch len(path) {
         case 0: {
             // Root level
+            log.Printf("%s %s\n", method, db.Name)
             switch method {
             case "GET":
                 response := make(map[string]interface{})
@@ -250,13 +261,13 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
         }
         case 1: {
             docid := path[0]
-            log.Printf("%s %s %s\n", db.Name, method, docid)
+            log.Printf("%s %s %s\n", method, db.Name, docid)
             switch docid {
                 case "_all_docs": {
                     if method == "GET" {
                         ids, err := db.AllDocIDs()
                         if err != nil {
-                            r.WriteHeader(http.StatusInternalServerError)
+                            writeError(err, r)
                             return
                         }
                         writeJSON(ids, r)
@@ -355,6 +366,7 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
             return
         }
         dbName := path[0]
+        log.Printf("%s %s", rq.Method, dbName)
         
         if rq.Method == "PUT" && len(path) == 1 {
             _, err := CreateDatabase(bucket, dbName)

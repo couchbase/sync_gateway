@@ -93,34 +93,49 @@ func (db *Database) realDocID (docid string) string {
 }
 
 
+func (db *Database) UUID() string {
+    return db.DocPrefix[4 : len(db.DocPrefix)-1]
+}
+
+
 func (db *Database) DocCount() int {
-    vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts())
+    vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(true))
     if (err != nil) { return -1}
-    return vres.TotalRows
+    return int(vres.Rows[0].Value.(float64))
+}
+
+
+func (db *Database) installView() {
+    /*
+    mapSource := `function (doc, meta) {
+                      var pieces = meta.id.split(":", 3);
+                      if (pieces.length < 3 || pieces[0] != "doc")
+                        return;
+                      emit([pieces[1], pieces[2]], null); }`
+    //FIX: How do I create a design doc?
+    */
 }
 
 // Returns all document IDs as an array.
 func (db *Database) AllDocIDs() ([]string, error) {
-    return make([]string, 0), nil
-    /*
-    vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts())
+    vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(false))
     if (err != nil) { return nil, err}
     
     rows := vres.Rows
-    docids := make([]string, len(rows))
+    docids := make([]string, 0, len(rows))
     for _,row := range(rows) {
         key := row.Key.([]interface{})
         docids = append(docids, key[1].(string))
     }
     return docids, nil
-    */
 }
 
 
-func (db *Database) allDocIDsOpts() Body {
-    startkey := [1]string{db.DocPrefix}
-    endkey := [2]interface{}{db.DocPrefix, make(Body)}
-    return Body{"startkey": startkey, "endkey": endkey}
+func (db *Database) allDocIDsOpts(reduce bool) Body {
+    uuid := db.UUID()
+    startkey := [1]string{uuid}
+    endkey := [2]interface{}{uuid, make(Body)}
+    return Body{"startkey": startkey, "endkey": endkey, "reduce": reduce}
 }
 
 
