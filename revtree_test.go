@@ -1,4 +1,4 @@
-// history_test.go
+// revtree_test.go
 
 package couchglue
 
@@ -10,15 +10,15 @@ import (
     "github.com/sdegutis/go.assert"
 )
 
-var testmap = RevMap{ "3-three": "2-two", "2-two": "1-one", "1-one": "" }
-var branchymap = RevMap{ "3-three": "2-two", "2-two": "1-one", "1-one": "", "3-drei": "2-two" }
+var testmap = RevTree{ "3-three": "2-two", "2-two": "1-one", "1-one": "" }
+var branchymap = RevTree{ "3-three": "2-two", "2-two": "1-one", "1-one": "", "3-drei": "2-two" }
 
 const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1]}`
 
 
-func testUnmarshal(t *testing.T, jsonString string) RevMap {
-    gotmap := RevMap{}
-    assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevMap from JSON")
+func testUnmarshal(t *testing.T, jsonString string) RevTree {
+    gotmap := RevTree{}
+    assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
     assert.DeepEquals(t, gotmap, testmap)
     return gotmap
 }
@@ -30,12 +30,12 @@ func TestUnmarshal(t *testing.T) {
 
 func TestMarshal(t *testing.T) {
     bytes, err := json.Marshal(testmap)
-    assertNoError(t, err, "Couldn't write RevMap to JSON")
-    fmt.Printf("Marshaled RevMap as %s\n", string(bytes))
+    assertNoError(t, err, "Couldn't write RevTree to JSON")
+    fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
     testUnmarshal(t, string(bytes))
 }
 
-func TestRevMapAccess(t *testing.T) {
+func TestRevTreeAccess(t *testing.T) {
     assertTrue(t, testmap.contains("3-three"), "contains 3 failed")
     assertTrue(t, testmap.contains("1-one"), "contains 1 failed")
     assertFalse(t, testmap.contains("foo"), "contains false positive")

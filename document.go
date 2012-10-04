@@ -1,4 +1,4 @@
-// document.go
+// document.go -- document-oriented Database methods
 
 package couchglue
 
@@ -12,24 +12,24 @@ import (
 )
 
 
-// The body of a CouchDB document.
+// The body of a CouchDB document as decoded from JSON.
 type Body  map[string] interface{}
     
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
-type Document struct {
-    History RevMap      `json:"history"`
+type document struct {
+    History RevTree      `json:"history"`
     Body    Body        `json:"current"`
 }
 
 
-func NewDocument() *Document {
-    return &Document{ History: make(RevMap), Body: make(Body) }
+func newDocument() *document {
+    return &document{ History: make(RevTree), Body: make(Body) }
 }
 
 
-func (db *Database) getDoc(docid string) (*Document, error) {
-    doc := NewDocument()
+func (db *Database) getDoc(docid string) (*document, error) {
+    doc := newDocument()
     err := db.bucket.Get(db.realDocID(docid), doc)
     if err != nil { return nil, err }
     doc.Body["_id"] = docid
@@ -48,7 +48,8 @@ func (db *Database) Get(docid string) (Body, error) {
 }
 
 
-// Stores a raw value in a document. Returns an HTTP status code.
+// Updates or creates a document.
+// The new body's "_rev" property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (string, error) {
     // Verify that the _rev key in the body matches the current stored value:
     var matchRev string
@@ -61,7 +62,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
         if matchRev != "" {
             return "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
         }
-        doc = NewDocument()
+        doc = newDocument()
     } else {
         parentRev, _ := doc.Body["_rev"].(string)
         if matchRev != parentRev {
@@ -91,6 +92,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 }
 
 
+// Creates a new document, assigning it a random doc ID.
 func (db *Database) Post(body Body) (string, string, error) {
     if body["_rev"] != nil {
         return "", "", &HTTPError{Status: http.StatusNotFound, Message: "No previous revision to replace"}
@@ -102,13 +104,15 @@ func (db *Database) Post(body Body) (string, string, error) {
 }
 
 
+// Adds an existing revision to a document along with its history (list of rev IDs.)
+// This is equivalent to the "new_edits":false mode of CouchDB.
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
     currentRevIndex := -1
     doc, err := db.getDoc(docid)
     if err != nil {
         if !isMissingDocError(err) { return err }
         // Creating new document:
-        doc = NewDocument()
+        doc = newDocument()
         currentRevIndex = len(docHistory)
         docHistory = append(docHistory, "")
     } else {
@@ -139,6 +143,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 }
 
 
+// Deletes a document, by adding a new revision whose "_deleted" property is true.
 func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
     body := Body{"_deleted": true, "_rev": revid}
     return db.Put(docid, body)
@@ -148,7 +153,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 type RevsDiffInput map[string] []string
 
 
-// Given a set of revisions, looks up which ones are not known.
+// Given a set of documents and revisions, looks up which ones are not known.
 // The input is a map from doc ID to array of revision IDs.
 // The output is a map from doc ID to a map with "missing" and "possible_ancestors" arrays of rev IDs.
 func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error) {
@@ -169,6 +174,7 @@ func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error
 }
 
 
+// Given a document ID and a set of revision IDs, looks up which ones are not known.
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
     doc, err := db.getDoc(docid)
     if err != nil {
@@ -210,11 +216,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 }
 
 
-func (db *Database) realLocalDocID(docid string) string {
-    return db.realDocID("_local/"+docid)
-}
-
-
+// Gets a local document.
 func (db *Database) GetLocal(docid string) (Body, error) {
     body := Body{}
     err := db.bucket.Get(db.realLocalDocID(docid), &body)
@@ -222,15 +224,22 @@ func (db *Database) GetLocal(docid string) (Body, error) {
     return body, nil
 }
 
-
+// Updates a local document.
 func (db *Database) PutLocal(docid string, body Body) error {
     return db.bucket.Set(db.realLocalDocID(docid), 0, body)
 }
 
+// Deletes a local document.
 func (db *Database) DeleteLocal(docid string) error {
     return db.bucket.Delete(db.realLocalDocID(docid))
 }
 
+func (db *Database) realLocalDocID(docid string) string {
+    return db.realDocID("_local/"+docid)
+}
+
+
+//////// HELPER FUNCTIONS:
 
 
 func createUUID() string {

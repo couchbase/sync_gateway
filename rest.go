@@ -2,6 +2,7 @@ package couchglue
 
 import (
     "encoding/json"
+    "flag"
     "fmt"
     "io/ioutil"
     "log"
@@ -12,72 +13,7 @@ import (
 )
 
 
-// Parses a CouchDB _revisions property into a list of revision IDs
-func parseRevisions(body Body) []string {
-    revisions, ok := body["_revisions"].(map[string]interface{})
-    if !ok {
-        log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
-        return nil
-    }
-    log.Printf("_revisions: %v", revisions)
-    start := int(revisions["start"].(float64))
-    ids := revisions["ids"].([]interface{})
-    if start < len(ids) { return nil }
-    result := make([]string, 0, len(ids))
-    for _,id := range(ids) {
-        result = append(result, fmt.Sprintf("%d-%s", start, id))
-        start--
-    }
-    return result
-}
-
-
-func readJSONInto(rq *http.Request, into interface{}) error {
-    contentType := rq.Header.Get("Content-Type")
-    if contentType != "" && contentType != "application/json" {
-        return &HTTPError{Status: http.StatusNotAcceptable,
-                          Message: "Invalid content type "+contentType}
-    }
-    body, err := ioutil.ReadAll(rq.Body)
-    if err != nil { return &HTTPError{Status: http.StatusBadRequest} }
-    err = json.Unmarshal(body, into)
-    if err != nil {
-        log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
-        return &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"}
-    }
-    return nil
-}
-
-func readJSON(rq *http.Request) (Body, error) {
-    var body Body
-    return body, readJSONInto(rq, &body)
-}
-
-
-func writeJSON(value interface{}, r http.ResponseWriter) {
-    json, err := json.Marshal(value)
-    if err != nil {
-        log.Printf("WARNING: Couldn't serialize JSON for %v", value)
-        r.WriteHeader(http.StatusInternalServerError)
-    } else {
-        r.Header().Set("Content-Type", "application/json")
-        r.Write(json)
-    }
-}
-
-
-func writeError(err error, r http.ResponseWriter) {
-    if err != nil {
-        status, message := ErrorAsHTTPStatus(err)
-        r.WriteHeader(status)
-        info := Body{"error": status, "reason": message}
-        json,_ := json.Marshal(info)
-        r.Write(json)
-        log.Printf("Returning response %d: %s", status, message)
-    }
-}
-
-
+// HTTP handler for a GET of a document
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) {
     value, err := db.Get(docid)
     if err != nil {
@@ -93,6 +29,7 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 }
 
 
+// HTTP handler for a PUT of a document
 func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid string) {
     body, err := readJSON(rq)
     if err != nil {
@@ -123,6 +60,7 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
 }
 
 
+// HTTP handler for a POST to a database (creating a document)
 func (db *Database) HandlePostDoc(r http.ResponseWriter, rq *http.Request) {
     body, err := readJSON(rq)
     if err != nil {
@@ -140,6 +78,7 @@ func (db *Database) HandlePostDoc(r http.ResponseWriter, rq *http.Request) {
 }
 
 
+// HTTP handler for a DELETE of a document
 func (db *Database) HandleDeleteDoc(r http.ResponseWriter, rq *http.Request, docid string) {
     revid := rq.URL.Query().Get("rev")
     newRev, err := db.DeleteDoc(docid, revid)
@@ -151,6 +90,7 @@ func (db *Database) HandleDeleteDoc(r http.ResponseWriter, rq *http.Request, doc
 }
 
 
+// HTTP handler for a POST to _bulk_docs
 func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
     body, err := readJSON(rq)
     if err != nil {
@@ -201,6 +141,7 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
 }
 
 
+// HTTP handler for a GET of a _local document
 func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
     value, err := db.GetLocal(docid)
     if err != nil {
@@ -215,6 +156,7 @@ func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, d
 }
 
 
+// HTTP handler for a PUT of a _local document
 func (db *Database) HandlePutLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
     body, err := readJSON(rq)
     if err != nil {
@@ -231,12 +173,13 @@ func (db *Database) HandlePutLocalDoc(r http.ResponseWriter, rq *http.Request, d
 }
 
 
+// HTTP handler for a DELETE of a _local document
 func (db *Database) HandleDeleteLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
     writeError(db.DeleteLocal(docid), r)
 }
 
 
-// Handles HTTP requests for a database.
+// HTTP handler for a database.
 func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []string) {
     method := rq.Method
     switch len(path) {
@@ -338,6 +281,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 }
 
 
+// HTTP handler for the root ("/")
 func handleRoot(r http.ResponseWriter, rq *http.Request) {
     if rq.Method == "GET" {
         response := map[string]string {
@@ -349,9 +293,6 @@ func handleRoot(r http.ResponseWriter, rq *http.Request) {
         r.WriteHeader(http.StatusBadRequest)
     }
 }
-
-
-
 
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
@@ -369,14 +310,15 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
         log.Printf("%s %s", rq.Method, dbName)
         
         if rq.Method == "PUT" && len(path) == 1 {
+            // Create a database:
             _, err := CreateDatabase(bucket, dbName)
             if err != nil {
                 writeError(err, r)
                 return
             }
             r.WriteHeader(http.StatusCreated)
-            return
         } else {
+            // Handle a request aimed at a database:
             db, err := GetDatabase(bucket, dbName)
             if err != nil {
                 writeError(err, r)
@@ -391,4 +333,99 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 // Initialize REST handlers. Call this once on launch.
 func InitREST(bucket *couchbase.Bucket) {
     http.Handle("/", NewRESTHandler(bucket))
+}
+
+
+// Main entry point for a simple server; you can have your main() function just call this.
+func ServerMain() {
+	addr := flag.String("addr", ":4984", "Address to bind to")
+	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
+	poolName := flag.String("pool", "default", "Name of pool")
+	bucketName := flag.String("bucket", "couchdb", "Name of bucket")
+	flag.Parse()
+    
+	bucket, err := ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
+	if err != nil {
+		log.Fatalf("Error getting bucket '%s':  %v\n", *bucketName, err)
+	}
+    
+    InitREST(bucket)
+    
+    log.Printf("Starting server on %s", *addr)
+    err = http.ListenAndServe(*addr, nil)
+    if err != nil {
+        log.Fatal("Server failed: ", err.Error());
+    }
+}
+
+
+//////// HELPER FUNCTIONS:
+
+
+// Parses a CouchDB _revisions property into a list of revision IDs
+func parseRevisions(body Body) []string {
+    // http://wiki.apache.org/couchdb/HTTP_Document_API#GET
+    revisions, ok := body["_revisions"].(map[string]interface{})
+    if !ok {
+        log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
+        return nil
+    }
+    start := int(revisions["start"].(float64))
+    ids := revisions["ids"].([]interface{})
+    if start < len(ids) { return nil }
+    result := make([]string, 0, len(ids))
+    for _,id := range(ids) {
+        result = append(result, fmt.Sprintf("%d-%s", start, id))
+        start--
+    }
+    return result
+}
+
+
+// Parses a JSON request body, unmarshaling it into "into".
+func readJSONInto(rq *http.Request, into interface{}) error {
+    contentType := rq.Header.Get("Content-Type")
+    if contentType != "" && contentType != "application/json" {
+        return &HTTPError{Status: http.StatusNotAcceptable,
+                          Message: "Invalid content type "+contentType}
+    }
+    body, err := ioutil.ReadAll(rq.Body)
+    if err != nil { return &HTTPError{Status: http.StatusBadRequest} }
+    err = json.Unmarshal(body, into)
+    if err != nil {
+        log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
+        return &HTTPError{Status: http.StatusBadRequest, Message: "Bad JSON"}
+    }
+    return nil
+}
+
+// Parses a JSON request body, returning it as a Body map.
+func readJSON(rq *http.Request) (Body, error) {
+    var body Body
+    return body, readJSONInto(rq, &body)
+}
+
+
+// Writes an object to the response in JSON format.
+func writeJSON(value interface{}, r http.ResponseWriter) {
+    json, err := json.Marshal(value)
+    if err != nil {
+        log.Printf("WARNING: Couldn't serialize JSON for %v", value)
+        r.WriteHeader(http.StatusInternalServerError)
+    } else {
+        r.Header().Set("Content-Type", "application/json")
+        r.Write(json)
+    }
+}
+
+
+// If the error parameter is non-nil, sets the response status code appropriately and
+// writes a CouchDB-style JSON description to the body.
+func writeError(err error, r http.ResponseWriter) {
+    if err != nil {
+        status, message := ErrorAsHTTPStatus(err)
+        r.WriteHeader(status)
+        writeJSON(Body{"error": status, "reason": message}, r)
+        log.Printf("Returning response %d: %s", status, message)
+    }
 }

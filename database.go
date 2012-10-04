@@ -1,4 +1,4 @@
-// Database.go -- simulates a CouchDB Database with Couchbase Server
+// database.go -- simulates a CouchDB Database with Couchbase Server
 
 package couchglue
 
@@ -15,8 +15,8 @@ import (
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
 
+// Simple error implementation wrapping an HTTP response status.
 type HTTPError struct {
-    error
     Status  int
     Message string
 }
@@ -26,6 +26,7 @@ func (err *HTTPError) Error() string {
 }
 
 
+// Represents a simulated CouchDB database.
 type Database struct {
     Name        string              `json:"name"`
     DocPrefix   string              `json:"docPrefix"`
@@ -41,12 +42,13 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 	if err != nil {return}
 	bucket, err = pool.GetBucket(bucketName)
 	if err != nil {return}
-    fmt.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
+    log.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
     err = nil
     return
 }
 
 
+// Returns the Couchbase docID of the database's main document
 func dbInternalDocName(dbName string) string {
     if !kDBNameMatch.MatchString(dbName) {
          return ""
@@ -93,11 +95,13 @@ func (db *Database) realDocID (docid string) string {
 }
 
 
+// The UUID assigned to this database.
 func (db *Database) UUID() string {
     return db.DocPrefix[4 : len(db.DocPrefix)-1]
 }
 
 
+// The number of documents in the database.
 func (db *Database) DocCount() int {
     vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(true))
     if (err != nil) { return -1}
@@ -106,13 +110,14 @@ func (db *Database) DocCount() int {
 
 
 func (db *Database) installView() {
+    //FIX: How do I create a design doc?
+    //FIX: This view includes local docs; it shouldn't!
     /*
     mapSource := `function (doc, meta) {
                       var pieces = meta.id.split(":", 3);
                       if (pieces.length < 3 || pieces[0] != "doc")
                         return;
                       emit([pieces[1], pieces[2]], null); }`
-    //FIX: How do I create a design doc?
     */
 }
 
@@ -153,7 +158,8 @@ func (db *Database) Delete() error {
 }
 
 
-// Attempts to map an error to an HTTP status code and message. Defaults to 500.
+// Attempts to map an error to an HTTP status code and message.
+// Defaults to 500 if it doesn't recognize the error. Returns 200 for a nil error.
 func ErrorAsHTTPStatus(err error) (int, string) {
     if err == nil { return 200, "OK" }
 	switch err := err.(type) {
