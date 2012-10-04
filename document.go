@@ -1,6 +1,6 @@
 // document.go -- document-oriented Database methods
 
-package couchglue
+package basecouch
 
 import (
 	"crypto/rand"

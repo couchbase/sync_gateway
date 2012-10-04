@@ -1,6 +1,6 @@
 // database.go -- simulates a CouchDB Database with Couchbase Server
 
-package couchglue
+package basecouch
 
 import (
 	"fmt"

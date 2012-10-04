@@ -2,8 +2,8 @@
 
 package main
 
-import "couchglue"
+import "basecouch"
 
 func main() {
-    couchglue.ServerMain()
+    basecouch.ServerMain()
 }

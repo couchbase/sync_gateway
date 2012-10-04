@@ -1,6 +1,6 @@
 // revtree.go
 
-package couchglue
+package basecouch
 
 import (
 	"encoding/json"

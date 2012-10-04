@@ -1,6 +1,6 @@
 // database_test.go
 
-package couchglue
+package basecouch
 
 import (
 	"log"

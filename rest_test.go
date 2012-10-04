@@ -1,6 +1,6 @@
 // rest_test.go
 
-package couchglue
+package basecouch
 
 import (
 	"bytes"
