@@ -50,6 +50,22 @@ func TestDatabase(t *testing.T) {
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
 
+	gotbody, err = db.GetRev("doc1", revid, false)
+	assertNoError(t, err, "Couldn't get document with rev")
+	assert.DeepEquals(t, gotbody, body)
+
+	gotbody, err = db.GetRev("doc1", "bogusrev", false)
+    status,_ := ErrorAsHTTPStatus(err)
+	assert.Equals(t, status, 404)
+    
+    // Test the _revisions property:
+    gotbody, err = db.GetRev("doc1", revid, true)
+    revisions := gotbody["_revisions"].(Body)
+    assert.Equals(t, revisions["start"], 2)
+    assert.DeepEquals(t, revisions["ids"],
+                         []string{"625cf10785173f55abfa3956a97010e9e7c2416e",
+                                  "6865ee3d9953ee26fa392728624f60a2806f0184"})
+
 	// Test RevDiff:
 	missing, possible, err := db.RevDiff("doc1",
 		[]string{"1-6865ee3d9953ee26fa392728624f60a2806f0184",

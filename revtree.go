@@ -5,6 +5,7 @@ package basecouch
 import (
 	"encoding/json"
 	"fmt"
+    "log"
 )
 
 /*  A revision tree maps each revision ID to its parent's ID.
@@ -116,4 +117,43 @@ func (tree RevTree) copy() RevTree {
 		result[rev] = parent
 	}
 	return result
+}
+
+//////// HELPERS:
+
+
+// Parses a CouchDB _revisions property into a list of revision IDs
+func parseRevisions(body Body) []string {
+	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
+	revisions, ok := body["_revisions"].(map[string]interface{})
+	if !ok {
+		log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
+		return nil
+	}
+	start := int(revisions["start"].(float64))
+	ids := revisions["ids"].([]interface{})
+	if start < len(ids) {
+		return nil
+	}
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, fmt.Sprintf("%d-%s", start, id))
+		start--
+	}
+	return result
+}
+
+func encodeRevisions(revs []string) Body {
+    ids := make([]string, len(revs))
+    var start int
+    for i,revid := range(revs) {
+        gen, id := parseRevID(revid)
+        ids[i] = id
+        if i == 0 {
+            start = gen
+        } else if gen != start - i {
+            log.Printf("WARNING: encodeRevisions found weird history %v", revs)
+        }
+    }
+    return Body{"start": start, "ids": ids}
 }

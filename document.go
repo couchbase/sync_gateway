@@ -35,16 +35,34 @@ func (db *Database) getDoc(docid string) (*document, error) {
 	return doc, nil
 }
 
-// Returns the body of a document, or nil if there isn't one.
-func (db *Database) Get(docid string) (Body, error) {
+// Returns the body of a revision of a document.
+func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error) {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
 		return nil, err
 	}
+    if revid != "" {
+        if revid != doc.Body["_rev"].(string) {
+            //FIX: Need to support storing multiple revisions of docs
+    		return nil, &HTTPError{Status: 404, Message: "missing"}
+        }
+    } else {
+        revid = doc.Body["_rev"].(string)
+    }
 	if doc.Body["_deleted"] == true {
-		return nil, &HTTPError{Status: 404, Message: "Deleted"}
+		return nil, &HTTPError{Status: 404, Message: "deleted"}
 	}
+    
+    if listRevisions {
+        history := doc.History.getHistory(revid)
+        doc.Body["_revisions"] = encodeRevisions(history)
+    }
 	return doc.Body, nil
+}
+
+// Returns the body of the current revision of a document
+func (db *Database) Get(docid string) (Body, error) {
+    return db.GetRev(docid, "", false)
 }
 
 // Updates or creates a document.
@@ -76,7 +94,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	delete(body, "_id")
 
 	// Make up a new _rev:
-	generation := getRevGeneration(matchRev)
+	generation,_ := parseRevID(matchRev)
 	if generation < 0 {
 		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
@@ -208,7 +226,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 			if missing == nil {
 				missing = make([]string, 0, 5)
 			}
-			gen := getRevGeneration(revid)
+			gen,_ := parseRevID(revid)
 			if gen > 0 {
 				missing = append(missing, revid)
 				if gen > maxMissingGen {
@@ -220,7 +238,8 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	if missing != nil {
 		possible = make([]string, 0, 5)
 		for revid, _ := range revmap {
-			if !found[revid] && getRevGeneration(revid) < maxMissingGen {
+            gen,_ := parseRevID(revid)
+			if !found[revid] && gen < maxMissingGen {
 				possible = append(possible, revid)
 			}
 		}
@@ -283,16 +302,18 @@ func stripSpecialProperties(body Body) {
 	}
 }
 
-func getRevGeneration(revid string) int {
+func parseRevID(revid string) (int, string) {
 	if revid == "" {
-		return 0
+		return 0,""
 	}
 	var generation int
-	n, _ := fmt.Sscanf(revid, "%d-", &generation)
+    var id string
+	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
 	if n < 1 || generation < 1 {
-		return -1
+        log.Printf("WARNING: parseRevID failed on %q", revid)
+		return -1, ""
 	}
-	return generation
+	return generation, id
 }
 
 func isMissingDocError(err error) bool {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -19,7 +18,10 @@ var PrettyPrint bool = false
 
 // HTTP handler for a GET of a document
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) {
-	value, err := db.Get(docid)
+	query := rq.URL.Query()
+    revid := query.Get("rev")
+    
+    value, err := db.GetRev(docid, revid, query.Get("revs")=="true")
 	if err != nil {
 		writeError(err, r)
 		return
@@ -442,27 +444,6 @@ func getIntQuery(rq *http.Request, query string) (value uint64) {
 		value, _ = strconv.ParseUint(q, 10, 64)
 	}
 	return
-}
-
-// Parses a CouchDB _revisions property into a list of revision IDs
-func parseRevisions(body Body) []string {
-	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
-	revisions, ok := body["_revisions"].(map[string]interface{})
-	if !ok {
-		log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
-		return nil
-	}
-	start := int(revisions["start"].(float64))
-	ids := revisions["ids"].([]interface{})
-	if start < len(ids) {
-		return nil
-	}
-	result := make([]string, 0, len(ids))
-	for _, id := range ids {
-		result = append(result, fmt.Sprintf("%d-%s", start, id))
-		start--
-	}
-	return result
 }
 
 // Parses a JSON request body, unmarshaling it into "into".
