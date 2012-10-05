@@ -3,9 +3,13 @@
 package basecouch
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
+	"net/url"
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -46,7 +50,8 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 		return
 	}
 	log.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
-	err = nil
+
+	err = installViews(bucket)
 	return
 }
 
@@ -102,6 +107,8 @@ func (db *Database) UUID() string {
 	return db.DocPrefix[4 : len(db.DocPrefix)-1]
 }
 
+//////// ALL DOCUMENTS:
+
 // The number of documents in the database.
 func (db *Database) DocCount() int {
 	vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(true))
@@ -111,16 +118,50 @@ func (db *Database) DocCount() int {
 	return int(vres.Rows[0].Value.(float64))
 }
 
-func (db *Database) installView() {
-	//FIX: How do I create a design doc?
+func installViews(bucket *couchbase.Bucket) error {
+	node := bucket.Nodes[rand.Intn(len(bucket.Nodes))]
+	u, err := url.Parse(node.CouchAPIBase)
+	if err != nil {
+		fmt.Printf("Failed to parse %s", node.CouchAPIBase)
+		return err
+	}
+	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "couchdb")
+
 	//FIX: This view includes local docs; it shouldn't!
-	/*
-	   mapSource := `function (doc, meta) {
-	                     var pieces = meta.id.split(":", 3);
-	                     if (pieces.length < 3 || pieces[0] != "doc")
-	                       return;
-	                     emit([pieces[1], pieces[2]], null); }`
-	*/
+	alldocs_map := `function (doc, meta) {
+                     var pieces = meta.id.split(":", 3);
+                     if (pieces.length < 3 || pieces[0] != "doc")
+                       return;
+                     emit([pieces[1], pieces[2]], null); }`
+	changes_map := `function (doc, meta) {
+                    if (doc.sequence === undefined)
+                        return;
+                    var pieces = meta.id.split(":", 3);
+                    if (pieces.length < 3 || pieces[0] != "doc")
+                        return;
+                    var value = [doc.current._id, doc.current._rev];
+                    if (doc.current._deleted)
+                        value.push(true)
+                    emit([pieces[1], doc.sequence], value); }`
+
+	ddoc := Body{"language": "javascript",
+		"views": Body{
+			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
+			"changes":  Body{"map": changes_map}}}
+	payload, err := json.Marshal(ddoc)
+	rq, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(payload))
+	rq.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(rq)
+
+	if err == nil && response.StatusCode > 299 {
+		err = &HTTPError{Status: response.StatusCode, Message: response.Status}
+	}
+	if err == nil {
+		log.Printf("Installed design doc <%s>", u)
+	} else {
+		log.Printf("WARNING: Error installing design doc: %v", err)
+	}
+	return err
 }
 
 // Returns all document IDs as an array.
@@ -157,11 +198,80 @@ func (db *Database) Delete() error {
 	if err != nil {
 		return err
 	}
+	db.bucket.Delete(db.sequenceDocID())
 	for _, docID := range docIDs {
 		db.bucket.Delete(docID)
 	}
 	return nil
 }
+
+//////// SEQUENCES & CHANGES:
+
+func (db *Database) sequenceDocID() string {
+	return dbInternalDocName(db.Name) + ":nextsequence"
+}
+
+func (db *Database) LastSequence() (uint64, error) {
+	return db.bucket.Incr(db.sequenceDocID(), 0, 0, 0)
+}
+
+func (db *Database) generateSequence() (uint64, error) {
+	return db.bucket.Incr(db.sequenceDocID(), 1, 1, 0)
+}
+
+// Options for Database.getChanges
+type ChangesOptions struct {
+	Since      uint64
+	Limit      int
+	Descending bool
+}
+
+// A changes entry; Database.getChanges returns an array of these.
+// Marshals into the standard CouchDB _changes format.
+type ChangeEntry struct {
+	Seq     uint64      `json:"seq"`
+	ID      string      `json:"id"`
+	Changes []ChangeRev `json:"changes"`
+	Deleted bool        `json:"deleted,omitempty"`
+}
+
+type ChangeRev map[string]string
+
+// Returns a list of all the changes made to the database, a la the _changes feed.
+func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
+	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
+	uuid := db.UUID()
+	startkey := [2]interface{}{uuid, options.Since + 1}
+	endkey := [2]interface{}{uuid, make(Body)}
+	opts := Body{"startkey": startkey, "endkey": endkey,
+		"descending": options.Descending}
+	if options.Limit > 0 {
+		opts["limit"] = options.Limit
+	}
+
+	vres, err := db.bucket.View("couchdb", "changes", opts)
+	if err != nil {
+		log.Printf("Error from 'changes' view: %v", err)
+		return nil, err
+	}
+
+	rows := vres.Rows
+	changes := make([]ChangeEntry, 0, len(rows))
+	for _, row := range rows {
+		key := row.Key.([]interface{})
+		value := row.Value.([]interface{})
+		entry := ChangeEntry{
+			Seq:     uint64(key[1].(float64)),
+			ID:      value[0].(string),
+			Changes: []ChangeRev{{"rev": value[1].(string)}},
+			Deleted: (len(value) >= 3 && value[2].(bool)),
+		}
+		changes = append(changes, entry)
+	}
+	return changes, nil
+}
+
+//////// UTILITIES:
 
 // Attempts to map an error to an HTTP status code and message.
 // Defaults to 500 if it doesn't recognize the error. Returns 200 for a nil error.

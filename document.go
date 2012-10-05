@@ -16,8 +16,9 @@ type Body map[string]interface{}
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
-	History RevTree `json:"history"`
-	Body    Body    `json:"current"`
+	History  RevTree `json:"history"`
+	Body     Body    `json:"current"`
+	Sequence uint64  `json:"sequence"`
 }
 
 func newDocument() *document {
@@ -86,6 +87,10 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	body["_rev"] = newRev
 	doc.Body = body
 	doc.History.addRevision(newRev, matchRev)
+	doc.Sequence, err = db.generateSequence()
+	if err != nil {
+		return "", err
+	}
 
 	// Now finally put the new value:
 	err = db.bucket.Set(db.realDocID(docid), 0, doc)
@@ -146,6 +151,10 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	body["_id"] = docid
 	body["_rev"] = docHistory[0]
 	doc.Body = body
+	doc.Sequence, err = db.generateSequence()
+	if err != nil {
+		return err
+	}
 	return db.bucket.Set(db.realDocID(docid), 0, doc)
 }
 

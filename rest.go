@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -139,6 +140,23 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
 	writeJSON(Body{"docs": result}, r)
 }
 
+func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) {
+	var options ChangesOptions
+	options.Since = getIntQuery(rq, "since")
+	options.Limit = int(getIntQuery(rq, "limit"))
+
+	changes, err := db.GetChanges(options)
+	var lastSeq uint64
+	if err == nil {
+		lastSeq, err = db.LastSequence()
+	}
+	if err != nil {
+		writeError(err, r)
+		return
+	}
+	writeJSON(Body{"results": changes, "last_seq": lastSeq}, r)
+}
+
 // HTTP handler for a GET of a _local document
 func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) {
 	value, err := db.GetLocal(docid)
@@ -219,6 +237,13 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 				{
 					if method == "POST" {
 						db.HandleBulkDocs(r, rq)
+						return
+					}
+				}
+			case "_changes":
+				{
+					if method == "GET" {
+						db.HandleChanges(r, rq)
 						return
 					}
 				}
@@ -307,10 +332,10 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 			return
 		}
 		dbName := path[0]
-		log.Printf("%s %s", rq.Method, dbName)
 
 		if rq.Method == "PUT" && len(path) == 1 {
 			// Create a database:
+			log.Printf("%s %s", rq.Method, dbName)
 			_, err := CreateDatabase(bucket, dbName)
 			if err != nil {
 				writeError(err, r)
@@ -321,6 +346,7 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 			// Handle a request aimed at a database:
 			db, err := GetDatabase(bucket, dbName)
 			if err != nil {
+				log.Printf("%s %s", rq.Method, dbName)
 				writeError(err, r)
 				return
 			}
@@ -357,6 +383,15 @@ func ServerMain() {
 }
 
 //////// HELPER FUNCTIONS:
+
+// Returns the integer value of a URL query, defaulting to 0 if missing or unparseable
+func getIntQuery(rq *http.Request, query string) (value uint64) {
+	q := rq.URL.Query().Get(query)
+	if q != "" {
+		value, _ = strconv.ParseUint(q, 10, 64)
+	}
+	return
+}
 
 // Parses a CouchDB _revisions property into a list of revision IDs
 func parseRevisions(body Body) []string {
