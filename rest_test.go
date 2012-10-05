@@ -5,8 +5,8 @@ package basecouch
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"github.com/sdegutis/go.assert"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -17,7 +17,7 @@ func init() {
 	response := callREST("DELETE", "/resttest", "")
 	response = callREST("PUT", "/resttest", "")
 	if response.Code != 201 {
-		fmt.Printf("WARNING: Couldn't create resttest database at startup")
+		log.Printf("WARNING: Couldn't create resttest database at startup")
 	}
 }
 

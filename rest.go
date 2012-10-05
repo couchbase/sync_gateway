@@ -1,6 +1,7 @@
 package basecouch
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 )
+
+// If set to true, JSON output will be pretty-printed.
+var PrettyPrint bool = false
 
 // HTTP handler for a GET of a document
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) {
@@ -88,6 +92,72 @@ func (db *Database) HandleDeleteDoc(r http.ResponseWriter, rq *http.Request, doc
 	writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r)
 }
 
+// HTTP handler for _all_docs
+func (db *Database) HandleAllDocs(r http.ResponseWriter, rq *http.Request) {
+	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
+	includeDocs := rq.URL.Query().Get("include_docs") == "true"
+	var ids []IDAndRev
+	var err error
+
+	// Get the doc IDs:
+	if rq.Method == "GET" {
+		ids, err = db.AllDocIDs()
+	} else {
+		input, err := readJSON(rq)
+		if err == nil {
+			keys, ok := input["keys"].([]interface{})
+			ids = make([]IDAndRev, len(keys))
+			for i := 0; i < len(keys); i++ {
+				ids[i].DocID, ok = keys[i].(string)
+				if !ok {
+					break
+				}
+			}
+			if !ok {
+				err = &HTTPError{Status: http.StatusBadRequest, Message: "Bad/missing keys"}
+			}
+		}
+	}
+	if err != nil {
+		writeError(err, r)
+		return
+	}
+
+	type viewRow struct {
+		ID    string            `json:"id"`
+		Key   string            `json:"key"`
+		Value map[string]string `json:"value"`
+		Doc   Body              `json:"doc,omitempty"`
+	}
+	type viewResult struct {
+		TotalRows int       `json:"total_rows"`
+		Offset    int       `json:"offset"`
+		Rows      []viewRow `json:"rows"`
+	}
+
+	// Assemble the result (and read docs if includeDocs is set)
+	result := viewResult{TotalRows: len(ids), Rows: make([]viewRow, 0, len(ids))}
+	for _, id := range ids {
+		row := viewRow{ID: id.DocID, Key: id.DocID}
+		if includeDocs || id.RevID == "" {
+			// Fetch the document body:
+			body, err := db.Get(id.DocID)
+			if err == nil {
+				id.RevID = body["_rev"].(string)
+				if includeDocs {
+					row.Doc = body
+				}
+			} else {
+				continue
+			}
+		}
+		row.Value = map[string]string{"rev": id.RevID}
+		result.Rows = append(result.Rows, row)
+	}
+
+	writeJSON(result, r)
+}
+
 // HTTP handler for a POST to _bulk_docs
 func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
 	body, err := readJSON(rq)
@@ -144,6 +214,7 @@ func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) {
 	var options ChangesOptions
 	options.Since = getIntQuery(rq, "since")
 	options.Limit = int(getIntQuery(rq, "limit"))
+	options.Conflicts = (rq.URL.Query().Get("style") == "all_docs")
 
 	changes, err := db.GetChanges(options)
 	var lastSeq uint64
@@ -197,108 +268,86 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 	method := rq.Method
 	switch len(path) {
 	case 0:
-		{
-			// Root level
-			log.Printf("%s %s\n", method, db.Name)
-			switch method {
-			case "GET":
-				response := make(map[string]interface{})
-				response["db_name"] = db.Name
-				response["doc_count"] = db.DocCount()
-				writeJSON(response, r)
-				return
-			case "POST":
-				db.HandlePostDoc(r, rq)
-				return
-			case "DELETE":
-				writeError(db.Delete(), r)
-				r.Write([]byte("ok"))
-				return
-			}
+		// Root level
+		log.Printf("%s %s\n", method, db.Name)
+		switch method {
+		case "GET":
+			response := make(map[string]interface{})
+			response["db_name"] = db.Name
+			response["doc_count"] = db.DocCount()
+			writeJSON(response, r)
+			return
+		case "POST":
+			db.HandlePostDoc(r, rq)
+			return
+		case "DELETE":
+			writeError(db.Delete(), r)
+			r.Write([]byte("ok"))
+			return
 		}
 	case 1:
-		{
-			docid := path[0]
-			log.Printf("%s %s %s\n", method, db.Name, docid)
-			switch docid {
-			case "_all_docs":
-				{
-					if method == "GET" {
-						ids, err := db.AllDocIDs()
-						if err != nil {
-							writeError(err, r)
-							return
-						}
-						writeJSON(ids, r)
-						return
-					}
+		docid := path[0]
+		log.Printf("%s %s %s\n", method, db.Name, docid)
+		switch docid {
+		case "_all_docs":
+			if method == "GET" || method == "POST" {
+				db.HandleAllDocs(r, rq)
+			}
+		case "_bulk_docs":
+			if method == "POST" {
+				db.HandleBulkDocs(r, rq)
+				return
+			}
+		case "_changes":
+			if method == "GET" {
+				db.HandleChanges(r, rq)
+				return
+			}
+		case "_revs_diff":
+			if method == "POST" {
+				var input RevsDiffInput
+				err := readJSONInto(rq, &input)
+				if err != nil {
+					writeError(err, r)
+					return
 				}
-			case "_bulk_docs":
-				{
-					if method == "POST" {
-						db.HandleBulkDocs(r, rq)
-						return
-					}
+				output, err := db.RevsDiff(input)
+				writeJSON(output, r)
+				if err != nil {
+					writeError(err, r)
 				}
-			case "_changes":
-				{
-					if method == "GET" {
-						db.HandleChanges(r, rq)
-						return
-					}
-				}
-			case "_revs_diff":
-				{
-					if method == "POST" {
-						var input RevsDiffInput
-						err := readJSONInto(rq, &input)
-						if err != nil {
-							writeError(err, r)
-							return
-						}
-						output, err := db.RevsDiff(input)
-						writeJSON(output, r)
-						if err != nil {
-							writeError(err, r)
-						}
-						return
-					}
-				}
-			default:
-				{
-					if docid[0] != '_' {
-						// Accessing a document:
-						switch method {
-						case "GET":
-							db.HandleGetDoc(r, rq, docid)
-							return
-						case "PUT":
-							db.HandlePutDoc(r, rq, docid)
-							return
-						case "DELETE":
-							db.HandleDeleteDoc(r, rq, docid)
-							return
-						}
-					}
+				return
+			}
+		default:
+			if docid[0] != '_' {
+				// Accessing a document:
+				switch method {
+				case "GET":
+					db.HandleGetDoc(r, rq, docid)
+					return
+				case "PUT":
+					db.HandlePutDoc(r, rq, docid)
+					return
+				case "DELETE":
+					db.HandleDeleteDoc(r, rq, docid)
+					return
 				}
 			}
 		}
 	case 2:
-		{
-			if path[0] == "_local" {
-				docid := path[1]
-				log.Printf("%s %s local doc %q", db.Name, method, docid)
-				switch method {
-				case "GET":
-					db.HandleGetLocalDoc(r, rq, docid)
-					return
-				case "PUT":
-					db.HandlePutLocalDoc(r, rq, docid)
-					return
-				case "DELETE":
-					db.HandleDeleteLocalDoc(r, rq, docid)
-					return
-				}
+		if path[0] == "_local" {
+			docid := path[1]
+			log.Printf("%s %s local doc %q", db.Name, method, docid)
+			switch method {
+			case "GET":
+				db.HandleGetLocalDoc(r, rq, docid)
+				return
+			case "PUT":
+				db.HandlePutLocalDoc(r, rq, docid)
+				return
+			case "DELETE":
+				db.HandleDeleteLocalDoc(r, rq, docid)
+				return
 			}
 		}
 	}
@@ -366,6 +415,7 @@ func ServerMain() {
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
 	bucketName := flag.String("bucket", "couchdb", "Name of bucket")
+	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	flag.Parse()
 
 	bucket, err := ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
@@ -374,6 +424,7 @@ func ServerMain() {
 	}
 
 	InitREST(bucket)
+	PrettyPrint = *pretty
 
 	log.Printf("Starting server on %s", *addr)
 	err = http.ListenAndServe(*addr, nil)
@@ -441,14 +492,19 @@ func readJSON(rq *http.Request) (Body, error) {
 
 // Writes an object to the response in JSON format.
 func writeJSON(value interface{}, r http.ResponseWriter) {
-	json, err := json.Marshal(value)
+	jsonOut, err := json.Marshal(value)
 	if err != nil {
 		log.Printf("WARNING: Couldn't serialize JSON for %v", value)
 		r.WriteHeader(http.StatusInternalServerError)
-	} else {
-		r.Header().Set("Content-Type", "application/json")
-		r.Write(json)
+		return
 	}
+	if PrettyPrint {
+		var buffer bytes.Buffer
+		json.Indent(&buffer, jsonOut, "", "  ")
+		jsonOut = append(buffer.Bytes(), '\n')
+	}
+	r.Header().Set("Content-Type", "application/json")
+	r.Write(jsonOut)
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and

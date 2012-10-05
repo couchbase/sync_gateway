@@ -132,7 +132,9 @@ func installViews(bucket *couchbase.Bucket) error {
                      var pieces = meta.id.split(":", 3);
                      if (pieces.length < 3 || pieces[0] != "doc")
                        return;
-                     emit([pieces[1], pieces[2]], null); }`
+                     if (doc.current._deleted)
+                       return;
+                     emit([pieces[1], pieces[2]], doc.current._rev); }`
 	changes_map := `function (doc, meta) {
                     if (doc.sequence === undefined)
                         return;
@@ -164,20 +166,26 @@ func installViews(bucket *couchbase.Bucket) error {
 	return err
 }
 
+type IDAndRev struct {
+	DocID string
+	RevID string
+}
+
 // Returns all document IDs as an array.
-func (db *Database) AllDocIDs() ([]string, error) {
+func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(false))
 	if err != nil {
+		log.Printf("WARNING: View returned %v", err)
 		return nil, err
 	}
 
 	rows := vres.Rows
-	docids := make([]string, 0, len(rows))
+	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
 		key := row.Key.([]interface{})
-		docids = append(docids, key[1].(string))
+		result = append(result, IDAndRev{DocID: key[1].(string), RevID: row.Value.(string)})
 	}
-	return docids, nil
+	return result, nil
 }
 
 func (db *Database) allDocIDsOpts(reduce bool) Body {
@@ -199,8 +207,8 @@ func (db *Database) Delete() error {
 		return err
 	}
 	db.bucket.Delete(db.sequenceDocID())
-	for _, docID := range docIDs {
-		db.bucket.Delete(docID)
+	for _, doc := range docIDs {
+		db.bucket.Delete(doc.DocID)
 	}
 	return nil
 }
@@ -224,6 +232,7 @@ type ChangesOptions struct {
 	Since      uint64
 	Limit      int
 	Descending bool
+	Conflicts  bool
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -260,12 +269,27 @@ func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
 	for _, row := range rows {
 		key := row.Key.([]interface{})
 		value := row.Value.([]interface{})
+		docID := value[0].(string)
+		revID := value[1].(string)
+
 		entry := ChangeEntry{
 			Seq:     uint64(key[1].(float64)),
-			ID:      value[0].(string),
-			Changes: []ChangeRev{{"rev": value[1].(string)}},
+			ID:      docID,
+			Changes: []ChangeRev{{"rev": revID}},
 			Deleted: (len(value) >= 3 && value[2].(bool)),
 		}
+
+		if options.Conflicts {
+			doc, _ := db.getDoc(docID)
+			if doc != nil {
+				for _, leafID := range doc.History.getLeaves() {
+					if leafID != revID {
+						entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+					}
+				}
+			}
+		}
+
 		changes = append(changes, entry)
 	}
 	return changes, nil
