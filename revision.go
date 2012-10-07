@@ -4,6 +4,7 @@ package basecouch
 
 import (
 	"crypto/md5"
+	"crypto/sha1"
 	"encoding/json"
     "fmt"
     "log"
@@ -12,37 +13,38 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
-func (db *Database) getRevision(docid, revid string) (Body, error) {
+func (db *Database) getRevision(docid, revid string, key RevKey) (Body, error) {
 	var body Body
-	err := db.bucket.Get(keyForRevID(revid), &body)
+	err := db.bucket.Get(revKeyToString(key), &body)
 	if err != nil {
 		return nil, err
 	}
-	if body["_id"] != docid || body["_rev"] != revid {
-        panic(fmt.Sprintf("getRevision got wrong revision! expected %s/%s; got %s/%s",
-                docid, revid, body["_id"], body["_rev"]))
-    }
+    body["_id"] = docid
+    body["_rev"] = revid
 	return body, nil
 }
 
 
-func (db *Database) setRevision(docid, revid string, body Body) error {
-	return db.bucket.Set(keyForRevID(revid), 0, body)
+func (db *Database) setRevision(body Body) (RevKey, error) {
+    body = stripSpecialProperties(body)
+	digester := sha1.New()
+	digester.Write(canonicalEncoding(body))
+	revKey := RevKey(fmt.Sprintf("%x", digester.Sum(nil)))
+	return revKey, db.bucket.Set(revKeyToString(revKey), 0, body)
 }
 
 //////// HELPERS:
 
-func keyForRevID(revid string) string {
-    return "rev:" + revid
+func revKeyToString(key RevKey) string {
+    return "rev:" + string(key)
 }
 
 func createRevID(generation int, parentRevID string, body Body) string {
-	//FIX: Use canonical JSON encoding
-	json, _ := json.Marshal(body)
+    // This should produce the same results as TouchDB.
 	digester := md5.New()
     digester.Write([]byte{byte(len(parentRevID))})
     digester.Write([]byte(parentRevID))
-	digester.Write(json)
+	digester.Write(canonicalEncoding(stripSpecialProperties(body)))
 	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
 }
 
@@ -60,14 +62,20 @@ func parseRevID(revid string) (int, string) {
 	return generation, id
 }
 
-var kPreserveProperties = map[string]bool {
-    "_id": true, "_rev": true, "_deleted": true, "_attachments": true}
-
-// Removes properties we don't want to store in the revision's body
-func stripSpecialProperties(body Body) {
-	for key, _ := range body {
-		if key[0] == '_' && !kPreserveProperties[key] {
-			delete(body, key)
+func stripSpecialProperties(body Body) Body {
+    stripped := Body{}
+	for key, value := range body {
+		if key == "" || key[0] != '_' || key == "_attachments" || key == "_deleted" {
+			stripped[key] = value
 		}
 	}
+    return stripped
+}
+
+func canonicalEncoding(body Body) []byte {
+	encoded, err := json.Marshal(body)	//FIX: Use canonical JSON encoder
+    if err != nil {
+        panic(fmt.Sprintf("Couldn't encode body %v", body))
+    }
+    return encoded
 }

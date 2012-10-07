@@ -12,7 +12,6 @@ import (
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
 	History  RevTree `json:"history"`
-	//Body     Body    `json:"current"`
     CurrentRev string  `json:"rev"`
 	Sequence uint64  `json:"sequence"`
 }
@@ -61,18 +60,22 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error
 	}
     if revid == "" {
         revid = doc.CurrentRev
-    } else if !doc.History.contains(revid) {
+    	if doc.History[revid].Deleted == true {
+    		return nil, &HTTPError{Status: 404, Message: "deleted"}
+    	}
+    }
+    info, exists := doc.History[revid]
+    if !exists || info.Key == "" {
 		return nil, &HTTPError{Status: 404, Message: "missing"}
     }
     
-    body, err := db.getRevision(docid, revid)
+    body, err := db.getRevision(docid, revid, info.Key)
     if err != nil {
         return nil, err
     }
-	if body["_deleted"] == true {
-		return nil, &HTTPError{Status: 404, Message: "deleted"}
-	}
-    
+    if info.Deleted {
+        body["_deleted"] = true
+    }
     if listRevisions {
         history := doc.History.getHistory(revid)
         body["_revisions"] = encodeRevisions(history)
@@ -115,32 +118,31 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	if generation < 0 {
 		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
-	stripSpecialProperties(body)
-    body["_id"] = docid
 	newRev := createRevID(generation+1, matchRev, body)
 
 	body["_rev"] = newRev
 	doc.CurrentRev = newRev //FIX: Need to consider the "winning rev" algorithm
-	doc.History.addRevision(newRev, matchRev)
-    err = db.putDocAndBody(doc, body)
+    deleted, _ := body["_deleted"].(bool)
+	doc.History.addRevision(RevInfo{ID:newRev, Parent:matchRev, Deleted:deleted})
+    err = db.putDocAndBody(docid, newRev, doc, body)
     if err != nil {
         return "", err
     }
     return newRev, nil
 }
 
-func (db *Database) putDocAndBody(doc *document, body Body) error {
+func (db *Database) putDocAndBody(docid string, revid string, doc *document, body Body) error {
     var err error
 	doc.Sequence, err = db.generateSequence()
 	if err != nil {
 		return err
 	}
-    docid := body["_id"].(string)
-    revid := body["_rev"].(string)
-    err = db.setRevision(docid, revid, body)
+    key, err := db.setRevision(body)
     if err != nil {
         return err
     }
+
+	doc.History.setRevisionKey(revid, key)
 	return db.setDoc(docid, doc)
 }
 
@@ -185,15 +187,12 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
         if i+1 < len(docHistory) {
             parent = docHistory[i+1]
         }
-		doc.History.addRevision(docHistory[i], parent)
+		doc.History.addRevision(RevInfo{ID:docHistory[i], Parent:parent})
 	}
     doc.CurrentRev = docHistory[0] //FIX: Need to consider the "winning rev" algorithm
     
     // Save the document and body:
-	stripSpecialProperties(body)
-	body["_id"] = docid
-	body["_rev"] = docHistory[0]
-    return db.putDocAndBody(doc, body)
+    return db.putDocAndBody(docid, docHistory[0], doc, body)
 }
 
 // Deletes a document, by adding a new revision whose "_deleted" property is true.

@@ -53,7 +53,7 @@ func createDoc(t *testing.T, docid string) string {
 
 func TestDocLifecycle(t *testing.T) {
 	revid := createDoc(t, "doc")
-	assert.Equals(t, revid, "1-d1249ebe730751546ae07e8d1658bb98")
+	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
 	response := callREST("DELETE", "/resttest/doc?rev="+revid, "")
 	assert.Equals(t, response.Code, 200)
@@ -68,9 +68,9 @@ func TestBulkDocs(t *testing.T) {
 	docs := body["docs"].([]interface{})
 	assert.Equals(t, len(docs), 2)
 	assert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "1-f1043076d414767052a276c4ac4bfc27", "id": "bulk1"})
+		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
 	assert.DeepEquals(t, docs[1],
-		map[string]interface{}{"rev": "1-f179fcc6aa47ae3b3fb57f3baea8bed9", "id": "bulk2"})
+		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
 }
 
 func TestBulkDocsNoEdits(t *testing.T) {

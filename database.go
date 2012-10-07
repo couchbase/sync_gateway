@@ -37,20 +37,11 @@ type Database struct {
 
 // Helper function to open a Couchbase connection and return a specific bucket.
 func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchbase.Bucket, err error) {
-	c, err := couchbase.Connect(couchbaseURL)
-	if err != nil {
-		return
-	}
-	pool, err := c.GetPool(poolName)
-	if err != nil {
-		return
-	}
-	bucket, err = pool.GetBucket(bucketName)
+	bucket, err = couchbase.GetBucket(couchbaseURL, poolName, bucketName)
 	if err != nil {
 		return
 	}
 	log.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
-
 	err = installViews(bucket)
 	return
 }

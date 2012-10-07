@@ -10,8 +10,13 @@ import (
 	"testing"
 )
 
-var testmap = RevTree{"3-three": "2-two", "2-two": "1-one", "1-one": ""}
-var branchymap = RevTree{"3-three": "2-two", "2-two": "1-one", "1-one": "", "3-drei": "2-two"}
+var testmap = RevTree{"3-three": {ID:"3-three", Parent:"2-two"},
+                      "2-two": {ID:"2-two", Parent:"1-one"},
+                      "1-one": {ID:"1-one"}}
+var branchymap = RevTree{"3-three": {ID:"3-three", Parent:"2-two"},
+                      "2-two": {ID:"2-two", Parent:"1-one"},
+                      "1-one": {ID:"1-one"},
+                      "3-drei": {ID:"3-drei", Parent:"2-two"}}
 
 const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1]}`
 
@@ -64,24 +69,24 @@ func TestAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.DeepEquals(t, tempmap, testmap)
 
-	tempmap.addRevision("4-four", "3-three")
+	tempmap.addRevision(RevInfo{ID:"4-four", Parent:"3-three"})
 	assert.Equals(t, tempmap.getParent("4-four"), "3-three")
 }
 
 func assertNoError(t *testing.T, err error, message string) {
 	if err != nil {
-		t.Errorf("%s: %v", message, err)
+		t.Fatalf("%s: %v", message, err)
 	}
 }
 
 func assertTrue(t *testing.T, success bool, message string) {
 	if !success {
-		t.Errorf("%s", message)
+		t.Fatalf("%s", message)
 	}
 }
 
 func assertFalse(t *testing.T, failure bool, message string) {
 	if failure {
-		t.Errorf("%s", message)
+		t.Fatalf("%s", message)
 	}
 }

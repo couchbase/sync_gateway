@@ -8,50 +8,84 @@ import (
     "log"
 )
 
-/*  A revision tree maps each revision ID to its parent's ID.
-    Root revisions have a parent of "" (the empty string). */
-type RevTree map[string]string
+type RevKey string
+
+// Information about a single revision.
+type RevInfo struct {
+    ID      string
+    Parent  string
+    Key     RevKey
+    Deleted bool
+}
+
+//  A revision tree maps each revision ID to its RevInfo.
+type RevTree map[string]RevInfo
 
 // The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
-type RevTreeList struct {
-	Revs    []string `json:"revs"`
-	Parents []int    `json:"parents"`
+type revTreeList struct {
+	Revs    []string `json:"revs"`              // The revision IDs
+	Parents []int    `json:"parents"`           // Index of parent of each revision (-1 if root)
+    Keys    []string `json:"keys"`              // Couchbase key of revision content
+    Deleted []int    `json:"deleted,omitempty"` // Indexes of revisions that are deletions
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
-	revs := make([]string, 0, len(tree))
-	parents := make([]int, 0, len(tree))
+    n := len(tree)
+    rep := revTreeList{
+        Revs: make([]string, n),
+        Parents: make([]int, n),
+        Keys: make([]string, n),
+    }
 	revIndexes := map[string]int{"": -1}
 
-	for rev, _ := range tree {
-		revIndexes[rev] = len(revs)
-		revs = append(revs, rev)
+    i := 0
+	for _,info := range tree {
+		revIndexes[info.ID] = i
+		rep.Revs[i] = info.ID
+        rep.Keys[i] = string(info.Key)
+        if info.Deleted {
+            if rep.Deleted == nil {
+                rep.Deleted = make([]int, 0, 1)
+            }
+            rep.Deleted = append(rep.Deleted, i)
+        }
+        i++
 	}
-	for _, rev := range revs {
-		parent := tree[rev]
-		parents = append(parents, revIndexes[parent])
-	}
+    
+    for i,revid := range(rep.Revs) {
+        rep.Parents[i] = revIndexes[tree[revid].Parent]
+    }
 
-	return json.Marshal(RevTreeList{Revs: revs, Parents: parents})
+	return json.Marshal(rep)
 }
 
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
-	var rep RevTreeList
+	var rep revTreeList
 	err = json.Unmarshal(inputjson, &rep)
 	if err != nil {
 		return
 	}
 
-	for i, rev := range rep.Revs {
+	for i, revid := range rep.Revs {
+        info := RevInfo{ ID: revid }
+        if rep.Keys != nil {
+            info.Key = RevKey(rep.Keys[i])
+        }
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
-			tree[rev] = rep.Revs[parentIndex]
-		} else {
-			tree[rev] = ""
+			info.Parent = rep.Revs[parentIndex]
 		}
+        tree[revid] = info
 	}
+    if rep.Deleted != nil {
+        for _,i:= range(rep.Deleted) {
+            info := tree[rep.Revs[i]]
+            info.Deleted = true        //because tree[rep.Revs[i]].Deleted=true is a compile error
+            tree[rep.Revs[i]] = info
+        }
+    }
 	return
 }
 
@@ -61,14 +95,19 @@ func (tree RevTree) contains(revid string) bool {
 	return exists
 }
 
+// Returns the RevInfo for a revision ID, or panics if it's not found
+func (tree RevTree) getInfo(revid string) *RevInfo {
+	info, exists := tree[revid]
+	if !exists {
+		panic("can't find rev")
+	}
+	return &info
+}
+
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
 // Panics if the revid is not in the map at all.
 func (tree RevTree) getParent(revid string) string {
-	parent, exists := tree[revid]
-	if !exists {
-		panic("can't find parent")
-	}
-	return parent
+	return tree.getInfo(revid).Parent
 }
 
 // Returns the history of a revid as an array of revids in reverse chronological order.
@@ -76,7 +115,7 @@ func (tree RevTree) getHistory(revid string) []string {
 	history := make([]string, 0, 5)
 	for revid != "" {
 		history = append(history, revid)
-		revid = tree.getParent(revid)
+		revid = tree.getInfo(revid).Parent
 	}
 	return history
 }
@@ -84,8 +123,8 @@ func (tree RevTree) getHistory(revid string) []string {
 // Returns the leaf revision IDs (those that have no children.)
 func (tree RevTree) getLeaves() []string {
 	isParent := map[string]bool{}
-	for _, parent := range tree {
-		isParent[parent] = true
+	for _, info := range tree {
+		isParent[info.Parent] = true
 	}
 	leaves := make([]string, 0, len(tree)-len(isParent)+1)
 	for revid, _ := range tree {
@@ -97,24 +136,35 @@ func (tree RevTree) getLeaves() []string {
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) addRevision(revid string, parentid string) {
-	if revid == "" {
+func (tree RevTree) addRevision(info RevInfo) {
+    revid := info.ID
+	if revid  == "" {
 		panic("empty revid is illegal")
-	}
-	if parentid != "" && !tree.contains(parentid) {
-		panic(fmt.Sprintf("parent id %q is missing", parentid))
 	}
 	if tree.contains(revid) {
 		panic(fmt.Sprintf("already contains rev %q", revid))
 	}
-	tree[revid] = parentid
+    parent := info.Parent
+	if parent != "" && !tree.contains(parent) {
+		panic(fmt.Sprintf("parent id %q is missing", parent))
+	}
+	tree[revid] = info
 }
 
-// Deep-copies a RevTree.
+func (tree RevTree) setRevisionKey(revid string, key RevKey) {
+    info, found := tree[revid]
+    if !found {
+		panic(fmt.Sprintf("rev id %q not found", revid))
+    }
+    info.Key = key
+    tree[revid] = info
+}
+
+// Copies a RevTree.
 func (tree RevTree) copy() RevTree {
 	result := RevTree{}
-	for rev, parent := range tree {
-		result[rev] = parent
+	for rev, info := range tree {
+		result[rev] = info
 	}
 	return result
 }

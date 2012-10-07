@@ -32,20 +32,24 @@ func TestDatabase(t *testing.T) {
 	}()
 
 	// Test creating & updating a document:
+    log.Printf("Create rev 1...")
 	body := Body{"key1": "value1", "key2": 1234}
 	revid, err := db.Put("doc1", body)
 	assertNoError(t, err, "Couldn't create document")
 	assert.Equals(t, revid, body["_rev"])
-	assert.Equals(t, revid, "1-44ebf4683e6d4eaa352dbce704300c1c")
+	assert.Equals(t, revid, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
+    log.Printf("Create rev 2...")
 	body["key1"] = "new value"
 	body["key2"] = float64(4321) // otherwise the DeepEquals call below fails
 	revid, err = db.Put("doc1", body)
+    body["_id"] = "doc1"
 	assertNoError(t, err, "Couldn't update document")
 	assert.Equals(t, revid, body["_rev"])
-	assert.Equals(t, revid, "2-4df147b496e869f3545861fcbec62ba6")
+	assert.Equals(t, revid, "2-488724414d0ed6b398d6d2aeb228d797")
 
 	// Retrieve the document:
+    log.Printf("Retrieve doc...")
 	gotbody, err := db.Get("doc1")
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
@@ -59,33 +63,34 @@ func TestDatabase(t *testing.T) {
 	assert.Equals(t, status, 404)
     
     // Test the _revisions property:
+    log.Printf("Check _revisions...")
     gotbody, err = db.GetRev("doc1", revid, true)
     revisions := gotbody["_revisions"].(Body)
     assert.Equals(t, revisions["start"], 2)
     assert.DeepEquals(t, revisions["ids"],
-                         []string{"4df147b496e869f3545861fcbec62ba6",
-                                  "44ebf4683e6d4eaa352dbce704300c1c"})
+                         []string{"488724414d0ed6b398d6d2aeb228d797",
+                                  "cb0c9a22be0e5a1b01084ec019defa81"})
 
 	// Test RevDiff:
 	missing, possible, err := db.RevDiff("doc1",
-		[]string{"1-44ebf4683e6d4eaa352dbce704300c1c",
-			"2-4df147b496e869f3545861fcbec62ba6"})
+		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
+			"2-488724414d0ed6b398d6d2aeb228d797"})
 	assertNoError(t, err, "RevDiff failed")
 	assert.True(t, missing == nil)
 	assert.True(t, possible == nil)
 
 	missing, possible, err = db.RevDiff("doc1",
-		[]string{"1-44ebf4683e6d4eaa352dbce704300c1c",
+		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
 	assertNoError(t, err, "RevDiff failed")
 	assert.DeepEquals(t, missing, []string{"3-foo"})
-	assert.DeepEquals(t, possible, []string{"2-4df147b496e869f3545861fcbec62ba6"})
+	assert.DeepEquals(t, possible, []string{"2-488724414d0ed6b398d6d2aeb228d797"})
 
 	missing, possible, err = db.RevDiff("nosuchdoc",
-		[]string{"1-44ebf4683e6d4eaa352dbce704300c1c",
+		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
 	assertNoError(t, err, "RevDiff failed")
-	assert.DeepEquals(t, missing, []string{"1-44ebf4683e6d4eaa352dbce704300c1c",
+	assert.DeepEquals(t, missing, []string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 		"3-foo"})
 	assert.True(t, possible == nil)
 
@@ -93,8 +98,8 @@ func TestDatabase(t *testing.T) {
 	body["_rev"] = "4-four"
 	body["key1"] = "fourth value"
 	body["key2"] = float64(4444)
-	history := []string{"4-four", "3-three", "2-4df147b496e869f3545861fcbec62ba6",
-		"1-44ebf4683e6d4eaa352dbce704300c1c"}
+	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
+		"1-cb0c9a22be0e5a1b01084ec019defa81"}
 	err = db.PutExistingRev("doc1", body, history)
 	assertNoError(t, err, "PutExistingRev failed")
 
