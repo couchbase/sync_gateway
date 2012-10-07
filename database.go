@@ -305,7 +305,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case *gomemcached.MCResponse:
 		switch err.Status {
 		case gomemcached.KEY_ENOENT:
-			return http.StatusNotFound, "Not Found"
+			return http.StatusNotFound, "missing"
 		case gomemcached.KEY_EEXISTS:
 			return http.StatusConflict, "Conflict"
 		default:
