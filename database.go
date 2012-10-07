@@ -98,10 +98,6 @@ func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
 	return &db, nil
 }
 
-func (db *Database) realDocID(docid string) string {
-	return db.DocPrefix + docid
-}
-
 // The UUID assigned to this database.
 func (db *Database) UUID() string {
 	return db.DocPrefix[4 : len(db.DocPrefix)-1]

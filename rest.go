@@ -294,6 +294,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 		case "_all_docs":
 			if method == "GET" || method == "POST" {
 				db.HandleAllDocs(r, rq)
+                return
 			}
 		case "_bulk_docs":
 			if method == "POST" {
@@ -314,10 +315,11 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 					return
 				}
 				output, err := db.RevsDiff(input)
-				writeJSON(output, r)
 				if err != nil {
 					writeError(err, r)
+                    return
 				}
+				writeJSON(output, r)
 				return
 			}
 		default:

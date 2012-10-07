@@ -21,18 +21,41 @@ type document struct {
 	Sequence uint64  `json:"sequence"`
 }
 
+func (db *Database) realDocID(docid string) string {
+    if docid=="" {
+        return ""
+    }
+	docid = db.DocPrefix + docid
+    if len(docid) > 250 {
+        return ""
+    }
+    return docid
+}
+
 func newDocument() *document {
 	return &document{History: make(RevTree), Body: make(Body)}
 }
 
 func (db *Database) getDoc(docid string) (*document, error) {
+    key := db.realDocID(docid)
+    if key == "" {
+        return nil, &HTTPError{Status:400, Message: "Invalid doc ID"}
+    }
 	doc := newDocument()
-	err := db.bucket.Get(db.realDocID(docid), doc)
+	err := db.bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
 	}
 	doc.Body["_id"] = docid
 	return doc, nil
+}
+
+func (db *Database) setDoc(docid string, doc *document) error {
+    key := db.realDocID(docid)
+    if key == "" {
+        return &HTTPError{Status:400, Message: "Invalid doc ID"}
+    }
+	return db.bucket.Set(key, 0, doc)
 }
 
 // Returns the body of a revision of a document.
@@ -111,7 +134,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	}
 
 	// Now finally put the new value:
-	err = db.bucket.Set(db.realDocID(docid), 0, doc)
+	err = db.setDoc(docid, doc)
 	if err != nil {
 		return "", err
 	}
@@ -173,7 +196,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	if err != nil {
 		return err
 	}
-	return db.bucket.Set(db.realDocID(docid), 0, doc)
+	return db.setDoc(docid, doc)
 }
 
 // Deletes a document, by adding a new revision whose "_deleted" property is true.
@@ -210,10 +233,12 @@ func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
 	doc, err := db.getDoc(docid)
 	if err != nil {
-		if isMissingDocError(err) {
-			err = nil
-			missing = revids
-		}
+		if !isMissingDocError(err) {
+            log.Printf("WARNING: RevDiff(%q) --> %T %v", docid, err, err)//TEMP
+            // If something goes wrong getting the doc, treat it as though it's nonexistent.
+        }
+		missing = revids
+		err = nil
 		return
 	}
 	revmap := doc.History
@@ -252,8 +277,13 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 
 // Gets a local document.
 func (db *Database) GetLocal(docid string) (Body, error) {
+    key := db.realLocalDocID(docid)
+    if key == "" {
+        return nil, &HTTPError{Status:400, Message: "Invalid doc ID"}
+    }
+    
 	body := Body{}
-	err := db.bucket.Get(db.realLocalDocID(docid), &body)
+	err := db.bucket.Get(key, &body)
 	if err != nil {
 		return nil, err
 	}
@@ -262,11 +292,20 @@ func (db *Database) GetLocal(docid string) (Body, error) {
 
 // Updates a local document.
 func (db *Database) PutLocal(docid string, body Body) error {
+    key := db.realLocalDocID(docid)
+    if key == "" {
+        return &HTTPError{Status:400, Message: "Invalid doc ID"}
+    }
+    
 	return db.bucket.Set(db.realLocalDocID(docid), 0, body)
 }
 
 // Deletes a local document.
 func (db *Database) DeleteLocal(docid string) error {
+    key := db.realLocalDocID(docid)
+    if key == "" {
+        return &HTTPError{Status:400, Message: "Invalid doc ID"}
+    }
 	return db.bucket.Delete(db.realLocalDocID(docid))
 }
 
@@ -294,9 +333,10 @@ func createRevID(generation int, body Body) string {
 	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
 }
 
+// Removes properties we don't want to store in the doc
 func stripSpecialProperties(body Body) {
 	for key, _ := range body {
-		if key[0] == '_' && key != "_rev" {
+		if key[0] == '_' && key != "_rev" && key != "_deleted" {
 			delete(body, key)
 		}
 	}
