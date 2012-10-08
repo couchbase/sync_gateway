@@ -11,9 +11,11 @@ import (
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
-	History  RevTree `json:"history"`
-    CurrentRev string  `json:"rev"`
-	Sequence uint64  `json:"sequence"`
+    ID          string  `json:"id"`
+    CurrentRev  string  `json:"rev"`
+    Deleted     bool    `json:"deleted,omitempty"`
+	Sequence    uint64  `json:"sequence"`
+	History     RevTree `json:"history"`
 }
 
 func (db *Database) realDocID(docid string) string {
@@ -106,10 +108,10 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 				Message: "No previous revision to replace"}
 		}
 		doc = newDocument()
+        doc.ID = docid
 	} else {
 		if !doc.History.isLeaf(matchRev) {
-			return "", &HTTPError{Status: http.StatusConflict,
-				Message: "Incorrect revision ID; should be " + doc.CurrentRev}
+			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
 		}
 	}
 
@@ -124,6 +126,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
     deleted, _ := body["_deleted"].(bool)
 	doc.History.addRevision(RevInfo{ID:newRev, Parent:matchRev, Deleted:deleted})
 	doc.CurrentRev = doc.History.winningRevision()
+    doc.Deleted = doc.History[doc.CurrentRev].Deleted
     err = db.putDocAndBody(docid, newRev, doc, body)
     if err != nil {
         return "", err
@@ -171,6 +174,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		// Creating new document:
 		doc = newDocument()
+        doc.ID = docid
 	} else {
 		// Find the point where this doc's history branches from the current rev:
 		for i, revid := range docHistory {
@@ -181,15 +185,25 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 	}
 
+    if currentRevIndex == 0 {
+        return nil  // No new revisions to add
+    }
+    
+    deleted,_ := body["_deleted"].(bool)
+
     // Add all the new-to-me revisions to the rev tree:
 	for i := currentRevIndex - 1; i >= 0; i-- {
         parent := ""
         if i+1 < len(docHistory) {
             parent = docHistory[i+1]
         }
-		doc.History.addRevision(RevInfo{ID:docHistory[i], Parent:parent})
+		doc.History.addRevision(
+            RevInfo{ID:docHistory[i],
+            Parent:parent,
+            Deleted: (i==0 && deleted)})
 	}
 	doc.CurrentRev = doc.History.winningRevision()
+    doc.Deleted = doc.History[doc.CurrentRev].Deleted
     
     // Save the document and body:
     return db.putDocAndBody(docid, docHistory[0], doc, body)

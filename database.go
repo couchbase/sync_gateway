@@ -115,26 +115,33 @@ func installViews(bucket *couchbase.Bucket) error {
 	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "couchdb")
 
 	//FIX: This view includes local docs; it shouldn't!
+    alldbs_map := `function (doc, meta) {
+                     var pieces = meta.id.split(":");
+                     if (pieces.length != 2 || pieces[0] != "cdb")
+                        return;
+                     emit(doc.name, doc.docPrefix); }`
 	alldocs_map := `function (doc, meta) {
                      var pieces = meta.id.split(":", 3);
                      if (pieces.length < 3 || pieces[0] != "doc")
                        return;
-                     if (doc.current._deleted)
+                     if (doc.deleted || doc.id===undefined)
                        return;
-                     emit([pieces[1], pieces[2]], doc.current._rev); }`
+                     emit([pieces[1], doc.id], doc.rev); }`
 	changes_map := `function (doc, meta) {
                     if (doc.sequence === undefined)
                         return;
                     var pieces = meta.id.split(":", 3);
-                    if (pieces.length < 3 || pieces[0] != "doc")
+                    if (pieces.length < 3 || pieces[0] != "doc" || doc.id===undefined)
                         return;
-                    var value = [doc.current._id, doc.current._rev];
-                    if (doc.current._deleted)
+                    var value = [doc.id, doc.rev];
+                    if (doc.deleted)
                         value.push(true)
                     emit([pieces[1], doc.sequence], value); }`
 
-	ddoc := Body{"language": "javascript",
+	ddoc := Body{
+        "language": "javascript",
 		"views": Body{
+			"all_dbs": Body{"map": alldbs_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
@@ -151,6 +158,23 @@ func installViews(bucket *couchbase.Bucket) error {
 		log.Printf("WARNING: Error installing design doc: %v", err)
 	}
 	return err
+}
+
+// Returns all database names as an array.
+func AllDbNames(bucket *couchbase.Bucket) ([]string, error) {
+	vres, err := bucket.View("couchdb", "all_dbs", nil)
+	if err != nil {
+		log.Printf("WARNING: View returned %v", err)
+		return nil, err
+	}
+	log.Printf("View returned %v", vres)//TEMP
+
+	rows := vres.Rows
+	result := make([]string, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, row.Key.(string))
+	}
+	return result, nil
 }
 
 type IDAndRev struct {
@@ -170,6 +194,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
 		key := row.Key.([]interface{})
+        log.Printf("\tkey = %v , value = %v", key, row.Value)
 		result = append(result, IDAndRev{DocID: key[1].(string), RevID: row.Value.(string)})
 	}
 	return result, nil

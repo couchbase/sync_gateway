@@ -72,6 +72,7 @@ func TestDatabase(t *testing.T) {
                                   "cb0c9a22be0e5a1b01084ec019defa81"})
 
 	// Test RevDiff:
+    log.Printf("Check RevDiff...")
 	missing, possible, err := db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"2-488724414d0ed6b398d6d2aeb228d797"})
@@ -95,6 +96,7 @@ func TestDatabase(t *testing.T) {
 	assert.True(t, possible == nil)
 
 	// Test PutExistingRev:
+    log.Printf("Check PutExistingRev...")
 	body["_rev"] = "4-four"
 	body["key1"] = "fourth value"
 	body["key2"] = float64(4444)
@@ -104,6 +106,7 @@ func TestDatabase(t *testing.T) {
 	assertNoError(t, err, "PutExistingRev failed")
 
 	// Retrieve the document:
+    log.Printf("Check Get...")
 	gotbody, err = db.Get("doc1")
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
