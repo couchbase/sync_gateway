@@ -32,24 +32,24 @@ func TestDatabase(t *testing.T) {
 	}()
 
 	// Test creating & updating a document:
-    log.Printf("Create rev 1...")
+	log.Printf("Create rev 1...")
 	body := Body{"key1": "value1", "key2": 1234}
 	revid, err := db.Put("doc1", body)
 	assertNoError(t, err, "Couldn't create document")
 	assert.Equals(t, revid, body["_rev"])
 	assert.Equals(t, revid, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
-    log.Printf("Create rev 2...")
+	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
 	body["key2"] = float64(4321) // otherwise the DeepEquals call below fails
 	revid, err = db.Put("doc1", body)
-    body["_id"] = "doc1"
+	body["_id"] = "doc1"
 	assertNoError(t, err, "Couldn't update document")
 	assert.Equals(t, revid, body["_rev"])
 	assert.Equals(t, revid, "2-488724414d0ed6b398d6d2aeb228d797")
 
 	// Retrieve the document:
-    log.Printf("Retrieve doc...")
+	log.Printf("Retrieve doc...")
 	gotbody, err := db.Get("doc1")
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
@@ -59,20 +59,20 @@ func TestDatabase(t *testing.T) {
 	assert.DeepEquals(t, gotbody, body)
 
 	gotbody, err = db.GetRev("doc1", "bogusrev", false)
-    status,_ := ErrorAsHTTPStatus(err)
+	status, _ := ErrorAsHTTPStatus(err)
 	assert.Equals(t, status, 404)
-    
-    // Test the _revisions property:
-    log.Printf("Check _revisions...")
-    gotbody, err = db.GetRev("doc1", revid, true)
-    revisions := gotbody["_revisions"].(Body)
-    assert.Equals(t, revisions["start"], 2)
-    assert.DeepEquals(t, revisions["ids"],
-                         []string{"488724414d0ed6b398d6d2aeb228d797",
-                                  "cb0c9a22be0e5a1b01084ec019defa81"})
+
+	// Test the _revisions property:
+	log.Printf("Check _revisions...")
+	gotbody, err = db.GetRev("doc1", revid, true)
+	revisions := gotbody["_revisions"].(Body)
+	assert.Equals(t, revisions["start"], 2)
+	assert.DeepEquals(t, revisions["ids"],
+		[]string{"488724414d0ed6b398d6d2aeb228d797",
+			"cb0c9a22be0e5a1b01084ec019defa81"})
 
 	// Test RevDiff:
-    log.Printf("Check RevDiff...")
+	log.Printf("Check RevDiff...")
 	missing, possible, err := db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"2-488724414d0ed6b398d6d2aeb228d797"})
@@ -96,7 +96,7 @@ func TestDatabase(t *testing.T) {
 	assert.True(t, possible == nil)
 
 	// Test PutExistingRev:
-    log.Printf("Check PutExistingRev...")
+	log.Printf("Check PutExistingRev...")
 	body["_rev"] = "4-four"
 	body["key1"] = "fourth value"
 	body["key2"] = float64(4444)
@@ -106,7 +106,7 @@ func TestDatabase(t *testing.T) {
 	assertNoError(t, err, "PutExistingRev failed")
 
 	// Retrieve the document:
-    log.Printf("Check Get...")
+	log.Printf("Check Get...")
 	gotbody, err = db.Get("doc1")
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)

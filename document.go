@@ -11,22 +11,22 @@ import (
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
-    ID          string  `json:"id"`
-    CurrentRev  string  `json:"rev"`
-    Deleted     bool    `json:"deleted,omitempty"`
-	Sequence    uint64  `json:"sequence"`
-	History     RevTree `json:"history"`
+	ID         string  `json:"id"`
+	CurrentRev string  `json:"rev"`
+	Deleted    bool    `json:"deleted,omitempty"`
+	Sequence   uint64  `json:"sequence"`
+	History    RevTree `json:"history"`
 }
 
 func (db *Database) realDocID(docid string) string {
-    if docid=="" {
-        return ""
-    }
+	if docid == "" {
+		return ""
+	}
 	docid = db.DocPrefix + docid
-    if len(docid) > 250 {
-        return ""
-    }
-    return docid
+	if len(docid) > 250 {
+		return ""
+	}
+	return docid
 }
 
 func newDocument() *document {
@@ -34,10 +34,10 @@ func newDocument() *document {
 }
 
 func (db *Database) getDoc(docid string) (*document, error) {
-    key := db.realDocID(docid)
-    if key == "" {
-        return nil, &HTTPError{Status:400, Message: "Invalid doc ID"}
-    }
+	key := db.realDocID(docid)
+	if key == "" {
+		return nil, &HTTPError{Status: 400, Message: "Invalid doc ID"}
+	}
 	doc := newDocument()
 	err := db.bucket.Get(key, doc)
 	if err != nil {
@@ -47,10 +47,10 @@ func (db *Database) getDoc(docid string) (*document, error) {
 }
 
 func (db *Database) setDoc(docid string, doc *document) error {
-    key := db.realDocID(docid)
-    if key == "" {
-        return &HTTPError{Status:400, Message: "Invalid doc ID"}
-    }
+	key := db.realDocID(docid)
+	if key == "" {
+		return &HTTPError{Status: 400, Message: "Invalid doc ID"}
+	}
 	return db.bucket.Set(key, 0, doc)
 }
 
@@ -60,34 +60,34 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error
 	if doc == nil {
 		return nil, err
 	}
-    if revid == "" {
-        revid = doc.CurrentRev
-    	if doc.History[revid].Deleted == true {
-    		return nil, &HTTPError{Status: 404, Message: "deleted"}
-    	}
-    }
-    info, exists := doc.History[revid]
-    if !exists || info.Key == "" {
+	if revid == "" {
+		revid = doc.CurrentRev
+		if doc.History[revid].Deleted == true {
+			return nil, &HTTPError{Status: 404, Message: "deleted"}
+		}
+	}
+	info, exists := doc.History[revid]
+	if !exists || info.Key == "" {
 		return nil, &HTTPError{Status: 404, Message: "missing"}
-    }
-    
-    body, err := db.getRevision(docid, revid, info.Key)
-    if err != nil {
-        return nil, err
-    }
-    if info.Deleted {
-        body["_deleted"] = true
-    }
-    if listRevisions {
-        history := doc.History.getHistory(revid)
-        body["_revisions"] = encodeRevisions(history)
-    }
+	}
+
+	body, err := db.getRevision(docid, revid, info.Key)
+	if err != nil {
+		return nil, err
+	}
+	if info.Deleted {
+		body["_deleted"] = true
+	}
+	if listRevisions {
+		history := doc.History.getHistory(revid)
+		body["_revisions"] = encodeRevisions(history)
+	}
 	return body, nil
 }
 
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
-    return db.GetRev(docid, "", false)
+	return db.GetRev(docid, "", false)
 }
 
 // Updates or creates a document.
@@ -108,7 +108,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 				Message: "No previous revision to replace"}
 		}
 		doc = newDocument()
-        doc.ID = docid
+		doc.ID = docid
 	} else {
 		if !doc.History.isLeaf(matchRev) {
 			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
@@ -116,34 +116,34 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	}
 
 	// Make up a new _rev:
-	generation,_ := parseRevID(matchRev)
+	generation, _ := parseRevID(matchRev)
 	if generation < 0 {
 		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
 	newRev := createRevID(generation+1, matchRev, body)
 
 	body["_rev"] = newRev
-    deleted, _ := body["_deleted"].(bool)
-	doc.History.addRevision(RevInfo{ID:newRev, Parent:matchRev, Deleted:deleted})
+	deleted, _ := body["_deleted"].(bool)
+	doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
 	doc.CurrentRev = doc.History.winningRevision()
-    doc.Deleted = doc.History[doc.CurrentRev].Deleted
-    err = db.putDocAndBody(docid, newRev, doc, body)
-    if err != nil {
-        return "", err
-    }
-    return newRev, nil
+	doc.Deleted = doc.History[doc.CurrentRev].Deleted
+	err = db.putDocAndBody(docid, newRev, doc, body)
+	if err != nil {
+		return "", err
+	}
+	return newRev, nil
 }
 
 func (db *Database) putDocAndBody(docid string, revid string, doc *document, body Body) error {
-    var err error
+	var err error
 	doc.Sequence, err = db.generateSequence()
 	if err != nil {
 		return err
 	}
-    key, err := db.setRevision(body)
-    if err != nil {
-        return err
-    }
+	key, err := db.setRevision(body)
+	if err != nil {
+		return err
+	}
 
 	doc.History.setRevisionKey(revid, key)
 	return db.setDoc(docid, doc)
@@ -174,7 +174,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		// Creating new document:
 		doc = newDocument()
-        doc.ID = docid
+		doc.ID = docid
 	} else {
 		// Find the point where this doc's history branches from the current rev:
 		for i, revid := range docHistory {
@@ -185,28 +185,28 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 	}
 
-    if currentRevIndex == 0 {
-        return nil  // No new revisions to add
-    }
-    
-    deleted,_ := body["_deleted"].(bool)
+	if currentRevIndex == 0 {
+		return nil // No new revisions to add
+	}
 
-    // Add all the new-to-me revisions to the rev tree:
+	deleted, _ := body["_deleted"].(bool)
+
+	// Add all the new-to-me revisions to the rev tree:
 	for i := currentRevIndex - 1; i >= 0; i-- {
-        parent := ""
-        if i+1 < len(docHistory) {
-            parent = docHistory[i+1]
-        }
-		doc.History.addRevision(
-            RevInfo{ID:docHistory[i],
-            Parent:parent,
-            Deleted: (i==0 && deleted)})
+		parent := ""
+		if i+1 < len(docHistory) {
+			parent = docHistory[i+1]
+		}
+		doc.History.addRevision(RevInfo{
+			ID:      docHistory[i],
+			Parent:  parent,
+			Deleted: (i == 0 && deleted)})
 	}
 	doc.CurrentRev = doc.History.winningRevision()
-    doc.Deleted = doc.History[doc.CurrentRev].Deleted
-    
-    // Save the document and body:
-    return db.putDocAndBody(docid, docHistory[0], doc, body)
+	doc.Deleted = doc.History[doc.CurrentRev].Deleted
+
+	// Save the document and body:
+	return db.putDocAndBody(docid, docHistory[0], doc, body)
 }
 
 // Deletes a document, by adding a new revision whose "_deleted" property is true.
@@ -244,9 +244,9 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	doc, err := db.getDoc(docid)
 	if err != nil {
 		if !isMissingDocError(err) {
-            log.Printf("WARNING: RevDiff(%q) --> %T %v", docid, err, err)//TEMP
-            // If something goes wrong getting the doc, treat it as though it's nonexistent.
-        }
+			log.Printf("WARNING: RevDiff(%q) --> %T %v", docid, err, err) //TEMP
+			// If something goes wrong getting the doc, treat it as though it's nonexistent.
+		}
 		missing = revids
 		err = nil
 		return
@@ -261,7 +261,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 			if missing == nil {
 				missing = make([]string, 0, 5)
 			}
-			gen,_ := parseRevID(revid)
+			gen, _ := parseRevID(revid)
 			if gen > 0 {
 				missing = append(missing, revid)
 				if gen > maxMissingGen {
@@ -273,7 +273,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	if missing != nil {
 		possible = make([]string, 0, 5)
 		for revid, _ := range revmap {
-            gen,_ := parseRevID(revid)
+			gen, _ := parseRevID(revid)
 			if !found[revid] && gen < maxMissingGen {
 				possible = append(possible, revid)
 			}

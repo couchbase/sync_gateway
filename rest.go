@@ -19,9 +19,9 @@ var PrettyPrint bool = false
 // HTTP handler for a GET of a document
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) {
 	query := rq.URL.Query()
-    revid := query.Get("rev")
-    
-    value, err := db.GetRev(docid, revid, query.Get("revs")=="true")
+	revid := query.Get("rev")
+
+	value, err := db.GetRev(docid, revid, query.Get("revs") == "true")
 	if err != nil {
 		writeError(err, r)
 		return
@@ -294,7 +294,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 		case "_all_docs":
 			if method == "GET" || method == "POST" {
 				db.HandleAllDocs(r, rq)
-                return
+				return
 			}
 		case "_bulk_docs":
 			if method == "POST" {
@@ -317,7 +317,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 				output, err := db.RevsDiff(input)
 				if err != nil {
 					writeError(err, r)
-                    return
+					return
 				}
 				writeJSON(output, r, rq)
 				return
@@ -376,11 +376,11 @@ func handleRoot(r http.ResponseWriter, rq *http.Request) {
 func handleAllDbs(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Request) {
 	if rq.Method == "GET" {
 		response, err := AllDbNames(bucket)
-        if err != nil {
-            writeError(err, r)
-        } else {
-            writeJSON(response, r, rq)
-        }
+		if err != nil {
+			writeError(err, r)
+		} else {
+			writeJSON(response, r, rq)
+		}
 	} else {
 		r.WriteHeader(http.StatusBadRequest)
 	}
@@ -399,9 +399,9 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 		}
 		dbName := path[0]
 
-        if dbName == "_all_dbs" {
-            handleAllDbs(bucket, r, rq)
-        } else if rq.Method == "PUT" && len(path) == 1 {
+		if dbName == "_all_dbs" {
+			handleAllDbs(bucket, r, rq)
+		} else if rq.Method == "PUT" && len(path) == 1 {
 			// Create a database:
 			log.Printf("%s %s", rq.Method, dbName)
 			_, err := CreateDatabase(bucket, dbName)
@@ -490,16 +490,16 @@ func readJSON(rq *http.Request) (Body, error) {
 
 // Writes an object to the response in JSON format.
 func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
-    if rq != nil {
-        accept := rq.Header.Get("Accept")
-        if accept != "" && !strings.Contains(accept, "application/json") &&
-                           !strings.Contains(accept, "*/*") {
-    		log.Printf("WARNING: Client won't accept JSON, only %s", accept)
-    		r.WriteHeader(http.StatusNotAcceptable)
-            return
-        }
-    }
-    
+	if rq != nil {
+		accept := rq.Header.Get("Accept")
+		if accept != "" && !strings.Contains(accept, "application/json") &&
+			!strings.Contains(accept, "*/*") {
+			log.Printf("WARNING: Client won't accept JSON, only %s", accept)
+			r.WriteHeader(http.StatusNotAcceptable)
+			return
+		}
+	}
+
 	jsonOut, err := json.Marshal(value)
 	if err != nil {
 		log.Printf("WARNING: Couldn't serialize JSON for %v", value)

@@ -115,7 +115,7 @@ func installViews(bucket *couchbase.Bucket) error {
 	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "couchdb")
 
 	//FIX: This view includes local docs; it shouldn't!
-    alldbs_map := `function (doc, meta) {
+	alldbs_map := `function (doc, meta) {
                      var pieces = meta.id.split(":");
                      if (pieces.length != 2 || pieces[0] != "cdb")
                         return;
@@ -139,9 +139,9 @@ func installViews(bucket *couchbase.Bucket) error {
                     emit([pieces[1], doc.sequence], value); }`
 
 	ddoc := Body{
-        "language": "javascript",
+		"language": "javascript",
 		"views": Body{
-			"all_dbs": Body{"map": alldbs_map},
+			"all_dbs":  Body{"map": alldbs_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
@@ -167,7 +167,7 @@ func AllDbNames(bucket *couchbase.Bucket) ([]string, error) {
 		log.Printf("WARNING: View returned %v", err)
 		return nil, err
 	}
-	log.Printf("View returned %v", vres)//TEMP
+	log.Printf("View returned %v", vres) //TEMP
 
 	rows := vres.Rows
 	result := make([]string, 0, len(rows))
@@ -194,7 +194,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
 		key := row.Key.([]interface{})
-        log.Printf("\tkey = %v , value = %v", key, row.Value)
+		log.Printf("\tkey = %v , value = %v", key, row.Value)
 		result = append(result, IDAndRev{DocID: key[1].(string), RevID: row.Value.(string)})
 	}
 	return result, nil

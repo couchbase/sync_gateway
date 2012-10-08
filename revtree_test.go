@@ -10,13 +10,13 @@ import (
 	"testing"
 )
 
-var testmap = RevTree{"3-three": {ID:"3-three", Parent:"2-two"},
-                      "2-two": {ID:"2-two", Parent:"1-one"},
-                      "1-one": {ID:"1-one"}}
-var branchymap = RevTree{"3-three": {ID:"3-three", Parent:"2-two"},
-                      "2-two": {ID:"2-two", Parent:"1-one"},
-                      "1-one": {ID:"1-one"},
-                      "3-drei": {ID:"3-drei", Parent:"2-two"}}
+var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
+					"2-two": {ID: "2-two", Parent: "1-one"},
+					"1-one": {ID: "1-one"}}
+var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
+	"2-two":  {ID: "2-two", Parent: "1-one"},
+	"1-one":  {ID: "1-one"},
+	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
 const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1]}`
 
@@ -69,33 +69,33 @@ func TestAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.DeepEquals(t, tempmap, testmap)
 
-	tempmap.addRevision(RevInfo{ID:"4-four", Parent:"3-three"})
+	tempmap.addRevision(RevInfo{ID: "4-four", Parent: "3-three"})
 	assert.Equals(t, tempmap.getParent("4-four"), "3-three")
 }
 
 func TestCompareRevIDs(t *testing.T) {
-    assert.Equals(t, compareRevIDs("1-aaa", "1-aaa"), 0)
-    assert.Equals(t, compareRevIDs("1-aaa", "5-aaa"), -1)
-    assert.Equals(t, compareRevIDs("10-aaa", "5-aaa"), 1)
-    assert.Equals(t, compareRevIDs("1-bbb", "1-aaa"), 1)
-    assert.Equals(t, compareRevIDs("5-bbb", "1-zzz"), 1)
+	assert.Equals(t, compareRevIDs("1-aaa", "1-aaa"), 0)
+	assert.Equals(t, compareRevIDs("1-aaa", "5-aaa"), -1)
+	assert.Equals(t, compareRevIDs("10-aaa", "5-aaa"), 1)
+	assert.Equals(t, compareRevIDs("1-bbb", "1-aaa"), 1)
+	assert.Equals(t, compareRevIDs("5-bbb", "1-zzz"), 1)
 }
 
 func TestIsLeaf(t *testing.T) {
-    assertTrue(t, branchymap.isLeaf("3-three"), "isLeaf failed on 3-three")
-    assertTrue(t, branchymap.isLeaf("3-drei"), "isLeaf failed on 3-drei")
-    assertFalse(t, branchymap.isLeaf("2-two"), "isLeaf failed on 2-two")
-    assertFalse(t, branchymap.isLeaf("bogus"), "isLeaf failed on 'bogus")
-    assertFalse(t, branchymap.isLeaf(""), "isLeaf failed on ''")
+	assertTrue(t, branchymap.isLeaf("3-three"), "isLeaf failed on 3-three")
+	assertTrue(t, branchymap.isLeaf("3-drei"), "isLeaf failed on 3-drei")
+	assertFalse(t, branchymap.isLeaf("2-two"), "isLeaf failed on 2-two")
+	assertFalse(t, branchymap.isLeaf("bogus"), "isLeaf failed on 'bogus")
+	assertFalse(t, branchymap.isLeaf(""), "isLeaf failed on ''")
 }
 
 func TestWinningRev(t *testing.T) {
 	tempmap := branchymap.copy()
-    assert.Equals(t, tempmap.winningRevision(), "3-three")
-	tempmap.addRevision(RevInfo{ID:"4-four", Parent:"3-three"})
-    assert.Equals(t, tempmap.winningRevision(), "4-four")
-	tempmap.addRevision(RevInfo{ID:"5-five", Parent:"4-four", Deleted:true})
-    assert.Equals(t, tempmap.winningRevision(), "3-drei")
+	assert.Equals(t, tempmap.winningRevision(), "3-three")
+	tempmap.addRevision(RevInfo{ID: "4-four", Parent: "3-three"})
+	assert.Equals(t, tempmap.winningRevision(), "4-four")
+	tempmap.addRevision(RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	assert.Equals(t, tempmap.winningRevision(), "3-drei")
 }
 
 //////// HELPERS:

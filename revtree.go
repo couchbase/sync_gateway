@@ -5,17 +5,17 @@ package basecouch
 import (
 	"encoding/json"
 	"fmt"
-    "log"
+	"log"
 )
 
 type RevKey string
 
 // Information about a single revision.
 type RevInfo struct {
-    ID      string
-    Parent  string
-    Key     RevKey
-    Deleted bool
+	ID      string
+	Parent  string
+	Key     RevKey
+	Deleted bool
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
@@ -27,36 +27,36 @@ type RevTree map[string]RevInfo
 type revTreeList struct {
 	Revs    []string `json:"revs"`              // The revision IDs
 	Parents []int    `json:"parents"`           // Index of parent of each revision (-1 if root)
-    Keys    []string `json:"keys"`              // Couchbase key of revision content
-    Deleted []int    `json:"deleted,omitempty"` // Indexes of revisions that are deletions
+	Keys    []string `json:"keys"`              // Couchbase key of revision content
+	Deleted []int    `json:"deleted,omitempty"` // Indexes of revisions that are deletions
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
-    n := len(tree)
-    rep := revTreeList{
-        Revs: make([]string, n),
-        Parents: make([]int, n),
-        Keys: make([]string, n),
-    }
+	n := len(tree)
+	rep := revTreeList{
+		Revs:    make([]string, n),
+		Parents: make([]int, n),
+		Keys:    make([]string, n),
+	}
 	revIndexes := map[string]int{"": -1}
 
-    i := 0
-	for _,info := range tree {
+	i := 0
+	for _, info := range tree {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
-        rep.Keys[i] = string(info.Key)
-        if info.Deleted {
-            if rep.Deleted == nil {
-                rep.Deleted = make([]int, 0, 1)
-            }
-            rep.Deleted = append(rep.Deleted, i)
-        }
-        i++
+		rep.Keys[i] = string(info.Key)
+		if info.Deleted {
+			if rep.Deleted == nil {
+				rep.Deleted = make([]int, 0, 1)
+			}
+			rep.Deleted = append(rep.Deleted, i)
+		}
+		i++
 	}
-    
-    for i,revid := range(rep.Revs) {
-        rep.Parents[i] = revIndexes[tree[revid].Parent]
-    }
+
+	for i, revid := range rep.Revs {
+		rep.Parents[i] = revIndexes[tree[revid].Parent]
+	}
 
 	return json.Marshal(rep)
 }
@@ -69,23 +69,23 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	}
 
 	for i, revid := range rep.Revs {
-        info := RevInfo{ ID: revid }
-        if rep.Keys != nil {
-            info.Key = RevKey(rep.Keys[i])
-        }
+		info := RevInfo{ID: revid}
+		if rep.Keys != nil {
+			info.Key = RevKey(rep.Keys[i])
+		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
 		}
-        tree[revid] = info
+		tree[revid] = info
 	}
-    if rep.Deleted != nil {
-        for _,i:= range(rep.Deleted) {
-            info := tree[rep.Revs[i]]
-            info.Deleted = true        //because tree[rep.Revs[i]].Deleted=true is a compile error
-            tree[rep.Revs[i]] = info
-        }
-    }
+	if rep.Deleted != nil {
+		for _, i := range rep.Deleted {
+			info := tree[rep.Revs[i]]
+			info.Deleted = true //because tree[rep.Revs[i]].Deleted=true is a compile error
+			tree[rep.Revs[i]] = info
+		}
+	}
 	return
 }
 
@@ -136,44 +136,44 @@ func (tree RevTree) getLeaves() []string {
 }
 
 func (tree RevTree) isLeaf(revid string) bool {
-    if !tree.contains(revid) {
-        return false
-    }
-    for _,info := range(tree) {
-        if info.Parent == revid {
-            return false
-        }
-    }
-    return true
+	if !tree.contains(revid) {
+		return false
+	}
+	for _, info := range tree {
+		if info.Parent == revid {
+			return false
+		}
+	}
+	return true
 }
 
 // Finds the "winning" revision, the one that should be treated as the default.
 // This is the leaf revision whose (!deleted, generation, hash) tuple compares the highest.
 func (tree RevTree) winningRevision() string {
-    winner := ""
-    winnerExists := false
-    for _,revid := range(tree.getLeaves()) {
-        info := tree[revid]
-        exists := !info.Deleted
-        if (exists && !winnerExists) ||
-                 ((exists == winnerExists) && compareRevIDs(revid, winner) > 0) {
-            winner = revid
-            winnerExists = exists
-        }
-    }
-    return winner
+	winner := ""
+	winnerExists := false
+	for _, revid := range tree.getLeaves() {
+		info := tree[revid]
+		exists := !info.Deleted
+		if (exists && !winnerExists) ||
+			((exists == winnerExists) && compareRevIDs(revid, winner) > 0) {
+			winner = revid
+			winnerExists = exists
+		}
+	}
+	return winner
 }
 
 // Records a revision in a RevTree.
 func (tree RevTree) addRevision(info RevInfo) {
-    revid := info.ID
-	if revid  == "" {
+	revid := info.ID
+	if revid == "" {
 		panic("empty revid is illegal")
 	}
 	if tree.contains(revid) {
 		panic(fmt.Sprintf("already contains rev %q", revid))
 	}
-    parent := info.Parent
+	parent := info.Parent
 	if parent != "" && !tree.contains(parent) {
 		panic(fmt.Sprintf("parent id %q is missing", parent))
 	}
@@ -181,12 +181,12 @@ func (tree RevTree) addRevision(info RevInfo) {
 }
 
 func (tree RevTree) setRevisionKey(revid string, key RevKey) {
-    info, found := tree[revid]
-    if !found {
+	info, found := tree[revid]
+	if !found {
 		panic(fmt.Sprintf("rev id %q not found", revid))
-    }
-    info.Key = key
-    tree[revid] = info
+	}
+	info.Key = key
+	tree[revid] = info
 }
 
 // Copies a RevTree.
@@ -199,7 +199,6 @@ func (tree RevTree) copy() RevTree {
 }
 
 //////// HELPERS:
-
 
 // Parses a CouchDB _revisions property into a list of revision IDs
 func parseRevisions(body Body) []string {
@@ -223,16 +222,16 @@ func parseRevisions(body Body) []string {
 }
 
 func encodeRevisions(revs []string) Body {
-    ids := make([]string, len(revs))
-    var start int
-    for i,revid := range(revs) {
-        gen, id := parseRevID(revid)
-        ids[i] = id
-        if i == 0 {
-            start = gen
-        } else if gen != start - i {
-            log.Printf("WARNING: encodeRevisions found weird history %v", revs)
-        }
-    }
-    return Body{"start": start, "ids": ids}
+	ids := make([]string, len(revs))
+	var start int
+	for i, revid := range revs {
+		gen, id := parseRevID(revid)
+		ids[i] = id
+		if i == 0 {
+			start = gen
+		} else if gen != start-i {
+			log.Printf("WARNING: encodeRevisions found weird history %v", revs)
+		}
+	}
+	return Body{"start": start, "ids": ids}
 }
