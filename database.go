@@ -239,10 +239,11 @@ func (db *Database) generateSequence() (uint64, error) {
 
 // Options for Database.getChanges
 type ChangesOptions struct {
-	Since      uint64
-	Limit      int
-	Descending bool
-	Conflicts  bool
+	Since       uint64
+	Limit       int
+	Descending  bool
+	Conflicts   bool
+    IncludeDocs bool
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -250,8 +251,9 @@ type ChangesOptions struct {
 type ChangeEntry struct {
 	Seq     uint64      `json:"seq"`
 	ID      string      `json:"id"`
-	Changes []ChangeRev `json:"changes"`
 	Deleted bool        `json:"deleted,omitempty"`
+	Doc     Body        `json:"doc,omitempty"`
+	Changes []ChangeRev `json:"changes"`
 }
 
 type ChangeRev map[string]string
@@ -289,14 +291,22 @@ func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
 			Deleted: (len(value) >= 3 && value[2].(bool)),
 		}
 
-		if options.Conflicts {
+		if options.Conflicts || options.IncludeDocs {
 			doc, _ := db.getDoc(docID)
 			if doc != nil {
-				for _, leafID := range doc.History.getLeaves() {
-					if leafID != revID {
-						entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
-					}
-				}
+        		if options.Conflicts {
+    				for _, leafID := range doc.History.getLeaves() {
+    					if leafID != revID {
+    						entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+    					}
+    				}
+                }
+                if options.IncludeDocs {
+                    key := doc.History[revID].Key
+                    if key != "" {
+                        entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
+                    }
+                }
 			}
 		}
 

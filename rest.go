@@ -217,6 +217,7 @@ func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) {
 	options.Since = getIntQuery(rq, "since")
 	options.Limit = int(getIntQuery(rq, "limit"))
 	options.Conflicts = (rq.URL.Query().Get("style") == "all_docs")
+	options.IncludeDocs = (rq.URL.Query().Get("include_docs") == "true")
 
 	changes, err := db.GetChanges(options)
 	var lastSeq uint64

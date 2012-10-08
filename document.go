@@ -54,12 +54,22 @@ func (db *Database) setDoc(docid string, doc *document) error {
 	return db.bucket.Set(key, 0, doc)
 }
 
+// Returns the body of the current revision of a document
+func (db *Database) Get(docid string) (Body, error) {
+	return db.GetRev(docid, "", false)
+}
+
 // Returns the body of a revision of a document.
 func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error) {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
 		return nil, err
 	}
+    return db.getRevFromDoc(doc, revid, listRevisions)
+}
+
+// Returns the body of a revision given a document struct
+func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
 	if revid == "" {
 		revid = doc.CurrentRev
 		if doc.History[revid].Deleted == true {
@@ -71,7 +81,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error
 		return nil, &HTTPError{Status: 404, Message: "missing"}
 	}
 
-	body, err := db.getRevision(docid, revid, info.Key)
+	body, err := db.getRevision(doc.ID, revid, info.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +93,6 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error
 		body["_revisions"] = encodeRevisions(history)
 	}
 	return body, nil
-}
-
-// Returns the body of the current revision of a document
-func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRev(docid, "", false)
 }
 
 // Updates or creates a document.
