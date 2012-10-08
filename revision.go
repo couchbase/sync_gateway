@@ -62,6 +62,18 @@ func parseRevID(revid string) (int, string) {
 	return generation, id
 }
 
+func compareRevIDs(id1, id2 string) int {
+    gen1, sha1 := parseRevID(id1)
+    gen2, sha2 := parseRevID(id2)
+    switch {
+        case gen1 > gen2: return 1
+        case gen1 < gen2: return -1
+        case sha1 > sha2: return 1
+        case sha1 < sha2: return -1
+    }
+    return 0
+}
+
 func stripSpecialProperties(body Body) Body {
     stripped := Body{}
 	for key, value := range body {

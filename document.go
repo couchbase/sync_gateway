@@ -107,7 +107,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		}
 		doc = newDocument()
 	} else {
-		if matchRev != doc.CurrentRev {
+		if !doc.History.isLeaf(matchRev) {
 			return "", &HTTPError{Status: http.StatusConflict,
 				Message: "Incorrect revision ID; should be " + doc.CurrentRev}
 		}
@@ -121,9 +121,9 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	newRev := createRevID(generation+1, matchRev, body)
 
 	body["_rev"] = newRev
-	doc.CurrentRev = newRev //FIX: Need to consider the "winning rev" algorithm
     deleted, _ := body["_deleted"].(bool)
 	doc.History.addRevision(RevInfo{ID:newRev, Parent:matchRev, Deleted:deleted})
+	doc.CurrentRev = doc.History.winningRevision()
     err = db.putDocAndBody(docid, newRev, doc, body)
     if err != nil {
         return "", err
@@ -189,7 +189,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
         }
 		doc.History.addRevision(RevInfo{ID:docHistory[i], Parent:parent})
 	}
-    doc.CurrentRev = docHistory[0] //FIX: Need to consider the "winning rev" algorithm
+	doc.CurrentRev = doc.History.winningRevision()
     
     // Save the document and body:
     return db.putDocAndBody(docid, docHistory[0], doc, body)
