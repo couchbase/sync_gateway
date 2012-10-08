@@ -244,7 +244,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	doc, err := db.getDoc(docid)
 	if err != nil {
 		if !isMissingDocError(err) {
-			log.Printf("WARNING: RevDiff(%q) --> %T %v", docid, err, err) //TEMP
+			log.Printf("WARNING: RevDiff(%q) --> %T %v", docid, err, err)
 			// If something goes wrong getting the doc, treat it as though it's nonexistent.
 		}
 		missing = revids

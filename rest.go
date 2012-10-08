@@ -267,8 +267,13 @@ func (db *Database) HandleDeleteLocalDoc(r http.ResponseWriter, rq *http.Request
 
 // HTTP handler for a database.
 func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []string) {
+    pathLen := len(path)
+    if pathLen >= 2 && path[0] == "_design" {
+        path[0] += "/" + path[1]
+        pathLen--
+    }
 	method := rq.Method
-	switch len(path) {
+	switch pathLen {
 	case 0:
 		// Root level
 		log.Printf("%s %s\n", method, db.Name)
@@ -323,7 +328,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 				return
 			}
 		default:
-			if docid[0] != '_' {
+			if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
 				// Accessing a document:
 				switch method {
 				case "GET":

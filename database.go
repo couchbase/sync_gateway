@@ -167,7 +167,6 @@ func AllDbNames(bucket *couchbase.Bucket) ([]string, error) {
 		log.Printf("WARNING: View returned %v", err)
 		return nil, err
 	}
-	log.Printf("View returned %v", vres) //TEMP
 
 	rows := vres.Rows
 	result := make([]string, 0, len(rows))
@@ -194,7 +193,6 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
 		key := row.Key.([]interface{})
-		log.Printf("\tkey = %v , value = %v", key, row.Value)
 		result = append(result, IDAndRev{DocID: key[1].(string), RevID: row.Value.(string)})
 	}
 	return result, nil
