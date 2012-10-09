@@ -205,11 +205,10 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) {
 			status["rev"] = revid
 		}
 		result = append(result, status)
-		log.Printf("\t%v", status)
 	}
 
 	r.WriteHeader(http.StatusCreated)
-	writeJSON(Body{"docs": result}, r, rq)
+	writeJSON(result, r, rq)
 }
 
 func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) {

@@ -63,9 +63,8 @@ func TestBulkDocs(t *testing.T) {
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}]}`
 	response := callREST("POST", "/resttest/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
-	var body Body
-	json.Unmarshal(response.Body.Bytes(), &body)
-	docs := body["docs"].([]interface{})
+	var docs []interface{}
+	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 2)
 	assert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
@@ -82,9 +81,8 @@ func TestBulkDocsNoEdits(t *testing.T) {
               ]}`
 	response := callREST("POST", "/resttest/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
-	var body Body
-	json.Unmarshal(response.Body.Bytes(), &body)
-	docs := body["docs"].([]interface{})
+	var docs []interface{}
+	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 2)
 	assert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "12-abc", "id": "bdne1"})
@@ -98,9 +96,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
             ]}`
 	response = callREST("POST", "/resttest/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
-	body = Body{}
-	json.Unmarshal(response.Body.Bytes(), &body)
-	docs = body["docs"].([]interface{})
+	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 1)
 	assert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "14-jkl", "id": "bdne1"})
