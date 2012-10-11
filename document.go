@@ -85,6 +85,10 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 	if err != nil {
 		return nil, err
 	}
+    err = db.fillInAttachments(body)
+	if err != nil {
+		return nil, err
+	}
 	if info.Deleted {
 		body["_deleted"] = true
 	}
@@ -119,13 +123,23 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
 		}
 	}
-
-	// Make up a new _rev:
+    
+	// Derive the new rev's generation #:
 	generation, _ := parseRevID(matchRev)
 	if generation < 0 {
 		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
-	newRev := createRevID(generation+1, matchRev, body)
+    generation++
+
+    // Process the attachments, replacing bodies with digests. This alters 'body' so it has to be
+    // done before calling createRevID (the ID is based on the digest of the body.)
+    err = db.storeAttachments(body, generation, doc.History[matchRev].Key)
+    if err != nil {
+        return "", err
+    }
+
+	// Make up a new _rev:
+	newRev := createRevID(generation, matchRev, body)
 
 	body["_rev"] = newRev
 	deleted, _ := body["_deleted"].(bool)
@@ -209,6 +223,19 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	}
 	doc.CurrentRev = doc.History.winningRevision()
 	doc.Deleted = doc.History[doc.CurrentRev].Deleted
+
+	// Get the new rev's generation #:
+	generation, _ := parseRevID(docHistory[0])
+	if generation < 0 {
+		return &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
+	}
+
+    // Process the attachments, replacing bodies with digests.
+    parentRevID := doc.History[docHistory[0]].Parent
+    err = db.storeAttachments(body, generation, doc.History[parentRevID].Key)
+    if err != nil {
+        return err
+    }
 
 	// Save the document and body:
 	return db.putDocAndBody(docid, docHistory[0], doc, body)
