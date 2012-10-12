@@ -164,6 +164,21 @@ func (tree RevTree) winningRevision() string {
 	return winner
 }
 
+// Given a revision and a set of possible ancestors, finds the one that is the most recent
+// ancestor of the revision; if none are ancestors, returns "".
+func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string {
+    //OPT: This is slow...
+	for revid != "" {
+		for _,a := range(ancestors) {
+            if a == revid {
+                return a
+            }
+        }
+		revid = tree.getInfo(revid).Parent
+	}
+    return ""
+}
+
 // Records a revision in a RevTree.
 func (tree RevTree) addRevision(info RevInfo) {
 	revid := info.ID

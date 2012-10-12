@@ -5,94 +5,103 @@ package basecouch
 import (
 	"crypto/sha1"
     "encoding/base64"
-	"fmt"
 )
 
-// Key for retrieving an attachment.
+// Key for retrieving an attachment from Couchbase.
 type AttachmentKey string
 
+// Structure of the _attachments dictionary in a document. (Maps attachment name to metadata dict.)
 type Attachments map[string]Body
 
-func (db *Database) storeAttachments(body Body, generation int, parentKey RevKey) error {
-    atts, exists := body["_attachments"].(Attachments)
-    if !exists {
+// Given a CouchDB document body about to be stored in the database, goes through the _attachments
+// dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
+// the bodies with the 'digest' attributes which are the keys to retrieving them.
+func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
+    rawAtts, ok := body["_attachments"]
+    if !ok {
         return nil
     }
-    var parentAttachments Attachments
-    for name,value := range(atts) {
-        meta := value
+    atts := rawAtts.(map[string]interface{})
+    var parentAttachments map[string]interface{}
+    for name,value:= range(atts) {
+        meta := value.(map[string]interface{})
         data, exists := meta["data"]
         if exists {
-            key, err := db.setAttachmentBase64(data.(string))
+            // Attachment contains data, so store it in the db:
+            attachment, err := base64.StdEncoding.DecodeString(data.(string))
+            if err != nil {
+                return err
+            }
+            key, err := db.setAttachment(attachment)
             if err != nil {
                 return err
             }
             delete(meta, "data")
+            meta["stub"] = true
+            meta["length"] = len(attachment)
             meta["digest"] = string(key)
             meta["revpos"] = generation
         } else {
-            // No data given; look it up from the parent revision:
+            // No data given; look it up from the parent revision.
             if parentAttachments == nil {
-                parent, err := db.getRevision("", "", parentKey)  // Don't care about docid,revid
+                parent, err := db.getAvailableRev(doc, parentRev)
                 if err != nil {
                     return err
                 }
-                parentAttachments, exists = parent["_attachments"].(Attachments)
+                parentAttachments, exists = parent["_attachments"].(map[string]interface{})
                 if !exists {
-                    return &HTTPError{Status: 400, Message: "Unknown attachment"}
+                    return &HTTPError{400, "Unknown attachment " + name}
                 }
             }
-            value = parentAttachments[name]
-            if value == nil {
-                return &HTTPError{Status: 400, Message: "Unknown attachment"}
+            parentAttachment := parentAttachments[name]
+            if parentAttachment == nil {
+                return &HTTPError{400, "Unknown attachment " + name}
             }
-            atts[name] = value
+            atts[name] = parentAttachment
         }
     }
     return nil
 }
 
-func (db *Database) fillInAttachments(body Body) error {
-    atts, exists := body["_attachments"].(Attachments)
-    if !exists {
+func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
+    atts := body["_attachments"]
+    if atts == nil {
         return nil
     }
-    for _,meta := range(atts) {
-        key := AttachmentKey(meta["digest"].(string))
-        data, err := db.getAttachmentBase64(key)
-        if err != nil {
-            return err
+    for _,value := range(atts.(map[string]interface{})) {
+        meta := value.(map[string]interface{})
+        revpos := int(meta["revpos"].(float64))
+        if revpos >= minRevpos {
+            key := AttachmentKey(meta["digest"].(string))
+            data, err := db.getAttachmentBase64(key)
+            if err != nil {
+                return err
+            }
+            meta["data"] = data
+            delete(meta, "stub")
         }
-        meta["data"] = data
     }
     return nil
 }
 
 // Retrieves an attachment, base64-encoded, given its key.
 func (db *Database) getAttachmentBase64(key AttachmentKey) (string, error) {
-    //FIX: Should get attachment in raw form; how do I get a non-JSON document?
-	var wrapper map[string]string
-	err := db.bucket.Get(attachmentKeyToString(key), &wrapper)
+	attachment, err := db.bucket.GetRaw(attachmentKeyToString(key))
 	if err != nil {
 		return "", err
 	}
-    return wrapper["data"], nil
+    return base64.StdEncoding.EncodeToString(attachment), nil
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
-func (db *Database) setAttachmentBase64(encoded string) (AttachmentKey, error) {
-    attachment, err := base64.StdEncoding.DecodeString(encoded)
-    if err != nil {
-        return "", err
-    }
+func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	digester := sha1.New()
 	digester.Write(attachment)
     digest := base64.StdEncoding.EncodeToString(digester.Sum(nil))
     
-	key := AttachmentKey(fmt.Sprintf("sha1-", digest))
-    //FIX: Should store raw attachment; how do I set a non-JSON document?
-    wrapper := map[string]string {"data": encoded}
-	return key, db.bucket.Set(attachmentKeyToString(key), 0, wrapper)
+	key := AttachmentKey("sha1-" + digest)
+    _, err := db.bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
+	return key, err
 }
 
 //////// HELPERS:

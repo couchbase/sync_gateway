@@ -29,6 +29,8 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	digester := sha1.New()
 	digester.Write(canonicalEncoding(body))
 	revKey := RevKey(fmt.Sprintf("%x", digester.Sum(nil)))
+    //OPT: Using Add would be more efficient if the value's already stored, but go-couchbase
+    // doesn't have an API for it yet.
 	return revKey, db.bucket.Set(revKeyToString(revKey), 0, body)
 }
 

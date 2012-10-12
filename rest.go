@@ -20,11 +20,28 @@ var PrettyPrint bool = false
 var LogRequests bool = true
 
 // HTTP handler for a GET of a document
-func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) (error ){
+func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) (error) {
 	query := rq.URL.Query()
 	revid := query.Get("rev")
+    
+    // What attachment bodies should be included?
+    var attachmentsSince []string = nil
+    if query.Get("attachments") == "true" {
+        atts := query.Get("atts_since")
+        if atts != "" {
+            var revids []string
+            err := json.Unmarshal([]byte(atts), &revids)
+            if err != nil {
+        		err = &HTTPError{http.StatusBadRequest, "bad atts_since"}
+            }
+        } else {
+            attachmentsSince = []string{}
+        }
+    }
 
-	value, err := db.GetRev(docid, revid, query.Get("revs") == "true")
+	value, err := db.GetRev(docid, revid,
+                             query.Get("revs") == "true",
+                             attachmentsSince)
 	if err != nil {
 		return err
 	}
