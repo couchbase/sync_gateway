@@ -5,6 +5,7 @@ package basecouch
 import (
 	"crypto/md5"
 	"crypto/sha1"
+    "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -28,10 +29,9 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	body = stripSpecialProperties(body)
 	digester := sha1.New()
 	digester.Write(canonicalEncoding(body))
-	revKey := RevKey(fmt.Sprintf("%x", digester.Sum(nil)))
-    //OPT: Using Add would be more efficient if the value's already stored, but go-couchbase
-    // doesn't have an API for it yet.
-	return revKey, db.bucket.Set(revKeyToString(revKey), 0, body)
+	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
+    _,err := db.bucket.Add(revKeyToString(revKey), 0, body)
+	return revKey, err
 }
 
 //////// HELPERS:
