@@ -366,7 +366,7 @@ func handleRoot(r http.ResponseWriter, rq *http.Request) error {
 	if rq.Method == "GET" {
 		response := map[string]string{
 			"couchdb": "welcome",
-			"version": "CouchGlue 0.0",
+			"version": "BaseCouch 0.1",
 		}
 		writeJSON(response, r, rq)
         return nil

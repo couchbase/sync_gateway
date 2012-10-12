@@ -2,14 +2,46 @@
 
 Gluing CouchDB to Couchbase Server
 
-This is a prototype implementation of an adapter that can allow Couchbase Server 2 to act as a replication endpoint for CouchDB and compatible libraries like TouchDB and PouchDB. It does this by running an HTTP listener that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
+This is an **experimental prototype** adapter that can allow Couchbase Server 2 to act as a replication endpoint for CouchDB and compatible libraries like TouchDB and PouchDB. It does this by running an HTTP listener that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
 
 ## Current Status
 
-As of October 8 2012, BaseCouch:
+As of October 12 2012, BaseCouch:
 
-* Supports both push and pull, although pull hasn't been tested as much.
-* Doesn't support attachments.
+* Supports both push and pull.
+* Supports revision trees and conflicts.
+* Supports attachments.
+
+Limitations:
+
+* Doesn't support MIME multipart bodies in HTTP requests (so pushing docs with attachments to it from CouchDB may fail. I have a new commit to TouchDB that works around this.)
+* Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
+* Deleting a database may leave Couchbase documents behind. This won't cause any errors but will take up space in the bucket.
+* There is no compaction yet. Revisions and attachments are never deleted, so the space used by the server grows monotonically.
+* Performance is probably not that great. This is an unoptimized proof of concept.
+
+## License
+
+Apache 2 license, like all Couchbase stuff.
+
+## How To Run It
+
+### Setup
+
+0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) on localhost.
+1. Create a bucket named `couchdb` in the default pool.
+1. Install [Go](http://golang.org).
+2. `go get -u github.com/couchbaselabs/basecouch`
+
+### Startup
+
+3. `cd` to the first directory in your `$GOPATH`, i.e. the location you set up to store downloaded Go packages.
+4. `cd src/basecouch`
+5. `go run util/main.go`
+
+You now have a sort of mock-CouchDB listening on port 4984. It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible server to replicate with it.
+
+If you want to run Couchbase on a different host, or use a different name for the bucket, or listen on a different port, you can do that with command-line options to `main.go`. Use the `--help` flag to see a list of options.
 
 ## Schema
 
@@ -17,7 +49,7 @@ Unfortunately there isn't a simple one-to-one mapping between CouchDB and Couchb
 
 ### Database
 
-A CouchDB database is represented by a Couchbase document whose ID is `cdb:`_name_ where _name_ is the name of the database. The contents look like:
+All CouchDB databases live in a single bucket. A CouchDB database is represented by a Couchbase document whose ID is `cdb:`_name_ where _name_ is the name of the database. The contents look like:
 
     { "name": "database-name", "docPrefix": "doc:database-name/ABCDEF:" }
 
@@ -41,8 +73,17 @@ A CouchDB document is represented by a Couchbase document whose ID is the databa
 
 ### Revision
 
-A CouchDB document is represented by a Couchbase document whose ID starts with `rev:`. The rest of the ID is the revision key as found in the `keys` array of a document's `history` object. This key is in practice a hex SHA-1 digest of the revision's JSON.
+A CouchDB document is represented by a Couchbase document whose ID starts with `rev:`. The rest of the ID is the revision key as found in the `keys` array of a document's `history` object. This key is in practice a base64'd SHA-1 digest of the revision's JSON.
 
-The contents of a revision document are simply the contents of that revision. For maximum reuse, the `_id` and `_rev` properties are not included, although `_deleted` is.
+The contents of a revision document are simply the contents of that revision. For maximum reuse, the `_id` and `_rev` properties are not included, although `_deleted` and `_attachments` are.
 
 Note that revisions are a content-addressable store, in that the document key is derived from the contents. This allows revisions with the same contents to be stored only once, saving space. This is especially important for use cases like Syncpoint, where a document may be replicated into large numbers of databases. As long as all the databases are in the same bucket, each revision of the document will only be stored once.
+
+### Attachment
+
+Revisions store attachment metadata in stubbed-out form, with a `"stub":true` property and no data. The `digest` property in the metadata is used to look up an attachment body.
+
+An attachment's body is stored in a Couchbase document whose ID is `att:` followed by the attachment metadata's `digest` property. (Attachments are therefore another content-addressable store, with a different namespace, and have the same benefit that a specific file will only ever be stored once no matter how many documents it's attached to.)
+
+An attachment document's body is _not_ JSON. It's simply the raw binary data of the attachment.
+
