@@ -175,6 +175,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
 	doc.CurrentRev = doc.History.winningRevision()
 	doc.Deleted = doc.History[doc.CurrentRev].Deleted
+    //FIX: This should be using CAS to avoid multiple-writer race conditions!
 	err = db.putDocAndBody(docid, newRev, doc, body)
 	if err != nil {
 		return "", err
@@ -267,6 +268,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
     }
 
 	// Save the document and body:
+    //FIX: This should be using CAS to avoid multiple-writer race conditions!
 	return db.putDocAndBody(docid, docHistory[0], doc, body)
 }
 

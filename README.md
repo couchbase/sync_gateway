@@ -18,6 +18,7 @@ Limitations:
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
 * Deleting a database may leave Couchbase documents behind. This won't cause any errors but will take up space in the bucket.
 * There is no compaction yet. Revisions and attachments are never deleted, so the space used by the server grows monotonically.
+* No access control: it's admin party 24/7!
 * Performance is probably not that great. This is an unoptimized proof of concept.
 
 ## License
@@ -36,7 +37,7 @@ Apache 2 license, like all Couchbase stuff.
 ### Startup
 
 3. `cd` to the first directory in your `$GOPATH`, i.e. the location you set up to store downloaded Go packages.
-4. `cd src/basecouch`
+4. `cd src/github.com/couchbaselabs/basecouch`
 5. `go run util/main.go`
 
 You now have a sort of mock-CouchDB listening on port 4984. It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible server to replicate with it.
@@ -87,3 +88,8 @@ An attachment's body is stored in a Couchbase document whose ID is `att:` follow
 
 An attachment document's body is _not_ JSON. It's simply the raw binary data of the attachment.
 
+## Crazy Ideas
+
+This schema seems like an efficient way to implement a server for mobile clients, a la Syncpoint, where every user has their own database on the server that contains a subset of the entire data set. If the user data sets overlap, which seems common if they're all drawn from a central data store, the content-addressable sharing of revisions and attachments between documents means a lot less space usage, and less data to copy during replication. The main thing that needs to be implemented for this is a local-only replicator, i.e. a command to say "replicate database A to database B". Since both A and B are in the same bucket, this would simply involve copying rev-tree changes from one document to another.
+
+If you replace the calls to the Couchbase Server API with equivalent calls to CouchStore, you have the beginnings of a lightweight local CouchDB-compatible database, something like TouchDB. This shouldn't be hard, because the basic key-value get/put operations are identical, and the usage of views for finding all documents and for by-sequence lookups is already available directly in CouchStore via key range enumeration and the by-sequence index. (The hardest part would be implementing the rest [sic] of the CouchDB API, especially views. You'd probably need to create a separate CouchStore database for every view to serve as its index.)
