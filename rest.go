@@ -30,6 +30,9 @@ var PrettyPrint bool = false
 var LogRequests bool = true
 var LogRequestsVerbose bool = false
 
+var kNotFoundError = &HTTPError{http.StatusNotFound, "missing"}
+var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
+
 // HTTP handler for a GET of a document
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) (error) {
 	query := rq.URL.Query()
@@ -57,8 +60,7 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 		return err
 	}
 	if value == nil {
-		err = &HTTPError{http.StatusNotFound, "missing"}
-		return err
+		return kNotFoundError
 	}
 	r.Header().Set("Etag", value["_rev"].(string))
 	writeJSON(value, r, rq)
@@ -281,7 +283,7 @@ func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, d
 		return err
 	}
 	if value == nil {
-		return &HTTPError{http.StatusNotFound, "missing"}
+		return kNotFoundError
 	}
 	writeJSON(value, r, rq)
     return nil
@@ -354,8 +356,8 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
                 return db.HandleRevsDiff(r, rq)
 			}
         case "_ensure_full_commit":
-            if method == "POST": {
-                // no-op. CouchDB's replicator sends this, so don't barf. Status must be 202.
+            if method == "POST" {
+                // no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
                 return &HTTPError{201, "Committed"}
             }
 		default:
@@ -368,9 +370,13 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 					return db.HandlePutDoc(r, rq, docid)
 				case "DELETE":
 					return db.HandleDeleteDoc(r, rq, docid)
+                default:
+                    return kBadMethodError;
 				}
 			}
+            return kNotFoundError
 		}
+        return kBadMethodError
 	case 2:
 		if path[0] == "_local" {
 			docid := path[1]
@@ -381,12 +387,14 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 				return db.HandlePutLocalDoc(r, rq, docid)
 			case "DELETE":
 				return db.HandleDeleteLocalDoc(r, rq, docid)
+            default:
+                return kBadMethodError;
 			}
 		}
 	}
 	// Fall through to here if the request was not recognized:
 	log.Printf("WARNING: Unhandled %s %s\n", method, rq.URL)
-	return &HTTPError{http.StatusBadRequest, "bad request"}
+	return kNotFoundError
 }
 
 // HTTP handler for the root ("/")
@@ -427,12 +435,12 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 		}
         var err error
 		if len(path) == 0 {
-			err =handleRoot(r, rq)
+			err = handleRoot(r, rq)
         } else if path[0] == "_all_dbs" {
 			err = handleAllDbs(bucket, r, rq)
 		} else if rq.Method == "PUT" && len(path) == 1 {
 			// Create a database:
-			_, err := CreateDatabase(bucket, path[0])
+			_, err = CreateDatabase(bucket, path[0])
 			if err == nil {
                 r.WriteHeader(http.StatusCreated)
             }

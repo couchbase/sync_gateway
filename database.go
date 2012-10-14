@@ -82,17 +82,15 @@ func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
 	if docname == "" {
 		return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
 	}
-	var db Database
-	err := bucket.Get(docname, &db)
-	if err == nil {
-		return nil, &HTTPError{Status: 412, Message: "Database already exists"}
-	}
 
-	db = Database{bucket: bucket, Name: name, DocPrefix: fmt.Sprintf("doc:%s/%s:", name, createUUID())}
-	err = bucket.Set(docname, 0, db)
+	db := Database{bucket: bucket, Name: name, DocPrefix: fmt.Sprintf("doc:%s/%s:", name, createUUID())}
+	added,err := bucket.Add(docname, 0, db)
 	if err != nil {
 		return nil, err
 	}
+    if !added {
+		return nil, &HTTPError{Status: 412, Message: "Database already exists"}
+    }
 	return &db, nil
 }
 
