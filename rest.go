@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+    "fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -27,6 +28,7 @@ var PrettyPrint bool = false
 
 // If set to true, HTTP requests will be logged
 var LogRequests bool = true
+var LogRequestsVerbose bool = false
 
 // HTTP handler for a GET of a document
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) (error) {
@@ -128,7 +130,7 @@ func (db *Database) HandleAllDocs(r http.ResponseWriter, rq *http.Request) (erro
     var err error
 
 	// Get the doc IDs:
-	if rq.Method == "GET" {
+	if rq.Method == "GET" || rq.Method == "HEAD" {
 		ids, err = db.AllDocIDs()
 	} else {
 		input, err := readJSON(rq)
@@ -256,6 +258,22 @@ func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) (erro
     return err
 }
 
+func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) (error) {
+	var input RevsDiffInput
+	err := readJSONInto(rq, &input)
+	if err != nil {
+		return err
+	}
+    if (LogRequestsVerbose) {
+        log.Printf("\t%v", input)
+    }
+	output, err := db.RevsDiff(input)
+	if err == nil {
+    	writeJSON(output, r, rq)
+	}
+	return err
+}
+
 // HTTP handler for a GET of a _local document
 func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) (error) {
 	value, err := db.GetLocal(docid)
@@ -294,15 +312,21 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
         pathLen--
     }
 	method := rq.Method
+    if method == "HEAD" {
+        method = "GET"
+    }
 	switch pathLen {
 	case 0:
 		// Root level
 		//log.Printf("%s %s\n", method, db.Name)
 		switch method {
 		case "GET":
-			response := make(map[string]interface{})
-			response["db_name"] = db.Name
-			response["doc_count"] = db.DocCount()
+            lastSeq,_ := db.LastSequence()
+            response := Body{
+                "db_name": db.Name,
+                "doc_count": db.DocCount(),
+                "update_seq": lastSeq,
+            }
 			writeJSON(response, r, rq)
 			return nil
 		case "POST":
@@ -327,18 +351,13 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 			}
 		case "_revs_diff":
 			if method == "POST" {
-				var input RevsDiffInput
-				err := readJSONInto(rq, &input)
-				if err != nil {
-					return err
-				}
-				output, err := db.RevsDiff(input)
-				if err != nil {
-					return err
-				}
-				writeJSON(output, r, rq)
-				return nil
+                return db.HandleRevsDiff(r, rq)
 			}
+        case "_ensure_full_commit":
+            if method == "POST": {
+                // no-op. CouchDB's replicator sends this, so don't barf. Status must be 202.
+                return &HTTPError{201, "Committed"}
+            }
 		default:
 			if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
 				// Accessing a document:
@@ -372,7 +391,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 
 // HTTP handler for the root ("/")
 func handleRoot(r http.ResponseWriter, rq *http.Request) error {
-	if rq.Method == "GET" {
+	if rq.Method == "GET" || rq.Method == "HEAD" {
 		response := map[string]string{
 			"couchdb": "welcome",
 			"version": "BaseCouch 0.1",
@@ -384,7 +403,7 @@ func handleRoot(r http.ResponseWriter, rq *http.Request) error {
 }
 
 func handleAllDbs(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Request) (error) {
-	if rq.Method == "GET" {
+	if rq.Method == "GET" || rq.Method == "HEAD" {
 		response, err := AllDbNames(bucket)
 		if err != nil {
 			return err
@@ -443,6 +462,7 @@ func ServerMain() {
 	poolName := flag.String("pool", "default", "Name of pool")
 	bucketName := flag.String("bucket", "couchdb", "Name of bucket")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
+    verbose := flag.Bool("verbose", false, "Log more info about requests")
 	flag.Parse()
 
 	bucket, err := ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
@@ -452,6 +472,7 @@ func ServerMain() {
 
 	InitREST(bucket)
 	PrettyPrint = *pretty
+    LogRequestsVerbose = *verbose
 
 	log.Printf("Starting server on %s", *addr)
 	err = http.ListenAndServe(*addr, nil)
@@ -519,7 +540,10 @@ func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
 		jsonOut = append(buffer.Bytes(), '\n')
 	}
 	r.Header().Set("Content-Type", "application/json")
-	r.Write(jsonOut)
+    if rq == nil || rq.Method != "HEAD" {
+    	r.Header().Set("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
+        r.Write(jsonOut)
+    }
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and
@@ -534,8 +558,16 @@ func writeError(err error, r http.ResponseWriter) {
 // Writes the response status code, and if it's an error writes a JSON description to the body.
 func writeStatus(status int, message string, r http.ResponseWriter) {
 	r.WriteHeader(status)
-    if status >= 300 {
-		writeJSON(Body{"error": status, "reason": message}, r, nil)
-		log.Printf("\t*** %d: %s", status, message)
-	}
+    if status < 300 {
+        return
+    }
+    var errorStr string
+    switch status {
+        case 404:
+        errorStr = "not_found"
+        default:
+        errorStr = fmt.Sprintf("%d", status)
+    }
+	writeJSON(Body{"error": errorStr, "reason": message}, r, nil)
+	log.Printf("\t*** %d: %s", status, message)
 }

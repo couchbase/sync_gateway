@@ -107,8 +107,12 @@ func (db *Database) UUID() string {
 func (db *Database) DocCount() int {
 	vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(true))
 	if err != nil {
+        log.Printf("WARNING: db.DocCount got error from all_docs: %v", err)
 		return -1
 	}
+    if len(vres.Rows) == 0 {
+        return 0
+    }
 	return int(vres.Rows[0].Value.(float64))
 }
 
