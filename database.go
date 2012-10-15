@@ -103,9 +103,8 @@ func (db *Database) UUID() string {
 
 // The number of documents in the database.
 func (db *Database) DocCount() int {
-	vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(true))
+	vres, err := db.queryAllDocs(true)
 	if err != nil {
-		log.Printf("WARNING: db.DocCount got error from all_docs: %v", err)
 		return -1
 	}
 	if len(vres.Rows) == 0 {
@@ -123,19 +122,29 @@ func installViews(bucket *couchbase.Bucket) error {
 	}
 	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "couchdb")
 
-	//FIX: This view includes local docs; it shouldn't!
+	// View for _all_dbs
 	alldbs_map := `function (doc, meta) {
                      var pieces = meta.id.split(":");
                      if (pieces.length != 2 || pieces[0] != "cdb")
                         return;
                      emit(doc.name, doc.docPrefix); }`
+	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
+	allbits_map := `function (doc, meta) {
+                     var pieces = meta.id.split(":", 3);
+                     if (pieces.length < 2)
+                       return;
+					 var type = pieces[0];
+					 if (type == "doc" || type == "ldoc" || type == "seq")
+                       emit(pieces[1], null); }`
+	// View for _all_docs
 	alldocs_map := `function (doc, meta) {
                      var pieces = meta.id.split(":", 3);
-                     if (pieces.length < 3 || pieces[0] != "doc")
+                     if (pieces.length < 2 || pieces[0] != "doc")
                        return;
                      if (doc.deleted || doc.id===undefined)
                        return;
                      emit([pieces[1], doc.id], doc.rev); }`
+	// View for _changes feed, i.e. a by-sequence index
 	changes_map := `function (doc, meta) {
                     if (doc.sequence === undefined)
                         return;
@@ -151,6 +160,7 @@ func installViews(bucket *couchbase.Bucket) error {
 		"language": "javascript",
 		"views": Body{
 			"all_dbs":  Body{"map": alldbs_map},
+			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
@@ -192,9 +202,8 @@ type IDAndRev struct {
 
 // Returns all document IDs as an array.
 func (db *Database) AllDocIDs() ([]IDAndRev, error) {
-	vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(false))
+	vres, err := db.queryAllDocs(false)
 	if err != nil {
-		log.Printf("WARNING: View returned %v", err)
 		return nil, err
 	}
 
@@ -207,27 +216,44 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	return result, nil
 }
 
-func (db *Database) allDocIDsOpts(reduce bool) Body {
+func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	uuid := db.UUID()
 	startkey := [1]string{uuid}
 	endkey := [2]interface{}{uuid, make(Body)}
-	return Body{"startkey": startkey, "endkey": endkey, "reduce": reduce}
+	opts := Body{"startkey": startkey, "endkey": endkey, "reduce": reduce}
+	vres, err := db.bucket.View("couchdb", "all_docs", opts)
+	if err != nil {
+		log.Printf("WARNING: all_docs got error: %v", err)
+	}
+	return vres, err
 }
 
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
-	docIDs, err := db.AllDocIDs()
+	uuid := db.UUID()
+	opts := Body{"startkey": uuid, "endkey": uuid}
+	vres, err := db.bucket.View("couchdb", "all_bits", opts)
 	if err != nil {
+		log.Printf("WARNING: all_bits view returned %v", err)
 		return err
 	}
-	//FIX: Is there a way to do this in one operation?
+
+	// First delete the database doc itself. At this point the db is officially gone:
 	err = db.bucket.Delete(dbInternalDocName(db.Name))
 	if err != nil {
 		return err
 	}
-	db.bucket.Delete(db.sequenceDocID())
-	for _, doc := range docIDs {
-		db.bucket.Delete(doc.DocID)
+
+	// Now delete all of its docs:
+	//FIX: Is there a way to do this in one operation?
+	log.Printf("Deleting %d documents of %q ...", len(vres.Rows), db.Name)
+	for _, row := range vres.Rows {
+		if LogRequestsVerbose {
+			log.Printf("\tDeleting %q", row.ID)
+		}
+		if err := db.bucket.Delete(row.ID); err != nil {
+			log.Printf("WARNING: Error deleting %q: %v", row.ID, err)
+		}
 	}
 	return nil
 }
@@ -235,7 +261,7 @@ func (db *Database) Delete() error {
 //////// SEQUENCES & CHANGES:
 
 func (db *Database) sequenceDocID() string {
-	return dbInternalDocName(db.Name) + ":nextsequence"
+	return "seq:" + db.UUID()
 }
 
 func (db *Database) LastSequence() (uint64, error) {

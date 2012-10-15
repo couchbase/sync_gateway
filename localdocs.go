@@ -44,5 +44,6 @@ func (db *Database) DeleteLocal(docid string) error {
 }
 
 func (db *Database) realLocalDocID(docid string) string {
-	return db.realDocID("_local/" + docid)
+	// Local doc ID prefix is "ldoc:"
+	return "l" + db.realDocID(docid)
 }
