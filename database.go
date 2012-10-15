@@ -84,13 +84,13 @@ func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
 	}
 
 	db := Database{bucket: bucket, Name: name, DocPrefix: fmt.Sprintf("doc:%s/%s:", name, createUUID())}
-	added,err := bucket.Add(docname, 0, db)
+	added, err := bucket.Add(docname, 0, db)
 	if err != nil {
 		return nil, err
 	}
-    if !added {
+	if !added {
 		return nil, &HTTPError{Status: 412, Message: "Database already exists"}
-    }
+	}
 	return &db, nil
 }
 
@@ -105,12 +105,12 @@ func (db *Database) UUID() string {
 func (db *Database) DocCount() int {
 	vres, err := db.bucket.View("couchdb", "all_docs", db.allDocIDsOpts(true))
 	if err != nil {
-        log.Printf("WARNING: db.DocCount got error from all_docs: %v", err)
+		log.Printf("WARNING: db.DocCount got error from all_docs: %v", err)
 		return -1
 	}
-    if len(vres.Rows) == 0 {
-        return 0
-    }
+	if len(vres.Rows) == 0 {
+		return 0
+	}
 	return int(vres.Rows[0].Value.(float64))
 }
 
@@ -252,7 +252,7 @@ type ChangesOptions struct {
 	Limit       int
 	Descending  bool
 	Conflicts   bool
-    IncludeDocs bool
+	IncludeDocs bool
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -303,19 +303,19 @@ func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
 		if options.Conflicts || options.IncludeDocs {
 			doc, _ := db.getDoc(docID)
 			if doc != nil {
-        		if options.Conflicts {
-    				for _, leafID := range doc.History.getLeaves() {
-    					if leafID != revID {
-    						entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
-    					}
-    				}
-                }
-                if options.IncludeDocs {
-                    key := doc.History[revID].Key
-                    if key != "" {
-                        entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-                    }
-                }
+				if options.Conflicts {
+					for _, leafID := range doc.History.getLeaves() {
+						if leafID != revID {
+							entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+						}
+					}
+				}
+				if options.IncludeDocs {
+					key := doc.History[revID].Key
+					if key != "" {
+						entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
+					}
+				}
 			}
 		}
 

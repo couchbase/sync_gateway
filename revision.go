@@ -12,7 +12,7 @@ package basecouch
 import (
 	"crypto/md5"
 	"crypto/sha1"
-    "encoding/base64"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -37,7 +37,7 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	digester := sha1.New()
 	digester.Write(canonicalEncoding(body))
 	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
-    _,err := db.bucket.Add(revKeyToString(revKey), 0, body)
+	_, err := db.bucket.Add(revKeyToString(revKey), 0, body)
 	return revKey, err
 }
 

@@ -61,32 +61,32 @@ func (db *Database) Get(docid string) (Body, error) {
 
 // Returns the body of a revision of a document.
 func (db *Database) GetRev(docid, revid string,
-     listRevisions bool,
-     attachmentsSince []string) (Body, error) {
+	listRevisions bool,
+	attachmentsSince []string) (Body, error) {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
 		return nil, err
 	}
-    body,err := db.getRevFromDoc(doc, revid, listRevisions)
-    if err != nil {
-        return nil, err
-    }
-    
-    if attachmentsSince != nil {
-        minRevpos := 1
-        if len(attachmentsSince) > 0 {
-            ancestor := doc.History.findAncestorFromSet(body["_rev"].(string), attachmentsSince)
-            if ancestor != "" {
-                minRevpos,_ = parseRevID(ancestor)
-                minRevpos++
-            }
-        }
-        err = db.loadBodyAttachments(body, minRevpos)
-    	if err != nil {
-    		return nil, err
-    	}
-    }
-    return body, nil
+	body, err := db.getRevFromDoc(doc, revid, listRevisions)
+	if err != nil {
+		return nil, err
+	}
+
+	if attachmentsSince != nil {
+		minRevpos := 1
+		if len(attachmentsSince) > 0 {
+			ancestor := doc.History.findAncestorFromSet(body["_rev"].(string), attachmentsSince)
+			if ancestor != "" {
+				minRevpos, _ = parseRevID(ancestor)
+				minRevpos++
+			}
+		}
+		err = db.loadBodyAttachments(body, minRevpos)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return body, nil
 }
 
 // Returns the body of a revision given a document struct
@@ -119,13 +119,13 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 // Returns the body of the asked-for revision or the most recent availble ancestor.
 // Does NOT fill in _attachments, _deleted, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
-    for ; revid != ""; revid = doc.History[revid].Parent {
-        key := doc.History[revid].Key
-        if key != "" {
-            return db.getRevision(doc.ID, revid, key)
-        }
-    }
-    return nil, &HTTPError{404, "missing"}
+	for ; revid != ""; revid = doc.History[revid].Parent {
+		key := doc.History[revid].Key
+		if key != "" {
+			return db.getRevision(doc.ID, revid, key)
+		}
+	}
+	return nil, &HTTPError{404, "missing"}
 }
 
 // Updates or creates a document.
@@ -152,20 +152,20 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
 		}
 	}
-    
+
 	// Derive the new rev's generation #:
 	generation, _ := parseRevID(matchRev)
 	if generation < 0 {
 		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
-    generation++
+	generation++
 
-    // Process the attachments, replacing bodies with digests. This alters 'body' so it has to be
-    // done before calling createRevID (the ID is based on the digest of the body.)
-    err = db.storeAttachments(doc, body, generation, matchRev)
-    if err != nil {
-        return "", err
-    }
+	// Process the attachments, replacing bodies with digests. This alters 'body' so it has to be
+	// done before calling createRevID (the ID is based on the digest of the body.)
+	err = db.storeAttachments(doc, body, generation, matchRev)
+	if err != nil {
+		return "", err
+	}
 
 	// Make up a new _rev:
 	newRev := createRevID(generation, matchRev, body)
@@ -175,7 +175,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
 	doc.CurrentRev = doc.History.winningRevision()
 	doc.Deleted = doc.History[doc.CurrentRev].Deleted
-    //FIX: This should be using CAS to avoid multiple-writer race conditions!
+	//FIX: This should be using CAS to avoid multiple-writer race conditions!
 	err = db.putDocAndBody(docid, newRev, doc, body)
 	if err != nil {
 		return "", err
@@ -260,15 +260,15 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
 
-    // Process the attachments, replacing bodies with digests.
-    parentRevID := doc.History[docHistory[0]].Parent
-    err = db.storeAttachments(doc, body, generation, parentRevID)
-    if err != nil {
-        return err
-    }
+	// Process the attachments, replacing bodies with digests.
+	parentRevID := doc.History[docHistory[0]].Parent
+	err = db.storeAttachments(doc, body, generation, parentRevID)
+	if err != nil {
+		return err
+	}
 
 	// Save the document and body:
-    //FIX: This should be using CAS to avoid multiple-writer race conditions!
+	//FIX: This should be using CAS to avoid multiple-writer race conditions!
 	return db.putDocAndBody(docid, docHistory[0], doc, body)
 }
 

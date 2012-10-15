@@ -166,14 +166,13 @@ func TestDesignDocs(t *testing.T) {
 	var body Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.DeepEquals(t, body, Body{
-        "_id":"_design/foo",
-        "_rev": "1-8d99d37a3fbeed6ca6052ede5e43fb2d",
-        "hi": "there"})
+		"_id":  "_design/foo",
+		"_rev": "1-8d99d37a3fbeed6ca6052ede5e43fb2d",
+		"hi":   "there"})
 
 	response = callREST("DELETE", "/resttest/_design/foo?rev=1-8d99d37a3fbeed6ca6052ede5e43fb2d", "")
 	assert.Equals(t, response.Code, 200)
-    
+
 	response = callREST("GET", "/resttest/_design/foo", "")
 	assert.Equals(t, response.Code, 404)
 }
-
