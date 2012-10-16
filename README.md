@@ -6,7 +6,7 @@ This is an **experimental prototype** adapter that can allow Couchbase Server 2 
 
 ## Current Status
 
-As of October 12 2012, BaseCouch:
+As of October 16 2012, BaseCouch:
 
 * Supports both push and pull.
 * Supports revision trees and conflicts.
@@ -16,8 +16,8 @@ Limitations:
 
 * Doesn't support MIME multipart bodies in HTTP requests (so pushing docs with attachments to it from CouchDB may fail. I have a new commit to TouchDB that works around this.)
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
-* Deleting a database may leave Couchbase documents behind. This won't cause any errors but will take up space in the bucket.
-* There is no compaction yet. Revisions and attachments are never deleted, so the space used by the server grows monotonically.
+* Explicit garbage collection is required to free up space, via a REST call to `/_vacuum`. This is not yet scheduled automatically, so you'll have to call it yourself.
+* There is no `_compact` implementation yet, so obsolete revisions are never deleted.
 * No access control: it's admin party 24/7!
 * Performance is probably not that great. This is an unoptimized proof of concept.
 
@@ -56,7 +56,7 @@ All CouchDB databases live in a single bucket. A CouchDB database is represented
 
 The `docPrefix` property is the prefix string applied to CouchDB document IDs to store them in Couchbase. It always consists of `doc:` followed by the database name, a `/`, a random UUID, and a ":". (The UUID ensures that if a database is deleted but some documents are left behind, and later a database is created with the same name, the orphaned documents won't appear in it.)
 
-There's also a document named `cdb:`name`:nextsequence` which is used as an atomic counter for generating sequence IDs.
+There's also a document named `seq:`_name_ which is used as an atomic counter for generating sequence IDs for that database.
 
 ### Document
 
@@ -78,7 +78,7 @@ A CouchDB document is represented by a Couchbase document whose ID starts with `
 
 The contents of a revision document are simply the contents of that revision. For maximum reuse, the `_id` and `_rev` properties are not included, although `_deleted` and `_attachments` are.
 
-Note that revisions are a content-addressable store, in that the document key is derived from the contents. This allows revisions with the same contents to be stored only once, saving space. This is especially important for use cases like Syncpoint, where a document may be replicated into large numbers of databases. As long as all the databases are in the same bucket, each revision of the document will only be stored once.
+Note that revisions are a content-addressable store, in that the document key is derived from the contents. This allows revisions with the same contents to be stored only once, saving space. This is especially important for use cases like Syncpoint, where a document may be replicated into large numbers of databases. As long as all the databases are in the same bucket, each revision of the document will only be stored once. However, an explicit garbage collection is required to locate and delete revisions that are no longer referred to by any document.
 
 ### Attachment
 
@@ -86,7 +86,7 @@ Revisions store attachment metadata in stubbed-out form, with a `"stub":true` pr
 
 An attachment's body is stored in a Couchbase document whose ID is `att:` followed by the attachment metadata's `digest` property. (Attachments are therefore another content-addressable store, with a different namespace, and have the same benefit that a specific file will only ever be stored once no matter how many documents it's attached to.)
 
-An attachment document's body is _not_ JSON. It's simply the raw binary data of the attachment.
+An attachment document's body is _not_ JSON. It's simply the raw binary contents. The metadata of an attachment, such as name and MIME type, lives in the `_attachments` property of a revision that refers to it.
 
 ## Crazy Ideas
 
