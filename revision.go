@@ -16,8 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-
-	"github.com/couchbaselabs/go-couchbase"
 )
 
 // The body of a CouchDB document/revision as decoded from JSON.
@@ -41,41 +39,6 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
 	_, err := db.bucket.Add(revKeyToString(revKey), 0, body)
 	return revKey, err
-}
-
-// Deletes all orphaned CouchDB revisions not used by any documents.
-func VacuumRevisions(bucket *couchbase.Bucket) (int, error) {
-	vres, err := bucket.View("couchdb", "revs", nil)
-	if err != nil {
-		log.Printf("WARNING: revs view returned %v", err)
-		return 0, err
-	}
-	deletions := 0
-	curRev := ""
-	hasDocument := false
-	for _, row := range vres.Rows {
-		key := row.Key.([]interface{})
-		revid := key[0].(string)
-		//log.Printf("\trev=%q, isRev=%v", revid, key[1].(bool))//TEMP
-		if revid != curRev {
-			if !hasDocument && curRev != "" {
-				revdocid := revKeyToString(RevKey(curRev))
-				if LogRequestsVerbose {
-					log.Printf("\tDeleting %q", revdocid)
-				}
-				err = bucket.Delete(revdocid)
-				if err == nil {
-					deletions++
-				}
-			}
-			curRev = revid
-			hasDocument = false
-		}
-		if !hasDocument && !key[1].(bool) {
-			hasDocument = true
-		}
-	}
-	return deletions, nil
 }
 
 //////// HELPERS:

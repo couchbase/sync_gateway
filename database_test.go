@@ -29,12 +29,12 @@ func init() {
 
 func TestDatabase(t *testing.T) {
 	db, err := CreateDatabase(gTestBucket, "testdb")
-	assertNoError(t, err, "Couldn't create database")
+	assertNoError(t, err, "Couldn't create database 'testdb'")
 	defer func() {
 		err = db.Delete()
 		status, _ := ErrorAsHTTPStatus(err)
 		if status != 200 && status != 404 {
-			assertNoError(t, err, "Couldn't delete database")
+			assertNoError(t, err, "Couldn't delete database 'testdb'")
 		}
 	}()
 

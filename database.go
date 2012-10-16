@@ -170,6 +170,32 @@ func installViews(bucket *couchbase.Bucket) error {
 					    }
 					  }
 					}`
+	// View for mapping attachment IDs to revisions (for vacuuming)
+	atts_map := `function (doc, meta) {
+				  var pieces = meta.id.split(":", 3);
+				  if (pieces.length < 2)
+				    return;
+				  if (pieces[0] == "att") {
+				    emit([pieces[1], true], null);
+				  } else if (pieces[0] == "rev") {
+				    var atts = doc._attachments;
+				    if (atts) {
+				      for (var i = 0; i < atts.length; ++i) {
+				        var digest = atts[i].digest
+				        if (digest)
+				          emit([digest, false], null);
+				      }
+				    }
+				  }
+				}`
+	// Reduce function for revs_map and atts_map
+	revs_or_atts_reduce := `function(keys, values, rereduce) {
+							  for (var i = 0; i < keys.length; ++i) {
+							    if (!keys[i][1])
+							      return false;
+							  }
+							  return true;
+							}`
 
 	ddoc := Body{
 		"language": "javascript",
@@ -177,7 +203,8 @@ func installViews(bucket *couchbase.Bucket) error {
 			"all_dbs":  Body{"map": alldbs_map},
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
-			"revs":     Body{"map": revs_map},
+			"revs":     Body{"map": revs_map, "reduce": revs_or_atts_reduce},
+			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
 	rq, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(payload))
@@ -300,16 +327,46 @@ func VacuumDocs(bucket *couchbase.Bucket) (int, error) {
 	for _, row := range vres.Rows {
 		dbid := row.Key.(string)
 		if !uuids[dbid] {
-			if LogRequestsVerbose {
-				log.Printf("\tDeleting %q", row.ID)
-			}
-			err = bucket.Delete(row.ID)
-			if err == nil {
-				deletions++
-			}
+			deletions += vacIt(bucket, row.ID)
 		}
 	}
 	return deletions, nil
+}
+
+func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
+	vres, err := bucket.View("couchdb", viewName, Body{"group_level": 1})
+	if err != nil {
+		log.Printf("WARNING: %s view returned %v", viewName, err)
+		return 0, err
+	}
+	deletions := 0
+	for _, row := range vres.Rows {
+		if row.Value.(bool) {
+			key := row.Key.([]interface{})
+			deletions += vacIt(bucket, docPrefix+key[0].(string))
+		}
+	}
+	return deletions, nil
+}
+
+func vacIt(bucket *couchbase.Bucket, docid string) int {
+	if bucket.Delete(docid) != nil {
+		return 0
+	}
+	if LogRequestsVerbose {
+		log.Printf("\tVacuumed %q", docid)
+	}
+	return 1
+}
+
+// Deletes all orphaned CouchDB revisions not used by any documents.
+func VacuumRevisions(bucket *couchbase.Bucket) (int, error) {
+	return vacuumContent(bucket, "revs", "rev:")
+}
+
+// Deletes all orphaned CouchDB attachments not used by any revisions.
+func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
+	return vacuumContent(bucket, "atts", "att:")
 }
 
 //////// SEQUENCES & CHANGES:

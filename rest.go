@@ -432,7 +432,11 @@ func handleVacuum(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Requ
 	if err != nil {
 		return err
 	}
-	writeJSON(Body{"docs": docsDeleted, "revs": revsDeleted}, r, rq)
+	attsDeleted, err := VacuumAttachments(bucket)
+	if err != nil {
+		return err
+	}
+	writeJSON(Body{"docs": docsDeleted, "revs": revsDeleted, "atts": attsDeleted}, r, rq)
 	return nil
 }
 
