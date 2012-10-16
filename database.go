@@ -155,6 +155,21 @@ func installViews(bucket *couchbase.Bucket) error {
                     if (doc.deleted)
                         value.push(true)
                     emit([pieces[1], doc.sequence], value); }`
+	// View for mapping revision IDs to documents (for vacuuming)
+	revs_map := `function (doc, meta) {
+					  var pieces = meta.id.split(":", 3);
+					  if (pieces.length < 2)
+					    return;
+					  if (pieces[0] == "rev") {
+					    emit([pieces[1], true], null);
+					  } else if (pieces[0] == "doc") {
+					    var keys = doc.history.keys;
+					    for (var i = 0; i < keys.length; ++i) {
+					      if (keys[i] != "")
+					        emit([keys[i], false], null);
+					    }
+					  }
+					}`
 
 	ddoc := Body{
 		"language": "javascript",
@@ -162,6 +177,7 @@ func installViews(bucket *couchbase.Bucket) error {
 			"all_dbs":  Body{"map": alldbs_map},
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
+			"revs":     Body{"map": revs_map},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
 	rq, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(payload))
@@ -256,6 +272,44 @@ func (db *Database) Delete() error {
 		}
 	}
 	return nil
+}
+
+// Deletes all orphaned CouchDB documents without a database.
+// This is necessary because the views are not usually up to date with the database, so at the
+// time db.Delete runs, it may not have all the document IDs, causing documents to be left behind.
+func VacuumDocs(bucket *couchbase.Bucket) (int, error) {
+	// First collect all database UUIDs:
+	vres, err := bucket.View("couchdb", "all_dbs", nil)
+	if err != nil {
+		log.Printf("WARNING: all_dbs view returned %v", err)
+		return 0, err
+	}
+	uuids := map[string]bool{}
+	for _, row := range vres.Rows {
+		docPrefix := row.Value.(string)
+		uuids[docPrefix[4:len(docPrefix)-1]] = true
+	}
+
+	// Now go through the entire all_bits view and delete docs without a db:
+	vres, err = bucket.View("couchdb", "all_bits", nil)
+	if err != nil {
+		log.Printf("WARNING: all_bits view returned %v", err)
+		return 0, err
+	}
+	deletions := 0
+	for _, row := range vres.Rows {
+		dbid := row.Key.(string)
+		if !uuids[dbid] {
+			if LogRequestsVerbose {
+				log.Printf("\tDeleting %q", row.ID)
+			}
+			err = bucket.Delete(row.ID)
+			if err == nil {
+				deletions++
+			}
+		}
+	}
+	return deletions, nil
 }
 
 //////// SEQUENCES & CHANGES:

@@ -423,6 +423,19 @@ func handleAllDbs(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Requ
 	return &HTTPError{http.StatusBadRequest, "bad request"}
 }
 
+func handleVacuum(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Request) error {
+	docsDeleted, err := VacuumDocs(bucket)
+	if err != nil {
+		return err
+	}
+	revsDeleted, err := VacuumRevisions(bucket)
+	if err != nil {
+		return err
+	}
+	writeJSON(Body{"docs": docsDeleted, "revs": revsDeleted}, r, rq)
+	return nil
+}
+
 // Creates an http.Handler that will handle the REST API for the given bucket.
 func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
@@ -438,6 +451,8 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 			err = handleRoot(r, rq)
 		} else if path[0] == "_all_dbs" {
 			err = handleAllDbs(bucket, r, rq)
+		} else if path[0] == "_vacuum" {
+			err = handleVacuum(bucket, r, rq)
 		} else if rq.Method == "PUT" && len(path) == 1 {
 			// Create a database:
 			_, err = CreateDatabase(bucket, path[0])
