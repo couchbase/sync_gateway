@@ -94,6 +94,11 @@ func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
 	return &db, nil
 }
 
+func (db *Database) SameAs(otherdb *Database) bool {
+	return db != nil && otherdb != nil &&
+		db.bucket == otherdb.bucket && db.DocPrefix == otherdb.DocPrefix
+}
+
 // The UUID assigned to this database.
 func (db *Database) UUID() string {
 	return db.DocPrefix[4 : len(db.DocPrefix)-1]
@@ -161,12 +166,12 @@ func installViews(bucket *couchbase.Bucket) error {
 					  if (pieces.length < 2)
 					    return;
 					  if (pieces[0] == "rev") {
-					    emit([pieces[1], true], null);
+					    emit(pieces[1], true);
 					  } else if (pieces[0] == "doc") {
 					    var keys = doc.history.keys;
 					    for (var i = 0; i < keys.length; ++i) {
 					      if (keys[i] != "")
-					        emit([keys[i], false], null);
+					        emit(keys[i], false);
 					    }
 					  }
 					}`
@@ -176,22 +181,22 @@ func installViews(bucket *couchbase.Bucket) error {
 				  if (pieces.length < 2)
 				    return;
 				  if (pieces[0] == "att") {
-				    emit([pieces[1], true], null);
+				    emit(pieces[1], true);
 				  } else if (pieces[0] == "rev") {
 				    var atts = doc._attachments;
 				    if (atts) {
 				      for (var i = 0; i < atts.length; ++i) {
 				        var digest = atts[i].digest
 				        if (digest)
-				          emit([digest, false], null);
+				          emit(digest, false);
 				      }
 				    }
 				  }
 				}`
 	// Reduce function for revs_map and atts_map
 	revs_or_atts_reduce := `function(keys, values, rereduce) {
-							  for (var i = 0; i < keys.length; ++i) {
-							    if (!keys[i][1])
+							  for (var i = 0; i < values.length; ++i) {
+							    if (!values[i])
 							      return false;
 							  }
 							  return true;
@@ -224,7 +229,7 @@ func installViews(bucket *couchbase.Bucket) error {
 
 // Returns all database names as an array.
 func AllDbNames(bucket *couchbase.Bucket) ([]string, error) {
-	vres, err := bucket.View("couchdb", "all_dbs", nil)
+	vres, err := bucket.View("couchdb", "all_dbs", Body{"stale": false})
 	if err != nil {
 		log.Printf("WARNING: View returned %v", err)
 		return nil, err
@@ -263,8 +268,10 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	uuid := db.UUID()
 	startkey := [1]string{uuid}
 	endkey := [2]interface{}{uuid, make(Body)}
-	opts := Body{"startkey": startkey, "endkey": endkey, "reduce": reduce}
+	opts := Body{"stale": false, "startkey": startkey, "endkey": endkey, "reduce": reduce}
+	log.Printf("all_docs opts = %v", opts)
 	vres, err := db.bucket.View("couchdb", "all_docs", opts)
+	log.Printf("all_docs vres = %v", vres)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
@@ -274,7 +281,7 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
 	uuid := db.UUID()
-	opts := Body{"startkey": uuid, "endkey": uuid}
+	opts := Body{"stale": false, "startkey": uuid, "endkey": uuid}
 	vres, err := db.bucket.View("couchdb", "all_bits", opts)
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
@@ -306,9 +313,9 @@ func (db *Database) Delete() error {
 // time db.Delete runs, it may not have all the document IDs, causing documents to be left behind.
 func VacuumDocs(bucket *couchbase.Bucket) (int, error) {
 	// First collect all database UUIDs:
-	vres, err := bucket.View("couchdb", "all_dbs", nil)
+	vres, err := bucket.View("couchdb", "all_dbs", Body{"stale": false})
 	if err != nil {
-		log.Printf("WARNING: all_dbs view returned %v", err)
+		log.Printf("WARNING: all_dbs view returned %v (%v)", err, vres)
 		return 0, err
 	}
 	uuids := map[string]bool{}
@@ -318,11 +325,12 @@ func VacuumDocs(bucket *couchbase.Bucket) (int, error) {
 	}
 
 	// Now go through the entire all_bits view and delete docs without a db:
-	vres, err = bucket.View("couchdb", "all_bits", nil)
+	vres, err = bucket.View("couchdb", "all_bits", Body{"stale": false})
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
 		return 0, err
 	}
+
 	deletions := 0
 	for _, row := range vres.Rows {
 		dbid := row.Key.(string)
@@ -334,7 +342,7 @@ func VacuumDocs(bucket *couchbase.Bucket) (int, error) {
 }
 
 func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
-	vres, err := bucket.View("couchdb", viewName, Body{"group_level": 1})
+	vres, err := bucket.View("couchdb", viewName, Body{"stale": false, "group_level": 1})
 	if err != nil {
 		log.Printf("WARNING: %s view returned %v", viewName, err)
 		return 0, err
@@ -342,15 +350,15 @@ func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) 
 	deletions := 0
 	for _, row := range vres.Rows {
 		if row.Value.(bool) {
-			key := row.Key.([]interface{})
-			deletions += vacIt(bucket, docPrefix+key[0].(string))
+			deletions += vacIt(bucket, docPrefix+row.Key.(string))
 		}
 	}
 	return deletions, nil
 }
 
 func vacIt(bucket *couchbase.Bucket, docid string) int {
-	if bucket.Delete(docid) != nil {
+	if err := bucket.Delete(docid); err != nil {
+		log.Printf("\tError vacuuming %q: %v", docid, err)
 		return 0
 	}
 	if LogRequestsVerbose {
@@ -390,6 +398,7 @@ type ChangesOptions struct {
 	Descending  bool
 	Conflicts   bool
 	IncludeDocs bool
+	Wait        bool
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -410,18 +419,30 @@ func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
 	uuid := db.UUID()
 	startkey := [2]interface{}{uuid, options.Since + 1}
 	endkey := [2]interface{}{uuid, make(Body)}
-	opts := Body{"startkey": startkey, "endkey": endkey,
+	opts := Body{"stale": false, "update_seq": true,
+		"startkey": startkey, "endkey": endkey,
 		"descending": options.Descending}
 	if options.Limit > 0 {
 		opts["limit"] = options.Limit
 	}
 
-	vres, err := db.bucket.View("couchdb", "changes", opts)
-	if err != nil {
-		log.Printf("Error from 'changes' view: %v", err)
-		return nil, err
+	// Query the 'changes' view:
+	var vres couchbase.ViewResult
+	var err error
+	for len(vres.Rows) == 0 {
+		vres, err = db.bucket.View("couchdb", "changes", opts)
+		if err != nil {
+			log.Printf("Error from 'changes' view: %v", err)
+			return nil, err
+		}
+		if len(vres.Rows) == 0 {
+			if !options.Wait || !db.WaitForRevision() {
+				break
+			}
+		}
 	}
 
+	// Generate the output:
 	rows := vres.Rows
 	changes := make([]ChangeEntry, 0, len(rows))
 	for _, row := range rows {
@@ -459,6 +480,17 @@ func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
 		changes = append(changes, entry)
 	}
 	return changes, nil
+}
+
+func (db *Database) WaitForRevision() bool {
+	log.Printf("\twaiting for a revision...")
+	waitFor(db.DocPrefix)
+	log.Printf("\t...done waiting")
+	return true
+}
+
+func (db *Database) NotifyRevision() {
+	notify(db.DocPrefix)
 }
 
 //////// UTILITIES:

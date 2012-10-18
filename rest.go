@@ -81,6 +81,7 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
 		if err != nil {
 			return err
 		}
+		r.WriteHeader(http.StatusCreated)
 		r.Header().Set("Etag", newRev)
 		writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
 	} else {
@@ -93,8 +94,8 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
 		if err != nil {
 			return err
 		}
+		r.WriteHeader(http.StatusCreated)
 	}
-	r.WriteHeader(http.StatusCreated)
 	return nil
 }
 
@@ -248,6 +249,13 @@ func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) error
 	options.Limit = int(getIntQuery(rq, "limit"))
 	options.Conflicts = (rq.URL.Query().Get("style") == "all_docs")
 	options.IncludeDocs = (rq.URL.Query().Get("include_docs") == "true")
+
+	switch rq.URL.Query().Get("feed") {
+	case "longpoll":
+		options.Wait = true
+	case "continuous":
+		return &HTTPError{http.StatusNotImplemented, "continuous _changes not implemented"}
+	}
 
 	changes, err := db.GetChanges(options)
 	var lastSeq uint64

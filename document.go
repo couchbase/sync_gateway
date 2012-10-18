@@ -193,9 +193,13 @@ func (db *Database) putDocAndBody(docid string, revid string, doc *document, bod
 	if err != nil {
 		return err
 	}
-
 	doc.History.setRevisionKey(revid, key)
-	return db.setDoc(docid, doc)
+
+	err = db.setDoc(docid, doc)
+	if err == nil {
+		db.NotifyRevision()
+	}
+	return err
 }
 
 // Creates a new document, assigning it a random doc ID.
