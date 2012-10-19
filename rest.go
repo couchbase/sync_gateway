@@ -82,9 +82,8 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
 		if err != nil {
 			return err
 		}
-		r.WriteHeader(http.StatusCreated)
 		r.Header().Set("Etag", newRev)
-		writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
+		writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
 	} else {
 		// Replicator-style PUT with new_edits=false:
 		revisions := parseRevisions(body)
@@ -239,8 +238,7 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) erro
 		result = append(result, status)
 	}
 
-	r.WriteHeader(http.StatusCreated)
-	writeJSON(result, r, rq)
+	writeJSONStatus(http.StatusCreated, result, r, rq)
 	return nil
 }
 
@@ -286,6 +284,7 @@ func (db *Database) HandleContinuousChanges(r http.ResponseWriter, rq *http.Requ
 	options.Wait = true // we want the feed channel to wait for changes
 	var feed <-chan *ChangeEntry
 	var err error
+loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
@@ -301,17 +300,24 @@ func (db *Database) HandleContinuousChanges(r http.ResponseWriter, rq *http.Requ
 			if entry == nil {
 				feed = nil
 			} else {
-				options.Since = entry.Seq // so next call to ChangesFeed will start from end
 				str, _ := json.Marshal(entry)
 				if LogRequestsVerbose {
 					log.Printf("\tchange: %s", str)
 				}
 				err = writeln(str, r)
+
+				options.Since = entry.Seq // so next call to ChangesFeed will start from end
+				if options.Limit > 0 {
+					options.Limit--
+					if options.Limit == 0 {
+						break loop
+					}
+				}
 			}
 		case <-heartbeat:
 			err = writeln([]byte{}, r)
 		case <-timeout:
-			return nil
+			break loop
 		}
 		if err != nil {
 			return nil // error is probably because the client closed the connection
@@ -326,9 +332,9 @@ func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) erro
 	if err != nil {
 		return err
 	}
-	if LogRequestsVerbose {
-		log.Printf("\t%v", input)
-	}
+	//if LogRequestsVerbose {
+	//	log.Printf("\t%v", input)
+	//}
 	output, err := db.RevsDiff(input)
 	if err == nil {
 		writeJSON(output, r, rq)
@@ -353,10 +359,11 @@ func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, d
 func (db *Database) HandlePutLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
 	body, err := readJSON(rq)
 	if err == nil {
-		err = db.PutLocal(docid, body)
-	}
-	if err == nil {
-		r.WriteHeader(http.StatusCreated)
+		var revid string
+		revid, err = db.PutLocal(docid, body)
+		if err == nil {
+			writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": revid}, r, rq)
+		}
 	}
 	return err
 }
@@ -418,7 +425,8 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 		case "_ensure_full_commit":
 			if method == "POST" {
 				// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-				return &HTTPError{201, "Committed"}
+				writeJSONStatus(http.StatusCreated, Body{"ok": true}, r, rq)
+				return nil
 			}
 		default:
 			if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
@@ -605,7 +613,7 @@ func readJSON(rq *http.Request) (Body, error) {
 }
 
 // Writes an object to the response in JSON format.
-func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
+func writeJSONStatus(status int, value interface{}, r http.ResponseWriter, rq *http.Request) {
 	if rq != nil {
 		accept := rq.Header.Get("Accept")
 		if accept != "" && !strings.Contains(accept, "application/json") &&
@@ -630,8 +638,17 @@ func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
 	r.Header().Set("Content-Type", "application/json")
 	if rq == nil || rq.Method != "HEAD" {
 		r.Header().Set("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
+		if status > 0 {
+			r.WriteHeader(status)
+		}
 		r.Write(jsonOut)
+	} else if status > 0 {
+		r.WriteHeader(status)
 	}
+}
+
+func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
+	writeJSONStatus(0, value, r, rq)
 }
 
 func writeln(line []byte, r http.ResponseWriter) error {
@@ -659,8 +676,8 @@ func writeError(err error, r http.ResponseWriter) {
 
 // Writes the response status code, and if it's an error writes a JSON description to the body.
 func writeStatus(status int, message string, r http.ResponseWriter) {
-	r.WriteHeader(status)
 	if status < 300 {
+		r.WriteHeader(status)
 		return
 	}
 	var errorStr string
@@ -670,6 +687,6 @@ func writeStatus(status int, message string, r http.ResponseWriter) {
 	default:
 		errorStr = fmt.Sprintf("%d", status)
 	}
-	writeJSON(Body{"error": errorStr, "reason": message}, r, nil)
+	writeJSONStatus(status, Body{"error": errorStr, "reason": message}, r, nil)
 	log.Printf("\t*** %d: %s", status, message)
 }

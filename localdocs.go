@@ -9,6 +9,11 @@
 
 package basecouch
 
+import (
+	"fmt"
+	"net/http"
+)
+
 // Gets a local document.
 func (db *Database) GetLocal(docid string) (Body, error) {
 	key := db.realLocalDocID(docid)
@@ -25,13 +30,45 @@ func (db *Database) GetLocal(docid string) (Body, error) {
 }
 
 // Updates a local document.
-func (db *Database) PutLocal(docid string, body Body) error {
+func (db *Database) PutLocal(docid string, body Body) (string, error) {
 	key := db.realLocalDocID(docid)
 	if key == "" {
-		return &HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 
-	return db.bucket.Set(db.realLocalDocID(docid), 0, body)
+	// Verify that the _rev key in the body matches the current stored value:
+	var matchRev string
+	if body["_rev"] != nil {
+		matchRev = body["_rev"].(string)
+	}
+	prevBody := Body{}
+	err := db.bucket.Get(key, &prevBody)
+	if err != nil {
+		if !isMissingDocError(err) {
+			return "", err
+		}
+		if matchRev != "" {
+			return "", &HTTPError{Status: http.StatusNotFound,
+				Message: "No previous revision to replace"}
+		}
+	} else {
+		if matchRev != prevBody["_rev"] {
+			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+		}
+	}
+
+	var generation uint
+	if matchRev != "" {
+		fmt.Sscanf(matchRev, "0-%d", &generation)
+	}
+	revid := fmt.Sprintf("0-%d", generation+1)
+	body["_rev"] = revid
+
+	err = db.bucket.Set(db.realLocalDocID(docid), 0, body)
+	if err != nil {
+		return "", err
+	}
+	return revid, nil
 }
 
 // Deletes a local document.

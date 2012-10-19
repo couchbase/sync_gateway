@@ -269,9 +269,7 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	startkey := [1]string{uuid}
 	endkey := [2]interface{}{uuid, make(Body)}
 	opts := Body{"stale": false, "startkey": startkey, "endkey": endkey, "reduce": reduce}
-	log.Printf("all_docs opts = %v", opts)
 	vres, err := db.bucket.View("couchdb", "all_docs", opts)
-	log.Printf("all_docs vres = %v", vres)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
