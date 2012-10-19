@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +40,8 @@ var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowe
 func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
 	query := rq.URL.Query()
 	revid := query.Get("rev")
+	includeRevs := query.Get("revs") == "true"
+	openRevs := query.Get("open_revs")
 
 	// What attachment bodies should be included?
 	var attachmentsSince []string = nil
@@ -47,24 +51,63 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 			var revids []string
 			err := json.Unmarshal([]byte(atts), &revids)
 			if err != nil {
-				err = &HTTPError{http.StatusBadRequest, "bad atts_since"}
+				return &HTTPError{http.StatusBadRequest, "bad atts_since"}
 			}
 		} else {
 			attachmentsSince = []string{}
 		}
 	}
 
-	value, err := db.GetRev(docid, revid,
-		query.Get("revs") == "true",
-		attachmentsSince)
-	if err != nil {
-		return err
+	if openRevs == "" {
+		// Single-revision GET:
+		value, err := db.GetRev(docid, revid,
+			includeRevs,
+			attachmentsSince)
+		if err != nil {
+			return err
+		}
+		if value == nil {
+			return kNotFoundError
+		}
+		r.Header().Set("Etag", value["_rev"].(string))
+		writeJSON(value, r, rq)
+
+	} else if openRevs == "all" {
+		return &HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
+
+	} else {
+		// Multi-revision GET (open_revs):
+		if (!requestAccepts(rq, "multipart/")) {
+			return &HTTPError{http.StatusNotAcceptable, "only multipart available"}
+		}
+		var revids []string
+		err := json.Unmarshal([]byte(openRevs), &revids)
+		if err != nil {
+			return &HTTPError{http.StatusBadRequest, "bad open_revs"}
+		}
+
+		var buffer bytes.Buffer
+		writer := multipart.NewWriter(&buffer)
+		r.Header().Set("Content-Type",
+			fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
+		for _, revid := range revids {
+			contentType := "application/json"
+			value, err := db.GetRev(docid, revid, includeRevs, attachmentsSince)
+			if err != nil {
+				value = Body{"missing": revid} //TODO: More specific error
+				contentType += `; error="true"`
+			}
+			jsonOut, _ := json.Marshal(value)
+			partHeaders := textproto.MIMEHeader{}
+			partHeaders.Set("Content-Type", contentType)
+			part, _ := writer.CreatePart(partHeaders)
+			part.Write(jsonOut)
+		}
+		writer.Close()
+
+		// Trim trailing newline; CouchDB is allergic to it:
+		r.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
 	}
-	if value == nil {
-		return kNotFoundError
-	}
-	r.Header().Set("Etag", value["_rev"].(string))
-	writeJSON(value, r, rq)
 	return nil
 }
 
@@ -612,16 +655,17 @@ func readJSON(rq *http.Request) (Body, error) {
 	return body, readJSONInto(rq, &body)
 }
 
+func requestAccepts(rq *http.Request, mimetype string) bool {
+	accept := rq.Header.Get("Accept")
+	return accept == "" || strings.Contains(accept, mimetype) || strings.Contains(accept, "*/*")
+}
+
 // Writes an object to the response in JSON format.
 func writeJSONStatus(status int, value interface{}, r http.ResponseWriter, rq *http.Request) {
-	if rq != nil {
-		accept := rq.Header.Get("Accept")
-		if accept != "" && !strings.Contains(accept, "application/json") &&
-			!strings.Contains(accept, "*/*") {
-			log.Printf("WARNING: Client won't accept JSON, only %s", accept)
-			writeStatus(http.StatusNotAcceptable, "only application/json available", r)
-			return
-		}
+	if rq != nil && !requestAccepts(rq, "application/json") {
+		log.Printf("WARNING: Client won't accept JSON, only %s", rq.Header.Get("Accept"))
+		writeStatus(http.StatusNotAcceptable, "only application/json available", r)
+		return
 	}
 
 	jsonOut, err := json.Marshal(value)
