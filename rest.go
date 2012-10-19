@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 )
@@ -245,8 +246,8 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) erro
 
 func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) error {
 	var options ChangesOptions
-	options.Since = getIntQuery(rq, "since")
-	options.Limit = int(getIntQuery(rq, "limit"))
+	options.Since = getIntQuery(rq, "since", 0)
+	options.Limit = int(getIntQuery(rq, "limit", 0))
 	options.Conflicts = (rq.URL.Query().Get("style") == "all_docs")
 	options.IncludeDocs = (rq.URL.Query().Get("include_docs") == "true")
 
@@ -254,7 +255,7 @@ func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) error
 	case "longpoll":
 		options.Wait = true
 	case "continuous":
-		return &HTTPError{http.StatusNotImplemented, "continuous _changes not implemented"}
+		return db.HandleContinuousChanges(r, rq, options)
 	}
 
 	changes, err := db.GetChanges(options)
@@ -266,6 +267,57 @@ func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) error
 		writeJSON(Body{"results": changes, "last_seq": lastSeq}, r, rq)
 	}
 	return err
+}
+
+func (db *Database) HandleContinuousChanges(r http.ResponseWriter, rq *http.Request,
+	options ChangesOptions) error {
+	var timeout <-chan time.Time
+	var heartbeat <-chan time.Time
+	if ms := getIntQuery(rq, "heartbeat", 0); ms > 0 {
+		ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+		defer ticker.Stop()
+		heartbeat = ticker.C
+	} else if ms := getIntQuery(rq, "timeout", 60); ms > 0 {
+		timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+		defer timer.Stop()
+		timeout = timer.C
+	}
+
+	options.Wait = true // we want the feed channel to wait for changes
+	var feed <-chan *ChangeEntry
+	var err error
+	for {
+		if feed == nil {
+			// Refresh the feed of all current changes:
+			feed, err = db.ChangesFeed(options)
+			if err != nil || feed == nil {
+				return err
+			}
+		}
+
+		// Wait for either a new change, or a heartbeat:
+		select {
+		case entry := <-feed:
+			if entry == nil {
+				feed = nil
+			} else {
+				options.Since = entry.Seq // so next call to ChangesFeed will start from end
+				str, _ := json.Marshal(entry)
+				if LogRequestsVerbose {
+					log.Printf("\tchange: %s", str)
+				}
+				err = writeln(str, r)
+			}
+		case <-heartbeat:
+			err = writeln([]byte{}, r)
+		case <-timeout:
+			return nil
+		}
+		if err != nil {
+			return nil // error is probably because the client closed the connection
+		}
+	}
+	return nil
 }
 
 func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) error {
@@ -519,7 +571,8 @@ func ServerMain() {
 //////// HELPER FUNCTIONS:
 
 // Returns the integer value of a URL query, defaulting to 0 if missing or unparseable
-func getIntQuery(rq *http.Request, query string) (value uint64) {
+func getIntQuery(rq *http.Request, query string, defaultValue uint64) (value uint64) {
+	value = defaultValue
 	q := rq.URL.Query().Get(query)
 	if q != "" {
 		value, _ = strconv.ParseUint(q, 10, 64)
@@ -579,6 +632,20 @@ func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
 		r.Header().Set("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
 		r.Write(jsonOut)
 	}
+}
+
+func writeln(line []byte, r http.ResponseWriter) error {
+	_, err := r.Write(line)
+	if err == nil {
+		_, err = r.Write([]byte("\r\n"))
+	}
+	if err == nil {
+		switch r := r.(type) {
+		case http.Flusher:
+			r.Flush()
+		}
+	}
+	return err
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and

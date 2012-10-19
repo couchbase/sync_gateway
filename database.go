@@ -414,7 +414,7 @@ type ChangeEntry struct {
 type ChangeRev map[string]string
 
 // Returns a list of all the changes made to the database, a la the _changes feed.
-func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
+func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, error) {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	uuid := db.UUID()
 	startkey := [2]interface{}{uuid, options.Since + 1}
@@ -426,60 +426,72 @@ func (db *Database) GetChanges(options ChangesOptions) ([]ChangeEntry, error) {
 		opts["limit"] = options.Limit
 	}
 
-	// Query the 'changes' view:
-	var vres couchbase.ViewResult
-	var err error
-	for len(vres.Rows) == 0 {
-		vres, err = db.bucket.View("couchdb", "changes", opts)
-		if err != nil {
-			log.Printf("Error from 'changes' view: %v", err)
-			return nil, err
-		}
-		if len(vres.Rows) == 0 {
-			if !options.Wait || !db.WaitForRevision() {
-				break
+	feed := make(chan *ChangeEntry)
+
+	// Generate the output in a new goroutine, writing to 'feed':
+	go func() {
+		defer close(feed)
+		// Query the 'changes' view:
+		var vres couchbase.ViewResult
+		var err error
+		for len(vres.Rows) == 0 {
+			vres, err = db.bucket.View("couchdb", "changes", opts)
+			if err != nil {
+				log.Printf("Error from 'changes' view: %v", err)
+				return
+			}
+			if len(vres.Rows) == 0 {
+				if !options.Wait || !db.WaitForRevision() {
+					return
+				}
 			}
 		}
-	}
 
-	// Generate the output:
-	rows := vres.Rows
-	changes := make([]ChangeEntry, 0, len(rows))
-	for _, row := range rows {
-		key := row.Key.([]interface{})
-		value := row.Value.([]interface{})
-		docID := value[0].(string)
-		revID := value[1].(string)
-
-		entry := ChangeEntry{
-			Seq:     uint64(key[1].(float64)),
-			ID:      docID,
-			Changes: []ChangeRev{{"rev": revID}},
-			Deleted: (len(value) >= 3 && value[2].(bool)),
-		}
-
-		if options.Conflicts || options.IncludeDocs {
-			doc, _ := db.getDoc(docID)
-			if doc != nil {
-				if options.Conflicts {
-					for _, leafID := range doc.History.getLeaves() {
-						if leafID != revID {
-							entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+		for _, row := range vres.Rows {
+			key := row.Key.([]interface{})
+			value := row.Value.([]interface{})
+			docID := value[0].(string)
+			revID := value[1].(string)
+			entry := &ChangeEntry{
+				Seq:     uint64(key[1].(float64)),
+				ID:      docID,
+				Changes: []ChangeRev{{"rev": revID}},
+				Deleted: (len(value) >= 3 && value[2].(bool)),
+			}
+			if options.Conflicts || options.IncludeDocs {
+				doc, _ := db.getDoc(entry.ID)
+				if doc != nil {
+					if options.Conflicts {
+						for _, leafID := range doc.History.getLeaves() {
+							if leafID != revID {
+								entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+							}
+						}
+					}
+					if options.IncludeDocs {
+						key := doc.History[revID].Key
+						if key != "" {
+							entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
 						}
 					}
 				}
-				if options.IncludeDocs {
-					key := doc.History[revID].Key
-					if key != "" {
-						entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-					}
-				}
 			}
+			feed <- entry
 		}
+	}()
+	return feed, nil
+}
 
-		changes = append(changes, entry)
+func (db *Database) GetChanges(options ChangesOptions) ([]*ChangeEntry, error) {
+	var changes []*ChangeEntry
+	feed, err := db.ChangesFeed(options)
+	if err == nil && feed != nil {
+		changes = make([]*ChangeEntry, 0, 50)
+		for entry := range feed {
+			changes = append(changes, entry)
+		}
 	}
-	return changes, nil
+	return changes, err
 }
 
 func (db *Database) WaitForRevision() bool {
