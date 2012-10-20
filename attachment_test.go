@@ -27,6 +27,11 @@ func unjson(j string) Body {
 	return body
 }
 
+func tojson(obj interface{}) string {
+	j,_ := json.Marshal(obj)
+	return string(j)
+}
+
 func TestAttachments(t *testing.T) {
 	db, err := CreateDatabase(gTestBucket, "testdb")
 	assertNoError(t, err, "Couldn't create database 'testdb'")
@@ -48,12 +53,10 @@ func TestAttachments(t *testing.T) {
 	assertNoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
-	rev1output := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ=", "length":11, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "revpos":1},
-                                  "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==", "length":19, "digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", "revpos":1}},
-                    "_id":"doc1", "_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
+	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
 	gotbody, err := db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
-	assert.DeepEquals(t, gotbody, unjson(rev1output))
+	assert.Equals(t, tojson(gotbody), rev1output)
 
 	log.Printf("Create rev 2...")
 	rev2str := `{"_attachments": {"hello.txt": {}, "bye.txt": {"data": "YnllLXlh"}}}`
@@ -65,20 +68,16 @@ func TestAttachments(t *testing.T) {
 	assert.Equals(t, revid, "2-08b42c51334c0469bd060e6d9e6d797b")
 
 	log.Printf("Retrieve doc...")
-	rev2output := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ=", "length":11, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "revpos":1},
-                                  "bye.txt": {"data": "YnllLXlh", "length":6, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", "revpos":2}},
-                    "_id":"doc1", "_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
+	rev2output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
-	assert.DeepEquals(t, gotbody, unjson(rev2output))
+	assert.Equals(t, tojson(gotbody), rev2output)
 
 	log.Printf("Retrieve doc with atts_since...")
-	rev2Aoutput := `{"_attachments": {"hello.txt": {"stub":true, "length":11, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "revpos":1},
-                                  "bye.txt": {"data": "YnllLXlh", "length":6, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", "revpos":2}},
-                    "_id":"doc1", "_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
+	rev2Aoutput := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{"1-54f3a105fb903018c160712ffddb74dc", "1-foo", "993-bar"})
 	assertNoError(t, err, "Couldn't get document")
-	assert.DeepEquals(t, gotbody, unjson(rev2Aoutput))
+	assert.Equals(t, tojson(gotbody), rev2Aoutput)
 
 	log.Printf("Create rev 3...")
 	rev3str := `{"_attachments": {"bye.txt": {}}}`
@@ -90,9 +89,8 @@ func TestAttachments(t *testing.T) {
 	assert.Equals(t, revid, "3-252b9fa1f306930bffc07e7d75b77faf")
 
 	log.Printf("Retrieve doc...")
-	rev3output := `{"_attachments": {"bye.txt": {"data": "YnllLXlh", "length":6, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", "revpos":2}},
-                    "_id":"doc1", "_rev":"3-252b9fa1f306930bffc07e7d75b77faf"}`
+	rev3output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2}},"_id":"doc1","_rev":"3-252b9fa1f306930bffc07e7d75b77faf"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
-	assert.DeepEquals(t, gotbody, unjson(rev3output))
+	assert.Equals(t, tojson(gotbody), rev3output)
 }

@@ -35,7 +35,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 		data, exists := meta["data"]
 		if exists {
 			// Attachment contains data, so store it in the db:
-			attachment, err := base64.StdEncoding.DecodeString(data.(string))
+			attachment, err := decodeAttachment(data)
 			if err != nil {
 				return err
 			}
@@ -70,6 +70,11 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 	return nil
 }
 
+// Goes through a revisions '_attachments' map, loads attachments (by their 'digest' properties)
+// and adds 'data' properties containing the data. The data is added as raw []byte; the JSON
+// marshaler will convert that to base64.
+// If minRevpos is > 0, then only attachments that have been changed in a revision of that
+// generation or later are loaded.
 func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
 	atts := body["_attachments"]
 	if atts == nil {
@@ -80,7 +85,7 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
 		revpos := int(meta["revpos"].(float64))
 		if revpos >= minRevpos {
 			key := AttachmentKey(meta["digest"].(string))
-			data, err := db.getAttachmentBase64(key)
+			data, err := db.getAttachment(key)
 			if err != nil {
 				return err
 			}
@@ -92,12 +97,8 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
 }
 
 // Retrieves an attachment, base64-encoded, given its key.
-func (db *Database) getAttachmentBase64(key AttachmentKey) (string, error) {
-	attachment, err := db.bucket.GetRaw(attachmentKeyToString(key))
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(attachment), nil
+func (db *Database) getAttachment(key AttachmentKey) ([]byte, error) {
+	return db.bucket.GetRaw(attachmentKeyToString(key))
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
@@ -115,4 +116,14 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 
 func attachmentKeyToString(key AttachmentKey) string {
 	return "att:" + string(key)
+}
+
+func decodeAttachment(att interface{}) ([]byte, error) {
+	switch att := att.(type) {
+		case string:
+			return base64.StdEncoding.DecodeString(att)
+		case []byte:
+			return att, nil
+	}
+	return nil, &HTTPError{400, "invalid attachment data"}
 }
