@@ -12,24 +12,27 @@ package basecouch
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
 )
+
+const kMaxInlineAttachmentSize = 200
 
 // Key for retrieving an attachment from Couchbase.
 type AttachmentKey string
-
-// Structure of the _attachments dictionary in a document. (Maps attachment name to metadata dict.)
-type Attachments map[string]Body
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
-	rawAtts, ok := body["_attachments"]
-	if !ok {
-		return nil
-	}
-	atts := rawAtts.(map[string]interface{})
 	var parentAttachments map[string]interface{}
+	atts := bodyAttachments(body)
 	for name, value := range atts {
 		meta := value.(map[string]interface{})
 		data, exists := meta["data"]
@@ -53,6 +56,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if parentAttachments == nil {
 				parent, err := db.getAvailableRev(doc, parentRev)
 				if err != nil {
+					log.Printf("\tWARNING: storeAttachments: no such parent rev %q to find %v", parentRev, meta)
 					return err
 				}
 				parentAttachments, exists = parent["_attachments"].(map[string]interface{})
@@ -76,11 +80,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
 func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
-	atts := body["_attachments"]
-	if atts == nil {
-		return nil
-	}
-	for _, value := range atts.(map[string]interface{}) {
+	for _, value := range bodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		revpos := int(meta["revpos"].(float64))
 		if revpos >= minRevpos {
@@ -112,7 +112,107 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	return key, err
 }
 
+//////// MIME MULTIPART:
+
+type attInfo struct {
+	 name string 
+	 contentType string
+	 data []byte
+ }
+
+// Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
+func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) {
+	// First extract the attachments that should follow:
+	following := []attInfo{}
+	for name, value := range bodyAttachments(body) {
+		meta := value.(map[string]interface{})
+		var info attInfo
+		info.contentType,_ = meta["type"].(string)
+		info.data,_ = decodeAttachment(meta["data"])
+		if info.data != nil && len(info.data) > kMaxInlineAttachmentSize {
+			info.name = name
+			following = append(following, info)
+			delete(meta, "data")
+			meta["follows"] = true
+		}
+	}
+	
+	// Write the main JSON body:
+	jsonOut, _ := json.Marshal(body)
+	partHeaders := textproto.MIMEHeader{}
+	partHeaders.Set("Content-Type", "application/json")
+	part, _ := writer.CreatePart(partHeaders)
+	part.Write(jsonOut)
+	
+	// Write the following attachments
+	for _,info := range following {
+		partHeaders := textproto.MIMEHeader{}
+		if info.contentType != "" {
+			partHeaders.Set("Content-Type", info.contentType)
+		}
+		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
+		part, _ := writer.CreatePart(partHeaders)
+		part.Write(info.data)
+	}
+}
+
+func readMultipartDocument(reader *multipart.Reader) (Body, error) {
+	// First read the main JSON document body:
+	mainPart, err := reader.NextPart()
+	if err != nil {
+		return nil, err
+	}
+	var body Body
+	err = readJSONInto(http.Header(mainPart.Header), mainPart, &body)
+	mainPart.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// Now look for "following" attachments:
+	for name, value := range bodyAttachments(body) {
+		meta := value.(map[string]interface{})
+		if meta["follows"] == true {
+			part, err := reader.NextPart()
+			if err != nil {
+				return nil, err
+			}
+			data, err := ioutil.ReadAll(part)
+			part.Close()
+			if err != nil {
+				return nil, err
+			}
+			
+			length, ok := meta["encoded_length"].(float64)
+			if !ok {
+				length, ok = meta["length"].(float64)
+			}
+			if ok {
+				if int(length) != len(data) {
+					return nil, &HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
+				}
+			}
+			
+			meta["data"] = data
+			delete(meta, "follows")
+		}
+	}
+	
+	// Make sure there are no unused MIME parts:
+	_, err = reader.NextPart()
+	if err != io.EOF {
+		return nil, &HTTPError{http.StatusBadRequest, "Too many MIME parts"}
+	}
+	
+	return body, nil
+}
+
 //////// HELPERS:
+
+func bodyAttachments(body Body) map[string]interface{} {
+	atts,_ := body["_attachments"].(map[string]interface{})
+	return atts
+}
 
 func attachmentKeyToString(key AttachmentKey) string {
 	return "att:" + string(key)

@@ -14,8 +14,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -60,9 +62,7 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := db.GetRev(docid, revid,
-			includeRevs,
-			attachmentsSince)
+		value, err := db.GetRev(docid, revid, includeRevs, attachmentsSince)
 		if err != nil {
 			return err
 		}
@@ -70,50 +70,50 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 			return kNotFoundError
 		}
 		r.Header().Set("Etag", value["_rev"].(string))
-		writeJSON(value, r, rq)
+		
+		if requestAccepts(rq, "application/json") {
+			writeJSON(value, r, rq)
+		} else {
+			return writeMultipart(r, rq, func(writer *multipart.Writer) error {
+				db.writeMultipartDocument(value, writer)
+				return nil
+			})
+		}
 
 	} else if openRevs == "all" {
 		return &HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
 
 	} else {
-		// Multi-revision GET (open_revs):
-		if (!requestAccepts(rq, "multipart/")) {
-			return &HTTPError{http.StatusNotAcceptable, "only multipart available"}
-		}
 		var revids []string
 		err := json.Unmarshal([]byte(openRevs), &revids)
 		if err != nil {
 			return &HTTPError{http.StatusBadRequest, "bad open_revs"}
 		}
 
-		var buffer bytes.Buffer
-		writer := multipart.NewWriter(&buffer)
-		r.Header().Set("Content-Type",
-			fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
-		for _, revid := range revids {
-			contentType := "application/json"
-			value, err := db.GetRev(docid, revid, includeRevs, attachmentsSince)
-			if err != nil {
-				value = Body{"missing": revid} //TODO: More specific error
-				contentType += `; error="true"`
+		err = writeMultipart(r, rq, func(writer *multipart.Writer) error {
+			for _, revid := range revids {
+				contentType := "application/json"
+				value, err := db.GetRev(docid, revid, includeRevs, attachmentsSince)
+				if err != nil {
+					value = Body{"missing": revid} //TODO: More specific error
+					contentType += `; error="true"`
+				}
+				jsonOut, _ := json.Marshal(value)
+				partHeaders := textproto.MIMEHeader{}
+				partHeaders.Set("Content-Type", contentType)
+				part, _ := writer.CreatePart(partHeaders)
+				part.Write(jsonOut)
 			}
-			jsonOut, _ := json.Marshal(value)
-			partHeaders := textproto.MIMEHeader{}
-			partHeaders.Set("Content-Type", contentType)
-			part, _ := writer.CreatePart(partHeaders)
-			part.Write(jsonOut)
-		}
-		writer.Close()
-
-		// Trim trailing newline; CouchDB is allergic to it:
-		r.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
+			return nil
+		})
+		return err
 	}
 	return nil
 }
 
 // HTTP handler for a PUT of a document
 func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	body, err := readJSON(rq)
+	body, err := readDocument(rq)
 	if err != nil {
 		return err
 	}
@@ -137,14 +137,14 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
 		if err != nil {
 			return err
 		}
-		r.WriteHeader(http.StatusCreated)
+		writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid}, r, rq)
 	}
 	return nil
 }
 
 // HTTP handler for a POST to a database (creating a document)
 func (db *Database) HandlePostDoc(r http.ResponseWriter, rq *http.Request) error {
-	body, err := readJSON(rq)
+	body, err := readDocument(rq)
 	if err != nil {
 		return err
 	}
@@ -371,7 +371,7 @@ loop:
 
 func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) error {
 	var input RevsDiffInput
-	err := readJSONInto(rq, &input)
+	err := readJSONInto(rq.Header, rq.Body, &input)
 	if err != nil {
 		return err
 	}
@@ -632,12 +632,12 @@ func getIntQuery(rq *http.Request, query string, defaultValue uint64) (value uin
 }
 
 // Parses a JSON request body, unmarshaling it into "into".
-func readJSONInto(rq *http.Request, into interface{}) error {
-	contentType := rq.Header.Get("Content-Type")
+func readJSONInto(headers http.Header, input io.Reader, into interface{}) error {
+	contentType := headers.Get("Content-Type")
 	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
 		return &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
 	}
-	body, err := ioutil.ReadAll(rq.Body)
+	body, err := ioutil.ReadAll(input)
 	if err != nil {
 		return &HTTPError{http.StatusBadRequest, ""}
 	}
@@ -652,7 +652,19 @@ func readJSONInto(rq *http.Request, into interface{}) error {
 // Parses a JSON request body, returning it as a Body map.
 func readJSON(rq *http.Request) (Body, error) {
 	var body Body
-	return body, readJSONInto(rq, &body)
+	return body, readJSONInto(rq.Header, rq.Body, &body)
+}
+
+func readDocument(rq *http.Request) (Body, error) {
+	contentType,attrs,_ := mime.ParseMediaType(rq.Header.Get("Content-Type"))
+	switch contentType {
+		case "", "application/json":
+			return readJSON(rq)
+		case "multipart/related":
+			reader := multipart.NewReader(rq.Body, attrs["boundary"])
+			return readMultipartDocument(reader)
+	}
+	return nil, &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
 }
 
 func requestAccepts(rq *http.Request, mimetype string) bool {
@@ -693,6 +705,25 @@ func writeJSONStatus(status int, value interface{}, r http.ResponseWriter, rq *h
 
 func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
 	writeJSONStatus(0, value, r, rq)
+}
+
+func writeMultipart(r http.ResponseWriter, rq *http.Request, callback func(*multipart.Writer) error) error {
+	if (!requestAccepts(rq, "multipart/")) {
+		return &HTTPError{Status: http.StatusNotAcceptable}
+	}
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	r.Header().Set("Content-Type",
+		fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
+	
+	err := callback(writer)
+	writer.Close()
+
+	if err == nil {
+		// Trim trailing newline; CouchDB is allergic to it:
+		_,err = r.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
+	}
+	return err
 }
 
 func writeln(line []byte, r http.ResponseWriter) error {

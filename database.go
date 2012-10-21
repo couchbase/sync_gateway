@@ -520,6 +520,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 			return http.StatusNotFound, "missing"
 		case gomemcached.KEY_EEXISTS:
 			return http.StatusConflict, "Conflict"
+		case gomemcached.E2BIG:
+			return http.StatusRequestEntityTooLarge, "Too Large"
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("MC status %d", err.Status)
 		}
