@@ -370,6 +370,36 @@ loop:
 	return nil
 }
 
+func (db *Database) HandleGetAttachment(r http.ResponseWriter, rq *http.Request, docid, attachmentName string) error {
+	revid := rq.URL.Query().Get("rev")
+	body, err := db.GetRev(docid, revid, false, nil)
+	if err != nil {
+		return err
+	}
+	if body == nil {
+		return kNotFoundError
+	}
+	meta, ok := bodyAttachments(body)[attachmentName].(map[string]interface{})
+	if !ok {
+		return &HTTPError{http.StatusNotFound, "missing " + attachmentName}
+	}
+	digest := meta["digest"].(string)
+	data, err := db.getAttachment(AttachmentKey(digest))
+	if err != nil {
+		return err
+	}
+	
+	r.Header().Set("Etag", digest)
+	if contentType, ok := meta["content_type"].(string); ok {
+		r.Header().Set("Content-Type", contentType)
+	}
+	if encoding, ok := meta["encoding"].(string); ok {
+		r.Header().Set("Content-Encoding", encoding)
+	}
+	r.Write(data)
+	return nil
+}
+
 func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) error {
 	var input RevsDiffInput
 	err := readJSONInto(rq.Header, rq.Body, &input)
@@ -419,6 +449,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 	pathLen := len(path)
 	if pathLen >= 2 && path[0] == "_design" {
 		path[0] += "/" + path[1]
+		path = append(path[0:1], path[2:]...)
 		pathLen--
 	}
 	method := rq.Method
@@ -487,8 +518,9 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 		}
 		return kBadMethodError
 	case 2:
-		if path[0] == "_local" {
-			docid := path[1]
+		docid := path[0]
+		if docid == "_local" {
+			docid = path[1]
 			switch method {
 			case "GET":
 				return db.HandleGetLocalDoc(r, rq, docid)
@@ -496,6 +528,15 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 				return db.HandlePutLocalDoc(r, rq, docid)
 			case "DELETE":
 				return db.HandleDeleteLocalDoc(r, rq, docid)
+			default:
+				return kBadMethodError
+			}
+		} else if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
+			// Accessing a document:
+			switch method {
+			case "GET":
+				return db.HandleGetAttachment(r, rq, docid, path[1])
+			//TODO: PUT, DELETE
 			default:
 				return kBadMethodError
 			}
