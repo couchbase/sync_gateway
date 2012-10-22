@@ -127,7 +127,7 @@ func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) 
 	for name, value := range bodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		var info attInfo
-		info.contentType, _ = meta["type"].(string)
+		info.contentType, _ = meta["content_type"].(string)
 		info.data, _ = decodeAttachment(meta["data"])
 		if info.data != nil && len(info.data) > kMaxInlineAttachmentSize {
 			info.name = name
