@@ -70,7 +70,7 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 			return kNotFoundError
 		}
 		r.Header().Set("Etag", value["_rev"].(string))
-		
+
 		if requestAccepts(rq, "application/json") {
 			writeJSON(value, r, rq)
 		} else {
@@ -388,7 +388,7 @@ func (db *Database) HandleGetAttachment(r http.ResponseWriter, rq *http.Request,
 	if err != nil {
 		return err
 	}
-	
+
 	r.Header().Set("Etag", digest)
 	if contentType, ok := meta["content_type"].(string); ok {
 		r.Header().Set("Content-Type", contentType)
@@ -696,13 +696,13 @@ func readJSON(rq *http.Request) (Body, error) {
 }
 
 func readDocument(rq *http.Request) (Body, error) {
-	contentType,attrs,_ := mime.ParseMediaType(rq.Header.Get("Content-Type"))
+	contentType, attrs, _ := mime.ParseMediaType(rq.Header.Get("Content-Type"))
 	switch contentType {
-		case "", "application/json":
-			return readJSON(rq)
-		case "multipart/related":
-			reader := multipart.NewReader(rq.Body, attrs["boundary"])
-			return readMultipartDocument(reader)
+	case "", "application/json":
+		return readJSON(rq)
+	case "multipart/related":
+		reader := multipart.NewReader(rq.Body, attrs["boundary"])
+		return readMultipartDocument(reader)
 	}
 	return nil, &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
 }
@@ -760,20 +760,20 @@ func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
 }
 
 func writeMultipart(r http.ResponseWriter, rq *http.Request, callback func(*multipart.Writer) error) error {
-	if (!requestAccepts(rq, "multipart/")) {
+	if !requestAccepts(rq, "multipart/") {
 		return &HTTPError{Status: http.StatusNotAcceptable}
 	}
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
 	r.Header().Set("Content-Type",
 		fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
-	
+
 	err := callback(writer)
 	writer.Close()
 
 	if err == nil {
 		// Trim trailing newline; CouchDB is allergic to it:
-		_,err = r.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
+		_, err = r.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
 	}
 	return err
 }

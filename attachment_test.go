@@ -28,7 +28,7 @@ func unjson(j string) Body {
 }
 
 func tojson(obj interface{}) string {
-	j,_ := json.Marshal(obj)
+	j, _ := json.Marshal(obj)
 	return string(j)
 }
 

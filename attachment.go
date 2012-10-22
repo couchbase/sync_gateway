@@ -115,10 +115,10 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 //////// MIME MULTIPART:
 
 type attInfo struct {
-	 name string 
-	 contentType string
-	 data []byte
- }
+	name        string
+	contentType string
+	data        []byte
+}
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
 func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) {
@@ -127,8 +127,8 @@ func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) 
 	for name, value := range bodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		var info attInfo
-		info.contentType,_ = meta["type"].(string)
-		info.data,_ = decodeAttachment(meta["data"])
+		info.contentType, _ = meta["type"].(string)
+		info.data, _ = decodeAttachment(meta["data"])
 		if info.data != nil && len(info.data) > kMaxInlineAttachmentSize {
 			info.name = name
 			following = append(following, info)
@@ -136,16 +136,16 @@ func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) 
 			meta["follows"] = true
 		}
 	}
-	
+
 	// Write the main JSON body:
 	jsonOut, _ := json.Marshal(body)
 	partHeaders := textproto.MIMEHeader{}
 	partHeaders.Set("Content-Type", "application/json")
 	part, _ := writer.CreatePart(partHeaders)
 	part.Write(jsonOut)
-	
+
 	// Write the following attachments
-	for _,info := range following {
+	for _, info := range following {
 		partHeaders := textproto.MIMEHeader{}
 		if info.contentType != "" {
 			partHeaders.Set("Content-Type", info.contentType)
@@ -168,22 +168,22 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 	if err != nil {
 		return nil, err
 	}
-	
-	digestIndex := map[string]string{}  // maps digests -> names
+
+	digestIndex := map[string]string{} // maps digests -> names
 
 	// Now look for "following" attachments:
 	attachments := bodyAttachments(body)
 	for name, value := range attachments {
 		meta := value.(map[string]interface{})
 		if meta["follows"] == true {
-			digest,ok := meta["digest"].(string)
+			digest, ok := meta["digest"].(string)
 			if !ok {
 				return nil, &HTTPError{http.StatusBadRequest, "Missing digest in attachment"}
 			}
 			digestIndex[digest] = name
 		}
 	}
-	
+
 	// Read the parts one by one:
 	for i := 0; i < len(digestIndex); i++ {
 		part, err := reader.NextPart()
@@ -198,18 +198,18 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Look up the attachment by its digest:
 		digest := sha1DigestKey(data)
-		name,ok := digestIndex[digest]
+		name, ok := digestIndex[digest]
 		if !ok {
-			name,ok = digestIndex[md5DigestKey(data)]
+			name, ok = digestIndex[md5DigestKey(data)]
 		}
 		if !ok {
 			return nil, &HTTPError{http.StatusBadRequest,
 				fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
 		}
-		
+
 		meta := attachments[name].(map[string]interface{})
 		length, ok := meta["encoded_length"].(float64)
 		if !ok {
@@ -220,18 +220,18 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 				return nil, &HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
 			}
 		}
-			
+
 		delete(meta, "follows")
 		meta["data"] = data
 		meta["digest"] = digest
 	}
-	
+
 	// Make sure there are no unused MIME parts:
 	_, err = reader.NextPart()
 	if err != io.EOF {
 		return nil, &HTTPError{http.StatusBadRequest, "Too many MIME parts"}
 	}
-	
+
 	return body, nil
 }
 
@@ -250,7 +250,7 @@ func md5DigestKey(data []byte) string {
 }
 
 func bodyAttachments(body Body) map[string]interface{} {
-	atts,_ := body["_attachments"].(map[string]interface{})
+	atts, _ := body["_attachments"].(map[string]interface{})
 	return atts
 }
 
@@ -260,10 +260,10 @@ func attachmentKeyToString(key AttachmentKey) string {
 
 func decodeAttachment(att interface{}) ([]byte, error) {
 	switch att := att.(type) {
-		case string:
-			return base64.StdEncoding.DecodeString(att)
-		case []byte:
-			return att, nil
+	case string:
+		return base64.StdEncoding.DecodeString(att)
+	case []byte:
+		return att, nil
 	}
 	return nil, &HTTPError{400, "invalid attachment data"}
 }
