@@ -6,15 +6,14 @@ This is an **experimental prototype** adapter that can allow Couchbase Server 2 
 
 ## Current Status
 
-As of October 16 2012, BaseCouch:
+As of October 22 2012, BaseCouch:
 
 * Supports both push and pull.
 * Supports revision trees and conflicts.
-* Supports attachments.
+* Supports attachments (including MIME multipart PUT/GET).
 
 Limitations:
 
-* Doesn't support MIME multipart bodies in HTTP requests (so pushing docs with attachments to it from CouchDB may fail. I have a new commit to TouchDB that works around this.)
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
 * Explicit garbage collection is required to free up space, via a REST call to `/_vacuum`. This is not yet scheduled automatically, so you'll have to call it yourself.
 * There is no `_compact` implementation yet, so obsolete revisions are never deleted.

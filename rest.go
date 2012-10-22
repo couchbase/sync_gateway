@@ -10,37 +10,21 @@
 package basecouch
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
-	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 )
 
-// If set to true, JSON output will be pretty-printed.
-var PrettyPrint bool = false
-
-// If set to true, HTTP requests will be logged
-var LogRequests bool = true
-var LogRequestsVerbose bool = false
-
-var kNotFoundError = &HTTPError{http.StatusNotFound, "missing"}
-var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
-
 // HTTP handler for a GET of a document
-func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	query := rq.URL.Query()
+func (h *handler) handleGetDoc(docid string) error {
+	query := h.rq.URL.Query()
 	revid := query.Get("rev")
 	includeRevs := query.Get("revs") == "true"
 	openRevs := query.Get("open_revs")
@@ -62,20 +46,20 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := db.GetRev(docid, revid, includeRevs, attachmentsSince)
+		value, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 		if err != nil {
 			return err
 		}
 		if value == nil {
 			return kNotFoundError
 		}
-		r.Header().Set("Etag", value["_rev"].(string))
+		h.setHeader("Etag", value["_rev"].(string))
 
-		if requestAccepts(rq, "application/json") {
-			writeJSON(value, r, rq)
+		if h.requestAccepts("application/json") {
+			h.writeJSON(value)
 		} else {
-			return writeMultipart(r, rq, func(writer *multipart.Writer) error {
-				db.writeMultipartDocument(value, writer)
+			return h.writeMultipart(func(writer *multipart.Writer) error {
+				h.db.writeMultipartDocument(value, writer)
 				return nil
 			})
 		}
@@ -90,10 +74,10 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 			return &HTTPError{http.StatusBadRequest, "bad open_revs"}
 		}
 
-		err = writeMultipart(r, rq, func(writer *multipart.Writer) error {
+		err = h.writeMultipart(func(writer *multipart.Writer) error {
 			for _, revid := range revids {
 				contentType := "application/json"
-				value, err := db.GetRev(docid, revid, includeRevs, attachmentsSince)
+				value, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 				if err != nil {
 					value = Body{"missing": revid} //TODO: More specific error
 					contentType += `; error="true"`
@@ -112,75 +96,75 @@ func (db *Database) HandleGetDoc(r http.ResponseWriter, rq *http.Request, docid 
 }
 
 // HTTP handler for a PUT of a document
-func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	body, err := readDocument(rq)
+func (h *handler) handlePutDoc(docid string) error {
+	body, err := h.readDocument()
 	if err != nil {
 		return err
 	}
 	var newRev string
 
-	query := rq.URL.Query()
+	query := h.rq.URL.Query()
 	if query.Get("new_edits") != "false" {
 		// Regular PUT:
-		newRev, err = db.Put(docid, body)
+		newRev, err = h.db.Put(docid, body)
 		if err != nil {
 			return err
 		}
-		r.Header().Set("Etag", newRev)
+		h.setHeader("Etag", newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
 		revisions := parseRevisions(body)
 		if revisions == nil {
 			return &HTTPError{http.StatusBadRequest, "Bad _revisions"}
 		}
-		err = db.PutExistingRev(docid, body, revisions)
+		err = h.db.PutExistingRev(docid, body, revisions)
 		if err != nil {
 			return err
 		}
 		newRev = body["_rev"].(string)
 	}
-	writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
+	h.writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
 
 // HTTP handler for a POST to a database (creating a document)
-func (db *Database) HandlePostDoc(r http.ResponseWriter, rq *http.Request) error {
-	body, err := readDocument(rq)
+func (h *handler) handlePostDoc() error {
+	body, err := h.readDocument()
 	if err != nil {
 		return err
 	}
-	docid, newRev, err := db.Post(body)
+	docid, newRev, err := h.db.Post(body)
 	if err != nil {
 		return err
 	}
-	r.Header().Set("Location", docid)
-	r.Header().Set("Etag", newRev)
-	writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
+	h.setHeader("Location", docid)
+	h.setHeader("Etag", newRev)
+	h.writeJSON(Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
 
 // HTTP handler for a DELETE of a document
-func (db *Database) HandleDeleteDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	revid := rq.URL.Query().Get("rev")
-	newRev, err := db.DeleteDoc(docid, revid)
+func (h *handler) handleDeleteDoc(docid string) error {
+	revid := h.rq.URL.Query().Get("rev")
+	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
-		writeJSON(Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
+		h.writeJSON(Body{"ok": true, "id": docid, "rev": newRev})
 	}
 	return err
 }
 
 // HTTP handler for _all_docs
-func (db *Database) HandleAllDocs(r http.ResponseWriter, rq *http.Request) error {
+func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
-	includeDocs := rq.URL.Query().Get("include_docs") == "true"
+	includeDocs := h.rq.URL.Query().Get("include_docs") == "true"
 	var ids []IDAndRev
 	var err error
 
 	// Get the doc IDs:
-	if rq.Method == "GET" || rq.Method == "HEAD" {
-		ids, err = db.AllDocIDs()
+	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
+		ids, err = h.db.AllDocIDs()
 	} else {
-		input, err := readJSON(rq)
+		input, err := h.readJSON()
 		if err == nil {
 			keys, ok := input["keys"].([]interface{})
 			ids = make([]IDAndRev, len(keys))
@@ -217,7 +201,7 @@ func (db *Database) HandleAllDocs(r http.ResponseWriter, rq *http.Request) error
 		row := viewRow{ID: id.DocID, Key: id.DocID}
 		if includeDocs || id.RevID == "" {
 			// Fetch the document body:
-			body, err := db.Get(id.DocID)
+			body, err := h.db.Get(id.DocID)
 			if err == nil {
 				id.RevID = body["_rev"].(string)
 				if includeDocs {
@@ -231,13 +215,13 @@ func (db *Database) HandleAllDocs(r http.ResponseWriter, rq *http.Request) error
 		result.Rows = append(result.Rows, row)
 	}
 
-	writeJSON(result, r, rq)
+	h.writeJSON(result)
 	return nil
 }
 
 // HTTP handler for a POST to _bulk_docs
-func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) error {
-	body, err := readJSON(rq)
+func (h *handler) handleBulkDocs() error {
+	body, err := h.readJSON()
 	if err != nil {
 		return err
 	}
@@ -254,9 +238,9 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) erro
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, err = db.Put(docid, doc)
+				revid, err = h.db.Put(docid, doc)
 			} else {
-				docid, revid, err = db.Post(doc)
+				docid, revid, err = h.db.Post(doc)
 			}
 		} else {
 			revisions := parseRevisions(doc)
@@ -264,7 +248,7 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) erro
 				err = &HTTPError{http.StatusBadRequest, "Bad _revisions"}
 			} else {
 				revid = revisions[0]
-				err = db.PutExistingRev(docid, doc, revisions)
+				err = h.db.PutExistingRev(docid, doc, revisions)
 			}
 		}
 
@@ -282,44 +266,43 @@ func (db *Database) HandleBulkDocs(r http.ResponseWriter, rq *http.Request) erro
 		result = append(result, status)
 	}
 
-	writeJSONStatus(http.StatusCreated, result, r, rq)
+	h.writeJSONStatus(http.StatusCreated, result)
 	return nil
 }
 
-func (db *Database) HandleChanges(r http.ResponseWriter, rq *http.Request) error {
+func (h *handler) handleChanges() error {
 	var options ChangesOptions
-	options.Since = getIntQuery(rq, "since", 0)
-	options.Limit = int(getIntQuery(rq, "limit", 0))
-	options.Conflicts = (rq.URL.Query().Get("style") == "all_docs")
-	options.IncludeDocs = (rq.URL.Query().Get("include_docs") == "true")
+	options.Since = h.getIntQuery("since", 0)
+	options.Limit = int(h.getIntQuery("limit", 0))
+	options.Conflicts = (h.rq.URL.Query().Get("style") == "all_docs")
+	options.IncludeDocs = (h.rq.URL.Query().Get("include_docs") == "true")
 
-	switch rq.URL.Query().Get("feed") {
+	switch h.rq.URL.Query().Get("feed") {
 	case "longpoll":
 		options.Wait = true
 	case "continuous":
-		return db.HandleContinuousChanges(r, rq, options)
+		return h.handleContinuousChanges(options)
 	}
 
-	changes, err := db.GetChanges(options)
+	changes, err := h.db.GetChanges(options)
 	var lastSeq uint64
 	if err == nil {
-		lastSeq, err = db.LastSequence()
+		lastSeq, err = h.db.LastSequence()
 	}
 	if err == nil {
-		writeJSON(Body{"results": changes, "last_seq": lastSeq}, r, rq)
+		h.writeJSON(Body{"results": changes, "last_seq": lastSeq})
 	}
 	return err
 }
 
-func (db *Database) HandleContinuousChanges(r http.ResponseWriter, rq *http.Request,
-	options ChangesOptions) error {
+func (h *handler) handleContinuousChanges(options ChangesOptions) error {
 	var timeout <-chan time.Time
 	var heartbeat <-chan time.Time
-	if ms := getIntQuery(rq, "heartbeat", 0); ms > 0 {
+	if ms := h.getIntQuery("heartbeat", 0); ms > 0 {
 		ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
 		defer ticker.Stop()
 		heartbeat = ticker.C
-	} else if ms := getIntQuery(rq, "timeout", 60); ms > 0 {
+	} else if ms := h.getIntQuery("timeout", 60); ms > 0 {
 		timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
 		defer timer.Stop()
 		timeout = timer.C
@@ -332,7 +315,7 @@ loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			feed, err = db.ChangesFeed(options)
+			feed, err = h.db.ChangesFeed(options)
 			if err != nil || feed == nil {
 				return err
 			}
@@ -348,7 +331,7 @@ loop:
 				if LogRequestsVerbose {
 					log.Printf("\tchange: %s", str)
 				}
-				err = writeln(str, r)
+				err = h.writeln(str)
 
 				options.Since = entry.Seq // so next call to ChangesFeed will start from end
 				if options.Limit > 0 {
@@ -359,7 +342,7 @@ loop:
 				}
 			}
 		case <-heartbeat:
-			err = writeln([]byte{}, r)
+			err = h.writeln([]byte{})
 		case <-timeout:
 			break loop
 		}
@@ -370,9 +353,9 @@ loop:
 	return nil
 }
 
-func (db *Database) HandleGetAttachment(r http.ResponseWriter, rq *http.Request, docid, attachmentName string) error {
-	revid := rq.URL.Query().Get("rev")
-	body, err := db.GetRev(docid, revid, false, nil)
+func (h *handler) handleGetAttachment(docid, attachmentName string) error {
+	revid := h.rq.URL.Query().Get("rev")
+	body, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
 		return err
 	}
@@ -384,120 +367,120 @@ func (db *Database) HandleGetAttachment(r http.ResponseWriter, rq *http.Request,
 		return &HTTPError{http.StatusNotFound, "missing " + attachmentName}
 	}
 	digest := meta["digest"].(string)
-	data, err := db.getAttachment(AttachmentKey(digest))
+	data, err := h.db.getAttachment(AttachmentKey(digest))
 	if err != nil {
 		return err
 	}
 
-	r.Header().Set("Etag", digest)
+	h.setHeader("Etag", digest)
 	if contentType, ok := meta["content_type"].(string); ok {
-		r.Header().Set("Content-Type", contentType)
+		h.setHeader("Content-Type", contentType)
 	}
 	if encoding, ok := meta["encoding"].(string); ok {
-		r.Header().Set("Content-Encoding", encoding)
+		h.setHeader("Content-Encoding", encoding)
 	}
-	r.Write(data)
+	h.response.Write(data)
 	return nil
 }
 
-func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) error {
+func (h *handler) handleRevsDiff() error {
 	var input RevsDiffInput
-	err := readJSONInto(rq.Header, rq.Body, &input)
+	err := readJSONInto(h.rq.Header, h.rq.Body, &input)
 	if err != nil {
 		return err
 	}
-	output, err := db.RevsDiff(input)
+	output, err := h.db.RevsDiff(input)
 	if err == nil {
-		writeJSON(output, r, rq)
+		h.writeJSON(output)
 	}
 	return err
 }
 
 // HTTP handler for a GET of a _local document
-func (db *Database) HandleGetLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	value, err := db.GetLocal(docid)
+func (h *handler) handleGetLocalDoc(docid string) error {
+	value, err := h.db.GetLocal(docid)
 	if err != nil {
 		return err
 	}
 	if value == nil {
 		return kNotFoundError
 	}
-	writeJSON(value, r, rq)
+	h.writeJSON(value)
 	return nil
 }
 
 // HTTP handler for a PUT of a _local document
-func (db *Database) HandlePutLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	body, err := readJSON(rq)
+func (h *handler) handlePutLocalDoc(docid string) error {
+	body, err := h.readJSON()
 	if err == nil {
 		var revid string
-		revid, err = db.PutLocal(docid, body)
+		revid, err = h.db.PutLocal(docid, body)
 		if err == nil {
-			writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": revid}, r, rq)
+			h.writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": revid})
 		}
 	}
 	return err
 }
 
 // HTTP handler for a DELETE of a _local document
-func (db *Database) HandleDeleteLocalDoc(r http.ResponseWriter, rq *http.Request, docid string) error {
-	return db.DeleteLocal(docid)
+func (h *handler) handleDeleteLocalDoc(docid string) error {
+	return h.db.DeleteLocal(docid)
 }
 
 // HTTP handler for a database.
-func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []string) error {
+func (h *handler) handle(path []string) error {
 	pathLen := len(path)
 	if pathLen >= 2 && path[0] == "_design" {
 		path[0] += "/" + path[1]
 		path = append(path[0:1], path[2:]...)
 		pathLen--
 	}
-	method := rq.Method
+	method := h.rq.Method
 	if method == "HEAD" {
 		method = "GET"
 	}
 	switch pathLen {
 	case 0:
 		// Root level
-		//log.Printf("%s %s\n", method, db.Name)
+		//log.Printf("%s %s\n", method, h.db.Name)
 		switch method {
 		case "GET":
-			lastSeq, _ := db.LastSequence()
+			lastSeq, _ := h.db.LastSequence()
 			response := Body{
-				"db_name":    db.Name,
-				"doc_count":  db.DocCount(),
+				"db_name":    h.db.Name,
+				"doc_count":  h.db.DocCount(),
 				"update_seq": lastSeq,
 			}
-			writeJSON(response, r, rq)
+			h.writeJSON(response)
 			return nil
 		case "POST":
-			return db.HandlePostDoc(r, rq)
+			return h.handlePostDoc()
 		case "DELETE":
-			return db.Delete()
+			return h.db.Delete()
 		}
 	case 1:
 		docid := path[0]
 		switch docid {
 		case "_all_docs":
 			if method == "GET" || method == "POST" {
-				return db.HandleAllDocs(r, rq)
+				return h.handleAllDocs()
 			}
 		case "_bulk_docs":
 			if method == "POST" {
-				return db.HandleBulkDocs(r, rq)
+				return h.handleBulkDocs()
 			}
 		case "_changes":
 			if method == "GET" {
-				return db.HandleChanges(r, rq)
+				return h.handleChanges()
 			}
 		case "_revs_diff":
 			if method == "POST" {
-				return db.HandleRevsDiff(r, rq)
+				return h.handleRevsDiff()
 			}
 		case "_ensure_full_commit":
 			if method == "POST" {
 				// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-				writeJSONStatus(http.StatusCreated, Body{"ok": true}, r, rq)
+				h.writeJSONStatus(http.StatusCreated, Body{"ok": true})
 				return nil
 			}
 		default:
@@ -505,11 +488,11 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 				// Accessing a document:
 				switch method {
 				case "GET":
-					return db.HandleGetDoc(r, rq, docid)
+					return h.handleGetDoc(docid)
 				case "PUT":
-					return db.HandlePutDoc(r, rq, docid)
+					return h.handlePutDoc(docid)
 				case "DELETE":
-					return db.HandleDeleteDoc(r, rq, docid)
+					return h.handleDeleteDoc(docid)
 				default:
 					return kBadMethodError
 				}
@@ -523,11 +506,11 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 			docid = path[1]
 			switch method {
 			case "GET":
-				return db.HandleGetLocalDoc(r, rq, docid)
+				return h.handleGetLocalDoc(docid)
 			case "PUT":
-				return db.HandlePutLocalDoc(r, rq, docid)
+				return h.handlePutLocalDoc(docid)
 			case "DELETE":
-				return db.HandleDeleteLocalDoc(r, rq, docid)
+				return h.handleDeleteLocalDoc(docid)
 			default:
 				return kBadMethodError
 			}
@@ -535,7 +518,7 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 			// Accessing a document:
 			switch method {
 			case "GET":
-				return db.HandleGetAttachment(r, rq, docid, path[1])
+				return h.handleGetAttachment(docid, path[1])
 			//TODO: PUT, DELETE
 			default:
 				return kBadMethodError
@@ -543,89 +526,85 @@ func (db *Database) Handle(r http.ResponseWriter, rq *http.Request, path []strin
 		}
 	}
 	// Fall through to here if the request was not recognized:
-	log.Printf("WARNING: Unhandled %s %s\n", method, rq.URL)
+	log.Printf("WARNING: Unhandled %s %s\n", method, h.rq.URL)
 	return kNotFoundError
 }
 
 // HTTP handler for the root ("/")
-func handleRoot(r http.ResponseWriter, rq *http.Request) error {
-	if rq.Method == "GET" || rq.Method == "HEAD" {
+func (h *handler) handleRoot() error {
+	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
 		response := map[string]string{
 			"couchdb": "welcome",
 			"version": "BaseCouch 0.1",
 		}
-		writeJSON(response, r, rq)
+		h.writeJSON(response)
 		return nil
 	}
 	return &HTTPError{http.StatusBadRequest, "bad request"}
 }
 
-func handleAllDbs(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Request) error {
-	if rq.Method == "GET" || rq.Method == "HEAD" {
-		response, err := AllDbNames(bucket)
+func (h *handler) handleAllDbs() error {
+	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
+		response, err := AllDbNames(h.bucket)
 		if err != nil {
 			return err
 		} else {
-			writeJSON(response, r, rq)
+			h.writeJSON(response)
 			return nil
 		}
 	}
 	return &HTTPError{http.StatusBadRequest, "bad request"}
 }
 
-func handleVacuum(bucket *couchbase.Bucket, r http.ResponseWriter, rq *http.Request) error {
-	docsDeleted, err := VacuumDocs(bucket)
+func (h *handler) handleVacuum() error {
+	docsDeleted, err := VacuumDocs(h.bucket)
 	if err != nil {
 		return err
 	}
-	revsDeleted, err := VacuumRevisions(bucket)
+	revsDeleted, err := VacuumRevisions(h.bucket)
 	if err != nil {
 		return err
 	}
-	attsDeleted, err := VacuumAttachments(bucket)
+	attsDeleted, err := VacuumAttachments(h.bucket)
 	if err != nil {
 		return err
 	}
-	writeJSON(Body{"docs": docsDeleted, "revs": revsDeleted, "atts": attsDeleted}, r, rq)
+	h.writeJSON(Body{"docs": docsDeleted, "revs": revsDeleted, "atts": attsDeleted})
 	return nil
 }
 
-// Creates an http.Handler that will handle the REST API for the given bucket.
-func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		if LogRequests {
-			log.Printf("%s %s", rq.Method, rq.URL)
+func (h *handler) run() {
+	if LogRequests {
+		log.Printf("%s %s", h.rq.Method, h.rq.URL)
+	}
+	path := strings.Split(h.rq.URL.Path[1:], "/")
+	for len(path) > 0 && path[len(path)-1] == "" {
+		path = path[0 : len(path)-1]
+	}
+	var err error
+	if len(path) == 0 {
+		err = h.handleRoot()
+	} else if path[0] == "_all_dbs" {
+		err = h.handleAllDbs()
+	} else if path[0] == "_vacuum" {
+		err = h.handleVacuum()
+	} else if h.rq.Method == "PUT" && len(path) == 1 {
+		// Create a database:
+		_, err = CreateDatabase(h.bucket, path[0])
+		if err == nil {
+			h.response.WriteHeader(http.StatusCreated)
+			h.logStatus(201)
 		}
-		path := strings.Split(rq.URL.Path[1:], "/")
-		for len(path) > 0 && path[len(path)-1] == "" {
-			path = path[0 : len(path)-1]
+	} else {
+		// Handle a request aimed at a database:
+		h.db, err = GetDatabase(h.bucket, path[0])
+		if err == nil {
+			err = h.handle(path[1:])
 		}
-		var err error
-		if len(path) == 0 {
-			err = handleRoot(r, rq)
-		} else if path[0] == "_all_dbs" {
-			err = handleAllDbs(bucket, r, rq)
-		} else if path[0] == "_vacuum" {
-			err = handleVacuum(bucket, r, rq)
-		} else if rq.Method == "PUT" && len(path) == 1 {
-			// Create a database:
-			_, err = CreateDatabase(bucket, path[0])
-			if err == nil {
-				r.WriteHeader(http.StatusCreated)
-				logStatus(201, r)
-			}
-		} else {
-			// Handle a request aimed at a database:
-			var db *Database
-			db, err = GetDatabase(bucket, path[0])
-			if err == nil {
-				err = db.Handle(r, rq, path[1:])
-			}
-		}
-		if err != nil {
-			writeError(err, r)
-		}
-	})
+	}
+	if err != nil {
+		h.writeError(err)
+	}
 }
 
 // Initialize REST handlers. Call this once on launch.
@@ -657,163 +636,4 @@ func ServerMain() {
 	if err != nil {
 		log.Fatal("Server failed: ", err.Error())
 	}
-}
-
-//////// HELPER FUNCTIONS:
-
-// Returns the integer value of a URL query, defaulting to 0 if missing or unparseable
-func getIntQuery(rq *http.Request, query string, defaultValue uint64) (value uint64) {
-	value = defaultValue
-	q := rq.URL.Query().Get(query)
-	if q != "" {
-		value, _ = strconv.ParseUint(q, 10, 64)
-	}
-	return
-}
-
-// Parses a JSON request body, unmarshaling it into "into".
-func readJSONInto(headers http.Header, input io.Reader, into interface{}) error {
-	contentType := headers.Get("Content-Type")
-	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
-	}
-	body, err := ioutil.ReadAll(input)
-	if err != nil {
-		return &HTTPError{http.StatusBadRequest, ""}
-	}
-	err = json.Unmarshal(body, into)
-	if err != nil {
-		log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
-		return &HTTPError{http.StatusBadRequest, "Bad JSON"}
-	}
-	return nil
-}
-
-// Parses a JSON request body, returning it as a Body map.
-func readJSON(rq *http.Request) (Body, error) {
-	var body Body
-	return body, readJSONInto(rq.Header, rq.Body, &body)
-}
-
-func readDocument(rq *http.Request) (Body, error) {
-	contentType, attrs, _ := mime.ParseMediaType(rq.Header.Get("Content-Type"))
-	switch contentType {
-	case "", "application/json":
-		return readJSON(rq)
-	case "multipart/related":
-		reader := multipart.NewReader(rq.Body, attrs["boundary"])
-		return readMultipartDocument(reader)
-	}
-	return nil, &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
-}
-
-func requestAccepts(rq *http.Request, mimetype string) bool {
-	accept := rq.Header.Get("Accept")
-	return accept == "" || strings.Contains(accept, mimetype) || strings.Contains(accept, "*/*")
-}
-
-func logStatus(status int, r http.ResponseWriter) {
-	if LogRequestsVerbose {
-		var message string
-		if status >= 300 {
-			message = "*** "
-		}
-		log.Printf("\t--> %d %s", status, message)
-	}
-}
-
-// Writes an object to the response in JSON format.
-func writeJSONStatus(status int, value interface{}, r http.ResponseWriter, rq *http.Request) {
-	if rq != nil && !requestAccepts(rq, "application/json") {
-		log.Printf("WARNING: Client won't accept JSON, only %s", rq.Header.Get("Accept"))
-		writeStatus(http.StatusNotAcceptable, "only application/json available", r)
-		return
-	}
-
-	jsonOut, err := json.Marshal(value)
-	if err != nil {
-		log.Printf("WARNING: Couldn't serialize JSON for %v", value)
-		writeStatus(http.StatusInternalServerError, "JSON serialization failed", r)
-		return
-	}
-	if PrettyPrint {
-		var buffer bytes.Buffer
-		json.Indent(&buffer, jsonOut, "", "  ")
-		jsonOut = append(buffer.Bytes(), '\n')
-	}
-	r.Header().Set("Content-Type", "application/json")
-	if rq == nil || rq.Method != "HEAD" {
-		r.Header().Set("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
-		if status > 0 {
-			r.WriteHeader(status)
-			logStatus(status, r)
-		}
-		r.Write(jsonOut)
-	} else if status > 0 {
-		r.WriteHeader(status)
-		logStatus(status, r)
-	}
-}
-
-func writeJSON(value interface{}, r http.ResponseWriter, rq *http.Request) {
-	writeJSONStatus(0, value, r, rq)
-}
-
-func writeMultipart(r http.ResponseWriter, rq *http.Request, callback func(*multipart.Writer) error) error {
-	if !requestAccepts(rq, "multipart/") {
-		return &HTTPError{Status: http.StatusNotAcceptable}
-	}
-	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
-	r.Header().Set("Content-Type",
-		fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
-
-	err := callback(writer)
-	writer.Close()
-
-	if err == nil {
-		// Trim trailing newline; CouchDB is allergic to it:
-		_, err = r.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
-	}
-	return err
-}
-
-func writeln(line []byte, r http.ResponseWriter) error {
-	_, err := r.Write(line)
-	if err == nil {
-		_, err = r.Write([]byte("\r\n"))
-	}
-	if err == nil {
-		switch r := r.(type) {
-		case http.Flusher:
-			r.Flush()
-		}
-	}
-	return err
-}
-
-// If the error parameter is non-nil, sets the response status code appropriately and
-// writes a CouchDB-style JSON description to the body.
-func writeError(err error, r http.ResponseWriter) {
-	if err != nil {
-		status, message := ErrorAsHTTPStatus(err)
-		writeStatus(status, message, r)
-	}
-}
-
-// Writes the response status code, and if it's an error writes a JSON description to the body.
-func writeStatus(status int, message string, r http.ResponseWriter) {
-	if status < 300 {
-		r.WriteHeader(status)
-		logStatus(status, r)
-		return
-	}
-	var errorStr string
-	switch status {
-	case 404:
-		errorStr = "not_found"
-	default:
-		errorStr = fmt.Sprintf("%d", status)
-	}
-	writeJSONStatus(status, Body{"error": errorStr, "reason": message}, r, nil)
 }
