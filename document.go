@@ -193,6 +193,9 @@ func (db *Database) putDocAndBody(docid string, revid string, doc *document, bod
 	if err != nil {
 		return err
 	}
+	if LogRequestsVerbose {
+		log.Printf("\tAdded doc %q / %q", docid, revid)
+	}
 	doc.History.setRevisionKey(revid, key)
 
 	err = db.setDoc(docid, doc)

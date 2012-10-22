@@ -117,28 +117,29 @@ func (db *Database) HandlePutDoc(r http.ResponseWriter, rq *http.Request, docid 
 	if err != nil {
 		return err
 	}
+	var newRev string
 
 	query := rq.URL.Query()
 	if query.Get("new_edits") != "false" {
 		// Regular PUT:
-		newRev, err := db.Put(docid, body)
+		newRev, err = db.Put(docid, body)
 		if err != nil {
 			return err
 		}
 		r.Header().Set("Etag", newRev)
-		writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
 	} else {
 		// Replicator-style PUT with new_edits=false:
 		revisions := parseRevisions(body)
 		if revisions == nil {
 			return &HTTPError{http.StatusBadRequest, "Bad _revisions"}
 		}
-		err := db.PutExistingRev(docid, body, revisions)
+		err = db.PutExistingRev(docid, body, revisions)
 		if err != nil {
 			return err
 		}
-		writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid}, r, rq)
+		newRev = body["_rev"].(string)
 	}
+	writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": newRev}, r, rq)
 	return nil
 }
 
@@ -375,9 +376,6 @@ func (db *Database) HandleRevsDiff(r http.ResponseWriter, rq *http.Request) erro
 	if err != nil {
 		return err
 	}
-	//if LogRequestsVerbose {
-	//	log.Printf("\t%v", input)
-	//}
 	output, err := db.RevsDiff(input)
 	if err == nil {
 		writeJSON(output, r, rq)
@@ -573,6 +571,7 @@ func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
 			_, err = CreateDatabase(bucket, path[0])
 			if err == nil {
 				r.WriteHeader(http.StatusCreated)
+				logStatus(201, r)
 			}
 		} else {
 			// Handle a request aimed at a database:
@@ -672,6 +671,16 @@ func requestAccepts(rq *http.Request, mimetype string) bool {
 	return accept == "" || strings.Contains(accept, mimetype) || strings.Contains(accept, "*/*")
 }
 
+func logStatus(status int, r http.ResponseWriter) {
+	if LogRequestsVerbose {
+		var message string
+		if status >= 300 {
+			message = "*** "
+		}
+		log.Printf("\t--> %d %s", status, message)
+	}
+}
+
 // Writes an object to the response in JSON format.
 func writeJSONStatus(status int, value interface{}, r http.ResponseWriter, rq *http.Request) {
 	if rq != nil && !requestAccepts(rq, "application/json") {
@@ -696,10 +705,12 @@ func writeJSONStatus(status int, value interface{}, r http.ResponseWriter, rq *h
 		r.Header().Set("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
 		if status > 0 {
 			r.WriteHeader(status)
+			logStatus(status, r)
 		}
 		r.Write(jsonOut)
 	} else if status > 0 {
 		r.WriteHeader(status)
+		logStatus(status, r)
 	}
 }
 
@@ -753,6 +764,7 @@ func writeError(err error, r http.ResponseWriter) {
 func writeStatus(status int, message string, r http.ResponseWriter) {
 	if status < 300 {
 		r.WriteHeader(status)
+		logStatus(status, r)
 		return
 	}
 	var errorStr string
@@ -763,5 +775,4 @@ func writeStatus(status int, message string, r http.ResponseWriter) {
 		errorStr = fmt.Sprintf("%d", status)
 	}
 	writeJSONStatus(status, Body{"error": errorStr, "reason": message}, r, nil)
-	log.Printf("\t*** %d: %s", status, message)
 }

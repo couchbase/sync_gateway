@@ -38,6 +38,9 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	digester.Write(canonicalEncoding(body))
 	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
 	_, err := db.bucket.Add(revKeyToString(revKey), 0, body)
+	if LogRequestsVerbose && err == nil {
+		log.Printf("\tAdded revision %q", revKey)
+	}
 	return revKey, err
 }
 

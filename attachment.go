@@ -10,6 +10,7 @@
 package basecouch
 
 import (
+	"crypto/md5"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
@@ -103,12 +104,11 @@ func (db *Database) getAttachment(key AttachmentKey) ([]byte, error) {
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
-	digester := sha1.New()
-	digester.Write(attachment)
-	digest := base64.StdEncoding.EncodeToString(digester.Sum(nil))
-
-	key := AttachmentKey("sha1-" + digest)
+	key := AttachmentKey(sha1DigestKey(attachment))
 	_, err := db.bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
+	if LogRequestsVerbose && err == nil {
+		log.Printf("\tAdded attachment %q", key)
+	}
 	return key, err
 }
 
@@ -168,34 +168,62 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 	if err != nil {
 		return nil, err
 	}
+	
+	digestIndex := map[string]string{}  // maps digests -> names
 
 	// Now look for "following" attachments:
-	for name, value := range bodyAttachments(body) {
+	attachments := bodyAttachments(body)
+	for name, value := range attachments {
 		meta := value.(map[string]interface{})
 		if meta["follows"] == true {
-			part, err := reader.NextPart()
-			if err != nil {
-				return nil, err
-			}
-			data, err := ioutil.ReadAll(part)
-			part.Close()
-			if err != nil {
-				return nil, err
-			}
-			
-			length, ok := meta["encoded_length"].(float64)
+			digest,ok := meta["digest"].(string)
 			if !ok {
-				length, ok = meta["length"].(float64)
+				return nil, &HTTPError{http.StatusBadRequest, "Missing digest in attachment"}
 			}
-			if ok {
-				if int(length) != len(data) {
-					return nil, &HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
-				}
-			}
-			
-			meta["data"] = data
-			delete(meta, "follows")
+			digestIndex[digest] = name
 		}
+	}
+	
+	// Read the parts one by one:
+	for i := 0; i < len(digestIndex); i++ {
+		part, err := reader.NextPart()
+		if err != nil {
+			if err == io.EOF {
+				err = &HTTPError{http.StatusBadRequest, "Too few MIME parts"}
+			}
+			return nil, err
+		}
+		data, err := ioutil.ReadAll(part)
+		part.Close()
+		if err != nil {
+			return nil, err
+		}
+		
+		// Look up the attachment by its digest:
+		digest := sha1DigestKey(data)
+		name,ok := digestIndex[digest]
+		if !ok {
+			name,ok = digestIndex[md5DigestKey(data)]
+		}
+		if !ok {
+			return nil, &HTTPError{http.StatusBadRequest,
+				fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
+		}
+		
+		meta := attachments[name].(map[string]interface{})
+		length, ok := meta["encoded_length"].(float64)
+		if !ok {
+			length, ok = meta["length"].(float64)
+		}
+		if ok {
+			if int(length) != len(data) {
+				return nil, &HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
+			}
+		}
+			
+		delete(meta, "follows")
+		meta["data"] = data
+		meta["digest"] = digest
 	}
 	
 	// Make sure there are no unused MIME parts:
@@ -208,6 +236,18 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 }
 
 //////// HELPERS:
+
+func sha1DigestKey(data []byte) string {
+	digester := sha1.New()
+	digester.Write(data)
+	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+}
+
+func md5DigestKey(data []byte) string {
+	digester := md5.New()
+	digester.Write(data)
+	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+}
 
 func bodyAttachments(body Body) map[string]interface{} {
 	atts,_ := body["_attachments"].(map[string]interface{})
