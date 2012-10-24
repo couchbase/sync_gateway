@@ -10,6 +10,7 @@
 package basecouch
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -29,58 +30,71 @@ func (db *Database) GetLocal(docid string) (Body, error) {
 	return body, nil
 }
 
-// Updates a local document.
-func (db *Database) PutLocal(docid string, body Body) (string, error) {
+// Updates or deletes a local document.
+func (db *Database) putLocal(docid string, matchRev string, body Body) (string, error) {
 	key := db.realLocalDocID(docid)
 	if key == "" {
 		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-
-	// Verify that the _rev key in the body matches the current stored value:
-	var matchRev string
-	if body["_rev"] != nil {
-		matchRev = body["_rev"].(string)
-	}
-	prevBody := Body{}
-	err := db.bucket.Get(key, &prevBody)
-	if err != nil {
-		if !isMissingDocError(err) {
-			return "", err
+	var revid string
+	err := db.bucket.Update(key, 0, func(value []byte) ([]byte, error) {
+		if len(value) == 0 {
+			if matchRev != "" || body == nil {
+				return nil, &HTTPError{Status: http.StatusNotFound,
+					Message: "No previous revision to replace"}
+			}
+		} else {
+			prevBody := Body{}
+			if err := json.Unmarshal(value, &prevBody); err != nil {
+				return nil, err
+			}
+			if matchRev != prevBody["_rev"] {
+				return nil, &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+			}
 		}
-		if matchRev != "" {
-			return "", &HTTPError{Status: http.StatusNotFound,
-				Message: "No previous revision to replace"}
-		}
-	} else {
-		if matchRev != prevBody["_rev"] {
-			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
-		}
-	}
 
-	var generation uint
-	if matchRev != "" {
-		fmt.Sscanf(matchRev, "0-%d", &generation)
-	}
-	revid := fmt.Sprintf("0-%d", generation+1)
-	body["_rev"] = revid
+		if body != nil {
+			// Updating:
+			var generation uint
+			if matchRev != "" {
+				fmt.Sscanf(matchRev, "0-%d", &generation)
+			}
+			revid = fmt.Sprintf("0-%d", generation+1)
+			body["_rev"] = revid
+			return json.Marshal(body)
+		} else {
+			// Deleting:
+			return nil, nil
+		}
+		panic("unreachable")
+	})
+	return revid, err
+}
 
-	err = db.bucket.Set(db.realLocalDocID(docid), 0, body)
-	if err != nil {
-		return "", err
-	}
-	return revid, nil
+// Updates a local document.
+func (db *Database) PutLocal(docid string, body Body) (string, error) {
+	matchRev, _ := body["_rev"].(string)
+	body = stripSpecialLocalProperties(body)
+	return db.putLocal(docid, matchRev, body)
 }
 
 // Deletes a local document.
-func (db *Database) DeleteLocal(docid string) error {
-	key := db.realLocalDocID(docid)
-	if key == "" {
-		return &HTTPError{Status: 400, Message: "Invalid doc ID"}
-	}
-	return db.bucket.Delete(db.realLocalDocID(docid))
+func (db *Database) DeleteLocal(docid string, revid string) error {
+	_, err := db.putLocal(docid, revid, nil)
+	return err
 }
 
 func (db *Database) realLocalDocID(docid string) string {
 	// Local doc ID prefix is "ldoc:"
 	return "l" + db.realDocID(docid)
+}
+
+func stripSpecialLocalProperties(body Body) Body {
+	stripped := Body{}
+	for key, value := range body {
+		if key == "" || key[0] != '_' {
+			stripped[key] = value
+		}
+	}
+	return stripped
 }

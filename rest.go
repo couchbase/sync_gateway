@@ -424,7 +424,7 @@ func (h *handler) handlePutLocalDoc(docid string) error {
 
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDeleteLocalDoc(docid string) error {
-	return h.db.DeleteLocal(docid)
+	return h.db.DeleteLocal(docid, h.rq.URL.Query().Get("rev"))
 }
 
 // HTTP handler for a database.

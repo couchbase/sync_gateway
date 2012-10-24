@@ -19,8 +19,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"strings"
 	"strconv"
+	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
 )
@@ -37,10 +37,10 @@ var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowe
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	rq			*http.Request
-	response	http.ResponseWriter
-	bucket		*couchbase.Bucket
-	db			*Database
+	rq       *http.Request
+	response http.ResponseWriter
+	bucket   *couchbase.Bucket
+	db       *Database
 }
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
@@ -204,10 +204,15 @@ func (h *handler) writeStatus(status int, message string) {
 	}
 	var errorStr string
 	switch status {
-	case 404:
+	case http.StatusNotFound:
 		errorStr = "not_found"
+	case http.StatusConflict:
+		errorStr = "conflict"
 	default:
-		errorStr = fmt.Sprintf("%d", status)
+		errorStr = http.StatusText(status)
+		if errorStr == "" {
+			errorStr = fmt.Sprintf("%d", status)
+		}
 	}
 
 	h.setHeader("Content-Type", "application/json")

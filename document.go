@@ -4,9 +4,12 @@ package basecouch
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	
+	"github.com/couchbaselabs/go-couchbase"
 )
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -116,7 +119,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 	return body, nil
 }
 
-// Returns the body of the asked-for revision or the most recent availble ancestor.
+// Returns the body of the asked-for revision or the most recent available ancestor.
 // Does NOT fill in _attachments, _deleted, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
@@ -128,81 +131,141 @@ func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	return nil, &HTTPError{404, "missing"}
 }
 
+//////// UPDATING DOCUMENTS:
+
 // Updates or creates a document.
 // The new body's "_rev" property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (string, error) {
-	// Verify that the _rev key in the body matches the current stored value:
-	var matchRev string
-	if body["_rev"] != nil {
-		matchRev = body["_rev"].(string)
-	}
-	doc, err := db.getDoc(docid)
-	if err != nil {
-		if !isMissingDocError(err) {
-			return "", err
-		}
-		if matchRev != "" {
-			return "", &HTTPError{Status: http.StatusNotFound,
-				Message: "No previous revision to replace"}
-		}
-		doc = newDocument()
-		doc.ID = docid
-	} else {
-		if !doc.History.isLeaf(matchRev) {
-			return "", &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
-		}
-	}
-
-	// Derive the new rev's generation #:
+	// Get the revision ID to match, and the new generation number:
+	matchRev, _ := body["_rev"].(string)
 	generation, _ := parseRevID(matchRev)
 	if generation < 0 {
 		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
 	generation++
-
-	// Process the attachments, replacing bodies with digests. This alters 'body' so it has to be
-	// done before calling createRevID (the ID is based on the digest of the body.)
-	err = db.storeAttachments(doc, body, generation, matchRev)
-	if err != nil {
-		return "", err
-	}
-
-	// Make up a new _rev:
-	newRev := createRevID(generation, matchRev, body)
-
-	body["_rev"] = newRev
 	deleted, _ := body["_deleted"].(bool)
-	doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
-	doc.CurrentRev = doc.History.winningRevision()
-	doc.Deleted = doc.History[doc.CurrentRev].Deleted
-	//FIX: This should be using CAS to avoid multiple-writer race conditions!
-	err = db.putDocAndBody(docid, newRev, doc, body)
-	if err != nil {
-		return "", err
-	}
-	return newRev, nil
+
+	return db.updateDoc(docid, func(doc *document)(Body, error) {
+		// Be careful: this block can be invoked multiple times if there are races!
+		// First, make sure matchRev matches an existing leaf revision:
+		if !(len(doc.History) == 0 && matchRev == "") && !doc.History.isLeaf(matchRev) {
+			return nil, &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+		}
+		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
+		// be done before calling createRevID (the ID is based on the digest of the body.)
+		if err := db.storeAttachments(doc, body, generation, matchRev); err != nil {
+			return nil, err
+		}
+		// Make up a new _rev, and add it to the history:
+		newRev := createRevID(generation, matchRev, body)
+		body["_rev"] = newRev
+		doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
+		return body, nil
+	})
 }
 
-func (db *Database) putDocAndBody(docid string, revid string, doc *document, body Body) error {
-	var err error
-	doc.Sequence, err = db.generateSequence()
-	if err != nil {
-		return err
+// Adds an existing revision to a document along with its history (list of rev IDs.)
+// This is equivalent to the "new_edits":false mode of CouchDB.
+func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
+	newRev := docHistory[0]
+	generation, _ := parseRevID(newRev)
+	if generation < 0 {
+		return &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
-	key, err := db.setRevision(body)
-	if err != nil {
-		return err
+	deleted,_ := body["_deleted"].(bool)
+	_,err := db.updateDoc(docid, func(doc *document)(Body, error) {
+		// Be careful: this block can be invoked multiple times if there are races!
+		// Find the point where this doc's history branches from the current rev:
+		currentRevIndex := len(docHistory)
+		parent := ""
+		for i, revid := range docHistory {
+			if doc.History.contains(revid) {
+				currentRevIndex = i
+				parent = revid
+				break
+			}
+		}
+		if currentRevIndex == 0 {
+			return nil, nil // No new revisions to add
+		}
+
+		// Add all the new-to-me revisions to the rev tree:
+		for i := currentRevIndex - 1; i >= 0; i-- {
+			doc.History.addRevision(RevInfo{
+				ID:      docHistory[i],
+				Parent:  parent,
+				Deleted: (i == 0 && deleted)})
+			parent = docHistory[i]
+		}
+
+		// Process the attachments, replacing bodies with digests.
+		parentRevID := doc.History[newRev].Parent
+		if err := db.storeAttachments(doc, body, generation, parentRevID); err != nil {
+			return nil, err
+		}
+		return body, nil
+	})
+	return err
+}
+
+// Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
+// make changes to it in a callback and supply a new body, then saves the body and document.
+func (db *Database) updateDoc(docid string, callback func(*document)(Body, error)) (string, error) {
+	key := db.realDocID(docid)
+	if key == "" {
+		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
+	}
+	var newRev string
+	
+	err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+		// Be careful: this block can be invoked multiple times if there are races!
+		doc := newDocument()
+		if len(currentValue) == 0 {   // New document:
+			doc.ID = docid
+		} else {   // Updating document:
+			if err := json.Unmarshal(currentValue, doc); err != nil {
+				return nil, err
+			}
+		}
+		
+		// Invoke the callback to update the document and return a new revision body:
+		body, err := callback(doc)
+		if err != nil {
+			return nil, err
+		} else if body == nil {
+			return nil, couchbase.UpdateCancel
+		}
+
+		// Store the new revision:
+		newRev = body["_rev"].(string)
+		key, err := db.setRevision(body)
+		if err != nil {
+			return nil, err
+		}
+		doc.History.setRevisionKey(newRev, key)
+
+		// Determine which is the current "winning" revision (it's not necessarily the new one):
+		doc.CurrentRev = doc.History.winningRevision()
+		doc.Deleted = doc.History[doc.CurrentRev].Deleted
+		// Assign the document the next sequence number, for the _changes feed:
+		doc.Sequence, err = db.generateSequence()
+		if err != nil {
+			return nil, err
+		}
+		// Tell Couchbase to store the document:
+		return json.Marshal(doc)
+	})
+	
+	if err == couchbase.UpdateCancel {
+		return "", nil
+	} else if err != nil {
+		return "", err
 	}
 	if LogRequestsVerbose {
-		log.Printf("\tAdded doc %q / %q", docid, revid)
+		log.Printf("\tAdded doc %q / %q", docid, newRev)
 	}
-	doc.History.setRevisionKey(revid, key)
-
-	err = db.setDoc(docid, doc)
-	if err == nil {
-		db.NotifyRevision()
-	}
-	return err
+	db.NotifyRevision()
+	return newRev, nil
 }
 
 // Creates a new document, assigning it a random doc ID.
@@ -219,71 +282,13 @@ func (db *Database) Post(body Body) (string, string, error) {
 	return docid, rev, err
 }
 
-// Adds an existing revision to a document along with its history (list of rev IDs.)
-// This is equivalent to the "new_edits":false mode of CouchDB.
-func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
-	currentRevIndex := len(docHistory)
-	doc, err := db.getDoc(docid)
-	if err != nil {
-		if !isMissingDocError(err) {
-			return err
-		}
-		// Creating new document:
-		doc = newDocument()
-		doc.ID = docid
-	} else {
-		// Find the point where this doc's history branches from the current rev:
-		for i, revid := range docHistory {
-			if doc.History.contains(revid) {
-				currentRevIndex = i
-				break
-			}
-		}
-	}
-
-	if currentRevIndex == 0 {
-		return nil // No new revisions to add
-	}
-
-	deleted, _ := body["_deleted"].(bool)
-
-	// Add all the new-to-me revisions to the rev tree:
-	for i := currentRevIndex - 1; i >= 0; i-- {
-		parent := ""
-		if i+1 < len(docHistory) {
-			parent = docHistory[i+1]
-		}
-		doc.History.addRevision(RevInfo{
-			ID:      docHistory[i],
-			Parent:  parent,
-			Deleted: (i == 0 && deleted)})
-	}
-	doc.CurrentRev = doc.History.winningRevision()
-	doc.Deleted = doc.History[doc.CurrentRev].Deleted
-
-	// Get the new rev's generation #:
-	generation, _ := parseRevID(docHistory[0])
-	if generation < 0 {
-		return &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
-	}
-
-	// Process the attachments, replacing bodies with digests.
-	parentRevID := doc.History[docHistory[0]].Parent
-	err = db.storeAttachments(doc, body, generation, parentRevID)
-	if err != nil {
-		return err
-	}
-
-	// Save the document and body:
-	//FIX: This should be using CAS to avoid multiple-writer race conditions!
-	return db.putDocAndBody(docid, docHistory[0], doc, body)
-}
-
 // Deletes a document, by adding a new revision whose "_deleted" property is true.
 func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 	body := Body{"_deleted": true, "_rev": revid}
 	return db.Put(docid, body)
 }
+
+//////// REVS_DIFF:
 
 type RevsDiffInput map[string][]string
 
@@ -361,7 +366,7 @@ func createUUID() string {
 	bytes := make([]byte, 16)
 	n, err := rand.Read(bytes)
 	if n < 16 {
-		log.Panic("Failed to generate random ID: %s", err)
+		log.Panicf("Failed to generate random ID: %s", err)
 	}
 	return fmt.Sprintf("%x", bytes)
 }
