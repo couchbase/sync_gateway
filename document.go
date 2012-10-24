@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	
+
 	"github.com/couchbaselabs/go-couchbase"
 )
 
@@ -145,7 +145,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	generation++
 	deleted, _ := body["_deleted"].(bool)
 
-	return db.updateDoc(docid, func(doc *document)(Body, error) {
+	return db.updateDoc(docid, func(doc *document) (Body, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		// First, make sure matchRev matches an existing leaf revision:
 		if !(len(doc.History) == 0 && matchRev == "") && !doc.History.isLeaf(matchRev) {
@@ -172,8 +172,8 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	if generation < 0 {
 		return &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
-	deleted,_ := body["_deleted"].(bool)
-	_,err := db.updateDoc(docid, func(doc *document)(Body, error) {
+	deleted, _ := body["_deleted"].(bool)
+	_, err := db.updateDoc(docid, func(doc *document) (Body, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -210,24 +210,24 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, callback func(*document)(Body, error)) (string, error) {
+func (db *Database) updateDoc(docid string, callback func(*document) (Body, error)) (string, error) {
 	key := db.realDocID(docid)
 	if key == "" {
 		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	var newRev string
-	
+
 	err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		doc := newDocument()
-		if len(currentValue) == 0 {   // New document:
+		if len(currentValue) == 0 { // New document:
 			doc.ID = docid
-		} else {   // Updating document:
+		} else { // Updating document:
 			if err := json.Unmarshal(currentValue, doc); err != nil {
 				return nil, err
 			}
 		}
-		
+
 		// Invoke the callback to update the document and return a new revision body:
 		body, err := callback(doc)
 		if err != nil {
@@ -255,7 +255,7 @@ func (db *Database) updateDoc(docid string, callback func(*document)(Body, error
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
 	})
-	
+
 	if err == couchbase.UpdateCancel {
 		return "", nil
 	} else if err != nil {
