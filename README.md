@@ -4,9 +4,12 @@ Gluing CouchDB to Couchbase Server
 
 This is an **experimental prototype** adapter that can allow Couchbase Server 2 to act as a replication endpoint for CouchDB and compatible libraries like TouchDB and PouchDB. It does this by running an HTTP listener that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
 
+* [Watch me give a brief presentation about BaseCouch](https://plus.google.com/117619707007719365626/posts/1Vuz3b8crXm) at our sprint demo session from 10/25/12. 
+* ...or just [view or download the slides](https://speakerdeck.com/snej/basecouch).
+
 ## Current Status
 
-As of October 22 2012, BaseCouch:
+As of October 25 2012, BaseCouch:
 
 * Supports both push and pull.
 * Supports revision trees and conflicts.
