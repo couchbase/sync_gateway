@@ -44,6 +44,11 @@ Apache 2 license, like all Couchbase stuff.
 
 You now have a sort of mock-CouchDB listening on port 4984. It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible server to replicate with it.
 
+For example, say you have a database named `my_db` on your local CouchDB. You could then run the following to get the contents replicated to your local CouchBase server via BaseCouch:
+
+    curl -H 'Content-Type: application/json' -X POST http://127.0.0.1:5984/_replicate -d \
+    '{"source":"http://127.0.0.1:5984/my_db","target":"http://127.0.0.1:4984/my_db","create_target":true,"continuous":true}'
+
 If you want to run Couchbase on a different host, or use a different name for the bucket, or listen on a different port, you can do that with command-line options to `main.go`. Use the `--help` flag to see a list of options.
 
 ## Schema
