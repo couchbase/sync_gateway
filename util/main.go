@@ -9,7 +9,7 @@
 
 package main
 
-import "basecouch"
+import "github.com/couchbaselabs/basecouch"
 
 func main() {
     basecouch.ServerMain()
