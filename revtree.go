@@ -69,6 +69,10 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 }
 
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
+	if tree == nil {
+		log.Printf("** WARNING: No RevTree for input %q", inputjson)
+		return nil
+	}
 	var rep revTreeList
 	err = json.Unmarshal(inputjson, &rep)
 	if err != nil {
@@ -218,6 +222,22 @@ func (tree RevTree) copy() RevTree {
 		result[rev] = info
 	}
 	return result
+}
+
+func (tree RevTree) mergeWith(src RevTree) (changed bool) {
+	for revID, srcInfo := range src {
+		dstInfo, exists := tree[revID]
+		if exists {
+			if dstInfo.Parent != srcInfo.Parent || dstInfo.Deleted != srcInfo.Deleted ||
+				 	dstInfo.Key != srcInfo.Key {
+				panic("Inconsistent RevInfos")
+			}
+		} else {
+			tree[revID] = srcInfo
+			changed = true
+		}
+	}
+	return
 }
 
 //////// HELPERS:

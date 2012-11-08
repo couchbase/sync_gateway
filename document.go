@@ -186,7 +186,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			}
 		}
 		if currentRevIndex == 0 {
-			return nil, nil // No new revisions to add
+			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -232,18 +232,18 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		body, err := callback(doc)
 		if err != nil {
 			return nil, err
-		} else if body == nil {
-			return nil, couchbase.UpdateCancel
 		}
 
-		// Store the new revision:
-		newRev = body["_rev"].(string)
-		key, err := db.setRevision(body)
-		if err != nil {
-			return nil, err
+		if body != nil {
+			// Store the new revision:
+			newRev = body["_rev"].(string)
+			key, err := db.setRevision(body)
+			if err != nil {
+				return nil, err
+			}
+			doc.History.setRevisionKey(newRev, key)
 		}
-		doc.History.setRevisionKey(newRev, key)
-
+		
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
@@ -261,7 +261,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
-	if LogRequestsVerbose {
+	if LogRequestsVerbose && newRev != "" {
 		log.Printf("\tAdded doc %q / %q", docid, newRev)
 	}
 	db.NotifyRevision()
