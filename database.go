@@ -393,9 +393,9 @@ func (db *Database) generateSequence() (uint64, error) {
 type ChangesOptions struct {
 	Since       uint64
 	Limit       int
-	Descending  bool
 	Conflicts   bool
 	IncludeDocs bool
+	includeDocMeta bool
 	Wait        bool
 }
 
@@ -406,75 +406,129 @@ type ChangeEntry struct {
 	ID      string      `json:"id"`
 	Deleted bool        `json:"deleted,omitempty"`
 	Doc     Body        `json:"doc,omitempty"`
+	docMeta *document
 	Changes []ChangeRev `json:"changes"`
 }
 
 type ChangeRev map[string]string
 
+type ViewDoc struct {
+	Json json.RawMessage	// should be type 'document', but that fails to unmarshal correctly
+}
+
+type ViewRow struct {
+	ID    string
+	Key   interface{}
+	Value interface{}
+	Doc   *ViewDoc
+}
+
+type ViewResult struct {
+	TotalRows int `json:"total_rows"`
+	Rows      []ViewRow
+	Errors    []couchbase.ViewError
+}
+
+const kChangesPageSize = 200
+
 // Returns a list of all the changes made to the database, a la the _changes feed.
 func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, error) {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	uuid := db.UUID()
-	startkey := [2]interface{}{uuid, options.Since + 1}
+	lastSequence := options.Since
 	endkey := [2]interface{}{uuid, make(Body)}
+	totalLimit := options.Limit
+	usingDocs := options.Conflicts || options.IncludeDocs || options.includeDocMeta
 	opts := Body{"stale": false, "update_seq": true,
-		"startkey": startkey, "endkey": endkey,
-		"descending": options.Descending}
-	if options.Limit > 0 {
-		opts["limit"] = options.Limit
-	}
+		"endkey": endkey,
+		"include_docs": usingDocs}
 
-	feed := make(chan *ChangeEntry)
+	feed := make(chan *ChangeEntry, kChangesPageSize)
+	
+	lastSeq,err := db.LastSequence()
+	if options.Since >= lastSeq && err == nil {
+		close(feed)
+		return feed, nil
+	}
 
 	// Generate the output in a new goroutine, writing to 'feed':
 	go func() {
 		defer close(feed)
-		// Query the 'changes' view:
-		var vres couchbase.ViewResult
-		var err error
-		for len(vres.Rows) == 0 {
-			vres, err = db.bucket.View("couchdb", "changes", opts)
-			if err != nil {
-				log.Printf("Error from 'changes' view: %v", err)
-				return
+		for {
+			// Query the 'changes' view:
+			opts["startkey"] = [2]interface{}{uuid, lastSequence + 1}
+			limit := totalLimit
+			if limit == 0 || limit > kChangesPageSize {
+				limit = kChangesPageSize
 			}
-			if len(vres.Rows) == 0 {
-				if !options.Wait || !db.WaitForRevision() {
+			opts["limit"] = limit
+			
+			var vres ViewResult
+			var err error
+			for len(vres.Rows) == 0 {
+				vres = ViewResult{}
+				err = db.bucket.ViewCustom("couchdb", "changes", opts, &vres)
+				if err != nil {
+					log.Printf("Error from 'changes' view: %v", err)
 					return
 				}
-			}
-		}
-
-		for _, row := range vres.Rows {
-			key := row.Key.([]interface{})
-			value := row.Value.([]interface{})
-			docID := value[0].(string)
-			revID := value[1].(string)
-			entry := &ChangeEntry{
-				Seq:     uint64(key[1].(float64)),
-				ID:      docID,
-				Changes: []ChangeRev{{"rev": revID}},
-				Deleted: (len(value) >= 3 && value[2].(bool)),
-			}
-			if options.Conflicts || options.IncludeDocs {
-				doc, _ := db.getDoc(entry.ID)
-				if doc != nil {
-					if options.Conflicts {
-						for _, leafID := range doc.History.getLeaves() {
-							if leafID != revID {
-								entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
-							}
-						}
-					}
-					if options.IncludeDocs {
-						key := doc.History[revID].Key
-						if key != "" {
-							entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-						}
+				if len(vres.Rows) == 0 {
+					if !options.Wait || !db.WaitForRevision() {
+						return
 					}
 				}
 			}
-			feed <- entry
+
+			for _, row := range vres.Rows {
+				key := row.Key.([]interface{})
+				lastSequence = uint64(key[1].(float64))
+				value := row.Value.([]interface{})
+				docID := value[0].(string)
+				revID := value[1].(string)
+				entry := &ChangeEntry{
+					Seq:     lastSequence,
+					ID:      docID,
+					Changes: []ChangeRev{{"rev": revID}},
+					Deleted: (len(value) >= 3 && value[2].(bool)),
+				}
+				if usingDocs {
+					doc := newDocument()
+					json.Unmarshal(row.Doc.Json, doc)
+					if doc != nil {
+						//log.Printf("?? doc = %v", doc)
+						if options.Conflicts {
+							for _, leafID := range doc.History.getLeaves() {
+								if leafID != revID {
+									entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+								}
+							}
+						}
+						if options.IncludeDocs {
+							key := doc.History[revID].Key
+							if key != "" {
+								entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
+							}
+						}
+						if options.includeDocMeta {
+							entry.docMeta = doc
+						}
+					}
+				}
+				feed <- entry
+			}
+			
+			// Step to the next page of results:
+			nRows := len(vres.Rows)
+			if nRows < kChangesPageSize || options.Wait {
+				break
+			}
+			if totalLimit > 0 {
+				totalLimit -= nRows
+				if totalLimit <= 0 {
+					break
+				}
+			}
+			delete(opts,"stale") // we only need to update the index once
 		}
 	}()
 	return feed, nil
