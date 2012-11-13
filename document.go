@@ -1,6 +1,6 @@
 // document.go -- document-oriented Database methods
 
-package basecouch
+package syncer
 
 import (
 	"crypto/rand"
@@ -25,7 +25,7 @@ func (db *Database) realDocID(docid string) string {
 	if docid == "" {
 		return ""
 	}
-	docid = db.DocPrefix + docid
+	docid = "doc:" + docid
 	if len(docid) > 250 {
 		return ""
 	}

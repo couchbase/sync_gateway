@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package syncer
 
 import (
 	"encoding/json"
@@ -562,35 +562,7 @@ type ReplicateInput struct {
 	Create_target bool
 }
 
-func (h *handler) handleReplicate() error {
-	if h.rq.Method != "POST" {
-		return kBadMethodError
-	}
-	var input ReplicateInput
-	err := readJSONInto(h.rq.Header, h.rq.Body, &input)
-	if err != nil {
-		return err
-	}
-	srcDB, err := GetDatabase(h.bucket, input.Source)
-	if (err != nil) {return err}
-	dstDB, err := GetDatabase(h.bucket, input.Target)
-	if (err != nil) {
-		status,_ := ErrorAsHTTPStatus(err)
-		if status != http.StatusNotFound || !input.Create_target {
-			return err
-		}
-		dstDB, err = CreateDatabase(h.bucket, input.Target)
-		if err != nil {return err}
-	}
-	
-	return dstDB.localReplicateFrom(srcDB)
-}
-
 func (h *handler) handleVacuum() error {
-	docsDeleted, err := VacuumDocs(h.bucket)
-	if err != nil {
-		return err
-	}
 	revsDeleted, err := VacuumRevisions(h.bucket)
 	if err != nil {
 		return err
@@ -599,7 +571,7 @@ func (h *handler) handleVacuum() error {
 	if err != nil {
 		return err
 	}
-	h.writeJSON(Body{"docs": docsDeleted, "revs": revsDeleted, "atts": attsDeleted})
+	h.writeJSON(Body{"revs": revsDeleted, "atts": attsDeleted})
 	return nil
 }
 
@@ -616,8 +588,6 @@ func (h *handler) run() {
 		err = h.handleRoot()
 	} else if path[0] == "_all_dbs" {
 		err = h.handleAllDbs()
-	} else if path[0] == "_replicate" {
-		err = h.handleReplicate()
 	} else if path[0] == "_vacuum" {
 		err = h.handleVacuum()
 	} else if h.rq.Method == "PUT" && len(path) == 1 {
@@ -649,7 +619,7 @@ func ServerMain() {
 	addr := flag.String("addr", ":4984", "Address to bind to")
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
-	bucketName := flag.String("bucket", "couchdb", "Name of bucket")
+	bucketName := flag.String("bucket", "syncer", "Name of bucket")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	flag.Parse()

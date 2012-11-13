@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package syncer
 
 import (
 	"bytes"
@@ -37,8 +37,7 @@ func (err *HTTPError) Error() string {
 
 // Represents a simulated CouchDB database.
 type Database struct {
-	Name      string `json:"name"`
-	DocPrefix string `json:"docPrefix"`
+	Name      string
 	bucket    *couchbase.Bucket
 }
 
@@ -53,55 +52,25 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 	return
 }
 
-// Returns the Couchbase docID of the database's main document
-func dbInternalDocName(dbName string) string {
-	if !kDBNameMatch.MatchString(dbName) {
-		return ""
-	}
-	return "cdb:" + dbName
-}
-
 // Makes a Database object given its name and bucket. Returns nil if there is no such database.
 func GetDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-	docname := dbInternalDocName(name)
-	if docname == "" {
-		return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
+	if name != "db" {
+		return nil, &HTTPError{http.StatusNotFound, "Only database 'db' exists"}
 	}
-	var db Database
-	err := bucket.Get(docname, &db)
-	if err != nil {
-		return nil, err
-	}
-	db.bucket = bucket
-	return &db, nil
+	return &Database{bucket: bucket, Name: name}, nil
 }
 
 // Creates a new database in a bucket and returns a Database object for it. Fails if the database exists.
 func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-	docname := dbInternalDocName(name)
-	if docname == "" {
-		return nil, &HTTPError{Status: 400, Message: "Illegal database name"}
+	if name == "db" {
+		return GetDatabase(bucket, name)
 	}
-
-	db := Database{bucket: bucket, Name: name, DocPrefix: fmt.Sprintf("doc:%s/%s:", name, createUUID())}
-	added, err := bucket.Add(docname, 0, db)
-	if err != nil {
-		return nil, err
-	}
-	if !added {
-		return nil, &HTTPError{Status: 412, Message: "Database already exists"}
-	}
-	return &db, nil
+	return nil, &HTTPError{http.StatusForbidden, "Can't create databases; only 'db' exists"}
 }
 
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
-		db.bucket == otherdb.bucket && db.DocPrefix == otherdb.DocPrefix
-}
-
-// The UUID assigned to this database.
-func (db *Database) UUID() string {
-	return db.DocPrefix[4 : len(db.DocPrefix)-1]
+		db.bucket == otherdb.bucket
 }
 
 //////// ALL DOCUMENTS:
@@ -125,44 +94,38 @@ func installViews(bucket *couchbase.Bucket) error {
 		fmt.Printf("Failed to parse %s", node.CouchAPIBase)
 		return err
 	}
-	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "couchdb")
+	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "syncer")
 
-	// View for _all_dbs
-	alldbs_map := `function (doc, meta) {
-                     var pieces = meta.id.split(":");
-                     if (pieces.length != 2 || pieces[0] != "cdb")
-                        return;
-                     emit(doc.name, doc.docPrefix); }`
 	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
 	allbits_map := `function (doc, meta) {
-                     var pieces = meta.id.split(":", 3);
+                     var pieces = meta.id.split(":", 2);
                      if (pieces.length < 2)
                        return;
 					 var type = pieces[0];
 					 if (type == "doc" || type == "ldoc" || type == "seq")
-                       emit(pieces[1], null); }`
+                       emit(meta.id, null); }`
 	// View for _all_docs
 	alldocs_map := `function (doc, meta) {
-                     var pieces = meta.id.split(":", 3);
+                     var pieces = meta.id.split(":", 2);
                      if (pieces.length < 2 || pieces[0] != "doc")
                        return;
                      if (doc.deleted || doc.id===undefined)
                        return;
-                     emit([pieces[1], doc.id], doc.rev); }`
+                     emit(doc.id, doc.rev); }`
 	// View for _changes feed, i.e. a by-sequence index
 	changes_map := `function (doc, meta) {
                     if (doc.sequence === undefined)
                         return;
-                    var pieces = meta.id.split(":", 3);
-                    if (pieces.length < 3 || pieces[0] != "doc" || doc.id===undefined)
+                    var pieces = meta.id.split(":", 2);
+                    if (pieces.length < 2 || pieces[0] != "doc" || doc.id===undefined)
                         return;
                     var value = [doc.id, doc.rev];
                     if (doc.deleted)
                         value.push(true)
-                    emit([pieces[1], doc.sequence], value); }`
+                    emit(doc.sequence, value); }`
 	// View for mapping revision IDs to documents (for vacuuming)
 	revs_map := `function (doc, meta) {
-					  var pieces = meta.id.split(":", 3);
+					  var pieces = meta.id.split(":", 2);
 					  if (pieces.length < 2)
 					    return;
 					  if (pieces[0] == "rev") {
@@ -177,7 +140,7 @@ func installViews(bucket *couchbase.Bucket) error {
 					}`
 	// View for mapping attachment IDs to revisions (for vacuuming)
 	atts_map := `function (doc, meta) {
-				  var pieces = meta.id.split(":", 3);
+				  var pieces = meta.id.split(":", 2);
 				  if (pieces.length < 2)
 				    return;
 				  if (pieces[0] == "att") {
@@ -205,11 +168,10 @@ func installViews(bucket *couchbase.Bucket) error {
 	ddoc := Body{
 		"language": "javascript",
 		"views": Body{
-			"all_dbs":  Body{"map": alldbs_map},
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
-			"revs":     Body{"map": revs_map, "reduce": revs_or_atts_reduce},
-			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
+			"revs":     Body{"map": revs_map,    "reduce": revs_or_atts_reduce},
+			"atts":     Body{"map": atts_map,    "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
 	rq, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(payload))
@@ -229,18 +191,7 @@ func installViews(bucket *couchbase.Bucket) error {
 
 // Returns all database names as an array.
 func AllDbNames(bucket *couchbase.Bucket) ([]string, error) {
-	vres, err := bucket.View("couchdb", "all_dbs", Body{"stale": false})
-	if err != nil {
-		log.Printf("WARNING: View returned %v", err)
-		return nil, err
-	}
-
-	rows := vres.Rows
-	result := make([]string, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, row.Key.(string))
-	}
-	return result, nil
+	return []string{"db"}, nil
 }
 
 type IDAndRev struct {
@@ -258,18 +209,14 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	rows := vres.Rows
 	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
-		key := row.Key.([]interface{})
-		result = append(result, IDAndRev{DocID: key[1].(string), RevID: row.Value.(string)})
+		result = append(result, IDAndRev{DocID: row.Key.(string), RevID: row.Value.(string)})
 	}
 	return result, nil
 }
 
 func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
-	uuid := db.UUID()
-	startkey := [1]string{uuid}
-	endkey := [2]interface{}{uuid, make(Body)}
-	opts := Body{"stale": false, "startkey": startkey, "endkey": endkey, "reduce": reduce}
-	vres, err := db.bucket.View("couchdb", "all_docs", opts)
+	opts := Body{"stale": false, "reduce": reduce}
+	vres, err := db.bucket.View("syncer", "all_docs", opts)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
@@ -278,21 +225,13 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
-	uuid := db.UUID()
-	opts := Body{"stale": false, "startkey": uuid, "endkey": uuid}
-	vres, err := db.bucket.View("couchdb", "all_bits", opts)
+	opts := Body{"stale": false}
+	vres, err := db.bucket.View("syncer", "all_bits", opts)
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
 		return err
 	}
 
-	// First delete the database doc itself. At this point the db is officially gone:
-	err = db.bucket.Delete(dbInternalDocName(db.Name))
-	if err != nil {
-		return err
-	}
-
-	// Now delete all of its docs:
 	//FIX: Is there a way to do this in one operation?
 	log.Printf("Deleting %d documents of %q ...", len(vres.Rows), db.Name)
 	for _, row := range vres.Rows {
@@ -306,41 +245,8 @@ func (db *Database) Delete() error {
 	return nil
 }
 
-// Deletes all orphaned CouchDB documents without a database.
-// This is necessary because the views are not usually up to date with the database, so at the
-// time db.Delete runs, it may not have all the document IDs, causing documents to be left behind.
-func VacuumDocs(bucket *couchbase.Bucket) (int, error) {
-	// First collect all database UUIDs:
-	vres, err := bucket.View("couchdb", "all_dbs", Body{"stale": false})
-	if err != nil {
-		log.Printf("WARNING: all_dbs view returned %v (%v)", err, vres)
-		return 0, err
-	}
-	uuids := map[string]bool{}
-	for _, row := range vres.Rows {
-		docPrefix := row.Value.(string)
-		uuids[docPrefix[4:len(docPrefix)-1]] = true
-	}
-
-	// Now go through the entire all_bits view and delete docs without a db:
-	vres, err = bucket.View("couchdb", "all_bits", Body{"stale": false})
-	if err != nil {
-		log.Printf("WARNING: all_bits view returned %v", err)
-		return 0, err
-	}
-
-	deletions := 0
-	for _, row := range vres.Rows {
-		dbid := row.Key.(string)
-		if !uuids[dbid] {
-			deletions += vacIt(bucket, row.ID)
-		}
-	}
-	return deletions, nil
-}
-
 func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
-	vres, err := bucket.View("couchdb", viewName, Body{"stale": false, "group_level": 1})
+	vres, err := bucket.View("syncer", viewName, Body{"stale": false, "group_level": 1})
 	if err != nil {
 		log.Printf("WARNING: %s view returned %v", viewName, err)
 		return 0, err
@@ -378,7 +284,7 @@ func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
 //////// SEQUENCES & CHANGES:
 
 func (db *Database) sequenceDocID() string {
-	return "seq:" + db.UUID()
+	return "__seq"
 }
 
 func (db *Database) LastSequence() (uint64, error) {
@@ -434,9 +340,8 @@ const kChangesPageSize = 200
 // Returns a list of all the changes made to the database, a la the _changes feed.
 func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, error) {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
-	uuid := db.UUID()
 	lastSequence := options.Since
-	endkey := [2]interface{}{uuid, make(Body)}
+	endkey := make(Body)
 	totalLimit := options.Limit
 	usingDocs := options.Conflicts || options.IncludeDocs || options.includeDocMeta
 	opts := Body{"stale": false, "update_seq": true,
@@ -456,7 +361,7 @@ func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, er
 		defer close(feed)
 		for {
 			// Query the 'changes' view:
-			opts["startkey"] = [2]interface{}{uuid, lastSequence + 1}
+			opts["startkey"] = lastSequence + 1
 			limit := totalLimit
 			if limit == 0 || limit > kChangesPageSize {
 				limit = kChangesPageSize
@@ -467,7 +372,7 @@ func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, er
 			var err error
 			for len(vres.Rows) == 0 {
 				vres = ViewResult{}
-				err = db.bucket.ViewCustom("couchdb", "changes", opts, &vres)
+				err = db.bucket.ViewCustom("syncer", "changes", opts, &vres)
 				if err != nil {
 					log.Printf("Error from 'changes' view: %v", err)
 					return
@@ -548,13 +453,13 @@ func (db *Database) GetChanges(options ChangesOptions) ([]*ChangeEntry, error) {
 
 func (db *Database) WaitForRevision() bool {
 	log.Printf("\twaiting for a revision...")
-	waitFor(db.DocPrefix)
+	waitFor("")
 	log.Printf("\t...done waiting")
 	return true
 }
 
 func (db *Database) NotifyRevision() {
-	notify(db.DocPrefix)
+	notify("")
 }
 
 //////// UTILITIES:

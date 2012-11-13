@@ -9,8 +9,8 @@
 
 package main
 
-import "github.com/couchbaselabs/basecouch"
+import "github.com/couchbaselabs/syncer"
 
 func main() {
-    basecouch.ServerMain()
+    syncer.ServerMain()
 }

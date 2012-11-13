@@ -1,6 +1,6 @@
 // notifier.go
 
-package basecouch
+package syncer
 
 import (
 	"sync"

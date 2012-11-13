@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package syncer
 
 import (
 	"encoding/json"
@@ -33,13 +33,13 @@ func tojson(obj interface{}) string {
 }
 
 func TestAttachments(t *testing.T) {
-	db, err := CreateDatabase(gTestBucket, "testdb")
-	assertNoError(t, err, "Couldn't create database 'testdb'")
+	db, err := CreateDatabase(gTestBucket, "db")
+	assertNoError(t, err, "Couldn't create database 'db'")
 	defer func() {
 		err = db.Delete()
 		status, _ := ErrorAsHTTPStatus(err)
 		if status != 200 && status != 404 {
-			assertNoError(t, err, "Couldn't delete database 'testdb'")
+			assertNoError(t, err, "Couldn't delete database 'db'")
 		}
 	}()
 

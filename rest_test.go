@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package syncer
 
 import (
 	"bytes"
@@ -21,10 +21,10 @@ import (
 )
 
 func init() {
-	response := callREST("DELETE", "/resttest", "")
-	response = callREST("PUT", "/resttest", "")
+	response := callREST("DELETE", "/db", "")
+	response = callREST("PUT", "/db", "")
 	if response.Code != 201 {
-		log.Printf("WARNING: Couldn't create resttest database at startup")
+		log.Printf("WARNING: Couldn't create db database at startup")
 	}
 }
 
@@ -46,7 +46,7 @@ func TestRoot(t *testing.T) {
 }
 
 func createDoc(t *testing.T, docid string) string {
-	response := callREST("PUT", "/resttest/"+docid, `{"prop":true}`)
+	response := callREST("PUT", "/db/"+docid, `{"prop":true}`)
 	assert.Equals(t, response.Code, 201)
 	var body Body
 	json.Unmarshal(response.Body.Bytes(), &body)
@@ -62,13 +62,13 @@ func TestDocLifecycle(t *testing.T) {
 	revid := createDoc(t, "doc")
 	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
-	response := callREST("DELETE", "/resttest/doc?rev="+revid, "")
+	response := callREST("DELETE", "/db/doc?rev="+revid, "")
 	assert.Equals(t, response.Code, 200)
 }
 
 func TestBulkDocs(t *testing.T) {
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}]}`
-	response := callREST("POST", "/resttest/_bulk_docs", input)
+	response := callREST("POST", "/db/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
@@ -86,7 +86,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
                     {"_id": "bdne2", "_rev": "34-def", "n": 2,
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
-	response := callREST("POST", "/resttest/_bulk_docs", input)
+	response := callREST("POST", "/db/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
@@ -101,7 +101,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
                   {"_id": "bdne1", "_rev": "14-jkl", "n": 111,
                    "_revisions": {"start": 14, "ids": ["jkl", "def", "abc", "eleven", "ten", "nine"]}}
             ]}`
-	response = callREST("POST", "/resttest/_bulk_docs", input)
+	response = callREST("POST", "/db/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
 	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 1)
@@ -120,7 +120,7 @@ func TestRevsDiff(t *testing.T) {
                     {"_id": "rd2", "_rev": "34-def", "n": 2,
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
-	response := callREST("POST", "/resttest/_bulk_docs", input)
+	response := callREST("POST", "/db/_bulk_docs", input)
 	assert.Equals(t, response.Code, 201)
 
 	// Now call _revs_diff:
@@ -128,7 +128,7 @@ func TestRevsDiff(t *testing.T) {
               "rd2": ["34-def", "31-one"],
               "rd9": ["1-a", "2-b", "3-c"]
              }`
-	response = callREST("POST", "/resttest/_revs_diff", input)
+	response = callREST("POST", "/db/_revs_diff", input)
 	assert.Equals(t, response.Code, 200)
 	var diffResponse RevsDiffResponse
 	json.Unmarshal(response.Body.Bytes(), &diffResponse)
@@ -140,40 +140,40 @@ func TestRevsDiff(t *testing.T) {
 }
 
 func TestLocalDocs(t *testing.T) {
-	response := callREST("GET", "/resttest/_local/loc1", "")
+	response := callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 404)
 
-	response = callREST("PUT", "/resttest/_local/loc1", `{"hi": "there"}`)
+	response = callREST("PUT", "/db/_local/loc1", `{"hi": "there"}`)
 	assert.Equals(t, response.Code, 201)
-	response = callREST("GET", "/resttest/_local/loc1", "")
+	response = callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 200)
 	assert.Equals(t, response.Body.String(), `{"_rev":"0-1","hi":"there"}`)
 
-	response = callREST("PUT", "/resttest/_local/loc1", `{"hi": "there"}`)
+	response = callREST("PUT", "/db/_local/loc1", `{"hi": "there"}`)
 	assert.Equals(t, response.Code, 409)
-	response = callREST("PUT", "/resttest/_local/loc1", `{"hi": "again", "_rev": "0-1"}`)
+	response = callREST("PUT", "/db/_local/loc1", `{"hi": "again", "_rev": "0-1"}`)
 	assert.Equals(t, response.Code, 201)
-	response = callREST("GET", "/resttest/_local/loc1", "")
+	response = callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 200)
 	assert.Equals(t, response.Body.String(), `{"_rev":"0-2","hi":"again"}`)
 
-	response = callREST("DELETE", "/resttest/_local/loc1", "")
+	response = callREST("DELETE", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 409)
-	response = callREST("DELETE", "/resttest/_local/loc1?rev=0-2", "")
+	response = callREST("DELETE", "/db/_local/loc1?rev=0-2", "")
 	assert.Equals(t, response.Code, 200)
-	response = callREST("GET", "/resttest/_local/loc1", "")
+	response = callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 404)
-	response = callREST("DELETE", "/resttest/_local/loc1", "")
+	response = callREST("DELETE", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 404)
 }
 
 func TestDesignDocs(t *testing.T) {
-	response := callREST("GET", "/resttest/_design/foo", "")
+	response := callREST("GET", "/db/_design/foo", "")
 	assert.Equals(t, response.Code, 404)
 
-	response = callREST("PUT", "/resttest/_design/foo", `{"hi": "there"}`)
+	response = callREST("PUT", "/db/_design/foo", `{"hi": "there"}`)
 	assert.Equals(t, response.Code, 201)
-	response = callREST("GET", "/resttest/_design/foo", "")
+	response = callREST("GET", "/db/_design/foo", "")
 	assert.Equals(t, response.Code, 200)
 	var body Body
 	json.Unmarshal(response.Body.Bytes(), &body)
@@ -182,9 +182,9 @@ func TestDesignDocs(t *testing.T) {
 		"_rev": "1-8d99d37a3fbeed6ca6052ede5e43fb2d",
 		"hi":   "there"})
 
-	response = callREST("DELETE", "/resttest/_design/foo?rev=1-8d99d37a3fbeed6ca6052ede5e43fb2d", "")
+	response = callREST("DELETE", "/db/_design/foo?rev=1-8d99d37a3fbeed6ca6052ede5e43fb2d", "")
 	assert.Equals(t, response.Code, 200)
 
-	response = callREST("GET", "/resttest/_design/foo", "")
+	response = callREST("GET", "/db/_design/foo", "")
 	assert.Equals(t, response.Code, 404)
 }

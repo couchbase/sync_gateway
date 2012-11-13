@@ -5,7 +5,7 @@ Gluing CouchDB to Couchbase Server
 This is an **experimental prototype** adapter that can allow Couchbase Server 2 to act as a replication endpoint for CouchDB and compatible libraries like TouchDB and PouchDB. It does this by running an HTTP listener that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
 
 * [Watch me give a brief presentation about BaseCouch](https://plus.google.com/117619707007719365626/posts/1Vuz3b8crXm) at our sprint demo session from 10/25/12. 
-* ...or just [view or download the slides](https://speakerdeck.com/snej/basecouch).
+* ...or just [view or download the slides](https://speakerdeck.com/snej/syncer).
 
 ## Current Status
 
@@ -34,12 +34,12 @@ Apache 2 license, like all Couchbase stuff.
 0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) on localhost.
 1. Create a bucket named `couchdb` in the default pool.
 1. Install [Go](http://golang.org).
-2. `go get -u github.com/couchbaselabs/basecouch`
+2. `go get -u github.com/couchbaselabs/syncer`
 
 ### Startup
 
 3. `cd` to the first directory in your `$GOPATH`, i.e. the location you set up to store downloaded Go packages.
-4. `cd src/github.com/couchbaselabs/basecouch`
+4. `cd src/github.com/couchbaselabs/syncer`
 5. `go run util/main.go`
 
 You now have a sort of mock-CouchDB listening on port 4984. It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible server to replicate with it.
