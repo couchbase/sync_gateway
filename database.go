@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -123,6 +124,24 @@ func installViews(bucket *couchbase.Bucket) error {
                     if (doc.deleted)
                         value.push(true)
                     emit(doc.sequence, value); }`
+	// By-channels view
+	channels_map := `function (doc, meta) {
+						var sequence = doc.sequence;
+	                    if (sequence === undefined)
+	                        return;
+	                    var pieces = meta.id.split(":", 2);
+	                    if (pieces.length < 2 || pieces[0] != "doc" || doc.id===undefined)
+	                        return;
+	                    var value = [doc.id, doc.rev];
+						var sync = function(channel) {emit([channel, sequence], value);};
+						
+						// This part is what would be the app channel-mapping function:
+						var channels = doc["channels"];
+						if (channels) {
+							for (var i = 0; i < channels.length; ++i)
+								sync(channels[i]);
+						}
+					}`
 	// View for mapping revision IDs to documents (for vacuuming)
 	revs_map := `function (doc, meta) {
 					  var pieces = meta.id.split(":", 2);
@@ -170,6 +189,7 @@ func installViews(bucket *couchbase.Bucket) error {
 		"views": Body{
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
+			"channels": Body{"map": channels_map},
 			"revs":     Body{"map": revs_map,    "reduce": revs_or_atts_reduce},
 			"atts":     Body{"map": atts_map,    "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
@@ -337,11 +357,11 @@ type ViewResult struct {
 
 const kChangesPageSize = 200
 
-// Returns a list of all the changes made to the database, a la the _changes feed.
-func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, error) {
+// Returns a list of all the changes made on a channel.
+func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	lastSequence := options.Since
-	endkey := make(Body)
+	endkey := [2]interface{}{channel, make(Body)}
 	totalLimit := options.Limit
 	usingDocs := options.Conflicts || options.IncludeDocs || options.includeDocMeta
 	opts := Body{"stale": false, "update_seq": true,
@@ -360,8 +380,8 @@ func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, er
 	go func() {
 		defer close(feed)
 		for {
-			// Query the 'changes' view:
-			opts["startkey"] = lastSequence + 1
+			// Query the 'channels' view:
+			opts["startkey"] = [2]interface{}{channel, lastSequence + 1}
 			limit := totalLimit
 			if limit == 0 || limit > kChangesPageSize {
 				limit = kChangesPageSize
@@ -372,9 +392,9 @@ func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, er
 			var err error
 			for len(vres.Rows) == 0 {
 				vres = ViewResult{}
-				err = db.bucket.ViewCustom("syncer", "changes", opts, &vres)
+				err = db.bucket.ViewCustom("syncer", "channels", opts, &vres)
 				if err != nil {
-					log.Printf("Error from 'changes' view: %v", err)
+					log.Printf("Error from 'channels' view: %v", err)
 					return
 				}
 				if len(vres.Rows) == 0 {
@@ -439,9 +459,72 @@ func (db *Database) ChangesFeed(options ChangesOptions) (<-chan *ChangeEntry, er
 	return feed, nil
 }
 
-func (db *Database) GetChanges(options ChangesOptions) ([]*ChangeEntry, error) {
+// Returns of all the changes made to multiple channels
+func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	if len(channels) == 0 {
+		return nil, nil
+	} else if len(channels) == 1 {
+		return db.ChangesFeed(channels[0], options)
+	}
+	
+	feeds := make([]<-chan *ChangeEntry, len(channels))
+	current := make([]*ChangeEntry, len(channels))
+	for i, name := range(channels) {
+		var err error
+		feeds[i], err = db.ChangesFeed(name, options)
+		if err != nil {
+			return nil, err
+		}
+	}
+	
+	output := make(chan *ChangeEntry, kChangesPageSize)
+	go func() {
+		defer close(output)
+		for {
+			//FIX: This assumes Reverse or Limit aren't set in the options
+			// Read more entries to fill up the current[] array:
+			for i, cur := range(current) {
+				if cur == nil && feeds[i] != nil {
+					var ok bool
+					current[i], ok = <- feeds[i]
+					if !ok {
+						feeds[i] = nil
+					}
+				}
+			}
+		
+			// Find the current entry with the minimum sequence:
+			var minSeq uint64 = math.MaxUint64
+			var minEntry *ChangeEntry
+			for _, cur := range(current) {
+				if cur != nil && cur.Seq < minSeq {
+					minSeq = cur.Seq
+					minEntry = cur
+				}
+			}
+			if minEntry == nil {
+				break
+			}
+		
+			// Send the entry:
+			output <- minEntry
+			
+			// Clear the current entries for the sequence just sent:
+			for i, cur := range(current) {
+				if cur != nil && cur.Seq == minEntry.Seq {
+					current[i] = nil
+				}
+			}
+		}
+	}()
+	
+	return output, nil
+}
+
+
+func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*ChangeEntry, error) {
 	var changes []*ChangeEntry
-	feed, err := db.ChangesFeed(options)
+	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {
 		changes = make([]*ChangeEntry, 0, 50)
 		for entry := range feed {

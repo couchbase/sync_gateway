@@ -276,15 +276,25 @@ func (h *handler) handleChanges() error {
 	options.Limit = int(h.getIntQuery("limit", 0))
 	options.Conflicts = (h.rq.URL.Query().Get("style") == "all_docs")
 	options.IncludeDocs = (h.rq.URL.Query().Get("include_docs") == "true")
+	
+	// Get the channels as parameters to an imaginary "bychannel" filter:
+	if h.rq.URL.Query().Get("filter") != "bychannel" {
+		return &HTTPError{http.StatusBadRequest, "bychannel filter required"}
+	}
+	channelsParam := h.rq.URL.Query().Get("channels")
+	if len(channelsParam) == 0 {
+		return &HTTPError{http.StatusBadRequest, "channels parameter required"}
+	}
+	channels := strings.Split(channelsParam, ",")
 
 	switch h.rq.URL.Query().Get("feed") {
 	case "longpoll":
 		options.Wait = true
 	case "continuous":
-		return h.handleContinuousChanges(options)
+		return h.handleContinuousChanges(channels, options)
 	}
 
-	changes, err := h.db.GetChanges(options)
+	changes, err := h.db.GetChanges(channels, options)
 	var lastSeq uint64
 	if err == nil {
 		lastSeq, err = h.db.LastSequence()
@@ -295,7 +305,7 @@ func (h *handler) handleChanges() error {
 	return err
 }
 
-func (h *handler) handleContinuousChanges(options ChangesOptions) error {
+func (h *handler) handleContinuousChanges(channels []string, options ChangesOptions) error {
 	var timeout <-chan time.Time
 	var heartbeat <-chan time.Time
 	if ms := h.getIntQuery("heartbeat", 0); ms > 0 {
@@ -315,7 +325,7 @@ loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			feed, err = h.db.ChangesFeed(options)
+			feed, err = h.db.MultiChangesFeed(channels, options)
 			if err != nil || feed == nil {
 				return err
 			}

@@ -19,6 +19,7 @@ type document struct {
 	Deleted    bool    `json:"deleted,omitempty"`
 	Sequence   uint64  `json:"sequence"`
 	History    RevTree `json:"history"`
+	Channels   []string `json:"channels"`
 }
 
 func (db *Database) realDocID(docid string) string {
@@ -247,6 +248,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
+		doc.Channels = body.getChannels()		//FIX: Incorrect if new rev is not current!
 		// Assign the document the next sequence number, for the _changes feed:
 		doc.Sequence, err = db.generateSequence()
 		if err != nil {
@@ -266,6 +268,18 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 	db.NotifyRevision()
 	return newRev, nil
+}
+
+func (body Body) getChannels() []string {
+	value,_ := body["channels"].([]interface{})
+	if value == nil {
+		return nil
+	}
+	result := make([]string, len(value))
+	for i, channel := range(value) {
+		result[i] = channel.(string)
+	}
+	return result
 }
 
 // Creates a new document, assigning it a random doc ID.
