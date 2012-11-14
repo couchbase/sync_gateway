@@ -12,6 +12,12 @@ import (
 	"github.com/couchbaselabs/go-couchbase"
 )
 
+type ChannelRemoval struct {
+	Seq uint64 		`json:"seq"`
+	Rev string		`json:"rev"`
+}
+type ChannelMap map[string]*ChannelRemoval
+
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
 	ID         string  `json:"id"`
@@ -19,7 +25,7 @@ type document struct {
 	Deleted    bool    `json:"deleted,omitempty"`
 	Sequence   uint64  `json:"sequence"`
 	History    RevTree `json:"history"`
-	Channels   []string `json:"channels"`
+	Channels   ChannelMap `json:"channels,omitempty"`
 }
 
 func (db *Database) realDocID(docid string) string {
@@ -248,12 +254,15 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
-		doc.Channels = body.getChannels()		//FIX: Incorrect if new rev is not current!
+		
 		// Assign the document the next sequence number, for the _changes feed:
 		doc.Sequence, err = db.generateSequence()
 		if err != nil {
 			return nil, err
 		}
+		
+		db.updateDocChannels(doc, body.getChannels()) //FIX: Incorrect if new rev is not current!
+		
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
 	})
@@ -268,18 +277,6 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 	db.NotifyRevision()
 	return newRev, nil
-}
-
-func (body Body) getChannels() []string {
-	value,_ := body["channels"].([]interface{})
-	if value == nil {
-		return nil
-	}
-	result := make([]string, len(value))
-	for i, channel := range(value) {
-		result[i] = channel.(string)
-	}
-	return result
 }
 
 // Creates a new document, assigning it a random doc ID.
@@ -300,6 +297,43 @@ func (db *Database) Post(body Body) (string, string, error) {
 func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 	body := Body{"_deleted": true, "_rev": revid}
 	return db.Put(docid, body)
+}
+
+//////// CHANNELS:
+
+// Tweezes out the 'channels' property of a doc body, as an array of strings
+func (body Body) getChannels() []string {
+	value,_ := body["channels"].([]interface{})
+	if value == nil {
+		return nil
+	}
+	result := make([]string, len(value))
+	for i, channel := range(value) {
+		result[i] = channel.(string)
+	}
+	return result
+}
+
+func (db *Database) updateDocChannels(doc *document, newChannels []string) {
+	channels := doc.Channels
+	if channels == nil {
+		channels = ChannelMap{}
+		doc.Channels = channels
+	} else {
+		// Mark every previous channel as unsubscribed:
+		curSequence := doc.Sequence
+		for channel, seq := range(channels) {
+			if seq == nil {
+				channels[channel] = &ChannelRemoval{curSequence, doc.CurrentRev}
+			}
+		}
+	}
+	
+	// Mark every current channel as subscribed:
+	for _, channel := range(newChannels) {
+		channels[channel] = nil
+	}
+	log.Printf("$$ channels = %v", doc.Channels)
 }
 
 //////// REVS_DIFF:

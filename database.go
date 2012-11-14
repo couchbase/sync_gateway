@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -133,13 +132,18 @@ func installViews(bucket *couchbase.Bucket) error {
 	                    if (pieces.length < 2 || pieces[0] != "doc" || doc.id===undefined)
 	                        return;
 	                    var value = [doc.id, doc.rev];
-						var sync = function(channel) {emit([channel, sequence], value);};
+	                    if (doc.deleted)
+	                        value.push(true)
 						
-						// This part is what would be the app channel-mapping function:
 						var channels = doc["channels"];
 						if (channels) {
-							for (var i = 0; i < channels.length; ++i)
-								sync(channels[i]);
+							for (var name in channels) {
+								removed = channels[name];
+								if (!removed)
+									emit([name, sequence], value);
+								else
+									emit([name, removed.seq], [doc.id, removed.rev, false])
+							}
 						}
 					}`
 	// View for mapping revision IDs to documents (for vacuuming)
@@ -301,249 +305,6 @@ func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
 	return vacuumContent(bucket, "atts", "att:")
 }
 
-//////// SEQUENCES & CHANGES:
-
-func (db *Database) sequenceDocID() string {
-	return "__seq"
-}
-
-func (db *Database) LastSequence() (uint64, error) {
-	return db.bucket.Incr(db.sequenceDocID(), 0, 0, 0)
-}
-
-func (db *Database) generateSequence() (uint64, error) {
-	return db.bucket.Incr(db.sequenceDocID(), 1, 1, 0)
-}
-
-// Options for Database.getChanges
-type ChangesOptions struct {
-	Since       uint64
-	Limit       int
-	Conflicts   bool
-	IncludeDocs bool
-	includeDocMeta bool
-	Wait        bool
-}
-
-// A changes entry; Database.getChanges returns an array of these.
-// Marshals into the standard CouchDB _changes format.
-type ChangeEntry struct {
-	Seq     uint64      `json:"seq"`
-	ID      string      `json:"id"`
-	Deleted bool        `json:"deleted,omitempty"`
-	Doc     Body        `json:"doc,omitempty"`
-	docMeta *document
-	Changes []ChangeRev `json:"changes"`
-}
-
-type ChangeRev map[string]string
-
-type ViewDoc struct {
-	Json json.RawMessage	// should be type 'document', but that fails to unmarshal correctly
-}
-
-type ViewRow struct {
-	ID    string
-	Key   interface{}
-	Value interface{}
-	Doc   *ViewDoc
-}
-
-type ViewResult struct {
-	TotalRows int `json:"total_rows"`
-	Rows      []ViewRow
-	Errors    []couchbase.ViewError
-}
-
-const kChangesPageSize = 200
-
-// Returns a list of all the changes made on a channel.
-func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
-	lastSequence := options.Since
-	endkey := [2]interface{}{channel, make(Body)}
-	totalLimit := options.Limit
-	usingDocs := options.Conflicts || options.IncludeDocs || options.includeDocMeta
-	opts := Body{"stale": false, "update_seq": true,
-		"endkey": endkey,
-		"include_docs": usingDocs}
-
-	feed := make(chan *ChangeEntry, kChangesPageSize)
-	
-	lastSeq,err := db.LastSequence()
-	if options.Since >= lastSeq && err == nil {
-		close(feed)
-		return feed, nil
-	}
-
-	// Generate the output in a new goroutine, writing to 'feed':
-	go func() {
-		defer close(feed)
-		for {
-			// Query the 'channels' view:
-			opts["startkey"] = [2]interface{}{channel, lastSequence + 1}
-			limit := totalLimit
-			if limit == 0 || limit > kChangesPageSize {
-				limit = kChangesPageSize
-			}
-			opts["limit"] = limit
-			
-			var vres ViewResult
-			var err error
-			for len(vres.Rows) == 0 {
-				vres = ViewResult{}
-				err = db.bucket.ViewCustom("syncer", "channels", opts, &vres)
-				if err != nil {
-					log.Printf("Error from 'channels' view: %v", err)
-					return
-				}
-				if len(vres.Rows) == 0 {
-					if !options.Wait || !db.WaitForRevision() {
-						return
-					}
-				}
-			}
-
-			for _, row := range vres.Rows {
-				key := row.Key.([]interface{})
-				lastSequence = uint64(key[1].(float64))
-				value := row.Value.([]interface{})
-				docID := value[0].(string)
-				revID := value[1].(string)
-				entry := &ChangeEntry{
-					Seq:     lastSequence,
-					ID:      docID,
-					Changes: []ChangeRev{{"rev": revID}},
-					Deleted: (len(value) >= 3 && value[2].(bool)),
-				}
-				if usingDocs {
-					doc := newDocument()
-					json.Unmarshal(row.Doc.Json, doc)
-					if doc != nil {
-						//log.Printf("?? doc = %v", doc)
-						if options.Conflicts {
-							for _, leafID := range doc.History.getLeaves() {
-								if leafID != revID {
-									entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
-								}
-							}
-						}
-						if options.IncludeDocs {
-							key := doc.History[revID].Key
-							if key != "" {
-								entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-							}
-						}
-						if options.includeDocMeta {
-							entry.docMeta = doc
-						}
-					}
-				}
-				feed <- entry
-			}
-			
-			// Step to the next page of results:
-			nRows := len(vres.Rows)
-			if nRows < kChangesPageSize || options.Wait {
-				break
-			}
-			if totalLimit > 0 {
-				totalLimit -= nRows
-				if totalLimit <= 0 {
-					break
-				}
-			}
-			delete(opts,"stale") // we only need to update the index once
-		}
-	}()
-	return feed, nil
-}
-
-// Returns of all the changes made to multiple channels
-func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	if len(channels) == 0 {
-		return nil, nil
-	} else if len(channels) == 1 {
-		return db.ChangesFeed(channels[0], options)
-	}
-	
-	feeds := make([]<-chan *ChangeEntry, len(channels))
-	current := make([]*ChangeEntry, len(channels))
-	for i, name := range(channels) {
-		var err error
-		feeds[i], err = db.ChangesFeed(name, options)
-		if err != nil {
-			return nil, err
-		}
-	}
-	
-	output := make(chan *ChangeEntry, kChangesPageSize)
-	go func() {
-		defer close(output)
-		for {
-			//FIX: This assumes Reverse or Limit aren't set in the options
-			// Read more entries to fill up the current[] array:
-			for i, cur := range(current) {
-				if cur == nil && feeds[i] != nil {
-					var ok bool
-					current[i], ok = <- feeds[i]
-					if !ok {
-						feeds[i] = nil
-					}
-				}
-			}
-		
-			// Find the current entry with the minimum sequence:
-			var minSeq uint64 = math.MaxUint64
-			var minEntry *ChangeEntry
-			for _, cur := range(current) {
-				if cur != nil && cur.Seq < minSeq {
-					minSeq = cur.Seq
-					minEntry = cur
-				}
-			}
-			if minEntry == nil {
-				break
-			}
-		
-			// Send the entry:
-			output <- minEntry
-			
-			// Clear the current entries for the sequence just sent:
-			for i, cur := range(current) {
-				if cur != nil && cur.Seq == minEntry.Seq {
-					current[i] = nil
-				}
-			}
-		}
-	}()
-	
-	return output, nil
-}
-
-
-func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*ChangeEntry, error) {
-	var changes []*ChangeEntry
-	feed, err := db.MultiChangesFeed(channels, options)
-	if err == nil && feed != nil {
-		changes = make([]*ChangeEntry, 0, 50)
-		for entry := range feed {
-			changes = append(changes, entry)
-		}
-	}
-	return changes, err
-}
-
-func (db *Database) WaitForRevision() bool {
-	log.Printf("\twaiting for a revision...")
-	waitFor("")
-	log.Printf("\t...done waiting")
-	return true
-}
-
-func (db *Database) NotifyRevision() {
-	notify("")
-}
 
 //////// UTILITIES:
 
