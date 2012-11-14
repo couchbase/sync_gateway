@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package syncer
+package channelsync
 
 import (
 	"log"
@@ -21,7 +21,7 @@ var gTestBucket *couchbase.Bucket
 
 func init() {
 	var err error
-	gTestBucket, err = ConnectToBucket("http://localhost:8091", "default", "syncer")
+	gTestBucket, err = ConnectToBucket("http://localhost:8091", "default", "channelsync")
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

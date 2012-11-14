@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package syncer
+package channelsync
 
 import (
 	"encoding/json"
@@ -96,7 +96,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 			var err error
 			for len(vres.Rows) == 0 {
 				vres = ViewResult{}
-				err = db.bucket.ViewCustom("syncer", "channels", opts, &vres)
+				err = db.bucket.ViewCustom("channelsync", "channels", opts, &vres)
 				if err != nil {
 					log.Printf("Error from 'channels' view: %v", err)
 					return

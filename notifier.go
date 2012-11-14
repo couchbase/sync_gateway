@@ -1,6 +1,6 @@
 // notifier.go
 
-package syncer
+package channelsync
 
 import (
 	"sync"

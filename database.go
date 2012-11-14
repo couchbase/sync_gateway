@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package syncer
+package channelsync
 
 import (
 	"bytes"
@@ -94,7 +94,7 @@ func installViews(bucket *couchbase.Bucket) error {
 		fmt.Printf("Failed to parse %s", node.CouchAPIBase)
 		return err
 	}
-	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "syncer")
+	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "channelsync")
 
 	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
 	allbits_map := `function (doc, meta) {
@@ -240,7 +240,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 
 func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.bucket.View("syncer", "all_docs", opts)
+	vres, err := db.bucket.View("channelsync", "all_docs", opts)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
@@ -250,7 +250,7 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
 	opts := Body{"stale": false}
-	vres, err := db.bucket.View("syncer", "all_bits", opts)
+	vres, err := db.bucket.View("channelsync", "all_bits", opts)
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
 		return err
@@ -270,7 +270,7 @@ func (db *Database) Delete() error {
 }
 
 func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
-	vres, err := bucket.View("syncer", viewName, Body{"stale": false, "group_level": 1})
+	vres, err := bucket.View("channelsync", viewName, Body{"stale": false, "group_level": 1})
 	if err != nil {
 		log.Printf("WARNING: %s view returned %v", viewName, err)
 		return 0, err

@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package syncer
+package channelsync
 
 import (
 	"encoding/json"
@@ -629,7 +629,7 @@ func ServerMain() {
 	addr := flag.String("addr", ":4984", "Address to bind to")
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
-	bucketName := flag.String("bucket", "syncer", "Name of bucket")
+	bucketName := flag.String("bucket", "channelsync", "Name of bucket")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	flag.Parse()

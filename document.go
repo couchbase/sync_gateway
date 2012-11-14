@@ -1,6 +1,6 @@
 // document.go -- document-oriented Database methods
 
-package syncer
+package channelsync
 
 import (
 	"crypto/rand"
