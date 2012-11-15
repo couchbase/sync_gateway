@@ -34,7 +34,7 @@ type ChangeEntry struct {
 	Seq     uint64      `json:"seq"`
 	ID      string      `json:"id"`
 	Deleted bool        `json:"deleted,omitempty"`
-	Removed bool		`json:"removed,omitempty"`
+	Removed []string	`json:"removed,omitempty"`
 	Doc     Body        `json:"doc,omitempty"`
 	docMeta *document
 	Changes []ChangeRev `json:"changes"`
@@ -119,7 +119,9 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 					ID:      docID,
 					Changes: []ChangeRev{{"rev": revID}},
 					Deleted: (len(value) >= 3 && value[2].(bool)),
-					Removed: (len(value) >= 3 && !value[2].(bool)),
+				}
+				if len(value) >= 3 && !value[2].(bool) {
+					entry.Removed = []string{channel}
 				}
 				if usingDocs {
 					doc := newDocument()
@@ -210,16 +212,24 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 			if minEntry == nil {
 				break
 			}
-		
-			// Send the entry:
-			output <- minEntry
 			
 			// Clear the current entries for the sequence just sent:
 			for i, cur := range(current) {
 				if cur != nil && cur.Seq == minEntry.Seq {
 					current[i] = nil
+					// Also concatenate any and all Removed arrays:
+					if cur != minEntry && cur.Removed != nil {
+						if minEntry.Removed == nil {
+							minEntry.Removed = cur.Removed
+						} else {
+							minEntry.Removed = append(minEntry.Removed, cur.Removed...)
+						}
+					}
 				}
 			}
+		
+			// Send the entry:
+			output <- minEntry
 		}
 	}()
 	
