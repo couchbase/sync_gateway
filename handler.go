@@ -41,12 +41,16 @@ type handler struct {
 	response http.ResponseWriter
 	bucket   *couchbase.Bucket
 	db       *Database
+	dbName	 string
 }
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
-func NewRESTHandler(bucket *couchbase.Bucket) http.Handler {
+func NewRESTHandler(bucket *couchbase.Bucket, dbName string) http.Handler {
+	if dbName == "" {
+		dbName = bucket.Name
+	}
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := &handler{rq: rq, response: r, bucket: bucket}
+		h := &handler{rq: rq, response: r, bucket: bucket, dbName: dbName}
 		h.run()
 	})
 }

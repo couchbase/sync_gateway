@@ -33,7 +33,7 @@ func callREST(method, resource string, body string) *httptest.ResponseRecorder {
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	response := httptest.NewRecorder()
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
-	handler := NewRESTHandler(gTestBucket)
+	handler := NewRESTHandler(gTestBucket, "db")
 	handler.ServeHTTP(response, request)
 	return response
 }

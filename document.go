@@ -333,7 +333,6 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) {
 	for _, channel := range(newChannels) {
 		channels[channel] = nil
 	}
-	log.Printf("$$ channels = %v", doc.Channels)
 }
 
 //////// REVS_DIFF:

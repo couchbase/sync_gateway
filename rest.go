@@ -555,13 +555,8 @@ func (h *handler) handleRoot() error {
 
 func (h *handler) handleAllDbs() error {
 	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
-		response, err := AllDbNames(h.bucket)
-		if err != nil {
-			return err
-		} else {
-			h.writeJSON(response)
-			return nil
-		}
+		h.writeJSON([]string{h.dbName})
+		return nil
 	}
 	return &HTTPError{http.StatusBadRequest, "bad request"}
 }
@@ -602,16 +597,20 @@ func (h *handler) run() {
 		err = h.handleVacuum()
 	} else if h.rq.Method == "PUT" && len(path) == 1 {
 		// Create a database:
-		_, err = CreateDatabase(h.bucket, path[0])
-		if err == nil {
-			h.response.WriteHeader(http.StatusCreated)
-			h.logStatus(201)
+		if path[0] == h.dbName {
+			err = &HTTPError{http.StatusConflict, "already exists"}
+		} else {
+			err = &HTTPError{http.StatusForbidden, "can't create any databases"}
 		}
 	} else {
 		// Handle a request aimed at a database:
-		h.db, err = GetDatabase(h.bucket, path[0])
-		if err == nil {
-			err = h.handle(path[1:])
+		if path[0] == h.dbName {
+			h.db, err = GetDatabase(h.bucket, path[0])
+			if err == nil {
+				err = h.handle(path[1:])
+			}
+		} else {
+			err = &HTTPError{http.StatusNotFound, "no such database"}
 		}
 	}
 	if err != nil {
@@ -620,8 +619,8 @@ func (h *handler) run() {
 }
 
 // Initialize REST handlers. Call this once on launch.
-func InitREST(bucket *couchbase.Bucket) {
-	http.Handle("/", NewRESTHandler(bucket))
+func InitREST(bucket *couchbase.Bucket, dbName string) {
+	http.Handle("/", NewRESTHandler(bucket, dbName))
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.
@@ -630,6 +629,7 @@ func ServerMain() {
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
 	bucketName := flag.String("bucket", "channelsync", "Name of bucket")
+	dbName := flag.String("dbname", "", "Name of CouchDB database")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	flag.Parse()
@@ -638,12 +638,16 @@ func ServerMain() {
 	if err != nil {
 		log.Fatalf("Error getting bucket '%s':  %v\n", *bucketName, err)
 	}
-
-	InitREST(bucket)
+	
+	if *dbName == "" {
+		*dbName = bucket.Name
+	}
+	
+	InitREST(bucket, *dbName)
 	PrettyPrint = *pretty
 	LogRequestsVerbose = *verbose
 
-	log.Printf("Starting server on %s", *addr)
+	log.Printf("Starting server on %s for database %q", *addr, *dbName)
 	err = http.ListenAndServe(*addr, nil)
 	if err != nil {
 		log.Fatal("Server failed: ", err.Error())

@@ -36,8 +36,8 @@ type ChangeEntry struct {
 	Deleted bool        `json:"deleted,omitempty"`
 	Removed []string	`json:"removed,omitempty"`
 	Doc     Body        `json:"doc,omitempty"`
-	docMeta *document
 	Changes []ChangeRev `json:"changes"`
+	docMeta *document
 }
 
 type ChangeRev map[string]string
@@ -217,7 +217,7 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 			for i, cur := range(current) {
 				if cur != nil && cur.Seq == minEntry.Seq {
 					current[i] = nil
-					// Also concatenate any and all Removed arrays:
+					// Also concatenate the matching entries' Removed arrays:
 					if cur != minEntry && cur.Removed != nil {
 						if minEntry.Removed == nil {
 							minEntry.Removed = cur.Removed

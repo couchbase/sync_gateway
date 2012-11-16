@@ -52,20 +52,13 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 	return
 }
 
-// Makes a Database object given its name and bucket. Returns nil if there is no such database.
+// Makes a Database object given its name and bucket.
 func GetDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-	if name != "db" {
-		return nil, &HTTPError{http.StatusNotFound, "Only database 'db' exists"}
-	}
 	return &Database{bucket: bucket, Name: name}, nil
 }
 
-// Creates a new database in a bucket and returns a Database object for it. Fails if the database exists.
 func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-	if name == "db" {
-		return GetDatabase(bucket, name)
-	}
-	return nil, &HTTPError{http.StatusForbidden, "Can't create databases; only 'db' exists"}
+	return &Database{bucket: bucket, Name: name}, nil
 }
 
 func (db *Database) SameAs(otherdb *Database) bool {
@@ -211,11 +204,6 @@ func installViews(bucket *couchbase.Bucket) error {
 		log.Printf("WARNING: Error installing design doc: %v", err)
 	}
 	return err
-}
-
-// Returns all database names as an array.
-func AllDbNames(bucket *couchbase.Bucket) ([]string, error) {
-	return []string{"db"}, nil
 }
 
 type IDAndRev struct {
