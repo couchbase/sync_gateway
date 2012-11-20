@@ -39,6 +39,7 @@ func (err *HTTPError) Error() string {
 type Database struct {
 	Name      string
 	bucket    *couchbase.Bucket
+	channelMapper *ChannelMapper
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
@@ -64,6 +65,19 @@ func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
 		db.bucket == otherdb.bucket
+}
+
+func (db *Database) LoadChannelMapper() (*ChannelMapper, error) {
+	body, err := db.Get("_design/channels")
+	if err != nil {
+		return nil, err
+	}
+	src, ok := body["channelmap"].(string)
+	if !ok {
+		return nil, nil	
+	}
+	log.Printf("Channel mapper = %s", src)
+	return NewChannelMapper(src)
 }
 
 //////// ALL DOCUMENTS:

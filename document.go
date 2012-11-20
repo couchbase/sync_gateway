@@ -261,7 +261,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			return nil, err
 		}
 		
-		db.updateDocChannels(doc, body.getChannels()) //FIX: Incorrect if new rev is not current!
+		db.updateDocChannels(doc, db.getChannels(body)) //FIX: Incorrect if new rev is not current!
 		
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
@@ -301,20 +301,32 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 //////// CHANNELS:
 
-// Tweezes out the 'channels' property of a doc body, as an array of strings
-func (body Body) getChannels() []string {
-	value,_ := body["channels"].([]interface{})
-	if value == nil {
-		return nil
+// Determines which channels a document body belongs to
+func (db *Database) getChannels(body Body) (result []string) {
+	if db.channelMapper != nil {
+		jsonStr, _ := json.Marshal(body)
+		result, _ = db.channelMapper.MapToChannels(string(jsonStr))
+		
+	} else {
+		// No ChannelMapper so by default use the "channels" property:
+		value,_ := body["channels"].([]interface{})
+		if value == nil {
+			return nil
+		}
+		result = make([]string, 0, len(value))
+		for _, channel := range(value) {
+			channelStr, ok := channel.(string)
+			if ok && len(channelStr) > 0 {
+				result = append(result, channelStr)
+			}
+		}
 	}
-	result := make([]string, len(value))
-	for i, channel := range(value) {
-		result[i] = channel.(string)
-	}
-	return result
+	return
 }
 
+// Updates the Channels property of a document object with current & past channels
 func (db *Database) updateDocChannels(doc *document, newChannels []string) {
+	log.Printf("Assigning doc to %q", newChannels)
 	channels := doc.Channels
 	if channels == nil {
 		channels = ChannelMap{}

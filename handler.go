@@ -21,8 +21,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/couchbaselabs/go-couchbase"
 )
 
 // If set to true, JSON output will be pretty-printed.
@@ -37,20 +35,20 @@ var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowe
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
+	context	 *context
 	rq       *http.Request
 	response http.ResponseWriter
-	bucket   *couchbase.Bucket
 	db       *Database
-	dbName	 string
 }
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
-func NewRESTHandler(bucket *couchbase.Bucket, dbName string) http.Handler {
-	if dbName == "" {
-		dbName = bucket.Name
-	}
+func NewRESTHandler(context *context) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := &handler{rq: rq, response: r, bucket: bucket, dbName: dbName}
+		h := &handler{
+			rq: rq,
+			response: r,
+			context: context,
+		}
 		h.run()
 	})
 }

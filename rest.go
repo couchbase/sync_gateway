@@ -22,6 +22,14 @@ import (
 	"github.com/couchbaselabs/go-couchbase"
 )
 
+// Shared context of HTTP handlers. It's important that this remain immutable, because the
+// handlers will access it from multiple goroutines.
+type context struct {
+	bucket   *couchbase.Bucket
+	dbName	 string
+	channelMapper *ChannelMapper
+}
+
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc(docid string) error {
 	query := h.rq.URL.Query()
@@ -555,7 +563,7 @@ func (h *handler) handleRoot() error {
 
 func (h *handler) handleAllDbs() error {
 	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
-		h.writeJSON([]string{h.dbName})
+		h.writeJSON([]string{h.context.dbName})
 		return nil
 	}
 	return &HTTPError{http.StatusBadRequest, "bad request"}
@@ -568,11 +576,11 @@ type ReplicateInput struct {
 }
 
 func (h *handler) handleVacuum() error {
-	revsDeleted, err := VacuumRevisions(h.bucket)
+	revsDeleted, err := VacuumRevisions(h.context.bucket)
 	if err != nil {
 		return err
 	}
-	attsDeleted, err := VacuumAttachments(h.bucket)
+	attsDeleted, err := VacuumAttachments(h.context.bucket)
 	if err != nil {
 		return err
 	}
@@ -597,16 +605,17 @@ func (h *handler) run() {
 		err = h.handleVacuum()
 	} else if h.rq.Method == "PUT" && len(path) == 1 {
 		// Create a database:
-		if path[0] == h.dbName {
+		if path[0] == h.context.dbName {
 			err = &HTTPError{http.StatusConflict, "already exists"}
 		} else {
 			err = &HTTPError{http.StatusForbidden, "can't create any databases"}
 		}
 	} else {
 		// Handle a request aimed at a database:
-		if path[0] == h.dbName {
-			h.db, err = GetDatabase(h.bucket, path[0])
+		if path[0] == h.context.dbName {
+			h.db, err = GetDatabase(h.context.bucket, path[0])
 			if err == nil {
+				h.db.channelMapper = h.context.channelMapper
 				err = h.handle(path[1:])
 			}
 		} else {
@@ -620,7 +629,19 @@ func (h *handler) run() {
 
 // Initialize REST handlers. Call this once on launch.
 func InitREST(bucket *couchbase.Bucket, dbName string) {
-	http.Handle("/", NewRESTHandler(bucket, dbName))
+	if dbName == "" {
+		dbName = bucket.Name
+	}
+	
+	db, _ := GetDatabase(bucket, dbName)
+	channelMapper, _ := db.LoadChannelMapper()
+	
+	c := &context{
+		bucket: bucket,
+		dbName: dbName,
+		channelMapper: channelMapper,
+	}
+	http.Handle("/", NewRESTHandler(c))
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.
