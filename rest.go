@@ -634,7 +634,10 @@ func InitREST(bucket *couchbase.Bucket, dbName string) {
 	}
 	
 	db, _ := GetDatabase(bucket, dbName)
-	channelMapper, _ := db.LoadChannelMapper()
+	channelMapper, err := db.LoadChannelMapper()
+	if err != nil {
+		log.Printf("Warning: Couldn't load channelmap fn: %s", err)
+	}
 	
 	c := &context{
 		bucket: bucket,
