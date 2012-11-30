@@ -286,8 +286,8 @@ func (h *handler) handleChanges() error {
 	options.IncludeDocs = (h.rq.URL.Query().Get("include_docs") == "true")
 	
 	// Get the channels as parameters to an imaginary "bychannel" filter:
-	if h.rq.URL.Query().Get("filter") != "bychannel" {
-		return &HTTPError{http.StatusBadRequest, "bychannel filter required"}
+	if h.rq.URL.Query().Get("filter") != "channelsync/bychannel" {
+		return &HTTPError{http.StatusBadRequest, "channelsync/bychannel filter required"}
 	}
 	channelsParam := h.rq.URL.Query().Get("channels")
 	if len(channelsParam) == 0 {
@@ -501,6 +501,13 @@ func (h *handler) handle(path []string) error {
 				h.writeJSONStatus(http.StatusCreated, Body{"ok": true})
 				return nil
 			}
+        case "_design/channelsync":
+			// we serve this content here so that CouchDB 1.2 has something to
+			// hash into the replication-id, to correspond to our filter.
+            if method == "GET" {
+                h.writeJSON(Body{"filters": Body{"bychannel":"ok"}})
+                return nil
+            }
 		default:
 			if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
 				// Accessing a document:
