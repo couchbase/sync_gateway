@@ -226,6 +226,64 @@ func (h *handler) handleAllDocs() error {
 	return nil
 }
 
+// HTTP handler for a POST to _bulk_get
+func (h *handler) handleBulkGet() error {
+	includeRevs := h.getBoolQuery("revs")
+	includeAttachments := h.getBoolQuery("attachments")
+	body, err := h.readJSON()
+	if err != nil {
+		return err
+	}
+
+	result := make([]Body, 0, 5)
+	for _, item := range body["docs"].([]interface{}) {
+		doc := item.(map[string]interface{})
+		docid, _ := doc["id"].(string)
+		revid := ""
+		revok := true
+		if doc["rev"] != nil {
+			revid, revok = doc["rev"].(string)
+		}
+		if docid=="" || !revok {
+			return &HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
+		}
+		
+		var attsSince []string = nil
+		if includeAttachments {
+			if doc["atts_since"] != nil {
+				raw, ok := doc["atts_since"].([]interface{})
+				if (ok) {
+					attsSince = make([]string, len(raw))
+					for i := 0; i < len(raw); i++ {
+						attsSince[i], ok = raw[i].(string)
+						if !ok {
+							break
+						}
+					}
+				}
+				if !ok {
+					return &HTTPError{http.StatusBadRequest, "Invalid atts_since"}
+				}
+			} else {
+				attsSince = []string{}
+			}
+		}
+		
+		body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
+		if (err != nil) {
+			status, msg := ErrorAsHTTPStatus(err)
+			body = Body{"id": docid, "error": msg, "status": status}
+			if revid != "" {
+				body["rev"] = revid
+			}
+		}
+		result = append(result, body)
+	}
+
+	h.writeJSONStatus(http.StatusOK, result)
+	return nil
+}
+
 // HTTP handler for a POST to _bulk_docs
 func (h *handler) handleBulkDocs() error {
 	body, err := h.readJSON()
@@ -485,6 +543,10 @@ func (h *handler) handle(path []string) error {
 		case "_bulk_docs":
 			if method == "POST" {
 				return h.handleBulkDocs()
+			}
+		case "_bulk_get":
+			if method == "POST" {
+				return h.handleBulkGet()
 			}
 		case "_changes":
 			if method == "GET" {
