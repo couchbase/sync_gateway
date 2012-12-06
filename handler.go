@@ -53,10 +53,18 @@ func NewRESTHandler(context *context) http.Handler {
 	})
 }
 
+func (h *handler) getQuery(query string) string {
+	return h.rq.URL.Query().Get(query)
+}
+
+func (h *handler) getBoolQuery(query string) bool {
+	return h.getQuery(query) == "true"
+}
+
 // Returns the integer value of a URL query, defaulting to 0 if missing or unparseable
 func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
 	value = defaultValue
-	q := h.rq.URL.Query().Get(query)
+	q := h.getQuery(query)
 	if q != "" {
 		value, _ = strconv.ParseUint(q, 10, 64)
 	}

@@ -32,15 +32,14 @@ type context struct {
 
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc(docid string) error {
-	query := h.rq.URL.Query()
-	revid := query.Get("rev")
-	includeRevs := query.Get("revs") == "true"
-	openRevs := query.Get("open_revs")
+	revid := h.getQuery("rev")
+	includeRevs := h.getBoolQuery("revs")
+	openRevs := h.getQuery("open_revs")
 
 	// What attachment bodies should be included?
 	var attachmentsSince []string = nil
-	if query.Get("attachments") == "true" {
-		atts := query.Get("atts_since")
+	if h.getBoolQuery("attachments") {
+		atts := h.getQuery("atts_since")
 		if atts != "" {
 			var revids []string
 			err := json.Unmarshal([]byte(atts), &revids)
@@ -111,8 +110,7 @@ func (h *handler) handlePutDoc(docid string) error {
 	}
 	var newRev string
 
-	query := h.rq.URL.Query()
-	if query.Get("new_edits") != "false" {
+	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		newRev, err = h.db.Put(docid, body)
 		if err != nil {
@@ -153,7 +151,7 @@ func (h *handler) handlePostDoc() error {
 
 // HTTP handler for a DELETE of a document
 func (h *handler) handleDeleteDoc(docid string) error {
-	revid := h.rq.URL.Query().Get("rev")
+	revid := h.getQuery("rev")
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
 		h.writeJSON(Body{"ok": true, "id": docid, "rev": newRev})
@@ -164,7 +162,8 @@ func (h *handler) handleDeleteDoc(docid string) error {
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
-	includeDocs := h.rq.URL.Query().Get("include_docs") == "true"
+	includeDocs := h.getBoolQuery("include_docs")
+	includeRevs := h.getBoolQuery("revs")
 	var ids []IDAndRev
 	var err error
 
@@ -209,7 +208,7 @@ func (h *handler) handleAllDocs() error {
 		row := viewRow{ID: id.DocID, Key: id.DocID}
 		if includeDocs || id.RevID == "" {
 			// Fetch the document body:
-			body, err := h.db.Get(id.DocID)
+			body, err := h.db.GetRev(id.DocID, id.RevID, includeRevs, nil)
 			if err == nil {
 				id.RevID = body["_rev"].(string)
 				if includeDocs {
@@ -282,20 +281,20 @@ func (h *handler) handleChanges() error {
 	var options ChangesOptions
 	options.Since = h.getIntQuery("since", 0)
 	options.Limit = int(h.getIntQuery("limit", 0))
-	options.Conflicts = (h.rq.URL.Query().Get("style") == "all_docs")
-	options.IncludeDocs = (h.rq.URL.Query().Get("include_docs") == "true")
+	options.Conflicts = (h.getQuery("style") == "all_docs")
+	options.IncludeDocs = (h.getBoolQuery("include_docs"))
 	
 	// Get the channels as parameters to an imaginary "bychannel" filter:
-	if h.rq.URL.Query().Get("filter") != "channelsync/bychannel" {
+	if h.getQuery("filter") != "channelsync/bychannel" {
 		return &HTTPError{http.StatusBadRequest, "channelsync/bychannel filter required"}
 	}
-	channelsParam := h.rq.URL.Query().Get("channels")
+	channelsParam := h.getQuery("channels")
 	if len(channelsParam) == 0 {
 		return &HTTPError{http.StatusBadRequest, "channels parameter required"}
 	}
 	channels := strings.Split(channelsParam, ",")
 
-	switch h.rq.URL.Query().Get("feed") {
+	switch h.getQuery("feed") {
 	case "longpoll":
 		options.Wait = true
 	case "continuous":
@@ -372,7 +371,7 @@ loop:
 }
 
 func (h *handler) handleGetAttachment(docid, attachmentName string) error {
-	revid := h.rq.URL.Query().Get("rev")
+	revid := h.getQuery("rev")
 	body, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
 		return err
@@ -442,7 +441,7 @@ func (h *handler) handlePutLocalDoc(docid string) error {
 
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDeleteLocalDoc(docid string) error {
-	return h.db.DeleteLocal(docid, h.rq.URL.Query().Get("rev"))
+	return h.db.DeleteLocal(docid, h.getQuery("rev"))
 }
 
 // HTTP handler for a database.
