@@ -22,6 +22,8 @@ import (
 	"github.com/couchbaselabs/go-couchbase"
 )
 
+const VersionString = "BaseCouch/0.2"
+
 // Shared context of HTTP handlers. It's important that this remain immutable, because the
 // handlers will access it from multiple goroutines.
 type context struct {
@@ -621,7 +623,7 @@ func (h *handler) handleRoot() error {
 	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
 		response := map[string]string{
 			"couchdb": "welcome",
-			"version": "BaseCouch 0.1",
+			"version": VersionString,
 		}
 		h.writeJSON(response)
 		return nil
@@ -660,6 +662,7 @@ func (h *handler) run() {
 	if LogRequests {
 		log.Printf("%s %s", h.rq.Method, h.rq.URL)
 	}
+	h.setHeader("Server", VersionString)
 	path := strings.Split(h.rq.URL.Path[1:], "/")
 	for len(path) > 0 && path[len(path)-1] == "" {
 		path = path[0 : len(path)-1]
