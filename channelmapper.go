@@ -101,7 +101,7 @@ type channelMapperResponse struct {
 
 
 func (mapper *ChannelMapper) serve() {
-	for request, ok := <-mapper.requests; ok; {
+	for request := range mapper.requests {
 		var response channelMapperResponse
 		response.channels, response.err = mapper.callMapper(request.input)
 		request.returnAddress <- response
