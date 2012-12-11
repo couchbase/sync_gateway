@@ -12,6 +12,7 @@ import (
 type ChannelMapper struct {
 	js *otto.Otto
 	fn otto.Value
+	fnSource string
 	channels []string
 	
 	requests chan channelMapperRequest
@@ -53,14 +54,9 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	    return otto.UndefinedValue()
 	})
 	
-	fnobj,err := mapper.js.Object("(" + funcSource + ")")
-	if err != nil {
+	if _,err := mapper.setFunction(funcSource); err != nil {
 		return nil, err
 	}
-	if fnobj.Class() != "Function" {
-		return nil, errors.New("JavaScript source does not evaluate to a function")
-	}
-	mapper.fn = fnobj.Value()
 	
 	mapper.requests = make(chan channelMapperRequest)
 	go mapper.serve()
@@ -68,7 +64,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	return mapper, nil
 }
 
-// Invokes the mapper. Privave; not thread-safe!
+// Invokes the mapper. Private; not thread-safe!
 func (mapper *ChannelMapper) callMapper(input string) ([]string, error) {
 	inputJS, err := mapper.js.Object(fmt.Sprintf("doc = %s", input))
 	if err != nil {
@@ -84,11 +80,32 @@ func (mapper *ChannelMapper) callMapper(input string) ([]string, error) {
 	return channels, nil
 }
 
+func (mapper *ChannelMapper) setFunction(funcSource string) (bool, error) {
+	if funcSource == mapper.fnSource {
+		return false, nil  // no-op
+	}
+	fnobj,err := mapper.js.Object("(" + funcSource + ")")
+	if err != nil {
+		return false, err
+	}
+	if fnobj.Class() != "Function" {
+		return false, errors.New("JavaScript source does not evaluate to a function")
+	}
+	mapper.fnSource = funcSource
+	mapper.fn = fnobj.Value()
+	return true, nil
+}
+
 
 //////// MAPPER SERVER:
 
+const (
+	kMap = iota
+	kSetFunction
+)
 
 type channelMapperRequest struct {
+	mode int
 	input string
 	returnAddress chan<- channelMapperResponse
 }
@@ -103,20 +120,37 @@ type channelMapperResponse struct {
 func (mapper *ChannelMapper) serve() {
 	for request := range mapper.requests {
 		var response channelMapperResponse
-		response.channels, response.err = mapper.callMapper(request.input)
+		switch request.mode {
+		case kMap:
+			response.channels, response.err = mapper.callMapper(request.input)
+		case kSetFunction:
+			var changed bool
+			changed, response.err = mapper.setFunction(request.input)
+			if changed {
+				response.channels = []string{}
+			}
+		}
 		request.returnAddress <- response
 	}
 }
 
+func (mapper *ChannelMapper) request(mode int, input string) channelMapperResponse {
+	responseChan := make(chan channelMapperResponse, 1)
+	mapper.requests <- channelMapperRequest{mode, input, responseChan}
+	return <- responseChan
+}
 
 // Public thread-safe entry point for doing mapping.
 func (mapper *ChannelMapper) MapToChannels(input string) ([]string, error) {
-	responseChan := make(chan channelMapperResponse, 1)
-	mapper.requests <- channelMapperRequest{input, responseChan}
-	response := <- responseChan
+	response := mapper.request(kMap, input)
 	return response.channels, response.err
 }
 
+// Public thread-safe entry point for doing mapping.
+func (mapper *ChannelMapper) SetFunction(fnSource string) (bool, error) {
+	response := mapper.request(kSetFunction, fnSource)
+	return (response.channels != nil), response.err
+}
 
 func (mapper *ChannelMapper) Stop() {
 	close(mapper.requests)

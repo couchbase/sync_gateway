@@ -223,6 +223,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	var newRev string
+	var body Body
 
 	err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -236,7 +237,8 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, err := callback(doc)
+		var err error
+		body, err = callback(doc)
 		if err != nil {
 			return nil, err
 		}
@@ -275,6 +277,17 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if LogRequestsVerbose && newRev != "" {
 		log.Printf("\tAdded doc %q / %q", docid, newRev)
 	}
+	
+	// Ugly hack to detect changes to the channel-mapper function:
+	if docid == "_design/channels" {
+		src, ok := body["channelmap"].(string)
+		if ok {
+			if changed, _ := db.channelMapper.SetFunction(src); changed {
+				db.UpdateAllDocChannels()
+			}
+		}
+	}
+	
 	db.NotifyRevision()
 	return newRev, nil
 }
@@ -325,8 +338,8 @@ func (db *Database) getChannels(body Body) (result []string) {
 }
 
 // Updates the Channels property of a document object with current & past channels
-func (db *Database) updateDocChannels(doc *document, newChannels []string) {
-	log.Printf("Assigning doc to %q", newChannels)
+func (db *Database) updateDocChannels(doc *document, newChannels []string) (changed bool) {
+	log.Printf("\tAssigning doc %q to channels %q", doc.ID, newChannels)
 	channels := doc.Channels
 	if channels == nil {
 		channels = ChannelMap{}
@@ -337,14 +350,19 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) {
 		for channel, seq := range(channels) {
 			if seq == nil {
 				channels[channel] = &ChannelRemoval{curSequence, doc.CurrentRev}
+				changed = true
 			}
 		}
 	}
 	
 	// Mark every current channel as subscribed:
 	for _, channel := range(newChannels) {
+		if value, exists := channels[channel]; value != nil || !exists {
 		channels[channel] = nil
+			changed = true
+		}
 	}
+	return changed
 }
 
 //////// REVS_DIFF:

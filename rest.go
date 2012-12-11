@@ -708,6 +708,10 @@ func InitREST(bucket *couchbase.Bucket, dbName string) {
 	channelMapper, err := db.LoadChannelMapper()
 	if err != nil {
 		log.Printf("Warning: Couldn't load channelmap fn: %s", err)
+		channelMapper, err = NewChannelMapper("")
+		if err != nil {
+			log.Printf("Warning: Couldn't load channelmap fn: %s", err)
+		}
 	}
 	
 	c := &context{

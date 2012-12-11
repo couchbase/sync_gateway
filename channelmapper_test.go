@@ -55,3 +55,18 @@ func TestPublicChannelMapper(t *testing.T) {
 	assert.DeepEquals(t, channels, []string{"foo", "bar", "baz"})
 	mapper.Stop()
 }
+
+// Test changing the function
+func TestSetFunction(t *testing.T) {
+	mapper, err := NewChannelMapper(`function(doc) {sync(doc.channels);}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	channels, err := mapper.MapToChannels(`{"channels": ["foo", "bar", "baz"]}`)
+	assertNoError(t, err, "callMapper failed")
+	changed, err := mapper.SetFunction(`function(doc) {sync("all");}`)
+	assertTrue(t, changed, "SetFunction failed")
+	assertNoError(t, err, "SetFunction failed")
+	channels, err = mapper.MapToChannels(`{"channels": ["foo", "bar", "baz"]}`)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, channels, []string{"all"})
+	mapper.Stop()
+}

@@ -307,6 +307,42 @@ func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
 	return vacuumContent(bucket, "atts", "att:")
 }
 
+// Re-runs the channelMapper on every document in the database.
+// To be used when the JavaScript channelmap function changes.
+func (db *Database) UpdateAllDocChannels() error {
+	log.Printf("Recomputing document channels...")
+	vres, err := db.bucket.View("channelsync", "all_docs", Body{"stale": false, "reduce": false})
+	if err != nil {
+		return err
+	}
+	for _, row := range vres.Rows {
+		docid := row.Key.(string)
+		key := db.realDocID(docid)
+		err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+			// Be careful: this block can be invoked multiple times if there are races!
+			if currentValue == nil {
+				return nil, couchbase.UpdateCancel  // someone deleted it?!
+			}
+			doc := newDocument()
+			if err := json.Unmarshal(currentValue, doc); err != nil {
+				return nil, err
+			}
+			body, err := db.getRevFromDoc(doc, "", false)
+			if err != nil {
+				return nil, err
+			}
+			if !db.updateDocChannels(doc, db.getChannels(body)) {
+				return nil, couchbase.UpdateCancel  // unchanged
+			}
+			log.Printf("\tSaving updated channels of %q", docid)
+			return json.Marshal(doc)
+		})
+		if err != nil && err != couchbase.UpdateCancel {
+			log.Printf("WARNING: Error updating doc %q: %v", docid, err)
+		}
+	}
+	return nil
+}
 
 //////// UTILITIES:
 
