@@ -30,6 +30,7 @@ type context struct {
 	bucket   *couchbase.Bucket
 	dbName	 string
 	channelMapper *ChannelMapper
+	auth *Authenticator
 }
 
 // HTTP handler for a GET of a document
@@ -628,7 +629,7 @@ func (h *handler) handleRoot() error {
 		h.writeJSON(response)
 		return nil
 	}
-	return &HTTPError{http.StatusBadRequest, "bad request"}
+	return kBadMethodError
 }
 
 func (h *handler) handleAllDbs() error {
@@ -636,7 +637,7 @@ func (h *handler) handleAllDbs() error {
 		h.writeJSON([]string{h.context.dbName})
 		return nil
 	}
-	return &HTTPError{http.StatusBadRequest, "bad request"}
+	return kBadMethodError
 }
 
 type ReplicateInput struct {
@@ -658,11 +659,30 @@ func (h *handler) handleVacuum() error {
 	return nil
 }
 
+func (h *handler) checkAuth() error {
+	if h.context.auth == nil {
+		return nil
+	}
+	userName, password := h.getBasicAuth()
+	h.user = h.context.auth.AuthenticateUser(userName, password)
+	if h.user == nil {
+		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
+		return &HTTPError{http.StatusUnauthorized, "Invalid login"}
+	}
+	return nil
+}
+
 func (h *handler) run() {
 	if LogRequests {
 		log.Printf("%s %s", h.rq.Method, h.rq.URL)
 	}
 	h.setHeader("Server", VersionString)
+	
+	if err := h.checkAuth(); err != nil {
+		h.writeError(err)
+		return
+	}
+	
 	path := strings.Split(h.rq.URL.Path[1:], "/")
 	for len(path) > 0 && path[len(path)-1] == "" {
 		path = path[0 : len(path)-1]
@@ -687,6 +707,7 @@ func (h *handler) run() {
 			h.db, err = GetDatabase(h.context.bucket, path[0])
 			if err == nil {
 				h.db.channelMapper = h.context.channelMapper
+				h.db.user = h.user
 				err = h.handle(path[1:])
 			}
 		} else {
@@ -718,6 +739,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string) {
 		bucket: bucket,
 		dbName: dbName,
 		channelMapper: channelMapper,
+		auth: NewAuthenticator(bucket),
 	}
 	http.Handle("/", NewRESTHandler(c))
 }

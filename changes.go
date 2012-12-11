@@ -238,6 +238,10 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 
 
 func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*ChangeEntry, error) {
+	if err := db.user.AuthorizeAllChannels(channels); err != nil {
+		return nil, err
+	}
+	
 	var changes []*ChangeEntry
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {

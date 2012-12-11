@@ -101,6 +101,10 @@ func (db *Database) GetRev(docid, revid string,
 
 // Returns the body of a revision given a document struct
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
+	if err := db.user.AuthorizeAnyDocChannels(doc.Channels); err != nil {
+		// FIX: This only authorizes vs the current revision, not the one the client asked for!
+		return nil, err
+	}
 	if revid == "" {
 		revid = doc.CurrentRev
 		if doc.History[revid].Deleted == true {
@@ -358,7 +362,7 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 	// Mark every current channel as subscribed:
 	for _, channel := range(newChannels) {
 		if value, exists := channels[channel]; value != nil || !exists {
-		channels[channel] = nil
+			channels[channel] = nil
 			changed = true
 		}
 	}

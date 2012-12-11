@@ -40,6 +40,7 @@ type Database struct {
 	Name      string
 	bucket    *couchbase.Bucket
 	channelMapper *ChannelMapper
+	user 	  *User
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.

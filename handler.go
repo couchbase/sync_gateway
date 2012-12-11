@@ -11,6 +11,7 @@ package channelsync
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,10 +36,11 @@ var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowe
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	context	 *context
-	rq       *http.Request
-	response http.ResponseWriter
-	db       *Database
+	context	 		*context
+	rq       		*http.Request
+	response 		http.ResponseWriter
+	db       		*Database
+	user			*User
 }
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
@@ -111,6 +113,22 @@ func (h *handler) requestAccepts(mimetype string) bool {
 	accept := h.rq.Header.Get("Accept")
 	return accept == "" || strings.Contains(accept, mimetype) || strings.Contains(accept, "*/*")
 }
+
+func (h *handler) getBasicAuth() (username string, password string) {
+	auth := h.rq.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Basic ") {
+		decoded, err := base64.StdEncoding.DecodeString(auth[6:])
+		if err == nil {
+			components := strings.SplitN(string(decoded), ":", 2)
+			if len(components) == 2 {
+				return components[0], components[1]
+			}
+		}
+	}
+	return
+}
+
+//////// RESPONSES:
 
 func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)
