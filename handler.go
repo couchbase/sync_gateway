@@ -36,20 +36,20 @@ var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowe
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	context	 		*context
-	rq       		*http.Request
-	response 		http.ResponseWriter
-	db       		*Database
-	user			*User
+	context  *context
+	rq       *http.Request
+	response http.ResponseWriter
+	db       *Database
+	user     *User
 }
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
 func NewRESTHandler(context *context) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := &handler{
-			rq: rq,
+			rq:       rq,
 			response: r,
-			context: context,
+			context:  context,
 		}
 		h.run()
 	})

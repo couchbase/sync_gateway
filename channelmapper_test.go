@@ -1,9 +1,8 @@
 package channelsync
 
-
 import (
-	"testing"
 	"github.com/sdegutis/go.assert"
+	"testing"
 )
 
 // Just verify that the calls to the sync() fn show up in the output channel list.
@@ -40,7 +39,7 @@ func TestChannelMapper(t *testing.T) {
 	channels, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`)
 	assertNoError(t, err, "callMapper failed")
 	assert.DeepEquals(t, channels, []string{"foo", "bar", "baz"})
-	
+
 	channels, err = mapper.callMapper(`{"x": "y"}`)
 	assertNoError(t, err, "callMapper failed")
 	assert.DeepEquals(t, channels, []string{})

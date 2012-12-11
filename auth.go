@@ -10,21 +10,21 @@
 package channelsync
 
 import (
-//	"crypto/rand"
+	//	"crypto/rand"
 	"fmt"
-//	"io"
+	//	"io"
 	"net/http"
-//	"sync"
-//	"time"
-	
+	//	"sync"
+	//	"time"
+
 	"github.com/couchbaselabs/go-couchbase"
 )
 
 /** Persistent information about a user. */
 type User struct {
-	Name string			`json:"name"`
-	Password string		`json:"password"`		//FIX: Do NOT store plaintext passwords!
-	Channels []string	`json:"channels"`
+	Name     string   `json:"name"`
+	Password string   `json:"password"` //FIX: Do NOT store plaintext passwords!
+	Channels []string `json:"channels"`
 }
 
 /** Manages user authentication for a database. */
@@ -63,7 +63,7 @@ func (auth *Authenticator) SaveUser(user *User) error {
 
 // Authenticates a user given the username and password.
 // If the username and password are both "", it will return a default empty User object, not nil.
-func (auth *Authenticator) AuthenticateUser(username string, password string) (*User) {
+func (auth *Authenticator) AuthenticateUser(username string, password string) *User {
 	user, _ := auth.GetUser(username)
 	if user == nil || user.Password != password {
 		return nil
@@ -79,8 +79,8 @@ func (user *User) CanSeeChannel(channel string) bool {
 	if user == nil {
 		return true
 	} else if user.Channels != nil {
-		for _,allowedCh := range user.Channels {
-			if allowedCh == channel || allowedCh == "*" {	// "*" is wildcard channel for user
+		for _, allowedCh := range user.Channels {
+			if allowedCh == channel || allowedCh == "*" { // "*" is wildcard channel for user
 				return true
 			}
 		}
@@ -91,7 +91,7 @@ func (user *User) CanSeeChannel(channel string) bool {
 // Returns true if the User is allowed to access all of the given channels.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeAllChannels(channels []string) bool {
-	for _,channel := range channels {
+	for _, channel := range channels {
 		if !user.CanSeeChannel(channel) {
 			return false
 		}
@@ -103,7 +103,7 @@ func (user *User) CanSeeAllChannels(channels []string) bool {
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeAnyChannels(channels []string) bool {
 	if channels != nil {
-		for _,channel := range channels {
+		for _, channel := range channels {
 			if user.CanSeeChannel(channel) {
 				return true
 			}
@@ -116,7 +116,7 @@ func (user *User) CanSeeAnyChannels(channels []string) bool {
 // A nil User means access control is disabled, so the function will return nil.
 func (user *User) AuthorizeAllChannels(channels []string) error {
 	var forbidden []string
-	for _,channel := range channels {
+	for _, channel := range channels {
 		if !user.CanSeeChannel(channel) {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))
@@ -154,13 +154,13 @@ func (user *User) AuthorizeAnyDocChannels(channels ChannelMap) error {
 	if user == nil {
 		return nil
 	} else if user.Channels != nil {
-		for _,channel := range user.Channels {
+		for _, channel := range user.Channels {
 			if channel == "*" {
 				return nil
 			}
 			value, exists := channels[channel]
 			if exists && value == nil {
-				return nil  // yup, it's in this channel
+				return nil // yup, it's in this channel
 			}
 		}
 	}
@@ -183,10 +183,10 @@ func (s *Authenticator) authenticateCookie(cookie *http.Cookie) User {
 	if cookie == nil {
 		return nil
 	}
-	
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	
+
 	session, found := s.sessions[cookie.Value]
 	if !found {
 		return nil
@@ -201,7 +201,7 @@ func (s *Authenticator) authenticateCookie(cookie *http.Cookie) User {
 func (s *Authenticator) createSession(channels []string, ttl time.Duration, r http.ResponseWriter) Session{
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	
+
 	// Create a random unused session ID:
 	var sessionID string
 	for {
@@ -215,7 +215,7 @@ func (s *Authenticator) createSession(channels []string, ttl time.Duration, r ht
 			break
 		}
 	}
-	
+
 	expiration := time.Now().Add(ttl)
 	session := &Session{
 		id: sessionID

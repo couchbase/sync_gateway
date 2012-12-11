@@ -44,7 +44,7 @@ func TestRoot(t *testing.T) {
 	response := callREST("GET", "/", "")
 	assert.Equals(t, response.Code, 200)
 	assert.Equals(t, response.Body.String(),
-		"{\"couchdb\":\"welcome\",\"version\":\"" + VersionString + "\"}")
+		"{\"couchdb\":\"welcome\",\"version\":\""+VersionString+"\"}")
 }
 
 func createDoc(t *testing.T, docid string) string {

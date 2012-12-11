@@ -13,18 +13,18 @@ import (
 )
 
 type ChannelRemoval struct {
-	Seq uint64 		`json:"seq"`
-	Rev string		`json:"rev"`
+	Seq uint64 `json:"seq"`
+	Rev string `json:"rev"`
 }
 type ChannelMap map[string]*ChannelRemoval
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
-	ID         string  `json:"id"`
-	CurrentRev string  `json:"rev"`
-	Deleted    bool    `json:"deleted,omitempty"`
-	Sequence   uint64  `json:"sequence"`
-	History    RevTree `json:"history"`
+	ID         string     `json:"id"`
+	CurrentRev string     `json:"rev"`
+	Deleted    bool       `json:"deleted,omitempty"`
+	Sequence   uint64     `json:"sequence"`
+	History    RevTree    `json:"history"`
 	Channels   ChannelMap `json:"channels,omitempty"`
 }
 
@@ -256,19 +256,19 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			}
 			doc.History.setRevisionKey(newRev, key)
 		}
-		
+
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
-		
+
 		// Assign the document the next sequence number, for the _changes feed:
 		doc.Sequence, err = db.generateSequence()
 		if err != nil {
 			return nil, err
 		}
-		
+
 		db.updateDocChannels(doc, db.getChannels(body)) //FIX: Incorrect if new rev is not current!
-		
+
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
 	})
@@ -281,7 +281,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if LogRequestsVerbose && newRev != "" {
 		log.Printf("\tAdded doc %q / %q", docid, newRev)
 	}
-	
+
 	// Ugly hack to detect changes to the channel-mapper function:
 	if docid == "_design/channels" {
 		src, ok := body["channelmap"].(string)
@@ -291,7 +291,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			}
 		}
 	}
-	
+
 	db.NotifyRevision()
 	return newRev, nil
 }
@@ -323,15 +323,15 @@ func (db *Database) getChannels(body Body) (result []string) {
 	if db.channelMapper != nil {
 		jsonStr, _ := json.Marshal(body)
 		result, _ = db.channelMapper.MapToChannels(string(jsonStr))
-		
+
 	} else {
 		// No ChannelMapper so by default use the "channels" property:
-		value,_ := body["channels"].([]interface{})
+		value, _ := body["channels"].([]interface{})
 		if value == nil {
 			return nil
 		}
 		result = make([]string, 0, len(value))
-		for _, channel := range(value) {
+		for _, channel := range value {
 			channelStr, ok := channel.(string)
 			if ok && len(channelStr) > 0 {
 				result = append(result, channelStr)
@@ -351,16 +351,16 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 	} else {
 		// Mark every previous channel as unsubscribed:
 		curSequence := doc.Sequence
-		for channel, seq := range(channels) {
+		for channel, seq := range channels {
 			if seq == nil {
 				channels[channel] = &ChannelRemoval{curSequence, doc.CurrentRev}
 				changed = true
 			}
 		}
 	}
-	
+
 	// Mark every current channel as subscribed:
-	for _, channel := range(newChannels) {
+	for _, channel := range newChannels {
 		if value, exists := channels[channel]; value != nil || !exists {
 			channels[channel] = nil
 			changed = true

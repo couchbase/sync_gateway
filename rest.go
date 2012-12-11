@@ -27,10 +27,10 @@ const VersionString = "BaseCouch/0.2"
 // Shared context of HTTP handlers. It's important that this remain immutable, because the
 // handlers will access it from multiple goroutines.
 type context struct {
-	bucket   *couchbase.Bucket
-	dbName	 string
+	bucket        *couchbase.Bucket
+	dbName        string
 	channelMapper *ChannelMapper
-	auth *Authenticator
+	auth          *Authenticator
 }
 
 // HTTP handler for a GET of a document
@@ -247,15 +247,15 @@ func (h *handler) handleBulkGet() error {
 		if doc["rev"] != nil {
 			revid, revok = doc["rev"].(string)
 		}
-		if docid=="" || !revok {
+		if docid == "" || !revok {
 			return &HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
 		}
-		
+
 		var attsSince []string = nil
 		if includeAttachments {
 			if doc["atts_since"] != nil {
 				raw, ok := doc["atts_since"].([]interface{})
-				if (ok) {
+				if ok {
 					attsSince = make([]string, len(raw))
 					for i := 0; i < len(raw); i++ {
 						attsSince[i], ok = raw[i].(string)
@@ -271,9 +271,9 @@ func (h *handler) handleBulkGet() error {
 				attsSince = []string{}
 			}
 		}
-		
+
 		body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
-		if (err != nil) {
+		if err != nil {
 			status, msg := ErrorAsHTTPStatus(err)
 			body = Body{"id": docid, "error": msg, "status": status}
 			if revid != "" {
@@ -344,7 +344,7 @@ func (h *handler) handleChanges() error {
 	options.Limit = int(h.getIntQuery("limit", 0))
 	options.Conflicts = (h.getQuery("style") == "all_docs")
 	options.IncludeDocs = (h.getBoolQuery("include_docs"))
-	
+
 	// Get the channels as parameters to an imaginary "bychannel" filter:
 	if h.getQuery("filter") != "channelsync/bychannel" {
 		return &HTTPError{http.StatusBadRequest, "channelsync/bychannel filter required"}
@@ -565,13 +565,13 @@ func (h *handler) handle(path []string) error {
 				h.writeJSONStatus(http.StatusCreated, Body{"ok": true})
 				return nil
 			}
-        case "_design/channelsync":
+		case "_design/channelsync":
 			// we serve this content here so that CouchDB 1.2 has something to
 			// hash into the replication-id, to correspond to our filter.
-            if method == "GET" {
-                h.writeJSON(Body{"filters": Body{"bychannel":"ok"}})
-                return nil
-            }
+			if method == "GET" {
+				h.writeJSON(Body{"filters": Body{"bychannel": "ok"}})
+				return nil
+			}
 		default:
 			if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
 				// Accessing a document:
@@ -641,8 +641,8 @@ func (h *handler) handleAllDbs() error {
 }
 
 type ReplicateInput struct {
-	Source string
-	Target string
+	Source        string
+	Target        string
 	Create_target bool
 }
 
@@ -677,12 +677,12 @@ func (h *handler) run() {
 		log.Printf("%s %s", h.rq.Method, h.rq.URL)
 	}
 	h.setHeader("Server", VersionString)
-	
+
 	if err := h.checkAuth(); err != nil {
 		h.writeError(err)
 		return
 	}
-	
+
 	path := strings.Split(h.rq.URL.Path[1:], "/")
 	for len(path) > 0 && path[len(path)-1] == "" {
 		path = path[0 : len(path)-1]
@@ -724,7 +724,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string) {
 	if dbName == "" {
 		dbName = bucket.Name
 	}
-	
+
 	db, _ := GetDatabase(bucket, dbName)
 	channelMapper, err := db.LoadChannelMapper()
 	if err != nil {
@@ -734,12 +734,12 @@ func InitREST(bucket *couchbase.Bucket, dbName string) {
 			log.Printf("Warning: Couldn't load channelmap fn: %s", err)
 		}
 	}
-	
+
 	c := &context{
-		bucket: bucket,
-		dbName: dbName,
+		bucket:        bucket,
+		dbName:        dbName,
 		channelMapper: channelMapper,
-		auth: NewAuthenticator(bucket),
+		auth:          NewAuthenticator(bucket),
 	}
 	http.Handle("/", NewRESTHandler(c))
 }
@@ -759,11 +759,11 @@ func ServerMain() {
 	if err != nil {
 		log.Fatalf("Error getting bucket '%s':  %v\n", *bucketName, err)
 	}
-	
+
 	if *dbName == "" {
 		*dbName = bucket.Name
 	}
-	
+
 	InitREST(bucket, *dbName)
 	PrettyPrint = *pretty
 	LogRequestsVerbose = *verbose

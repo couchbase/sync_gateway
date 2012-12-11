@@ -37,10 +37,10 @@ func (err *HTTPError) Error() string {
 
 // Represents a simulated CouchDB database.
 type Database struct {
-	Name      string
-	bucket    *couchbase.Bucket
+	Name          string
+	bucket        *couchbase.Bucket
 	channelMapper *ChannelMapper
-	user 	  *User
+	user          *User
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
@@ -75,7 +75,7 @@ func (db *Database) LoadChannelMapper() (*ChannelMapper, error) {
 	}
 	src, ok := body["channelmap"].(string)
 	if !ok {
-		return nil, nil	
+		return nil, nil
 	}
 	log.Printf("Channel mapper = %s", src)
 	return NewChannelMapper(src)
@@ -202,8 +202,8 @@ func installViews(bucket *couchbase.Bucket) error {
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"channels": Body{"map": channels_map},
-			"revs":     Body{"map": revs_map,    "reduce": revs_or_atts_reduce},
-			"atts":     Body{"map": atts_map,    "reduce": revs_or_atts_reduce},
+			"revs":     Body{"map": revs_map, "reduce": revs_or_atts_reduce},
+			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
 	rq, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(payload))
@@ -322,7 +322,7 @@ func (db *Database) UpdateAllDocChannels() error {
 		err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if currentValue == nil {
-				return nil, couchbase.UpdateCancel  // someone deleted it?!
+				return nil, couchbase.UpdateCancel // someone deleted it?!
 			}
 			doc := newDocument()
 			if err := json.Unmarshal(currentValue, doc); err != nil {
@@ -333,7 +333,7 @@ func (db *Database) UpdateAllDocChannels() error {
 				return nil, err
 			}
 			if !db.updateDocChannels(doc, db.getChannels(body)) {
-				return nil, couchbase.UpdateCancel  // unchanged
+				return nil, couchbase.UpdateCancel // unchanged
 			}
 			log.Printf("\tSaving updated channels of %q", docid)
 			return json.Marshal(doc)

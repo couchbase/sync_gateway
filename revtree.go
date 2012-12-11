@@ -229,7 +229,7 @@ func (tree RevTree) mergeWith(src RevTree) (changed bool) {
 		dstInfo, exists := tree[revID]
 		if exists {
 			if dstInfo.Parent != srcInfo.Parent || dstInfo.Deleted != srcInfo.Deleted ||
-				 	dstInfo.Key != srcInfo.Key {
+				dstInfo.Key != srcInfo.Key {
 				panic("Inconsistent RevInfos")
 			}
 		} else {

@@ -5,26 +5,30 @@ package channelsync
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"github.com/robertkrimen/otto"
+	"strconv"
 )
 
 type ChannelMapper struct {
-	js *otto.Otto
-	fn otto.Value
+	js       *otto.Otto
+	fn       otto.Value
 	fnSource string
 	channels []string
-	
+
 	requests chan channelMapperRequest
 }
 
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array *otto.Object) []string {
 	lengthVal, err := array.Get("length")
-	if err != nil {return nil}
+	if err != nil {
+		return nil
+	}
 	length, err := lengthVal.ToInteger()
-	if err != nil || length <= 0 {return nil}
-	
+	if err != nil || length <= 0 {
+		return nil
+	}
+
 	result := make([]string, 0, length)
 	for i := 0; i < int(length); i++ {
 		item, err := array.Get(strconv.Itoa(i))
@@ -38,10 +42,10 @@ func ottoArrayToStrings(array *otto.Object) []string {
 func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper := &ChannelMapper{}
 	mapper.js = otto.New()
-	
+
 	// Implementation of the 'sync()' callback:
 	mapper.js.Set("sync", func(call otto.FunctionCall) otto.Value {
-		for _,arg := range(call.ArgumentList) {
+		for _, arg := range call.ArgumentList {
 			if arg.IsString() {
 				mapper.channels = append(mapper.channels, arg.String())
 			} else if arg.Class() == "Array" {
@@ -51,16 +55,16 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 				}
 			}
 		}
-	    return otto.UndefinedValue()
+		return otto.UndefinedValue()
 	})
-	
-	if _,err := mapper.setFunction(funcSource); err != nil {
+
+	if _, err := mapper.setFunction(funcSource); err != nil {
 		return nil, err
 	}
-	
+
 	mapper.requests = make(chan channelMapperRequest)
 	go mapper.serve()
-	
+
 	return mapper, nil
 }
 
@@ -82,9 +86,9 @@ func (mapper *ChannelMapper) callMapper(input string) ([]string, error) {
 
 func (mapper *ChannelMapper) setFunction(funcSource string) (bool, error) {
 	if funcSource == mapper.fnSource {
-		return false, nil  // no-op
+		return false, nil // no-op
 	}
-	fnobj,err := mapper.js.Object("(" + funcSource + ")")
+	fnobj, err := mapper.js.Object("(" + funcSource + ")")
 	if err != nil {
 		return false, err
 	}
@@ -96,7 +100,6 @@ func (mapper *ChannelMapper) setFunction(funcSource string) (bool, error) {
 	return true, nil
 }
 
-
 //////// MAPPER SERVER:
 
 const (
@@ -105,17 +108,15 @@ const (
 )
 
 type channelMapperRequest struct {
-	mode int
-	input string
+	mode          int
+	input         string
 	returnAddress chan<- channelMapperResponse
 }
 
-
 type channelMapperResponse struct {
 	channels []string
-	err error
+	err      error
 }
-
 
 func (mapper *ChannelMapper) serve() {
 	for request := range mapper.requests {
@@ -137,7 +138,7 @@ func (mapper *ChannelMapper) serve() {
 func (mapper *ChannelMapper) request(mode int, input string) channelMapperResponse {
 	responseChan := make(chan channelMapperResponse, 1)
 	mapper.requests <- channelMapperRequest{mode, input, responseChan}
-	return <- responseChan
+	return <-responseChan
 }
 
 // Public thread-safe entry point for doing mapping.
