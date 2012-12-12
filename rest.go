@@ -769,7 +769,7 @@ func ServerMain() {
 	context := InitREST(bucket, *dbName)
 	PrettyPrint = *pretty
 	LogRequestsVerbose = *verbose
-	
+
 	if authAddr != nil {
 		log.Printf("Starting auth server on %s", *authAddr)
 		StartAuthListener(*authAddr, context.auth)

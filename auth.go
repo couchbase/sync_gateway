@@ -10,18 +10,19 @@
 package channelsync
 
 import (
-"fmt"
+	"fmt"
 	"net/http"
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/dchest/passwordhash"
 )
 
 /** Persistent information about a user. */
 type User struct {
-	Name     string   `json:"name,omitempty"`
-	Password string   `json:"password,omitempty"` //FIX: Do NOT store plaintext passwords!
-	Channels []string `json:"channels"`
+	Name         string                     `json:"name,omitempty"`
+	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
+	Channels     []string                   `json:"channels"`
 }
 
 /** Manages user authentication for a database. */
@@ -48,7 +49,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 	var user *User
 	err := auth.bucket.Get(docIDForUser(username), &user)
 	if user == nil && username == "" {
-		return &User{username, "", []string{"*"}}, nil
+		return &User{username, nil, []string{"*"}}, nil
 	}
 	return user, err
 }
@@ -70,7 +71,7 @@ func (auth *Authenticator) DeleteUser(username string) error {
 // If the username and password are both "", it will return a default empty User object, not nil.
 func (auth *Authenticator) AuthenticateUser(username string, password string) *User {
 	user, _ := auth.GetUser(username)
-	if user == nil || user.Password != password {
+	if user == nil || !user.Authenticate(password) {
 		return nil
 	}
 	return user
@@ -78,31 +79,52 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 
 //////// USER OBJECT API:
 
-func stringListContains(list []string, str string) bool {
-	if list != nil {
-		for _, item := range list {
-			if item == str {
-				return true
-			}
-		}
+// Creates a new User object.
+func NewUser(username string, password string, channels []string) (*User, error) {
+	user := &User{username, nil, channels}
+	user.SetPassword(password)
+	if err := user.Validate(); err != nil {
+		return nil, err
 	}
-	return false
+	return user, nil
 }
 
+// Checks whether this User object contains valid data; if not, returns an error.
 func (user *User) Validate() error {
-	if match,_ := regexp.MatchString(`^\w*$`, user.Name); !match {
+	if match, _ := regexp.MatchString(`^\w*$`, user.Name); !match {
 		return &HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid username %q", user.Name)}
-	} else if (user.Name == "") != (user.Password == "") {
+	} else if (user.Name == "") != (user.PasswordHash == nil) {
 		return &HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
 	return nil
+}
+
+// Returns true if the given password is correct for this user.
+func (user *User) Authenticate(password string) bool {
+	if user.PasswordHash == nil {
+		if password != "" {
+			return false
+		}
+	} else if !user.PasswordHash.EqualToPassword(password) {
+		return false
+	}
+	return true
+}
+
+// Changes a user's password to the given string.
+func (user *User) SetPassword(password string) {
+	if password == "" {
+		user.PasswordHash = nil
+	} else {
+		user.PasswordHash = passwordhash.New(password)
+	}
 }
 
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
 	return user == nil || channel == "*" || stringListContains(user.Channels, channel) ||
-		 stringListContains(user.Channels, "*")
+		stringListContains(user.Channels, "*")
 }
 
 // Returns true if the User is allowed to access all of the given channels.
@@ -185,6 +207,17 @@ func (user *User) AuthorizeAnyDocChannels(channels ChannelMap) error {
 		}
 	}
 	return &HTTPError{http.StatusForbidden, "You are not allowed to see this"}
+}
+
+func stringListContains(list []string, str string) bool {
+	if list != nil {
+		for _, item := range list {
+			if item == str {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 //////// COOKIE-BASED AUTH:

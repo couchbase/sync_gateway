@@ -23,18 +23,18 @@ func putUser(r http.ResponseWriter, rq *http.Request, auth *Authenticator, usern
 	if err != nil || user.Channels == nil {
 		return http.StatusBadRequest
 	}
-	
+
 	if rq.Method == "POST" {
 		username = user.Name
 		if username == "" {
 			return http.StatusBadRequest
 		}
-	} else if (user.Name == "") {
+	} else if user.Name == "" {
 		user.Name = username
 	} else if user.Name != username {
 		return http.StatusBadRequest
 	}
-		
+
 	err = auth.SaveUser(&user)
 	if err != nil {
 		return http.StatusBadRequest
