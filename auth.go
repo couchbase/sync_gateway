@@ -78,8 +78,19 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 
 //////// USER OBJECT API:
 
+func stringListContains(list []string, str string) bool {
+	if list != nil {
+		for _, item := range list {
+			if item == str {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (user *User) Validate() error {
-	if match,_ := regexp.MatchString(`\w*`, user.Name); !match {
+	if match,_ := regexp.MatchString(`^\w*$`, user.Name); !match {
 		return &HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid username %q", user.Name)}
 	} else if (user.Name == "") != (user.Password == "") {
 		return &HTTPError{http.StatusBadRequest, "Invalid password"}
@@ -90,16 +101,8 @@ func (user *User) Validate() error {
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
-	if user == nil {
-		return true
-	} else if user.Channels != nil {
-		for _, allowedCh := range user.Channels {
-			if allowedCh == channel || allowedCh == "*" { // "*" is wildcard channel for user
-				return true
-			}
-		}
-	}
-	return false
+	return user == nil || channel == "*" || stringListContains(user.Channels, channel) ||
+		 stringListContains(user.Channels, "*")
 }
 
 // Returns true if the User is allowed to access all of the given channels.
@@ -126,7 +129,7 @@ func (user *User) CanSeeAnyChannels(channels []string) bool {
 		}
 	}
 	// If user has wildcard access, allow it anyway
-	return user.CanSeeChannel("*")
+	return stringListContains(user.Channels, "*")
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access all the given channels.
