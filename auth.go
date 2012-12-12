@@ -10,20 +10,17 @@
 package channelsync
 
 import (
-	//	"crypto/rand"
-	"fmt"
-	//	"io"
+"fmt"
 	"net/http"
-	//	"sync"
-	//	"time"
+	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
 )
 
 /** Persistent information about a user. */
 type User struct {
-	Name     string   `json:"name"`
-	Password string   `json:"password"` //FIX: Do NOT store plaintext passwords!
+	Name     string   `json:"name,omitempty"`
+	Password string   `json:"password,omitempty"` //FIX: Do NOT store plaintext passwords!
 	Channels []string `json:"channels"`
 }
 
@@ -46,7 +43,7 @@ func docIDForUser(username string) string {
 // Looks up the information for a user.
 // If the username is "" it will return the default (guest) User object, not nil.
 // By default the guest User has access to everything, i.e. Admin Party! This can
-// be changed by altering its list of channels and saving the changes.
+// be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(username string) (*User, error) {
 	var user *User
 	err := auth.bucket.Get(docIDForUser(username), &user)
@@ -58,7 +55,15 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
 	return auth.bucket.Set(docIDForUser(user.Name), 0, user)
+}
+
+// Deletes a user.
+func (auth *Authenticator) DeleteUser(username string) error {
+	return auth.bucket.Delete(docIDForUser(username))
 }
 
 // Authenticates a user given the username and password.
@@ -72,6 +77,15 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 }
 
 //////// USER OBJECT API:
+
+func (user *User) Validate() error {
+	if match,_ := regexp.MatchString(`\w*`, user.Name); !match {
+		return &HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid username %q", user.Name)}
+	} else if (user.Name == "") != (user.Password == "") {
+		return &HTTPError{http.StatusBadRequest, "Invalid password"}
+	}
+	return nil
+}
 
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
@@ -91,9 +105,11 @@ func (user *User) CanSeeChannel(channel string) bool {
 // Returns true if the User is allowed to access all of the given channels.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeAllChannels(channels []string) bool {
-	for _, channel := range channels {
-		if !user.CanSeeChannel(channel) {
-			return false
+	if channels != nil {
+		for _, channel := range channels {
+			if !user.CanSeeChannel(channel) {
+				return false
+			}
 		}
 	}
 	return true
@@ -109,7 +125,8 @@ func (user *User) CanSeeAnyChannels(channels []string) bool {
 			}
 		}
 	}
-	return false
+	// If user has wildcard access, allow it anyway
+	return user.CanSeeChannel("*")
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access all the given channels.

@@ -720,7 +720,7 @@ func (h *handler) run() {
 }
 
 // Initialize REST handlers. Call this once on launch.
-func InitREST(bucket *couchbase.Bucket, dbName string) {
+func InitREST(bucket *couchbase.Bucket, dbName string) *context {
 	if dbName == "" {
 		dbName = bucket.Name
 	}
@@ -742,11 +742,13 @@ func InitREST(bucket *couchbase.Bucket, dbName string) {
 		auth:          NewAuthenticator(bucket),
 	}
 	http.Handle("/", NewRESTHandler(c))
+	return c
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.
 func ServerMain() {
 	addr := flag.String("addr", ":4984", "Address to bind to")
+	authAddr := flag.String("authaddr", ":4985", "Address to bind the auth interface to")
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
 	bucketName := flag.String("bucket", "channelsync", "Name of bucket")
@@ -764,9 +766,14 @@ func ServerMain() {
 		*dbName = bucket.Name
 	}
 
-	InitREST(bucket, *dbName)
+	context := InitREST(bucket, *dbName)
 	PrettyPrint = *pretty
 	LogRequestsVerbose = *verbose
+	
+	if authAddr != nil {
+		log.Printf("Starting auth server on %s", *authAddr)
+		StartAuthListener(*authAddr, context.auth)
+	}
 
 	log.Printf("Starting server on %s for database %q", *addr, *dbName)
 	err = http.ListenAndServe(*addr, nil)
