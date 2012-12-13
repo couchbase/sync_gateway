@@ -23,6 +23,8 @@ type User struct {
 	Name         string                     `json:"name,omitempty"`
 	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
 	Channels     []string                   `json:"channels"`
+	
+	Password	 *string					`json:"password,omitempty"`
 }
 
 /** Manages user authentication for a database. */
@@ -49,13 +51,17 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 	var user *User
 	err := auth.bucket.Get(docIDForUser(username), &user)
 	if user == nil && username == "" {
-		return &User{username, nil, []string{"*"}}, nil
+		return &User{Name: username, Channels: []string{"*"}}, nil
 	}
 	return user, err
 }
 
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
+	if user.Password != nil {
+		user.SetPassword(*user.Password)
+		user.Password = nil
+	}
 	if err := user.Validate(); err != nil {
 		return err
 	}
@@ -81,7 +87,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 
 // Creates a new User object.
 func NewUser(username string, password string, channels []string) (*User, error) {
-	user := &User{username, nil, channels}
+	user := &User{Name: username, Channels: channels}
 	user.SetPassword(password)
 	if err := user.Validate(); err != nil {
 		return nil, err

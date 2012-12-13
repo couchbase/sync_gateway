@@ -45,3 +45,34 @@ ChannelSync's `_changes` feed includes one more revision of a document after it 
 The effect on the client will be that after a replication it sees the next revision of the document, the one that causes it to no longer match the channel(s). It won't get any further revisions until the next one that makes the document match again.
 
 This could seem weird ("why am I downloading documents I don't need?") but it ensures that any views running in the client will correctly no longer include the document, instead of including an obsolete revision. If the app code uses views to filter instead of just assuming that all docs in its local db must be relevant, it should be fine.
+
+## Authentication & Authorization
+
+ChannelSync supports user accounts that are allowed to access only a subset of channels.
+
+### Accounts
+
+Accounts are managed through a parallel REST interface that runs on port 4985 (by default, but this can be customized via the `authaddr` command-line argument). This interface is privileged and for internal use only; instead, we assume you have some other server-side mechanism for users to manage accounts, which will call through to this API.
+
+The URL for a user account is simply "/_user_" where _user_ is the username. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
+
+* "name": The user name (same as in the URL path). Names must consist of alphanumeric ASCII characters or underscores.
+* "channels": An array of channel name strings. The name "*" means "all channels". An empty array or missing property denies access to all channels. A missing `channels` property prevents the user from authenticating at all.
+* "password": In a PUT or POST request, put the user's password here. It will not be returned by a GET.
+* "passwordhash": Securely hashed version of the password. This will be returned from a GET. If you want to update a user without changing the password, leave this alone when sending the modified JSON object back through PUT.
+
+You can create a new user either with a PUT to its URL, or by POST to `/`.
+
+There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
+
+### Authorization
+
+The `channels` property of a user account determines what channels that user may access.
+
+Any GET request to a document not assigned to one or more of the user's available channels will fail with a 403.
+
+Accessing a `_changes` feed with any channel names that are not available to the user will fail with a 403.
+
+There is not yet any _write_ protection; this is TBD. It's going to be conceptually trickier because there are definitely use cases where you create or update documents that are tagged with channels you don't have access to. We may just need a separate validation function as in CouchDB.
+
+There is currently an edge case where after a user is granted access to a new channel, their client will not automatically sync with pre-existing documents in that channel (that they didn't have access to before.) The workaround is for the client to do a one-shot sync from only that new channel, which having no checkpoint will start over from the beginning and fetch all the old documents.

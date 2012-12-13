@@ -665,7 +665,7 @@ func (h *handler) checkAuth() error {
 	}
 	userName, password := h.getBasicAuth()
 	h.user = h.context.auth.AuthenticateUser(userName, password)
-	if h.user == nil {
+	if h.user == nil || h.user.Channels == nil {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
 		return &HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
