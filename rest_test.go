@@ -13,20 +13,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/sdegutis/go.assert"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"testing"
 )
-
-func init() {
-	response := callREST("DELETE", "/db", "")
-	response = callREST("PUT", "/db", "")
-	if response.Code != 201 {
-		log.Printf("WARNING: Couldn't create db database at startup")
-	}
-}
 
 func callREST(method, resource string, body string) *httptest.ResponseRecorder {
 	input := bytes.NewBufferString(body)
