@@ -74,7 +74,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 	feed := make(chan *ChangeEntry, kChangesPageSize)
 
 	lastSeq, err := db.LastSequence()
-	if options.Since >= lastSeq && err == nil {
+	if err == nil && options.Since >= lastSeq && !options.Wait {
 		close(feed)
 		return feed, nil
 	}
