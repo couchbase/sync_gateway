@@ -126,6 +126,13 @@ func (user *User) SetPassword(password string) {
 	}
 }
 
+func (user *User) unauthError(message string) error {
+	if user.Name == "" {
+		return &HTTPError{http.StatusUnauthorized, "login required"}
+	}
+	return &HTTPError{http.StatusForbidden, message}
+}
+
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
@@ -173,12 +180,7 @@ func (user *User) AuthorizeAllChannels(channels []string) error {
 		}
 	}
 	if forbidden != nil {
-		if user.Name == "" {
-			return &HTTPError{http.StatusUnauthorized, "login required"}
-		} else {
-			msg := fmt.Sprintf("You are not allowed to see channels %v", forbidden)
-			return &HTTPError{http.StatusForbidden, msg}
-		}
+		return user.unauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
 	}
 	return nil
 }
@@ -187,11 +189,7 @@ func (user *User) AuthorizeAllChannels(channels []string) error {
 // A nil User means access control is disabled, so the function will return nil.
 func (user *User) AuthorizeAnyChannels(channels []string) error {
 	if !user.CanSeeAnyChannels(channels) {
-		if user.Name == "" {
-			return &HTTPError{http.StatusUnauthorized, "login required"}
-		} else {
-			return &HTTPError{http.StatusForbidden, "You are not allowed to see this"}
-		}
+		return user.unauthError("You are not allowed to see this")
 	}
 	return nil
 }
@@ -212,7 +210,7 @@ func (user *User) AuthorizeAnyDocChannels(channels ChannelMap) error {
 			}
 		}
 	}
-	return &HTTPError{http.StatusForbidden, "You are not allowed to see this"}
+	return user.unauthError("You are not allowed to see this")
 }
 
 func stringListContains(list []string, str string) bool {
