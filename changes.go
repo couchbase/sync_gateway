@@ -25,6 +25,7 @@ type ChangesOptions struct {
 	IncludeDocs    bool
 	includeDocMeta bool
 	Wait           bool
+	emitMisses     bool	// used with Wait; writes empty entry to the stream even if nothing matches
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -103,6 +104,9 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				if len(vres.Rows) == 0 {
 					if !options.Wait || !db.WaitForRevision() {
 						return
+					} else if options.emitMisses && len(vres.Rows) == 0 {
+						// Latest sequence doesn't match the filter, but emit a no-op anyway:
+						feed <- nil
 					}
 				}
 			}
@@ -173,6 +177,7 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 		return db.ChangesFeed(channels[0], options)
 	}
 
+	options.emitMisses = true
 	feeds := make([]<-chan *ChangeEntry, len(channels))
 	current := make([]*ChangeEntry, len(channels))
 	for i, name := range channels {
