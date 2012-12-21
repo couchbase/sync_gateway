@@ -25,7 +25,6 @@ type ChangesOptions struct {
 	IncludeDocs    bool
 	includeDocMeta bool
 	Wait           bool
-	emitMisses     bool	// used with Wait; writes empty entry to the stream even if nothing matches
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -104,9 +103,6 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				if len(vres.Rows) == 0 {
 					if !options.Wait || !db.WaitForRevision() {
 						return
-					} else if options.emitMisses && len(vres.Rows) == 0 {
-						// Latest sequence doesn't match the filter, but emit a no-op anyway:
-						feed <- nil
 					}
 				}
 			}
@@ -177,63 +173,75 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 		return db.ChangesFeed(channels[0], options)
 	}
 
-	options.emitMisses = true
-	feeds := make([]<-chan *ChangeEntry, len(channels))
-	current := make([]*ChangeEntry, len(channels))
-	for i, name := range channels {
-		var err error
-		feeds[i], err = db.ChangesFeed(name, options)
-		if err != nil {
-			return nil, err
-		}
-	}
+	waitMode := options.Wait
+	options.Wait = false
 
 	output := make(chan *ChangeEntry, kChangesPageSize)
 	go func() {
 		defer close(output)
+
 		for {
-			//FIX: This assumes Reverse or Limit aren't set in the options
-			// Read more entries to fill up the current[] array:
-			for i, cur := range current {
-				if cur == nil && feeds[i] != nil {
-					var ok bool
-					current[i], ok = <-feeds[i]
-					if !ok {
-						feeds[i] = nil
-					}
+			feeds := make([]<-chan *ChangeEntry, len(channels))
+			current := make([]*ChangeEntry, len(channels))
+			for i, name := range channels {
+				var err error
+				feeds[i], err = db.ChangesFeed(name, options)
+				if err != nil {
+					return
 				}
 			}
 
-			// Find the current entry with the minimum sequence:
-			var minSeq uint64 = math.MaxUint64
-			var minEntry *ChangeEntry
-			for _, cur := range current {
-				if cur != nil && cur.Seq < minSeq {
-					minSeq = cur.Seq
-					minEntry = cur
-				}
-			}
-			if minEntry == nil {
-				break
-			}
-
-			// Clear the current entries for the sequence just sent:
-			for i, cur := range current {
-				if cur != nil && cur.Seq == minEntry.Seq {
-					current[i] = nil
-					// Also concatenate the matching entries' Removed arrays:
-					if cur != minEntry && cur.Removed != nil {
-						if minEntry.Removed == nil {
-							minEntry.Removed = cur.Removed
-						} else {
-							minEntry.Removed = append(minEntry.Removed, cur.Removed...)
+			wroteAnything := false
+			for {
+				//FIX: This assumes Reverse or Limit aren't set in the options
+				// Read more entries to fill up the current[] array:
+				for i, cur := range current {
+					if cur == nil && feeds[i] != nil {
+						var ok bool
+						current[i], ok = <-feeds[i]
+						if !ok {
+							feeds[i] = nil
 						}
 					}
 				}
+
+				// Find the current entry with the minimum sequence:
+				var minSeq uint64 = math.MaxUint64
+				var minEntry *ChangeEntry
+				for _, cur := range current {
+					if cur != nil && cur.Seq < minSeq {
+						minSeq = cur.Seq
+						minEntry = cur
+					}
+				}
+				if minEntry == nil {
+					break
+				}
+
+				// Clear the current entries for the sequence just sent:
+				for i, cur := range current {
+					if cur != nil && cur.Seq == minEntry.Seq {
+						current[i] = nil
+						// Also concatenate the matching entries' Removed arrays:
+						if cur != minEntry && cur.Removed != nil {
+							if minEntry.Removed == nil {
+								minEntry.Removed = cur.Removed
+							} else {
+								minEntry.Removed = append(minEntry.Removed, cur.Removed...)
+							}
+						}
+					}
+				}
+
+				// Send the entry:
+				output <- minEntry
+				wroteAnything = true
 			}
 
-			// Send the entry:
-			output <- minEntry
+			// In wait mode, wait for the db to change, then run again
+			if wroteAnything || !waitMode || !db.WaitForRevision() {
+				break
+			}
 		}
 	}()
 
