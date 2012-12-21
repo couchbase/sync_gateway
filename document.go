@@ -1,6 +1,6 @@
 // document.go -- document-oriented Database methods
 
-package channelsync
+package basecouch
 
 import (
 	"crypto/rand"

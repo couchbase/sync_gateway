@@ -1,6 +1,6 @@
 // channelmapper.go
 
-package channelsync
+package basecouch
 
 import (
 	"errors"

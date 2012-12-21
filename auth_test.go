@@ -1,6 +1,6 @@
 // auth_test.go
 
-package channelsync
+package basecouch
 
 import (
 	"encoding/json"

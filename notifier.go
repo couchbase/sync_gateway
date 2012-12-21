@@ -1,6 +1,6 @@
 // notifier.go
 
-package channelsync
+package basecouch
 
 import (
 	"sync"

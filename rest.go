@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package channelsync
+package basecouch
 
 import (
 	"encoding/json"
@@ -346,8 +346,8 @@ func (h *handler) handleChanges() error {
 	options.IncludeDocs = (h.getBoolQuery("include_docs"))
 
 	// Get the channels as parameters to an imaginary "bychannel" filter:
-	if h.getQuery("filter") != "channelsync/bychannel" {
-		return &HTTPError{http.StatusBadRequest, "channelsync/bychannel filter required"}
+	if h.getQuery("filter") != "basecouch/bychannel" {
+		return &HTTPError{http.StatusBadRequest, "basecouch/bychannel filter required"}
 	}
 	channelsParam := h.getQuery("channels")
 	if len(channelsParam) == 0 {
@@ -565,7 +565,7 @@ func (h *handler) handle(path []string) error {
 				h.writeJSONStatus(http.StatusCreated, Body{"ok": true})
 				return nil
 			}
-		case "_design/channelsync":
+		case "_design/basecouch":
 			// we serve this content here so that CouchDB 1.2 has something to
 			// hash into the replication-id, to correspond to our filter.
 			if method == "GET" {
@@ -751,7 +751,7 @@ func ServerMain() {
 	authAddr := flag.String("authaddr", ":4985", "Address to bind the auth interface to")
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
-	bucketName := flag.String("bucket", "channelsync", "Name of bucket")
+	bucketName := flag.String("bucket", "basecouch", "Name of bucket")
 	dbName := flag.String("dbname", "", "Name of CouchDB database")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")

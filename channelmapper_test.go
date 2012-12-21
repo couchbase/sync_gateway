@@ -1,4 +1,4 @@
-package channelsync
+package basecouch
 
 import (
 	"github.com/sdegutis/go.assert"

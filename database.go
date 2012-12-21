@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package channelsync
+package basecouch
 
 import (
 	"bytes"
@@ -102,7 +102,7 @@ func installViews(bucket *couchbase.Bucket) error {
 		fmt.Printf("Failed to parse %s", node.CouchAPIBase)
 		return err
 	}
-	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "channelsync")
+	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "basecouch")
 
 	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
 	allbits_map := `function (doc, meta) {
@@ -142,7 +142,7 @@ func installViews(bucket *couchbase.Bucket) error {
 	                    var value = [doc.id, doc.rev];
 	                    if (doc.deleted)
 	                        value.push(true)
-						
+
 						var channels = doc["channels"];
 						if (channels) {
 							for (var name in channels) {
@@ -243,7 +243,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 
 func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.bucket.View("channelsync", "all_docs", opts)
+	vres, err := db.bucket.View("basecouch", "all_docs", opts)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
@@ -253,7 +253,7 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
 	opts := Body{"stale": false}
-	vres, err := db.bucket.View("channelsync", "all_bits", opts)
+	vres, err := db.bucket.View("basecouch", "all_bits", opts)
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
 		return err
@@ -273,7 +273,7 @@ func (db *Database) Delete() error {
 }
 
 func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
-	vres, err := bucket.View("channelsync", viewName, Body{"stale": false, "group_level": 1})
+	vres, err := bucket.View("basecouch", viewName, Body{"stale": false, "group_level": 1})
 	if err != nil {
 		log.Printf("WARNING: %s view returned %v", viewName, err)
 		return 0, err
@@ -312,7 +312,7 @@ func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels() error {
 	log.Printf("Recomputing document channels...")
-	vres, err := db.bucket.View("channelsync", "all_docs", Body{"stale": false, "reduce": false})
+	vres, err := db.bucket.View("basecouch", "all_docs", Body{"stale": false, "reduce": false})
 	if err != nil {
 		return err
 	}
