@@ -353,7 +353,13 @@ func (h *handler) handleChanges() error {
 	if len(channelsParam) == 0 {
 		return &HTTPError{http.StatusBadRequest, "channels parameter required"}
 	}
-	channels := strings.Split(channelsParam, ",")
+	var channels []string
+	if strings.Contains(channelsParam, "*") {
+		// "*" means "all channels this user can see"
+		channels = h.db.user.Channels
+	} else {
+		channels = strings.Split(channelsParam, ",")
+	}
 
 	switch h.getQuery("feed") {
 	case "longpoll":
