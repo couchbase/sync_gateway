@@ -758,7 +758,7 @@ func ServerMain() {
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
 	bucketName := flag.String("bucket", "basecouch", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of CouchDB database")
+	dbName := flag.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	flag.Parse()
