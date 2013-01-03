@@ -11,6 +11,7 @@ package main
 
 import "github.com/couchbaselabs/basecouch"
 
+// Simple BaseCouch launcher tool.
 func main() {
     basecouch.ServerMain()
 }
