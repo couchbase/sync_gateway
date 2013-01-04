@@ -62,7 +62,9 @@ const kChangesPageSize = 200
 
 // Returns a list of all the changes made on a channel.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
+	if channel == "" {
+		return nil, &HTTPError{403, "Invalid channel name: " + channel}
+	}
 	lastSequence := options.Since
 	endkey := [2]interface{}{channel, make(Body)}
 	totalLimit := options.Limit
@@ -248,6 +250,7 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 	return output, nil
 }
 
+// Synchronous convenience function that returns all changes as a simple array
 func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*ChangeEntry, error) {
 	if err := db.user.AuthorizeAllChannels(channels); err != nil {
 		return nil, err

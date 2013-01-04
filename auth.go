@@ -126,6 +126,10 @@ func (user *User) SetPassword(password string) {
 	}
 }
 
+
+//////// USER CHANNEL AUTHORIZATION:
+
+
 func (user *User) unauthError(message string) error {
 	if user.Name == "" {
 		return &HTTPError{http.StatusUnauthorized, "login required"}

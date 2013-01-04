@@ -339,26 +339,26 @@ func (h *handler) handleBulkDocs() error {
 }
 
 func (h *handler) handleChanges() error {
+	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	var options ChangesOptions
 	options.Since = h.getIntQuery("since", 0)
 	options.Limit = int(h.getIntQuery("limit", 0))
 	options.Conflicts = (h.getQuery("style") == "all_docs")
 	options.IncludeDocs = (h.getBoolQuery("include_docs"))
 
-	// Get the channels as parameters to an imaginary "bychannel" filter:
-	if h.getQuery("filter") != "basecouch/bychannel" {
-		return &HTTPError{http.StatusBadRequest, "basecouch/bychannel filter required"}
-	}
-	channelsParam := h.getQuery("channels")
-	if len(channelsParam) == 0 {
-		return &HTTPError{http.StatusBadRequest, "channels parameter required"}
-	}
-	var channels []string
-	if strings.Contains(channelsParam, "*") {
-		// "*" means "all channels this user can see"
-		channels = h.db.user.Channels
-	} else {
-		channels = strings.Split(channelsParam, ",")
+	// Get the channels as parameters to an imaginary "bychannel" filter.
+	// The default is all channels the user can access.
+	channels := h.db.user.Channels
+	filter := h.getQuery("filter")
+	if filter != "" {
+		if filter != "basecouch/bychannel" {
+			return &HTTPError{http.StatusBadRequest, "Unknown filter; try basecouch/bychannel"}
+		}
+		channelsParam := h.getQuery("channels")
+		if channelsParam != "" && !strings.Contains(channelsParam, "*") {
+			// "*" means "all channels this user can see"
+			channels = strings.Split(channelsParam, ",")
+		}
 	}
 
 	switch h.getQuery("feed") {

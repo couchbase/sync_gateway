@@ -129,7 +129,7 @@ func installViews(bucket *couchbase.Bucket) error {
                         return;
                     var value = [doc.id, doc.rev];
                     if (doc.deleted)
-                        value.push(true)
+                        value.push(true);
                     emit(doc.sequence, value); }`
 	// By-channels view
 	channels_map := `function (doc, meta) {
@@ -141,8 +141,8 @@ func installViews(bucket *couchbase.Bucket) error {
 	                        return;
 	                    var value = [doc.id, doc.rev];
 	                    if (doc.deleted)
-	                        value.push(true)
-
+	                        value.push(true);
+						emit(["*", sequence], value);
 						var channels = doc["channels"];
 						if (channels) {
 							for (var name in channels) {
@@ -150,7 +150,7 @@ func installViews(bucket *couchbase.Bucket) error {
 								if (!removed)
 									emit([name, sequence], value);
 								else
-									emit([name, removed.seq], [doc.id, removed.rev, false])
+									emit([name, removed.seq], [doc.id, removed.rev, false]);
 							}
 						}
 					}`
