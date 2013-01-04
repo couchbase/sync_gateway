@@ -62,9 +62,6 @@ const kChangesPageSize = 200
 
 // Returns a list of all the changes made on a channel.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	if channel == "" {
-		return nil, &HTTPError{403, "Invalid channel name: " + channel}
-	}
 	lastSequence := options.Since
 	endkey := [2]interface{}{channel, make(Body)}
 	totalLimit := options.Limit

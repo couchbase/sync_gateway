@@ -354,11 +354,7 @@ func (h *handler) handleChanges() error {
 		if filter != "basecouch/bychannel" {
 			return &HTTPError{http.StatusBadRequest, "Unknown filter; try basecouch/bychannel"}
 		}
-		channelsParam := h.getQuery("channels")
-		if channelsParam != "" && !strings.Contains(channelsParam, "*") {
-			// "*" means "all channels this user can see"
-			channels = strings.Split(channelsParam, ",")
-		}
+		channels = SimplifyChannels(strings.Split(h.getQuery("channels"), ","), true)
 	}
 
 	switch h.getQuery("feed") {

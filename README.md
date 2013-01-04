@@ -46,7 +46,15 @@ If you want to run Couchbase on a different host, or use a different name for th
 
 Channels are the intermediaries between documents and users. Every document belongs to a set of channels, and every user has a set of channels s/he is allowed to access. Additionally, a replication from BaseCouch specifies what channels it wants to replicate; documents not in any of these channels will be ignored (even if the user has access to them.)
 
-Thus, channels are used both for authorization, to partition the data set, and to constrain the amount of data synced to constrained (mobile) clients.
+Thus, channels have three purposes:
+
+1. Authorizing users to see documents;
+2. Partitioning the data set;
+3. Constraining the amount of data synced to (mobile) clients.
+
+There is no need to register or preassign channels. Channels come into existence as documents are assigned to them. Channels with no documents assigned are considered empty.
+
+Valid channel names consist of Unicode letter and digit characters, as well as "_", "-" and ".". The empty string is not allowed. The special meta-channel name "*" denotes all channels. Channel names are compared literally, so they are case- and diacritical-sensitive.
 
 ### Mapping documents to channels
 

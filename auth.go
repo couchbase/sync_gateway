@@ -58,6 +58,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
+	user.Channels = SimplifyChannels(user.Channels, true)
 	if user.Password != nil {
 		user.SetPassword(*user.Password)
 		user.Password = nil
@@ -87,7 +88,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 
 // Creates a new User object.
 func NewUser(username string, password string, channels []string) (*User, error) {
-	user := &User{Name: username, Channels: channels}
+	user := &User{Name: username, Channels: SimplifyChannels(channels, true)}
 	user.SetPassword(password)
 	if err := user.Validate(); err != nil {
 		return nil, err
@@ -140,8 +141,8 @@ func (user *User) unauthError(message string) error {
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
-	return user == nil || channel == "*" || stringListContains(user.Channels, channel) ||
-		stringListContains(user.Channels, "*")
+	return user == nil || channel == "*" || ContainsChannel(user.Channels, channel) ||
+		ContainsChannel(user.Channels, "*")
 }
 
 // Returns true if the User is allowed to access all of the given channels.
@@ -168,7 +169,7 @@ func (user *User) CanSeeAnyChannels(channels []string) bool {
 		}
 	}
 	// If user has wildcard access, allow it anyway
-	return stringListContains(user.Channels, "*")
+	return ContainsChannel(user.Channels, "*")
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access all the given channels.
@@ -215,17 +216,6 @@ func (user *User) AuthorizeAnyDocChannels(channels ChannelMap) error {
 		}
 	}
 	return user.unauthError("You are not allowed to see this")
-}
-
-func stringListContains(list []string, str string) bool {
-	if list != nil {
-		for _, item := range list {
-			if item == str {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 //////// COOKIE-BASED AUTH:
