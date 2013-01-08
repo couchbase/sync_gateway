@@ -10,9 +10,13 @@
 package basecouch
 
 import (
+	"crypto/rand"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
+	"sync"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/dchest/passwordhash"
@@ -30,12 +34,15 @@ type User struct {
 /** Manages user authentication for a database. */
 type Authenticator struct {
 	bucket *couchbase.Bucket
+	lock sync.Mutex
+	sessions map[string]*LoginSession
 }
 
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket *couchbase.Bucket) *Authenticator {
 	return &Authenticator{
 		bucket: bucket,
+		sessions: map[string]*LoginSession{},
 	}
 }
 
@@ -84,6 +91,15 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 	return user
 }
 
+func GenerateRandomSecret() string {
+	randomBytes := make([]byte, 20)
+	n, err := io.ReadFull(rand.Reader, randomBytes)
+	if n < len(randomBytes) || err != nil {
+		panic("RNG failed, can't create password")
+	}
+	return fmt.Sprintf("%x", randomBytes)
+}
+
 //////// USER OBJECT API:
 
 // Creates a new User object.
@@ -108,7 +124,9 @@ func (user *User) Validate() error {
 
 // Returns true if the given password is correct for this user.
 func (user *User) Authenticate(password string) bool {
-	if user.PasswordHash == nil {
+	if user == nil {
+		return false
+	} else if user.PasswordHash == nil {
 		if password != "" {
 			return false
 		}
@@ -220,71 +238,70 @@ func (user *User) AuthorizeAnyDocChannels(channels ChannelMap) error {
 
 //////// COOKIE-BASED AUTH:
 
-/*
+
 // A user login session (used with cookie-based auth.)
-type Session struct {
+type LoginSession struct {
 	id string
-	user User
+	username string
 	expiration time.Time
 }
 
 const kCookieName = "BaseCouchSession"
 
-func (s *Authenticator) authenticateCookie(cookie *http.Cookie) User {
+func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
+	cookie, _ := rq.Cookie(kCookieName)
 	if cookie == nil {
-		return nil
+		return nil, nil
 	}
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	auth.lock.Lock()
+	defer auth.lock.Unlock()
 
-	session, found := s.sessions[cookie.Value]
+	session, found := auth.sessions[cookie.Value]
+	if found && session.expiration.Before(time.Now()) {
+		delete(auth.sessions, cookie.Value)
+		found = false
+	}
 	if !found {
-		return nil
+		return nil, &HTTPError{http.StatusUnauthorized, "Invalid session cookie"}
 	}
-	if session.expiration.Before(time.Now()) {
-		delete(s.sessions, cookie.Value)
-		return nil
+	user, err := auth.GetUser(session.username)
+	if user == nil {
+		return nil, err
 	}
-	return session.user
+	return user, nil
 }
 
-func (s *Authenticator) createSession(channels []string, ttl time.Duration, r http.ResponseWriter) Session{
-	s.lock.Lock()
-	defer s.lock.Unlock()
+func (auth *Authenticator) CreateSession(username string, ttl time.Duration) *LoginSession {
+	auth.lock.Lock()
+	defer auth.lock.Unlock()
 
 	// Create a random unused session ID:
 	var sessionID string
 	for {
-		randomBytes := make([]byte, 20)
-		n, err := io.ReadFull(rand.Reader, randomBytes)
-		if n < len(randomBytes) || err != nil {
-			panic("RNG failed, can't create session")
-		}
-		sessionID = fmt.Sprintf("%x", randomBytes)
-		if _, found := s.sessions[sessionID]; !found {
+		sessionID = GenerateRandomSecret()
+		if _, found := auth.sessions[sessionID]; !found {
 			break
 		}
 	}
 
 	expiration := time.Now().Add(ttl)
-	session := &Session{
-		id: sessionID
-		channels: channels,
+	session := &LoginSession{
+		id: sessionID,
+		username: username,
 		expiration: expiration,
 	}
-	s.sessions[sessionID] = session
+	auth.sessions[sessionID] = session
 	return session
 }
 
-func (s *Authenticator) makeSessionCookie(s *Session) *http.Cookie {
+func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie {
 	if session == nil {
 		return nil
 	}
 	return &http.Cookie{
 		Name: kCookieName,
-		Value: s.id,
-		Expires: s.expiration,
+		Value: session.id,
+		Expires: session.expiration,
 	}
 }
-*/

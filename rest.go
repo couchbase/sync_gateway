@@ -666,6 +666,15 @@ func (h *handler) checkAuth() error {
 		return nil
 	}
 	userName, password := h.getBasicAuth()
+	
+	if userName == "" {
+		var err error
+		h.user, err = h.context.auth.AuthenticateCookie(h.rq)
+		if h.user != nil || err != nil {
+			return err
+		}
+	}
+	
 	h.user = h.context.auth.AuthenticateUser(userName, password)
 	if h.user == nil || h.user.Channels == nil {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
@@ -680,16 +689,30 @@ func (h *handler) run() {
 	}
 	h.setHeader("Server", VersionString)
 
-	if err := h.checkAuth(); err != nil {
+	// Authentication -- either /_session, or regular auth check
+	var err error
+	if h.rq.URL.Path == "/_session" {
+		switch h.rq.Method {
+		case "GET":
+			err = h.handleSessionGET()
+		case "POST":
+			err = h.handleSessionPOST()
+		default:
+			err = kBadMethodError
+		}
 		h.writeError(err)
 		return
+	} else {
+		if err = h.checkAuth(); err != nil {
+		h.writeError(err)
+		return
+	}
 	}
 
 	path := strings.Split(h.rq.URL.Path[1:], "/")
 	for len(path) > 0 && path[len(path)-1] == "" {
 		path = path[0 : len(path)-1]
 	}
-	var err error
 	if len(path) == 0 {
 		err = h.handleRoot()
 	} else if path[0] == "_all_dbs" {
@@ -716,10 +739,8 @@ func (h *handler) run() {
 			err = &HTTPError{http.StatusNotFound, "no such database"}
 		}
 	}
-	if err != nil {
 		h.writeError(err)
 	}
-}
 
 // Initialize REST handlers. Call this once on launch.
 func InitREST(bucket *couchbase.Bucket, dbName string) *context {

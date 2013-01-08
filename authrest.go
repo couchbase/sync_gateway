@@ -48,12 +48,13 @@ func StartAuthListener(addr string, auth *Authenticator) {
 		username := rq.URL.Path[1:]
 		method := rq.Method
 		log.Printf("AUTH: %s %q", method, username)
+		status := http.StatusOK
 		if rq.URL.Path == "/" {
 			switch method {
 			case "POST":
-				putUser(r, rq, auth, "")
+				status = putUser(r, rq, auth, "")
 			default:
-				r.WriteHeader(http.StatusMethodNotAllowed)
+				status = http.StatusMethodNotAllowed
 			}
 		} else {
 			if username == "GUEST" {
@@ -63,19 +64,22 @@ func StartAuthListener(addr string, auth *Authenticator) {
 			case "GET":
 				user, _ := auth.GetUser(username)
 				if user == nil {
-					r.WriteHeader(http.StatusNotFound)
-					return
+					status = http.StatusNotFound
+					break
 				}
 				bytes, _ := json.Marshal(user)
 				r.Write(bytes)
 			case "PUT":
-				putUser(r, rq, auth, username)
+				status = putUser(r, rq, auth, username)
 			case "DELETE":
 				if auth.DeleteUser(username) != nil {
-					r.WriteHeader(http.StatusNotFound)
+					status = http.StatusNotFound
 				}
+			default:
+				status = http.StatusMethodNotAllowed
 			}
 		}
+		r.WriteHeader(status)
 	}
 	go http.ListenAndServe(addr, http.HandlerFunc(handler))
 }
