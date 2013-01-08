@@ -71,6 +71,9 @@ func (db *Database) SameAs(otherdb *Database) bool {
 func (db *Database) LoadChannelMapper() (*ChannelMapper, error) {
 	body, err := db.Get("_design/channels")
 	if err != nil {
+		if status,_ := ErrorAsHTTPStatus(err); status == http.StatusNotFound {
+			err = nil		// missing design document is not an error
+		}
 		return nil, err
 	}
 	src, ok := body["channelmap"].(string)
