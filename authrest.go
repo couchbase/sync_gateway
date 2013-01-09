@@ -14,8 +14,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 )
 
+// Handles PUT or POST to /username
 func putUser(r http.ResponseWriter, rq *http.Request, auth *Authenticator, username string) int {
 	body, _ := ioutil.ReadAll(rq.Body)
 	var user User
@@ -42,6 +44,35 @@ func putUser(r http.ResponseWriter, rq *http.Request, auth *Authenticator, usern
 	return http.StatusOK
 }
 
+// Generates a login session for a user and returns the session ID and cookie name.
+func createUserSession(r http.ResponseWriter, rq *http.Request, auth *Authenticator) int {
+	body, err := ioutil.ReadAll(rq.Body)
+	if err != nil {
+		return http.StatusBadRequest
+	}
+	var params struct {
+		Name string			`json:"name"`
+		TTL time.Duration	`json:"ttl"`
+	}
+	err = json.Unmarshal(body, &params)
+	if err != nil || params.Name == "" || params.TTL < 0 {
+		return http.StatusBadRequest
+	}
+	session := auth.CreateSession(params.Name, params.TTL)
+	var response struct {
+		SessionID string	`json:"session_id"`
+		Expires time.Time	`json:"expires"`
+		CookieName string	`json:"cookie_name"`
+	}
+	response.SessionID = session.id
+	response.Expires = session.expiration
+	response.CookieName = kCookieName
+	bytes, _ := json.Marshal(response)
+	r.Header().Set("Content-Type", "application/json")
+	r.Write(bytes)
+	return 0 // already wrote status
+}
+
 // Starts a simple REST listener that will get and set user credentials.
 func StartAuthListener(addr string, auth *Authenticator) {
 	handler := func(r http.ResponseWriter, rq *http.Request) {
@@ -50,13 +81,23 @@ func StartAuthListener(addr string, auth *Authenticator) {
 		log.Printf("AUTH: %s %q", method, username)
 		status := http.StatusOK
 		if rq.URL.Path == "/" {
+			// Root URL: Supports POSTing user info
 			switch method {
 			case "POST":
 				status = putUser(r, rq, auth, "")
 			default:
 				status = http.StatusMethodNotAllowed
 			}
+		} else if username == "_session" {
+			// /_session: Generate login session for user
+			switch method {
+			case "POST":
+				status = createUserSession(r, rq, auth)
+			default:
+				status = http.StatusMethodNotAllowed
+			}
 		} else {
+			// Otherwise: Interpret path as username.
 			if username == "GUEST" {
 				username = ""
 			}
@@ -72,14 +113,17 @@ func StartAuthListener(addr string, auth *Authenticator) {
 			case "PUT":
 				status = putUser(r, rq, auth, username)
 			case "DELETE":
-				if auth.DeleteUser(username) != nil {
+				user, _ := auth.GetUser(username)
+				if user == nil || auth.DeleteUser(user) != nil {
 					status = http.StatusNotFound
 				}
 			default:
 				status = http.StatusMethodNotAllowed
 			}
 		}
-		r.WriteHeader(status)
+		if status > 0 {
+			r.WriteHeader(status)
+		}
 	}
 	go http.ListenAndServe(addr, http.HandlerFunc(handler))
 }

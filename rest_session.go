@@ -31,14 +31,18 @@ func (h *handler) handleSessionGET() error {
 // POST /_session creates a login session and sets its cookie
 func (h *handler) handleSessionPOST() error {
 	var params struct {
-		Name string			`json:"name:name"`
-		Password string		`json:"name:password"`
+		Name string			`json:"name"`
+		Password string		`json:"password"`
 	}
-	if err := readJSONInto(h.rq.Header, h.rq.Body, &params); err != nil {
+	err := readJSONInto(h.rq.Header, h.rq.Body, &params)
+	if err != nil {
 		return err
 	}
 	var user *User
-	user,_ = h.context.auth.GetUser(params.Name)
+	user, err = h.context.auth.GetUser(params.Name)
+	if err != nil {
+		return err
+	}
 	if !user.Authenticate(params.Password) {
 		user = nil
 	}
@@ -47,7 +51,7 @@ func (h *handler) handleSessionPOST() error {
 
 func (h *handler) makeSession(user *User) error {
 	if user == nil {
-		return &HTTPError{http.StatusUnauthorized, "Invalid name/password"}
+		return &HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
 	auth := h.context.auth
 	session := auth.CreateSession(user.Name, kDefaultSessionTTL)
