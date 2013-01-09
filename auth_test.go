@@ -34,6 +34,22 @@ func TestValidateUser(t *testing.T) {
 	assert.True(t, user != nil)
 }
 
+func TestValidateUserEmail(t *testing.T) {
+	badEmails := []string{"", "foo", "foo@", "@bar", "foo @bar", "foo@.bar"}
+	for _,e := range(badEmails) {
+		assert.False(t, IsValidEmail(e))
+	}
+	goodEmails := []string{"foo@bar", "foo.99@bar.com", "f@bar.exampl-3.com."}
+	for _,e := range(goodEmails) {
+		assert.True(t, IsValidEmail(e))
+	}
+	user, _ := NewUser("ValidName", "letmein", nil)
+	user.Email = "foo"
+	assert.False(t, user.Validate() == nil)
+	user.Email = "foo@example.com"
+	assert.True(t, user.Validate() == nil)
+}
+
 func TestUserPasswords(t *testing.T) {
 	user, _ := NewUser("me", "letmein", nil)
 	assert.True(t, user.Authenticate("letmein"))
@@ -46,6 +62,7 @@ func TestUserPasswords(t *testing.T) {
 
 func TestSerializeUser(t *testing.T) {
 	user, _ := NewUser("me", "letmein", []string{"me", "public"})
+	user.Email = "foo@example.com"
 	encoded, _ := json.Marshal(user)
 	assert.True(t, encoded != nil)
 
@@ -53,6 +70,7 @@ func TestSerializeUser(t *testing.T) {
 	err := json.Unmarshal(encoded, &resu)
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, resu.Name, user.Name)
+	assert.DeepEquals(t, resu.Email, user.Email)
 	assert.DeepEquals(t, resu.PasswordHash, user.PasswordHash)
 	assert.DeepEquals(t, resu.Channels, user.Channels)
 	assert.True(t, resu.Authenticate("letmein"))

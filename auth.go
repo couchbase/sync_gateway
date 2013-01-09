@@ -25,6 +25,7 @@ import (
 /** Persistent information about a user. */
 type User struct {
 	Name         string                     `json:"name,omitempty"`
+	Email        string                     `json:"email,omitempty"`
 	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
 	Channels     []string                   `json:"channels"`
 
@@ -38,6 +39,24 @@ type Authenticator struct {
 	sessions map[string]*LoginSession
 }
 
+type userByEmailInfo struct {
+	Username string
+}
+
+
+var kValidEmailRegexp *regexp.Regexp
+
+func init() {
+	var err error
+	kValidEmailRegexp, err = regexp.Compile(`^[-.\w]+@\w[-.\w]+$`)
+	if err != nil {panic("Bad IsValidEmail regexp")}
+}
+
+func IsValidEmail(email string) bool {
+	return kValidEmailRegexp.MatchString(email)
+}
+
+
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket *couchbase.Bucket) *Authenticator {
 	return &Authenticator{
@@ -50,6 +69,10 @@ func docIDForUser(username string) string {
 	return "user:" + username
 }
 
+func docIDForUserEmail(email string) string {
+	return "useremail:" + email
+}
+
 // Looks up the information for a user.
 // If the username is "" it will return the default (guest) User object, not nil.
 // By default the guest User has access to everything, i.e. Admin Party! This can
@@ -57,10 +80,24 @@ func docIDForUser(username string) string {
 func (auth *Authenticator) GetUser(username string) (*User, error) {
 	var user *User
 	err := auth.bucket.Get(docIDForUser(username), &user)
-	if user == nil && username == "" {
-		return &User{Name: username, Channels: []string{"*"}}, nil
+	if err != nil && !IsDocNotFoundError(err) {
+		return nil, err
 	}
-	return user, err
+	if user == nil && username == "" {
+		user = &User{Name: username, Channels: []string{"*"}}
+	}
+	return user, nil
+}
+
+func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
+	var info userByEmailInfo
+	err := auth.bucket.Get(docIDForUserEmail(email), &info)
+	if IsDocNotFoundError(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	return auth.GetUser(info.Username)
 }
 
 // Saves the information for a user.
@@ -73,12 +110,26 @@ func (auth *Authenticator) SaveUser(user *User) error {
 	if err := user.Validate(); err != nil {
 		return err
 	}
-	return auth.bucket.Set(docIDForUser(user.Name), 0, user)
+	if err := auth.bucket.Set(docIDForUser(user.Name), 0, user); err != nil {
+		return err
+	}
+	if user.Email != "" {
+		info := userByEmailInfo{user.Name}
+		if err := auth.bucket.Set(docIDForUserEmail(user.Email), 0, info); err != nil {
+			return err
+		}
+		//FIX: Fail if email address is already registered to another user
+		//FIX: Unregister old email address if any
+	}
+	return nil
 }
 
 // Deletes a user.
-func (auth *Authenticator) DeleteUser(username string) error {
-	return auth.bucket.Delete(docIDForUser(username))
+func (auth *Authenticator) DeleteUser(user *User) error {
+	if user.Email != "" {
+		auth.bucket.Delete(docIDForUserEmail(user.Email))
+	}
+	return auth.bucket.Delete(docIDForUser(user.Name))
 }
 
 // Authenticates a user given the username and password.
@@ -118,6 +169,8 @@ func (user *User) Validate() error {
 		return &HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid username %q", user.Name)}
 	} else if (user.Name == "") != (user.PasswordHash == nil) {
 		return &HTTPError{http.StatusBadRequest, "Invalid password"}
+	} else if user.Email != "" && !IsValidEmail(user.Email) {
+		return &HTTPError{http.StatusBadRequest, "Invalid email address"}
 	}
 	return nil
 }
@@ -265,11 +318,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
 	if !found {
 		return nil, &HTTPError{http.StatusUnauthorized, "Invalid session cookie"}
 	}
-	user, err := auth.GetUser(session.username)
-	if user == nil {
-		return nil, err
-	}
-	return user, nil
+	return auth.GetUser(session.username)
 }
 
 func (auth *Authenticator) CreateSession(username string, ttl time.Duration) *LoginSession {
