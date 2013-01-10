@@ -31,6 +31,7 @@ type context struct {
 	dbName        string
 	channelMapper *ChannelMapper
 	auth          *Authenticator
+	serverURL	  string
 }
 
 // HTTP handler for a GET of a document
@@ -704,9 +705,9 @@ func (h *handler) run() {
 		return
 	} else {
 		if err = h.checkAuth(); err != nil {
-		h.writeError(err)
-		return
-	}
+			h.writeError(err)
+			return
+		}
 	}
 
 	path := strings.Split(h.rq.URL.Path[1:], "/")
@@ -739,11 +740,11 @@ func (h *handler) run() {
 			err = &HTTPError{http.StatusNotFound, "no such database"}
 		}
 	}
-		h.writeError(err)
-	}
+	h.writeError(err)
+}
 
 // Initialize REST handlers. Call this once on launch.
-func InitREST(bucket *couchbase.Bucket, dbName string) *context {
+func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *context {
 	if dbName == "" {
 		dbName = bucket.Name
 	}
@@ -765,6 +766,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string) *context {
 		dbName:        dbName,
 		channelMapper: channelMapper,
 		auth:          NewAuthenticator(bucket),
+		serverURL:     serverURL,
 	}
 	http.Handle("/", NewRESTHandler(c))
 	return c
@@ -772,6 +774,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string) *context {
 
 // Main entry point for a simple server; you can have your main() function just call this.
 func ServerMain() {
+	siteURL := flag.String("site", "", "Server's official URL")
 	addr := flag.String("addr", ":4984", "Address to bind to")
 	authAddr := flag.String("authaddr", ":4985", "Address to bind the auth interface to")
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
@@ -790,8 +793,8 @@ func ServerMain() {
 	if *dbName == "" {
 		*dbName = bucket.Name
 	}
-
-	context := InitREST(bucket, *dbName)
+	
+	context := InitREST(bucket, *dbName, *siteURL)
 	PrettyPrint = *pretty
 	LogRequestsVerbose = *verbose
 
