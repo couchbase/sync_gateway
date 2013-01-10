@@ -253,10 +253,9 @@ func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*Ch
 		return nil, err
 	}
 
-	var changes []*ChangeEntry
+	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {
-		changes = make([]*ChangeEntry, 0, 50)
 		for entry := range feed {
 			changes = append(changes, entry)
 		}
