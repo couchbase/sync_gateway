@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/gorilla/mux"
 	
 	"github.com/couchbaselabs/basecouch/auth"
 	"github.com/couchbaselabs/basecouch/base"
@@ -40,7 +41,8 @@ type context struct {
 }
 
 // HTTP handler for a GET of a document
-func (h *handler) handleGetDoc(docid string) error {
+func (h *handler) handleGetDoc() error {
+	docid := h.PathVars()["docid"]
 	revid := h.getQuery("rev")
 	includeRevs := h.getBoolQuery("revs")
 	openRevs := h.getQuery("open_revs")
@@ -112,7 +114,8 @@ func (h *handler) handleGetDoc(docid string) error {
 }
 
 // HTTP handler for a PUT of a document
-func (h *handler) handlePutDoc(docid string) error {
+func (h *handler) handlePutDoc() error {
+	docid := h.PathVars()["docid"]
 	body, err := h.readDocument()
 	if err != nil {
 		return err
@@ -159,13 +162,29 @@ func (h *handler) handlePostDoc() error {
 }
 
 // HTTP handler for a DELETE of a document
-func (h *handler) handleDeleteDoc(docid string) error {
+func (h *handler) handleDeleteDoc() error {
+	docid := h.PathVars()["docid"]
 	revid := h.getQuery("rev")
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
 		h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
 	}
 	return err
+}
+
+func (h *handler) handleGetDesignDoc() error {
+	h.PathVars()["docid"] = "_design/" + h.PathVars()["docid"]
+	return h.handleGetDoc()
+}
+
+func (h *handler) handlePutDesignDoc() error {
+	h.PathVars()["docid"] = "_design/" + h.PathVars()["docid"]
+	return h.handlePutDoc()
+}
+
+func (h *handler) handleDelDesignDoc() error {
+	h.PathVars()["docid"] = "_design/" + h.PathVars()["docid"]
+	return h.handleDeleteDoc()
 }
 
 // HTTP handler for _all_docs
@@ -439,7 +458,9 @@ loop:
 	return nil
 }
 
-func (h *handler) handleGetAttachment(docid, attachmentName string) error {
+func (h *handler) handleGetAttachment() error {
+	docid := h.PathVars()["docid"]
+	attachmentName := h.PathVars()["attach"]
 	revid := h.getQuery("rev")
 	body, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
@@ -483,7 +504,8 @@ func (h *handler) handleRevsDiff() error {
 }
 
 // HTTP handler for a GET of a _local document
-func (h *handler) handleGetLocalDoc(docid string) error {
+func (h *handler) handleGetLocalDoc() error {
+	docid := h.PathVars()["docid"]
 	value, err := h.db.GetLocal(docid)
 	if err != nil {
 		return err
@@ -496,7 +518,8 @@ func (h *handler) handleGetLocalDoc(docid string) error {
 }
 
 // HTTP handler for a PUT of a _local document
-func (h *handler) handlePutLocalDoc(docid string) error {
+func (h *handler) handlePutLocalDoc() error {
+	docid := h.PathVars()["docid"]
 	body, err := h.readJSON()
 	if err == nil {
 		var revid string
@@ -509,122 +532,9 @@ func (h *handler) handlePutLocalDoc(docid string) error {
 }
 
 // HTTP handler for a DELETE of a _local document
-func (h *handler) handleDeleteLocalDoc(docid string) error {
+func (h *handler) handleDelLocalDoc() error {
+	docid := h.PathVars()["docid"]
 	return h.db.DeleteLocal(docid, h.getQuery("rev"))
-}
-
-// HTTP handler for a database.
-func (h *handler) handle(path []string) error {
-	pathLen := len(path)
-	if pathLen >= 2 && path[0] == "_design" {
-		path[0] += "/" + path[1]
-		path = append(path[0:1], path[2:]...)
-		pathLen--
-	}
-	method := h.rq.Method
-	if method == "HEAD" {
-		method = "GET"
-	}
-	switch pathLen {
-	case 0:
-		// Root level
-		//log.Printf("%s %s\n", method, h.db.Name)
-		switch method {
-		case "GET":
-			lastSeq, _ := h.db.LastSequence()
-			response := db.Body{
-				"db_name":    h.db.Name,
-				"doc_count":  h.db.DocCount(),
-				"update_seq": lastSeq,
-			}
-			h.writeJSON(response)
-			return nil
-		case "POST":
-			return h.handlePostDoc()
-		case "DELETE":
-			return h.db.Delete()
-		}
-	case 1:
-		docid := path[0]
-		switch docid {
-		case "_all_docs":
-			if method == "GET" || method == "POST" {
-				return h.handleAllDocs()
-			}
-		case "_bulk_docs":
-			if method == "POST" {
-				return h.handleBulkDocs()
-			}
-		case "_bulk_get":
-			if method == "POST" {
-				return h.handleBulkGet()
-			}
-		case "_changes":
-			if method == "GET" {
-				return h.handleChanges()
-			}
-		case "_revs_diff":
-			if method == "POST" {
-				return h.handleRevsDiff()
-			}
-		case "_ensure_full_commit":
-			if method == "POST" {
-				// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-				h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true})
-				return nil
-			}
-		case "_design/basecouch":
-			// we serve this content here so that CouchDB 1.2 has something to
-			// hash into the replication-id, to correspond to our filter.
-			if method == "GET" {
-				h.writeJSON(db.Body{"filters": db.Body{"bychannel": "ok"}})
-				return nil
-			}
-		default:
-			if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
-				// Accessing a document:
-				switch method {
-				case "GET":
-					return h.handleGetDoc(docid)
-				case "PUT":
-					return h.handlePutDoc(docid)
-				case "DELETE":
-					return h.handleDeleteDoc(docid)
-				default:
-					return kBadMethodError
-				}
-			}
-			return kNotFoundError
-		}
-		return kBadMethodError
-	case 2:
-		docid := path[0]
-		if docid == "_local" {
-			docid = path[1]
-			switch method {
-			case "GET":
-				return h.handleGetLocalDoc(docid)
-			case "PUT":
-				return h.handlePutLocalDoc(docid)
-			case "DELETE":
-				return h.handleDeleteLocalDoc(docid)
-			default:
-				return kBadMethodError
-			}
-		} else if docid[0] != '_' || strings.HasPrefix(docid, "_design/") {
-			// Accessing a document:
-			switch method {
-			case "GET":
-				return h.handleGetAttachment(docid, path[1])
-			//TODO: PUT, DELETE
-			default:
-				return kBadMethodError
-			}
-		}
-	}
-	// Fall through to here if the request was not recognized:
-	log.Printf("WARNING: Unhandled %s %s\n", method, h.rq.URL)
-	return kNotFoundError
 }
 
 // HTTP handler for the root ("/")
@@ -648,12 +558,6 @@ func (h *handler) handleAllDbs() error {
 	return kBadMethodError
 }
 
-type ReplicateInput struct {
-	Source        string
-	Target        string
-	Create_target bool
-}
-
 func (h *handler) handleVacuum() error {
 	revsDeleted, err := db.VacuumRevisions(h.context.bucket)
 	if err != nil {
@@ -667,83 +571,41 @@ func (h *handler) handleVacuum() error {
 	return nil
 }
 
-func (h *handler) checkAuth() error {
-	if h.context.auth == nil {
-		return nil
+func (h *handler) handleCreateDB() error {
+	if h.PathVars()["newdb"] == h.context.dbName {
+		return &base.HTTPError{http.StatusConflict, "already exists"}
+	} else {
+		return &base.HTTPError{http.StatusForbidden, "can't create any databases"}
 	}
-	userName, password := h.getBasicAuth()
-	
-	if userName == "" {
-		var err error
-		h.user, err = h.context.auth.AuthenticateCookie(h.rq)
-		if h.user != nil || err != nil {
-			return err
-		}
+	return nil // unreachable
+}
+
+func (h *handler) handleGetDB() error {
+	lastSeq, _ := h.db.LastSequence()
+	response := db.Body{
+		"db_name":    h.db.Name,
+		"doc_count":  h.db.DocCount(),
+		"update_seq": lastSeq,
 	}
-	
-	h.user = h.context.auth.AuthenticateUser(userName, password)
-	if h.user == nil || h.user.Channels == nil {
-		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
-		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
-	}
+	h.writeJSON(response)
 	return nil
 }
 
-func (h *handler) run() {
-	if LogRequests {
-		log.Printf("%s %s", h.rq.Method, h.rq.URL)
-	}
-	h.setHeader("Server", VersionString)
+func (h *handler) handleDeleteDB() error {
+	return h.db.Delete()
+}
 
-	// Authentication -- either /_session, or regular auth check
-	var err error
-	if h.rq.URL.Path == "/_session" {
-		switch h.rq.Method {
-		case "GET":
-			err = h.handleSessionGET()
-		case "POST":
-			err = h.handleSessionPOST()
-		default:
-			err = kBadMethodError
-		}
-		h.writeError(err)
-		return
-	} else {
-		if err = h.checkAuth(); err != nil {
-			h.writeError(err)
-			return
-		}
-	}
+func (h *handler) handleEFC() error {  // Handles _ensure_full_commit.
+	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
+	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true})
+	return nil
+}
 
-	path := strings.Split(h.rq.URL.Path[1:], "/")
-	for len(path) > 0 && path[len(path)-1] == "" {
-		path = path[0 : len(path)-1]
-	}
-	if len(path) == 0 {
-		err = h.handleRoot()
-	} else if path[0] == "_all_dbs" {
-		err = h.handleAllDbs()
-	} else if path[0] == "_vacuum" {
-		err = h.handleVacuum()
-	} else if h.rq.Method == "PUT" && len(path) == 1 {
-		// Create a database:
-		if path[0] == h.context.dbName {
-			err = &base.HTTPError{http.StatusConflict, "already exists"}
-		} else {
-			err = &base.HTTPError{http.StatusForbidden, "can't create any databases"}
-		}
-	} else {
-		// Handle a request aimed at a database:
-		if path[0] == h.context.dbName {
-			h.db, err = db.GetDatabase(h.context.bucket, path[0], h.context.channelMapper, h.user)
-			if err == nil {
-				err = h.handle(path[1:])
-			}
-		} else {
-			err = &base.HTTPError{http.StatusNotFound, "no such database"}
-		}
-	}
-	h.writeError(err)
+func (h *handler) handleDesign() error {
+	// we serve this content here so that CouchDB 1.2 has something to
+	// hash into the replication-id, to correspond to our filter.
+	h.writeJSON(db.Body{"filters": db.Body{"bychannel": "ok"}})
+	return nil
 }
 
 // Initialize REST handlers. Call this once on launch.
@@ -771,8 +633,53 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 		auth:          auth.NewAuthenticator(bucket),
 		serverURL:     serverURL,
 	}
-	http.Handle("/", NewRESTHandler(c))
+	
+	http.Handle("/", createHandler(c))
 	return c
+}
+	
+func createHandler(c *context) http.Handler {
+	r := mux.NewRouter()
+	r.StrictSlash(true)
+	// Global operations:
+	r.Handle("/", 		  makeHandler(c, (*handler).handleRoot)).Methods("GET")
+	r.Handle("/_all_dbs", makeHandler(c, (*handler).handleAllDbs)).Methods("GET")
+	r.Handle("/_session", makeHandler(c, (*handler).handleSessionGET)).Methods("GET")
+	r.Handle("/_session", makeHandler(c, (*handler).handleSessionPOST)).Methods("POST")
+	r.Handle("/_vacuum",  makeHandler(c, (*handler).handleVacuum)).Methods("GET")
+	
+	// Operations on databases:
+	r.Handle("/{newdb}/", makeHandler(c, (*handler).handleCreateDB)).Methods("PUT")
+	r.Handle("/{db}/",	  makeHandler(c, (*handler).handleGetDB)).Methods("GET")
+	r.Handle("/{db}/",	  makeHandler(c, (*handler).handleDeleteDB)).Methods("DELETE")
+	r.Handle("/{db}/",	  makeHandler(c, (*handler).handlePostDoc)).Methods("POST")
+	
+	// Special database URLs:
+	dbr := r.PathPrefix("/{db}/").Subrouter()
+	dbr.Handle("/_all_docs", makeHandler(c, (*handler).handleAllDocs)).Methods("GET", "POST")
+	dbr.Handle("/_bulk_docs", 		makeHandler(c, (*handler).handleBulkDocs)).Methods("POST")
+	dbr.Handle("/_bulk_get", 		makeHandler(c, (*handler).handleBulkGet)).Methods("GET")
+	dbr.Handle("/_changes", 		makeHandler(c, (*handler).handleChanges)).Methods("GET")
+	dbr.Handle("/_design/basecouch", makeHandler(c, (*handler).handleDesign)).Methods("GET")
+	dbr.Handle("/_ensure_full_commit",makeHandler(c, (*handler).handleEFC)).Methods("POST")
+	dbr.Handle("/_revs_diff", 		makeHandler(c, (*handler).handleRevsDiff)).Methods("POST")
+	
+	// Document URLs:
+	dbr.Handle("/_local/{docid}",   makeHandler(c, (*handler).handleGetLocalDoc)).Methods("GET")
+	dbr.Handle("/_local/{docid}",   makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local/{docid}",   makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	
+	dbr.Handle("/_design/{docid}",   makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET")
+	dbr.Handle("/_design/{docid}",   makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{docid}",   makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
+	
+	dbr.Handle("/{docid}", 		  	makeHandler(c, (*handler).handleGetDoc)).Methods("GET")
+	dbr.Handle("/{docid}", 		  	makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")
+	dbr.Handle("/{docid}", 		  	makeHandler(c, (*handler).handleDeleteDoc)).Methods("DELETE")
+
+	dbr.Handle("/{docid}/{attach}", makeHandler(c, (*handler).handleGetAttachment)).Methods("GET")
+	
+	return r
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.

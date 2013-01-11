@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/gorilla/mux"
 	
 	"github.com/couchbaselabs/basecouch/auth"
 	"github.com/couchbaselabs/basecouch/base"
@@ -45,16 +47,74 @@ type handler struct {
 	user     *auth.User
 }
 
-// Creates an http.Handler that will handle the REST API for the given bucket.
-func NewRESTHandler(context *context) http.Handler {
+type handlerMethod func(*handler) error
+
+// Creates an http.Handler that will run a handler with the given method
+func makeHandler(context *context, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := &handler{
 			rq:       rq,
 			response: r,
 			context:  context,
 		}
-		h.run()
+		err := h.invoke(method)
+		h.writeError(err)
 	})
+}
+
+func (h *handler) invoke(method handlerMethod) error {
+	if LogRequests {
+		log.Printf("%s %s", h.rq.Method, h.rq.URL)
+	}
+	h.setHeader("Server", VersionString)
+	
+	// Authenticate all paths other than "/_session":
+	if h.rq.URL.Path != "/_session" {
+		if err := h.checkAuth(); err != nil {
+			return err
+		}
+	}
+	
+	// If there is a "db" path variable, look up the database:
+	if dbname, ok := h.PathVars()["db"]; ok {
+		var err error
+		if dbname == h.context.dbName {
+			h.db, err = db.GetDatabase(h.context.bucket, dbname, h.context.channelMapper, h.user)
+		} else {
+			err = &base.HTTPError{http.StatusNotFound, "no such database"}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	
+	return method(h)  // Call the actual handler code
+}
+
+func (h *handler) checkAuth() error {
+	if h.context.auth == nil {
+		return nil
+	}
+	userName, password := h.getBasicAuth()
+	
+	if userName == "" {
+		var err error
+		h.user, err = h.context.auth.AuthenticateCookie(h.rq)
+		if h.user != nil || err != nil {
+			return err
+		}
+	}
+	
+	h.user = h.context.auth.AuthenticateUser(userName, password)
+	if h.user == nil || h.user.Channels == nil {
+		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
+		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+	}
+	return nil
+}
+
+func (h *handler) PathVars() map[string]string {
+	return mux.Vars(h.rq)
 }
 
 func (h *handler) getQuery(query string) string {
