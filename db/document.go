@@ -1,6 +1,6 @@
 // document.go -- document-oriented Database methods
 
-package basecouch
+package db
 
 import (
 	"crypto/rand"
@@ -10,6 +10,9 @@ import (
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
+
+	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/basecouch/auth"
 )
 
 type ChannelRemoval struct {
@@ -46,7 +49,7 @@ func newDocument() *document {
 func (db *Database) getDoc(docid string) (*document, error) {
 	key := db.realDocID(docid)
 	if key == "" {
-		return nil, &HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	doc := newDocument()
 	err := db.bucket.Get(key, doc)
@@ -59,7 +62,7 @@ func (db *Database) getDoc(docid string) (*document, error) {
 func (db *Database) setDoc(docid string, doc *document) error {
 	key := db.realDocID(docid)
 	if key == "" {
-		return &HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	return db.bucket.Set(key, 0, doc)
 }
@@ -99,21 +102,40 @@ func (db *Database) GetRev(docid, revid string,
 	return body, nil
 }
 
+// Returns an HTTP 403 error if the User is not allowed to access any of the document's channels.
+// A nil User means access control is disabled, so the function will return nil.
+func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
+	if user == nil {
+		return nil
+	} else if user.Channels != nil {
+		for _, channel := range user.Channels {
+			if channel == "*" {
+				return nil
+			}
+			value, exists := channels[channel]
+			if exists && value == nil {
+				return nil // yup, it's in this channel
+			}
+		}
+	}
+	return user.UnauthError("You are not allowed to see this")
+}
+
 // Returns the body of a revision given a document struct
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
-	if err := db.user.AuthorizeAnyDocChannels(doc.Channels); err != nil {
+	if err := AuthorizeAnyDocChannels(db.user, doc.Channels); err != nil {
 		// FIX: This only authorizes vs the current revision, not the one the client asked for!
 		return nil, err
 	}
 	if revid == "" {
 		revid = doc.CurrentRev
 		if doc.History[revid].Deleted == true {
-			return nil, &HTTPError{Status: 404, Message: "deleted"}
+			return nil, &base.HTTPError{Status: 404, Message: "deleted"}
 		}
 	}
 	info, exists := doc.History[revid]
 	if !exists || info.Key == "" {
-		return nil, &HTTPError{Status: 404, Message: "missing"}
+		return nil, &base.HTTPError{Status: 404, Message: "missing"}
 	}
 
 	body, err := db.getRevision(doc.ID, revid, info.Key)
@@ -139,7 +161,7 @@ func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 			return db.getRevision(doc.ID, revid, key)
 		}
 	}
-	return nil, &HTTPError{404, "missing"}
+	return nil, &base.HTTPError{404, "missing"}
 }
 
 //////// UPDATING DOCUMENTS:
@@ -151,7 +173,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	matchRev, _ := body["_rev"].(string)
 	generation, _ := parseRevID(matchRev)
 	if generation < 0 {
-		return "", &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
+		return "", &base.HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
 	generation++
 	deleted, _ := body["_deleted"].(bool)
@@ -160,7 +182,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		// First, make sure matchRev matches an existing leaf revision:
 		if !(len(doc.History) == 0 && matchRev == "") && !doc.History.isLeaf(matchRev) {
-			return nil, &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+			return nil, &base.HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
 		}
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
@@ -181,7 +203,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	newRev := docHistory[0]
 	generation, _ := parseRevID(newRev)
 	if generation < 0 {
-		return &HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
+		return &base.HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
 	deleted, _ := body["_deleted"].(bool)
 	_, err := db.updateDoc(docid, func(doc *document) (Body, error) {
@@ -224,7 +246,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 func (db *Database) updateDoc(docid string, callback func(*document) (Body, error)) (string, error) {
 	key := db.realDocID(docid)
 	if key == "" {
-		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	var newRev string
 	var body Body
@@ -278,7 +300,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
-	if LogRequestsVerbose && newRev != "" {
+	if base.Logging && newRev != "" {
 		log.Printf("\tAdded doc %q / %q", docid, newRev)
 	}
 
@@ -299,7 +321,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 // Creates a new document, assigning it a random doc ID.
 func (db *Database) Post(body Body) (string, string, error) {
 	if body["_rev"] != nil {
-		return "", "", &HTTPError{Status: http.StatusNotFound,
+		return "", "", &base.HTTPError{Status: http.StatusNotFound,
 			Message: "No previous revision to replace"}
 	}
 	docid := createUUID()
@@ -453,6 +475,6 @@ func createUUID() string {
 }
 
 func isMissingDocError(err error) bool {
-	httpstatus, _ := ErrorAsHTTPStatus(err)
+	httpstatus, _ := base.ErrorAsHTTPStatus(err)
 	return httpstatus == 404
 }

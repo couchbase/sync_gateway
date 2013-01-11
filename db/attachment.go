@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"crypto/md5"
@@ -21,6 +21,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"strings"
+
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 const kMaxInlineAttachmentSize = 200
@@ -33,7 +36,7 @@ type AttachmentKey string
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
 	var parentAttachments map[string]interface{}
-	atts := bodyAttachments(body)
+	atts := BodyAttachments(body)
 	for name, value := range atts {
 		meta := value.(map[string]interface{})
 		data, exists := meta["data"]
@@ -62,12 +65,12 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 				}
 				parentAttachments, exists = parent["_attachments"].(map[string]interface{})
 				if !exists {
-					return &HTTPError{400, "Unknown attachment " + name}
+					return &base.HTTPError{400, "Unknown attachment " + name}
 				}
 			}
 			parentAttachment := parentAttachments[name]
 			if parentAttachment == nil {
-				return &HTTPError{400, "Unknown attachment " + name}
+				return &base.HTTPError{400, "Unknown attachment " + name}
 			}
 			atts[name] = parentAttachment
 		}
@@ -81,12 +84,12 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
 func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
-	for _, value := range bodyAttachments(body) {
+	for _, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		revpos := int(meta["revpos"].(float64))
 		if revpos >= minRevpos {
 			key := AttachmentKey(meta["digest"].(string))
-			data, err := db.getAttachment(key)
+			data, err := db.GetAttachment(key)
 			if err != nil {
 				return err
 			}
@@ -98,7 +101,7 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
 }
 
 // Retrieves an attachment, base64-encoded, given its key.
-func (db *Database) getAttachment(key AttachmentKey) ([]byte, error) {
+func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 	return db.bucket.GetRaw(attachmentKeyToString(key))
 }
 
@@ -106,13 +109,31 @@ func (db *Database) getAttachment(key AttachmentKey) ([]byte, error) {
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	key := AttachmentKey(sha1DigestKey(attachment))
 	_, err := db.bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
-	if LogRequestsVerbose && err == nil {
+	if base.Logging && err == nil {
 		log.Printf("\tAdded attachment %q", key)
 	}
 	return key, err
 }
 
 //////// MIME MULTIPART:
+
+// Parses a JSON request body, unmarshaling it into "into".
+func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) error {
+	contentType := headers.Get("Content-Type")
+	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
+		return &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
+	}
+	body, err := ioutil.ReadAll(input)
+	if err != nil {
+		return &base.HTTPError{http.StatusBadRequest, ""}
+	}
+	err = json.Unmarshal(body, into)
+	if err != nil {
+		log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
+		return &base.HTTPError{http.StatusBadRequest, "Bad JSON"}
+	}
+	return nil
+}
 
 type attInfo struct {
 	name        string
@@ -121,10 +142,10 @@ type attInfo struct {
 }
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) {
+func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
-	for name, value := range bodyAttachments(body) {
+	for name, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		var info attInfo
 		info.contentType, _ = meta["content_type"].(string)
@@ -156,14 +177,14 @@ func (db *Database) writeMultipartDocument(body Body, writer *multipart.Writer) 
 	}
 }
 
-func readMultipartDocument(reader *multipart.Reader) (Body, error) {
+func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// First read the main JSON document body:
 	mainPart, err := reader.NextPart()
 	if err != nil {
 		return nil, err
 	}
 	var body Body
-	err = readJSONInto(http.Header(mainPart.Header), mainPart, &body)
+	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
 	mainPart.Close()
 	if err != nil {
 		return nil, err
@@ -172,13 +193,13 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 	digestIndex := map[string]string{} // maps digests -> names
 
 	// Now look for "following" attachments:
-	attachments := bodyAttachments(body)
+	attachments := BodyAttachments(body)
 	for name, value := range attachments {
 		meta := value.(map[string]interface{})
 		if meta["follows"] == true {
 			digest, ok := meta["digest"].(string)
 			if !ok {
-				return nil, &HTTPError{http.StatusBadRequest, "Missing digest in attachment"}
+				return nil, &base.HTTPError{http.StatusBadRequest, "Missing digest in attachment"}
 			}
 			digestIndex[digest] = name
 		}
@@ -189,7 +210,7 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
-				err = &HTTPError{http.StatusBadRequest, "Too few MIME parts"}
+				err = &base.HTTPError{http.StatusBadRequest, "Too few MIME parts"}
 			}
 			return nil, err
 		}
@@ -206,7 +227,7 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 			name, ok = digestIndex[md5DigestKey(data)]
 		}
 		if !ok {
-			return nil, &HTTPError{http.StatusBadRequest,
+			return nil, &base.HTTPError{http.StatusBadRequest,
 				fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
 		}
 
@@ -217,7 +238,7 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 		if ok {
 			if int(length) != len(data) {
-				return nil, &HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
+				return nil, &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
 			}
 		}
 
@@ -229,7 +250,7 @@ func readMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// Make sure there are no unused MIME parts:
 	_, err = reader.NextPart()
 	if err != io.EOF {
-		return nil, &HTTPError{http.StatusBadRequest, "Too many MIME parts"}
+		return nil, &base.HTTPError{http.StatusBadRequest, "Too many MIME parts"}
 	}
 
 	return body, nil
@@ -249,7 +270,7 @@ func md5DigestKey(data []byte) string {
 	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
 
-func bodyAttachments(body Body) map[string]interface{} {
+func BodyAttachments(body Body) map[string]interface{} {
 	atts, _ := body["_attachments"].(map[string]interface{})
 	return atts
 }
@@ -265,5 +286,5 @@ func decodeAttachment(att interface{}) ([]byte, error) {
 	case []byte:
 		return att, nil
 	}
-	return nil, &HTTPError{400, "invalid attachment data"}
+	return nil, &base.HTTPError{400, "invalid attachment data"}
 }

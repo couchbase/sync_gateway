@@ -31,7 +31,6 @@ Apache 2 license, like all Couchbase stuff.
 1. Create a bucket named `basecouch` in the default pool.
 1. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later.
 2. `go get -u github.com/couchbaselabs/basecouch`
-3. `go get -u github.com/couchbaselabs/basecouch/tools/basecouch` (yes, this looks redundant; it builds the `basecouch` launcher tool.)
 
 ### Startup
 

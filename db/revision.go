@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"crypto/md5"
@@ -16,6 +16,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 // The body of a CouchDB document/revision as decoded from JSON.
@@ -38,7 +40,7 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	digester.Write(canonicalEncoding(body))
 	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
 	_, err := db.bucket.Add(revKeyToString(revKey), 0, body)
-	if LogRequestsVerbose && err == nil {
+	if base.Logging && err == nil {
 		log.Printf("\tAdded revision %q", revKey)
 	}
 	return revKey, err

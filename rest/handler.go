@@ -7,21 +7,23 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package rest
 
 import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
+	
+	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/basecouch/db"
 )
 
 // If set to true, JSON output will be pretty-printed.
@@ -31,16 +33,16 @@ var PrettyPrint bool = false
 var LogRequests bool = true
 var LogRequestsVerbose bool = false
 
-var kNotFoundError = &HTTPError{http.StatusNotFound, "missing"}
-var kBadMethodError = &HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
+var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
+var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
 	context  *context
 	rq       *http.Request
 	response http.ResponseWriter
-	db       *Database
-	user     *User
+	db       *db.Database
+	user     *auth.User
 }
 
 // Creates an http.Handler that will handle the REST API for the given bucket.
@@ -73,40 +75,22 @@ func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) 
 	return
 }
 
-// Parses a JSON request body, unmarshaling it into "into".
-func readJSONInto(headers http.Header, input io.Reader, into interface{}) error {
-	contentType := headers.Get("Content-Type")
-	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
-	}
-	body, err := ioutil.ReadAll(input)
-	if err != nil {
-		return &HTTPError{http.StatusBadRequest, ""}
-	}
-	err = json.Unmarshal(body, into)
-	if err != nil {
-		log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
-		return &HTTPError{http.StatusBadRequest, "Bad JSON"}
-	}
-	return nil
-}
-
 // Parses a JSON request body, returning it as a Body map.
-func (h *handler) readJSON() (Body, error) {
-	var body Body
-	return body, readJSONInto(h.rq.Header, h.rq.Body, &body)
+func (h *handler) readJSON() (db.Body, error) {
+	var body db.Body
+	return body, db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &body)
 }
 
-func (h *handler) readDocument() (Body, error) {
+func (h *handler) readDocument() (db.Body, error) {
 	contentType, attrs, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 	switch contentType {
 	case "", "application/json":
 		return h.readJSON()
 	case "multipart/related":
 		reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
-		return readMultipartDocument(reader)
+		return db.ReadMultipartDocument(reader)
 	}
-	return nil, &HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
+	return nil, &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
 }
 
 func (h *handler) requestAccepts(mimetype string) bool {
@@ -183,7 +167,7 @@ func (h *handler) writeJSON(value interface{}) {
 
 func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	if !h.requestAccepts("multipart/") {
-		return &HTTPError{Status: http.StatusNotAcceptable}
+		return &base.HTTPError{Status: http.StatusNotAcceptable}
 	}
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
@@ -218,7 +202,7 @@ func (h *handler) writeln(line []byte) error {
 // writes a CouchDB-style JSON description to the body.
 func (h *handler) writeError(err error) {
 	if err != nil {
-		status, message := ErrorAsHTTPStatus(err)
+		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
 	}
 }
@@ -246,6 +230,6 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.logStatus(status)
-	jsonOut, _ := json.Marshal(Body{"error": errorStr, "reason": message})
+	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }

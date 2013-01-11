@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"log"
@@ -15,6 +15,8 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/sdegutis/go.assert"
+
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 var gTestBucket *couchbase.Bucket
@@ -32,7 +34,7 @@ func TestDatabase(t *testing.T) {
 	assertNoError(t, err, "Couldn't create database 'db'")
 	defer func() {
 		err = db.Delete()
-		status, _ := ErrorAsHTTPStatus(err)
+		status, _ := base.ErrorAsHTTPStatus(err)
 		if status != 200 && status != 404 {
 			assertNoError(t, err, "Couldn't delete database 'db'")
 		}
@@ -66,7 +68,7 @@ func TestDatabase(t *testing.T) {
 	assert.DeepEquals(t, gotbody, body)
 
 	gotbody, err = db.GetRev("doc1", "bogusrev", false, nil)
-	status, _ := ErrorAsHTTPStatus(err)
+	status, _ := base.ErrorAsHTTPStatus(err)
 	assert.Equals(t, status, 404)
 
 	// Test the _revisions property:

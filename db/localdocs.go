@@ -7,19 +7,21 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 // Gets a local document.
 func (db *Database) GetLocal(docid string) (Body, error) {
 	key := db.realLocalDocID(docid)
 	if key == "" {
-		return nil, &HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 
 	body := Body{}
@@ -34,13 +36,13 @@ func (db *Database) GetLocal(docid string) (Body, error) {
 func (db *Database) putLocal(docid string, matchRev string, body Body) (string, error) {
 	key := db.realLocalDocID(docid)
 	if key == "" {
-		return "", &HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	var revid string
 	err := db.bucket.Update(key, 0, func(value []byte) ([]byte, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
-				return nil, &HTTPError{Status: http.StatusNotFound,
+				return nil, &base.HTTPError{Status: http.StatusNotFound,
 					Message: "No previous revision to replace"}
 			}
 		} else {
@@ -49,7 +51,7 @@ func (db *Database) putLocal(docid string, matchRev string, body Body) (string, 
 				return nil, err
 			}
 			if matchRev != prevBody["_rev"] {
-				return nil, &HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+				return nil, &base.HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
 			}
 		}
 

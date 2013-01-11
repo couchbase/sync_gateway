@@ -9,9 +9,9 @@
 
 package main
 
-import "github.com/couchbaselabs/basecouch"
+import "github.com/couchbaselabs/basecouch/rest"
 
 // Simple BaseCouch launcher tool.
 func main() {
-    basecouch.ServerMain()
+    rest.ServerMain()
 }

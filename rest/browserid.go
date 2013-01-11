@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package rest
 
 import (
 	"encoding/json"
@@ -15,6 +15,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	
+	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/basecouch/db"
 )
 
 // Response from a BrowserID assertion verification.
@@ -41,19 +44,19 @@ func VerifyBrowserID(assertion string, audience string) (*BrowserIDResponse, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		return nil, &HTTPError{http.StatusBadGateway,
+		return nil, &base.HTTPError{http.StatusBadGateway,
 			fmt.Sprintf("BrowserID verification server status %d", res.Status)}
 	}
 	responseBody, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, &HTTPError{http.StatusBadGateway, "Invalid response from BrowserID verifier"}
+		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from BrowserID verifier"}
 	}
 	var response BrowserIDResponse
 	if err = json.Unmarshal(responseBody, &response); err != nil {
-		return nil, &HTTPError{http.StatusBadGateway, "Invalid response from BrowserID verifier"}
+		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from BrowserID verifier"}
 	}
 	if response.Status != "okay" {
-		return nil, &HTTPError{http.StatusUnauthorized, response.Reason}
+		return nil, &base.HTTPError{http.StatusUnauthorized, response.Reason}
 	}
 	return &response, nil
 }
@@ -64,12 +67,12 @@ func (h *handler) handleBrowserIDPOST() error {
 	var params struct {
 		Assertion string	`json:"assertion"`
 	}
-	err := readJSONInto(h.rq.Header, h.rq.Body, &params)
+	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
 	if err != nil {
 		return err
 	}
 	if h.context.serverURL == "" {
-		return &HTTPError{http.StatusInternalServerError, "Server url not configured"}
+		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
 	}
 	
 	// OK, now verify it:

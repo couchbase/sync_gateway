@@ -7,23 +7,39 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package rest
 
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/sdegutis/go.assert"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"testing"
+
+	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go-couchbase"
+
+	"github.com/couchbaselabs/basecouch/channels"
+	"github.com/couchbaselabs/basecouch/db"
 )
+
+var gTestBucket *couchbase.Bucket
+
+func init() {
+	var err error
+	gTestBucket, err = db.ConnectToBucket("http://localhost:8091", "default", "basecouch")
+	if err != nil {
+		log.Fatalf("Couldn't connect to bucket: %v", err)
+	}
+}
 
 func callREST(method, resource string, body string) *httptest.ResponseRecorder {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	response := httptest.NewRecorder()
-	mapper, _ := NewChannelMapper(`function(doc) {sync(doc.channels);}`)
+	mapper, _ := channels.NewChannelMapper(`function(doc) {sync(doc.channels);}`)
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	context := &context{gTestBucket, "db", mapper, nil, ""}
 	handler := NewRESTHandler(context)
@@ -41,7 +57,7 @@ func TestRoot(t *testing.T) {
 func createDoc(t *testing.T, docid string) string {
 	response := callREST("PUT", "/db/"+docid, `{"prop":true}`)
 	assert.Equals(t, response.Code, 201)
-	var body Body
+	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["ok"], true)
 	revid := body["rev"].(string)
@@ -168,9 +184,9 @@ func TestDesignDocs(t *testing.T) {
 	assert.Equals(t, response.Code, 201)
 	response = callREST("GET", "/db/_design/foo", "")
 	assert.Equals(t, response.Code, 200)
-	var body Body
+	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, Body{
+	assert.DeepEquals(t, body, db.Body{
 		"_id":  "_design/foo",
 		"_rev": "1-8d99d37a3fbeed6ca6052ede5e43fb2d",
 		"hi":   "there"})

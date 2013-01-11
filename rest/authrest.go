@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package rest
 
 import (
 	"encoding/json"
@@ -15,12 +15,14 @@ import (
 	"log"
 	"net/http"
 	"time"
+	
+	"github.com/couchbaselabs/basecouch/auth"
 )
 
 // Handles PUT or POST to /username
-func putUser(r http.ResponseWriter, rq *http.Request, auth *Authenticator, username string) int {
+func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) int {
 	body, _ := ioutil.ReadAll(rq.Body)
-	var user User
+	var user auth.User
 	err := json.Unmarshal(body, &user)
 	if err != nil || user.Channels == nil {
 		return http.StatusBadRequest
@@ -37,7 +39,7 @@ func putUser(r http.ResponseWriter, rq *http.Request, auth *Authenticator, usern
 		return http.StatusBadRequest
 	}
 
-	err = auth.SaveUser(&user)
+	err = a.SaveUser(&user)
 	if err != nil {
 		return http.StatusBadRequest
 	}
@@ -45,7 +47,7 @@ func putUser(r http.ResponseWriter, rq *http.Request, auth *Authenticator, usern
 }
 
 // Generates a login session for a user and returns the session ID and cookie name.
-func createUserSession(r http.ResponseWriter, rq *http.Request, auth *Authenticator) int {
+func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *auth.Authenticator) int {
 	body, err := ioutil.ReadAll(rq.Body)
 	if err != nil {
 		return http.StatusBadRequest
@@ -58,15 +60,15 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, auth *Authentica
 	if err != nil || params.Name == "" || params.TTL < 0 {
 		return http.StatusBadRequest
 	}
-	session := auth.CreateSession(params.Name, params.TTL)
+	session := authenticator.CreateSession(params.Name, params.TTL)
 	var response struct {
 		SessionID string	`json:"session_id"`
 		Expires time.Time	`json:"expires"`
 		CookieName string	`json:"cookie_name"`
 	}
-	response.SessionID = session.id
-	response.Expires = session.expiration
-	response.CookieName = kCookieName
+	response.SessionID = session.ID
+	response.Expires = session.Expiration
+	response.CookieName = auth.CookieName
 	bytes, _ := json.Marshal(response)
 	r.Header().Set("Content-Type", "application/json")
 	r.Write(bytes)
@@ -74,7 +76,7 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, auth *Authentica
 }
 
 // Starts a simple REST listener that will get and set user credentials.
-func StartAuthListener(addr string, auth *Authenticator) {
+func StartAuthListener(addr string, auth *auth.Authenticator) {
 	handler := func(r http.ResponseWriter, rq *http.Request) {
 		username := rq.URL.Path[1:]
 		method := rq.Method

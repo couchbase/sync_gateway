@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"encoding/json"
@@ -243,7 +243,7 @@ func (tree RevTree) mergeWith(src RevTree) (changed bool) {
 //////// HELPERS:
 
 // Parses a CouchDB _revisions property into a list of revision IDs
-func parseRevisions(body Body) []string {
+func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 	revisions, ok := body["_revisions"].(map[string]interface{})
 	if !ok {

@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package channels
 
 import (
 	"github.com/sdegutis/go.assert"
@@ -77,4 +77,18 @@ func TestSetFunction(t *testing.T) {
 	assertNoError(t, err, "callMapper failed")
 	assert.DeepEquals(t, channels, []string{"all"})
 	mapper.Stop()
+}
+
+//////// HELPERS:
+
+func assertNoError(t *testing.T, err error, message string) {
+	if err != nil {
+		t.Fatalf("%s: %v", message, err)
+	}
+}
+
+func assertTrue(t *testing.T, success bool, message string) {
+	if !success {
+		t.Fatalf("%s", message)
+	}
 }

@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package rest
 
 import (
 	"encoding/json"
@@ -20,6 +20,11 @@ import (
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
+	
+	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/basecouch/channels"
+	"github.com/couchbaselabs/basecouch/db"
 )
 
 const VersionString = "BaseCouch/0.2"
@@ -29,8 +34,8 @@ const VersionString = "BaseCouch/0.2"
 type context struct {
 	bucket        *couchbase.Bucket
 	dbName        string
-	channelMapper *ChannelMapper
-	auth          *Authenticator
+	channelMapper *channels.ChannelMapper
+	auth          *auth.Authenticator
 	serverURL	  string
 }
 
@@ -48,7 +53,7 @@ func (h *handler) handleGetDoc(docid string) error {
 			var revids []string
 			err := json.Unmarshal([]byte(atts), &revids)
 			if err != nil {
-				return &HTTPError{http.StatusBadRequest, "bad atts_since"}
+				return &base.HTTPError{http.StatusBadRequest, "bad atts_since"}
 			}
 		} else {
 			attachmentsSince = []string{}
@@ -70,19 +75,19 @@ func (h *handler) handleGetDoc(docid string) error {
 			h.writeJSON(value)
 		} else {
 			return h.writeMultipart(func(writer *multipart.Writer) error {
-				h.db.writeMultipartDocument(value, writer)
+				h.db.WriteMultipartDocument(value, writer)
 				return nil
 			})
 		}
 
 	} else if openRevs == "all" {
-		return &HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
+		return &base.HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
 
 	} else {
 		var revids []string
 		err := json.Unmarshal([]byte(openRevs), &revids)
 		if err != nil {
-			return &HTTPError{http.StatusBadRequest, "bad open_revs"}
+			return &base.HTTPError{http.StatusBadRequest, "bad open_revs"}
 		}
 
 		err = h.writeMultipart(func(writer *multipart.Writer) error {
@@ -90,7 +95,7 @@ func (h *handler) handleGetDoc(docid string) error {
 				contentType := "application/json"
 				value, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 				if err != nil {
-					value = Body{"missing": revid} //TODO: More specific error
+					value = db.Body{"missing": revid} //TODO: More specific error
 					contentType += `; error="true"`
 				}
 				jsonOut, _ := json.Marshal(value)
@@ -123,9 +128,9 @@ func (h *handler) handlePutDoc(docid string) error {
 		h.setHeader("Etag", newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
-		revisions := parseRevisions(body)
+		revisions := db.ParseRevisions(body)
 		if revisions == nil {
-			return &HTTPError{http.StatusBadRequest, "Bad _revisions"}
+			return &base.HTTPError{http.StatusBadRequest, "Bad _revisions"}
 		}
 		err = h.db.PutExistingRev(docid, body, revisions)
 		if err != nil {
@@ -133,7 +138,7 @@ func (h *handler) handlePutDoc(docid string) error {
 		}
 		newRev = body["_rev"].(string)
 	}
-	h.writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": newRev})
+	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
 
@@ -149,7 +154,7 @@ func (h *handler) handlePostDoc() error {
 	}
 	h.setHeader("Location", docid)
 	h.setHeader("Etag", newRev)
-	h.writeJSON(Body{"ok": true, "id": docid, "rev": newRev})
+	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
 
@@ -158,7 +163,7 @@ func (h *handler) handleDeleteDoc(docid string) error {
 	revid := h.getQuery("rev")
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
-		h.writeJSON(Body{"ok": true, "id": docid, "rev": newRev})
+		h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
 	}
 	return err
 }
@@ -168,7 +173,7 @@ func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
 	includeRevs := h.getBoolQuery("revs")
-	var ids []IDAndRev
+	var ids []db.IDAndRev
 	var err error
 
 	// Get the doc IDs:
@@ -178,7 +183,7 @@ func (h *handler) handleAllDocs() error {
 		input, err := h.readJSON()
 		if err == nil {
 			keys, ok := input["keys"].([]interface{})
-			ids = make([]IDAndRev, len(keys))
+			ids = make([]db.IDAndRev, len(keys))
 			for i := 0; i < len(keys); i++ {
 				ids[i].DocID, ok = keys[i].(string)
 				if !ok {
@@ -186,7 +191,7 @@ func (h *handler) handleAllDocs() error {
 				}
 			}
 			if !ok {
-				err = &HTTPError{http.StatusBadRequest, "Bad/missing keys"}
+				err = &base.HTTPError{http.StatusBadRequest, "Bad/missing keys"}
 			}
 		}
 	}
@@ -198,7 +203,7 @@ func (h *handler) handleAllDocs() error {
 		ID    string            `json:"id"`
 		Key   string            `json:"key"`
 		Value map[string]string `json:"value"`
-		Doc   Body              `json:"doc,omitempty"`
+		Doc   db.Body              `json:"doc,omitempty"`
 	}
 	type viewResult struct {
 		TotalRows int       `json:"total_rows"`
@@ -239,7 +244,7 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
-	result := make([]Body, 0, 5)
+	result := make([]db.Body, 0, 5)
 	for _, item := range body["docs"].([]interface{}) {
 		doc := item.(map[string]interface{})
 		docid, _ := doc["id"].(string)
@@ -249,7 +254,7 @@ func (h *handler) handleBulkGet() error {
 			revid, revok = doc["rev"].(string)
 		}
 		if docid == "" || !revok {
-			return &HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
+			return &base.HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
 		}
 
 		var attsSince []string = nil
@@ -266,7 +271,7 @@ func (h *handler) handleBulkGet() error {
 					}
 				}
 				if !ok {
-					return &HTTPError{http.StatusBadRequest, "Invalid atts_since"}
+					return &base.HTTPError{http.StatusBadRequest, "Invalid atts_since"}
 				}
 			} else {
 				attsSince = []string{}
@@ -275,8 +280,8 @@ func (h *handler) handleBulkGet() error {
 
 		body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
 		if err != nil {
-			status, msg := ErrorAsHTTPStatus(err)
-			body = Body{"id": docid, "error": msg, "status": status}
+			status, msg := base.ErrorAsHTTPStatus(err)
+			body = db.Body{"id": docid, "error": msg, "status": status}
 			if revid != "" {
 				body["rev"] = revid
 			}
@@ -299,7 +304,7 @@ func (h *handler) handleBulkDocs() error {
 		newEdits = true
 	}
 
-	result := make([]Body, 0, 5)
+	result := make([]db.Body, 0, 5)
 	for _, item := range body["docs"].([]interface{}) {
 		doc := item.(map[string]interface{})
 		docid, _ := doc["_id"].(string)
@@ -312,21 +317,21 @@ func (h *handler) handleBulkDocs() error {
 				docid, revid, err = h.db.Post(doc)
 			}
 		} else {
-			revisions := parseRevisions(doc)
+			revisions := db.ParseRevisions(doc)
 			if revisions == nil {
-				err = &HTTPError{http.StatusBadRequest, "Bad _revisions"}
+				err = &base.HTTPError{http.StatusBadRequest, "Bad _revisions"}
 			} else {
 				revid = revisions[0]
 				err = h.db.PutExistingRev(docid, doc, revisions)
 			}
 		}
 
-		status := Body{}
+		status := db.Body{}
 		if docid != "" {
 			status["id"] = docid
 		}
 		if err != nil {
-			_, msg := ErrorAsHTTPStatus(err)
+			_, msg := base.ErrorAsHTTPStatus(err)
 			status["error"] = msg
 			err = nil // wrote it to output already; not going to return it
 		} else {
@@ -341,7 +346,7 @@ func (h *handler) handleBulkDocs() error {
 
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
-	var options ChangesOptions
+	var options db.ChangesOptions
 	options.Since = h.getIntQuery("since", 0)
 	options.Limit = int(h.getIntQuery("limit", 0))
 	options.Conflicts = (h.getQuery("style") == "all_docs")
@@ -349,34 +354,34 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	channels := h.db.user.Channels
+	userChannels := h.user.Channels
 	filter := h.getQuery("filter")
 	if filter != "" {
 		if filter != "basecouch/bychannel" {
-			return &HTTPError{http.StatusBadRequest, "Unknown filter; try basecouch/bychannel"}
+			return &base.HTTPError{http.StatusBadRequest, "Unknown filter; try basecouch/bychannel"}
 		}
-		channels = SimplifyChannels(strings.Split(h.getQuery("channels"), ","), true)
+		userChannels = channels.SimplifyChannels(strings.Split(h.getQuery("channels"), ","), true)
 	}
 
 	switch h.getQuery("feed") {
 	case "longpoll":
 		options.Wait = true
 	case "continuous":
-		return h.handleContinuousChanges(channels, options)
+		return h.handleContinuousChanges(userChannels, options)
 	}
 
-	changes, err := h.db.GetChanges(channels, options)
+	changes, err := h.db.GetChanges(userChannels, options)
 	var lastSeq uint64
 	if err == nil {
 		lastSeq, err = h.db.LastSequence()
 	}
 	if err == nil {
-		h.writeJSON(Body{"results": changes, "last_seq": lastSeq})
+		h.writeJSON(db.Body{"results": changes, "last_seq": lastSeq})
 	}
 	return err
 }
 
-func (h *handler) handleContinuousChanges(channels []string, options ChangesOptions) error {
+func (h *handler) handleContinuousChanges(channels []string, options db.ChangesOptions) error {
 	var timeout <-chan time.Time
 	var heartbeat <-chan time.Time
 	if ms := h.getIntQuery("heartbeat", 0); ms > 0 {
@@ -390,7 +395,7 @@ func (h *handler) handleContinuousChanges(channels []string, options ChangesOpti
 	}
 
 	options.Wait = true // we want the feed channel to wait for changes
-	var feed <-chan *ChangeEntry
+	var feed <-chan *db.ChangeEntry
 	var err error
 loop:
 	for {
@@ -443,12 +448,12 @@ func (h *handler) handleGetAttachment(docid, attachmentName string) error {
 	if body == nil {
 		return kNotFoundError
 	}
-	meta, ok := bodyAttachments(body)[attachmentName].(map[string]interface{})
+	meta, ok := db.BodyAttachments(body)[attachmentName].(map[string]interface{})
 	if !ok {
-		return &HTTPError{http.StatusNotFound, "missing " + attachmentName}
+		return &base.HTTPError{http.StatusNotFound, "missing " + attachmentName}
 	}
 	digest := meta["digest"].(string)
-	data, err := h.db.getAttachment(AttachmentKey(digest))
+	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
 	if err != nil {
 		return err
 	}
@@ -465,8 +470,8 @@ func (h *handler) handleGetAttachment(docid, attachmentName string) error {
 }
 
 func (h *handler) handleRevsDiff() error {
-	var input RevsDiffInput
-	err := readJSONInto(h.rq.Header, h.rq.Body, &input)
+	var input db.RevsDiffInput
+	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &input)
 	if err != nil {
 		return err
 	}
@@ -497,7 +502,7 @@ func (h *handler) handlePutLocalDoc(docid string) error {
 		var revid string
 		revid, err = h.db.PutLocal(docid, body)
 		if err == nil {
-			h.writeJSONStatus(http.StatusCreated, Body{"ok": true, "id": docid, "rev": revid})
+			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": revid})
 		}
 	}
 	return err
@@ -527,7 +532,7 @@ func (h *handler) handle(path []string) error {
 		switch method {
 		case "GET":
 			lastSeq, _ := h.db.LastSequence()
-			response := Body{
+			response := db.Body{
 				"db_name":    h.db.Name,
 				"doc_count":  h.db.DocCount(),
 				"update_seq": lastSeq,
@@ -565,14 +570,14 @@ func (h *handler) handle(path []string) error {
 		case "_ensure_full_commit":
 			if method == "POST" {
 				// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-				h.writeJSONStatus(http.StatusCreated, Body{"ok": true})
+				h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true})
 				return nil
 			}
 		case "_design/basecouch":
 			// we serve this content here so that CouchDB 1.2 has something to
 			// hash into the replication-id, to correspond to our filter.
 			if method == "GET" {
-				h.writeJSON(Body{"filters": Body{"bychannel": "ok"}})
+				h.writeJSON(db.Body{"filters": db.Body{"bychannel": "ok"}})
 				return nil
 			}
 		default:
@@ -650,15 +655,15 @@ type ReplicateInput struct {
 }
 
 func (h *handler) handleVacuum() error {
-	revsDeleted, err := VacuumRevisions(h.context.bucket)
+	revsDeleted, err := db.VacuumRevisions(h.context.bucket)
 	if err != nil {
 		return err
 	}
-	attsDeleted, err := VacuumAttachments(h.context.bucket)
+	attsDeleted, err := db.VacuumAttachments(h.context.bucket)
 	if err != nil {
 		return err
 	}
-	h.writeJSON(Body{"revs": revsDeleted, "atts": attsDeleted})
+	h.writeJSON(db.Body{"revs": revsDeleted, "atts": attsDeleted})
 	return nil
 }
 
@@ -679,7 +684,7 @@ func (h *handler) checkAuth() error {
 	h.user = h.context.auth.AuthenticateUser(userName, password)
 	if h.user == nil || h.user.Channels == nil {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
-		return &HTTPError{http.StatusUnauthorized, "Invalid login"}
+		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
 	return nil
 }
@@ -723,21 +728,19 @@ func (h *handler) run() {
 	} else if h.rq.Method == "PUT" && len(path) == 1 {
 		// Create a database:
 		if path[0] == h.context.dbName {
-			err = &HTTPError{http.StatusConflict, "already exists"}
+			err = &base.HTTPError{http.StatusConflict, "already exists"}
 		} else {
-			err = &HTTPError{http.StatusForbidden, "can't create any databases"}
+			err = &base.HTTPError{http.StatusForbidden, "can't create any databases"}
 		}
 	} else {
 		// Handle a request aimed at a database:
 		if path[0] == h.context.dbName {
-			h.db, err = GetDatabase(h.context.bucket, path[0])
+			h.db, err = db.GetDatabase(h.context.bucket, path[0], h.context.channelMapper, h.user)
 			if err == nil {
-				h.db.channelMapper = h.context.channelMapper
-				h.db.user = h.user
 				err = h.handle(path[1:])
 			}
 		} else {
-			err = &HTTPError{http.StatusNotFound, "no such database"}
+			err = &base.HTTPError{http.StatusNotFound, "no such database"}
 		}
 	}
 	h.writeError(err)
@@ -749,11 +752,11 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 		dbName = bucket.Name
 	}
 
-	db, _ := GetDatabase(bucket, dbName)
-	channelMapper, err := db.LoadChannelMapper()
+	newdb, _ := db.GetDatabase(bucket, dbName, nil, nil)
+	channelMapper, err := newdb.LoadChannelMapper()
 	if err != nil {
 		log.Printf("Warning: Couldn't load channelmap fn: %s", err)
-		channelMapper, err = NewChannelMapper("")
+		channelMapper, err = channels.NewChannelMapper("")
 		if err != nil {
 			log.Printf("Warning: Couldn't load channelmap fn: %s", err)
 		}
@@ -765,7 +768,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 		bucket:        bucket,
 		dbName:        dbName,
 		channelMapper: channelMapper,
-		auth:          NewAuthenticator(bucket),
+		auth:          auth.NewAuthenticator(bucket),
 		serverURL:     serverURL,
 	}
 	http.Handle("/", NewRESTHandler(c))
@@ -785,7 +788,7 @@ func ServerMain() {
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	flag.Parse()
 
-	bucket, err := ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
+	bucket, err := db.ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
 	if err != nil {
 		log.Fatalf("Error getting bucket '%s':  %v\n", *bucketName, err)
 	}

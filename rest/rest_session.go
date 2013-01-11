@@ -7,11 +7,15 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package rest
 
 import (
 	"net/http"
 	"time"
+
+	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/basecouch/db"
 )
 
 const kDefaultSessionTTL = 24 * time.Hour
@@ -34,11 +38,11 @@ func (h *handler) handleSessionPOST() error {
 		Name string			`json:"name"`
 		Password string		`json:"password"`
 	}
-	err := readJSONInto(h.rq.Header, h.rq.Body, &params)
+	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
 	if err != nil {
 		return err
 	}
-	var user *User
+	var user *auth.User
 	user, err = h.context.auth.GetUser(params.Name)
 	if err != nil {
 		return err
@@ -49,9 +53,9 @@ func (h *handler) handleSessionPOST() error {
 	return h.makeSession(user)
 }
 
-func (h *handler) makeSession(user *User) error {
+func (h *handler) makeSession(user *auth.User) error {
 	if user == nil {
-		return &HTTPError{http.StatusUnauthorized, "Invalid login"}
+		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
 	auth := h.context.auth
 	session := auth.CreateSession(user.Name, kDefaultSessionTTL)

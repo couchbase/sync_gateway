@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"bytes"
@@ -20,27 +20,20 @@ import (
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
-	"github.com/dustin/gomemcached"
+	
+	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/basecouch/channels"
 )
 
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
-
-// Simple error implementation wrapping an HTTP response status.
-type HTTPError struct {
-	Status  int
-	Message string
-}
-
-func (err *HTTPError) Error() string {
-	return err.Message
-}
 
 // Represents a simulated CouchDB database.
 type Database struct {
 	Name          string
 	bucket        *couchbase.Bucket
-	channelMapper *ChannelMapper
-	user          *User
+	channelMapper *channels.ChannelMapper
+	user          *auth.User
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
@@ -55,8 +48,8 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 }
 
 // Makes a Database object given its name and bucket.
-func GetDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-	return &Database{bucket: bucket, Name: name}, nil
+func GetDatabase(bucket *couchbase.Bucket, name string, channelMapper *channels.ChannelMapper, user *auth.User) (*Database, error) {
+	return &Database{bucket: bucket, Name: name, channelMapper: channelMapper, user: user}, nil
 }
 
 func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
@@ -68,10 +61,10 @@ func (db *Database) SameAs(otherdb *Database) bool {
 		db.bucket == otherdb.bucket
 }
 
-func (db *Database) LoadChannelMapper() (*ChannelMapper, error) {
+func (db *Database) LoadChannelMapper() (*channels.ChannelMapper, error) {
 	body, err := db.Get("_design/channels")
 	if err != nil {
-		if status,_ := ErrorAsHTTPStatus(err); status == http.StatusNotFound {
+		if status,_ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
 			err = nil		// missing design document is not an error
 		}
 		return nil, err
@@ -81,7 +74,7 @@ func (db *Database) LoadChannelMapper() (*ChannelMapper, error) {
 		return nil, nil
 	}
 	log.Printf("Channel mapper = %s", src)
-	return NewChannelMapper(src)
+	return channels.NewChannelMapper(src)
 }
 
 //////// ALL DOCUMENTS:
@@ -214,7 +207,7 @@ func installViews(bucket *couchbase.Bucket) error {
 	response, err := http.DefaultClient.Do(rq)
 
 	if err == nil && response.StatusCode > 299 {
-		err = &HTTPError{Status: response.StatusCode, Message: response.Status}
+		err = &base.HTTPError{Status: response.StatusCode, Message: response.Status}
 	}
 	if err == nil {
 		log.Printf("Installed design doc <%s>", u)
@@ -265,7 +258,7 @@ func (db *Database) Delete() error {
 	//FIX: Is there a way to do this in one operation?
 	log.Printf("Deleting %d documents of %q ...", len(vres.Rows), db.Name)
 	for _, row := range vres.Rows {
-		if LogRequestsVerbose {
+		if base.Logging {
 			log.Printf("\tDeleting %q", row.ID)
 		}
 		if err := db.bucket.Delete(row.ID); err != nil {
@@ -295,7 +288,7 @@ func vacIt(bucket *couchbase.Bucket, docid string) int {
 		log.Printf("\tError vacuuming %q: %v", docid, err)
 		return 0
 	}
-	if LogRequestsVerbose {
+	if base.Logging {
 		log.Printf("\tVacuumed %q", docid)
 	}
 	return 1
@@ -346,39 +339,4 @@ func (db *Database) UpdateAllDocChannels() error {
 		}
 	}
 	return nil
-}
-
-//////// UTILITIES:
-
-// Attempts to map an error to an HTTP status code and message.
-// Defaults to 500 if it doesn't recognize the error. Returns 200 for a nil error.
-func ErrorAsHTTPStatus(err error) (int, string) {
-	if err == nil {
-		return 200, "OK"
-	}
-	switch err := err.(type) {
-	case *HTTPError:
-		return err.Status, err.Message
-	case *gomemcached.MCResponse:
-		switch err.Status {
-		case gomemcached.KEY_ENOENT:
-			return http.StatusNotFound, "missing"
-		case gomemcached.KEY_EEXISTS:
-			return http.StatusConflict, "Conflict"
-		case gomemcached.E2BIG:
-			return http.StatusRequestEntityTooLarge, "Too Large"
-		default:
-			return http.StatusBadGateway, fmt.Sprintf("MC status %d", err.Status)
-		}
-	default:
-		log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)
-		return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
-	}
-	panic("unreachable")
-}
-
-// Returns true if an error is a Couchbase doc-not-found error
-func IsDocNotFoundError(err error) bool {
-	mcresponse, ok := err.(gomemcached.MCResponse)
-	return ok && mcresponse.Status == gomemcached.KEY_ENOENT
 }

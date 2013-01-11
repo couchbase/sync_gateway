@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package basecouch
+package db
 
 import (
 	"encoding/json"
@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	"github.com/sdegutis/go.assert"
+
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 func unjson(j string) Body {
@@ -37,7 +39,7 @@ func TestAttachments(t *testing.T) {
 	assertNoError(t, err, "Couldn't create database 'db'")
 	defer func() {
 		err = db.Delete()
-		status, _ := ErrorAsHTTPStatus(err)
+		status, _ := base.ErrorAsHTTPStatus(err)
 		if status != 200 && status != 404 {
 			assertNoError(t, err, "Couldn't delete database 'db'")
 		}
