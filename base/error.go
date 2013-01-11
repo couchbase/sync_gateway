@@ -59,7 +59,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 
 // Returns true if an error is a Couchbase doc-not-found error
 func IsDocNotFoundError(err error) bool {
-	mcresponse, ok := err.(gomemcached.MCResponse)
+	mcresponse, ok := err.(*gomemcached.MCResponse)
 	return ok && mcresponse.Status == gomemcached.KEY_ENOENT
 }
 
