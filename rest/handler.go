@@ -94,21 +94,25 @@ func (h *handler) invoke(method handlerMethod) error {
 }
 
 func (h *handler) checkAuth() error {
+	h.user = nil
 	if h.context.auth == nil {
 		return nil
 	}
 	userName, password := h.getBasicAuth()
-	
-	if userName == "" {
+	if userName != "" {
+		h.user = h.context.auth.AuthenticateUser(userName, password)
+	}
+	if h.user == nil {
 		var err error
 		h.user, err = h.context.auth.AuthenticateCookie(h.rq)
-		if h.user != nil || err != nil {
+		if err != nil {
 			return err
 		}
 	}
 	
-	h.user = h.context.auth.AuthenticateUser(userName, password)
 	if h.user == nil || h.user.Channels == nil {
+		cookie,_ := h.rq.Cookie(auth.CookieName)
+		log.Printf("Auth failed for username=%q, cookie=%q", userName, cookie)
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}

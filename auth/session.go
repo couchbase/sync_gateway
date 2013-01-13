@@ -40,7 +40,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
 		found = false
 	}
 	if !found {
-		return nil, &base.HTTPError{http.StatusUnauthorized, "Invalid session cookie"}
+		return nil, nil
 	}
 	return auth.GetUser(session.username)
 }
