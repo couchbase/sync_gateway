@@ -37,6 +37,7 @@ var LogRequestsVerbose bool = false
 
 var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
 var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
+var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request"}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -69,7 +70,8 @@ func (h *handler) invoke(method handlerMethod) error {
 	h.setHeader("Server", VersionString)
 	
 	// Authenticate all paths other than "/_session":
-	if h.rq.URL.Path != "/_session" {
+	path := h.rq.URL.Path
+	if path != "/_session" && path != "/_browserid" {
 		if err := h.checkAuth(); err != nil {
 			return err
 		}

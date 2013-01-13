@@ -646,6 +646,7 @@ func createHandler(c *context) http.Handler {
 	r.Handle("/_all_dbs", makeHandler(c, (*handler).handleAllDbs)).Methods("GET")
 	r.Handle("/_session", makeHandler(c, (*handler).handleSessionGET)).Methods("GET")
 	r.Handle("/_session", makeHandler(c, (*handler).handleSessionPOST)).Methods("POST")
+	r.Handle("/_browserid",makeHandler(c, (*handler).handleBrowserIDPOST)).Methods("POST")
 	r.Handle("/_vacuum",  makeHandler(c, (*handler).handleVacuum)).Methods("GET")
 	
 	// Operations on databases:

@@ -17,48 +17,51 @@ import (
 	"time"
 	
 	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 // Handles PUT or POST to /username
-func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) int {
+func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
 	body, _ := ioutil.ReadAll(rq.Body)
 	var user auth.User
 	err := json.Unmarshal(body, &user)
-	if err != nil || user.Channels == nil {
-		return http.StatusBadRequest
+	if err != nil {
+		return err
+	}
+	if user.Channels == nil {
+		return &base.HTTPError{http.StatusBadRequest, "Missing channels property"}
 	}
 
 	if rq.Method == "POST" {
 		username = user.Name
 		if username == "" {
-			return http.StatusBadRequest
+			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
 		}
 	} else if user.Name == "" {
 		user.Name = username
 	} else if user.Name != username {
-		return http.StatusBadRequest
+		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
-
-	err = a.SaveUser(&user)
-	if err != nil {
-		return http.StatusBadRequest
-	}
-	return http.StatusOK
+	log.Printf("SaveUser: %v", user)//TEMP
+	return a.SaveUser(&user)
 }
 
 // Generates a login session for a user and returns the session ID and cookie name.
-func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *auth.Authenticator) int {
+func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *auth.Authenticator) error {
 	body, err := ioutil.ReadAll(rq.Body)
 	if err != nil {
-		return http.StatusBadRequest
+		return err
 	}
 	var params struct {
 		Name string			`json:"name"`
 		TTL time.Duration	`json:"ttl"`
 	}
 	err = json.Unmarshal(body, &params)
-	if err != nil || params.Name == "" || params.TTL < 0 {
-		return http.StatusBadRequest
+	if err != nil {
+		return err
+	}
+	if params.Name == "" || params.TTL < 0 {
+		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
 	}
 	session := authenticator.CreateSession(params.Name, params.TTL)
 	var response struct {
@@ -72,7 +75,7 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	bytes, _ := json.Marshal(response)
 	r.Header().Set("Content-Type", "application/json")
 	r.Write(bytes)
-	return 0 // already wrote status
+	return nil
 }
 
 // Starts a simple REST listener that will get and set user credentials.
@@ -81,22 +84,22 @@ func StartAuthListener(addr string, auth *auth.Authenticator) {
 		username := rq.URL.Path[1:]
 		method := rq.Method
 		log.Printf("AUTH: %s %q", method, username)
-		status := http.StatusOK
+		var err error
 		if rq.URL.Path == "/" {
 			// Root URL: Supports POSTing user info
 			switch method {
 			case "POST":
-				status = putUser(r, rq, auth, "")
+				err = putUser(r, rq, auth, "")
 			default:
-				status = http.StatusMethodNotAllowed
+				err = kBadMethodError
 			}
 		} else if username == "_session" {
 			// /_session: Generate login session for user
 			switch method {
 			case "POST":
-				status = createUserSession(r, rq, auth)
+				err = createUserSession(r, rq, auth)
 			default:
-				status = http.StatusMethodNotAllowed
+				err = kBadMethodError
 			}
 		} else {
 			// Otherwise: Interpret path as username.
@@ -107,24 +110,29 @@ func StartAuthListener(addr string, auth *auth.Authenticator) {
 			case "GET":
 				user, _ := auth.GetUser(username)
 				if user == nil {
-					status = http.StatusNotFound
+					err = kNotFoundError
 					break
 				}
 				bytes, _ := json.Marshal(user)
 				r.Write(bytes)
 			case "PUT":
-				status = putUser(r, rq, auth, username)
+				err = putUser(r, rq, auth, username)
 			case "DELETE":
 				user, _ := auth.GetUser(username)
 				if user == nil || auth.DeleteUser(user) != nil {
-					status = http.StatusNotFound
+					err = kNotFoundError
 				}
 			default:
-				status = http.StatusMethodNotAllowed
+				err = kBadMethodError
 			}
 		}
-		if status > 0 {
+		if err != nil {
+			status, message := base.ErrorAsHTTPStatus(err)
 			r.WriteHeader(status)
+			r.Header().Set("Content-Type", "application/json")
+			r.WriteHeader(status)
+			jsonOut, _ := json.Marshal(map[string]interface{}{"error": status, "reason": message})
+			r.Write(jsonOut)
 		}
 	}
 	go http.ListenAndServe(addr, http.HandlerFunc(handler))

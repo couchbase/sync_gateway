@@ -81,7 +81,7 @@ func (h *handler) handleBrowserIDPOST() error {
 		return err
 	}
 	
-	// Verified. Look up the user and make a login session for her:
+	// Email is verified. Look up the user and make a login session for her:
 	auth := h.context.auth
 	user, err := auth.GetUserByEmail(verifiedInfo.Email)
 	if err != nil {

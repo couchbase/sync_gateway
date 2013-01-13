@@ -24,6 +24,7 @@ import (
 type User struct {
 	Name         string                     `json:"name,omitempty"`
 	Email        string                     `json:"email,omitempty"`
+	Disabled	 bool						`json:"disabled,omitempty"`
 	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
 	Channels     []string                   `json:"channels"`
 
@@ -68,14 +69,15 @@ func (user *User) Validate() error {
 func (user *User) Authenticate(password string) bool {
 	if user == nil {
 		return false
-	} else if user.PasswordHash == nil {
+	}
+	if user.PasswordHash == nil {
 		if password != "" {
 			return false
 		}
 	} else if !user.PasswordHash.EqualToPassword(password) {
 		return false
 	}
-	return true
+	return !user.Disabled
 }
 
 // Changes a user's password to the given string.
