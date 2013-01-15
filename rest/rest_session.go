@@ -20,16 +20,31 @@ import (
 
 const kDefaultSessionTTL = 24 * time.Hour
 
+// Respond with a JSON struct containing info about the current login session
+func (h *handler) respondWithSessionInfo() error {
+	var name *string
+	channels := []string{}
+	if h.user != nil {
+		if h.user.Name != "" {
+			name = &h.user.Name
+		}
+		channels = h.user.Channels
+	}
+	// Return a JSON struct similar to what CouchDB returns:
+	userCtx := db.Body{"name": name, "channels": channels}
+	handlers := []string{"default", "cookie"}
+	if h.BrowserIDEnabled() {
+		handlers = append(handlers, "browserid")
+	}
+	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
+	h.writeJSON(response)
+	return nil
+}
+
 // GET /_session returns info about the current user
 func (h *handler) handleSessionGET() error {
-	if err := h.checkAuth(); err != nil {
-		return err
-	}
-	userCopy := *h.user
-	userCopy.Password = nil
-	userCopy.PasswordHash = nil
-	h.writeJSON(userCopy)
-	return nil
+	h.checkAuth() // ignore result; this URL is always accessible
+	return h.respondWithSessionInfo()
 }
 
 // POST /_session creates a login session and sets its cookie
@@ -57,8 +72,9 @@ func (h *handler) makeSession(user *auth.User) error {
 	if user == nil {
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
+	h.user = user
 	auth := h.context.auth
 	session := auth.CreateSession(user.Name, kDefaultSessionTTL)
 	http.SetCookie(h.response, auth.MakeSessionCookie(session))
-	return nil
+	return h.respondWithSessionInfo()
 }

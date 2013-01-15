@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	
@@ -61,6 +62,10 @@ func VerifyBrowserID(assertion string, audience string) (*BrowserIDResponse, err
 	return &response, nil
 }
 
+func (h *handler) BrowserIDEnabled() bool {
+	return h.context.serverURL != ""
+}
+
 // POST /_browserid creates a browserID-based login session and sets its cookie.
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
 func (h *handler) handleBrowserIDPOST() error {
@@ -76,10 +81,13 @@ func (h *handler) handleBrowserIDPOST() error {
 	}
 	
 	// OK, now verify it:
+	log.Printf("BrowserID: Verifying assertion %q for %q", params.Assertion, h.context.serverURL)
 	verifiedInfo, err := VerifyBrowserID(params.Assertion, h.context.serverURL)
 	if err != nil {
+		log.Printf("BrowserID: Failed verify: %v", err)
 		return err
 	}
+	log.Printf("BrowserID: Logged in %q!", verifiedInfo.Email)
 	
 	// Email is verified. Look up the user and make a login session for her:
 	auth := h.context.auth
