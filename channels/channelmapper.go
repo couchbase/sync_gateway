@@ -10,20 +10,16 @@
 package channels
 
 import (
-	"errors"
-	"fmt"
 	"strconv"
 
 	"github.com/robertkrimen/otto"
+
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 type ChannelMapper struct {
-	js       *otto.Otto
-	fn       otto.Value
-	fnSource string
+	js		*base.JSServer
 	channels []string
-
-	requests chan channelMapperRequest
 }
 
 // Converts a JS array into a Go string array.
@@ -49,10 +45,14 @@ func ottoArrayToStrings(array *otto.Object) []string {
 
 func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper := &ChannelMapper{}
-	mapper.js = otto.New()
+	var err error
+	mapper.js, err = base.NewJSServer(funcSource)
+	if err != nil {
+		return nil, err
+	}
 
 	// Implementation of the 'sync()' callback:
-	mapper.js.Set("sync", func(call otto.FunctionCall) otto.Value {
+	mapper.js.DefineNativeFunction("sync", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
 			if arg.IsString() {
 				mapper.channels = append(mapper.channels, arg.String())
@@ -65,103 +65,36 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		}
 		return otto.UndefinedValue()
 	})
-
-	if _, err := mapper.setFunction(funcSource); err != nil {
-		return nil, err
+	
+	mapper.js.Before = func() {
+		mapper.channels = []string{}
 	}
-
-	mapper.requests = make(chan channelMapperRequest)
-	go mapper.serve()
-
+	mapper.js.After = func(result otto.Value, err error) (interface{}, error) {
+		channels := mapper.channels
+		mapper.channels = nil
+		return channels, err
+	}
 	return mapper, nil
 }
 
-// Invokes the mapper. Private; not thread-safe!
-func (mapper *ChannelMapper) callMapper(input string) ([]string, error) {
-	inputJS, err := mapper.js.Object(fmt.Sprintf("doc = %s", input))
-	if err != nil {
-		return nil, fmt.Errorf("Unparseable input %q: %s", input, err)
-	}
-	mapper.channels = []string{}
-	_, err = mapper.fn.Call(mapper.fn, inputJS)
-	if err != nil {
-		return nil, err
-	}
-	channels := SimplifyChannels(mapper.channels, false)
-	mapper.channels = nil
-	return channels, nil
+// This is just for testing
+func (mapper *ChannelMapper) callMapper(input string) (interface{}, error) {
+	return mapper.js.DirectCallFunction([]string{input})
 }
 
-func (mapper *ChannelMapper) setFunction(funcSource string) (bool, error) {
-	if funcSource == mapper.fnSource {
-		return false, nil // no-op
-	}
-	fnobj, err := mapper.js.Object("(" + funcSource + ")")
-	if err != nil {
-		return false, err
-	}
-	if fnobj.Class() != "Function" {
-		return false, errors.New("JavaScript source does not evaluate to a function")
-	}
-	mapper.fnSource = funcSource
-	mapper.fn = fnobj.Value()
-	return true, nil
-}
-
-//////// MAPPER SERVER:
-
-const (
-	kMap = iota
-	kSetFunction
-)
-
-type channelMapperRequest struct {
-	mode          int
-	input         string
-	returnAddress chan<- channelMapperResponse
-}
-
-type channelMapperResponse struct {
-	channels []string
-	err      error
-}
-
-func (mapper *ChannelMapper) serve() {
-	for request := range mapper.requests {
-		var response channelMapperResponse
-		switch request.mode {
-		case kMap:
-			response.channels, response.err = mapper.callMapper(request.input)
-		case kSetFunction:
-			var changed bool
-			changed, response.err = mapper.setFunction(request.input)
-			if changed {
-				response.channels = []string{}
-			}
-		}
-		request.returnAddress <- response
-	}
-}
-
-func (mapper *ChannelMapper) request(mode int, input string) channelMapperResponse {
-	responseChan := make(chan channelMapperResponse, 1)
-	mapper.requests <- channelMapperRequest{mode, input, responseChan}
-	return <-responseChan
-}
-
-// Public thread-safe entry point for doing mapping.
 func (mapper *ChannelMapper) MapToChannels(input string) ([]string, error) {
-	response := mapper.request(kMap, input)
-	return response.channels, response.err
+	result, err := mapper.js.CallFunction([]string{input})
+	channels := result.([]string)
+	if channels == nil {
+		channels = SimplifyChannels(channels, false)
+	}
+	return channels, err
 }
 
-// Public thread-safe entry point for doing mapping.
 func (mapper *ChannelMapper) SetFunction(fnSource string) (bool, error) {
-	response := mapper.request(kSetFunction, fnSource)
-	return (response.channels != nil), response.err
+	return mapper.js.SetFunction(fnSource)
 }
 
 func (mapper *ChannelMapper) Stop() {
-	close(mapper.requests)
-	mapper.requests = nil
+	mapper.js.Stop()
 }
