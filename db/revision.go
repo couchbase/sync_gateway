@@ -23,6 +23,11 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+func (db *Database) getRevisionJSON(docid, revid string, key RevKey) (string, error) {
+	body, err := db.Bucket.GetRaw(revKeyToString(key))
+	return string(body), err
+}
+
 func (db *Database) getRevision(docid, revid string, key RevKey) (Body, error) {
 	var body Body
 	err := db.Bucket.Get(revKeyToString(key), &body)

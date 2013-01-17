@@ -192,6 +192,9 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
+		if err := db.validateDoc(doc, body, matchRev); err != nil {
+			return nil, err
+		}
 		doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
 		return body, nil
 	})
@@ -221,6 +224,8 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		if currentRevIndex == 0 {
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
+		
+		//FIX: Should call validateDoc? What if the parent rev doesn't exist locally?
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
@@ -238,6 +243,28 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		return body, nil
 	})
+	return err
+}
+
+func (db *Database) validateDoc(doc *document, newRev Body, oldRevID string) error {
+	if db.Validator == nil {//TEMP: Move to top of fn
+		return nil
+	}
+	newRev["_id"] = doc.ID
+	newJson,_ := json.Marshal(newRev)
+	oldJson := ""
+	if oldRevID != "" {
+		var err error
+		oldJson, err = db.getRevisionJSON(doc.ID, oldRevID, doc.History[oldRevID].Key)
+		if err != nil {
+			return err
+		}
+	}
+	status, msg, err := db.Validator.Validate(string(newJson), oldJson, db.user)
+	if err == nil && status >= 300 {
+		log.Printf("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
+		err = &base.HTTPError{status, msg}
+	}
 	return err
 }
 

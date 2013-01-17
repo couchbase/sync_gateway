@@ -78,10 +78,14 @@ func (server *JSServer) DefineNativeFunction(name string, function func(otto.Fun
 func (server *JSServer) DirectCallFunction(inputs []string) (interface{}, error) {
 	inputJS := make([]interface{}, len(inputs))
 	for i, inputStr := range inputs {
-		var err error
-		inputJS[i], err = server.js.Object("x = " + inputStr)
-		if err != nil {
-			return nil, fmt.Errorf("Unparseable input %q: %s", inputStr, err)
+		if inputStr == "" {
+			inputJS[i] = otto.NullValue()
+		} else {
+			var err error
+			inputJS[i], err = server.js.Object("x = " + inputStr)
+			if err != nil {
+				return nil, fmt.Errorf("Unparseable input %q: %s", inputStr, err)
+			}
 		}
 	}
 

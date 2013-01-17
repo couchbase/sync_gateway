@@ -32,12 +32,13 @@ type DatabaseContext struct {
 	Name          string
 	Bucket        *couchbase.Bucket
 	ChannelMapper *channels.ChannelMapper
+	Validator	  *Validator
 }
 
 // Represents a simulated CouchDB database.
 type Database struct {
 				*DatabaseContext
-	user          *auth.User
+	user		*auth.User
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
@@ -76,10 +77,19 @@ func (db *Database) ReadDesignDocument() error {
 	}
 	src, ok := body["channelmap"].(string)
 	if ok {
-	log.Printf("Channel mapper = %s", src)
+		log.Printf("Channel mapper = %s", src)
 		db.ChannelMapper, err = channels.NewChannelMapper(src)
 		if err != nil {
 			log.Printf("WARNING: Error loading channel mapper: %s", err)
+			return err
+		}
+	}
+	src, ok = body["validate_doc_update"].(string)
+	if ok {
+		log.Printf("Validator = %s", src)
+		db.Validator, err = NewValidator(src)
+		if err != nil {
+			log.Printf("WARNING: Error loading validator: %s", err)
 			return err
 		}
 	}
