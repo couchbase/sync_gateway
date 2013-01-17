@@ -28,11 +28,15 @@ import (
 
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
+type DatabaseContext struct {
+	Name          string
+	Bucket        *couchbase.Bucket
+	ChannelMapper *channels.ChannelMapper
+}
+
 // Represents a simulated CouchDB database.
 type Database struct {
-	Name          string
-	bucket        *couchbase.Bucket
-	channelMapper *channels.ChannelMapper
+				*DatabaseContext
 	user          *auth.User
 }
 
@@ -48,33 +52,38 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 }
 
 // Makes a Database object given its name and bucket.
-func GetDatabase(bucket *couchbase.Bucket, name string, channelMapper *channels.ChannelMapper, user *auth.User) (*Database, error) {
-	return &Database{bucket: bucket, Name: name, channelMapper: channelMapper, user: user}, nil
+func GetDatabase(context *DatabaseContext, user *auth.User) (*Database, error) {
+	return &Database{context, user}, nil
 }
 
-func CreateDatabase(bucket *couchbase.Bucket, name string) (*Database, error) {
-	return &Database{bucket: bucket, Name: name}, nil
+func CreateDatabase(context *DatabaseContext) (*Database, error) {
+	return &Database{context, nil}, nil
 }
 
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
-		db.bucket == otherdb.bucket
+		db.Bucket == otherdb.Bucket
 }
 
-func (db *Database) LoadChannelMapper() (*channels.ChannelMapper, error) {
+// Sets the database object's channelMapper and validator based on the JS code in _design/channels 
+func (db *Database) ReadDesignDocument() error {
 	body, err := db.Get("_design/channels")
 	if err != nil {
 		if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
 			err = nil // missing design document is not an error
 		}
-		return nil, err
+		return err
 	}
 	src, ok := body["channelmap"].(string)
-	if !ok {
-		return nil, nil
-	}
+	if ok {
 	log.Printf("Channel mapper = %s", src)
-	return channels.NewChannelMapper(src)
+		db.ChannelMapper, err = channels.NewChannelMapper(src)
+		if err != nil {
+			log.Printf("WARNING: Error loading channel mapper: %s", err)
+			return err
+		}
+	}
+	return nil
 }
 
 //////// ALL DOCUMENTS:
@@ -209,10 +218,8 @@ func installViews(bucket *couchbase.Bucket) error {
 	if err == nil && response.StatusCode > 299 {
 		err = &base.HTTPError{Status: response.StatusCode, Message: response.Status}
 	}
-	if err == nil {
-		log.Printf("Installed design doc <%s>", u)
-	} else {
-		log.Printf("WARNING: Error installing design doc: %v", err)
+	if err != nil {
+		log.Printf("WARNING: Error installing Couchbase design doc: %v", err)
 	}
 	return err
 }
@@ -239,7 +246,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 
 func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.bucket.View("basecouch", "all_docs", opts)
+	vres, err := db.Bucket.View("basecouch", "all_docs", opts)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
@@ -249,7 +256,7 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
 	opts := Body{"stale": false}
-	vres, err := db.bucket.View("basecouch", "all_bits", opts)
+	vres, err := db.Bucket.View("basecouch", "all_bits", opts)
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
 		return err
@@ -261,7 +268,7 @@ func (db *Database) Delete() error {
 		if base.Logging {
 			log.Printf("\tDeleting %q", row.ID)
 		}
-		if err := db.bucket.Delete(row.ID); err != nil {
+		if err := db.Bucket.Delete(row.ID); err != nil {
 			log.Printf("WARNING: Error deleting %q: %v", row.ID, err)
 		}
 	}
@@ -308,14 +315,14 @@ func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels() error {
 	log.Printf("Recomputing document channels...")
-	vres, err := db.bucket.View("basecouch", "all_docs", Body{"stale": false, "reduce": false})
+	vres, err := db.Bucket.View("basecouch", "all_docs", Body{"stale": false, "reduce": false})
 	if err != nil {
 		return err
 	}
 	for _, row := range vres.Rows {
 		docid := row.Key.(string)
 		key := db.realDocID(docid)
-		err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+		err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if currentValue == nil {
 				return nil, couchbase.UpdateCancel // someone deleted it?!

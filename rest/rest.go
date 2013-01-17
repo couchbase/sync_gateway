@@ -33,9 +33,7 @@ const VersionString = "BaseCouch/0.2"
 // Shared context of HTTP handlers. It's important that this remain immutable, because the
 // handlers will access it from multiple goroutines.
 type context struct {
-	bucket        *couchbase.Bucket
-	dbName        string
-	channelMapper *channels.ChannelMapper
+	dbcontext	  *db.DatabaseContext
 	auth          *auth.Authenticator
 	serverURL     string
 }
@@ -552,18 +550,18 @@ func (h *handler) handleRoot() error {
 
 func (h *handler) handleAllDbs() error {
 	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
-		h.writeJSON([]string{h.context.dbName})
+		h.writeJSON([]string{h.context.dbcontext.Name})
 		return nil
 	}
 	return kBadMethodError
 }
 
 func (h *handler) handleVacuum() error {
-	revsDeleted, err := db.VacuumRevisions(h.context.bucket)
+	revsDeleted, err := db.VacuumRevisions(h.context.dbcontext.Bucket)
 	if err != nil {
 		return err
 	}
-	attsDeleted, err := db.VacuumAttachments(h.context.bucket)
+	attsDeleted, err := db.VacuumAttachments(h.context.dbcontext.Bucket)
 	if err != nil {
 		return err
 	}
@@ -572,7 +570,7 @@ func (h *handler) handleVacuum() error {
 }
 
 func (h *handler) handleCreateDB() error {
-	if h.PathVars()["newdb"] == h.context.dbName {
+	if h.PathVars()["newdb"] == h.context.dbcontext.Name {
 		return &base.HTTPError{http.StatusConflict, "already exists"}
 	} else {
 		return &base.HTTPError{http.StatusForbidden, "can't create any databases"}
@@ -614,22 +612,19 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 		dbName = bucket.Name
 	}
 
-	newdb, _ := db.GetDatabase(bucket, dbName, nil, nil)
-	channelMapper, err := newdb.LoadChannelMapper()
-	if err != nil {
-		log.Printf("Warning: Couldn't load channelmap fn: %s", err)
-		channelMapper, err = channels.NewChannelMapper("")
-		if err != nil {
-			log.Printf("Warning: Couldn't load channelmap fn: %s", err)
-		}
-	} else if channelMapper == nil {
-		log.Printf("No channelmap fn found; default algorithm in use")
+	dbcontext := &db.DatabaseContext{Name: dbName, Bucket: bucket}
+	newdb, _ := db.GetDatabase(dbcontext, nil)
+	newdb.ReadDesignDocument()
+	
+	if dbcontext.ChannelMapper == nil {
+		log.Printf("Channel mapper undefined; using default")
 	}
+	if dbcontext.Validator == nil {
+		log.Printf("Validator undefined; no validation")
+	}	
 
 	c := &context{
-		bucket:        bucket,
-		dbName:        dbName,
-		channelMapper: channelMapper,
+		dbcontext:     dbcontext,
 		auth:          auth.NewAuthenticator(bucket),
 		serverURL:     serverURL,
 	}

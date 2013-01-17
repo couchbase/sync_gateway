@@ -102,13 +102,13 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
 
 // Retrieves an attachment, base64-encoded, given its key.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
-	return db.bucket.GetRaw(attachmentKeyToString(key))
+	return db.Bucket.GetRaw(attachmentKeyToString(key))
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	key := AttachmentKey(sha1DigestKey(attachment))
-	_, err := db.bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
+	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
 	if base.Logging && err == nil {
 		log.Printf("\tAdded attachment %q", key)
 	}

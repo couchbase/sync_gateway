@@ -52,7 +52,7 @@ func (db *Database) getDoc(docid string) (*document, error) {
 		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	doc := newDocument()
-	err := db.bucket.Get(key, doc)
+	err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (db *Database) setDoc(docid string, doc *document) error {
 	if key == "" {
 		return &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-	return db.bucket.Set(key, 0, doc)
+	return db.Bucket.Set(key, 0, doc)
 }
 
 // Returns the body of the current revision of a document
@@ -251,7 +251,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	var newRev string
 	var body Body
 
-	err := db.bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		doc := newDocument()
 		if len(currentValue) == 0 { // New document:
@@ -308,7 +308,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if docid == "_design/channels" {
 		src, ok := body["channelmap"].(string)
 		if ok {
-			if changed, _ := db.channelMapper.SetFunction(src); changed {
+			if changed, _ := db.ChannelMapper.SetFunction(src); changed {
 				db.UpdateAllDocChannels()
 			}
 		}
@@ -342,9 +342,9 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Determines which channels a document body belongs to
 func (db *Database) getChannels(body Body) (result []string) {
-	if db.channelMapper != nil {
+	if db.ChannelMapper != nil {
 		jsonStr, _ := json.Marshal(body)
-		result, _ = db.channelMapper.MapToChannels(string(jsonStr))
+		result, _ = db.ChannelMapper.MapToChannels(string(jsonStr))
 
 	} else {
 		// No ChannelMapper so by default use the "channels" property:

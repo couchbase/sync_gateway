@@ -94,7 +94,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 			var err error
 			for len(vres.Rows) == 0 {
 				vres = ViewResult{}
-				err = db.bucket.ViewCustom("basecouch", "channels", opts, &vres)
+				err = db.Bucket.ViewCustom("basecouch", "channels", opts, &vres)
 				if err != nil {
 					log.Printf("Error from 'channels' view: %v", err)
 					return
@@ -275,9 +275,9 @@ func (db *Database) NotifyRevision() {
 }
 
 func (db *Database) LastSequence() (uint64, error) {
-	return db.bucket.Incr("__seq", 0, 0, 0)
+	return db.Bucket.Incr("__seq", 0, 0, 0)
 }
 
 func (db *Database) generateSequence() (uint64, error) {
-	return db.bucket.Incr("__seq", 1, 1, 0)
+	return db.Bucket.Incr("__seq", 1, 1, 0)
 }

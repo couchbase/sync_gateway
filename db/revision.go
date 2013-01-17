@@ -25,7 +25,7 @@ type Body map[string]interface{}
 
 func (db *Database) getRevision(docid, revid string, key RevKey) (Body, error) {
 	var body Body
-	err := db.bucket.Get(revKeyToString(key), &body)
+	err := db.Bucket.Get(revKeyToString(key), &body)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (db *Database) setRevision(body Body) (RevKey, error) {
 	digester := sha1.New()
 	digester.Write(canonicalEncoding(body))
 	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
-	_, err := db.bucket.Add(revKeyToString(revKey), 0, body)
+	_, err := db.Bucket.Add(revKeyToString(revKey), 0, body)
 	if base.Logging && err == nil {
 		log.Printf("\tAdded revision %q", revKey)
 	}

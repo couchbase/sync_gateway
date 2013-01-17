@@ -80,8 +80,8 @@ func (h *handler) invoke(method handlerMethod) error {
 	// If there is a "db" path variable, look up the database:
 	if dbname, ok := h.PathVars()["db"]; ok {
 		var err error
-		if dbname == h.context.dbName {
-			h.db, err = db.GetDatabase(h.context.bucket, dbname, h.context.channelMapper, h.user)
+		if dbname == h.context.dbcontext.Name {
+			h.db, err = db.GetDatabase(h.context.dbcontext, h.user)
 		} else {
 			err = &base.HTTPError{http.StatusNotFound, "no such database"}
 		}

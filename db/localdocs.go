@@ -25,7 +25,7 @@ func (db *Database) GetLocal(docid string) (Body, error) {
 	}
 
 	body := Body{}
-	err := db.bucket.Get(key, &body)
+	err := db.Bucket.Get(key, &body)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (db *Database) putLocal(docid string, matchRev string, body Body) (string, 
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
 	var revid string
-	err := db.bucket.Update(key, 0, func(value []byte) ([]byte, error) {
+	err := db.Bucket.Update(key, 0, func(value []byte) ([]byte, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, &base.HTTPError{Status: http.StatusNotFound,
