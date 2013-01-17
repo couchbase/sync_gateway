@@ -50,8 +50,8 @@ func (h *handler) handleSessionGET() error {
 // POST /_session creates a login session and sets its cookie
 func (h *handler) handleSessionPOST() error {
 	var params struct {
-		Name string			`json:"name"`
-		Password string		`json:"password"`
+		Name     string `json:"name"`
+		Password string `json:"password"`
 	}
 	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
 	if err != nil {

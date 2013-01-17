@@ -35,12 +35,12 @@ const funcWrapper = `
 
 // Runs CouchDB JavaScript validation functions.
 type Validator struct {
-	js		*base.JSServer
+	js *base.JSServer
 }
 
 type validatorResult struct {
-	status	int
-	message	string
+	status  int
+	message string
 }
 
 // Creates a new Validator given a CouchDB-style JavaScript validation function.
@@ -60,9 +60,9 @@ func NewValidator(funcSource string) (*Validator, error) {
 			return validatorResult{200, ""}, nil
 		}
 		resultObj := result.Object()
-		statusVal,_ := resultObj.Get("status")
-		errMsg,_ := resultObj.Get("msg")
-		status,_ := statusVal.ToInteger()
+		statusVal, _ := resultObj.Get("status")
+		errMsg, _ := resultObj.Get("msg")
+		status, _ := statusVal.ToInteger()
 		return validatorResult{int(status), errMsg.String()}, nil
 	}
 	return validator, nil
@@ -75,13 +75,13 @@ func encodeUser(user *auth.User) string {
 	info := map[string]interface{}{}
 	info["name"] = user.Name
 	info["channels"] = user.Channels
-	json,_ := json.Marshal(info)
+	json, _ := json.Marshal(info)
 	return string(json)
 }
 
 // This is just for testing
 func (validator *Validator) callValidator(newDoc string, oldDoc string, user *auth.User) (int, string, error) {
-	result,err := validator.js.DirectCallFunction([]string{newDoc, oldDoc, encodeUser(user)})
+	result, err := validator.js.DirectCallFunction([]string{newDoc, oldDoc, encodeUser(user)})
 	if err != nil || result == nil {
 		return 0, "", err
 	}

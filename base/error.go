@@ -12,10 +12,10 @@ package base
 import (
 	"crypto/rand"
 	"fmt"
+	"github.com/dustin/gomemcached"
 	"io"
 	"log"
 	"net/http"
-	"github.com/dustin/gomemcached"
 )
 
 var Logging = false

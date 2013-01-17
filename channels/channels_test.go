@@ -16,14 +16,14 @@ import (
 
 func TestIsValidChannel(t *testing.T) {
 	valid := []string{"*", "a", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_"}
-	for _,ch := range valid {
-		if (!IsValidChannel(ch)) {
+	for _, ch := range valid {
+		if !IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be true", ch)
 		}
 	}
 	invalid := []string{"", "**", "a*", "a ", "b?", ",", "Z∫•"}
-	for _,ch := range invalid {
-		if (IsValidChannel(ch)) {
+	for _, ch := range invalid {
+		if IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be false", ch)
 		}
 	}
@@ -31,34 +31,34 @@ func TestIsValidChannel(t *testing.T) {
 
 func TestSimplifyChannels(t *testing.T) {
 	cases := [][][]string{
-		{{}, 				{}},
-		{{""}, 				{}},
-		{{"*"}, 			{}},
-		{{"a"}, 			{"a"}},
-		{{"a", "b"}, 		{"a", "b"}},
-		{{"a", "a"}, 		{"a"}},
-		{{"a", "bad "}, 	{"a"}},
-		{{"a", "b", "a"}, 	{"a", "b"}},
-		{{"a", "*", "b"}, 	{"a", "b"}},
+		{{}, {}},
+		{{""}, {}},
+		{{"*"}, {}},
+		{{"a"}, {"a"}},
+		{{"a", "b"}, {"a", "b"}},
+		{{"a", "a"}, {"a"}},
+		{{"a", "bad "}, {"a"}},
+		{{"a", "b", "a"}, {"a", "b"}},
+		{{"a", "*", "b"}, {"a", "b"}},
 	}
-	for _,cas := range cases {
+	for _, cas := range cases {
 		assert.DeepEquals(t, SimplifyChannels(cas[0], false), cas[1])
 	}
 }
 
 func TestSimplifyChannelsWithStar(t *testing.T) {
 	cases := [][][]string{
-		{{}, 				{}},
-		{{""}, 				{}},
-		{{"*"}, 			{"*"}},
-		{{"a"}, 			{"a"}},
-		{{"a", "b"}, 		{"a", "b"}},
-		{{"a", "a"}, 		{"a"}},
-		{{"a", "bad "}, 	{"a"}},
-		{{"a", "b", "a"}, 	{"a", "b"}},
-		{{"a", "*", "b"}, 	{"*"}},
+		{{}, {}},
+		{{""}, {}},
+		{{"*"}, {"*"}},
+		{{"a"}, {"a"}},
+		{{"a", "b"}, {"a", "b"}},
+		{{"a", "a"}, {"a"}},
+		{{"a", "bad "}, {"a"}},
+		{{"a", "b", "a"}, {"a", "b"}},
+		{{"a", "*", "b"}, {"*"}},
 	}
-	for _,cas := range cases {
+	for _, cas := range cases {
 		assert.DeepEquals(t, SimplifyChannels(cas[0], true), cas[1])
 	}
 }

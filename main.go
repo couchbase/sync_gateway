@@ -13,5 +13,5 @@ import "github.com/couchbaselabs/basecouch/rest"
 
 // Simple BaseCouch launcher tool.
 func main() {
-    rest.ServerMain()
+	rest.ServerMain()
 }

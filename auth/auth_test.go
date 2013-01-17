@@ -36,11 +36,11 @@ func TestValidateUser(t *testing.T) {
 
 func TestValidateUserEmail(t *testing.T) {
 	badEmails := []string{"", "foo", "foo@", "@bar", "foo @bar", "foo@.bar"}
-	for _,e := range(badEmails) {
+	for _, e := range badEmails {
 		assert.False(t, IsValidEmail(e))
 	}
 	goodEmails := []string{"foo@bar", "foo.99@bar.com", "f@bar.exampl-3.com."}
-	for _,e := range(goodEmails) {
+	for _, e := range goodEmails {
 		assert.True(t, IsValidEmail(e))
 	}
 	user, _ := NewUser("ValidName", "letmein", nil)

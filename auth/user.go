@@ -24,11 +24,11 @@ import (
 type User struct {
 	Name         string                     `json:"name,omitempty"`
 	Email        string                     `json:"email,omitempty"`
-	Disabled	 bool						`json:"disabled,omitempty"`
+	Disabled     bool                       `json:"disabled,omitempty"`
 	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
 	Channels     []string                   `json:"channels"`
 
-	Password	 *string					`json:"password,omitempty"`
+	Password *string `json:"password,omitempty"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -36,7 +36,9 @@ var kValidEmailRegexp *regexp.Regexp
 func init() {
 	var err error
 	kValidEmailRegexp, err = regexp.Compile(`^[-.\w]+@\w[-.\w]+$`)
-	if err != nil {panic("Bad IsValidEmail regexp")}
+	if err != nil {
+		panic("Bad IsValidEmail regexp")
+	}
 }
 
 func IsValidEmail(email string) bool {
@@ -89,9 +91,7 @@ func (user *User) SetPassword(password string) {
 	}
 }
 
-
 //////// USER CHANNEL AUTHORIZATION:
-
 
 func (user *User) UnauthError(message string) error {
 	if user.Name == "" {

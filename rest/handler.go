@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	
+
 	"github.com/couchbaselabs/basecouch/auth"
 	"github.com/couchbaselabs/basecouch/base"
 	"github.com/couchbaselabs/basecouch/db"
@@ -68,7 +68,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		log.Printf("%s %s", h.rq.Method, h.rq.URL)
 	}
 	h.setHeader("Server", VersionString)
-	
+
 	// Authenticate all paths other than "/_session":
 	path := h.rq.URL.Path
 	if path != "/_session" && path != "/_browserid" {
@@ -76,7 +76,7 @@ func (h *handler) invoke(method handlerMethod) error {
 			return err
 		}
 	}
-	
+
 	// If there is a "db" path variable, look up the database:
 	if dbname, ok := h.PathVars()["db"]; ok {
 		var err error
@@ -89,8 +89,8 @@ func (h *handler) invoke(method handlerMethod) error {
 			return err
 		}
 	}
-	
-	return method(h)  // Call the actual handler code
+
+	return method(h) // Call the actual handler code
 }
 
 func (h *handler) checkAuth() error {
@@ -109,9 +109,9 @@ func (h *handler) checkAuth() error {
 			return err
 		}
 	}
-	
+
 	if h.user == nil || h.user.Channels == nil {
-		cookie,_ := h.rq.Cookie(auth.CookieName)
+		cookie, _ := h.rq.Cookie(auth.CookieName)
 		log.Printf("Auth failed for username=%q, cookie=%q", userName, cookie)
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}

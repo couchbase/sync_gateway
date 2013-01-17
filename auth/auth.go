@@ -20,8 +20,8 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket *couchbase.Bucket
-	lock sync.Mutex
+	bucket   *couchbase.Bucket
+	lock     sync.Mutex
 	sessions map[string]*LoginSession
 }
 
@@ -29,11 +29,10 @@ type userByEmailInfo struct {
 	Username string
 }
 
-
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket *couchbase.Bucket) *Authenticator {
 	return &Authenticator{
-		bucket: bucket,
+		bucket:   bucket,
 		sessions: map[string]*LoginSession{},
 	}
 }

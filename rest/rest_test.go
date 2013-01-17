@@ -18,8 +18,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/sdegutis/go.assert"
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/sdegutis/go.assert"
 
 	"github.com/couchbaselabs/basecouch/channels"
 	"github.com/couchbaselabs/basecouch/db"

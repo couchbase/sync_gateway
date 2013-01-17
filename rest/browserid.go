@@ -16,7 +16,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	
+
 	"github.com/couchbaselabs/basecouch/base"
 	"github.com/couchbaselabs/basecouch/db"
 )
@@ -70,7 +70,7 @@ func (h *handler) BrowserIDEnabled() bool {
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
 func (h *handler) handleBrowserIDPOST() error {
 	var params struct {
-		Assertion string	`json:"assertion"`
+		Assertion string `json:"assertion"`
 	}
 	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
 	if err != nil {
@@ -79,7 +79,7 @@ func (h *handler) handleBrowserIDPOST() error {
 	if h.context.serverURL == "" {
 		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
 	}
-	
+
 	// OK, now verify it:
 	log.Printf("BrowserID: Verifying assertion %q for %q", params.Assertion, h.context.serverURL)
 	verifiedInfo, err := VerifyBrowserID(params.Assertion, h.context.serverURL)
@@ -88,7 +88,7 @@ func (h *handler) handleBrowserIDPOST() error {
 		return err
 	}
 	log.Printf("BrowserID: Logged in %q!", verifiedInfo.Email)
-	
+
 	// Email is verified. Look up the user and make a login session for her:
 	auth := h.context.auth
 	user, err := auth.GetUserByEmail(verifiedInfo.Email)
@@ -97,4 +97,3 @@ func (h *handler) handleBrowserIDPOST() error {
 	}
 	return h.makeSession(user)
 }
-

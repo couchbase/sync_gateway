@@ -15,7 +15,7 @@ import (
 	"log"
 	"net/http"
 	"time"
-	
+
 	"github.com/couchbaselabs/basecouch/auth"
 	"github.com/couchbaselabs/basecouch/base"
 )
@@ -42,7 +42,7 @@ func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, use
 	} else if user.Name != username {
 		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
-	log.Printf("SaveUser: %v", user)//TEMP
+	log.Printf("SaveUser: %v", user) //TEMP
 	return a.SaveUser(&user)
 }
 
@@ -53,8 +53,8 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 		return err
 	}
 	var params struct {
-		Name string			`json:"name"`
-		TTL time.Duration	`json:"ttl"`
+		Name string        `json:"name"`
+		TTL  time.Duration `json:"ttl"`
 	}
 	err = json.Unmarshal(body, &params)
 	if err != nil {
@@ -65,9 +65,9 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	}
 	session := authenticator.CreateSession(params.Name, params.TTL)
 	var response struct {
-		SessionID string	`json:"session_id"`
-		Expires time.Time	`json:"expires"`
-		CookieName string	`json:"cookie_name"`
+		SessionID  string    `json:"session_id"`
+		Expires    time.Time `json:"expires"`
+		CookieName string    `json:"cookie_name"`
 	}
 	response.SessionID = session.ID
 	response.Expires = session.Expiration

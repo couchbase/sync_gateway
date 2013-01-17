@@ -21,7 +21,7 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/gorilla/mux"
-	
+
 	"github.com/couchbaselabs/basecouch/auth"
 	"github.com/couchbaselabs/basecouch/base"
 	"github.com/couchbaselabs/basecouch/channels"
@@ -37,7 +37,7 @@ type context struct {
 	dbName        string
 	channelMapper *channels.ChannelMapper
 	auth          *auth.Authenticator
-	serverURL	  string
+	serverURL     string
 }
 
 // HTTP handler for a GET of a document
@@ -222,7 +222,7 @@ func (h *handler) handleAllDocs() error {
 		ID    string            `json:"id"`
 		Key   string            `json:"key"`
 		Value map[string]string `json:"value"`
-		Doc   db.Body              `json:"doc,omitempty"`
+		Doc   db.Body           `json:"doc,omitempty"`
 	}
 	type viewResult struct {
 		TotalRows int       `json:"total_rows"`
@@ -595,7 +595,7 @@ func (h *handler) handleDeleteDB() error {
 	return h.db.Delete()
 }
 
-func (h *handler) handleEFC() error {  // Handles _ensure_full_commit.
+func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true})
 	return nil
@@ -633,53 +633,53 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 		auth:          auth.NewAuthenticator(bucket),
 		serverURL:     serverURL,
 	}
-	
+
 	http.Handle("/", createHandler(c))
 	return c
 }
-	
+
 func createHandler(c *context) http.Handler {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	// Global operations:
-	r.Handle("/", 		  makeHandler(c, (*handler).handleRoot)).Methods("GET")
+	r.Handle("/", makeHandler(c, (*handler).handleRoot)).Methods("GET")
 	r.Handle("/_all_dbs", makeHandler(c, (*handler).handleAllDbs)).Methods("GET")
 	r.Handle("/_session", makeHandler(c, (*handler).handleSessionGET)).Methods("GET")
 	r.Handle("/_session", makeHandler(c, (*handler).handleSessionPOST)).Methods("POST")
-	r.Handle("/_browserid",makeHandler(c, (*handler).handleBrowserIDPOST)).Methods("POST")
-	r.Handle("/_vacuum",  makeHandler(c, (*handler).handleVacuum)).Methods("GET")
-	
+	r.Handle("/_browserid", makeHandler(c, (*handler).handleBrowserIDPOST)).Methods("POST")
+	r.Handle("/_vacuum", makeHandler(c, (*handler).handleVacuum)).Methods("GET")
+
 	// Operations on databases:
 	r.Handle("/{newdb}/", makeHandler(c, (*handler).handleCreateDB)).Methods("PUT")
-	r.Handle("/{db}/",	  makeHandler(c, (*handler).handleGetDB)).Methods("GET")
-	r.Handle("/{db}/",	  makeHandler(c, (*handler).handleDeleteDB)).Methods("DELETE")
-	r.Handle("/{db}/",	  makeHandler(c, (*handler).handlePostDoc)).Methods("POST")
-	
+	r.Handle("/{db}/", makeHandler(c, (*handler).handleGetDB)).Methods("GET")
+	r.Handle("/{db}/", makeHandler(c, (*handler).handleDeleteDB)).Methods("DELETE")
+	r.Handle("/{db}/", makeHandler(c, (*handler).handlePostDoc)).Methods("POST")
+
 	// Special database URLs:
 	dbr := r.PathPrefix("/{db}/").Subrouter()
 	dbr.Handle("/_all_docs", makeHandler(c, (*handler).handleAllDocs)).Methods("GET", "POST")
-	dbr.Handle("/_bulk_docs", 		makeHandler(c, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", 		makeHandler(c, (*handler).handleBulkGet)).Methods("GET")
-	dbr.Handle("/_changes", 		makeHandler(c, (*handler).handleChanges)).Methods("GET")
+	dbr.Handle("/_bulk_docs", makeHandler(c, (*handler).handleBulkDocs)).Methods("POST")
+	dbr.Handle("/_bulk_get", makeHandler(c, (*handler).handleBulkGet)).Methods("GET")
+	dbr.Handle("/_changes", makeHandler(c, (*handler).handleChanges)).Methods("GET")
 	dbr.Handle("/_design/basecouch", makeHandler(c, (*handler).handleDesign)).Methods("GET")
-	dbr.Handle("/_ensure_full_commit",makeHandler(c, (*handler).handleEFC)).Methods("POST")
-	dbr.Handle("/_revs_diff", 		makeHandler(c, (*handler).handleRevsDiff)).Methods("POST")
-	
+	dbr.Handle("/_ensure_full_commit", makeHandler(c, (*handler).handleEFC)).Methods("POST")
+	dbr.Handle("/_revs_diff", makeHandler(c, (*handler).handleRevsDiff)).Methods("POST")
+
 	// Document URLs:
-	dbr.Handle("/_local/{docid}",   makeHandler(c, (*handler).handleGetLocalDoc)).Methods("GET")
-	dbr.Handle("/_local/{docid}",   makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local/{docid}",   makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
-	
-	dbr.Handle("/_design/{docid}",   makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET")
-	dbr.Handle("/_design/{docid}",   makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_design/{docid}",   makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
-	
-	dbr.Handle("/{docid}", 		  	makeHandler(c, (*handler).handleGetDoc)).Methods("GET")
-	dbr.Handle("/{docid}", 		  	makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")
-	dbr.Handle("/{docid}", 		  	makeHandler(c, (*handler).handleDeleteDoc)).Methods("DELETE")
+	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleGetLocalDoc)).Methods("GET")
+	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
+
+	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET")
+	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
+
+	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleGetDoc)).Methods("GET")
+	dbr.Handle("/{docid}", makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")
+	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleDeleteDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid}/{attach}", makeHandler(c, (*handler).handleGetAttachment)).Methods("GET")
-	
+
 	return r
 }
 
@@ -704,7 +704,7 @@ func ServerMain() {
 	if *dbName == "" {
 		*dbName = bucket.Name
 	}
-	
+
 	context := InitREST(bucket, *dbName, *siteURL)
 	PrettyPrint = *pretty
 	LogRequestsVerbose = *verbose

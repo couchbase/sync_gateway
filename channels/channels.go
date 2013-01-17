@@ -16,7 +16,9 @@ var kValidChannelRegexp *regexp.Regexp
 func init() {
 	var err error
 	kValidChannelRegexp, err = regexp.Compile(`^([-_.@\p{L}\p{Nd}]+|\*)$`)
-	if err != nil {panic("Bad IsValidChannel regexp")}
+	if err != nil {
+		panic("Bad IsValidChannel regexp")
+	}
 }
 
 func IsValidChannel(channel string) bool {
@@ -32,7 +34,7 @@ func SimplifyChannels(channels []string, starPower bool) []string {
 	}
 	result := make([]string, 0, len(channels))
 	found := map[string]bool{}
-	for _,ch := range channels {
+	for _, ch := range channels {
 		if !IsValidChannel(ch) {
 			continue
 		} else if ch == "*" {

@@ -20,7 +20,7 @@ import (
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
-	
+
 	"github.com/couchbaselabs/basecouch/auth"
 	"github.com/couchbaselabs/basecouch/base"
 	"github.com/couchbaselabs/basecouch/channels"
@@ -64,8 +64,8 @@ func (db *Database) SameAs(otherdb *Database) bool {
 func (db *Database) LoadChannelMapper() (*channels.ChannelMapper, error) {
 	body, err := db.Get("_design/channels")
 	if err != nil {
-		if status,_ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
-			err = nil		// missing design document is not an error
+		if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
+			err = nil // missing design document is not an error
 		}
 		return nil, err
 	}

@@ -18,8 +18,8 @@ import (
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID string
-	username string
+	ID         string
+	username   string
 	Expiration time.Time
 }
 
@@ -60,8 +60,8 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) *Lo
 
 	expiration := time.Now().Add(ttl)
 	session := &LoginSession{
-		ID: sessionID,
-		username: username,
+		ID:         sessionID,
+		username:   username,
 		Expiration: expiration,
 	}
 	auth.sessions[sessionID] = session
@@ -73,8 +73,8 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie
 		return nil
 	}
 	return &http.Cookie{
-		Name: CookieName,
-		Value: session.ID,
+		Name:    CookieName,
+		Value:   session.ID,
 		Expires: session.Expiration,
 	}
 }

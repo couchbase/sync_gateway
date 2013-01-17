@@ -11,8 +11,8 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 
-	"github.com/couchbaselabs/basecouch/base"
 	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/basecouch/base"
 )
 
 type ChannelRemoval struct {

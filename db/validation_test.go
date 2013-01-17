@@ -10,9 +10,9 @@
 package db
 
 import (
-	"testing"
-	"github.com/sdegutis/go.assert"
 	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/sdegutis/go.assert"
+	"testing"
 )
 
 func TestValidatorFunction(t *testing.T) {
@@ -20,7 +20,7 @@ func TestValidatorFunction(t *testing.T) {
 										if (doc.foo !=oldDoc.foo)
 											throw({forbidden: "bad"});}`)
 	assertNoError(t, err, "Couldn't create validator")
-	
+
 	status, msg, err := validator.callValidator(`{"foo":1}`, `{"foo": 1}`, nil)
 	assertNoError(t, err, "callValidator failed")
 	assert.Equals(t, status, 200)
@@ -34,7 +34,7 @@ func TestValidatorFunction(t *testing.T) {
 func TestValidatorException(t *testing.T) {
 	validator, err := NewValidator(`function(doc,oldDoc) {var x; return x[5];}`)
 	assertNoError(t, err, "Couldn't create validator")
-	
+
 	status, _, err := validator.callValidator(`{"foo":1}`, `{"foo": 1}`, nil)
 	assertNoError(t, err, "callValidator failed")
 	assert.Equals(t, status, 500)
@@ -45,15 +45,15 @@ func TestValidatorUser(t *testing.T) {
 										if (doc.owner != userCtx.name)
 											throw({"forbidden": userCtx.name});}`)
 	assertNoError(t, err, "Couldn't create validator")
-	
+
 	fred := &auth.User{Name: "fred"}
-	
+
 	status, _, err := validator.callValidator(`{"owner":"fred"}`, `{"owner":"fred"}`, fred)
 	assertNoError(t, err, "callValidator failed")
 	assert.Equals(t, status, 200)
-	
+
 	eve := &auth.User{Name: "eve"}
-	
+
 	status, msg, err := validator.callValidator(`{"owner":"fred"}`, `{"owner":"fred"}`, eve)
 	assertNoError(t, err, "callValidator failed")
 	assert.Equals(t, status, 403)

@@ -23,13 +23,13 @@ type JSServer struct {
 	js       *otto.Otto
 	fn       otto.Value
 	fnSource string
-	
+
 	// Optional function that will be called just before the JS function.
-	Before	func()
-	
+	Before func()
+
 	// Optional function that will be called after the JS function returns, and can convert
 	// its output from JS (Otto) values to Go values.
-	After	func(otto.Value, error) (interface{}, error)
+	After func(otto.Value, error) (interface{}, error)
 
 	requests chan jsServerRequest
 }
@@ -71,13 +71,13 @@ func (server *JSServer) setFunction(funcSource string) (bool, error) {
 // This method is not thread-safe and should only be called before making any calls to the
 // main JS function.
 func (server *JSServer) DefineNativeFunction(name string, function func(otto.FunctionCall) otto.Value) {
-	server.js.Set(name, function)	
+	server.js.Set(name, function)
 }
 
 // Invokes the JS function. Not thread-safe! This is exposed for use by unit tests.
 func (server *JSServer) DirectCallFunction(inputs []string) (interface{}, error) {
 	inputJS := make([]interface{}, len(inputs))
-	for i,inputStr := range inputs {
+	for i, inputStr := range inputs {
 		var err error
 		inputJS[i], err = server.js.Object("x = " + inputStr)
 		if err != nil {
@@ -109,8 +109,8 @@ type jsServerRequest struct {
 }
 
 type jsServerResponse struct {
-	output	interface{}
-	err      error
+	output interface{}
+	err    error
 }
 
 func (server *JSServer) serve() {

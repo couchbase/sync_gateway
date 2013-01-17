@@ -18,7 +18,7 @@ import (
 )
 
 type ChannelMapper struct {
-	js		*base.JSServer
+	js       *base.JSServer
 	channels []string
 }
 
@@ -65,7 +65,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		}
 		return otto.UndefinedValue()
 	})
-	
+
 	mapper.js.Before = func() {
 		mapper.channels = []string{}
 	}
