@@ -74,7 +74,10 @@ func (h *handler) makeSession(user *auth.User) error {
 	}
 	h.user = user
 	auth := h.context.auth
-	session := auth.CreateSession(user.Name, kDefaultSessionTTL)
+	session, err := auth.CreateSession(user.Name, kDefaultSessionTTL)
+	if err != nil {
+		return err
+	}
 	http.SetCookie(h.response, auth.MakeSessionCookie(session))
 	return h.respondWithSessionInfo()
 }

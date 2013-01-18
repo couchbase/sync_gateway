@@ -18,9 +18,9 @@ import (
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID         string
-	username   string
-	Expiration time.Time
+	ID         string       `json:"id"`
+	Username   string       `json:"username"`
+	Expiration time.Time	`json:"expiration"`
 }
 
 const CookieName = "BaseCouchSession"
@@ -31,41 +31,28 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
 		return nil, nil
 	}
 
-	auth.lock.Lock()
-	defer auth.lock.Unlock()
-
-	session, found := auth.sessions[cookie.Value]
-	if found && session.Expiration.Before(time.Now()) {
-		delete(auth.sessions, cookie.Value)
-		found = false
+	var session LoginSession
+	err := auth.bucket.Get(docIDForSession(cookie.Value), &session)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			err = nil
+		}
+		return nil, err
 	}
-	if !found {
-		return nil, nil
-	}
-	return auth.GetUser(session.username)
+	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
+	return auth.GetUser(session.Username)
 }
 
-func (auth *Authenticator) CreateSession(username string, ttl time.Duration) *LoginSession {
-	auth.lock.Lock()
-	defer auth.lock.Unlock()
-
-	// Create a random unused session ID:
-	var sessionID string
-	for {
-		sessionID = base.GenerateRandomSecret()
-		if _, found := auth.sessions[sessionID]; !found {
-			break
-		}
-	}
-
-	expiration := time.Now().Add(ttl)
+func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*LoginSession, error) {
 	session := &LoginSession{
-		ID:         sessionID,
-		username:   username,
-		Expiration: expiration,
+		ID:         base.GenerateRandomSecret(),
+		Username:   username,
+		Expiration: time.Now().Add(ttl),
 	}
-	auth.sessions[sessionID] = session
-	return session
+	if err := auth.bucket.Set(docIDForSession(session.ID), int(ttl.Seconds()), session); err != nil {
+		return nil, err
+	}
+	return session, nil
 }
 
 func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie {
@@ -78,3 +65,8 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie
 		Expires: session.Expiration,
 	}
 }
+
+func docIDForSession(sessionID string) string {
+	return "session:" + sessionID
+}
+

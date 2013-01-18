@@ -63,7 +63,10 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	if params.Name == "" || params.TTL < 0 {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
 	}
-	session := authenticator.CreateSession(params.Name, params.TTL)
+	session, err := authenticator.CreateSession(params.Name, params.TTL)
+	if err != nil {
+		return err
+	}
 	var response struct {
 		SessionID  string    `json:"session_id"`
 		Expires    time.Time `json:"expires"`
