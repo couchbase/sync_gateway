@@ -102,13 +102,43 @@ Accounts are managed through a parallel REST interface that runs on port 4985 (b
 The URL for a user account is simply "/_user_" where _user_ is the username. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
 
 * "name": The user name (same as in the URL path). Names must consist of alphanumeric ASCII characters or underscores.
-* "channels": An array of channel name strings. The name "*" means "all channels". An empty array or missing property denies access to all channels. A missing `channels` property prevents the user from authenticating at all.
+* "channels": An array of channel name strings. The name "*" means "all channels". An empty array or missing property denies access to all channels.
 * "password": In a PUT or POST request, put the user's password here. It will not be returned by a GET.
 * "passwordhash": Securely hashed version of the password. This will be returned from a GET. If you want to update a user without changing the password, leave this alone when sending the modified JSON object back through PUT.
+* "disabled": Normally missing; if set to `true`, disables access for that account.
+* "email": The user's email address. Optional, but BrowserID login (q.v.) needs it.
 
 You can create a new user either with a PUT to its URL, or by POST to `/`.
 
 There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
+
+To disable all guest access, set the guest user's `disabled` property:
+
+    curl -X PUT localhost:4985/GUEST --data '{"disabled":true, "channels":[]}'
+
+### Authentication
+
+[Like CouchDB](http://wiki.apache.org/couchdb/Session_API), BaseCouch allows clients to authenticate using either HTTP Basic Auth or cookie-based sessions.
+
+#### BrowserID
+
+BaseCouch support's [Mozilla's BrowserID (aka Persona) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
+
+To enable it, you need to add a `-site` command-line argument when starting the server, to tell it what its canonical URL is; for example:
+
+    basecouch -site=http://example.com/
+
+(This is necessary because the BrowserID protocol requires both client and server to agree on this name, and there's no reliable way to derive it on the server, especially if it's behind a proxy.)
+
+Once that's set up, you need to set the `email` property of user accounts, so that the server can determine the account based on the email address.
+
+Clients log in the same way they would to a CouchDB server running the [BrowserID plugin](https://github.com/iriscouch/browserid_couchdb): by POSTing to `/_browserid`, with a JSON body containing an `assertion` property whose value is the signed assertion received from the identity provider. Just as with a `_session` login, the response will set a session cookie.
+
+#### Indirect Authentication
+
+An app server can also create a session for a user by POSTing to `/_session` on the privileged port-4985 REST interface. The request body should be a JSON document with two properties: `name` (the user name) and `ttl` time-to-live measured in seconds. The response will be a JSON document with properties `cookie_name` (the name of the session cookie the client should send), `session_id` (the value of the session cookie) and `expires` (the time the session expires).
+
+This allows the app server to optionally do its own authentication: the client sends credentials to it, and then it uses this API to generate a login session and send the cookie data back to the client, which can then send it in requests to BaseCouch.
 
 ### Authorization
 
