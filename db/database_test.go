@@ -23,7 +23,7 @@ var gTestBucket *couchbase.Bucket
 
 func init() {
 	var err error
-	gTestBucket, err = ConnectToBucket("http://localhost:8091", "default", "basecouch")
+	gTestBucket, err = ConnectToBucket("http://localhost:8091", "default", "basecouch-tests")
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
