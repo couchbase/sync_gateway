@@ -122,7 +122,7 @@ To disable all guest access, set the guest user's `disabled` property:
 
 #### BrowserID
 
-BaseCouch support's [Mozilla's BrowserID (aka Persona) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
+BaseCouch also supports [Mozilla's BrowserID (aka Persona) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
 
 To enable it, you need to add a `-site` command-line argument when starting the server, to tell it what its canonical URL is; for example:
 
