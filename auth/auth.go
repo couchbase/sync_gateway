@@ -10,8 +10,6 @@
 package auth
 
 import (
-	"sync"
-
 	"github.com/couchbaselabs/go-couchbase"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -21,8 +19,6 @@ import (
 /** Manages user authentication for a database. */
 type Authenticator struct {
 	bucket   *couchbase.Bucket
-	lock     sync.Mutex
-	sessions map[string]*LoginSession
 }
 
 type userByEmailInfo struct {
@@ -33,7 +29,6 @@ type userByEmailInfo struct {
 func NewAuthenticator(bucket *couchbase.Bucket) *Authenticator {
 	return &Authenticator{
 		bucket:   bucket,
-		sessions: map[string]*LoginSession{},
 	}
 }
 
