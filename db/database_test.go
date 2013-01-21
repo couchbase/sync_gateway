@@ -16,14 +16,14 @@ import (
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/sdegutis/go.assert"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 var gTestBucket *couchbase.Bucket
 
 func init() {
 	var err error
-	gTestBucket, err = ConnectToBucket("http://localhost:8091", "default", "basecouch-tests")
+	gTestBucket, err = ConnectToBucket("http://localhost:8091", "default", "sync_gateway-tests")
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

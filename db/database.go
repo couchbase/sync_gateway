@@ -21,9 +21,9 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 
-	"github.com/couchbaselabs/basecouch/auth"
-	"github.com/couchbaselabs/basecouch/base"
-	"github.com/couchbaselabs/basecouch/channels"
+	"github.com/couchbaselabs/sync_gateway/auth"
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
@@ -117,7 +117,7 @@ func installViews(bucket *couchbase.Bucket) error {
 		fmt.Printf("Failed to parse %s", node.CouchAPIBase)
 		return err
 	}
-	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "basecouch")
+	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "sync_gateway")
 
 	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
 	allbits_map := `function (doc, meta) {
@@ -256,7 +256,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 
 func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.Bucket.View("basecouch", "all_docs", opts)
+	vres, err := db.Bucket.View("sync_gateway", "all_docs", opts)
 	if err != nil {
 		log.Printf("WARNING: all_docs got error: %v", err)
 	}
@@ -266,7 +266,7 @@ func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
 	opts := Body{"stale": false}
-	vres, err := db.Bucket.View("basecouch", "all_bits", opts)
+	vres, err := db.Bucket.View("sync_gateway", "all_bits", opts)
 	if err != nil {
 		log.Printf("WARNING: all_bits view returned %v", err)
 		return err
@@ -286,7 +286,7 @@ func (db *Database) Delete() error {
 }
 
 func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
-	vres, err := bucket.View("basecouch", viewName, Body{"stale": false, "group_level": 1})
+	vres, err := bucket.View("sync_gateway", viewName, Body{"stale": false, "group_level": 1})
 	if err != nil {
 		log.Printf("WARNING: %s view returned %v", viewName, err)
 		return 0, err
@@ -325,7 +325,7 @@ func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels() error {
 	log.Printf("Recomputing document channels...")
-	vres, err := db.Bucket.View("basecouch", "all_docs", Body{"stale": false, "reduce": false})
+	vres, err := db.Bucket.View("sync_gateway", "all_docs", Body{"stale": false, "reduce": false})
 	if err != nil {
 		return err
 	}

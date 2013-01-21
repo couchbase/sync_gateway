@@ -10,7 +10,7 @@
 package db
 
 import (
-	"github.com/couchbaselabs/basecouch/auth"
+	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/sdegutis/go.assert"
 	"testing"
 )

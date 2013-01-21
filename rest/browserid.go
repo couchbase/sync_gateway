@@ -17,8 +17,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/couchbaselabs/basecouch/base"
-	"github.com/couchbaselabs/basecouch/db"
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 // Response from a BrowserID assertion verification.

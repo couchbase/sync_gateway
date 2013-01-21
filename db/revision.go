@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // The body of a CouchDB document/revision as decoded from JSON.

@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // Gets a local document.

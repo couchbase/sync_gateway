@@ -13,9 +13,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/couchbaselabs/basecouch/auth"
-	"github.com/couchbaselabs/basecouch/base"
-	"github.com/couchbaselabs/basecouch/db"
+	"github.com/couchbaselabs/sync_gateway/auth"
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 const kDefaultSessionTTL = 24 * time.Hour

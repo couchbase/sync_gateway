@@ -1,18 +1,15 @@
-# BaseCouch
+# Couchbase Sync Gateway
 
-Gluing CouchDB to Couchbase Server
+Gluing TouchDB (and CouchDB) to Couchbase Server
 
 
 ## About
 
-This is an **experimental prototype** adapter that can allow Couchbase Server 2 to act as a replication endpoint for CouchDB and compatible libraries like TouchDB and PouchDB. It does this by running an HTTP listener process that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
-
-* [Watch me give a brief presentation about BaseCouch](https://plus.google.com/117619707007719365626/posts/1Vuz3b8crXm) at our sprint demo session from 10/25/12. 
-* ...or just [view or download the slides](https://speakerdeck.com/snej/basecouch).
+This is an **experimental prototype** adapter that can allow Couchbase Server 2 to act as a replication endpoint for TouchDB, CouchDB and other compatible libraries like PouchDB. It does this by running an HTTP listener process that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
 
 ### Limitations
 
-* BaseCouch currently supports only a _single_ database. Its name defaults to the name of the underlying bucket, but can be changed using the `dbname` command-line flag. Any attempt to use the CouchDB REST API to access or create other databases, or delete the existing one, will fail with an appropriate HTTP error.
+* Sync Gateway currently supports only a _single_ database. Its name defaults to the name of the underlying bucket, but can be changed using the `dbname` command-line flag. Any attempt to use the CouchDB REST API to access or create other databases, or delete the existing one, will fail with an appropriate HTTP error.
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
 * Explicit garbage collection is required to free up space, via a REST call to `/_vacuum`. This is not yet scheduled automatically, so you'll have to call it yourself.
 * Performance is probably not that great. This is an unoptimized proof of concept.
@@ -28,13 +25,13 @@ Apache 2 license, like all Couchbase stuff.
 ### Setup
 
 0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) on localhost.
-1. Create a bucket named `basecouch` in the default pool.
+1. Create a bucket named `sync_gateway` in the default pool.
 1. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later.
-2. `go get -u github.com/couchbaselabs/basecouch`
+2. `go get -u github.com/couchbaselabs/sync_gateway`
 
 ### Startup
 
-The BaseCouch launcher tool is `bin/basecouch` in the first directory in your GOPATH. If you've already added this directory to your PATH, you can just enter `basecouch` from a shell to run it.
+The Sync Gateway launcher tool is `bin/sync_gateway` in the first directory in your GOPATH. If you've already added this directory to your PATH, you can just enter `sync_gateway` from a shell to run it.
 
 You now have a sort of mock-CouchDB listening on port 4984. It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible database (including TouchDB) to replicate with it.
 
@@ -43,7 +40,7 @@ If you want to run Couchbase on a different host, or use a different name for th
 
 ## Channels
 
-Channels are the intermediaries between documents and users. Every document belongs to a set of channels, and every user has a set of channels s/he is allowed to access. Additionally, a replication from BaseCouch specifies what channels it wants to replicate; documents not in any of these channels will be ignored (even if the user has access to them.)
+Channels are the intermediaries between documents and users. Every document belongs to a set of channels, and every user has a set of channels s/he is allowed to access. Additionally, a replication from Sync Gateway specifies what channels it wants to replicate; documents not in any of these channels will be ignored (even if the user has access to them.)
 
 Thus, channels have three purposes:
 
@@ -79,13 +76,13 @@ The default mechanism is equivalent to the following simple channelmap:
 
 ### Replicating channels to CouchDB or TouchDB
 
-The basics are simple: When pulling from BaseCouch using the CouchDB API, configure the replication to use a filter named `basecouch/bychannel`, and a filter parameter `channels` whose value is a comma-separated list of channels to subscribe to. The replication will now only pull documents tagged with those channels.
+The basics are simple: When pulling from Sync Gateway using the CouchDB API, configure the replication to use a filter named `sync_gateway/bychannel`, and a filter parameter `channels` whose value is a comma-separated list of channels to subscribe to. The replication will now only pull documents tagged with those channels.
 
 #### Removal from channels
 
 There is a tricky edge case of a document being "removed" from a channel without being deleted, i.e. when a new revision is not added to one or more channels that the previous revision was in. Subscribers (downstream databases pulling from this db) should know about this change, but it's not exactly the same as a deletion. CouchDB's existing filtered-replication mechanism does not address this, which has made things difficult for some clients.
 
-BaseCouch's `_changes` feed includes one more revision of a document after it stops matching a channel. It adds a `removed` property to the entry where this happens. (No client yet recognizes this property, though.) The value of `removed` is an array of strings, each string naming a channel this revision no longer appears in.
+Sync Gateway's `_changes` feed includes one more revision of a document after it stops matching a channel. It adds a `removed` property to the entry where this happens. (No client yet recognizes this property, though.) The value of `removed` is an array of strings, each string naming a channel this revision no longer appears in.
 
 The effect on the client will be that after a replication it sees the next revision of the document, the one that causes it to no longer match the channel(s). It won't get any further revisions until the next one that makes the document match again.
 
@@ -93,7 +90,7 @@ This could seem weird ("why am I downloading documents I don't need?") but it en
 
 ## Authentication & Authorization
 
-BaseCouch supports user accounts that are allowed to access only a subset of channels.
+Sync Gateway supports user accounts that are allowed to access only a subset of channels.
 
 ### Accounts
 
@@ -118,15 +115,15 @@ To disable all guest access, set the guest user's `disabled` property:
 
 ### Authentication
 
-[Like CouchDB](http://wiki.apache.org/couchdb/Session_API), BaseCouch allows clients to authenticate using either HTTP Basic Auth or cookie-based sessions.
+[Like CouchDB](http://wiki.apache.org/couchdb/Session_API), Sync Gateway allows clients to authenticate using either HTTP Basic Auth or cookie-based sessions.
 
 #### BrowserID
 
-BaseCouch also supports [Mozilla's BrowserID (aka Persona) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
+Sync Gateway also supports [Mozilla's BrowserID (aka Persona) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
 
 To enable it, you need to add a `-site` command-line argument when starting the server, to tell it what its canonical URL is; for example:
 
-    basecouch -site=http://example.com/
+    sync_gateway -site=http://example.com/
 
 (This is necessary because the BrowserID protocol requires both client and server to agree on this name, and there's no reliable way to derive it on the server, especially if it's behind a proxy.)
 
@@ -138,7 +135,7 @@ Clients log in the same way they would to a CouchDB server running the [BrowserI
 
 An app server can also create a session for a user by POSTing to `/_session` on the privileged port-4985 REST interface. The request body should be a JSON document with two properties: `name` (the user name) and `ttl` time-to-live measured in seconds. The response will be a JSON document with properties `cookie_name` (the name of the session cookie the client should send), `session_id` (the value of the session cookie) and `expires` (the time the session expires).
 
-This allows the app server to optionally do its own authentication: the client sends credentials to it, and then it uses this API to generate a login session and send the cookie data back to the client, which can then send it in requests to BaseCouch.
+This allows the app server to optionally do its own authentication: the client sends credentials to it, and then it uses this API to generate a login session and send the cookie data back to the client, which can then send it in requests to Sync Gateway.
 
 ### Authorization
 

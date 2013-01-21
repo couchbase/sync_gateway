@@ -14,7 +14,7 @@ import (
 
 	"github.com/robertkrimen/otto"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 type ChannelMapper struct {

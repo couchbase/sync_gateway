@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // A user login session (used with cookie-based auth.)
@@ -23,7 +23,7 @@ type LoginSession struct {
 	Expiration time.Time	`json:"expiration"`
 }
 
-const CookieName = "BaseCouchSession"
+const CookieName = "SyncGatewaySession"
 
 func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
 	cookie, _ := rq.Cookie(CookieName)

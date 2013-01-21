@@ -23,9 +23,9 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/couchbaselabs/basecouch/auth"
-	"github.com/couchbaselabs/basecouch/base"
-	"github.com/couchbaselabs/basecouch/db"
+	"github.com/couchbaselabs/sync_gateway/auth"
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 // If set to true, JSON output will be pretty-printed.
@@ -113,7 +113,7 @@ func (h *handler) checkAuth() error {
 	if h.user == nil || h.user.Channels == nil {
 		cookie, _ := h.rq.Cookie(auth.CookieName)
 		log.Printf("Auth failed for username=%q, cookie=%q", userName, cookie)
-		h.response.Header().Set("WWW-Authenticate", `Basic realm="BaseCouch"`)
+		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
 	return nil

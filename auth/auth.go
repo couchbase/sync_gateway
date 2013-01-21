@@ -14,8 +14,8 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 
-	"github.com/couchbaselabs/basecouch/base"
-	ch "github.com/couchbaselabs/basecouch/channels"
+	"github.com/couchbaselabs/sync_gateway/base"
+	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
 /** Manages user authentication for a database. */

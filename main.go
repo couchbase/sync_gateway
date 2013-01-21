@@ -9,9 +9,9 @@
 
 package main
 
-import "github.com/couchbaselabs/basecouch/rest"
+import "github.com/couchbaselabs/sync_gateway/rest"
 
-// Simple BaseCouch launcher tool.
+// Simple Sync Gateway launcher tool.
 func main() {
 	rest.ServerMain()
 }

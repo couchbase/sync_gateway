@@ -94,7 +94,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 			var err error
 			for len(vres.Rows) == 0 {
 				vres = ViewResult{}
-				err = db.Bucket.ViewCustom("basecouch", "channels", opts, &vres)
+				err = db.Bucket.ViewCustom("sync_gateway", "channels", opts, &vres)
 				if err != nil {
 					log.Printf("Error from 'channels' view: %v", err)
 					return

@@ -23,7 +23,7 @@ import (
 	"net/textproto"
 	"strings"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 const kMaxInlineAttachmentSize = 200

@@ -17,7 +17,7 @@ import (
 
 	"github.com/sdegutis/go.assert"
 
-	"github.com/couchbaselabs/basecouch/base"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 func unjson(j string) Body {

@@ -22,13 +22,13 @@ import (
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/gorilla/mux"
 
-	"github.com/couchbaselabs/basecouch/auth"
-	"github.com/couchbaselabs/basecouch/base"
-	"github.com/couchbaselabs/basecouch/channels"
-	"github.com/couchbaselabs/basecouch/db"
+	"github.com/couchbaselabs/sync_gateway/auth"
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
+	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "BaseCouch/0.2"
+const VersionString = "Couchbase Sync Gateway/0.3"
 
 // Shared context of HTTP handlers. It's important that this remain immutable, because the
 // handlers will access it from multiple goroutines.
@@ -374,8 +374,8 @@ func (h *handler) handleChanges() error {
 	userChannels := h.user.Channels
 	filter := h.getQuery("filter")
 	if filter != "" {
-		if filter != "basecouch/bychannel" {
-			return &base.HTTPError{http.StatusBadRequest, "Unknown filter; try basecouch/bychannel"}
+		if filter != "sync_gateway/bychannel" {
+			return &base.HTTPError{http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel"}
 		}
 		userChannels = channels.SimplifyChannels(strings.Split(h.getQuery("channels"), ","), true)
 	}
@@ -656,7 +656,7 @@ func createHandler(c *context) http.Handler {
 	dbr.Handle("/_bulk_docs", makeHandler(c, (*handler).handleBulkDocs)).Methods("POST")
 	dbr.Handle("/_bulk_get", makeHandler(c, (*handler).handleBulkGet)).Methods("GET")
 	dbr.Handle("/_changes", makeHandler(c, (*handler).handleChanges)).Methods("GET")
-	dbr.Handle("/_design/basecouch", makeHandler(c, (*handler).handleDesign)).Methods("GET")
+	dbr.Handle("/_design/sync_gateway", makeHandler(c, (*handler).handleDesign)).Methods("GET")
 	dbr.Handle("/_ensure_full_commit", makeHandler(c, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(c, (*handler).handleRevsDiff)).Methods("POST")
 
@@ -685,7 +685,7 @@ func ServerMain() {
 	authAddr := flag.String("authaddr", ":4985", "Address to bind the auth interface to")
 	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
 	poolName := flag.String("pool", "default", "Name of pool")
-	bucketName := flag.String("bucket", "basecouch", "Name of bucket")
+	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
 	dbName := flag.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")

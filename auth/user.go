@@ -16,8 +16,8 @@ import (
 
 	"github.com/dchest/passwordhash"
 
-	"github.com/couchbaselabs/basecouch/base"
-	ch "github.com/couchbaselabs/basecouch/channels"
+	"github.com/couchbaselabs/sync_gateway/base"
+	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
 /** Persistent information about a user. */
