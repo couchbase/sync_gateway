@@ -9,7 +9,7 @@
 
 package base
 
-import ("log"
+import (
 	"errors"
 	"fmt"
 
@@ -85,9 +85,7 @@ func (server *JSServer) DirectCallFunction(inputs []string) (interface{}, error)
 
 	var result otto.Value
 	var err error
-	log.Printf("server.fn = %v", server.fn)
 	if server.fn.IsUndefined() {
-		log.Printf("(undefined)")
 		result = otto.UndefinedValue()
 	} else {
 		inputJS := make([]interface{}, len(inputs))
