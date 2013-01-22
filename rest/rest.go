@@ -377,7 +377,11 @@ func (h *handler) handleChanges() error {
 		if filter != "sync_gateway/bychannel" {
 			return &base.HTTPError{http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel"}
 		}
-		userChannels = channels.SimplifyChannels(strings.Split(h.getQuery("channels"), ","), true)
+		channelsParam := h.getQuery("channels")
+		if channelsParam == "" {
+			return &base.HTTPError{http.StatusBadRequest, "Missing 'channels' filter parameter"}
+		}
+		userChannels = channels.SimplifyChannels(strings.Split(channelsParam, ","), true)
 	}
 
 	switch h.getQuery("feed") {
