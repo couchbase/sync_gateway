@@ -54,6 +54,15 @@ func TestChannelMapper(t *testing.T) {
 	assert.DeepEquals(t, channels, []string{})
 }
 
+// Empty/no-op channel mapper fn
+func TestEmptyChannelMapper(t *testing.T) {
+	mapper, err := NewChannelMapper(``)
+	assertNoError(t, err, "Couldn't create mapper")
+	channels, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, channels, []string{})
+}
+
 // Test the public API
 func TestPublicChannelMapper(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {sync(doc.channels);}`)

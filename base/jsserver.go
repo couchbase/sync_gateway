@@ -9,7 +9,7 @@
 
 package base
 
-import (
+import ("log"
 	"errors"
 	"fmt"
 
@@ -37,8 +37,7 @@ type JSServer struct {
 // Creates a new JSServer that will run a JavaScript function.
 // 'funcSource' should look like "function(x,y) { ... }"
 func NewJSServer(funcSource string) (*JSServer, error) {
-	server := &JSServer{}
-	server.js = otto.New()
+	server := &JSServer{js: otto.New(), fn: otto.UndefinedValue()}
 
 	if _, err := server.setFunction(funcSource); err != nil {
 		return nil, err
@@ -54,15 +53,19 @@ func (server *JSServer) setFunction(funcSource string) (bool, error) {
 	if funcSource == server.fnSource {
 		return false, nil // no-op
 	}
-	fnobj, err := server.js.Object("(" + funcSource + ")")
-	if err != nil {
-		return false, err
-	}
-	if fnobj.Class() != "Function" {
-		return false, errors.New("JavaScript source does not evaluate to a function")
+	if funcSource == "" {
+		server.fn = otto.UndefinedValue()
+	} else {
+		fnobj, err := server.js.Object("(" + funcSource + ")")
+		if err != nil {
+			return false, err
+		}
+		if fnobj.Class() != "Function" {
+			return false, errors.New("JavaScript source does not evaluate to a function")
+		}
+		server.fn = fnobj.Value()
 	}
 	server.fnSource = funcSource
-	server.fn = fnobj.Value()
 	return true, nil
 }
 
@@ -76,30 +79,36 @@ func (server *JSServer) DefineNativeFunction(name string, function func(otto.Fun
 
 // Invokes the JS function. Not thread-safe! This is exposed for use by unit tests.
 func (server *JSServer) DirectCallFunction(inputs []string) (interface{}, error) {
-	inputJS := make([]interface{}, len(inputs))
-	for i, inputStr := range inputs {
-		if inputStr == "" {
-			inputJS[i] = otto.NullValue()
-		} else {
-			var err error
-			inputJS[i], err = server.js.Object("x = " + inputStr)
-			if err != nil {
-				return nil, fmt.Errorf("Unparseable input %q: %s", inputStr, err)
+	server.Before()
+
+	var result otto.Value
+	var err error
+	log.Printf("server.fn = %v", server.fn)
+	if server.fn.IsUndefined() {
+		log.Printf("(undefined)")
+		result = otto.UndefinedValue()
+	} else {
+		inputJS := make([]interface{}, len(inputs))
+		for i, inputStr := range inputs {
+			if inputStr == "" {
+				inputJS[i] = otto.NullValue()
+			} else {
+				var err error
+				inputJS[i], err = server.js.Object("x = " + inputStr)
+				if err != nil {
+					return nil, fmt.Errorf("Unparseable input %q: %s", inputStr, err)
+				}
 			}
 		}
+		result, err = server.fn.Call(server.fn, inputJS...)
 	}
-
-	if server.Before != nil {
-		server.Before()
-	}
-	result, err := server.fn.Call(server.fn, inputJS...)
 	if server.After != nil {
 		return server.After(result, err)
 	}
 	return nil, err
 }
 
-//////// MAPPER SERVER:
+//////// SERVER:
 
 const (
 	kCallFunction = iota
