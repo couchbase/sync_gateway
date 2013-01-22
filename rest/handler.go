@@ -98,16 +98,17 @@ func (h *handler) checkAuth() error {
 	if h.context.auth == nil {
 		return nil
 	}
-	userName, password := h.getBasicAuth()
-	if userName != "" {
-		h.user = h.context.auth.AuthenticateUser(userName, password)
+
+	// Check cookie first, then HTTP auth:
+	var err error
+	h.user, err = h.context.auth.AuthenticateCookie(h.rq)
+	if err != nil {
+		return err
 	}
+	var userName, password string
 	if h.user == nil {
-		var err error
-		h.user, err = h.context.auth.AuthenticateCookie(h.rq)
-		if err != nil {
-			return err
-		}
+		userName, password = h.getBasicAuth()
+		h.user = h.context.auth.AuthenticateUser(userName, password)
 	}
 
 	if h.user == nil || h.user.Channels == nil {
