@@ -79,7 +79,9 @@ func (server *JSServer) DefineNativeFunction(name string, function func(otto.Fun
 
 // Invokes the JS function. Not thread-safe! This is exposed for use by unit tests.
 func (server *JSServer) DirectCallFunction(inputs []string) (interface{}, error) {
-	server.Before()
+	if server.Before != nil {
+		server.Before()
+	}
 
 	var result otto.Value
 	var err error
