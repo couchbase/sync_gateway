@@ -50,8 +50,7 @@ func (h *handler) handleGetDoc() error {
 	if h.getBoolQuery("attachments") {
 		atts := h.getQuery("atts_since")
 		if atts != "" {
-			var revids []string
-			err := json.Unmarshal([]byte(atts), &revids)
+			err := json.Unmarshal([]byte(atts), &attachmentsSince)
 			if err != nil {
 				return &base.HTTPError{http.StatusBadRequest, "bad atts_since"}
 			}
