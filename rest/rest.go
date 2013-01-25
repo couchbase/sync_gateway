@@ -381,6 +381,10 @@ func (h *handler) handleChanges() error {
 			return &base.HTTPError{http.StatusBadRequest, "Missing 'channels' filter parameter"}
 		}
 		userChannels = channels.SimplifyChannels(strings.Split(channelsParam, ","), true)
+		userChannels = h.user.ExpandWildCardChannel(userChannels)
+		if err := h.user.AuthorizeAllChannels(userChannels); err != nil {
+			return err
+		}
 	}
 
 	switch h.getQuery("feed") {

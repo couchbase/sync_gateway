@@ -77,6 +77,7 @@ func (h *handler) handleBrowserIDPOST() error {
 		return err
 	}
 	if h.context.serverURL == "" {
+		log.Printf("Warning: Can't accept BrowserID logins: Server URL not configured")
 		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
 	}
 

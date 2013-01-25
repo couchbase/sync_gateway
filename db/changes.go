@@ -11,10 +11,13 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 // Options for Database.getChanges
@@ -62,6 +65,9 @@ const kChangesPageSize = 200
 
 // Returns a list of all the changes made on a channel.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	if channel == "*" || !channels.IsValidChannel(channel) {
+		return nil, &base.HTTPError{400, fmt.Sprintf("%q is not a valid channel", channel)}
+	}
 	lastSequence := options.Since
 	endkey := [2]interface{}{channel, make(Body)}
 	totalLimit := options.Limit
@@ -249,10 +255,6 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 
 // Synchronous convenience function that returns all changes as a simple array
 func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*ChangeEntry, error) {
-	if err := db.user.AuthorizeAllChannels(channels); err != nil {
-		return nil, err
-	}
-
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {

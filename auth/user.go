@@ -160,3 +160,11 @@ func (user *User) AuthorizeAnyChannels(channels []string) error {
 	}
 	return nil
 }
+
+// If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
+func (user *User) ExpandWildCardChannel(channels []string) []string {
+	if ch.ContainsChannel(channels, "*") {
+		channels = user.Channels
+	}
+	return channels
+}

@@ -185,12 +185,8 @@ func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)
 }
 
-func (h *handler) logStatus(status int) {
+func (h *handler) logStatus(status int, message string) {
 	if LogRequestsVerbose {
-		var message string
-		if status >= 300 {
-			message = "*** "
-		}
 		log.Printf("\t--> %d %s", status, message)
 	}
 }
@@ -219,12 +215,12 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		h.setHeader("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
 		if status > 0 {
 			h.response.WriteHeader(status)
-			h.logStatus(status)
+			h.logStatus(status, "")
 		}
 		h.response.Write(jsonOut)
 	} else if status > 0 {
 		h.response.WriteHeader(status)
-		h.logStatus(status)
+		h.logStatus(status, "")
 	}
 }
 
@@ -278,7 +274,7 @@ func (h *handler) writeError(err error) {
 func (h *handler) writeStatus(status int, message string) {
 	if status < 300 {
 		h.response.WriteHeader(status)
-		h.logStatus(status)
+		h.logStatus(status, message)
 		return
 	}
 	var errorStr string
@@ -296,7 +292,7 @@ func (h *handler) writeStatus(status int, message string) {
 
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	h.logStatus(status)
+	h.logStatus(status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
