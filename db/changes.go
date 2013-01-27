@@ -65,7 +65,7 @@ const kChangesPageSize = 200
 
 // Returns a list of all the changes made on a channel.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	if channel == "*" || !channels.IsValidChannel(channel) {
+	if !channels.IsValidChannel(channel) {
 		return nil, &base.HTTPError{400, fmt.Sprintf("%q is not a valid channel", channel)}
 	}
 	lastSequence := options.Since
