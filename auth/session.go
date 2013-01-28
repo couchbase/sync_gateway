@@ -40,7 +40,11 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
 		return nil, err
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
-	return auth.GetUser(session.Username)
+	user, err := auth.GetUser(session.Username)
+	if user != nil && user.Disabled {
+		user = nil
+	}
+	return user, err
 }
 
 func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*LoginSession, error) {

@@ -93,6 +93,19 @@ func (user *User) SetPassword(password string) {
 
 //////// USER CHANNEL AUTHORIZATION:
 
+// If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
+// Do this before calling any of the CanSee or Authorize methods below, as they interpret a
+// channel named "*" as, literally, the wildcard channel that contains all documents.
+func (user *User) ExpandWildCardChannel(channels []string) []string {
+	if ch.ContainsChannel(channels, "*") {
+		channels = user.Channels
+		if channels == nil {
+			channels = []string{}
+		}
+	}
+	return channels
+}
+
 func (user *User) UnauthError(message string) error {
 	if user.Name == "" {
 		return &base.HTTPError{http.StatusUnauthorized, "login required"}
@@ -103,7 +116,8 @@ func (user *User) UnauthError(message string) error {
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
-	return user == nil || channel == "*" || ch.ContainsChannel(user.Channels, channel) ||
+	return user == nil ||
+		ch.ContainsChannel(user.Channels, channel) ||
 		ch.ContainsChannel(user.Channels, "*")
 }
 
@@ -118,20 +132,6 @@ func (user *User) CanSeeAllChannels(channels []string) bool {
 		}
 	}
 	return true
-}
-
-// Returns true if the User is allowed to access any of the given channels.
-// A nil User means access control is disabled, so the function will return true.
-func (user *User) CanSeeAnyChannels(channels []string) bool {
-	if channels != nil {
-		for _, channel := range channels {
-			if user.CanSeeChannel(channel) {
-				return true
-			}
-		}
-	}
-	// If user has wildcard access, allow it anyway
-	return ch.ContainsChannel(user.Channels, "*")
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access all the given channels.
@@ -150,21 +150,4 @@ func (user *User) AuthorizeAllChannels(channels []string) error {
 		return user.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
 	}
 	return nil
-}
-
-// Returns an HTTP 403 error if the User is not allowed to access any of the given channels.
-// A nil User means access control is disabled, so the function will return nil.
-func (user *User) AuthorizeAnyChannels(channels []string) error {
-	if !user.CanSeeAnyChannels(channels) {
-		return user.UnauthError("You are not allowed to see this")
-	}
-	return nil
-}
-
-// If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
-func (user *User) ExpandWildCardChannel(channels []string) []string {
-	if ch.ContainsChannel(channels, "*") {
-		channels = user.Channels
-	}
-	return channels
 }
