@@ -10,6 +10,8 @@
 package auth
 
 import (
+	"net/http"
+	
 	"github.com/couchbaselabs/go-couchbase"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -77,6 +79,11 @@ func (auth *Authenticator) SaveUser(user *User) error {
 	if err := user.Validate(); err != nil {
 		return err
 	}
+	if (user.Name == "") != (user.PasswordHash == nil) {
+		// Real user must have a password; anon user must not have a password
+		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
+	}
+	
 	if err := auth.bucket.Set(docIDForUser(user.Name), 0, user); err != nil {
 		return err
 	}

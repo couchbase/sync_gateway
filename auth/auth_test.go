@@ -17,10 +17,7 @@ import (
 )
 
 func TestValidateGuestUser(t *testing.T) {
-	user, err := NewUser("", "letmein", nil)
-	assert.True(t, user == nil)
-	assert.True(t, err != nil)
-	user, err = NewUser("", "", nil)
+	user, err := NewUser("", "", nil)
 	assert.True(t, user != nil)
 	assert.True(t, err == nil)
 }
@@ -29,7 +26,7 @@ func TestValidateUser(t *testing.T) {
 	user, _ := NewUser("invalid:name", "", nil)
 	assert.Equals(t, user, (*User)(nil))
 	user, _ = NewUser("ValidName", "", nil)
-	assert.Equals(t, user, (*User)(nil))
+	assert.True(t, user != nil)
 	user, _ = NewUser("ValidName", "letmein", nil)
 	assert.True(t, user != nil)
 }

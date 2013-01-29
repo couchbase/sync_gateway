@@ -31,13 +31,18 @@ type User struct {
 	Password *string `json:"password,omitempty"`
 }
 
+var kValidUsernameRegexp *regexp.Regexp
 var kValidEmailRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	kValidEmailRegexp, err = regexp.Compile(`^[-.\w]+@\w[-.\w]+$`)
+	kValidUsernameRegexp, err = regexp.Compile(`^[-+.@\w]*$`)
 	if err != nil {
-		panic("Bad IsValidEmail regexp")
+		panic("Bad kValidUsernameRegexp")
+	}
+	kValidEmailRegexp, err = regexp.Compile(`^[-+.\w]+@\w[-.\w]+$`)
+	if err != nil {
+		panic("Bad kValidEmailRegexp")
 	}
 }
 
@@ -57,10 +62,8 @@ func NewUser(username string, password string, channels []string) (*User, error)
 
 // Checks whether this User object contains valid data; if not, returns an error.
 func (user *User) Validate() error {
-	if match, _ := regexp.MatchString(`^\w*$`, user.Name); !match {
+	if !kValidUsernameRegexp.MatchString(user.Name) {
 		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid username %q", user.Name)}
-	} else if (user.Name == "") != (user.PasswordHash == nil) {
-		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	} else if user.Email != "" && !IsValidEmail(user.Email) {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
 	}
