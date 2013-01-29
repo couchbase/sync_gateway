@@ -77,6 +77,10 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	return mapper, nil
 }
 
+func NewDefaultChannelMapper() (*ChannelMapper, error) {
+	return NewChannelMapper(`function(doc){sync(doc.channels);}`)
+}
+
 // This is just for testing
 func (mapper *ChannelMapper) callMapper(input string) (interface{}, error) {
 	return mapper.js.DirectCallFunction([]string{input})

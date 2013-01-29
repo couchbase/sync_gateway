@@ -626,7 +626,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 	if dbcontext.ChannelMapper == nil {
 		log.Printf("Channel mapper undefined; using default")
 		// Always have a channel mapper object even if it does nothing:
-		dbcontext.ChannelMapper, _ = channels.NewChannelMapper("")
+		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 	}
 	if dbcontext.Validator == nil {
 		log.Printf("Validator undefined; no validation")

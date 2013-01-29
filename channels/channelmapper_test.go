@@ -42,8 +42,8 @@ func TestInputParse(t *testing.T) {
 }
 
 // A more realistic example
-func TestChannelMapper(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {sync(doc.channels);}`)
+func TestDefaultChannelMapper(t *testing.T) {
+	mapper, err := NewDefaultChannelMapper()
 	assertNoError(t, err, "Couldn't create mapper")
 	channels, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`)
 	assertNoError(t, err, "callMapper failed")
