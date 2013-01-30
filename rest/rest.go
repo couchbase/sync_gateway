@@ -544,15 +544,22 @@ func (h *handler) handleDelLocalDoc() error {
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
-	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
-		response := map[string]string{
-			"couchdb": "welcome",
-			"version": VersionString,
-		}
-		h.writeJSON(response)
-		return nil
+	response := map[string]string{
+		"couchdb": "welcome",
+		"version": VersionString,
 	}
-	return kBadMethodError
+	h.writeJSON(response)
+	return nil
+}
+
+func (h *handler) handleOptions() error {
+	//FIX: This is inaccurate; should figure out what methods the requested URL handles.
+	h.setHeader("Accept", "GET, HEAD, PUT, DELETE, POST")
+	return nil
+}
+
+func (h *handler) handleBadRoute() error {
+	return &base.HTTPError{http.StatusMethodNotAllowed, "unknown route"}
 }
 
 func (h *handler) handleAllDbs() error {
@@ -646,43 +653,46 @@ func createHandler(c *context) http.Handler {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	// Global operations:
-	r.Handle("/", makeHandler(c, (*handler).handleRoot)).Methods("GET")
-	r.Handle("/_all_dbs", makeHandler(c, (*handler).handleAllDbs)).Methods("GET")
-	r.Handle("/_session", makeHandler(c, (*handler).handleSessionGET)).Methods("GET")
+	r.Handle("/", makeHandler(c, (*handler).handleRoot)).Methods("GET", "HEAD")
+	r.Handle("/_all_dbs", makeHandler(c, (*handler).handleAllDbs)).Methods("GET", "HEAD")
+	r.Handle("/_session", makeHandler(c, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	r.Handle("/_session", makeHandler(c, (*handler).handleSessionPOST)).Methods("POST")
 	r.Handle("/_browserid", makeHandler(c, (*handler).handleBrowserIDPOST)).Methods("POST")
-	r.Handle("/_vacuum", makeHandler(c, (*handler).handleVacuum)).Methods("GET")
+	r.Handle("/_vacuum", makeHandler(c, (*handler).handleVacuum)).Methods("GET", "HEAD")
 
 	// Operations on databases:
 	r.Handle("/{newdb}/", makeHandler(c, (*handler).handleCreateDB)).Methods("PUT")
-	r.Handle("/{db}/", makeHandler(c, (*handler).handleGetDB)).Methods("GET")
+	r.Handle("/{db}/", makeHandler(c, (*handler).handleGetDB)).Methods("GET", "HEAD")
 	r.Handle("/{db}/", makeHandler(c, (*handler).handleDeleteDB)).Methods("DELETE")
 	r.Handle("/{db}/", makeHandler(c, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
 	dbr := r.PathPrefix("/{db}/").Subrouter()
-	dbr.Handle("/_all_docs", makeHandler(c, (*handler).handleAllDocs)).Methods("GET", "POST")
+	dbr.Handle("/_all_docs", makeHandler(c, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_bulk_docs", makeHandler(c, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", makeHandler(c, (*handler).handleBulkGet)).Methods("GET")
-	dbr.Handle("/_changes", makeHandler(c, (*handler).handleChanges)).Methods("GET")
-	dbr.Handle("/_design/sync_gateway", makeHandler(c, (*handler).handleDesign)).Methods("GET")
+	dbr.Handle("/_bulk_get", makeHandler(c, (*handler).handleBulkGet)).Methods("GET", "HEAD")
+	dbr.Handle("/_changes", makeHandler(c, (*handler).handleChanges)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/sync_gateway", makeHandler(c, (*handler).handleDesign)).Methods("GET", "HEAD")
 	dbr.Handle("/_ensure_full_commit", makeHandler(c, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(c, (*handler).handleRevsDiff)).Methods("POST")
 
 	// Document URLs:
-	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleGetLocalDoc)).Methods("GET")
+	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
 	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET")
+	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
 	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleGetDoc)).Methods("GET")
+	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleGetDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleDeleteDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid}/{attach}", makeHandler(c, (*handler).handleGetAttachment)).Methods("GET")
+	dbr.Handle("/{docid}/{attach}", makeHandler(c, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+
+	r.PathPrefix("/").Methods("OPTIONS").Handler(makeHandler(c, (*handler).handleOptions))
+	r.PathPrefix("/").Handler(makeHandler(c, (*handler).handleBadRoute))
 
 	return r
 }

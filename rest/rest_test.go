@@ -53,6 +53,13 @@ func TestRoot(t *testing.T) {
 	assert.Equals(t, response.Code, 200)
 	assert.Equals(t, response.Body.String(),
 		"{\"couchdb\":\"welcome\",\"version\":\""+VersionString+"\"}")
+
+	response = callREST("HEAD", "/", "")
+	assert.Equals(t, response.Code, 200)
+	response = callREST("OPTIONS", "/", "")
+	assert.Equals(t, response.Code, 200)
+	response = callREST("PUT", "/", "")
+	assert.Equals(t, response.Code, 405)
 }
 
 func createDoc(t *testing.T, docid string) string {
