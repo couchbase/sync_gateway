@@ -24,6 +24,9 @@ func conditionNamed(name string) *sync.Cond {
 }
 
 func makeConditionNamed(name string) *sync.Cond {
+	gConditionsLock.Lock()
+	defer gConditionsLock.Unlock()
+
 	c := gConditions[name]
 	if c == nil {
 		c = sync.NewCond(&sync.Mutex{})
