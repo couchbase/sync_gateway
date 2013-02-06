@@ -96,7 +96,7 @@ func TestUserAccess(t *testing.T) {
 
 	// User with access to two channels:
 	user.Channels = []string{"x", "z"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x","z"})
+	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x", "z"})
 	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"x"}), []string{"x"})
 	assert.True(t, user.CanSeeAllChannels([]string{}))
 	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
@@ -105,7 +105,7 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
 
 	user.Channels = []string{"x", "y"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x","y"})
+	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x", "y"})
 	assert.True(t, user.CanSeeAllChannels([]string{}))
 	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
 	assert.True(t, user.CanSeeAllChannels([]string{"x", "y"}))

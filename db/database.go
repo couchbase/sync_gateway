@@ -31,15 +31,15 @@ var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 type DatabaseContext struct {
 	Name          string
 	Bucket        *couchbase.Bucket
-	sequences	  *sequenceAllocator
+	sequences     *sequenceAllocator
 	ChannelMapper *channels.ChannelMapper
-	Validator	  *Validator
+	Validator     *Validator
 }
 
 // Represents a simulated CouchDB database.
 type Database struct {
-				*DatabaseContext
-	user		*auth.User
+	*DatabaseContext
+	user *auth.User
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.

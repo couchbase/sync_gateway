@@ -321,7 +321,7 @@ func (h *handler) handleBulkDocs() error {
 	if !ok {
 		newEdits = true
 	}
-	
+
 	docs := body["docs"].([]interface{})
 	h.db.ReserveSequences(uint64(len(docs)))
 

@@ -224,7 +224,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		if currentRevIndex == 0 {
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
-		
+
 		//FIX: Should call validateDoc? What if the parent rev doesn't exist locally?
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -247,11 +247,11 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 }
 
 func (db *Database) validateDoc(doc *document, newRev Body, oldRevID string) error {
-	if db.Validator == nil {//TEMP: Move to top of fn
+	if db.Validator == nil { //TEMP: Move to top of fn
 		return nil
 	}
 	newRev["_id"] = doc.ID
-	newJson,_ := json.Marshal(newRev)
+	newJson, _ := json.Marshal(newRev)
 	oldJson := ""
 	if oldRevID != "" {
 		var err error

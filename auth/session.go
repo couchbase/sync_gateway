@@ -18,9 +18,9 @@ import (
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID         string       `json:"id"`
-	Username   string       `json:"username"`
-	Expiration time.Time	`json:"expiration"`
+	ID         string    `json:"id"`
+	Username   string    `json:"username"`
+	Expiration time.Time `json:"expiration"`
 }
 
 const CookieName = "SyncGatewaySession"
@@ -73,4 +73,3 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie
 func docIDForSession(sessionID string) string {
 	return "session:" + sessionID
 }
-

@@ -11,7 +11,7 @@ package auth
 
 import (
 	"net/http"
-	
+
 	"github.com/couchbaselabs/go-couchbase"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -20,7 +20,7 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket   *couchbase.Bucket
+	bucket *couchbase.Bucket
 }
 
 type userByEmailInfo struct {
@@ -30,7 +30,7 @@ type userByEmailInfo struct {
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket *couchbase.Bucket) *Authenticator {
 	return &Authenticator{
-		bucket:   bucket,
+		bucket: bucket,
 	}
 }
 
@@ -83,7 +83,7 @@ func (auth *Authenticator) SaveUser(user *User) error {
 		// Real user must have a password; anon user must not have a password
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
-	
+
 	if err := auth.bucket.Set(docIDForUser(user.Name), 0, user); err != nil {
 		return err
 	}
