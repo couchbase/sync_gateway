@@ -164,7 +164,7 @@ func TestLocalDocs(t *testing.T) {
 	assert.Equals(t, response.Code, 201)
 	response = callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 200)
-	assert.Equals(t, response.Body.String(), `{"_rev":"0-1","hi":"there"}`)
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-1","hi":"there"}`)
 
 	response = callREST("PUT", "/db/_local/loc1", `{"hi": "there"}`)
 	assert.Equals(t, response.Code, 409)
@@ -172,7 +172,7 @@ func TestLocalDocs(t *testing.T) {
 	assert.Equals(t, response.Code, 201)
 	response = callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 200)
-	assert.Equals(t, response.Body.String(), `{"_rev":"0-2","hi":"again"}`)
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-2","hi":"again"}`)
 
 	response = callREST("DELETE", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 409)

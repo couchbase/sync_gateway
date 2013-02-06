@@ -35,9 +35,9 @@ const VersionString = "Couchbase Sync Gateway/0.3"
 // Shared context of HTTP handlers. It's important that this remain immutable, because the
 // handlers will access it from multiple goroutines.
 type context struct {
-	dbcontext	  *db.DatabaseContext
-	auth          *auth.Authenticator
-	serverURL     string
+	dbcontext *db.DatabaseContext
+	auth      *auth.Authenticator
+	serverURL string
 }
 
 // HTTP handler for a GET of a document
@@ -396,7 +396,7 @@ func (h *handler) handleChanges() error {
 		options.Wait = true
 	}
 	return h.handleSimpleChanges(userChannels, options)
-	}
+}
 
 func (h *handler) handleSimpleChanges(channels []string, options db.ChangesOptions) error {
 	var lastSeq uint64 = 0
@@ -408,7 +408,7 @@ func (h *handler) handleSimpleChanges(channels []string, options db.ChangesOptio
 		for entry := range feed {
 			if lastSeq < entry.Seq {
 				lastSeq = entry.Seq
-	}
+			}
 			str, _ := json.Marshal(entry)
 			var buf []byte
 			if first {
@@ -543,6 +543,7 @@ func (h *handler) handleGetLocalDoc() error {
 	if value == nil {
 		return kNotFoundError
 	}
+	value["_id"] = "_local/" + docid
 	h.writeJSON(value)
 	return nil
 }
@@ -555,7 +556,7 @@ func (h *handler) handlePutLocalDoc() error {
 		var revid string
 		revid, err = h.db.PutLocal(docid, body)
 		if err == nil {
-			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": revid})
+			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": "_local/" + docid, "rev": revid})
 		}
 	}
 	return err
@@ -620,9 +621,10 @@ func (h *handler) handleCreateDB() error {
 func (h *handler) handleGetDB() error {
 	lastSeq, _ := h.db.LastSequence()
 	response := db.Body{
-		"db_name":    h.db.Name,
-		"doc_count":  h.db.DocCount(),
-		"update_seq": lastSeq,
+		"db_name":              h.db.Name,
+		"doc_count":            h.db.DocCount(),
+		"update_seq":           lastSeq,
+		"committed_update_seq": lastSeq,
 	}
 	h.writeJSON(response)
 	return nil
@@ -654,7 +656,7 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 	dbcontext := &db.DatabaseContext{Name: dbName, Bucket: bucket}
 	newdb, _ := db.GetDatabase(dbcontext, nil)
 	newdb.ReadDesignDocument()
-	
+
 	if dbcontext.ChannelMapper == nil {
 		log.Printf("Channel mapper undefined; using default")
 		// Always have a channel mapper object even if it does nothing:
@@ -662,12 +664,12 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 	}
 	if dbcontext.Validator == nil {
 		log.Printf("Validator undefined; no validation")
-	}	
+	}
 
 	c := &context{
-		dbcontext:     dbcontext,
-		auth:          auth.NewAuthenticator(bucket),
-		serverURL:     serverURL,
+		dbcontext: dbcontext,
+		auth:      auth.NewAuthenticator(bucket),
+		serverURL: serverURL,
 	}
 
 	http.Handle("/", createHandler(c))
