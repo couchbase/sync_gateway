@@ -321,9 +321,12 @@ func (h *handler) handleBulkDocs() error {
 	if !ok {
 		newEdits = true
 	}
+	
+	docs := body["docs"].([]interface{})
+	h.db.ReserveSequences(uint64(len(docs)))
 
-	result := make([]db.Body, 0, 5)
-	for _, item := range body["docs"].([]interface{}) {
+	result := make([]db.Body, 0, len(docs))
+	for _, item := range docs {
 		doc := item.(map[string]interface{})
 		docid, _ := doc["_id"].(string)
 		var err error
@@ -653,8 +656,14 @@ func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *contex
 		dbName = bucket.Name
 	}
 
-	dbcontext := &db.DatabaseContext{Name: dbName, Bucket: bucket}
-	newdb, _ := db.GetDatabase(dbcontext, nil)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
+	if err != nil {
+		return nil
+	}
+	newdb, err := db.GetDatabase(dbcontext, nil)
+	if err != nil {
+		return nil
+	}
 	newdb.ReadDesignDocument()
 
 	if dbcontext.ChannelMapper == nil {

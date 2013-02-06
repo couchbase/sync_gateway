@@ -41,7 +41,8 @@ func callREST(method, resource string, body string) *httptest.ResponseRecorder {
 	response := httptest.NewRecorder()
 	mapper, _ := channels.NewChannelMapper(`function(doc) {sync(doc.channels);}`)
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
-	dbcontext := &db.DatabaseContext{"db", gTestBucket, mapper, nil}
+	dbcontext, _ := db.NewDatabaseContext("db", gTestBucket)
+	dbcontext.ChannelMapper = mapper
 	context := &context{dbcontext, nil, ""}
 	handler := createHandler(context)
 	handler.ServeHTTP(response, request)

@@ -311,7 +311,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
 
 		// Assign the document the next sequence number, for the _changes feed:
-		doc.Sequence, err = db.generateSequence()
+		doc.Sequence, err = db.sequences.nextSequence()
 		if err != nil {
 			return nil, err
 		}

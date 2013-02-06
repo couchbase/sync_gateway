@@ -31,6 +31,7 @@ var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 type DatabaseContext struct {
 	Name          string
 	Bucket        *couchbase.Bucket
+	sequences	  *sequenceAllocator
 	ChannelMapper *channels.ChannelMapper
 	Validator	  *Validator
 }
@@ -50,6 +51,14 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 	log.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
 	err = installViews(bucket)
 	return
+}
+
+func NewDatabaseContext(dbName string, bucket *couchbase.Bucket) (*DatabaseContext, error) {
+	sequences, err := newSequenceAllocator(bucket)
+	if err != nil {
+		return nil, err
+	}
+	return &DatabaseContext{Name: dbName, Bucket: bucket, sequences: sequences}, nil
 }
 
 // Makes a Database object given its name and bucket.

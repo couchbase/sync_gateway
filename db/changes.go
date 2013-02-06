@@ -272,9 +272,9 @@ func (db *Database) NotifyRevision() {
 }
 
 func (db *Database) LastSequence() (uint64, error) {
-	return db.Bucket.Incr("__seq", 0, 0, 0)
+	return db.sequences.lastSequence()
 }
 
-func (db *Database) generateSequence() (uint64, error) {
-	return db.Bucket.Incr("__seq", 1, 1, 0)
+func (db *Database) ReserveSequences(numToReserve uint64) error {
+	return db.sequences.reserveSequences(numToReserve)
 }

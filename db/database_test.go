@@ -30,7 +30,9 @@ func init() {
 }
 
 func TestDatabase(t *testing.T) {
-	db, err := CreateDatabase(&DatabaseContext{Name: "db", Bucket: gTestBucket})
+	context, err := NewDatabaseContext("db", gTestBucket)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
 	defer func() {
 		err = db.Delete()
