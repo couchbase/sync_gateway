@@ -261,6 +261,17 @@ func (h *handler) writeln(line []byte) error {
 	return err
 }
 
+func (h *handler) write(line []byte) error {
+	_, err := h.response.Write(line)
+	if err == nil {
+		switch r := h.response.(type) {
+		case http.Flusher:
+			r.Flush()
+		}
+	}
+	return err
+}
+
 // If the error parameter is non-nil, sets the response status code appropriately and
 // writes a CouchDB-style JSON description to the body.
 func (h *handler) writeError(err error) {

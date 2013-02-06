@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"fmt"
+
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/gorilla/mux"
 
@@ -388,19 +390,42 @@ func (h *handler) handleChanges() error {
 	}
 
 	switch h.getQuery("feed") {
-	case "longpoll":
-		options.Wait = true
 	case "continuous":
 		return h.handleContinuousChanges(userChannels, options)
+	case "longpoll":
+		options.Wait = true
+	}
+	return h.handleSimpleChanges(userChannels, options)
 	}
 
-	changes, err := h.db.GetChanges(userChannels, options)
-	var lastSeq uint64
-	if err == nil {
-		lastSeq, err = h.db.LastSequence()
+func (h *handler) handleSimpleChanges(channels []string, options db.ChangesOptions) error {
+	var lastSeq uint64 = 0
+	var first bool = true
+	feed, err := h.db.MultiChangesFeed(channels, options)
+	if err == nil && feed != nil {
+		h.setHeader("Content-Type", "text/plain; charset=utf-8")
+		h.writeln([]byte("{\"results\":["))
+		for entry := range feed {
+			if lastSeq < entry.Seq {
+				lastSeq = entry.Seq
 	}
-	if err == nil {
-		h.writeJSON(db.Body{"results": changes, "last_seq": lastSeq})
+			str, _ := json.Marshal(entry)
+			var buf []byte
+			if first {
+				first = false
+				buf = str
+			} else {
+				buf = []byte{','}
+				buf = append(buf, str...)
+			}
+			if err = h.writeln(buf); err != nil {
+				err = nil
+				break
+			}
+
+		}
+		s := fmt.Sprintf("],\n\"last_seq\":%d}", lastSeq)
+		h.writeln([]byte(s))
 	}
 	return err
 }
