@@ -10,15 +10,11 @@
 package base
 
 import (
-	"crypto/rand"
 	"fmt"
 	"github.com/dustin/gomemcached"
-	"io"
 	"log"
 	"net/http"
 )
-
-var Logging = false
 
 // Simple error implementation wrapping an HTTP response status.
 type HTTPError struct {
@@ -61,13 +57,4 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 func IsDocNotFoundError(err error) bool {
 	mcresponse, ok := err.(*gomemcached.MCResponse)
 	return ok && mcresponse.Status == gomemcached.KEY_ENOENT
-}
-
-func GenerateRandomSecret() string {
-	randomBytes := make([]byte, 20)
-	n, err := io.ReadFull(rand.Reader, randomBytes)
-	if n < len(randomBytes) || err != nil {
-		panic("RNG failed, can't create password")
-	}
-	return fmt.Sprintf("%x", randomBytes)
 }

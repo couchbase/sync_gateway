@@ -175,9 +175,16 @@ func TestLocalDocs(t *testing.T) {
 	assert.Equals(t, response.Code, 200)
 	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-2","hi":"again"}`)
 
+	// Check the handling of large integers, which caused trouble for us at one point:
+	response = callREST("PUT", "/db/_local/loc1", `{"big": 123456789, "_rev": "0-2"}`)
+	assert.Equals(t, response.Code, 201)
+	response = callREST("GET", "/db/_local/loc1", "")
+	assert.Equals(t, response.Code, 200)
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-3","big":123456789}`)
+
 	response = callREST("DELETE", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 409)
-	response = callREST("DELETE", "/db/_local/loc1?rev=0-2", "")
+	response = callREST("DELETE", "/db/_local/loc1?rev=0-3", "")
 	assert.Equals(t, response.Code, 200)
 	response = callREST("GET", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 404)

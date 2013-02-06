@@ -23,6 +23,13 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+// Version of FixJSONNumbers (see base/util.go) that operates on a Body
+func (body Body) FixJSONNumbers() {
+	for k, v := range body {
+		body[k] = base.FixJSONNumbers(v)
+	}
+}
+
 func (db *Database) getRevisionJSON(docid, revid string, key RevKey) (string, error) {
 	body, err := db.Bucket.GetRaw(revKeyToString(key))
 	return string(body), err
