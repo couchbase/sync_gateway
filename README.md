@@ -26,8 +26,9 @@ Apache 2 license, like all Couchbase stuff.
 
 0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) on localhost.
 1. Create a bucket named `sync_gateway` in the default pool.
-1. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later.
-2. `go get -u github.com/couchbaselabs/sync_gateway`
+2. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later.
+3. Install [Mercurial](http://mercurial.selenic.com/downloads/).
+4. `go get -u github.com/couchbaselabs/sync_gateway`
 
 ### Startup
 
