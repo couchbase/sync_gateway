@@ -21,6 +21,7 @@ type ChannelRemoval struct {
 }
 type ChannelMap map[string]*ChannelRemoval
 
+type AccessMap map[string][]string
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
 	ID         string     `json:"id"`
@@ -29,6 +30,7 @@ type document struct {
 	Sequence   uint64     `json:"sequence"`
 	History    RevTree    `json:"history"`
 	Channels   ChannelMap `json:"channels,omitempty"`
+	Access     AccessMap  `json:"access,omitempty"`
 }
 
 func (db *Database) realDocID(docid string) string {
@@ -316,7 +318,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			return nil, err
 		}
 
-		db.updateDocChannels(doc, db.getChannels(body)) //FIX: Incorrect if new rev is not current!
+		channels, access := db.getChannelsAndAccess(body)
+		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
+		db.updateDocAccess(doc, access) //FIX: Incorrect if new rev is not current!
 
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
@@ -368,16 +372,16 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 //////// CHANNELS:
 
 // Determines which channels a document body belongs to
-func (db *Database) getChannels(body Body) (result []string) {
+func (db *Database) getChannelsAndAccess(body Body) (result []string, access map[string][]string) {
 	if db.ChannelMapper != nil {
 		jsonStr, _ := json.Marshal(body)
-		result, _ = db.ChannelMapper.MapToChannels(string(jsonStr))
+		result, access, _ = db.ChannelMapper.MapToChannelsAndAccess(string(jsonStr))
 
 	} else {
 		// No ChannelMapper so by default use the "channels" property:
 		value, _ := body["channels"].([]interface{})
 		if value == nil {
-			return nil
+			return nil, nil
 		}
 		result = make([]string, 0, len(value))
 		for _, channel := range value {
@@ -387,7 +391,7 @@ func (db *Database) getChannels(body Body) (result []string) {
 			}
 		}
 	}
-	return
+	return result, access
 }
 
 // Updates the Channels property of a document object with current & past channels
@@ -416,6 +420,13 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 		}
 	}
 	return changed
+}
+
+// Updates the Channels property of a document object with current & past channels
+func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed bool) {
+	log.Printf("\tDoc %q access map %q", doc.ID, newAccess)
+	doc.Access = newAccess
+	return true
 }
 
 //////// REVS_DIFF:

@@ -75,7 +75,7 @@ func (db *Database) SameAs(otherdb *Database) bool {
 		db.Bucket == otherdb.Bucket
 }
 
-// Sets the database object's channelMapper and validator based on the JS code in _design/channels 
+// Sets the database object's channelMapper and validator based on the JS code in _design/channels
 func (db *Database) ReadDesignDocument() error {
 	body, err := db.Get("_design/channels")
 	if err != nil {
@@ -354,7 +354,11 @@ func (db *Database) UpdateAllDocChannels() error {
 			if err != nil {
 				return nil, err
 			}
-			if !db.updateDocChannels(doc, db.getChannels(body)) {
+			channels, access := db.getChannelsAndAccess(body)
+			if !db.updateDocChannels(doc, channels) {
+				return nil, couchbase.UpdateCancel // unchanged
+			}
+			if !db.updateDocAccess(doc, access) {
 				return nil, couchbase.UpdateCancel // unchanged
 			}
 			log.Printf("\tSaving updated channels of %q", docid)

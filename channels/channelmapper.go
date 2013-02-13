@@ -11,6 +11,7 @@ package channels
 
 import (
 	"strconv"
+	"fmt"
 
 	"github.com/robertkrimen/otto"
 
@@ -20,7 +21,11 @@ import (
 type ChannelMapper struct {
 	js       *base.JSServer
 	channels []string
+	access AccessMap
 }
+
+type AccessMap map[string][]string
+
 
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array *otto.Object) []string {
@@ -66,13 +71,32 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		return otto.UndefinedValue()
 	})
 
+	// Implementation of the 'access()' callback:
+	mapper.js.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
+		name := call.Argument(0).String()
+		channels := call.Argument(1)
+		if channels.IsString() {
+			mapper.access[name] = append(mapper.access[name], channels.String())
+		} else if channels.Class() == "Array" {
+			array := ottoArrayToStrings(channels.Object())
+			if array != nil {
+				mapper.access[name] = append(mapper.access[name], array...)
+			}
+		}
+		return otto.UndefinedValue()
+	})
+
 	mapper.js.Before = func() {
 		mapper.channels = []string{}
+		mapper.access = make(map[string][]string)
 	}
 	mapper.js.After = func(result otto.Value, err error) (interface{}, error) {
-		channels := mapper.channels
+		newmapper := &ChannelMapper{}
+		newmapper.channels = mapper.channels
+		newmapper.access = mapper.access
 		mapper.channels = nil
-		return channels, err
+		mapper.access = nil
+		return newmapper, err
 	}
 	return mapper, nil
 }
@@ -86,13 +110,16 @@ func (mapper *ChannelMapper) callMapper(input string) (interface{}, error) {
 	return mapper.js.DirectCallFunction([]string{input})
 }
 
-func (mapper *ChannelMapper) MapToChannels(input string) ([]string, error) {
-	result, err := mapper.js.CallFunction([]string{input})
-	channels := result.([]string)
+func (mapper *ChannelMapper) MapToChannelsAndAccess(input string) ([]string, AccessMap, error) {
+	result1, err := mapper.js.CallFunction([]string{input})
+	result := result1.(*ChannelMapper)
+	channels := result.channels
+	access := result.access
+	fmt.Printf("access map = %+v \n", access)
 	if channels == nil {
 		channels = SimplifyChannels(channels, false)
 	}
-	return channels, err
+	return channels, access, err
 }
 
 func (mapper *ChannelMapper) SetFunction(fnSource string) (bool, error) {
