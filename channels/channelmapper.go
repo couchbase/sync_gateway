@@ -10,8 +10,8 @@
 package channels
 
 import (
-	"strconv"
 	"fmt"
+	"strconv"
 
 	"github.com/robertkrimen/otto"
 
@@ -21,11 +21,10 @@ import (
 type ChannelMapper struct {
 	js       *base.JSServer
 	channels []string
-	access AccessMap
+	access   AccessMap
 }
 
 type AccessMap map[string][]string
-
 
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array *otto.Object) []string {

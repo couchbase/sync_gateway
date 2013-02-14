@@ -22,6 +22,7 @@ type ChannelRemoval struct {
 type ChannelMap map[string]*ChannelRemoval
 
 type AccessMap map[string][]string
+
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
 	ID         string     `json:"id"`
@@ -319,7 +320,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 		channels, access := db.getChannelsAndAccess(body)
 		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
-		db.updateDocAccess(doc, access) //FIX: Incorrect if new rev is not current!
+		db.updateDocAccess(doc, access)     //FIX: Incorrect if new rev is not current!
 
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)

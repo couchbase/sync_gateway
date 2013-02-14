@@ -22,13 +22,13 @@ import (
 
 /** Persistent information about a user. */
 type User struct {
-	Name         string                     `json:"name,omitempty"`
-	Email        string                     `json:"email,omitempty"`
-	Disabled     bool                       `json:"disabled,omitempty"`
-	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	AdminChannels []string                  `json:"admin_channels"`
-	DerivedChannels []string                `json:"derived_channels,omitempty"`
-	Password *string `json:"password,omitempty"`
+	Name            string                     `json:"name,omitempty"`
+	Email           string                     `json:"email,omitempty"`
+	Disabled        bool                       `json:"disabled,omitempty"`
+	PasswordHash    *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
+	AdminChannels   []string                   `json:"admin_channels"`
+	DerivedChannels []string                   `json:"derived_channels,omitempty"`
+	Password        *string                    `json:"password,omitempty"`
 }
 
 var kValidUsernameRegexp *regexp.Regexp

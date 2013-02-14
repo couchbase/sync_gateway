@@ -64,7 +64,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 		var verr error
 		vres = couchbase.ViewResult{}
 		verr = auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres)
-		derived := make([]string,0)
+		derived := make([]string, 0)
 		if verr != nil {
 			return nil, verr
 		}
