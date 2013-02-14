@@ -106,8 +106,9 @@ func NewDefaultChannelMapper() (*ChannelMapper, error) {
 }
 
 // This is just for testing
-func (mapper *ChannelMapper) callMapper(input string) (interface{}, error) {
-	return mapper.js.DirectCallFunction([]string{input})
+func (mapper *ChannelMapper) callMapper(input string) (*ChannelMapper, error) {
+	res, err := mapper.js.DirectCallFunction([]string{input})
+	return res.(*ChannelMapper), err
 }
 
 func (mapper *ChannelMapper) MapToChannelsAndAccess(input string) ([]string, AccessMap, error) {
