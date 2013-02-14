@@ -178,6 +178,18 @@ func installViews(bucket *couchbase.Bucket) error {
 							}
 						}
 					}`
+
+	access_map := `function (doc, meta) {
+						var sequence = doc.sequence;
+	                    if (doc.deleted || sequence === undefined)
+	                        return;
+						var access = doc["access"];
+						if (access) {
+							for (var name in access) {
+								emit(name, access[name]);
+							}
+						}
+					}`
 	// View for mapping revision IDs to documents (for vacuuming)
 	revs_map := `function (doc, meta) {
 					  var pieces = meta.id.split(":", 2);
@@ -226,6 +238,7 @@ func installViews(bucket *couchbase.Bucket) error {
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"channels": Body{"map": channels_map},
+			"access":   Body{"map": access_map},
 			"revs":     Body{"map": revs_map, "reduce": revs_or_atts_reduce},
 			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
