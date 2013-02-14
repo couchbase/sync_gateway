@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -70,7 +71,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 		}
 		unique := true
 		for _, row := range vres.Rows {
-			value := row.Value.([]string)
+			value := row.Value.([]interface{})
 			for _, item := range value {
 				unique = true
 				for _, d := range derived {
@@ -80,7 +81,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 					}
 				}
 				if unique {
-					derived = append(derived, item)
+					derived = append(derived, item.(string))
 				}
 			}
 		}
@@ -89,8 +90,8 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 		if err := auth.SaveUser(user); err != nil {
 			return nil, err
 		}
-		// TODO? Save the user document back with the results
 	}
+	fmt.Printf("user %v has channels %v\n", username, user.AllChannels())
 	return user, nil
 }
 
