@@ -392,6 +392,10 @@ func (h *handler) handleChanges() error {
 		}
 	}
 
+	if len(userChannels) == 0 {
+		return &base.HTTPError{http.StatusForbidden, "You don't have access to these channels"}
+	}
+
 	switch h.getQuery("feed") {
 	case "continuous":
 		return h.handleContinuousChanges(userChannels, options)
@@ -405,27 +409,28 @@ func (h *handler) handleSimpleChanges(channels []string, options db.ChangesOptio
 	var lastSeq uint64 = 0
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
-	if err == nil && feed != nil {
+	if err == nil {
 		h.setHeader("Content-Type", "text/plain; charset=utf-8")
 		h.writeln([]byte("{\"results\":["))
-		for entry := range feed {
-			if lastSeq < entry.Seq {
-				lastSeq = entry.Seq
+		if feed != nil {
+			for entry := range feed {
+				if lastSeq < entry.Seq {
+					lastSeq = entry.Seq
+				}
+				str, _ := json.Marshal(entry)
+				var buf []byte
+				if first {
+					first = false
+					buf = str
+				} else {
+					buf = []byte{','}
+					buf = append(buf, str...)
+				}
+				if err = h.writeln(buf); err != nil {
+					err = nil
+					break
+				}
 			}
-			str, _ := json.Marshal(entry)
-			var buf []byte
-			if first {
-				first = false
-				buf = str
-			} else {
-				buf = []byte{','}
-				buf = append(buf, str...)
-			}
-			if err = h.writeln(buf); err != nil {
-				err = nil
-				break
-			}
-
 		}
 		s := fmt.Sprintf("],\n\"last_seq\":%d}", lastSeq)
 		h.writeln([]byte(s))
