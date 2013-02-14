@@ -53,7 +53,43 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 		return nil, err
 	}
 	if user == nil && username == "" {
-		user = &User{Name: username, Channels: []string{"*"}}
+		user = &User{Name: username, AdminChannels: []string{"*"}}
+	}
+	if user.DerivedChannels == nil {
+		// get the derived channels from a view
+		opts := make(map[string]interface{})
+		opts["stale"] = false
+		opts["key"] = user.Name
+		var vres couchbase.ViewResult
+		var verr error
+		vres = couchbase.ViewResult{}
+		verr = auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres)
+		derived := make([]string,0)
+		if verr != nil {
+			return nil, verr
+		}
+		unique := true
+		for _, row := range vres.Rows {
+			value := row.Value.([]string)
+			for _, item := range value {
+				unique = true
+				for _, d := range derived {
+					if d == item {
+						unique = false
+						break
+					}
+				}
+				if unique {
+					derived = append(derived, item)
+				}
+			}
+		}
+		user.DerivedChannels = derived
+
+		if err := auth.SaveUser(user); err != nil {
+			return nil, err
+		}
+		// TODO? Save the user document back with the results
 	}
 	return user, nil
 }
@@ -71,7 +107,8 @@ func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
 
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
-	user.Channels = ch.SimplifyChannels(user.Channels, true)
+	user.AdminChannels = ch.SimplifyChannels(user.AdminChannels, true)
+	// user.DerivedChannels = nil
 	if user.Password != nil {
 		user.SetPassword(*user.Password)
 		user.Password = nil

@@ -74,7 +74,7 @@ func encodeUser(user *auth.User) string {
 	}
 	info := map[string]interface{}{}
 	info["name"] = user.Name
-	info["channels"] = user.Channels
+	info["channels"] = user.AllChannels()
 	json, _ := json.Marshal(info)
 	return string(json)
 }

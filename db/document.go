@@ -109,15 +109,14 @@ func (db *Database) GetRev(docid, revid string,
 func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
 	if user == nil {
 		return nil
-	} else if user.Channels != nil {
-		for _, channel := range user.Channels {
-			if channel == "*" {
-				return nil
-			}
-			value, exists := channels[channel]
-			if exists && value == nil {
-				return nil // yup, it's in this channel
-			}
+	}
+	for _, channel := range user.AllChannels() {
+		if channel == "*" {
+			return nil
+		}
+		value, exists := channels[channel]
+		if exists && value == nil {
+			return nil // yup, it's in this channel
 		}
 	}
 	return user.UnauthError("You are not allowed to see this")

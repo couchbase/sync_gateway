@@ -28,8 +28,8 @@ func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, use
 	if err != nil {
 		return err
 	}
-	if user.Channels == nil {
-		return &base.HTTPError{http.StatusBadRequest, "Missing channels property"}
+	if user.AdminChannels == nil {
+		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
 	}
 
 	if rq.Method == "POST" {
