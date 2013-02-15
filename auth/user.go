@@ -11,6 +11,7 @@ package auth
 
 import (
 	"fmt"
+	"reflect"
 	"net/http"
 	"regexp"
 
@@ -52,7 +53,7 @@ func IsValidEmail(email string) bool {
 
 // Creates a new User object.
 func NewUser(username string, password string, channels []string) (*User, error) {
-	user := &User{Name: username, AdminChannels: ch.SimplifyChannels(channels, true)}
+	user := &User{Name: username, DerivedChannels : []string{}, AdminChannels: ch.SimplifyChannels(channels, true)}
 	user.SetPassword(password)
 	if err := user.Validate(); err != nil {
 		return nil, err
@@ -118,7 +119,13 @@ func (user *User) UnauthError(message string) error {
 
 func (user *User) AllChannels() []string {
 	unique := true
-	result := user.AdminChannels
+	result := []string{}
+	// fmt.Printf("\tuser AllChannels %+v\n", user)
+	if reflect.DeepEqual(nil, &user.AdminChannels) {
+		result = []string{}
+	} else {
+		result = append(result, user.AdminChannels...)
+	}
 	for _, item := range user.DerivedChannels {
 		unique = true
 		for _, d := range result {

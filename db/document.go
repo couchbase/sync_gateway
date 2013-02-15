@@ -424,8 +424,14 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 
 // Updates the Channels property of a document object with current & past channels
 func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed bool) {
-	log.Printf("\tDoc %q access map %q", doc.ID, newAccess)
+	log.Printf("updateDocAccess doc %v map %+v\n", doc.ID, newAccess)
 	doc.Access = newAccess
+	for name, value := range newAccess {
+		log.Printf("name %v value %v\n", name, value)
+		// load the document for the user with name
+		// and delete the derived_channels field
+		// save it back
+	}
 	return true
 }
 
