@@ -180,16 +180,16 @@ func installViews(bucket *couchbase.Bucket) error {
 					}`
 
 	access_map := `function (doc, meta) {
-						var sequence = doc.sequence;
+	                    var sequence = doc.sequence;
 	                    if (doc.deleted || sequence === undefined)
 	                        return;
-						var access = doc["access"];
-						if (access) {
-							for (var name in access) {
-								emit(name, access[name]);
-							}
-						}
-					}`
+	                    var access = doc["access"];
+	                    if (access) {
+	                        for (var name in access) {
+	                            emit(name, access[name]);
+	                        }
+	                    }
+	               }`
 	// View for mapping revision IDs to documents (for vacuuming)
 	revs_map := `function (doc, meta) {
 					  var pieces = meta.id.split(":", 2);
