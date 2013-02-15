@@ -320,7 +320,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 		channels, access := db.getChannelsAndAccess(body)
 		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
-		db.updateDocAccess(doc, access)     //FIX: Incorrect if new rev is not current!
+		db.updateDocAccess(doc, access)
 
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
@@ -425,12 +425,29 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 // Updates the Channels property of a document object with current & past channels
 func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed bool) {
 	log.Printf("updateDocAccess doc %v map %+v\n", doc.ID, newAccess)
+	// todo we also need to clear the old access
+	names := []string{}
+	for name, _ := range doc.Access {
+		names = append(names, name)
+	}
+	for name, _ := range newAccess {
+		names = append(names, name)
+	}
 	doc.Access = newAccess
-	for name, value := range newAccess {
-		log.Printf("name %v value %v\n", name, value)
+	authr := auth.NewAuthenticator(db.Bucket)
+	for _, name := range names {
+		log.Printf("name %v", name)
 		// load the document for the user with name
+		user, err := authr.GetUser(name)
+		if err != nil && base.IsDocNotFoundError(err) {
+			user = &auth.User{Name: name, DerivedChannels : []string{}, AdminChannels: []string{}}
+		}
 		// and delete the derived_channels field
+		user.DerivedChannels = nil;
 		// save it back
+		if err := authr.SaveUser(user); err != nil {
+			log.Printf("save error doc %v err %v\n", user, err)
+		}
 	}
 	return true
 }

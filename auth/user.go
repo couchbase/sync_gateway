@@ -11,7 +11,6 @@ package auth
 
 import (
 	"fmt"
-	"reflect"
 	"net/http"
 	"regexp"
 
@@ -121,7 +120,7 @@ func (user *User) AllChannels() []string {
 	unique := true
 	result := []string{}
 	// fmt.Printf("\tuser AllChannels %+v\n", user)
-	if reflect.DeepEqual(nil, &user.AdminChannels) {
+	if user.AdminChannels == nil {
 		result = []string{}
 	} else {
 		result = append(result, user.AdminChannels...)

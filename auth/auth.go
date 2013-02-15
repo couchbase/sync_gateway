@@ -10,8 +10,7 @@
 package auth
 
 import (
-	"fmt"
-	"reflect"
+	"log"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -60,9 +59,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 	if user == nil {
 		return nil, nil
 	}
-	fmt.Printf("\tuser %+v\n", user)
-	if reflect.DeepEqual(nil, &user.DerivedChannels) {
-		fmt.Printf("DerivedChannels is nil\n")
+	if (user.DerivedChannels == nil) {
 		// get the derived channels from a view
 		opts := make(map[string]interface{})
 		opts["stale"] = false
@@ -76,7 +73,6 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 			return nil, verr
 		}
 		unique := true
-		fmt.Printf("res %+v\n", vres)
 
 		for _, row := range vres.Rows {
 			value := row.Value.([]interface{})
@@ -99,7 +95,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 			return nil, err
 		}
 	}
-	fmt.Printf("user %v has channels %v\n", username, user.AllChannels())
+	log.Printf("user %v has channels %v", username, user.AllChannels())
 	return user, nil
 }
 
