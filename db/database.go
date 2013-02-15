@@ -368,13 +368,9 @@ func (db *Database) UpdateAllDocChannels() error {
 				return nil, err
 			}
 			channels, access := db.getChannelsAndAccess(body)
-			if !db.updateDocChannels(doc, channels) {
-				return nil, couchbase.UpdateCancel // unchanged
-			}
-			if !db.updateDocAccess(doc, access) {
-				return nil, couchbase.UpdateCancel // unchanged
-			}
-			log.Printf("\tSaving updated channels of %q", docid)
+			db.updateDocAccess(doc, access)
+			db.updateDocChannels(doc, channels)
+			log.Printf("\tSaving updated channels and access grants of %q", docid)
 			return json.Marshal(doc)
 		})
 		if err != nil && err != couchbase.UpdateCancel {
