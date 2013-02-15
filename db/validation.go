@@ -68,7 +68,7 @@ func NewValidator(funcSource string) (*Validator, error) {
 	return validator, nil
 }
 
-func encodeUser(user *auth.User) string {
+func makeUserCtx(user *auth.User) string {
 	if user == nil {
 		return `{"name":null, "channels":[]}`
 	}
@@ -81,7 +81,7 @@ func encodeUser(user *auth.User) string {
 
 // This is just for testing
 func (validator *Validator) callValidator(newDoc string, oldDoc string, user *auth.User) (int, string, error) {
-	result, err := validator.js.DirectCallFunction([]string{newDoc, oldDoc, encodeUser(user)})
+	result, err := validator.js.DirectCallFunction([]string{newDoc, oldDoc, makeUserCtx(user)})
 	if err != nil || result == nil {
 		return 0, "", err
 	}
@@ -90,7 +90,7 @@ func (validator *Validator) callValidator(newDoc string, oldDoc string, user *au
 }
 
 func (validator *Validator) Validate(newDoc string, oldDoc string, user *auth.User) (int, string, error) {
-	result, err := validator.js.CallFunction([]string{newDoc, oldDoc, encodeUser(user)})
+	result, err := validator.js.CallFunction([]string{newDoc, oldDoc, makeUserCtx(user)})
 	if err != nil || result == nil {
 		return 0, "", err
 	}
