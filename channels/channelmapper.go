@@ -10,7 +10,6 @@
 package channels
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/robertkrimen/otto"
@@ -115,7 +114,6 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(input string) ([]string, Acc
 	result := result1.(*ChannelMapper)
 	channels := result.channels
 	access := result.access
-	fmt.Printf("access map = %+v \n", access)
 	if channels == nil {
 		channels = SimplifyChannels(channels, false)
 	}

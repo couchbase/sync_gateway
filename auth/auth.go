@@ -113,7 +113,6 @@ func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
 	user.AdminChannels = ch.SimplifyChannels(user.AdminChannels, true)
-	// user.DerivedChannels = nil
 	if user.Password != nil {
 		user.SetPassword(*user.Password)
 		user.Password = nil
