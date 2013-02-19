@@ -97,7 +97,9 @@ func StartAuthListener(addr string, auth *auth.Authenticator) {
 			default:
 				err = kBadMethodError
 			}
-		} else if splitPath[1] == "user" {
+		} else if len(splitPath[1]) > 0 {
+			// dbname := splitPath[1]
+			// TODO someday we can support more than one database here
 			if len(splitPath) == 2 || splitPath[2] == "" {
 				// /user URL: Supports POSTing user info
 				switch method {
