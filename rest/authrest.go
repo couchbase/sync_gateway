@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
@@ -84,19 +85,11 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 // Starts a simple REST listener that will get and set user credentials.
 func StartAuthListener(addr string, auth *auth.Authenticator) {
 	handler := func(r http.ResponseWriter, rq *http.Request) {
-		username := rq.URL.Path[1:]
+		splitPath := strings.Split(rq.URL.Path, "/")
 		method := rq.Method
-		log.Printf("AUTH: %s %q", method, username)
+
 		var err error
-		if rq.URL.Path == "/" {
-			// Root URL: Supports POSTing user info
-			switch method {
-			case "POST":
-				err = putUser(r, rq, auth, "")
-			default:
-				err = kBadMethodError
-			}
-		} else if username == "_session" {
+		if splitPath[1] == "_session" {
 			// /_session: Generate login session for user
 			switch method {
 			case "POST":
@@ -104,29 +97,41 @@ func StartAuthListener(addr string, auth *auth.Authenticator) {
 			default:
 				err = kBadMethodError
 			}
-		} else {
-			// Otherwise: Interpret path as username.
-			if username == "GUEST" {
-				username = ""
-			}
-			switch method {
-			case "GET":
-				user, _ := auth.GetUser(username)
-				if user == nil {
-					err = kNotFoundError
-					break
+		} else if splitPath[1] == "user" {
+			if len(splitPath) == 2 || splitPath[2] == "" {
+				// /user URL: Supports POSTing user info
+				switch method {
+				case "POST":
+					err = putUser(r, rq, auth, "")
+				default:
+					err = kBadMethodError
 				}
-				bytes, _ := json.Marshal(user)
-				r.Write(bytes)
-			case "PUT":
-				err = putUser(r, rq, auth, username)
-			case "DELETE":
-				user, _ := auth.GetUser(username)
-				if user == nil || auth.DeleteUser(user) != nil {
-					err = kNotFoundError
+			} else {
+				// user request
+				username := splitPath[2]
+				log.Printf("AUTH: %s %q", method, username)
+				if username == "GUEST" {
+					username = ""
 				}
-			default:
-				err = kBadMethodError
+				switch method {
+				case "GET":
+					user, _ := auth.GetUser(username)
+					if user == nil {
+						err = kNotFoundError
+						break
+					}
+					bytes, _ := json.Marshal(user)
+					r.Write(bytes)
+				case "PUT":
+					err = putUser(r, rq, auth, username)
+				case "DELETE":
+					user, _ := auth.GetUser(username)
+					if user == nil || auth.DeleteUser(user) != nil {
+						err = kNotFoundError
+					}
+				default:
+					err = kBadMethodError
+				}
 			}
 		}
 		if err != nil {

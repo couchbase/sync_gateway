@@ -97,7 +97,7 @@ Sync Gateway supports user accounts that are allowed to access only a subset of 
 
 Accounts are managed through a parallel REST interface that runs on port 4985 (by default, but this can be customized via the `authaddr` command-line argument). This interface is privileged and for internal use only; instead, we assume you have some other server-side mechanism for users to manage accounts, which will call through to this API.
 
-The URL for a user account is simply "/_user_" where _user_ is the username. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
+The URL for a user account is simply "/user/_name_" where _name_ is the username. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
 
 * "name": The user name (same as in the URL path). Names must consist of alphanumeric ASCII characters or underscores.
 * "channels": An array of channel name strings. The name "*" means "all channels". An empty array or missing property denies access to all channels.
@@ -106,13 +106,13 @@ The URL for a user account is simply "/_user_" where _user_ is the username. The
 * "disabled": Normally missing; if set to `true`, disables access for that account.
 * "email": The user's email address. Optional, but BrowserID login (q.v.) needs it.
 
-You can create a new user either with a PUT to its URL, or by POST to `/`.
+You can create a new user either with a PUT to its URL, or by POST to `/user/`.
 
 There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
 
 To disable all guest access, set the guest user's `disabled` property:
 
-    curl -X PUT localhost:4985/GUEST --data '{"disabled":true, "channels":[]}'
+    curl -X PUT localhost:4985/user/GUEST --data '{"disabled":true, "channels":[]}'
 
 ### Authentication
 
