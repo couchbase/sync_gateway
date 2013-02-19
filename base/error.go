@@ -44,7 +44,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		case gomemcached.E2BIG:
 			return http.StatusRequestEntityTooLarge, "Too Large"
 		default:
-			return http.StatusBadGateway, fmt.Sprintf("MC status %d", err.Status)
+			return http.StatusBadGateway, fmt.Sprintf("MC status %s", err.Status.String())
 		}
 	default:
 		log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)

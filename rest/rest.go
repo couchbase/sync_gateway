@@ -354,6 +354,9 @@ func (h *handler) handleBulkDocs() error {
 		if err != nil {
 			_, msg := base.ErrorAsHTTPStatus(err)
 			status["error"] = msg
+			if LogRequestsVerbose {
+				log.Printf("\tError: Doc %q --> %v", docid, err)
+			}
 			err = nil // wrote it to output already; not going to return it
 		} else {
 			status["rev"] = revid
@@ -553,7 +556,6 @@ func (h *handler) handleGetLocalDoc() error {
 	}
 	value["_id"] = "_local/" + docid
 	value.FixJSONNumbers()
-	log.Printf("getting %V", value)
 	h.writeJSON(value)
 	return nil
 }
@@ -564,7 +566,6 @@ func (h *handler) handlePutLocalDoc() error {
 	body, err := h.readJSON()
 	if err == nil {
 		body.FixJSONNumbers()
-		log.Printf("putting %V", body)
 		var revid string
 		revid, err = h.db.PutLocal(docid, body)
 		if err == nil {
