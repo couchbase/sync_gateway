@@ -12,9 +12,10 @@ package rest
 import (
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/mux"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -81,62 +82,81 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	return nil
 }
 
-// Starts a simple REST listener that will get and set user credentials.
-func StartAuthListener(addr string, auth *auth.Authenticator) {
-	handler := func(r http.ResponseWriter, rq *http.Request) {
-		username := rq.URL.Path[1:]
-		method := rq.Method
-		log.Printf("AUTH: %s %q", method, username)
-		var err error
-		if rq.URL.Path == "/" {
-			// Root URL: Supports POSTing user info
-			switch method {
-			case "POST":
-				err = putUser(r, rq, auth, "")
-			default:
-				err = kBadMethodError
-			}
-		} else if username == "_session" {
-			// /_session: Generate login session for user
-			switch method {
-			case "POST":
-				err = createUserSession(r, rq, auth)
-			default:
-				err = kBadMethodError
-			}
-		} else {
-			// Otherwise: Interpret path as username.
-			if username == "GUEST" {
-				username = ""
-			}
-			switch method {
-			case "GET":
-				user, _ := auth.GetUser(username)
-				if user == nil {
-					err = kNotFoundError
-					break
-				}
-				bytes, _ := json.Marshal(user)
-				r.Write(bytes)
-			case "PUT":
-				err = putUser(r, rq, auth, username)
-			case "DELETE":
-				user, _ := auth.GetUser(username)
-				if user == nil || auth.DeleteUser(user) != nil {
-					err = kNotFoundError
-				}
-			default:
-				err = kBadMethodError
-			}
-		}
-		if err != nil {
-			status, message := base.ErrorAsHTTPStatus(err)
-			r.WriteHeader(status)
-			r.Header().Set("Content-Type", "application/json")
-			r.WriteHeader(status)
-			jsonOut, _ := json.Marshal(map[string]interface{}{"error": status, "reason": message})
-			r.Write(jsonOut)
+func postUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	return putUser(r, rq, auth, "")
+}
+
+func putUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	muxed := mux.Vars(rq)
+	username := muxed["name"]
+	if username == "GUEST" {
+		username = "" //todo handle this at model layer?
+	}
+	return putUser(r, rq, auth, username)
+}
+
+func deleteUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	muxed := mux.Vars(rq)
+	username := muxed["name"]
+	user, _ := auth.GetUser(username)
+	if user == nil || auth.DeleteUser(user) != nil {
+		return kNotFoundError
+	}
+	return nil
+}
+
+func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	muxed := mux.Vars(rq)
+	// dbname := muxed["db"]
+	username := muxed["name"]
+	if username == "GUEST" {
+		username = "" //todo handle this at model layer?
+	}
+	user, _ := auth.GetUser(username)
+	if user == nil {
+		return kNotFoundError;
+	}
+	bytes, _ := json.Marshal(user)
+	r.Write(bytes)
+	return nil
+}
+
+func renderError(err error, r http.ResponseWriter) {
+	status, message := base.ErrorAsHTTPStatus(err)
+	r.Header().Set("Content-Type", "application/json")
+	r.WriteHeader(status)
+	jsonOut, _ := json.Marshal(map[string]interface{}{"error": status, "reason": message})
+	r.Write(jsonOut)
+}
+
+type authHandler func(http.ResponseWriter, *http.Request, *auth.Authenticator) error
+
+
+func handleAuthReq(auth *auth.Authenticator, fun authHandler) func(http.ResponseWriter, *http.Request) {
+	return func(r http.ResponseWriter, rq *http.Request) {
+		err := fun(r, rq, auth)
+		if (err != nil) {
+			renderError(err, r)
 		}
 	}
-	go http.ListenAndServe(addr, http.HandlerFunc(handler))
+}
+
+// Starts a simple REST listener that will get and set user credentials.
+func StartAuthListener(addr string, auth *auth.Authenticator) {
+	r := mux.NewRouter()
+	// r.StrictSlash(true)
+
+	r.HandleFunc("/{db}/_session",
+		handleAuthReq(auth, createUserSession)).Methods("POST")
+	r.HandleFunc("/{db}/user/{name}",
+		handleAuthReq(auth, getUserInfo)).Methods("GET", "HEAD")
+	r.HandleFunc("/{db}/user/{name}",
+		handleAuthReq(auth, putUserInfo)).Methods("PUT")
+	r.HandleFunc("/{db}/user/{name}",
+		handleAuthReq(auth, deleteUser)).Methods("DELETE")
+	r.HandleFunc("/{db}/user",
+		handleAuthReq(auth, postUser)).Methods("POST")
+
+	// http.Handle("/", r);
+	go http.ListenAndServe(addr, r)
 }
