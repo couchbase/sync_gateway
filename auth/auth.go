@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -48,44 +49,51 @@ func docIDForUserEmail(email string) string {
 // be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(username string) (*User, error) {
 	var user *User
-	err := auth.bucket.Get(docIDForUser(username), &user)
-	if err != nil && !base.IsDocNotFoundError(err) {
-		return nil, err
-	}
-	if user == nil && username == "" {
-		// Default value of 'guest' User:
-		user = &User{
-			Name:          username,
-			AdminChannels: []string{"*"},
-			AllChannels:   []string{"*"},
-		}
-	}
-	if user == nil {
-		return nil, nil
-	}
-	if user.AllChannels == nil {
-		// Channel list has been invalidated by a doc update -- rebuild from view:
-		opts := map[string]interface{}{"stale": false, "key": user.Name}
-		vres := couchbase.ViewResult{}
-		if verr := auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
-			return nil, verr
-		}
 
-		allChannels := ch.SetFromArray(user.AdminChannels)
-		for _, row := range vres.Rows {
-			value := row.Value.([]interface{})
-			for _, item := range value {
-				allChannels[item.(string)] = true
+	err := auth.bucket.Update(docIDForUser(username), 0, func(currentValue []byte) ([]byte, error) {
+		// Be careful: this block can be invoked multiple times if there are races!
+		user = nil
+		if currentValue == nil {
+			if username == "" {
+				user = defaultGuestUser()
 			}
+			return nil, couchbase.UpdateCancel
 		}
-		user.AllChannels = allChannels.ToArray()
-
-		//FIX: This update needs to be done as a CAS
-		if err := auth.SaveUser(user); err != nil {
+		if err := json.Unmarshal(currentValue, &user); err != nil {
 			return nil, err
 		}
+		if user.AllChannels != nil {
+			// User is valid, so stop the update
+			return nil, couchbase.UpdateCancel
+		}
+		// Channel list has been invalidated by a doc update -- rebuild from view:
+		if err := auth.rebuildUserChannels(user); err != nil {
+			return nil, err
+		}
+		return json.Marshal(user)
+	})
+
+	if err != nil && err != couchbase.UpdateCancel {
+		return nil, err
 	}
 	return user, nil
+}
+
+func (auth *Authenticator) rebuildUserChannels(user *User) error {
+	opts := map[string]interface{}{"stale": false, "key": user.Name}
+	vres := couchbase.ViewResult{}
+	if verr := auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
+		return verr
+	}
+	allChannels := ch.SetFromArray(user.AdminChannels)
+	for _, row := range vres.Rows {
+		value := row.Value.([]interface{})
+		for _, item := range value {
+			allChannels[item.(string)] = true
+		}
+	}
+	user.AllChannels = allChannels.ToArray()
+	return nil
 }
 
 // Looks up a User by email address.

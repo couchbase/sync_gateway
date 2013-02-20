@@ -50,6 +50,13 @@ func IsValidEmail(email string) bool {
 	return kValidEmailRegexp.MatchString(email)
 }
 
+func defaultGuestUser() *User {
+	return &User{
+		AdminChannels: []string{"*"},
+		AllChannels:   []string{"*"},
+	}
+}
+
 // Creates a new User object.
 func NewUser(username string, password string, channels []string) (*User, error) {
 	channels = ch.SimplifyChannels(channels, true)

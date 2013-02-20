@@ -11,10 +11,21 @@ package auth
 
 import (
 	"encoding/json"
-	//"log"
+	"github.com/couchbaselabs/go-couchbase"
 	"github.com/sdegutis/go.assert"
+	"log"
 	"testing"
 )
+
+var gTestBucket *couchbase.Bucket
+
+func init() {
+	var err error
+	gTestBucket, err = couchbase.GetBucket("http://localhost:8091", "default", "sync_gateway_tests")
+	if err != nil {
+		log.Fatalf("Couldn't connect to bucket: %v", err)
+	}
+}
 
 func TestValidateGuestUser(t *testing.T) {
 	user, err := NewUser("", "", nil)
@@ -132,4 +143,43 @@ func TestUserAccess(t *testing.T) {
 	assert.True(t, user.CanSeeAllChannels([]string{"x", "y"}))
 	assert.True(t, user.AuthorizeAllChannels([]string{"x", "y"}) == nil)
 	assert.True(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+}
+
+func TestGetMissingUser(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket)
+	user, err := auth.GetUser("noSuchUser")
+	assert.Equals(t, err, nil)
+	assert.True(t, user == nil)
+
+}
+
+func TestGetGuestUser(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket)
+	user, err := auth.GetUser("")
+	assert.Equals(t, err, nil)
+	assert.DeepEquals(t, user, defaultGuestUser())
+
+}
+
+func TestSaveUsers(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket)
+	user, _ := NewUser("testUser", "password", []string{"test"})
+	err := auth.SaveUser(user)
+	assert.Equals(t, err, nil)
+
+	user2, err := auth.GetUser("testUser")
+	assert.Equals(t, err, nil)
+	assert.DeepEquals(t, user2, user)
+}
+
+func TestRebuildUserChannels(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket)
+	user, _ := NewUser("testUser", "password", []string{"test"})
+	user.AllChannels = nil
+	err := auth.SaveUser(user)
+	assert.Equals(t, err, nil)
+
+	user2, err := auth.GetUser("testUser")
+	assert.Equals(t, err, nil)
+	assert.DeepEquals(t, user2.AllChannels, user.AdminChannels)
 }
