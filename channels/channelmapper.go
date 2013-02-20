@@ -12,15 +12,22 @@ package channels
 import (
 	"strconv"
 
-	"github.com/robertkrimen/otto"
-
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/robertkrimen/otto"
 )
 
-type ChannelMapper struct {
-	js       *base.JSServer
+type channelMapperOutput struct {
 	channels []string
+	access   AccessMap
 }
+
+type ChannelMapper struct {
+	output *channelMapperOutput
+	js     *base.JSServer
+}
+
+// Maps user names to arrays of channel names
+type AccessMap map[string][]string
 
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array *otto.Object) []string {
@@ -55,24 +62,42 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper.js.DefineNativeFunction("sync", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
 			if arg.IsString() {
-				mapper.channels = append(mapper.channels, arg.String())
+				mapper.output.channels = append(mapper.output.channels, arg.String())
 			} else if arg.Class() == "Array" {
 				array := ottoArrayToStrings(arg.Object())
 				if array != nil {
-					mapper.channels = append(mapper.channels, array...)
+					mapper.output.channels = append(mapper.output.channels, array...)
 				}
 			}
 		}
 		return otto.UndefinedValue()
 	})
 
+	// Implementation of the 'access()' callback:
+	mapper.js.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
+		username := call.Argument(0).String()
+		channels := call.Argument(1)
+		if channels.IsString() {
+			mapper.output.access[username] = append(mapper.output.access[username], channels.String())
+		} else if channels.Class() == "Array" {
+			array := ottoArrayToStrings(channels.Object())
+			if array != nil {
+				mapper.output.access[username] = append(mapper.output.access[username], array...)
+			}
+		}
+		return otto.UndefinedValue()
+	})
+
 	mapper.js.Before = func() {
-		mapper.channels = []string{}
+		mapper.output = &channelMapperOutput{
+			channels: []string{},
+			access:   map[string][]string{},
+		}
 	}
 	mapper.js.After = func(result otto.Value, err error) (interface{}, error) {
-		channels := mapper.channels
-		mapper.channels = nil
-		return channels, err
+		output := mapper.output
+		mapper.output = nil
+		return output, err
 	}
 	return mapper, nil
 }
@@ -82,17 +107,18 @@ func NewDefaultChannelMapper() (*ChannelMapper, error) {
 }
 
 // This is just for testing
-func (mapper *ChannelMapper) callMapper(input string) (interface{}, error) {
-	return mapper.js.DirectCallFunction([]string{input})
+func (mapper *ChannelMapper) callMapper(input string) (*channelMapperOutput, error) {
+	res, err := mapper.js.DirectCallFunction([]string{input})
+	return res.(*channelMapperOutput), err
 }
 
-func (mapper *ChannelMapper) MapToChannels(input string) ([]string, error) {
-	result, err := mapper.js.CallFunction([]string{input})
-	channels := result.([]string)
-	if channels == nil {
-		channels = SimplifyChannels(channels, false)
+func (mapper *ChannelMapper) MapToChannelsAndAccess(input string) ([]string, AccessMap, error) {
+	result1, err := mapper.js.CallFunction([]string{input})
+	if err != nil {
+		return nil, nil, err
 	}
-	return channels, err
+	output := result1.(*channelMapperOutput)
+	return SimplifyChannels(output.channels, false), output.access, nil
 }
 
 func (mapper *ChannelMapper) SetFunction(fnSource string) (bool, error) {

@@ -75,7 +75,7 @@ func (db *Database) SameAs(otherdb *Database) bool {
 		db.Bucket == otherdb.Bucket
 }
 
-// Sets the database object's channelMapper and validator based on the JS code in _design/channels 
+// Sets the database object's channelMapper and validator based on the JS code in _design/channels
 func (db *Database) ReadDesignDocument() error {
 	body, err := db.Get("_design/channels")
 	if err != nil {
@@ -178,6 +178,18 @@ func installViews(bucket *couchbase.Bucket) error {
 							}
 						}
 					}`
+
+	access_map := `function (doc, meta) {
+	                    var sequence = doc.sequence;
+	                    if (doc.deleted || sequence === undefined)
+	                        return;
+	                    var access = doc["access"];
+	                    if (access) {
+	                        for (var name in access) {
+	                            emit(name, access[name]);
+	                        }
+	                    }
+	               }`
 	// View for mapping revision IDs to documents (for vacuuming)
 	revs_map := `function (doc, meta) {
 					  var pieces = meta.id.split(":", 2);
@@ -226,6 +238,7 @@ func installViews(bucket *couchbase.Bucket) error {
 			"all_bits": Body{"map": allbits_map},
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"channels": Body{"map": channels_map},
+			"access":   Body{"map": access_map},
 			"revs":     Body{"map": revs_map, "reduce": revs_or_atts_reduce},
 			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
@@ -354,10 +367,10 @@ func (db *Database) UpdateAllDocChannels() error {
 			if err != nil {
 				return nil, err
 			}
-			if !db.updateDocChannels(doc, db.getChannels(body)) {
-				return nil, couchbase.UpdateCancel // unchanged
-			}
-			log.Printf("\tSaving updated channels of %q", docid)
+			channels, access := db.getChannelsAndAccess(body)
+			db.updateDocAccess(doc, access)
+			db.updateDocChannels(doc, channels)
+			log.Printf("\tSaving updated channels and access grants of %q", docid)
 			return json.Marshal(doc)
 		})
 		if err != nil && err != couchbase.UpdateCancel {

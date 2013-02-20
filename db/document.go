@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -21,6 +22,9 @@ type ChannelRemoval struct {
 }
 type ChannelMap map[string]*ChannelRemoval
 
+// Maps usernames to lists of channel names.
+type AccessMap map[string][]string
+
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 type document struct {
 	ID         string     `json:"id"`
@@ -29,6 +33,7 @@ type document struct {
 	Sequence   uint64     `json:"sequence"`
 	History    RevTree    `json:"history"`
 	Channels   ChannelMap `json:"channels,omitempty"`
+	Access     AccessMap  `json:"access,omitempty"`
 }
 
 func (db *Database) realDocID(docid string) string {
@@ -107,15 +112,14 @@ func (db *Database) GetRev(docid, revid string,
 func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
 	if user == nil {
 		return nil
-	} else if user.Channels != nil {
-		for _, channel := range user.Channels {
-			if channel == "*" {
-				return nil
-			}
-			value, exists := channels[channel]
-			if exists && value == nil {
-				return nil // yup, it's in this channel
-			}
+	}
+	for _, channel := range user.AllChannels {
+		if channel == "*" {
+			return nil
+		}
+		value, exists := channels[channel]
+		if exists && value == nil {
+			return nil // yup, it's in this channel
 		}
 	}
 	return user.UnauthError("You are not allowed to see this")
@@ -247,7 +251,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 }
 
 func (db *Database) validateDoc(doc *document, newRev Body, oldRevID string) error {
-	if db.Validator == nil { //TEMP: Move to top of fn
+	if db.Validator == nil {
 		return nil
 	}
 	newRev["_id"] = doc.ID
@@ -316,7 +320,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			return nil, err
 		}
 
-		db.updateDocChannels(doc, db.getChannels(body)) //FIX: Incorrect if new rev is not current!
+		channels, access := db.getChannelsAndAccess(body)
+		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
+		db.updateDocAccess(doc, access)
 
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
@@ -368,16 +374,16 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 //////// CHANNELS:
 
 // Determines which channels a document body belongs to
-func (db *Database) getChannels(body Body) (result []string) {
+func (db *Database) getChannelsAndAccess(body Body) (result []string, access map[string][]string) {
 	if db.ChannelMapper != nil {
 		jsonStr, _ := json.Marshal(body)
-		result, _ = db.ChannelMapper.MapToChannels(string(jsonStr))
+		result, access, _ = db.ChannelMapper.MapToChannelsAndAccess(string(jsonStr))
 
 	} else {
 		// No ChannelMapper so by default use the "channels" property:
 		value, _ := body["channels"].([]interface{})
 		if value == nil {
-			return nil
+			return nil, nil
 		}
 		result = make([]string, 0, len(value))
 		for _, channel := range value {
@@ -387,12 +393,11 @@ func (db *Database) getChannels(body Body) (result []string) {
 			}
 		}
 	}
-	return
+	return result, access
 }
 
 // Updates the Channels property of a document object with current & past channels
 func (db *Database) updateDocChannels(doc *document, newChannels []string) (changed bool) {
-	log.Printf("\tAssigning doc %q to channels %q", doc.ID, newChannels)
 	channels := doc.Channels
 	if channels == nil {
 		channels = ChannelMap{}
@@ -415,7 +420,29 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 			changed = true
 		}
 	}
+	if changed {
+		log.Printf("\tDoc %q in channels %q", doc.ID, newChannels)
+	}
 	return changed
+}
+
+// Updates the Access property of a document object
+func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed bool) {
+	oldAccess := doc.Access
+	if reflect.DeepEqual(newAccess, oldAccess) {
+		return false
+	}
+	doc.Access = newAccess
+	log.Printf("\tDoc %q grants access: %+v", doc.ID, newAccess)
+
+	authr := auth.NewAuthenticator(db.Bucket)
+	for name, _ := range oldAccess {
+		authr.InvalidateUserChannels(name)
+	}
+	for name, _ := range newAccess {
+		authr.InvalidateUserChannels(name)
+	}
+	return true
 }
 
 //////// REVS_DIFF:

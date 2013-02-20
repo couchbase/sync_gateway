@@ -28,7 +28,7 @@ func (h *handler) respondWithSessionInfo() error {
 		if h.user.Name != "" {
 			name = &h.user.Name
 		}
-		channels = h.user.Channels
+		channels = h.user.AllChannels
 	}
 	// Return a JSON struct similar to what CouchDB returns:
 	userCtx := db.Body{"name": name, "channels": channels}
