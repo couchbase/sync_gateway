@@ -378,7 +378,7 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	userChannels := h.user.Channels
+	userChannels := h.user.AllChannels
 	filter := h.getQuery("filter")
 	if filter != "" {
 		if filter != "sync_gateway/bychannel" {

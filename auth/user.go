@@ -22,13 +22,13 @@ import (
 
 /** Persistent information about a user. */
 type User struct {
-	Name         string                     `json:"name,omitempty"`
-	Email        string                     `json:"email,omitempty"`
-	Disabled     bool                       `json:"disabled,omitempty"`
-	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	Channels     []string                   `json:"channels"`
-
-	Password *string `json:"password,omitempty"`
+	Name          string                     `json:"name,omitempty"`
+	Email         string                     `json:"email,omitempty"`
+	Disabled      bool                       `json:"disabled,omitempty"`
+	PasswordHash  *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
+	AdminChannels []string                   `json:"admin_channels"`
+	AllChannels   []string                   `json:"all_channels,omitempty"`
+	Password      *string                    `json:"password,omitempty"`
 }
 
 var kValidUsernameRegexp *regexp.Regexp
@@ -52,7 +52,8 @@ func IsValidEmail(email string) bool {
 
 // Creates a new User object.
 func NewUser(username string, password string, channels []string) (*User, error) {
-	user := &User{Name: username, Channels: ch.SimplifyChannels(channels, true)}
+	channels = ch.SimplifyChannels(channels, true)
+	user := &User{Name: username, AllChannels: channels, AdminChannels: channels}
 	user.SetPassword(password)
 	if err := user.Validate(); err != nil {
 		return nil, err
@@ -101,7 +102,7 @@ func (user *User) SetPassword(password string) {
 // channel named "*" as, literally, the wildcard channel that contains all documents.
 func (user *User) ExpandWildCardChannel(channels []string) []string {
 	if ch.ContainsChannel(channels, "*") {
-		channels = user.Channels
+		channels = user.AllChannels
 		if channels == nil {
 			channels = []string{}
 		}
@@ -120,8 +121,8 @@ func (user *User) UnauthError(message string) error {
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
 	return user == nil ||
-		ch.ContainsChannel(user.Channels, channel) ||
-		ch.ContainsChannel(user.Channels, "*")
+		ch.ContainsChannel(user.AllChannels, channel) ||
+		ch.ContainsChannel(user.AllChannels, "*")
 }
 
 // Returns true if the User is allowed to access all of the given channels.

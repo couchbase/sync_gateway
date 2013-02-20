@@ -111,7 +111,7 @@ func (h *handler) checkAuth() error {
 		h.user = h.context.auth.AuthenticateUser(userName, password)
 	}
 
-	if h.user == nil || h.user.Channels == nil {
+	if h.user == nil {
 		cookie, _ := h.rq.Cookie(auth.CookieName)
 		log.Printf("Auth failed for username=%q, cookie=%q", userName, cookie)
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
