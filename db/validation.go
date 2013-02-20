@@ -74,7 +74,7 @@ func makeUserCtx(user *auth.User) string {
 	}
 	info := map[string]interface{}{}
 	info["name"] = user.Name
-	info["channels"] = user.AllChannels()
+	info["channels"] = user.AllChannels
 	json, _ := json.Marshal(info)
 	return string(json)
 }

@@ -31,6 +31,7 @@ func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, use
 	if user.AdminChannels == nil {
 		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
 	}
+	user.AllChannels = nil		// Force it to be recomputed
 
 	if rq.Method == "POST" {
 		username = user.Name
@@ -42,7 +43,6 @@ func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, use
 	} else if user.Name != username {
 		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
-	log.Printf("SaveUser: %v", user) //TEMP
 	return a.SaveUser(&user)
 }
 

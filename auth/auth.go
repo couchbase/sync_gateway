@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -54,51 +53,42 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 		return nil, err
 	}
 	if user == nil && username == "" {
-		user = &User{Name: username, AdminChannels: []string{"*"}, DerivedChannels: make([]string,0)}
+		// Default value of 'guest' User:
+		user = &User{
+			Name:          username,
+			AdminChannels: []string{"*"},
+			AllChannels:   []string{"*"},
+		}
 	}
 	if user == nil {
 		return nil, nil
 	}
-	if (user.DerivedChannels == nil) {
-		// get the derived channels from a view
-		opts := make(map[string]interface{})
-		opts["stale"] = false
-		opts["key"] = user.Name
-		var vres couchbase.ViewResult
-		var verr error
-		vres = couchbase.ViewResult{}
-		verr = auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres)
-		derived := make([]string, 0)
-		if verr != nil {
+	if user.AllChannels == nil {
+		// Channel list has been invalidated by a doc update -- rebuild from view:
+		opts := map[string]interface{}{"stale": false, "key": user.Name}
+		vres := couchbase.ViewResult{}
+		if verr := auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
 			return nil, verr
 		}
-		unique := true
 
+		allChannels := ch.SetFromArray(user.AdminChannels)
 		for _, row := range vres.Rows {
 			value := row.Value.([]interface{})
 			for _, item := range value {
-				unique = true
-				for _, d := range derived {
-					if d == item {
-						unique = false
-						break
-					}
-				}
-				if unique {
-					derived = append(derived, item.(string))
-				}
+				allChannels[item.(string)] = true
 			}
 		}
-		user.DerivedChannels = derived
+		user.AllChannels = allChannels.ToArray()
 
+		//FIX: This update needs to be done as a CAS
 		if err := auth.SaveUser(user); err != nil {
 			return nil, err
 		}
 	}
-	log.Printf("user %v has channels %v", username, user.AllChannels())
 	return user, nil
 }
 
+// Looks up a User by email address.
 func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
 	var info userByEmailInfo
 	err := auth.bucket.Get(docIDForUserEmail(email), &info)
@@ -135,6 +125,21 @@ func (auth *Authenticator) SaveUser(user *User) error {
 		}
 		//FIX: Fail if email address is already registered to another user
 		//FIX: Unregister old email address if any
+	}
+	return nil
+}
+
+// Invalidates the channel list of a user by saving its AllChannels property as nil.
+func (auth *Authenticator) InvalidateUserChannels(name string) error {
+	user, err := auth.GetUser(name)
+	if err != nil {
+		return err
+	}
+	if user != nil && user.AllChannels != nil {
+		user.AllChannels = nil
+		if err := auth.SaveUser(user); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -21,6 +22,7 @@ type ChannelRemoval struct {
 }
 type ChannelMap map[string]*ChannelRemoval
 
+// Maps usernames to lists of channel names.
 type AccessMap map[string][]string
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -111,7 +113,7 @@ func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
 	if user == nil {
 		return nil
 	}
-	for _, channel := range user.AllChannels() {
+	for _, channel := range user.AllChannels {
 		if channel == "*" {
 			return nil
 		}
@@ -249,7 +251,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 }
 
 func (db *Database) validateDoc(doc *document, newRev Body, oldRevID string) error {
-	if db.Validator == nil { //TEMP: Move to top of fn
+	if db.Validator == nil {
 		return nil
 	}
 	newRev["_id"] = doc.ID
@@ -396,7 +398,6 @@ func (db *Database) getChannelsAndAccess(body Body) (result []string, access map
 
 // Updates the Channels property of a document object with current & past channels
 func (db *Database) updateDocChannels(doc *document, newChannels []string) (changed bool) {
-	log.Printf("\tAssigning doc %q to channels %q", doc.ID, newChannels)
 	channels := doc.Channels
 	if channels == nil {
 		channels = ChannelMap{}
@@ -419,35 +420,27 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 			changed = true
 		}
 	}
+	if changed {
+		log.Printf("\tDoc %q in channels %q", doc.ID, newChannels)
+	}
 	return changed
 }
 
-// Updates the Channels property of a document object with current & past channels
+// Updates the Access property of a document object
 func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed bool) {
-	log.Printf("updateDocAccess doc %v map %+v\n", doc.ID, newAccess)
-	// todo we also need to clear the old access
-	names := []string{}
-	for name, _ := range doc.Access {
-		names = append(names, name)
-	}
-	for name, _ := range newAccess {
-		names = append(names, name)
+	oldAccess := doc.Access
+	if reflect.DeepEqual(newAccess, oldAccess) {
+		return false
 	}
 	doc.Access = newAccess
+	log.Printf("\tDoc %q grants access: %+v", doc.ID, newAccess)
+
 	authr := auth.NewAuthenticator(db.Bucket)
-	for _, name := range names {
-		log.Printf("name %v", name)
-		// load the document for the user with name
-		user, err := authr.GetUser(name)
-		if err != nil && base.IsDocNotFoundError(err) {
-			user = &auth.User{Name: name, DerivedChannels : []string{}, AdminChannels: []string{}}
-		}
-		// and delete the derived_channels field
-		user.DerivedChannels = nil;
-		// save it back
-		if err := authr.SaveUser(user); err != nil {
-			log.Printf("save error doc %v err %v\n", user, err)
-		}
+	for name, _ := range oldAccess {
+		authr.InvalidateUserChannels(name)
+	}
+	for name, _ := range newAccess {
+		authr.InvalidateUserChannels(name)
 	}
 	return true
 }
