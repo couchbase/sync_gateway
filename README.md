@@ -100,7 +100,8 @@ Accounts are managed through a parallel REST interface that runs on port 4985 (b
 The URL for a user account is simply "/user/_name_" where _name_ is the username. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
 
 * "name": The user name (same as in the URL path). Names must consist of alphanumeric ASCII characters or underscores.
-* "channels": An array of channel name strings. The name "*" means "all channels". An empty array or missing property denies access to all channels.
+* "admin_channels": An array of strings -- the channels that the user is granted access to by the administrator. The name "*" means "all channels". An empty array or missing property denies access to all channels.
+* "all_channels": Like "admin_channels" but also includes channels the user is given access to by other documents via a channel-mapper function. (This is a derived property and changes to it will be ignored.)
 * "password": In a PUT or POST request, put the user's password here. It will not be returned by a GET.
 * "passwordhash": Securely hashed version of the password. This will be returned from a GET. If you want to update a user without changing the password, leave this alone when sending the modified JSON object back through PUT.
 * "disabled": Normally missing; if set to `true`, disables access for that account.
@@ -140,7 +141,7 @@ This allows the app server to optionally do its own authentication: the client s
 
 ### Authorization
 
-The `channels` property of a user account determines what channels that user may access.
+The `all_channels` property of a user account determines what channels that user may access.
 
 Any GET request to a document not assigned to one or more of the user's available channels will fail with a 403.
 
@@ -150,6 +151,17 @@ There is not yet any _write_ protection; this is TBD. It's going to be conceptua
 
 There is currently an edge case where after a user is granted access to a new channel, their client will not automatically sync with pre-existing documents in that channel (that they didn't have access to before.) The workaround is for the client to do a one-shot sync from only that new channel, which having no checkpoint will start over from the beginning and fetch all the old documents.
 
+#### Programmatic Authorization
+
+It is possible for documents to grant users access to channels. A typical example is a document representing a shared resource (like a chat room or photo gallery), which has a property like `members` that lists the users who should have access to that resource. If the documents belonging to that resource are all tagged with a specific channel, then a channel-map function can be used to detect the membership property and assign access to the users listed in it:
+
+	function(doc) {
+		if (doc.type == "chatroom") {
+			access(doc.channel_id, doc.members)
+		}
+	}
+
+In this example, a chat room is represented by a document with a "type" property "chatroom". The "channel_id" property names the associated channel (with which the actual chat messages will be tagged), and the "members" property lists the users who have access.
 
 
 ## Schema
