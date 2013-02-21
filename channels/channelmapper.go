@@ -75,14 +75,22 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 
 	// Implementation of the 'access()' callback:
 	mapper.js.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
-		username := call.Argument(0).String()
+		username := call.Argument(0)
 		channels := call.Argument(1)
-		if channels.IsString() {
-			mapper.output.access[username] = append(mapper.output.access[username], channels.String())
-		} else if channels.Class() == "Array" {
-			array := ottoArrayToStrings(channels.Object())
-			if array != nil {
-				mapper.output.access[username] = append(mapper.output.access[username], array...)
+		usernameArray := []string{}
+		if (username.IsString()) {
+			usernameArray = []string{username.String()}
+		} else if username.Class() == "Array" {
+			usernameArray = ottoArrayToStrings(username.Object())
+		}
+		for _, name := range usernameArray {
+			if channels.IsString() {
+				mapper.output.access[name] = append(mapper.output.access[name], channels.String())
+			} else if channels.Class() == "Array" {
+				array := ottoArrayToStrings(channels.Object())
+				if array != nil {
+					mapper.output.access[name] = append(mapper.output.access[name], array...)
+				}
 			}
 		}
 		return otto.UndefinedValue()
