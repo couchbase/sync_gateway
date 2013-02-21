@@ -130,12 +130,7 @@ func installViews(bucket *couchbase.Bucket) error {
 
 	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
 	allbits_map := `function (doc, meta) {
-                     var pieces = meta.id.split(":", 2);
-                     if (pieces.length < 2)
-                       return;
-					 var type = pieces[0];
-					 if (type == "doc" || type == "ldoc" || type == "seq")
-                       emit(meta.id, null); }`
+                      emit(meta.id, null); }`
 	// View for _all_docs
 	alldocs_map := `function (doc, meta) {
                      var pieces = meta.id.split(":", 2);
@@ -190,21 +185,6 @@ func installViews(bucket *couchbase.Bucket) error {
 	                        }
 	                    }
 	               }`
-	// View for mapping revision IDs to documents (for vacuuming)
-	revs_map := `function (doc, meta) {
-					  var pieces = meta.id.split(":", 2);
-					  if (pieces.length < 2)
-					    return;
-					  if (pieces[0] == "rev") {
-					    emit(pieces[1], true);
-					  } else if (pieces[0] == "doc") {
-					    var keys = doc.history.keys;
-					    for (var i = 0; i < keys.length; ++i) {
-					      if (keys[i] != "")
-					        emit(keys[i], false);
-					    }
-					  }
-					}`
 	// View for mapping attachment IDs to revisions (for vacuuming)
 	atts_map := `function (doc, meta) {
 				  var pieces = meta.id.split(":", 2);
@@ -239,7 +219,6 @@ func installViews(bucket *couchbase.Bucket) error {
 			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
 			"channels": Body{"map": channels_map},
 			"access":   Body{"map": access_map},
-			"revs":     Body{"map": revs_map, "reduce": revs_or_atts_reduce},
 			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
 			"changes":  Body{"map": changes_map}}}
 	payload, err := json.Marshal(ddoc)
@@ -331,11 +310,6 @@ func vacIt(bucket *couchbase.Bucket, docid string) int {
 		log.Printf("\tVacuumed %q", docid)
 	}
 	return 1
-}
-
-// Deletes all orphaned CouchDB revisions not used by any documents.
-func VacuumRevisions(bucket *couchbase.Bucket) (int, error) {
-	return vacuumContent(bucket, "revs", "rev:")
 }
 
 // Deletes all orphaned CouchDB attachments not used by any revisions.

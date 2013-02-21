@@ -39,6 +39,8 @@ func TestAttachments(t *testing.T) {
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
+
+	db.Delete()
 	defer func() {
 		err = db.Delete()
 		status, _ := base.ErrorAsHTTPStatus(err)

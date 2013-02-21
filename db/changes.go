@@ -134,10 +134,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 							}
 						}
 						if options.IncludeDocs {
-							key := doc.History[revID].Key
-							if key != "" {
-								entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-							}
+							entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
 						}
 						if options.includeDocMeta {
 							entry.docMeta = doc

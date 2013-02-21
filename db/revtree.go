@@ -21,8 +21,8 @@ type RevKey string
 type RevInfo struct {
 	ID      string
 	Parent  string
-	Key     RevKey
 	Deleted bool
+	Body    []byte
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
@@ -34,8 +34,8 @@ type RevTree map[string]RevInfo
 type revTreeList struct {
 	Revs    []string `json:"revs"`              // The revision IDs
 	Parents []int    `json:"parents"`           // Index of parent of each revision (-1 if root)
-	Keys    []string `json:"keys"`              // Couchbase key of revision content
 	Deleted []int    `json:"deleted,omitempty"` // Indexes of revisions that are deletions
+	Bodies  []string `json:"bodies,omitempty"`  // JSON of each revision
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
@@ -43,7 +43,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	rep := revTreeList{
 		Revs:    make([]string, n),
 		Parents: make([]int, n),
-		Keys:    make([]string, n),
+		Bodies:  make([]string, n),
 	}
 	revIndexes := map[string]int{"": -1}
 
@@ -51,7 +51,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	for _, info := range tree {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
-		rep.Keys[i] = string(info.Key)
+		rep.Bodies[i] = string(info.Body)
 		if info.Deleted {
 			if rep.Deleted == nil {
 				rep.Deleted = make([]int, 0, 1)
@@ -81,8 +81,8 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
-		if rep.Keys != nil {
-			info.Key = RevKey(rep.Keys[i])
+		if rep.Bodies != nil && len(rep.Bodies[i]) > 0 {
+			info.Body = []byte(rep.Bodies[i])
 		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
@@ -206,13 +206,27 @@ func (tree RevTree) addRevision(info RevInfo) {
 	tree[revid] = info
 }
 
-func (tree RevTree) setRevisionKey(revid string, key RevKey) {
+func (tree RevTree) getRevisionBody(revid string) ([]byte, bool) {
+	if revid == "" {
+		panic("Illegal empty revision ID")
+	}
+	info, found := tree[revid]
+	if !found {
+		return nil, false
+	}
+	return info.Body, true
+}
+
+func (tree RevTree) setRevisionBody(revid string, body []byte) {
+	if revid == "" {
+		panic("Illegal empty revision ID")
+	}
 	info, found := tree[revid]
 	if !found {
 		panic(fmt.Sprintf("rev id %q not found", revid))
 	}
-	info.Key = key
-	tree[revid] = info
+	info.Body = body
+	tree[revid] = info   // yes, this is necessary, because info is a _copy_
 }
 
 // Copies a RevTree.
@@ -222,22 +236,6 @@ func (tree RevTree) copy() RevTree {
 		result[rev] = info
 	}
 	return result
-}
-
-func (tree RevTree) mergeWith(src RevTree) (changed bool) {
-	for revID, srcInfo := range src {
-		dstInfo, exists := tree[revID]
-		if exists {
-			if dstInfo.Parent != srcInfo.Parent || dstInfo.Deleted != srcInfo.Deleted ||
-				dstInfo.Key != srcInfo.Key {
-				panic("Inconsistent RevInfos")
-			}
-		} else {
-			tree[revID] = srcInfo
-			changed = true
-		}
-	}
-	return
 }
 
 //////// HELPERS:

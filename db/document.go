@@ -29,7 +29,6 @@ type AccessMap map[string][]string
 type document struct {
 	ID         string     `json:"id"`
 	CurrentRev string     `json:"rev"`
-	Deleted    bool       `json:"deleted,omitempty"`
 	Sequence   uint64     `json:"sequence"`
 	History    RevTree    `json:"history"`
 	Channels   ChannelMap `json:"channels,omitempty"`
@@ -125,6 +124,37 @@ func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
 	return user.UnauthError("You are not allowed to see this")
 }
 
+func (doc *document) getRevision(revid string) Body {
+	var body Body
+	bodyJSON, found := doc.History.getRevisionBody(revid)
+	if !found {
+		return nil
+	} else if bodyJSON == nil {
+		body = Body{}
+	} else {
+		if err := json.Unmarshal(bodyJSON, &body); err != nil {
+			panic(fmt.Sprintf("Unexpected error parsing body of doc %q rev %q", doc.ID, revid))
+		}
+	}
+	body["_id"] = doc.ID
+	body["_rev"] = revid
+	return body
+}
+
+func (doc *document) getRevisionJSON(revid string) []byte {
+	bodyJSON, _ := doc.History.getRevisionBody(revid)
+	return bodyJSON
+}
+
+func (doc *document) setRevision(revid string, body Body) {
+	var asJson []byte
+	if len(body) > 0 {
+		asJson, _ = json.Marshal(stripSpecialProperties(body))
+	}
+	doc.History.setRevisionBody(revid, asJson)
+}
+
+
 // Returns the body of a revision given a document struct
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
 	if err := AuthorizeAnyDocChannels(db.user, doc.Channels); err != nil {
@@ -137,16 +167,11 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 			return nil, &base.HTTPError{Status: 404, Message: "deleted"}
 		}
 	}
-	info, exists := doc.History[revid]
-	if !exists || info.Key == "" {
+	body := doc.getRevision(revid)
+	if body == nil {
 		return nil, &base.HTTPError{Status: 404, Message: "missing"}
 	}
-
-	body, err := db.getRevision(doc.ID, revid, info.Key)
-	if err != nil {
-		return nil, err
-	}
-	if info.Deleted {
+	if doc.History[revid].Deleted {
 		body["_deleted"] = true
 	}
 	if listRevisions {
@@ -160,9 +185,8 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 // Does NOT fill in _attachments, _deleted, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		key := doc.History[revid].Key
-		if key != "" {
-			return db.getRevision(doc.ID, revid, key)
+		if body := doc.getRevision(revid); body != nil {
+			return body, nil
 		}
 	}
 	return nil, &base.HTTPError{404, "missing"}
@@ -185,9 +209,15 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	return db.updateDoc(docid, func(doc *document) (Body, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		// First, make sure matchRev matches an existing leaf revision:
-		if !(len(doc.History) == 0 && matchRev == "") && !doc.History.isLeaf(matchRev) {
-			return nil, &base.HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+		if matchRev == "" {
+			if len(doc.History) > 0 && !doc.History[doc.CurrentRev].Deleted {
+				return nil, &base.HTTPError{Status: http.StatusConflict, Message: "Document exists"}
+			}
+		} else if !doc.History.isLeaf(matchRev) {
+			return nil, &base.HTTPError{Status: http.StatusConflict,
+									    Message: "Document revision conflict"}
 		}
+
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
 		if err := db.storeAttachments(doc, body, generation, matchRev); err != nil {
@@ -258,11 +288,7 @@ func (db *Database) validateDoc(doc *document, newRev Body, oldRevID string) err
 	newJson, _ := json.Marshal(newRev)
 	oldJson := ""
 	if oldRevID != "" {
-		var err error
-		oldJson, err = db.getRevisionJSON(doc.ID, oldRevID, doc.History[oldRevID].Key)
-		if err != nil {
-			return err
-		}
+		oldJson = string(doc.getRevisionJSON(oldRevID))
 	}
 	status, msg, err := db.Validator.Validate(string(newJson), oldJson, db.user)
 	if err == nil && status >= 300 {
@@ -279,7 +305,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-	var newRev string
+	var newRevID string
 	var body Body
 
 	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
@@ -302,17 +328,12 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 		if body != nil {
 			// Store the new revision:
-			newRev = body["_rev"].(string)
-			key, err := db.setRevision(body)
-			if err != nil {
-				return nil, err
-			}
-			doc.History.setRevisionKey(newRev, key)
+			newRevID = body["_rev"].(string)
+			doc.setRevision(newRevID, body)
 		}
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		doc.CurrentRev = doc.History.winningRevision()
-		doc.Deleted = doc.History[doc.CurrentRev].Deleted
 
 		// Assign the document the next sequence number, for the _changes feed:
 		doc.Sequence, err = db.sequences.nextSequence()
@@ -333,8 +354,8 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
-	if base.Logging && newRev != "" {
-		log.Printf("\tAdded doc %q / %q", docid, newRev)
+	if base.Logging && newRevID != "" {
+		log.Printf("\tAdded doc %q / %q", docid, newRevID)
 	}
 
 	// Ugly hack to detect changes to the channel-mapper function:
@@ -348,7 +369,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 
 	db.NotifyRevision()
-	return newRev, nil
+	return newRevID, nil
 }
 
 // Creates a new document, assigning it a random doc ID.

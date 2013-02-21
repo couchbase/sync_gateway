@@ -11,8 +11,6 @@ package db
 
 import (
 	"crypto/md5"
-	"crypto/sha1"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -28,40 +26,6 @@ func (body Body) FixJSONNumbers() {
 	for k, v := range body {
 		body[k] = base.FixJSONNumbers(v)
 	}
-}
-
-func (db *Database) getRevisionJSON(docid, revid string, key RevKey) (string, error) {
-	body, err := db.Bucket.GetRaw(revKeyToString(key))
-	return string(body), err
-}
-
-func (db *Database) getRevision(docid, revid string, key RevKey) (Body, error) {
-	var body Body
-	err := db.Bucket.Get(revKeyToString(key), &body)
-	if err != nil {
-		return nil, err
-	}
-	body["_id"] = docid
-	body["_rev"] = revid
-	return body, nil
-}
-
-func (db *Database) setRevision(body Body) (RevKey, error) {
-	body = stripSpecialProperties(body)
-	digester := sha1.New()
-	digester.Write(canonicalEncoding(body))
-	revKey := RevKey(base64.StdEncoding.EncodeToString(digester.Sum(nil)))
-	_, err := db.Bucket.Add(revKeyToString(revKey), 0, body)
-	if base.Logging && err == nil {
-		log.Printf("\tAdded revision %q", revKey)
-	}
-	return revKey, err
-}
-
-//////// HELPERS:
-
-func revKeyToString(key RevKey) string {
-	return "rev:" + string(key)
 }
 
 func createRevID(generation int, parentRevID string, body Body) string {

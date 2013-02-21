@@ -610,15 +610,11 @@ func (h *handler) handleAllDbs() error {
 }
 
 func (h *handler) handleVacuum() error {
-	revsDeleted, err := db.VacuumRevisions(h.context.dbcontext.Bucket)
-	if err != nil {
-		return err
-	}
 	attsDeleted, err := db.VacuumAttachments(h.context.dbcontext.Bucket)
 	if err != nil {
 		return err
 	}
-	h.writeJSON(db.Body{"revs": revsDeleted, "atts": attsDeleted})
+	h.writeJSON(db.Body{"atts": attsDeleted})
 	return nil
 }
 
