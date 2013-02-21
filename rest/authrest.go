@@ -22,7 +22,7 @@ import (
 )
 
 // Handles PUT or POST to /username
-func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
+func putUserCommon(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
 	body, _ := ioutil.ReadAll(rq.Body)
 	var user auth.User
 	err := json.Unmarshal(body, &user)
@@ -32,7 +32,7 @@ func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, use
 	if user.AdminChannels == nil {
 		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
 	}
-	user.AllChannels = nil		// Force it to be recomputed
+	user.AllChannels = nil // Force it to be recomputed
 
 	if rq.Method == "POST" {
 		username = user.Name
@@ -45,6 +45,19 @@ func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, use
 		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
 	return a.SaveUser(&user)
+}
+
+func postUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	return putUserCommon(r, rq, auth, "")
+}
+
+func putUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	muxed := mux.Vars(rq)
+	username := muxed["name"]
+	if username == "GUEST" {
+		username = "" //todo handle this at model layer?
+	}
+	return putUserCommon(r, rq, auth, username)
 }
 
 // Generates a login session for a user and returns the session ID and cookie name.
@@ -82,39 +95,31 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	return nil
 }
 
-func postUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	return putUser(r, rq, auth, "")
-}
-
-func putUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	muxed := mux.Vars(rq)
-	username := muxed["name"]
-	if username == "GUEST" {
-		username = "" //todo handle this at model layer?
-	}
-	return putUser(r, rq, auth, username)
-}
-
 func deleteUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
 	muxed := mux.Vars(rq)
 	username := muxed["name"]
-	user, _ := auth.GetUser(username)
-	if user == nil || auth.DeleteUser(user) != nil {
-		return kNotFoundError
+	user, err := auth.GetUser(username)
+	if user == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
 	}
-	return nil
+	return auth.DeleteUser(user)
 }
 
 func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
 	muxed := mux.Vars(rq)
-	// dbname := muxed["db"]
 	username := muxed["name"]
 	if username == "GUEST" {
 		username = "" //todo handle this at model layer?
 	}
-	user, _ := auth.GetUser(username)
+	user, err := auth.GetUser(username)
 	if user == nil {
-		return kNotFoundError;
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
 	}
 	bytes, _ := json.Marshal(user)
 	r.Write(bytes)
@@ -131,11 +136,10 @@ func renderError(err error, r http.ResponseWriter) {
 
 type authHandler func(http.ResponseWriter, *http.Request, *auth.Authenticator) error
 
-
 func handleAuthReq(auth *auth.Authenticator, fun authHandler) func(http.ResponseWriter, *http.Request) {
 	return func(r http.ResponseWriter, rq *http.Request) {
 		err := fun(r, rq, auth)
-		if (err != nil) {
+		if err != nil {
 			renderError(err, r)
 		}
 	}
@@ -151,7 +155,7 @@ func StartAuthListener(addr string, auth *auth.Authenticator) {
 	r.HandleFunc("/{db}/user/{name}",
 		handleAuthReq(auth, getUserInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/user/{name}",
-		handleAuthReq(auth, putUserInfo)).Methods("PUT")
+		handleAuthReq(auth, putUser)).Methods("PUT")
 	r.HandleFunc("/{db}/user/{name}",
 		handleAuthReq(auth, deleteUser)).Methods("DELETE")
 	r.HandleFunc("/{db}/user",
