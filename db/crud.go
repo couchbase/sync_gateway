@@ -157,8 +157,16 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
-			if len(doc.History) > 0 && !doc.History[doc.CurrentRev].Deleted {
-				return nil, &base.HTTPError{Status: http.StatusConflict, Message: "Document exists"}
+			matchRev = doc.CurrentRev
+			if matchRev != "" {
+				// PUT with no parent rev given, but there is an existing current revision.
+				// This is OK as long as the current one is deleted.
+				if !doc.History[matchRev].Deleted {
+					return nil, &base.HTTPError{Status: http.StatusConflict,
+						Message: "Document exists"}
+				}
+				generation, _ = parseRevID(matchRev)
+				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) {
 			return nil, &base.HTTPError{Status: http.StatusConflict,
