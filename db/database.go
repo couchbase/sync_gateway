@@ -137,7 +137,7 @@ func installViews(bucket *couchbase.Bucket) error {
                         return;
                     if (sync.sequence === undefined)
                         return;
-                    var value = [meta.id, doc.rev];
+                    var value = [meta.id, sync.rev];
                     if (sync.deleted)
                         value.push(true);
                     emit(sync.sequence, value); }`
@@ -160,7 +160,7 @@ func installViews(bucket *couchbase.Bucket) error {
 								if (!removed)
 									emit([name, sequence], value);
 								else
-									emit([name, removed.seq], [doc.id, removed.rev, false]);
+									emit([name, removed.seq], [meta.id, removed.rev, false]);
 							}
 						}
 					}`

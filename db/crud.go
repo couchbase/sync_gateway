@@ -280,6 +280,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		newRevID = body["_rev"].(string)
 		prevCurrentRev := doc.CurrentRev
 		doc.CurrentRev = doc.History.winningRevision()
+		doc.Deleted = doc.History[doc.CurrentRev].Deleted
 
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 			// Store the doc's previous body into the revision tree:

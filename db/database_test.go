@@ -10,6 +10,7 @@
 package db
 
 import (
+	"fmt"
 	"log"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/sdegutis/go.assert"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 var gTestBucket *couchbase.Bucket
@@ -29,18 +31,25 @@ func init() {
 	}
 }
 
-func TestDatabase(t *testing.T) {
+func setupTestDB(t *testing.T) *Database {
 	context, err := NewDatabaseContext("db", gTestBucket)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
-	defer func() {
-		err = db.Delete()
-		status, _ := base.ErrorAsHTTPStatus(err)
-		if status != 200 && status != 404 {
-			assertNoError(t, err, "Couldn't delete database 'db'")
-		}
-	}()
+	return db
+}
+
+func tearDownTestDB(t *testing.T, db *Database) {
+	err := db.Delete()
+	status, _ := base.ErrorAsHTTPStatus(err)
+	if status != 200 && status != 404 {
+		assertNoError(t, err, "Couldn't delete database 'db'")
+	}
+}
+
+func TestDatabase(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
@@ -121,4 +130,75 @@ func TestDatabase(t *testing.T) {
 	gotbody, err = db.Get("doc1")
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
+}
+
+func TestAllDocs(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
+
+	ids := make([]IDAndRev, 100)
+	for i := 0; i < 100; i++ {
+		channels := []string{"all"}
+		if i%10 == 0 {
+			channels = append(channels, "KFJC")
+		}
+		body := Body{"serialnumber": i, "channels": channels}
+		ids[i].DocID = fmt.Sprintf("alldoc-%02d", i)
+		revid, err := db.Put(ids[i].DocID, body)
+		ids[i].RevID = revid
+		assertNoError(t, err, "Couldn't create document")
+	}
+
+	alldocs, err := db.AllDocIDs()
+	assertNoError(t, err, "AllDocIDs failed")
+	assert.Equals(t, len(alldocs), 100)
+	for i, entry := range alldocs {
+		assert.DeepEquals(t, entry, ids[i])
+	}
+
+	// Now delete one document and try again:
+	_, err = db.DeleteDoc(ids[23].DocID, ids[23].RevID)
+	assertNoError(t, err, "Couldn't delete doc 23")
+
+	alldocs, err = db.AllDocIDs()
+	assertNoError(t, err, "AllDocIDs failed")
+	assert.Equals(t, len(alldocs), 99)
+	for i, entry := range alldocs {
+		j := i
+		if i >= 23 {
+			j++
+		}
+		assert.DeepEquals(t, entry, ids[j])
+	}
+
+	// Now check the changes feed:
+	var options ChangesOptions
+	changes, err := db.GetChanges([]string{"all"}, options)
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 100)
+	for i, change := range changes {
+		seq := i + 1
+		if i >= 23 {
+			seq++
+		}
+		assert.Equals(t, int(change.Seq), seq)
+		assert.Equals(t, change.Deleted, false)
+		var removed []string
+		if i == 99 {
+			removed = []string{"all"}
+		}
+		assert.DeepEquals(t, change.Removed, removed)
+	}
+
+	changes, err = db.GetChanges([]string{"KFJC"}, options)
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 10)
+	for i, change := range changes {
+		assert.Equals(t, int(change.Seq), 10*i+1)
+		assert.Equals(t, change.ID, ids[10*i].DocID)
+		assert.Equals(t, change.Deleted, false)
+		assert.DeepEquals(t, change.Removed, []string(nil))
+	}
 }
