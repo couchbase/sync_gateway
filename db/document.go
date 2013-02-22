@@ -25,7 +25,6 @@ type AccessMap map[string][]string
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
-	ID         string     `json:"id"`
 	CurrentRev string     `json:"rev"`
 	Sequence   uint64     `json:"sequence"`
 	History    RevTree    `json:"history"`
@@ -39,11 +38,23 @@ type syncData struct {
 type document struct {
 	syncData
 	body Body
+	ID   string `json:"-"`
 }
 
 // Returns a new empty document.
-func newDocument() *document {
-	return &document{syncData: syncData{History: make(RevTree)}}
+func newDocument(docid string) *document {
+	return &document{ID: docid, syncData: syncData{History: make(RevTree)}}
+}
+
+// Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.
+func unmarshalDocument(docid string, data []byte) (*document, error) {
+	doc := newDocument(docid)
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, doc); err != nil {
+			return nil, err
+		}
+	}
+	return doc, nil
 }
 
 // Fetches the body of a revision as a map, or nil if it's not available.
@@ -94,10 +105,13 @@ type documentRoot struct {
 }
 
 func (doc *document) UnmarshalJSON(data []byte) error {
+	if doc.ID == "" {
+		panic("Doc was unmarshaled without ID set")
+	}
 	root := documentRoot{SyncData: &syncData{History: make(RevTree)}}
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
-		log.Printf("error unmarshaling documentRoot: %s", err)
+		log.Printf("WARNING: Error unmarshaling doc %q: %s", doc.ID, err)
 		return err
 	}
 	if root.SyncData != nil {
@@ -106,7 +120,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 
 	err = json.Unmarshal([]byte(data), &doc.body)
 	if err != nil {
-		log.Printf("error unmarshaling body: %s", err)
+		log.Printf("WARNING: Error unmarshaling body of doc %q: %s", doc.ID, err)
 		return err
 	}
 	delete(doc.body, "_sync")

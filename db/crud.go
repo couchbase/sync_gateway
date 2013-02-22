@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -26,12 +27,11 @@ import (
 //////// READING DOCUMENTS:
 
 func (db *Database) realDocID(docid string) string {
-	if docid == "" {
-		return ""
-	}
-	docid = "doc:" + docid
 	if len(docid) > 250 {
 		return ""
+	}
+	if strings.HasPrefix(docid, "_") && !strings.HasPrefix(docid, "_design/") {
+		return "" // Invalid doc IDs
 	}
 	return docid
 }
@@ -41,7 +41,7 @@ func (db *Database) getDoc(docid string) (*document, error) {
 	if key == "" {
 		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-	doc := newDocument()
+	doc := newDocument(docid)
 	err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
@@ -257,17 +257,12 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		doc := newDocument()
-		if len(currentValue) == 0 { // New document:
-			doc.ID = docid
-		} else { // Updating document:
-			if err := json.Unmarshal(currentValue, doc); err != nil {
-				return nil, err
-			}
+		doc, err := unmarshalDocument(docid, currentValue)
+		if err != nil {
+			return nil, err
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		var err error
 		body, err = callback(doc)
 		if err != nil {
 			return nil, err

@@ -276,7 +276,7 @@ func BodyAttachments(body Body) map[string]interface{} {
 }
 
 func attachmentKeyToString(key AttachmentKey) string {
-	return "att:" + string(key)
+	return "_sync:att:" + string(key)
 }
 
 func decodeAttachment(att interface{}) ([]byte, error) {

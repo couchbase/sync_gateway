@@ -25,6 +25,10 @@ func init() {
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
+	err = InstallDesignDoc(gTestBucket)
+	if err != nil {
+		log.Fatalf("Couldn't install design doc: %v", err)
+	}
 }
 
 func TestValidateGuestUser(t *testing.T) {

@@ -11,6 +11,7 @@ package auth
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -82,7 +83,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 func (auth *Authenticator) rebuildUserChannels(user *User) error {
 	opts := map[string]interface{}{"stale": false, "key": user.Name}
 	vres := couchbase.ViewResult{}
-	if verr := auth.bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
+	if verr := auth.bucket.ViewCustom("sync_gateway_auth", "access", opts, &vres); verr != nil {
 		return verr
 	}
 	allChannels := ch.SetFromArray(user.AdminChannels)
@@ -168,4 +169,29 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 		return nil
 	}
 	return user
+}
+
+// Installs the design document necessary for authentication.
+func InstallDesignDoc(bucket *couchbase.Bucket) error {
+	// By-access view
+	access_map := `function (doc, meta) {
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                        return;
+	                    var sequence = sync.sequence;
+	                    if (sync.deleted || sequence === undefined)
+	                        return;
+	                    var access = sync.access;
+	                    if (access) {
+	                        for (var name in access) {
+	                            emit(name, access[name]);
+	                        }
+	                    }
+	               }`
+	ddoc := base.DesignDoc{Views: base.ViewMap{"access": base.ViewDef{Map: access_map}}}
+	err := ddoc.Put(bucket, "sync_gateway_auth")
+	if err != nil {
+		log.Printf("WARNING: Error installing Couchbase auth design doc: %v", err)
+	}
+	return err
 }

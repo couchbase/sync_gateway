@@ -122,10 +122,8 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 					entry.Removed = []string{channel}
 				}
 				if usingDocs {
-					doc := newDocument()
-					json.Unmarshal(row.Doc.Json, doc)
-					if doc != nil {
-						//log.Printf("?? doc = %v", doc)
+					doc, err := unmarshalDocument(docID, row.Doc.Json)
+					if err == nil {
 						if options.Conflicts {
 							for _, leafID := range doc.History.getLeaves() {
 								if leafID != revID {

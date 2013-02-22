@@ -45,7 +45,7 @@ func (s *sequenceAllocator) nextSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
-	max, err := s.bucket.Incr("__seq", numToReserve, 0, 0)
+	max, err := s.bucket.Incr("_sync:seq", numToReserve, 0, 0)
 	if err != nil {
 		return err
 	}

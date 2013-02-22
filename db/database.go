@@ -10,13 +10,9 @@
 package db
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
-	"net/url"
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -50,6 +46,9 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 	}
 	log.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
 	err = installViews(bucket)
+	if err == nil {
+		err = auth.InstallDesignDoc(bucket)
+	}
 	return
 }
 
@@ -120,49 +119,41 @@ func (db *Database) DocCount() int {
 }
 
 func installViews(bucket *couchbase.Bucket) error {
-	node := bucket.Nodes[rand.Intn(len(bucket.Nodes))]
-	u, err := url.Parse(node.CouchAPIBase)
-	if err != nil {
-		fmt.Printf("Failed to parse %s", node.CouchAPIBase)
-		return err
-	}
-	u.Path = fmt.Sprintf("/%s/_design/%s", bucket.Name, "sync_gateway")
-
-	// View for finding every Couchbase doc used by a database (for cleanup upon deletion)
+	// View for finding every Couchbase doc (used when deleting a database)
 	allbits_map := `function (doc, meta) {
                       emit(meta.id, null); }`
 	// View for _all_docs
 	alldocs_map := `function (doc, meta) {
-                     var pieces = meta.id.split(":", 2);
-                     if (pieces.length < 2 || pieces[0] != "doc")
+                     var sync = doc._sync;
+                     if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
-                     if (doc.deleted || doc.id===undefined)
+                     if (sync.deleted)
                        return;
-                     emit(doc.id, doc.rev); }`
+                     emit(meta.id, sync.rev); }`
 	// View for _changes feed, i.e. a by-sequence index
 	changes_map := `function (doc, meta) {
-                    if (doc.sequence === undefined)
+                    var sync = doc._sync;
+                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                         return;
-                    var pieces = meta.id.split(":", 2);
-                    if (pieces.length < 2 || pieces[0] != "doc" || doc.id===undefined)
+                    if (sync.sequence === undefined)
                         return;
-                    var value = [doc.id, doc.rev];
-                    if (doc.deleted)
+                    var value = [meta.id, doc.rev];
+                    if (sync.deleted)
                         value.push(true);
-                    emit(doc.sequence, value); }`
+                    emit(sync.sequence, value); }`
 	// By-channels view
 	channels_map := `function (doc, meta) {
-						var sequence = doc.sequence;
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                        return;
+						var sequence = sync.sequence;
 	                    if (sequence === undefined)
 	                        return;
-	                    var pieces = meta.id.split(":", 2);
-	                    if (pieces.length < 2 || pieces[0] != "doc" || doc.id===undefined)
-	                        return;
-	                    var value = [doc.id, doc.rev];
-	                    if (doc.deleted)
+	                    var value = [meta.id, sync.rev];
+	                    if (sync.deleted)
 	                        value.push(true);
 						emit(["*", sequence], value);
-						var channels = doc["channels"];
+						var channels = sync.channels;
 						if (channels) {
 							for (var name in channels) {
 								removed = channels[name];
@@ -174,61 +165,15 @@ func installViews(bucket *couchbase.Bucket) error {
 						}
 					}`
 
-	access_map := `function (doc, meta) {
-	                    var sequence = doc.sequence;
-	                    if (doc.deleted || sequence === undefined)
-	                        return;
-	                    var access = doc["access"];
-	                    if (access) {
-	                        for (var name in access) {
-	                            emit(name, access[name]);
-	                        }
-	                    }
-	               }`
-	// View for mapping attachment IDs to revisions (for vacuuming)
-	atts_map := `function (doc, meta) {
-				  var pieces = meta.id.split(":", 2);
-				  if (pieces.length < 2)
-				    return;
-				  if (pieces[0] == "att") {
-				    emit(pieces[1], true);
-				  } else if (pieces[0] == "rev") {
-				    var atts = doc._attachments;
-				    if (atts) {
-				      for (var i = 0; i < atts.length; ++i) {
-				        var digest = atts[i].digest
-				        if (digest)
-				          emit(digest, false);
-				      }
-				    }
-				  }
-				}`
-	// Reduce function for revs_map and atts_map
-	revs_or_atts_reduce := `function(keys, values, rereduce) {
-							  for (var i = 0; i < values.length; ++i) {
-							    if (!values[i])
-							      return false;
-							  }
-							  return true;
-							}`
-
-	ddoc := Body{
-		"language": "javascript",
-		"views": Body{
-			"all_bits": Body{"map": allbits_map},
-			"all_docs": Body{"map": alldocs_map, "reduce": "_count"},
-			"channels": Body{"map": channels_map},
-			"access":   Body{"map": access_map},
-			"atts":     Body{"map": atts_map, "reduce": revs_or_atts_reduce},
-			"changes":  Body{"map": changes_map}}}
-	payload, err := json.Marshal(ddoc)
-	rq, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(payload))
-	rq.Header.Set("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(rq)
-
-	if err == nil && response.StatusCode > 299 {
-		err = &base.HTTPError{Status: response.StatusCode, Message: response.Status}
+	ddoc := base.DesignDoc{
+		Views: base.ViewMap{
+			"all_bits": base.ViewDef{Map: allbits_map},
+			"all_docs": base.ViewDef{Map: alldocs_map},
+			"channels": base.ViewDef{Map: channels_map},
+			"changes":  base.ViewDef{Map: changes_map},
+		},
 	}
+	err := ddoc.Put(bucket, "sync_gateway")
 	if err != nil {
 		log.Printf("WARNING: Error installing Couchbase design doc: %v", err)
 	}
@@ -286,35 +231,9 @@ func (db *Database) Delete() error {
 	return nil
 }
 
-func vacuumContent(bucket *couchbase.Bucket, viewName string, docPrefix string) (int, error) {
-	vres, err := bucket.View("sync_gateway", viewName, Body{"stale": false, "group_level": 1})
-	if err != nil {
-		log.Printf("WARNING: %s view returned %v", viewName, err)
-		return 0, err
-	}
-	deletions := 0
-	for _, row := range vres.Rows {
-		if row.Value.(bool) {
-			deletions += vacIt(bucket, docPrefix+row.Key.(string))
-		}
-	}
-	return deletions, nil
-}
-
-func vacIt(bucket *couchbase.Bucket, docid string) int {
-	if err := bucket.Delete(docid); err != nil {
-		log.Printf("\tError vacuuming %q: %v", docid, err)
-		return 0
-	}
-	if base.Logging {
-		log.Printf("\tVacuumed %q", docid)
-	}
-	return 1
-}
-
 // Deletes all orphaned CouchDB attachments not used by any revisions.
 func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
-	return vacuumContent(bucket, "atts", "att:")
+	return 0, &base.HTTPError{http.StatusNotImplemented, "Vacuum is temporarily out of order"}
 }
 
 // Re-runs the channelMapper on every document in the database.
@@ -333,8 +252,8 @@ func (db *Database) UpdateAllDocChannels() error {
 			if currentValue == nil {
 				return nil, couchbase.UpdateCancel // someone deleted it?!
 			}
-			doc := newDocument()
-			if err := json.Unmarshal(currentValue, doc); err != nil {
+			doc, err := unmarshalDocument(docid, currentValue)
+			if err != nil {
 				return nil, err
 			}
 			body, err := db.getRevFromDoc(doc, "", false)
