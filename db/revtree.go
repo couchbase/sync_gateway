@@ -226,7 +226,23 @@ func (tree RevTree) setRevisionBody(revid string, body []byte) {
 		panic(fmt.Sprintf("rev id %q not found", revid))
 	}
 	info.Body = body
-	tree[revid] = info   // yes, this is necessary, because info is a _copy_
+	tree[revid] = info // yes, this is necessary, because info is a _copy_
+}
+
+func (tree RevTree) getParsedRevisionBody(revid string) Body {
+	bodyJSON, found := tree.getRevisionBody(revid)
+	if !found {
+		return nil
+	}
+	var body Body
+	if bodyJSON == nil {
+		body = Body{}
+	} else {
+		if err := json.Unmarshal(bodyJSON, &body); err != nil {
+			panic(fmt.Sprintf("Unexpected error parsing body of rev %q", revid))
+		}
+	}
+	return body
 }
 
 // Copies a RevTree.
