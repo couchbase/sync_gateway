@@ -168,7 +168,7 @@ func installViews(bucket *couchbase.Bucket) error {
 	ddoc := base.DesignDoc{
 		Views: base.ViewMap{
 			"all_bits": base.ViewDef{Map: allbits_map},
-			"all_docs": base.ViewDef{Map: alldocs_map},
+			"all_docs": base.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			"channels": base.ViewDef{Map: channels_map},
 			"changes":  base.ViewDef{Map: changes_map},
 		},
