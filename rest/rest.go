@@ -172,17 +172,17 @@ func (h *handler) handleDeleteDoc() error {
 }
 
 func (h *handler) handleGetDesignDoc() error {
-	h.PathVars()["docid"] = "_design/" + h.PathVars()["docid"]
+	h.PathVars()["docid"] = "_sync_design/" + h.PathVars()["docid"]
 	return h.handleGetDoc()
 }
 
 func (h *handler) handlePutDesignDoc() error {
-	h.PathVars()["docid"] = "_design/" + h.PathVars()["docid"]
+	h.PathVars()["docid"] = "_sync_design/" + h.PathVars()["docid"]
 	return h.handlePutDoc()
 }
 
 func (h *handler) handleDelDesignDoc() error {
-	h.PathVars()["docid"] = "_design/" + h.PathVars()["docid"]
+	h.PathVars()["docid"] = "_sync_design/" + h.PathVars()["docid"]
 	return h.handleDeleteDoc()
 }
 
@@ -723,9 +723,9 @@ func createHandler(c *context) http.Handler {
 	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
 	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_design/{docid}", makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
+	dbr.Handle("/_sync_design/{docid}", makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_sync_design/{docid}", makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_sync_design/{docid}", makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleGetDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")

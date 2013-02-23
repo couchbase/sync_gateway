@@ -26,7 +26,7 @@ type AccessMap map[string][]string
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
 	CurrentRev string     `json:"rev"`
-	Deleted    bool       `json:"deleted"`
+	Deleted    bool       `json:"deleted,omitempty"`
 	Sequence   uint64     `json:"sequence"`
 	History    RevTree    `json:"history"`
 	Channels   ChannelMap `json:"channels,omitempty"`
