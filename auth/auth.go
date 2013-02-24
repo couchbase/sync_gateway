@@ -15,6 +15,7 @@ import (
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
@@ -22,7 +23,7 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket *couchbase.Bucket
+	bucket base.Bucket
 }
 
 type userByEmailInfo struct {
@@ -30,7 +31,7 @@ type userByEmailInfo struct {
 }
 
 // Creates a new Authenticator that stores user info in the given Bucket.
-func NewAuthenticator(bucket *couchbase.Bucket) *Authenticator {
+func NewAuthenticator(bucket base.Bucket) *Authenticator {
 	return &Authenticator{
 		bucket: bucket,
 	}
@@ -172,7 +173,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) *U
 }
 
 // Installs the design document necessary for authentication.
-func InstallDesignDoc(bucket *couchbase.Bucket) error {
+func InstallDesignDoc(bucket base.Bucket) error {
 	// By-access view
 	access_map := `function (doc, meta) {
 	                    var sync = doc._sync;
@@ -188,8 +189,8 @@ func InstallDesignDoc(bucket *couchbase.Bucket) error {
 	                        }
 	                    }
 	               }`
-	ddoc := base.DesignDoc{Views: base.ViewMap{"access": base.ViewDef{Map: access_map}}}
-	err := ddoc.Put(bucket, "sync_gateway_auth")
+	ddoc := walrus.DesignDoc{Views: walrus.ViewMap{"access": walrus.ViewDef{Map: access_map}}}
+	err := bucket.PutDDoc("sync_gateway_auth", ddoc)
 	if err != nil {
 		log.Printf("WARNING: Error installing Couchbase auth design doc: %v", err)
 	}

@@ -63,7 +63,7 @@ const kChangesPageSize = 200
 // Returns a list of all the changes made on a channel. Does NOT check authorization.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	lastSequence := options.Since
-	endkey := [2]interface{}{channel, make(Body)}
+	endkey := []interface{}{channel, map[string]interface{}{}}
 	totalLimit := options.Limit
 	usingDocs := options.Conflicts || options.IncludeDocs || options.includeDocMeta
 	opts := Body{"stale": false, "update_seq": true,
@@ -83,7 +83,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 		defer close(feed)
 		for {
 			// Query the 'channels' view:
-			opts["startkey"] = [2]interface{}{channel, lastSequence + 1}
+			opts["startkey"] = []interface{}{channel, lastSequence + 1}
 			limit := totalLimit
 			if limit == 0 || limit > kChangesPageSize {
 				limit = kChangesPageSize

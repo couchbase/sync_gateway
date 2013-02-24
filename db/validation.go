@@ -12,10 +12,10 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
-	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 const funcWrapper = `
@@ -35,7 +35,7 @@ const funcWrapper = `
 
 // Runs CouchDB JavaScript validation functions.
 type Validator struct {
-	js *base.JSServer
+	js *walrus.JSServer
 }
 
 type validatorResult struct {
@@ -48,7 +48,7 @@ func NewValidator(funcSource string) (*Validator, error) {
 	funcSource = fmt.Sprintf(funcWrapper, funcSource)
 	validator := &Validator{}
 	var err error
-	validator.js, err = base.NewJSServer(funcSource)
+	validator.js, err = walrus.NewJSServer(funcSource)
 	if err != nil {
 		return nil, err
 	}

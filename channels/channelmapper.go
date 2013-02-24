@@ -12,7 +12,7 @@ package channels
 import (
 	"strconv"
 
-	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
 )
 
@@ -23,7 +23,7 @@ type channelMapperOutput struct {
 
 type ChannelMapper struct {
 	output *channelMapperOutput
-	js     *base.JSServer
+	js     *walrus.JSServer
 }
 
 // Maps user names to arrays of channel names
@@ -53,7 +53,7 @@ func ottoArrayToStrings(array *otto.Object) []string {
 func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper := &ChannelMapper{}
 	var err error
-	mapper.js, err = base.NewJSServer(funcSource)
+	mapper.js, err = walrus.NewJSServer(funcSource)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		username := call.Argument(0)
 		channels := call.Argument(1)
 		usernameArray := []string{}
-		if (username.IsString()) {
+		if username.IsString() {
 			usernameArray = []string{username.String()}
 		} else if username.Class() == "Array" {
 			usernameArray = ottoArrayToStrings(username.Object())

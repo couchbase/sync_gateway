@@ -16,6 +16,7 @@ import (
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -26,7 +27,7 @@ var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
 type DatabaseContext struct {
 	Name          string
-	Bucket        *couchbase.Bucket
+	Bucket        base.Bucket
 	sequences     *sequenceAllocator
 	ChannelMapper *channels.ChannelMapper
 	Validator     *Validator
@@ -39,8 +40,8 @@ type Database struct {
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchbase.Bucket, err error) {
-	bucket, err = couchbase.GetBucket(couchbaseURL, poolName, bucketName)
+func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Bucket, err error) {
+	bucket, err = base.GetBucket(couchbaseURL, poolName, bucketName)
 	if err != nil {
 		return
 	}
@@ -52,7 +53,7 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket *couchba
 	return
 }
 
-func NewDatabaseContext(dbName string, bucket *couchbase.Bucket) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
 	sequences, err := newSequenceAllocator(bucket)
 	if err != nil {
 		return nil, err
@@ -118,7 +119,7 @@ func (db *Database) DocCount() int {
 	return int(vres.Rows[0].Value.(float64))
 }
 
-func installViews(bucket *couchbase.Bucket) error {
+func installViews(bucket base.Bucket) error {
 	// View for finding every Couchbase doc (used when deleting a database)
 	allbits_map := `function (doc, meta) {
                       emit(meta.id, null); }`
@@ -165,15 +166,15 @@ func installViews(bucket *couchbase.Bucket) error {
 						}
 					}`
 
-	ddoc := base.DesignDoc{
-		Views: base.ViewMap{
-			"all_bits": base.ViewDef{Map: allbits_map},
-			"all_docs": base.ViewDef{Map: alldocs_map, Reduce: "_count"},
-			"channels": base.ViewDef{Map: channels_map},
-			"changes":  base.ViewDef{Map: changes_map},
+	ddoc := walrus.DesignDoc{
+		Views: walrus.ViewMap{
+			"all_bits": walrus.ViewDef{Map: allbits_map},
+			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			"channels": walrus.ViewDef{Map: channels_map},
+			"changes":  walrus.ViewDef{Map: changes_map},
 		},
 	}
-	err := ddoc.Put(bucket, "sync_gateway")
+	err := bucket.PutDDoc("sync_gateway", ddoc)
 	if err != nil {
 		log.Printf("WARNING: Error installing Couchbase design doc: %v", err)
 	}
@@ -200,7 +201,7 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	return result, nil
 }
 
-func (db *Database) queryAllDocs(reduce bool) (couchbase.ViewResult, error) {
+func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View("sync_gateway", "all_docs", opts)
 	if err != nil {
@@ -232,7 +233,7 @@ func (db *Database) Delete() error {
 }
 
 // Deletes all orphaned CouchDB attachments not used by any revisions.
-func VacuumAttachments(bucket *couchbase.Bucket) (int, error) {
+func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, &base.HTTPError{http.StatusNotImplemented, "Vacuum is temporarily out of order"}
 }
 

@@ -11,17 +11,21 @@ package auth
 
 import (
 	"encoding/json"
-	"github.com/couchbaselabs/go-couchbase"
-	"github.com/sdegutis/go.assert"
 	"log"
 	"testing"
+
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/sdegutis/go.assert"
 )
 
-var gTestBucket *couchbase.Bucket
+//const kTestURL = "http://localhost:8091"
+const kTestURL = "walrus:"
+
+var gTestBucket base.Bucket
 
 func init() {
 	var err error
-	gTestBucket, err = couchbase.GetBucket("http://localhost:8091", "default", "sync_gateway_tests")
+	gTestBucket, err = base.GetBucket(kTestURL, "default", "sync_gateway_tests")
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -154,7 +158,9 @@ func TestGetMissingUser(t *testing.T) {
 	user, err := auth.GetUser("noSuchUser")
 	assert.Equals(t, err, nil)
 	assert.True(t, user == nil)
-
+	user, err = auth.GetUserByEmail("noreply@example.com")
+	assert.Equals(t, err, nil)
+	assert.True(t, user == nil)
 }
 
 func TestGetGuestUser(t *testing.T) {
@@ -185,5 +191,7 @@ func TestRebuildUserChannels(t *testing.T) {
 
 	user2, err := auth.GetUser("testUser")
 	assert.Equals(t, err, nil)
-	assert.DeepEquals(t, user2.AllChannels, user.AdminChannels)
+	if user2 != nil {
+		assert.DeepEquals(t, user2.AllChannels, user.AdminChannels)
+	}
 }

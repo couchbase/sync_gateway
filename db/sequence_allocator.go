@@ -10,18 +10,19 @@
 package db
 
 import (
-	"github.com/couchbaselabs/go-couchbase"
 	"sync"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 type sequenceAllocator struct {
-	bucket *couchbase.Bucket // Bucket whose counter to use
-	mutex  sync.Mutex        // Makes this object thread-safe
-	last   uint64            // Last sequence # assigned
-	max    uint64            // Max sequence # reserved
+	bucket base.Bucket // Bucket whose counter to use
+	mutex  sync.Mutex  // Makes this object thread-safe
+	last   uint64      // Last sequence # assigned
+	max    uint64      // Max sequence # reserved
 }
 
-func newSequenceAllocator(bucket *couchbase.Bucket) (*sequenceAllocator, error) {
+func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 	s := &sequenceAllocator{bucket: bucket}
 	return s, s.reserveSequences(0) // just reads latest sequence from bucket
 }

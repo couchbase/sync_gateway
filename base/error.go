@@ -11,9 +11,11 @@ package base
 
 import (
 	"fmt"
-	"github.com/dustin/gomemcached"
 	"log"
 	"net/http"
+
+	"github.com/couchbaselabs/walrus"
+	"github.com/dustin/gomemcached"
 )
 
 // Simple error implementation wrapping an HTTP response status.
@@ -46,15 +48,20 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("MC status %s", err.Status.String())
 		}
-	default:
-		log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)
-		return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
+	case walrus.MissingError:
+		return http.StatusNotFound, "missing"
 	}
-	panic("unreachable")
+	log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)
+	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 
 // Returns true if an error is a Couchbase doc-not-found error
 func IsDocNotFoundError(err error) bool {
-	mcresponse, ok := err.(*gomemcached.MCResponse)
-	return ok && mcresponse.Status == gomemcached.KEY_ENOENT
+	switch err := err.(type) {
+	case *gomemcached.MCResponse:
+		return err.Status == gomemcached.KEY_ENOENT
+	case walrus.MissingError:
+		return true
+	}
+	return false
 }

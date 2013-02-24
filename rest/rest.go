@@ -21,7 +21,6 @@ import (
 
 	"fmt"
 
-	"github.com/couchbaselabs/go-couchbase"
 	"github.com/gorilla/mux"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
@@ -657,9 +656,9 @@ func (h *handler) handleDesign() error {
 }
 
 // Initialize REST handlers. Call this once on launch.
-func InitREST(bucket *couchbase.Bucket, dbName string, serverURL string) *context {
+func InitREST(bucket base.Bucket, dbName string, serverURL string) *context {
 	if dbName == "" {
-		dbName = bucket.Name
+		dbName = bucket.GetName()
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
@@ -758,7 +757,7 @@ func ServerMain() {
 	}
 
 	if *dbName == "" {
-		*dbName = bucket.Name
+		*dbName = bucket.GetName()
 	}
 
 	context := InitREST(bucket, *dbName, *siteURL)
