@@ -3,9 +3,7 @@
 package base
 
 import (
-	"log"
 	"strings"
-	"sync"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -40,29 +38,9 @@ func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucke
 	return
 }
 
-var buckets map[[3]string]Bucket
-var bucketsLock sync.Mutex
-
-func GetWalrusBucket(couchbaseURL, poolName, bucketName string) (Bucket, error) {
-	bucketsLock.Lock()
-	defer bucketsLock.Unlock()
-
-	if buckets == nil {
-		buckets = make(map[[3]string]Bucket)
-	}
-	key := [3]string{couchbaseURL, poolName, bucketName}
-	bucket := buckets[key]
-	if bucket == nil {
-		bucket = walrus.NewBucket(bucketName)
-		buckets[key] = bucket
-		log.Printf("Created Walrus bucket %+v", key)
-	}
-	return bucket, nil
-}
-
 func GetBucket(url, poolName, bucketName string) (bucket Bucket, err error) {
 	if strings.HasPrefix(url, "walrus:") {
-		return GetWalrusBucket(url, poolName, bucketName)
+		return walrus.GetBucket(url, poolName, bucketName)
 	}
 	return GetCouchbaseBucket(url, poolName, bucketName)
 }
