@@ -51,6 +51,19 @@ type handler struct {
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
+func makeAdminHandler(context *context, method handlerMethod) http.Handler {
+	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+		h := &handler{
+			rq:       rq,
+			response: r,
+			context:  context,
+		}
+		err := h.invoke(method, true)
+		h.writeError(err)
+	})
+}
+
+// Creates an http.Handler that will run a handler with the given method
 func makeHandler(context *context, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := &handler{
@@ -58,12 +71,12 @@ func makeHandler(context *context, method handlerMethod) http.Handler {
 			response: r,
 			context:  context,
 		}
-		err := h.invoke(method)
+		err := h.invoke(method, false)
 		h.writeError(err)
 	})
 }
 
-func (h *handler) invoke(method handlerMethod) error {
+func (h *handler) invoke(method handlerMethod, admin bool) error {
 	if LogRequests {
 		log.Printf("%s %s", h.rq.Method, h.rq.URL)
 	}
@@ -71,7 +84,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// Authenticate all paths other than "/_session":
 	path := h.rq.URL.Path
-	if path != "/_session" && path != "/_browserid" {
+	if admin != true && path != "/_session" && path != "/_browserid" {
 		if err := h.checkAuth(); err != nil {
 			return err
 		}

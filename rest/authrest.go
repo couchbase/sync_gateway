@@ -205,11 +205,11 @@ func createAuthHandler(c *context) http.Handler {
 
 	dbr := r.PathPrefix("/{db}/").Subrouter()
 	dbr.Handle("/_design/{docid}",
-		makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+		makeAdminHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/{docid}",
-		makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
+		makeAdminHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
 	dbr.Handle("/_design/{docid}",
-		makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
+		makeAdminHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
 
 	// http.Handle("/", r);
 	return r
