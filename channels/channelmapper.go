@@ -58,8 +58,8 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		return nil, err
 	}
 
-	// Implementation of the 'sync()' callback:
-	mapper.js.DefineNativeFunction("sync", func(call otto.FunctionCall) otto.Value {
+	// Implementation of the 'channel()' callback:
+	mapper.js.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
 			if arg.IsString() {
 				mapper.output.channels = append(mapper.output.channels, arg.String())
@@ -111,7 +111,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 }
 
 func NewDefaultChannelMapper() (*ChannelMapper, error) {
-	return NewChannelMapper(`function(doc){sync(doc.channels);}`)
+	return NewChannelMapper(`function(doc){channel(doc.channels);}`)
 }
 
 // This is just for testing

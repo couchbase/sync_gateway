@@ -14,9 +14,9 @@ import (
 	"testing"
 )
 
-// Just verify that the calls to the sync() fn show up in the output channel list.
+// Just verify that the calls to the channel() fn show up in the output channel list.
 func TestSyncFunction(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {sync("foo", "bar"); sync("baz")}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel("foo", "bar"); channel("baz")}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	res, err := mapper.callMapper(`{"channels": []}`)
 	assertNoError(t, err, "callMapper failed")
@@ -32,9 +32,9 @@ func TestAccessFunction(t *testing.T) {
 	assert.DeepEquals(t, res.access, AccessMap{"foo" : []string{"bar", "baz"}})
 }
 
-// Just verify that the calls to the sync() fn show up in the output channel list.
+// Just verify that the calls to the channel() fn show up in the output channel list.
 func TestSyncFunctionTakesArray(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {sync(["foo", "bar","baz"])}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel(["foo", "bar","baz"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	res, err := mapper.callMapper(`{"channels": []}`)
 	assertNoError(t, err, "callMapper failed")
@@ -118,7 +118,7 @@ func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
 
 // Now just make sure the input comes through intact
 func TestInputParse(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {sync(doc.channel);}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channel);}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	res, err := mapper.callMapper(`{"channel": "foo"}`)
 	assertNoError(t, err, "callMapper failed")
@@ -149,7 +149,7 @@ func TestEmptyChannelMapper(t *testing.T) {
 
 // Test the public API
 func TestPublicChannelMapper(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {sync(doc.channels);}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channels);}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	channels, _, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`)
 	assertNoError(t, err, "callMapper failed")
@@ -159,11 +159,11 @@ func TestPublicChannelMapper(t *testing.T) {
 
 // Test changing the function
 func TestSetFunction(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {sync(doc.channels);}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channels);}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	channels, _, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`)
 	assertNoError(t, err, "callMapper failed")
-	changed, err := mapper.SetFunction(`function(doc) {sync("all");}`)
+	changed, err := mapper.SetFunction(`function(doc) {channel("all");}`)
 	assertTrue(t, changed, "SetFunction failed")
 	assertNoError(t, err, "SetFunction failed")
 	channels, _, err = mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`)
