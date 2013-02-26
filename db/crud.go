@@ -27,10 +27,7 @@ import (
 //////// READING DOCUMENTS:
 
 func (db *Database) realDocID(docid string) string {
-	if len(docid) > 250 {
-		return ""
-	}
-	if strings.HasPrefix(docid, "_") && !strings.HasPrefix(docid, "_sync_design/") {
+	if len(docid) > 250 || strings.HasPrefix(docid, "_") {
 		return "" // Invalid doc IDs
 	}
 	return docid
@@ -319,16 +316,6 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 	if base.Logging && newRevID != "" {
 		log.Printf("\tAdded doc %q / %q", docid, newRevID)
-	}
-
-	// Ugly hack to detect changes to the channel-mapper function:
-	if docid == "_sync_design/channels" {
-		src, ok := body["channelmap"].(string)
-		if ok {
-			if changed, _ := db.ChannelMapper.SetFunction(src); changed {
-				db.UpdateAllDocChannels()
-			}
-		}
 	}
 
 	db.NotifyRevision()

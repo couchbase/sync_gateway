@@ -194,25 +194,3 @@ func TestLocalDocs(t *testing.T) {
 	response = callREST("DELETE", "/db/_local/loc1", "")
 	assert.Equals(t, response.Code, 404)
 }
-
-func TestDesignDocs(t *testing.T) {
-	response := callREST("GET", "/db/_sync_design/foo", "")
-	assert.Equals(t, response.Code, 404)
-
-	response = callREST("PUT", "/db/_sync_design/foo", `{"hi": "there"}`)
-	assert.Equals(t, response.Code, 201)
-	response = callREST("GET", "/db/_sync_design/foo", "")
-	assert.Equals(t, response.Code, 200)
-	var body db.Body
-	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, db.Body{
-		"_id":  "_sync_design/foo",
-		"_rev": "1-8d99d37a3fbeed6ca6052ede5e43fb2d",
-		"hi":   "there"})
-
-	response = callREST("DELETE", "/db/_sync_design/foo?rev=1-8d99d37a3fbeed6ca6052ede5e43fb2d", "")
-	assert.Equals(t, response.Code, 200)
-
-	response = callREST("GET", "/db/_sync_design/foo", "")
-	assert.Equals(t, response.Code, 404)
-}

@@ -170,21 +170,6 @@ func (h *handler) handleDeleteDoc() error {
 	return err
 }
 
-func (h *handler) handleGetDesignDoc() error {
-	h.PathVars()["docid"] = "_sync_design/" + h.PathVars()["docid"]
-	return h.handleGetDoc()
-}
-
-func (h *handler) handlePutDesignDoc() error {
-	h.PathVars()["docid"] = "_sync_design/" + h.PathVars()["docid"]
-	return h.handlePutDoc()
-}
-
-func (h *handler) handleDelDesignDoc() error {
-	h.PathVars()["docid"] = "_sync_design/" + h.PathVars()["docid"]
-	return h.handleDeleteDoc()
-}
-
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
@@ -546,7 +531,7 @@ func (h *handler) handleRevsDiff() error {
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
 	docid := h.PathVars()["docid"]
-	value, err := h.db.GetLocal(docid)
+	value, err := h.db.GetSpecial("local", docid)
 	if err != nil {
 		return err
 	}
@@ -566,7 +551,7 @@ func (h *handler) handlePutLocalDoc() error {
 	if err == nil {
 		body.FixJSONNumbers()
 		var revid string
-		revid, err = h.db.PutLocal(docid, body)
+		revid, err = h.db.PutSpecial("local", docid, body)
 		if err == nil {
 			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": "_local/" + docid, "rev": revid})
 		}
@@ -577,7 +562,7 @@ func (h *handler) handlePutLocalDoc() error {
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
 	docid := h.PathVars()["docid"]
-	return h.db.DeleteLocal(docid, h.getQuery("rev"))
+	return h.db.DeleteSpecial("local", docid, h.getQuery("rev"))
 }
 
 // HTTP handler for the root ("/")
@@ -722,10 +707,6 @@ func createHandler(c *context) http.Handler {
 	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
 	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/_sync_design/{docid}", makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_sync_design/{docid}", makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_sync_design/{docid}", makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
-
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleGetDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")
 	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleDeleteDoc)).Methods("DELETE")
@@ -766,7 +747,7 @@ func ServerMain() {
 
 	if authAddr != nil {
 		log.Printf("Starting auth server on %s", *authAddr)
-		StartAuthListener(*authAddr, context.auth)
+		StartAuthListener(*authAddr, context)
 	}
 
 	log.Printf("Starting server on %s for database %q", *addr, *dbName)

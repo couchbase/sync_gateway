@@ -17,9 +17,8 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
-// Gets a local document.
-func (db *Database) GetLocal(docid string) (Body, error) {
-	key := db.realLocalDocID(docid)
+func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
+	key := db.realSpecialDocID(doctype, docid)
 	if key == "" {
 		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
@@ -32,9 +31,9 @@ func (db *Database) GetLocal(docid string) (Body, error) {
 	return body, nil
 }
 
-// Updates or deletes a local document.
-func (db *Database) putLocal(docid string, matchRev string, body Body) (string, error) {
-	key := db.realLocalDocID(docid)
+// Updates or deletes a special document.
+func (db *Database) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
+	key := db.realSpecialDocID(doctype, docid)
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
@@ -70,28 +69,31 @@ func (db *Database) putLocal(docid string, matchRev string, body Body) (string, 
 		}
 		panic("unreachable")
 	})
+
+	// Ugly hack to detect changes to the channel-mapper function:
+	if err == nil && doctype == "design" && docid == "channels" {
+		db.UpdateDesignDocument(body)
+	}
+
 	return revid, err
 }
 
-// Updates a local document.
-func (db *Database) PutLocal(docid string, body Body) (string, error) {
+func (db *Database) PutSpecial(doctype string, docid string, body Body) (string, error) {
 	matchRev, _ := body["_rev"].(string)
-	body = stripSpecialLocalProperties(body)
-	return db.putLocal(docid, matchRev, body)
+	body = stripSpecialSpecialProperties(body)
+	return db.putSpecial(doctype, docid, matchRev, body)
 }
 
-// Deletes a local document.
-func (db *Database) DeleteLocal(docid string, revid string) error {
-	_, err := db.putLocal(docid, revid, nil)
+func (db *Database) DeleteSpecial(doctype string, docid string, revid string) error {
+	_, err := db.putSpecial(doctype, docid, revid, nil)
 	return err
 }
 
-func (db *Database) realLocalDocID(docid string) string {
-	// Local doc ID prefix is "ldoc:"
-	return "l" + db.realDocID(docid)
+func (db *Database) realSpecialDocID(doctype string, docid string) string {
+	return "_sync:" + doctype + ":" + docid
 }
 
-func stripSpecialLocalProperties(body Body) Body {
+func stripSpecialSpecialProperties(body Body) Body {
 	stripped := Body{}
 	for key, value := range body {
 		if key == "" || key[0] != '_' {

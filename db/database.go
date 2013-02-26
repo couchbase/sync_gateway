@@ -75,9 +75,9 @@ func (db *Database) SameAs(otherdb *Database) bool {
 		db.Bucket == otherdb.Bucket
 }
 
-// Sets the database object's channelMapper and validator based on the JS code in _sync_design/channels
+// Sets the database object's channelMapper and validator based on the JS code in _design/channels
 func (db *Database) ReadDesignDocument() error {
-	body, err := db.Get("_sync_design/channels")
+	body, err := db.GetSpecial("design", "channels")
 	if err != nil {
 		if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
 			err = nil // missing design document is not an error
@@ -103,6 +103,25 @@ func (db *Database) ReadDesignDocument() error {
 		}
 	}
 	return nil
+}
+
+func (db *Database) UpdateDesignDocument(body Body) {
+	if src, ok := body["channelmap"].(string); ok {
+		changed, err := db.ChannelMapper.SetFunction(src)
+		if err != nil {
+			log.Printf("WARNING: Error updating channel mapper: %s", err)
+		} else if changed {
+			db.UpdateAllDocChannels()
+		}
+	}
+	if src, ok := body["validate_doc_update"].(string); ok {
+		changed, err := db.Validator.SetFunction(src)
+		if err != nil {
+			log.Printf("WARNING: Error updating validator: %s", err)
+		} else if changed {
+			log.Printf("Validator function updated")
+		}
+	}
 }
 
 //////// ALL DOCUMENTS:

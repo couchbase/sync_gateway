@@ -19,7 +19,10 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/db"
 )
+
+//////// USER REQUESTS:
 
 // Handles PUT or POST to /username
 func putUserCommon(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
@@ -126,6 +129,44 @@ func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticat
 	return nil
 }
 
+// DESIGN DOCUMENTS:
+
+func (h *handler) handleGetDesignDoc() error {
+	docid := h.PathVars()["docid"]
+	value, err := h.db.GetSpecial("design", docid)
+	if err != nil {
+		return err
+	}
+	if value == nil {
+		return kNotFoundError
+	}
+	value["_id"] = "_design/" + docid
+	value.FixJSONNumbers()
+	h.writeJSON(value)
+	return nil
+}
+
+func (h *handler) handlePutDesignDoc() error {
+	docid := h.PathVars()["docid"]
+	body, err := h.readJSON()
+	if err == nil {
+		body.FixJSONNumbers()
+		var revid string
+		revid, err = h.db.PutSpecial("design", docid, body)
+		if err == nil {
+			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": "_design/" + docid, "rev": revid})
+		}
+	}
+	return err
+}
+
+func (h *handler) handleDelDesignDoc() error {
+	docid := h.PathVars()["docid"]
+	return h.db.DeleteSpecial("design", docid, h.getQuery("rev"))
+}
+
+// HTTP HANDLER:
+
 func renderError(err error, r http.ResponseWriter) {
 	status, message := base.ErrorAsHTTPStatus(err)
 	r.Header().Set("Content-Type", "application/json")
@@ -146,7 +187,8 @@ func handleAuthReq(auth *auth.Authenticator, fun authHandler) func(http.Response
 }
 
 // Starts a simple REST listener that will get and set user credentials.
-func StartAuthListener(addr string, auth *auth.Authenticator) {
+func createAuthHandler(c *context) http.Handler {
+	auth := c.auth
 	r := mux.NewRouter()
 	// r.StrictSlash(true)
 
@@ -161,6 +203,18 @@ func StartAuthListener(addr string, auth *auth.Authenticator) {
 	r.HandleFunc("/{db}/user",
 		handleAuthReq(auth, postUser)).Methods("POST")
 
+	dbr := r.PathPrefix("/{db}/").Subrouter()
+	dbr.Handle("/_design/{docid}",
+		makeHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/{docid}",
+		makeHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{docid}",
+		makeHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
+
 	// http.Handle("/", r);
-	go http.ListenAndServe(addr, r)
+	return r
+}
+
+func StartAuthListener(addr string, c *context) {
+	go http.ListenAndServe(addr, createAuthHandler(c))
 }
