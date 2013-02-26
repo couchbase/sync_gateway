@@ -46,6 +46,7 @@ type handler struct {
 	response http.ResponseWriter
 	db       *db.Database
 	user     *auth.User
+	admin    bool
 }
 
 type handlerMethod func(*handler) error
@@ -57,8 +58,9 @@ func makeAdminHandler(context *context, method handlerMethod) http.Handler {
 			rq:       rq,
 			response: r,
 			context:  context,
+			admin:    true,
 		}
-		err := h.invoke(method, true)
+		err := h.invoke(method)
 		h.writeError(err)
 	})
 }
@@ -70,13 +72,14 @@ func makeHandler(context *context, method handlerMethod) http.Handler {
 			rq:       rq,
 			response: r,
 			context:  context,
+			admin:    false,
 		}
-		err := h.invoke(method, false)
+		err := h.invoke(method)
 		h.writeError(err)
 	})
 }
 
-func (h *handler) invoke(method handlerMethod, admin bool) error {
+func (h *handler) invoke(method handlerMethod) error {
 	if LogRequests {
 		log.Printf("%s %s", h.rq.Method, h.rq.URL)
 	}
@@ -84,7 +87,7 @@ func (h *handler) invoke(method handlerMethod, admin bool) error {
 
 	// Authenticate all paths other than "/_session":
 	path := h.rq.URL.Path
-	if admin != true && path != "/_session" && path != "/_browserid" {
+	if h.admin != true && path != "/_session" && path != "/_browserid" {
 		if err := h.checkAuth(); err != nil {
 			return err
 		}
