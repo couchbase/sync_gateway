@@ -63,15 +63,15 @@ The default (simple and limited) way is to add a `channels` property to a docume
 
 #### Mapping function
 
-The more flexible way is to define a channelmap function. This is a JavaScript function, similar to a "map", that takes a document body as input and can decide based on that what channels it should go into. Like a regular map function, it may not reference any external state and it must return the same results every time it's called on the same input.
+The more flexible way is to define a sync function. This is a JavaScript function, similar to a "map", that takes a document body as input and can decide based on that what channels it should go into. Like a regular map function, it may not reference any external state and it must return the same results every time it's called on the same input.
 
-The channelmap function goes in a design document with ID `_design/channels`, in a property named `channelmap`.
+The sync function goes in a design document with ID `_design/channels`, in a property named `sync`.
 
 To add the current document to a channel, the function should call the special function `sync` which takes one or more channel names (or arrays of channel names) as arguments. For convenience, `sync` ignores `null` or `undefined` argument values.
 
-Defining a channelmap overrides the default channel mapping mechanism; that is, the `channels` property will be ignored.
+Defining a sync overrides the default channel mapping mechanism; that is, the `channels` property will be ignored.
 
-The default mechanism is equivalent to the following simple channelmap:
+The default mechanism is equivalent to the following simple sync function:
 
     function (doc) { sync(doc.channels); }
 

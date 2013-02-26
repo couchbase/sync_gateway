@@ -84,7 +84,7 @@ func (db *Database) ReadDesignDocument() error {
 		}
 		return err
 	}
-	src, ok := body["channelmap"].(string)
+	src, ok := body["sync"].(string)
 	if ok {
 		log.Printf("Channel mapper = %s", src)
 		db.ChannelMapper, err = channels.NewChannelMapper(src)
@@ -106,7 +106,7 @@ func (db *Database) ReadDesignDocument() error {
 }
 
 func (db *Database) UpdateDesignDocument(body Body) {
-	if src, ok := body["channelmap"].(string); ok {
+	if src, ok := body["sync"].(string); ok {
 		changed, err := db.ChannelMapper.SetFunction(src)
 		if err != nil {
 			log.Printf("WARNING: Error updating channel mapper: %s", err)
