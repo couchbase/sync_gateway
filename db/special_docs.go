@@ -72,7 +72,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 
 	// Ugly hack to detect changes to the channel-mapper function:
 	if err == nil && doctype == "design" && docid == "channels" {
-		db.UpdateDesignDocument(body)
+		db.ReadDesignDocument()
 	}
 
 	return revid, err
