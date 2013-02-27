@@ -190,7 +190,7 @@ func TestPublicChannelMapper(t *testing.T) {
 
 // Test changing the function
 func TestSetFunction(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {channel(doc.Channels);}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channels);}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	output, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
