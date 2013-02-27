@@ -12,163 +12,194 @@ package channels
 import (
 	"github.com/sdegutis/go.assert"
 	"testing"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
+
+const noUser = `{"name":null, "channels":[]}`
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
 func TestSyncFunction(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {channel("foo", "bar"); channel("baz")}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{"channels": []}`)
+	res, err := mapper.callMapper(`{"channels": []}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.channels, []string{"foo", "bar", "baz"})
+	assert.DeepEquals(t, res.Channels, []string{"foo", "bar", "baz"})
 }
 
 // Just verify that the calls to the access() fn show up in the output channel list.
 func TestAccessFunction(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access("foo", "bar"); access("foo", "baz")}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{"foo" : []string{"bar", "baz"}})
+	assert.DeepEquals(t, res.Access, AccessMap{"foo": []string{"bar", "baz"}})
 }
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
 func TestSyncFunctionTakesArray(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {channel(["foo", "bar","baz"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{"channels": []}`)
+	res, err := mapper.callMapper(`{"channels": []}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.channels, []string{"foo", "bar", "baz"})
+	assert.DeepEquals(t, res.Channels, []string{"foo", "bar", "baz"})
 }
 
 // Just verify that the calls to the access() fn show up in the output channel list.
 func TestAccessFunctionTakesArrayOfUsers(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access(["foo","bar","baz"], "ginger")}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{"bar":[]string{"ginger"}, "baz":[]string{"ginger"}, "foo":[]string{"ginger"}})
+	assert.DeepEquals(t, res.Access, AccessMap{"bar": []string{"ginger"}, "baz": []string{"ginger"}, "foo": []string{"ginger"}})
 }
 
 // Just verify that the calls to the access() fn show up in the output channel list.
 func TestAccessFunctionTakesArrayOfChannels(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access("lee", ["ginger", "earl grey", "green"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{"lee":[]string{"ginger", "earl grey", "green"}})
+	assert.DeepEquals(t, res.Access, AccessMap{"lee": []string{"ginger", "earl grey", "green"}})
 }
 
 func TestAccessFunctionTakesArrayOfChannelsAndUsers(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access(["lee", "nancy"], ["ginger", "earl grey", "green"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access["lee"], []string{"ginger", "earl grey", "green"})
-	assert.DeepEquals(t, res.access["nancy"], []string{"ginger", "earl grey", "green"})
+	assert.DeepEquals(t, res.Access["lee"], []string{"ginger", "earl grey", "green"})
+	assert.DeepEquals(t, res.Access["nancy"], []string{"ginger", "earl grey", "green"})
 }
 
 func TestAccessFunctionTakesEmptyArrayUser(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access([], ["ginger", "earl grey", "green"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{})
+	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
 func TestAccessFunctionTakesEmptyArrayChannels(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access("lee", [])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{})
+	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
 func TestAccessFunctionTakesNullUser(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access(null, ["ginger", "earl grey", "green"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{})
+	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
 func TestAccessFunctionTakesNullChannels(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access("lee", null)}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{})
+	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
 func TestAccessFunctionTakesNonChannelsInArray(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {access("lee", ["ginger", null, 5])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{"lee":[]string{"ginger"}})
+	assert.DeepEquals(t, res.Access, AccessMap{"lee": []string{"ginger"}})
 }
 
 func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {var x = {}; access(x.nothing, ["ginger", "earl grey", "green"])}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{}`)
+	res, err := mapper.callMapper(`{}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.access, AccessMap{})
+	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
 // Now just make sure the input comes through intact
 func TestInputParse(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channel);}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{"channel": "foo"}`)
+	res, err := mapper.callMapper(`{"channel": "foo"}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.channels, []string{"foo"})
+	assert.DeepEquals(t, res.Channels, []string{"foo"})
 }
 
 // A more realistic example
 func TestDefaultChannelMapper(t *testing.T) {
 	mapper, err := NewDefaultChannelMapper()
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`)
+	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.channels, []string{"foo", "bar", "baz"})
+	assert.DeepEquals(t, res.Channels, []string{"foo", "bar", "baz"})
 
-	res, err = mapper.callMapper(`{"x": "y"}`)
+	res, err = mapper.callMapper(`{"x": "y"}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.channels, []string{})
+	assert.DeepEquals(t, res.Channels, []string{})
 }
 
 // Empty/no-op channel mapper fn
 func TestEmptyChannelMapper(t *testing.T) {
-	mapper, err := NewChannelMapper(``)
+	mapper, err := NewChannelMapper(`function(doc) {}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`)
+	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.channels, []string{})
+	assert.DeepEquals(t, res.Channels, []string{})
+}
+
+// Validation by calling reject()
+func TestChannelMapperReject(t *testing.T) {
+	mapper, err := NewChannelMapper(`function(doc) {reject(403, "bad");}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "bad"})
+}
+
+// Rejection by calling throw()
+func TestChannelMapperThrow(t *testing.T) {
+	mapper, err := NewChannelMapper(`function(doc) {throw({forbidden:"bad"});}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "bad"})
+}
+
+// Test other runtime exception
+func TestChannelMapperException(t *testing.T) {
+	mapper, err := NewChannelMapper(`function(doc) {(nil)[5];}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
+	assertNoError(t, err, "callMapper failed")
+	assert.Equals(t, res.Rejection.Status, 500)
 }
 
 // Test the public API
 func TestPublicChannelMapper(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channels);}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	channels, _, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`)
+	output, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, channels, []string{"foo", "bar", "baz"})
+	assert.DeepEquals(t, output.Channels, []string{"foo", "bar", "baz"})
 	mapper.Stop()
 }
 
 // Test changing the function
 func TestSetFunction(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channels);}`)
+	mapper, err := NewChannelMapper(`function(doc) {channel(doc.Channels);}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	channels, _, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`)
+	output, err := mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
 	changed, err := mapper.SetFunction(`function(doc) {channel("all");}`)
 	assertTrue(t, changed, "SetFunction failed")
 	assertNoError(t, err, "SetFunction failed")
-	channels, _, err = mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`)
+	output, err = mapper.MapToChannelsAndAccess(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, channels, []string{"all"})
+	assert.DeepEquals(t, output.Channels, []string{"all"})
 	mapper.Stop()
 }
 

@@ -270,7 +270,13 @@ func (db *Database) UpdateAllDocChannels() error {
 			if err != nil {
 				return nil, err
 			}
-			channels, access := db.getChannelsAndAccess(body)
+			parentRevID := doc.History[doc.CurrentRev].Parent
+			channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+			if err != nil {
+				// Probably the validator rejected the doc
+				access = nil
+				channels = nil
+			}
 			db.updateDocAccess(doc, access)
 			db.updateDocChannels(doc, channels)
 			log.Printf("\tSaving updated channels and access grants of %q", docid)

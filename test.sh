@@ -4,10 +4,6 @@
 set -e
 
 # First build everything so the tests don't complain about out-of-date packages
-go install .
+go test -i
 
-(cd base     && go test .)
-(cd auth     && go test .)
-(cd channels && go test .)
-(cd db       && go test .)
-(cd rest     && go test .)
+go test ./base ./auth ./channels ./db ./rest

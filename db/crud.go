@@ -178,9 +178,6 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
-		if err := db.validateDoc(doc, body, matchRev); err != nil {
-			return nil, err
-		}
 		doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
 		return body, nil
 	})
@@ -211,8 +208,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
-		//FIX: Should call validateDoc? What if the parent rev doesn't exist locally?
-
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
 			doc.History.addRevision(RevInfo{
@@ -227,26 +222,9 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		if err := db.storeAttachments(doc, body, generation, parentRevID); err != nil {
 			return nil, err
 		}
+		body["_rev"] = newRev
 		return body, nil
 	})
-	return err
-}
-
-func (db *Database) validateDoc(doc *document, newRev Body, oldRevID string) error {
-	if db.Validator == nil {
-		return nil
-	}
-	newRev["_id"] = doc.ID
-	newJson, _ := json.Marshal(newRev)
-	oldJson := ""
-	if oldRevID != "" {
-		oldJson = string(doc.getRevisionJSON(oldRevID))
-	}
-	status, msg, err := db.Validator.Validate(string(newJson), oldJson, db.user)
-	if err == nil && status >= 300 {
-		log.Printf("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
-		err = &base.HTTPError{status, msg}
-	}
 	return err
 }
 
@@ -301,7 +279,14 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			return nil, err
 		}
 
-		channels, access := db.getChannelsAndAccess(body)
+		// Run the validation and sync functions
+		parentRevID := doc.History[newRevID].Parent
+		body["_id"] = doc.ID
+		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+		if err != nil {
+			log.Printf("\tchannelmapper returned error %v", err)
+			return nil, err
+		}
 		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
 		db.updateDocAccess(doc, access)
 
@@ -344,17 +329,42 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 //////// CHANNELS:
 
-// Determines which channels a document body belongs to
-func (db *Database) getChannelsAndAccess(body Body) (result []string, access map[string][]string) {
+// Calls the JS ChannelMapper and Validation functions to assign the doc to channels, grant users
+// access to channels, and reject invalid documents.
+func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result []string, access map[string][]string, err error) {
+	newJson, _ := json.Marshal(body)
+	var oldJson []byte
+	if parentRevID != "" {
+		oldJson = doc.getRevisionJSON(parentRevID)
+	}
+
+	if db.Validator != nil {
+		var status int
+		var msg string
+		status, msg, err = db.Validator.Validate(string(newJson), string(oldJson), db.user)
+		if err == nil && status >= 300 {
+			log.Printf("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
+			err = &base.HTTPError{status, msg}
+		}
+		if err != nil {
+			return
+		}
+	}
+
 	if db.ChannelMapper != nil {
-		jsonStr, _ := json.Marshal(body)
-		result, access, _ = db.ChannelMapper.MapToChannelsAndAccess(string(jsonStr))
+		output, err := db.ChannelMapper.MapToChannelsAndAccess(string(newJson), string(oldJson),
+			makeUserCtx(db.user))
+		result = output.Channels
+		access = output.Access
+		if err == nil {
+			err = output.Rejection
+		}
 
 	} else {
 		// No ChannelMapper so by default use the "channels" property:
 		value, _ := body["channels"].([]interface{})
 		if value == nil {
-			return nil, nil
+			return
 		}
 		result = make([]string, 0, len(value))
 		for _, channel := range value {
@@ -364,7 +374,7 @@ func (db *Database) getChannelsAndAccess(body Body) (result []string, access map
 			}
 		}
 	}
-	return result, access
+	return
 }
 
 // Updates the Channels property of a document object with current & past channels

@@ -19,10 +19,10 @@ import (
 )
 
 const funcWrapper = `
-	function(oldDoc, newDoc, userCtx) {
+	function(newDoc, oldDoc, userCtx) {
 		var v = %s;
 		try {
-			v(oldDoc, newDoc, userCtx);
+			v(newDoc, oldDoc, userCtx);
 			return null;
 		} catch(x) {
 			if (x.forbidden)

@@ -40,6 +40,7 @@ func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucke
 
 func GetBucket(url, poolName, bucketName string) (bucket Bucket, err error) {
 	if strings.HasPrefix(url, "walrus:") {
+		walrus.Logging = true
 		return walrus.GetBucket(url, poolName, bucketName)
 	}
 	return GetCouchbaseBucket(url, poolName, bucketName)
