@@ -354,9 +354,9 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 	if db.ChannelMapper != nil {
 		output, err := db.ChannelMapper.MapToChannelsAndAccess(string(newJson), string(oldJson),
 			makeUserCtx(db.user))
-		result = output.Channels
-		access = output.Access
 		if err == nil {
+			result = output.Channels
+			access = output.Access
 			err = output.Rejection
 		}
 
