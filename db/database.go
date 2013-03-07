@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"regexp"
 
@@ -45,7 +44,7 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Buc
 	if err != nil {
 		return
 	}
-	log.Printf("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
+	base.Log("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
 	err = installViews(bucket)
 	if err == nil {
 		err = auth.InstallDesignDoc(bucket)
@@ -87,27 +86,27 @@ func (db *Database) ReadDesignDocument() error {
 	}
 	src, ok := body["sync"].(string)
 	if ok {
-		log.Printf("Sync function = %s", src)
-		if (db.ChannelMapper != nil) {
+		base.Log("Sync function = %s", src)
+		if db.ChannelMapper != nil {
 			_, err = db.ChannelMapper.SetFunction(src)
 		} else {
 			db.ChannelMapper, err = channels.NewChannelMapper(src)
 		}
 		if err != nil {
-			log.Printf("WARNING: Error loading channel mapper: %s", err)
+			base.Warn("Error loading channel mapper: %s", err)
 			return err
 		}
 	}
 	src, ok = body["validate_doc_update"].(string)
 	if ok {
-		log.Printf("Validator = %s", src)
-		if (db.Validator != nil) {
+		base.Log("Validator = %s", src)
+		if db.Validator != nil {
 			_, err = db.Validator.SetFunction(src)
 		} else {
 			db.Validator, err = NewValidator(src)
 		}
 		if err != nil {
-			log.Printf("WARNING: Error loading validator: %s", err)
+			base.Warn("Error loading validator: %s", err)
 			return err
 		}
 	}
@@ -185,7 +184,7 @@ func installViews(bucket base.Bucket) error {
 	}
 	err := bucket.PutDDoc("sync_gateway", ddoc)
 	if err != nil {
-		log.Printf("WARNING: Error installing Couchbase design doc: %v", err)
+		base.Warn("Error installing Couchbase design doc: %v", err)
 	}
 	return err
 }
@@ -214,7 +213,7 @@ func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View("sync_gateway", "all_docs", opts)
 	if err != nil {
-		log.Printf("WARNING: all_docs got error: %v", err)
+		base.Warn("all_docs got error: %v", err)
 	}
 	return vres, err
 }
@@ -224,18 +223,16 @@ func (db *Database) Delete() error {
 	opts := Body{"stale": false}
 	vres, err := db.Bucket.View("sync_gateway", "all_bits", opts)
 	if err != nil {
-		log.Printf("WARNING: all_bits view returned %v", err)
+		base.Warn("all_bits view returned %v", err)
 		return err
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	log.Printf("Deleting %d documents of %q ...", len(vres.Rows), db.Name)
+	base.Log("Deleting %d documents of %q ...", len(vres.Rows), db.Name)
 	for _, row := range vres.Rows {
-		if base.Logging {
-			log.Printf("\tDeleting %q", row.ID)
-		}
+		base.LogTo("CRUD", "\tDeleting %q", row.ID)
 		if err := db.Bucket.Delete(row.ID); err != nil {
-			log.Printf("WARNING: Error deleting %q: %v", row.ID, err)
+			base.Warn("Error deleting %q: %v", row.ID, err)
 		}
 	}
 	return nil
@@ -249,7 +246,7 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 // Re-runs the channelMapper on every document in the database.
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels() error {
-	log.Printf("Recomputing document channels...")
+	base.Log("Recomputing document channels...")
 	vres, err := db.Bucket.View("sync_gateway", "all_docs", Body{"stale": false, "reduce": false})
 	if err != nil {
 		return err
@@ -279,11 +276,11 @@ func (db *Database) UpdateAllDocChannels() error {
 			}
 			db.updateDocAccess(doc, access)
 			db.updateDocChannels(doc, channels)
-			log.Printf("\tSaving updated channels and access grants of %q", docid)
+			base.Log("\tSaving updated channels and access grants of %q", docid)
 			return json.Marshal(doc)
 		})
 		if err != nil && err != couchbase.UpdateCancel {
-			log.Printf("WARNING: Error updating doc %q: %v", docid, err)
+			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
 	return nil

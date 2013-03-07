@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 
@@ -94,18 +93,18 @@ func (h *handler) handleBrowserIDPOST() error {
 		return err
 	}
 	if h.context.serverURL == "" {
-		log.Printf("Warning: Can't accept BrowserID logins: Server URL not configured")
+		base.Warn("Can't accept BrowserID logins: Server URL not configured")
 		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
 	}
 
 	// OK, now verify it:
-	log.Printf("BrowserID: Verifying assertion %q for %q", params.Assertion, h.context.serverURL)
+	base.Log("BrowserID: Verifying assertion %q for %q", params.Assertion, h.context.serverURL)
 	verifiedInfo, err := VerifyBrowserID(params.Assertion, h.context.serverURL)
 	if err != nil {
-		log.Printf("BrowserID: Failed verify: %v", err)
+		base.Log("BrowserID: Failed verify: %v", err)
 		return err
 	}
-	log.Printf("BrowserID: Logged in %q!", verifiedInfo.Email)
+	base.Log("BrowserID: Logged in %q!", verifiedInfo.Email)
 
 	// Email is verified. Look up the user and make a login session for her:
 	user, err := h.context.auth.GetUserByEmail(verifiedInfo.Email)

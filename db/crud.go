@@ -13,7 +13,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"reflect"
 	"strings"
@@ -126,7 +125,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 }
 
 // Returns the body of the asked-for revision or the most recent available ancestor.
-// Does NOT fill in _attachments, _deleted, etc.
+// Does NOT fill in _id, _rev, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if body := doc.getRevision(revid); body != nil {
@@ -284,8 +283,8 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		body["_id"] = doc.ID
 		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
-			log.Printf("\tchannelmapper returned error %v", err)
-			return nil, err
+			base.Log("\tchannelmapper returned error %v", err)
+			return nil, base.LogError(err)
 		}
 		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
 		db.updateDocAccess(doc, access)
@@ -299,8 +298,8 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
-	if base.Logging && newRevID != "" {
-		log.Printf("\tAdded doc %q / %q", docid, newRevID)
+	if newRevID != "" {
+		base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
 	}
 
 	db.NotifyRevision()
@@ -332,6 +331,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 // Calls the JS ChannelMapper and Validation functions to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
 func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result []string, access map[string][]string, err error) {
+	base.LogTo("CRUD", "Invoking validate/sync on doc %q rev %s", doc.ID, body["_rev"])
 	newJson, _ := json.Marshal(body)
 	var oldJson []byte
 	if parentRevID != "" {
@@ -343,7 +343,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 		var msg string
 		status, msg, err = db.Validator.Validate(string(newJson), string(oldJson), db.user)
 		if err == nil && status >= 300 {
-			log.Printf("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
+			base.Log("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
 			err = &base.HTTPError{status, msg}
 		}
 		if err != nil {
@@ -358,6 +358,8 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 			result = output.Channels
 			access = output.Access
 			err = output.Rejection
+		} else {
+			base.LogError(err)
 		}
 
 	} else {
@@ -402,7 +404,7 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 		}
 	}
 	if changed {
-		log.Printf("\tDoc %q in channels %q", doc.ID, newChannels)
+		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
 	}
 	return changed
 }
@@ -414,7 +416,7 @@ func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed
 		return false
 	}
 	doc.Access = newAccess
-	log.Printf("\tDoc %q grants access: %+v", doc.ID, newAccess)
+	base.LogTo("CRUD", "\tDoc %q grants access: %+v", doc.ID, newAccess)
 
 	authr := auth.NewAuthenticator(db.Bucket)
 	for name, _ := range oldAccess {
@@ -457,7 +459,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	doc, err := db.getDoc(docid)
 	if err != nil {
 		if !isMissingDocError(err) {
-			log.Printf("WARNING: RevDiff(%q) --> %T %v", docid, err, err)
+			base.Warn("RevDiff(%q) --> %T %v", docid, err, err)
 			// If something goes wrong getting the doc, treat it as though it's nonexistent.
 		}
 		missing = revids
@@ -505,7 +507,7 @@ func createUUID() string {
 	bytes := make([]byte, 16)
 	n, err := rand.Read(bytes)
 	if n < 16 {
-		log.Panicf("Failed to generate random ID: %s", err)
+		base.LogPanic("Failed to generate random ID: %s", err)
 	}
 	return fmt.Sprintf("%x", bytes)
 }

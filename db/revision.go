@@ -13,7 +13,6 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -45,7 +44,7 @@ func parseRevID(revid string) (int, string) {
 	var id string
 	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
 	if n < 1 || generation < 1 {
-		log.Printf("WARNING: parseRevID failed on %q", revid)
+		base.Warn("parseRevID failed on %q", revid)
 		return -1, ""
 	}
 	return generation, id

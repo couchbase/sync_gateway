@@ -14,7 +14,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -30,10 +29,6 @@ import (
 
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
-
-// If set to true, HTTP requests will be logged
-var LogRequests bool = true
-var LogRequestsVerbose bool = false
 
 var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
 var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
@@ -80,9 +75,7 @@ func makeHandler(context *context, method handlerMethod) http.Handler {
 }
 
 func (h *handler) invoke(method handlerMethod) error {
-	if LogRequests {
-		log.Printf("%s %s", h.rq.Method, h.rq.URL)
-	}
+	base.LogTo("HTTP", "%s %s", h.rq.Method, h.rq.URL)
 	h.setHeader("Server", VersionString)
 
 	// Authenticate all paths other than "/_session":
@@ -129,7 +122,7 @@ func (h *handler) checkAuth() error {
 
 	if h.user == nil {
 		cookie, _ := h.rq.Cookie(auth.CookieName)
-		log.Printf("Auth failed for username=%q, cookie=%q", userName, cookie)
+		base.Log("Auth failed for username=%q, cookie=%q", userName, cookie)
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
@@ -202,22 +195,21 @@ func (h *handler) setHeader(name string, value string) {
 }
 
 func (h *handler) logStatus(status int, message string) {
-	if LogRequestsVerbose {
-		log.Printf("\t--> %d %s", status, message)
-	}
+	base.LogTo("HTTP+", "    --> %d %s", status, message)
 }
 
 // Writes an object to the response in JSON format.
+// If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
 	if !h.requestAccepts("application/json") {
-		log.Printf("WARNING: Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.Warn("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
 
 	jsonOut, err := json.Marshal(value)
 	if err != nil {
-		log.Printf("WARNING: Couldn't serialize JSON for %v", value)
+		base.Warn("Couldn't serialize JSON for %v", value)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
@@ -241,7 +233,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 }
 
 func (h *handler) writeJSON(value interface{}) {
-	h.writeJSONStatus(0, value)
+	h.writeJSONStatus(http.StatusOK, value)
 }
 
 func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
@@ -304,6 +296,7 @@ func (h *handler) writeStatus(status int, message string) {
 		h.logStatus(status, message)
 		return
 	}
+	// Got an error:
 	var errorStr string
 	switch status {
 	case http.StatusNotFound:
@@ -319,7 +312,7 @@ func (h *handler) writeStatus(status int, message string) {
 
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	h.logStatus(status, message)
+	base.LogTo("HTTP", "    --> %d %s", status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }

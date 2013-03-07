@@ -15,8 +15,6 @@ import (
 	"io"
 )
 
-var Logging = false
-
 func GenerateRandomSecret() string {
 	randomBytes := make([]byte, 20)
 	n, err := io.ReadFull(rand.Reader, randomBytes)

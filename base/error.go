@@ -11,7 +11,6 @@ package base
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/couchbaselabs/walrus"
@@ -51,7 +50,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case walrus.MissingError:
 		return http.StatusNotFound, "missing"
 	}
-	log.Printf("WARNING: Couldn't interpret error type %T, value %v", err, err)
+	Warn("Couldn't interpret error type %T, value %v", err, err)
 	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 

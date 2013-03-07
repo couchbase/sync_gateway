@@ -11,7 +11,6 @@ package auth
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -192,7 +191,7 @@ func InstallDesignDoc(bucket base.Bucket) error {
 	ddoc := walrus.DesignDoc{Views: walrus.ViewMap{"access": walrus.ViewDef{Map: access_map}}}
 	err := bucket.PutDDoc("sync_gateway_auth", ddoc)
 	if err != nil {
-		log.Printf("WARNING: Error installing Couchbase auth design doc: %v", err)
+		base.Warn("Error installing Couchbase auth design doc: %v", err)
 	}
 	return err
 }

@@ -11,10 +11,10 @@ package db
 
 import (
 	"encoding/json"
-	"log"
 	"math"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // Options for Database.getChanges
@@ -96,7 +96,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				vres = ViewResult{}
 				err = db.Bucket.ViewCustom("sync_gateway", "channels", opts, &vres)
 				if err != nil {
-					log.Printf("Error from 'channels' view: %v", err)
+					base.Log("Error from 'channels' view: %v", err)
 					return
 				}
 				if len(vres.Rows) == 0 {
@@ -256,9 +256,9 @@ func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*Ch
 }
 
 func (db *Database) WaitForRevision() bool {
-	log.Printf("\twaiting for a revision...")
+	base.Log("\twaiting for a revision...")
 	waitFor("")
-	log.Printf("\t...done waiting")
+	base.Log("\t...done waiting")
 	return true
 }
 

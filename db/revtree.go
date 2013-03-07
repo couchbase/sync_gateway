@@ -12,7 +12,8 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 type RevKey string
@@ -70,7 +71,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	if tree == nil {
-		log.Printf("** WARNING: No RevTree for input %q", inputjson)
+		base.Warn("No RevTree for input %q", inputjson)
 		return nil
 	}
 	var rep revTreeList
@@ -261,7 +262,7 @@ func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 	revisions, ok := body["_revisions"].(map[string]interface{})
 	if !ok {
-		log.Printf("WARNING: Unable to parse _revisions: %v", body["_revisions"])
+		base.Warn("Unable to parse _revisions: %v", body["_revisions"])
 		return nil
 	}
 	start := int(revisions["start"].(float64))
@@ -286,7 +287,7 @@ func encodeRevisions(revs []string) Body {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			log.Printf("WARNING: encodeRevisions found weird history %v", revs)
+			base.Warn("encodeRevisions found weird history %v", revs)
 		}
 	}
 	return Body{"start": start, "ids": ids}

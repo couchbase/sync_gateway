@@ -12,7 +12,6 @@ package rest
 import (
 	"encoding/json"
 	"flag"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -338,9 +337,7 @@ func (h *handler) handleBulkDocs() error {
 		if err != nil {
 			_, msg := base.ErrorAsHTTPStatus(err)
 			status["error"] = msg
-			if LogRequestsVerbose {
-				log.Printf("\tError: Doc %q --> %v", docid, err)
-			}
+			base.Log("\tBulkDocs: Doc %q --> %v", docid, err)
 			err = nil // wrote it to output already; not going to return it
 		} else {
 			status["rev"] = revid
@@ -458,9 +455,7 @@ loop:
 				feed = nil
 			} else {
 				str, _ := json.Marshal(entry)
-				if LogRequestsVerbose {
-					log.Printf("\tchange: %s", str)
-				}
+				base.LogTo("Changes", "send change: %s", str)
 				err = h.writeln(str)
 
 				options.Since = entry.Seq // so next call to ChangesFeed will start from end
@@ -657,12 +652,12 @@ func InitREST(bucket base.Bucket, dbName string, serverURL string) *context {
 	newdb.ReadDesignDocument()
 
 	if dbcontext.ChannelMapper == nil {
-		log.Printf("Channel mapper undefined; using default")
+		base.Warn("Channel mapper undefined; using default")
 		// Always have a channel mapper object even if it does nothing:
 		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 	}
 	if dbcontext.Validator == nil {
-		log.Printf("Validator undefined; no validation")
+		base.Warn("Validator undefined; no validation")
 	}
 
 	c := &context{
@@ -730,11 +725,18 @@ func ServerMain() {
 	dbName := flag.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
+	logKeys := flag.String("log", "", "Log keywords, comma separated")
 	flag.Parse()
+
+	PrettyPrint = *pretty
+
+	base.LogKeys["HTTP"] = true
+	base.LogKeys["HTTP+"] = *verbose
+	base.ParseLogFlag(*logKeys)
 
 	bucket, err := db.ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
 	if err != nil {
-		log.Fatalf("Error getting bucket '%s':  %v\n", *bucketName, err)
+		base.LogPanic("Error getting bucket '%s':  %v\n", *bucketName, err)
 	}
 
 	if *dbName == "" {
@@ -742,17 +744,14 @@ func ServerMain() {
 	}
 
 	context := InitREST(bucket, *dbName, *siteURL)
-	PrettyPrint = *pretty
-	LogRequestsVerbose = *verbose
-
 	if authAddr != nil {
-		log.Printf("Starting auth server on %s", *authAddr)
+		base.Log("Starting auth server on %s", *authAddr)
 		StartAuthListener(*authAddr, context)
 	}
 
-	log.Printf("Starting server on %s for database %q", *addr, *dbName)
+	base.Log("Starting server on %s for database %q", *addr, *dbName)
 	err = http.ListenAndServe(*addr, nil)
 	if err != nil {
-		log.Fatal("Server failed: ", err.Error())
+		base.LogPanic("Server failed: ", err.Error())
 	}
 }

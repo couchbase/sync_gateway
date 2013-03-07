@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -60,7 +59,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if parentAttachments == nil {
 				parent, err := db.getAvailableRev(doc, parentRev)
 				if err != nil {
-					log.Printf("\tWARNING: storeAttachments: no such parent rev %q to find %v", parentRev, meta)
+					base.Warn("storeAttachments: no such parent rev %q to find %v", parentRev, meta)
 					return err
 				}
 				parentAttachments, exists = parent["_attachments"].(map[string]interface{})
@@ -109,8 +108,8 @@ func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	key := AttachmentKey(sha1DigestKey(attachment))
 	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
-	if base.Logging && err == nil {
-		log.Printf("\tAdded attachment %q", key)
+	if err == nil {
+		base.LogTo("Attach", "\tAdded attachment %q", key)
 	}
 	return key, err
 }
@@ -129,7 +128,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 	}
 	err = json.Unmarshal(body, into)
 	if err != nil {
-		log.Printf("WARNING: Couldn't parse JSON:\n%s", body)
+		base.Warn("Couldn't parse JSON:\n%s", body)
 		return &base.HTTPError{http.StatusBadRequest, "Bad JSON"}
 	}
 	return nil

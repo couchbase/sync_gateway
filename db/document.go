@@ -11,7 +11,7 @@ package db
 
 import (
 	"encoding/json"
-	"log"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 type ChannelRemoval struct {
@@ -112,7 +112,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 	root := documentRoot{SyncData: &syncData{History: make(RevTree)}}
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
-		log.Printf("WARNING: Error unmarshaling doc %q: %s", doc.ID, err)
+		base.Warn("Error unmarshaling doc %q: %s", doc.ID, err)
 		return err
 	}
 	if root.SyncData != nil {
@@ -121,7 +121,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 
 	err = json.Unmarshal([]byte(data), &doc.body)
 	if err != nil {
-		log.Printf("WARNING: Error unmarshaling body of doc %q: %s", doc.ID, err)
+		base.Warn("Error unmarshaling body of doc %q: %s", doc.ID, err)
 		return err
 	}
 	delete(doc.body, "_sync")
