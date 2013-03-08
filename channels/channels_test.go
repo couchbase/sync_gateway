@@ -32,33 +32,40 @@ func TestIsValidChannel(t *testing.T) {
 func TestSimplifyChannels(t *testing.T) {
 	cases := [][][]string{
 		{{}, {}},
-		{{""}, {}},
 		{{"*"}, {}},
 		{{"a"}, {"a"}},
 		{{"a", "b"}, {"a", "b"}},
 		{{"a", "a"}, {"a"}},
-		{{"a", "bad "}, {"a"}},
 		{{"a", "b", "a"}, {"a", "b"}},
 		{{"a", "*", "b"}, {"a", "b"}},
 	}
 	for _, cas := range cases {
-		assert.DeepEquals(t, SimplifyChannels(cas[0], false), cas[1])
+		channels, err := SimplifyChannels(cas[0], false)
+		assertNoError(t, err, "SimplifyChannels failed")
+		assert.DeepEquals(t, channels, cas[1])
 	}
 }
 
 func TestSimplifyChannelsWithStar(t *testing.T) {
 	cases := [][][]string{
 		{{}, {}},
-		{{""}, {}},
 		{{"*"}, {"*"}},
 		{{"a"}, {"a"}},
 		{{"a", "b"}, {"a", "b"}},
 		{{"a", "a"}, {"a"}},
-		{{"a", "bad "}, {"a"}},
 		{{"a", "b", "a"}, {"a", "b"}},
 		{{"a", "*", "b"}, {"*"}},
 	}
 	for _, cas := range cases {
-		assert.DeepEquals(t, SimplifyChannels(cas[0], true), cas[1])
+		channels, err := SimplifyChannels(cas[0], true)
+		assertNoError(t, err, "SimplifyChannels failed")
+		assert.DeepEquals(t, channels, cas[1])
 	}
+}
+
+func TestSimplifyChannelsError(t *testing.T) {
+	_, err := SimplifyChannels([]string{""}, false)
+	assertTrue(t, err != nil, "SimplifyChannels didn't return an error")
+	_, err = SimplifyChannels([]string{"chan1", "chan2", "bogus name", "chan3"}, false)
+	assertTrue(t, err != nil, "SimplifyChannels didn't return an error")
 }

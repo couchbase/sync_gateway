@@ -9,7 +9,10 @@
 
 package channels
 
-import "regexp"
+import (
+	"fmt"
+	"regexp"
+)
 
 var kValidChannelRegexp *regexp.Regexp
 
@@ -28,25 +31,25 @@ func IsValidChannel(channel string) bool {
 // Removes duplicates and invalid channel names.
 // If 'starPower' is false, channel "*" is ignored.
 // If it's true, channel "*" causes the output to be simply ["*"].
-func SimplifyChannels(channels []string, starPower bool) []string {
+func SimplifyChannels(channels []string, starPower bool) ([]string, error) {
 	if len(channels) == 0 {
-		return channels
+		return channels, nil
 	}
 	result := make([]string, 0, len(channels))
 	found := map[string]bool{}
 	for _, ch := range channels {
 		if !IsValidChannel(ch) {
-			continue
+			return nil, fmt.Errorf("Illegal channel name %q", ch)
 		} else if ch == "*" {
 			if starPower {
-				return []string{"*"}
+				return []string{"*"}, nil
 			}
 		} else if !found[ch] {
 			found[ch] = true
 			result = append(result, ch)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // Returns true if the list contains the given channel name.

@@ -59,7 +59,10 @@ func defaultGuestUser() *User {
 
 // Creates a new User object.
 func NewUser(username string, password string, channels []string) (*User, error) {
-	channels = ch.SimplifyChannels(channels, true)
+	channels, err := ch.SimplifyChannels(channels, true)
+	if err != nil {
+		return nil, err
+	}
 	user := &User{Name: username, AllChannels: channels, AdminChannels: channels}
 	user.SetPassword(password)
 	if err := user.Validate(); err != nil {

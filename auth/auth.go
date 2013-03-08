@@ -111,7 +111,11 @@ func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
 
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
-	user.AdminChannels = ch.SimplifyChannels(user.AdminChannels, true)
+	var err error
+	user.AdminChannels, err = ch.SimplifyChannels(user.AdminChannels, true)
+	if err != nil {
+		return err
+	}
 	if user.Password != nil {
 		user.SetPassword(*user.Password)
 		user.Password = nil

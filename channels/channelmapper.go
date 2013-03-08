@@ -140,7 +140,17 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper.js.After = func(result otto.Value, err error) (interface{}, error) {
 		output := mapper.output
 		mapper.output = nil
-		output.Channels = SimplifyChannels(output.Channels, false)
+		if err == nil {
+			output.Channels, err = SimplifyChannels(output.Channels, false)
+			if err == nil {
+				for username, channels := range output.Access {
+					output.Access[username], err = SimplifyChannels(channels, false)
+					if err != nil {
+						break
+					}
+				}
+			}
+		}
 		return output, err
 	}
 	return mapper, nil
