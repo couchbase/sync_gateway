@@ -35,9 +35,8 @@ func TestValidatorException(t *testing.T) {
 	validator, err := NewValidator(`function(doc,oldDoc) {var x; return x[5];}`)
 	assertNoError(t, err, "Couldn't create validator")
 
-	status, _, err := validator.callValidator(`{"foo":1}`, `{"foo": 1}`, nil)
-	assertNoError(t, err, "callValidator failed")
-	assert.Equals(t, status, 500)
+	_, _, err = validator.callValidator(`{"foo":1}`, `{"foo": 1}`, nil)
+	assert.True(t, err != nil)
 }
 
 func TestValidatorUser(t *testing.T) {

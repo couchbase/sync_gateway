@@ -342,11 +342,14 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 		var status int
 		var msg string
 		status, msg, err = db.Validator.Validate(string(newJson), string(oldJson), db.user)
-		if err == nil && status >= 300 {
+		if err != nil {
+			base.Warn("Validator exception: %v; doc = %s", err, newJson)
+			status = http.StatusInternalServerError
+			msg = "Exception in JS validation function"
+		}
+		if status >= 300 {
 			base.Log("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
 			err = &base.HTTPError{status, msg}
-		}
-		if err != nil {
 			return
 		}
 	}
@@ -358,8 +361,12 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 			result = output.Channels
 			access = output.Access
 			err = output.Rejection
+			if err != nil {
+				base.Log("Sync fn rejected: new=%s  old=%s --> %s", newJson, oldJson, err)
+			}
 		} else {
-			base.LogError(err)
+			base.Warn("Sync fn exception: %v; doc = %s", err, newJson)
+			err = &base.HTTPError{500, "Exception in JS sync function"}
 		}
 
 	} else {

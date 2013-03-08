@@ -30,7 +30,7 @@ const funcWrapper = `
 			else if (x.unauthorized)
 				reject(401, x.unauthorized);
 			else
-				reject(500, String(x));
+				throw(x);
 		}
 	}`
 

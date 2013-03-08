@@ -29,7 +29,7 @@ const funcWrapper = `
 				return {status: 403, msg: x.forbidden};
 			if (x.unauthorized)
 				return {status: 401, msg: x.unauthorized};
-			return {status: 500, msg: String(x)};
+			throw(x);
 		}
 	}`
 

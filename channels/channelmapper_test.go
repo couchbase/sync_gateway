@@ -173,9 +173,8 @@ func TestChannelMapperThrow(t *testing.T) {
 func TestChannelMapperException(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {(nil)[5];}`)
 	assertNoError(t, err, "Couldn't create mapper")
-	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
-	assertNoError(t, err, "callMapper failed")
-	assert.Equals(t, res.Rejection.Status, 500)
+	_, err = mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
+	assert.True(t, err != nil)
 }
 
 // Test the public API
