@@ -38,7 +38,7 @@ const funcWrapper = `
 type ChannelMapperOutput struct {
 	Channels  []string
 	Access    AccessMap
-	Rejection *base.HTTPError
+	Rejection error
 }
 
 type ChannelMapper struct {

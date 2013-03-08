@@ -283,8 +283,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		body["_id"] = doc.ID
 		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
-			base.Log("\tchannelmapper returned error %v", err)
-			return nil, base.LogError(err)
+			return nil, err
 		}
 		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
 		db.updateDocAccess(doc, access)
