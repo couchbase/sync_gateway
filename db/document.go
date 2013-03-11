@@ -11,7 +11,9 @@ package db
 
 import (
 	"encoding/json"
+	
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 type ChannelRemoval struct {
@@ -20,17 +22,14 @@ type ChannelRemoval struct {
 }
 type ChannelMap map[string]*ChannelRemoval
 
-// Maps usernames to lists of channel names.
-type AccessMap map[string][]string
-
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
-	CurrentRev string     `json:"rev"`
-	Deleted    bool       `json:"deleted,omitempty"`
-	Sequence   uint64     `json:"sequence"`
-	History    RevTree    `json:"history"`
-	Channels   ChannelMap `json:"channels,omitempty"`
-	Access     AccessMap  `json:"access,omitempty"`
+	CurrentRev string             `json:"rev"`
+	Deleted    bool               `json:"deleted,omitempty"`
+	Sequence   uint64             `json:"sequence"`
+	History    RevTree            `json:"history"`
+	Channels   ChannelMap         `json:"channels,omitempty"`
+	Access     channels.AccessMap `json:"access,omitempty"`
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.

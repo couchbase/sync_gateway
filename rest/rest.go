@@ -369,11 +369,11 @@ func (h *handler) handleChanges() error {
 		if channelsParam == "" {
 			return &base.HTTPError{http.StatusBadRequest, "Missing 'channels' filter parameter"}
 		}
-		userChannels, err := channels.SimplifyChannels(strings.Split(channelsParam, ","), true)
+		userChannels, err := channels.SetFromArray(strings.Split(channelsParam, ","),
+			channels.ExpandStar)
 		if err != nil {
 			return err
 		}
-		userChannels = h.user.ExpandWildCardChannel(userChannels)
 		if err := h.user.AuthorizeAllChannels(userChannels); err != nil {
 			return err
 		}
@@ -392,7 +392,7 @@ func (h *handler) handleChanges() error {
 	return h.handleSimpleChanges(userChannels, options)
 }
 
-func (h *handler) handleSimpleChanges(channels []string, options db.ChangesOptions) error {
+func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesOptions) error {
 	var lastSeq uint64 = 0
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
@@ -425,7 +425,7 @@ func (h *handler) handleSimpleChanges(channels []string, options db.ChangesOptio
 	return err
 }
 
-func (h *handler) handleContinuousChanges(channels []string, options db.ChangesOptions) error {
+func (h *handler) handleContinuousChanges(channels channels.Set, options db.ChangesOptions) error {
 	var timeout <-chan time.Time
 	var heartbeat <-chan time.Time
 	if ms := h.getIntQuery("heartbeat", 0); ms > 0 {

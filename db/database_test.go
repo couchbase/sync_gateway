@@ -177,7 +177,7 @@ func TestAllDocs(t *testing.T) {
 
 	// Now check the changes feed:
 	var options ChangesOptions
-	changes, err := db.GetChanges([]string{"all"}, options)
+	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 100)
 	for i, change := range changes {
@@ -187,20 +187,20 @@ func TestAllDocs(t *testing.T) {
 		}
 		assert.Equals(t, int(change.Seq), seq)
 		assert.Equals(t, change.Deleted, false)
-		var removed []string
+		var removed channels.Set
 		if i == 99 {
-			removed = []string{"all"}
+			removed = channels.SetOf("all")
 		}
 		assert.DeepEquals(t, change.Removed, removed)
 	}
 
-	changes, err = db.GetChanges([]string{"KFJC"}, options)
+	changes, err = db.GetChanges(channels.SetOf("KFJC"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 10)
 	for i, change := range changes {
 		assert.Equals(t, int(change.Seq), 10*i+1)
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
-		assert.DeepEquals(t, change.Removed, []string(nil))
+		assert.DeepEquals(t, change.Removed, channels.Set(nil))
 	}
 }

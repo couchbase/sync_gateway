@@ -14,7 +14,9 @@ import (
 	"math"
 
 	"github.com/couchbaselabs/go-couchbase"
+
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 // Options for Database.getChanges
@@ -30,12 +32,12 @@ type ChangesOptions struct {
 // A changes entry; Database.getChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq     uint64      `json:"seq"`
-	ID      string      `json:"id"`
-	Deleted bool        `json:"deleted,omitempty"`
-	Removed []string    `json:"removed,omitempty"`
-	Doc     Body        `json:"doc,omitempty"`
-	Changes []ChangeRev `json:"changes"`
+	Seq     uint64       `json:"seq"`
+	ID      string       `json:"id"`
+	Deleted bool         `json:"deleted,omitempty"`
+	Removed channels.Set `json:"removed,omitempty"`
+	Doc     Body         `json:"doc,omitempty"`
+	Changes []ChangeRev  `json:"changes"`
 	docMeta *document
 }
 
@@ -119,7 +121,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 					Deleted: (len(value) >= 3 && value[2].(bool)),
 				}
 				if len(value) >= 3 && !value[2].(bool) {
-					entry.Removed = []string{channel}
+					entry.Removed = channels.SetOf(channel)
 				}
 				if usingDocs {
 					doc, err := unmarshalDocument(docID, row.Doc.Json)
@@ -160,11 +162,13 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 }
 
 // Returns of all the changes made to multiple channels. Does NOT check authorization.
-func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	if len(channels) == 0 {
 		return nil, nil
 	} else if len(channels) == 1 {
-		return db.ChangesFeed(channels[0], options)
+		for channel, _ := range channels {
+			return db.ChangesFeed(channel, options)
+		}
 	}
 
 	waitMode := options.Wait
@@ -175,14 +179,16 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 		defer close(output)
 
 		for {
-			feeds := make([]<-chan *ChangeEntry, len(channels))
+			feeds := make([]<-chan *ChangeEntry, 0, len(channels))
 			current := make([]*ChangeEntry, len(channels))
-			for i, name := range channels {
+			i := 0
+			for name, _ := range channels {
 				var err error
 				feeds[i], err = db.ChangesFeed(name, options)
 				if err != nil {
 					return
 				}
+				i++
 			}
 
 			wroteAnything := false
@@ -221,7 +227,7 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 							if minEntry.Removed == nil {
 								minEntry.Removed = cur.Removed
 							} else {
-								minEntry.Removed = append(minEntry.Removed, cur.Removed...)
+								minEntry.Removed = minEntry.Removed.Union(cur.Removed)
 							}
 						}
 					}
@@ -244,7 +250,7 @@ func (db *Database) MultiChangesFeed(channels []string, options ChangesOptions) 
 
 // Synchronous convenience function that returns all changes as a simple array.
 // Does NOT check authorization.
-func (db *Database) GetChanges(channels []string, options ChangesOptions) ([]*ChangeEntry, error) {
+func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([]*ChangeEntry, error) {
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {

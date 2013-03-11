@@ -12,7 +12,7 @@ This is an **experimental prototype** adapter that can allow Couchbase Server 2 
 * Sync Gateway currently supports only a _single_ database. Its name defaults to the name of the underlying bucket, but can be changed using the `dbname` command-line flag. Any attempt to use the CouchDB REST API to access or create other databases, or delete the existing one, will fail with an appropriate HTTP error.
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
 * Explicit garbage collection is required to free up space, via a REST call to `/_vacuum`. This is not yet scheduled automatically, so you'll have to call it yourself.
-* Performance is probably not that great. This is an unoptimized proof of concept.
+* Performance is probably not that great. We'll be optimizing more later.
 
 ### License
 

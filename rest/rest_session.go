@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -23,15 +24,15 @@ const kDefaultSessionTTL = 24 * time.Hour
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfo() error {
 	var name *string
-	channels := []string{}
+	allChannels := channels.Set{}
 	if h.user != nil {
 		if h.user.Name != "" {
 			name = &h.user.Name
 		}
-		channels = h.user.AllChannels
+		allChannels = h.user.AllChannels
 	}
 	// Return a JSON struct similar to what CouchDB returns:
-	userCtx := db.Body{"name": name, "channels": channels}
+	userCtx := db.Body{"name": name, "channels": allChannels}
 	handlers := []string{"default", "cookie"}
 	if h.BrowserIDEnabled() {
 		handlers = append(handlers, "browserid")

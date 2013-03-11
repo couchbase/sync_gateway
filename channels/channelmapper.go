@@ -36,18 +36,20 @@ const funcWrapper = `
 
 /** Result of running a channel-mapper function. */
 type ChannelMapperOutput struct {
-	Channels  []string
+	Channels  Set
 	Access    AccessMap
 	Rejection error
 }
 
 type ChannelMapper struct {
-	output *ChannelMapperOutput
-	js     *walrus.JSServer
+	output   *ChannelMapperOutput
+	channels []string
+	access   map[string][]string
+	js       *walrus.JSServer
 }
 
 // Maps user names to arrays of channel names
-type AccessMap map[string][]string
+type AccessMap map[string]Set
 
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array *otto.Object) []string {
@@ -83,11 +85,11 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper.js.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
 			if arg.IsString() {
-				mapper.output.Channels = append(mapper.output.Channels, arg.String())
+				mapper.channels = append(mapper.channels, arg.String())
 			} else if arg.Class() == "Array" {
 				array := ottoArrayToStrings(arg.Object())
 				if array != nil {
-					mapper.output.Channels = append(mapper.output.Channels, array...)
+					mapper.channels = append(mapper.channels, array...)
 				}
 			}
 		}
@@ -106,11 +108,11 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		}
 		for _, name := range usernameArray {
 			if channels.IsString() {
-				mapper.output.Access[name] = append(mapper.output.Access[name], channels.String())
+				mapper.access[name] = append(mapper.access[name], channels.String())
 			} else if channels.Class() == "Array" {
 				array := ottoArrayToStrings(channels.Object())
 				if array != nil {
-					mapper.output.Access[name] = append(mapper.output.Access[name], array...)
+					mapper.access[name] = append(mapper.access[name], array...)
 				}
 			}
 		}
@@ -132,19 +134,19 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	})
 
 	mapper.js.Before = func() {
-		mapper.output = &ChannelMapperOutput{
-			Channels: []string{},
-			Access:   map[string][]string{},
-		}
+		mapper.output = &ChannelMapperOutput{}
+		mapper.channels = []string{}
+		mapper.access = map[string][]string{}
 	}
 	mapper.js.After = func(result otto.Value, err error) (interface{}, error) {
 		output := mapper.output
 		mapper.output = nil
 		if err == nil {
-			output.Channels, err = SimplifyChannels(output.Channels, false)
+			output.Channels, err = SetFromArray(mapper.channels, ExpandStar)
 			if err == nil {
-				for username, channels := range output.Access {
-					output.Access[username], err = SimplifyChannels(channels, false)
+				output.Access = make(AccessMap, len(mapper.access))
+				for username, channels := range mapper.access {
+					output.Access[username], err = SetFromArray(channels, RemoveStar)
 					if err != nil {
 						break
 					}

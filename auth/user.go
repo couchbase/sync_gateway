@@ -26,8 +26,8 @@ type User struct {
 	Email         string                     `json:"email,omitempty"`
 	Disabled      bool                       `json:"disabled,omitempty"`
 	PasswordHash  *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	AdminChannels []string                   `json:"admin_channels"`
-	AllChannels   []string                   `json:"all_channels,omitempty"`
+	AdminChannels ch.Set                     `json:"admin_channels"`
+	AllChannels   ch.Set                     `json:"all_channels,omitempty"`
 	Password      *string                    `json:"password,omitempty"`
 }
 
@@ -52,17 +52,14 @@ func IsValidEmail(email string) bool {
 
 func defaultGuestUser() *User {
 	return &User{
-		AdminChannels: []string{"*"},
-		AllChannels:   []string{"*"},
+		AdminChannels: ch.SetOf("*"),
+		AllChannels:   ch.SetOf("*"),
 	}
 }
 
 // Creates a new User object.
-func NewUser(username string, password string, channels []string) (*User, error) {
-	channels, err := ch.SimplifyChannels(channels, true)
-	if err != nil {
-		return nil, err
-	}
+func NewUser(username string, password string, channels ch.Set) (*User, error) {
+	channels = channels.ExpandingStar()
 	user := &User{Name: username, AllChannels: channels, AdminChannels: channels}
 	user.SetPassword(password)
 	if err := user.Validate(); err != nil {
@@ -110,11 +107,11 @@ func (user *User) SetPassword(password string) {
 // If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
 // Do this before calling any of the CanSee or Authorize methods below, as they interpret a
 // channel named "*" as, literally, the wildcard channel that contains all documents.
-func (user *User) ExpandWildCardChannel(channels []string) []string {
-	if ch.ContainsChannel(channels, "*") {
+func (user *User) ExpandWildCardChannel(channels ch.Set) ch.Set {
+	if channels.Contains("*") {
 		channels = user.AllChannels
 		if channels == nil {
-			channels = []string{}
+			channels = ch.Set{}
 		}
 	}
 	return channels
@@ -130,16 +127,14 @@ func (user *User) UnauthError(message string) error {
 // Returns true if the User is allowed to access the channel.
 // A nil User means access control is disabled, so the function will return true.
 func (user *User) CanSeeChannel(channel string) bool {
-	return user == nil ||
-		ch.ContainsChannel(user.AllChannels, channel) ||
-		ch.ContainsChannel(user.AllChannels, "*")
+	return user == nil || user.AllChannels.Contains(channel) || user.AllChannels.Contains("*")
 }
 
 // Returns true if the User is allowed to access all of the given channels.
 // A nil User means access control is disabled, so the function will return true.
-func (user *User) CanSeeAllChannels(channels []string) bool {
+func (user *User) CanSeeAllChannels(channels ch.Set) bool {
 	if channels != nil {
-		for _, channel := range channels {
+		for channel, _ := range channels {
 			if !user.CanSeeChannel(channel) {
 				return false
 			}
@@ -150,9 +145,9 @@ func (user *User) CanSeeAllChannels(channels []string) bool {
 
 // Returns an HTTP 403 error if the User is not allowed to access all the given channels.
 // A nil User means access control is disabled, so the function will return nil.
-func (user *User) AuthorizeAllChannels(channels []string) error {
+func (user *User) AuthorizeAllChannels(channels ch.Set) error {
 	var forbidden []string
-	for _, channel := range channels {
+	for channel, _ := range channels {
 		if !user.CanSeeChannel(channel) {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))

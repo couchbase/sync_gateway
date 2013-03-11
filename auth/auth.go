@@ -10,11 +10,11 @@
 package auth
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
+	"github.com/dustin/gojson" // Forked encoding/json package
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
@@ -86,14 +86,18 @@ func (auth *Authenticator) rebuildUserChannels(user *User) error {
 	if verr := auth.bucket.ViewCustom("sync_gateway_auth", "access", opts, &vres); verr != nil {
 		return verr
 	}
-	allChannels := ch.SetFromArray(user.AdminChannels)
+	allChannels := make([]string, 0, 50)
 	for _, row := range vres.Rows {
-		value := row.Value.([]interface{})
-		for _, item := range value {
-			allChannels[item.(string)] = true
+		for _, item := range row.Value.([]interface{}) {
+			allChannels = append(allChannels, item.(string))
 		}
 	}
-	user.AllChannels = allChannels.ToArray()
+	var err error
+	user.AllChannels, err = ch.SetFromArray(allChannels, ch.RemoveStar)
+	if err != nil {
+		return err
+	}
+	user.AllChannels = user.AllChannels.Union(user.AdminChannels)
 	return nil
 }
 
@@ -111,11 +115,6 @@ func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
 
 // Saves the information for a user.
 func (auth *Authenticator) SaveUser(user *User) error {
-	var err error
-	user.AdminChannels, err = ch.SimplifyChannels(user.AdminChannels, true)
-	if err != nil {
-		return err
-	}
 	if user.Password != nil {
 		user.SetPassword(*user.Password)
 		user.Password = nil

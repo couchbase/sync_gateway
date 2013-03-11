@@ -14,8 +14,10 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/sdegutis/go.assert"
+
+	"github.com/couchbaselabs/sync_gateway/base"
+	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
 //const kTestURL = "http://localhost:8091"
@@ -77,7 +79,7 @@ func TestUserPasswords(t *testing.T) {
 }
 
 func TestSerializeUser(t *testing.T) {
-	user, _ := NewUser("me", "letmein", []string{"me", "public"})
+	user, _ := NewUser("me", "letmein", ch.SetOf("me", "public"))
 	user.Email = "foo@example.com"
 	encoded, _ := json.Marshal(user)
 	assert.True(t, encoded != nil)
@@ -96,61 +98,61 @@ func TestSerializeUser(t *testing.T) {
 func TestUserAccess(t *testing.T) {
 	// User with no access:
 	user, _ := NewUser("foo", "password", nil)
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{})
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf())
 	assert.False(t, user.CanSeeChannel("x"))
-	assert.True(t, user.CanSeeAllChannels([]string{}))
-	assert.False(t, user.CanSeeAllChannels([]string{"x"}))
-	assert.False(t, user.CanSeeAllChannels([]string{"x", "y"}))
-	assert.False(t, user.CanSeeAllChannels([]string{"*"}))
-	assert.False(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("x")))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("x", "y")))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("*")))
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with access to one channel:
-	user.AllChannels = []string{"x"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x"})
-	assert.True(t, user.CanSeeAllChannels([]string{}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
-	assert.False(t, user.CanSeeAllChannels([]string{"x", "y"}))
-	assert.False(t, user.AuthorizeAllChannels([]string{"x", "y"}) == nil)
-	assert.False(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+	user.AllChannels = ch.SetOf("x")
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x"))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("x", "y")))
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with access to one channel and one derived channel:
-	user.AllChannels = []string{"x", "z"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x", "z"})
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"x"}), []string{"x"})
-	assert.True(t, user.CanSeeAllChannels([]string{}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
-	assert.False(t, user.CanSeeAllChannels([]string{"x", "y"}))
-	assert.False(t, user.AuthorizeAllChannels([]string{"x", "y"}) == nil)
-	assert.False(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+	user.AllChannels = ch.SetOf("x", "z")
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x", "z"))
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("x")), ch.SetOf("x"))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("x", "y")))
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with access to two channels:
-	user.AllChannels = []string{"x", "z"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x", "z"})
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"x"}), []string{"x"})
-	assert.True(t, user.CanSeeAllChannels([]string{}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
-	assert.False(t, user.CanSeeAllChannels([]string{"x", "y"}))
-	assert.False(t, user.AuthorizeAllChannels([]string{"x", "y"}) == nil)
-	assert.False(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+	user.AllChannels = ch.SetOf("x", "z")
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x", "z"))
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("x")), ch.SetOf("x"))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("x", "y")))
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
-	user.AllChannels = []string{"x", "y"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"x", "y"})
-	assert.True(t, user.CanSeeAllChannels([]string{}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x", "y"}))
-	assert.False(t, user.CanSeeAllChannels([]string{"x", "y", "z"}))
-	assert.True(t, user.AuthorizeAllChannels([]string{"x", "y"}) == nil)
-	assert.False(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+	user.AllChannels = ch.SetOf("x", "y")
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x", "y"))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x", "y")))
+	assert.False(t, user.CanSeeAllChannels(ch.SetOf("x", "y", "z")))
+	assert.True(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
+	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with wildcard access:
-	user.AllChannels = []string{"*", "q"}
-	assert.DeepEquals(t, user.ExpandWildCardChannel([]string{"*"}), []string{"*", "q"})
+	user.AllChannels = ch.SetOf("*", "q")
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("*", "q"))
 	assert.True(t, user.CanSeeChannel("*"))
-	assert.True(t, user.CanSeeAllChannels([]string{}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x"}))
-	assert.True(t, user.CanSeeAllChannels([]string{"x", "y"}))
-	assert.True(t, user.AuthorizeAllChannels([]string{"x", "y"}) == nil)
-	assert.True(t, user.AuthorizeAllChannels([]string{"*"}) == nil)
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
+	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x", "y")))
+	assert.True(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
+	assert.True(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 }
 
 func TestGetMissingUser(t *testing.T) {
@@ -173,7 +175,7 @@ func TestGetGuestUser(t *testing.T) {
 
 func TestSaveUsers(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket)
-	user, _ := NewUser("testUser", "password", []string{"test"})
+	user, _ := NewUser("testUser", "password", ch.SetOf("test"))
 	err := auth.SaveUser(user)
 	assert.Equals(t, err, nil)
 
@@ -184,7 +186,7 @@ func TestSaveUsers(t *testing.T) {
 
 func TestRebuildUserChannels(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket)
-	user, _ := NewUser("testUser", "password", []string{"test"})
+	user, _ := NewUser("testUser", "password", ch.SetOf("test"))
 	user.AllChannels = nil
 	err := auth.SaveUser(user)
 	assert.Equals(t, err, nil)

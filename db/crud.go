@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 //////// READING DOCUMENTS:
@@ -86,7 +87,7 @@ func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
 	if user == nil {
 		return nil
 	}
-	for _, channel := range user.AllChannels {
+	for channel, _ := range user.AllChannels {
 		if channel == "*" {
 			return nil
 		}
@@ -329,7 +330,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Calls the JS ChannelMapper and Validation functions to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result []string, access map[string][]string, err error) {
+func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result channels.Set, access channels.AccessMap, err error) {
 	base.LogTo("CRUD", "Invoking validate/sync on doc %q rev %s", doc.ID, body["_rev"])
 	newJson, _ := json.Marshal(body)
 	var oldJson []byte
@@ -371,22 +372,22 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 	} else {
 		// No ChannelMapper so by default use the "channels" property:
 		value, _ := body["channels"].([]interface{})
-		if value == nil {
-			return
-		}
-		result = make([]string, 0, len(value))
-		for _, channel := range value {
-			channelStr, ok := channel.(string)
-			if ok && len(channelStr) > 0 {
-				result = append(result, channelStr)
+		if value != nil {
+			array := make([]string, 0, len(value))
+			for _, channel := range value {
+				channelStr, ok := channel.(string)
+				if ok && len(channelStr) > 0 {
+					array = append(array, channelStr)
+				}
 			}
+			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
 	}
 	return
 }
 
 // Updates the Channels property of a document object with current & past channels
-func (db *Database) updateDocChannels(doc *document, newChannels []string) (changed bool) {
+func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (changed bool) {
 	channels := doc.Channels
 	if channels == nil {
 		channels = ChannelMap{}
@@ -403,7 +404,7 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 	}
 
 	// Mark every current channel as subscribed:
-	for _, channel := range newChannels {
+	for channel, _ := range newChannels {
 		if value, exists := channels[channel]; value != nil || !exists {
 			channels[channel] = nil
 			changed = true
@@ -416,7 +417,7 @@ func (db *Database) updateDocChannels(doc *document, newChannels []string) (chan
 }
 
 // Updates the Access property of a document object
-func (db *Database) updateDocAccess(doc *document, newAccess AccessMap) (changed bool) {
+func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
 	oldAccess := doc.Access
 	if reflect.DeepEqual(newAccess, oldAccess) {
 		return false
