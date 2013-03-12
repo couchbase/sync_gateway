@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"encoding/json"
 	"log"
 	"testing"
 
@@ -81,11 +80,11 @@ func TestUserPasswords(t *testing.T) {
 func TestSerializeUser(t *testing.T) {
 	user, _ := NewUser("me", "letmein", ch.SetOf("me", "public"))
 	user.Email = "foo@example.com"
-	encoded, _ := json.Marshal(user)
+	encoded, _ := user.Marshal()
 	assert.True(t, encoded != nil)
+	log.Printf("Marshaled User as: %s", encoded)
 
-	var resu User
-	err := json.Unmarshal(encoded, &resu)
+	resu, err := UnmarshalUser(encoded)
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, resu.Name, user.Name)
 	assert.DeepEquals(t, resu.Email, user.Email)

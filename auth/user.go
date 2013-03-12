@@ -10,7 +10,8 @@
 package auth
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"regexp"
 
@@ -22,24 +23,18 @@ import (
 
 /** Persistent information about a user. */
 type User struct {
-	Name          string                     `json:"name,omitempty"`
-	Email         string                     `json:"email,omitempty"`
-	Disabled      bool                       `json:"disabled,omitempty"`
-	PasswordHash  *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	AdminChannels ch.Set                     `json:"admin_channels"`
-	AllChannels   ch.Set                     `json:"all_channels,omitempty"`
-	Password      *string                    `json:"password,omitempty"`
+	Role                                    // User "inherits from" Role
+	Email        string                     `json:"email,omitempty"`
+	Disabled     bool                       `json:"disabled,omitempty"`
+	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
+	Password     *string                    `json:"password,omitempty"`
+	RoleNames    []string                   `json:"roles,omitempty"`
 }
 
-var kValidUsernameRegexp *regexp.Regexp
 var kValidEmailRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	kValidUsernameRegexp, err = regexp.Compile(`^[-+.@\w]*$`)
-	if err != nil {
-		panic("Bad kValidUsernameRegexp")
-	}
 	kValidEmailRegexp, err = regexp.Compile(`^[-+.\w]+@\w[-.\w]+$`)
 	if err != nil {
 		panic("Bad kValidEmailRegexp")
@@ -52,26 +47,27 @@ func IsValidEmail(email string) bool {
 
 func defaultGuestUser() *User {
 	return &User{
-		AdminChannels: ch.SetOf("*"),
-		AllChannels:   ch.SetOf("*"),
+		Role: Role{
+			AdminChannels: ch.SetOf("*"),
+			AllChannels:   ch.SetOf("*"),
+		},
 	}
 }
 
 // Creates a new User object.
 func NewUser(username string, password string, channels ch.Set) (*User, error) {
-	channels = channels.ExpandingStar()
-	user := &User{Name: username, AllChannels: channels, AdminChannels: channels}
-	user.SetPassword(password)
-	if err := user.Validate(); err != nil {
+	user := &User{}
+	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
+	user.SetPassword(password)
 	return user, nil
 }
 
 // Checks whether this User object contains valid data; if not, returns an error.
 func (user *User) Validate() error {
-	if !kValidUsernameRegexp.MatchString(user.Name) {
-		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid username %q", user.Name)}
+	if err := (&user.Role).Validate(); err != nil {
+		return err
 	} else if user.Email != "" && !IsValidEmail(user.Email) {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
 	}
@@ -102,61 +98,31 @@ func (user *User) SetPassword(password string) {
 	}
 }
 
-//////// USER CHANNEL AUTHORIZATION:
+// JSON encoding/decoding -- these functions are ugly hacks to work around the current
+// Go 1.0.3 limitation that the JSON package won't traverse into unnamed/embedded
+// fields of structs (i.e. the Role).
 
-// If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
-// Do this before calling any of the CanSee or Authorize methods below, as they interpret a
-// channel named "*" as, literally, the wildcard channel that contains all documents.
-func (user *User) ExpandWildCardChannel(channels ch.Set) ch.Set {
-	if channels.Contains("*") {
-		channels = user.AllChannels
-		if channels == nil {
-			channels = ch.Set{}
-		}
+func (user *User) Marshal() ([]byte, error) {
+	var err error
+	data, err := json.Marshal(user.Role)
+	if err != nil {
+		return nil, err
 	}
-	return channels
+	userData, err := json.Marshal(user)
+	if err != nil {
+		return nil, err
+	}
+	data = data[0 : len(data)-1]
+	userData = userData[1:len(userData)]
+	return bytes.Join([][]byte{data, userData}, []byte(",")), nil
 }
 
-func (user *User) UnauthError(message string) error {
-	if user.Name == "" {
-		return &base.HTTPError{http.StatusUnauthorized, "login required"}
+func UnmarshalUser(data []byte) (*User, error) {
+	user := &User{}
+	if err := json.Unmarshal(data, user); err != nil {
+		return nil, err
+	} else if err := json.Unmarshal(data, &user.Role); err != nil {
+		return nil, err
 	}
-	return &base.HTTPError{http.StatusForbidden, message}
-}
-
-// Returns true if the User is allowed to access the channel.
-// A nil User means access control is disabled, so the function will return true.
-func (user *User) CanSeeChannel(channel string) bool {
-	return user == nil || user.AllChannels.Contains(channel) || user.AllChannels.Contains("*")
-}
-
-// Returns true if the User is allowed to access all of the given channels.
-// A nil User means access control is disabled, so the function will return true.
-func (user *User) CanSeeAllChannels(channels ch.Set) bool {
-	if channels != nil {
-		for channel, _ := range channels {
-			if !user.CanSeeChannel(channel) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// Returns an HTTP 403 error if the User is not allowed to access all the given channels.
-// A nil User means access control is disabled, so the function will return nil.
-func (user *User) AuthorizeAllChannels(channels ch.Set) error {
-	var forbidden []string
-	for channel, _ := range channels {
-		if !user.CanSeeChannel(channel) {
-			if forbidden == nil {
-				forbidden = make([]string, 0, len(channels))
-			}
-			forbidden = append(forbidden, channel)
-		}
-	}
-	if forbidden != nil {
-		return user.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
-	}
-	return nil
+	return user, nil
 }

@@ -45,13 +45,13 @@ func TestValidatorUser(t *testing.T) {
 											throw({"forbidden": userCtx.name});}`)
 	assertNoError(t, err, "Couldn't create validator")
 
-	fred := &auth.User{Name: "fred"}
+	fred, _ := auth.NewUser("fred", "password", nil)
 
 	status, _, err := validator.callValidator(`{"owner":"fred"}`, `{"owner":"fred"}`, fred)
 	assertNoError(t, err, "callValidator failed")
 	assert.Equals(t, status, 200)
 
-	eve := &auth.User{Name: "eve"}
+	eve, _ := auth.NewUser("eve", "password", nil)
 
 	status, msg, err := validator.callValidator(`{"owner":"fred"}`, `{"owner":"fred"}`, eve)
 	assertNoError(t, err, "callValidator failed")

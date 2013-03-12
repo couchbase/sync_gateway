@@ -14,7 +14,6 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
-	"github.com/dustin/gojson" // Forked encoding/json package
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
@@ -60,7 +59,9 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 			}
 			return nil, couchbase.UpdateCancel
 		}
-		if err := json.Unmarshal(currentValue, &user); err != nil {
+		var err error
+		user, err = UnmarshalUser(currentValue)
+		if err != nil {
 			return nil, err
 		}
 		if user.AllChannels != nil {
@@ -71,7 +72,7 @@ func (auth *Authenticator) GetUser(username string) (*User, error) {
 		if err := auth.rebuildUserChannels(user); err != nil {
 			return nil, err
 		}
-		return json.Marshal(user)
+		return user.Marshal()
 	})
 
 	if err != nil && err != couchbase.UpdateCancel {
@@ -127,7 +128,11 @@ func (auth *Authenticator) SaveUser(user *User) error {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
 
-	if err := auth.bucket.Set(docIDForUser(user.Name), 0, user); err != nil {
+	data, err := user.Marshal()
+	if err != nil {
+		return err
+	}
+	if err := auth.bucket.SetRaw(docIDForUser(user.Name), 0, data); err != nil {
 		return err
 	}
 	if user.Email != "" {
