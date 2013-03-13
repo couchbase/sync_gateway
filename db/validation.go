@@ -68,19 +68,19 @@ func NewValidator(funcSource string) (*Validator, error) {
 	return validator, nil
 }
 
-func makeUserCtx(user *auth.User) string {
+func makeUserCtx(user auth.User) string {
 	if user == nil {
 		return `{"name":null, "channels":[]}`
 	}
 	info := map[string]interface{}{}
-	info["name"] = user.Name
-	info["channels"] = user.AllChannels
+	info["name"] = user.Name()
+	info["channels"] = user.Channels()
 	json, _ := json.Marshal(info)
 	return string(json)
 }
 
 // This is just for testing
-func (validator *Validator) callValidator(newDoc string, oldDoc string, user *auth.User) (int, string, error) {
+func (validator *Validator) callValidator(newDoc string, oldDoc string, user auth.User) (int, string, error) {
 	result, err := validator.js.DirectCallFunction([]string{newDoc, oldDoc, makeUserCtx(user)})
 	if err != nil || result == nil {
 		return 0, "", err
@@ -89,7 +89,7 @@ func (validator *Validator) callValidator(newDoc string, oldDoc string, user *au
 	return results.status, results.message, nil
 }
 
-func (validator *Validator) Validate(newDoc string, oldDoc string, user *auth.User) (int, string, error) {
+func (validator *Validator) Validate(newDoc string, oldDoc string, user auth.User) (int, string, error) {
 	result, err := validator.js.CallFunction([]string{newDoc, oldDoc, makeUserCtx(user)})
 	if err != nil || result == nil {
 		return 0, "", err

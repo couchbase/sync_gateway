@@ -17,8 +17,8 @@ import (
 	"net/url"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
-	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -70,13 +70,13 @@ func (h *handler) BrowserIDEnabled() bool {
 // Registers a new user account based on a BrowserID verified assertion.
 // Username will be the same as the verified email address. Password will be random.
 // The user will have access to no channels.
-func (h *handler) registerBrowserIDUser(verifiedInfo *BrowserIDResponse) (*auth.User, error) {
+func (h *handler) registerBrowserIDUser(verifiedInfo *BrowserIDResponse) (auth.User, error) {
 	user, err := auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), channels.Set{})
 	if err != nil {
 		return nil, err
 	}
-	user.Email = verifiedInfo.Email
-	err = h.context.auth.SaveUser(user)
+	user.SetEmail(verifiedInfo.Email)
+	err = h.context.auth.Save(user)
 	if err != nil {
 		return nil, err
 	}

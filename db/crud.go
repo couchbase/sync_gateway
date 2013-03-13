@@ -83,11 +83,11 @@ func (db *Database) GetRev(docid, revid string,
 
 // Returns an HTTP 403 error if the User is not allowed to access any of the document's channels.
 // A nil User means access control is disabled, so the function will return nil.
-func AuthorizeAnyDocChannels(user *auth.User, channels ChannelMap) error {
+func AuthorizeAnyDocChannels(user auth.User, channels ChannelMap) error {
 	if user == nil {
 		return nil
 	}
-	for channel, _ := range user.AllChannels {
+	for channel, _ := range user.Channels() {
 		if channel == "*" {
 			return nil
 		}
@@ -425,14 +425,39 @@ func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap)
 	doc.Access = newAccess
 	base.LogTo("CRUD", "\tDoc %q grants access: %+v", doc.ID, newAccess)
 
-	authr := auth.NewAuthenticator(db.Bucket)
+	authr := auth.NewAuthenticator(db.Bucket, nil)
 	for name, _ := range oldAccess {
-		authr.InvalidateUserChannels(name)
+		if user, _ := authr.GetUser(name); user != nil {
+			authr.InvalidateChannels(user)
+		}
 	}
 	for name, _ := range newAccess {
-		authr.InvalidateUserChannels(name)
+		if user, _ := authr.GetUser(name); user != nil {
+			authr.InvalidateChannels(user)
+		}
 	}
 	return true
+}
+
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.Set, error) {
+	key := princ.Name()
+	if _, ok := princ.(auth.User); !ok {
+		key = "role:" + key
+	}
+	opts := map[string]interface{}{"stale": false, "key": key}
+	vres := couchbase.ViewResult{}
+	if verr := context.Bucket.ViewCustom("sync_gateway_auth", "access", opts, &vres); verr != nil {
+		return nil, verr
+	}
+	allChannels := make([]string, 0, 50)
+	for _, row := range vres.Rows {
+		for _, item := range row.Value.([]interface{}) {
+			allChannels = append(allChannels, item.(string))
+		}
+	}
+	return channels.SetFromArray(allChannels, channels.RemoveStar)
 }
 
 //////// REVS_DIFF:

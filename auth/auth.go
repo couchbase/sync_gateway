@@ -10,7 +10,7 @@
 package auth
 
 import (
-	"net/http"
+	"encoding/json"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -21,7 +21,14 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket base.Bucket
+	bucket          base.Bucket
+	channelComputer ChannelComputer
+}
+
+// Interface for deriving the set of channels a User/Role has access to.
+// The instantiator of an Authenticator must provide an implementation.
+type ChannelComputer interface {
+	ComputeChannelsForPrincipal(Principal) (ch.Set, error)
 }
 
 type userByEmailInfo struct {
@@ -29,14 +36,11 @@ type userByEmailInfo struct {
 }
 
 // Creates a new Authenticator that stores user info in the given Bucket.
-func NewAuthenticator(bucket base.Bucket) *Authenticator {
+func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer) *Authenticator {
 	return &Authenticator{
-		bucket: bucket,
+		bucket:          bucket,
+		channelComputer: channelComputer,
 	}
-}
-
-func docIDForUser(username string) string {
-	return "user:" + username
 }
 
 func docIDForUserEmail(email string) string {
@@ -47,63 +51,63 @@ func docIDForUserEmail(email string) string {
 // If the username is "" it will return the default (guest) User object, not nil.
 // By default the guest User has access to everything, i.e. Admin Party! This can
 // be changed by altering its list of channels and saving the changes via SetUser.
-func (auth *Authenticator) GetUser(username string) (*User, error) {
-	var user *User
+func (auth *Authenticator) GetUser(name string) (User, error) {
+	princ, err := auth.getPrincipal(docIDForUser(name), func() Principal { return &userImpl{} })
+	if princ == nil && err == nil && name == "" {
+		princ = defaultGuestUser()
+	}
+	user, _ := princ.(User)
+	return user, err
+}
 
-	err := auth.bucket.Update(docIDForUser(username), 0, func(currentValue []byte) ([]byte, error) {
+// Looks up the information for a role.
+func (auth *Authenticator) GetRole(name string) (Role, error) {
+	princ, err := auth.getPrincipal(docIDForRole(name), func() Principal { return &roleImpl{} })
+	role, _ := princ.(Role)
+	return role, err
+}
+
+// Common implementation of GetUser and GetRole. factory() parameter returns a new empty instance.
+func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
+	var princ Principal
+
+	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		user = nil
 		if currentValue == nil {
-			if username == "" {
-				user = defaultGuestUser()
-			}
+			princ = nil
 			return nil, couchbase.UpdateCancel
 		}
-		var err error
-		user, err = UnmarshalUser(currentValue)
-		if err != nil {
+		princ = factory()
+		if err := json.Unmarshal(currentValue, princ); err != nil {
 			return nil, err
 		}
-		if user.AllChannels != nil {
-			// User is valid, so stop the update
+		if princ.Channels() != nil {
+			// Principal is valid, so stop the update
 			return nil, couchbase.UpdateCancel
 		}
 		// Channel list has been invalidated by a doc update -- rebuild from view:
-		if err := auth.rebuildUserChannels(user); err != nil {
-			return nil, err
+		channels := princ.ExplicitChannels()
+		if auth.channelComputer != nil {
+			set, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
+			if err != nil {
+				return nil, err
+			}
+			channels = channels.Union(set)
 		}
-		return user.Marshal()
+		princ.setChannels(channels)
+
+		// Save the updated doc:
+		return json.Marshal(princ)
 	})
 
 	if err != nil && err != couchbase.UpdateCancel {
 		return nil, err
 	}
-	return user, nil
-}
-
-func (auth *Authenticator) rebuildUserChannels(user *User) error {
-	opts := map[string]interface{}{"stale": false, "key": user.Name}
-	vres := couchbase.ViewResult{}
-	if verr := auth.bucket.ViewCustom("sync_gateway_auth", "access", opts, &vres); verr != nil {
-		return verr
-	}
-	allChannels := make([]string, 0, 50)
-	for _, row := range vres.Rows {
-		for _, item := range row.Value.([]interface{}) {
-			allChannels = append(allChannels, item.(string))
-		}
-	}
-	var err error
-	user.AllChannels, err = ch.SetFromArray(allChannels, ch.RemoveStar)
-	if err != nil {
-		return err
-	}
-	user.AllChannels = user.AllChannels.Union(user.AdminChannels)
-	return nil
+	return princ, nil
 }
 
 // Looks up a User by email address.
-func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
+func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	var info userByEmailInfo
 	err := auth.bucket.Get(docIDForUserEmail(email), &info)
 	if base.IsDocNotFoundError(err) {
@@ -114,64 +118,55 @@ func (auth *Authenticator) GetUserByEmail(email string) (*User, error) {
 	return auth.GetUser(info.Username)
 }
 
-// Saves the information for a user.
-func (auth *Authenticator) SaveUser(user *User) error {
-	if user.Password != nil {
-		user.SetPassword(*user.Password)
-		user.Password = nil
-	}
-	if err := user.Validate(); err != nil {
+// Saves the information for a user/role.
+func (auth *Authenticator) Save(p Principal) error {
+	if err := p.validate(); err != nil {
 		return err
 	}
-	if (user.Name == "") != (user.PasswordHash == nil) {
-		// Real user must have a password; anon user must not have a password
-		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
-	}
-
-	data, err := user.Marshal()
+	data, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
-	if err := auth.bucket.SetRaw(docIDForUser(user.Name), 0, data); err != nil {
+	if err := auth.bucket.SetRaw(p.docID(), 0, data); err != nil {
 		return err
 	}
-	if user.Email != "" {
-		info := userByEmailInfo{user.Name}
-		if err := auth.bucket.Set(docIDForUserEmail(user.Email), 0, info); err != nil {
-			return err
+	if user, ok := p.(User); ok {
+		if user.Email() != "" {
+			info := userByEmailInfo{user.Name()}
+			if err := auth.bucket.Set(docIDForUserEmail(user.Email()), 0, info); err != nil {
+				return err
+			}
+			//FIX: Fail if email address is already registered to another user
+			//FIX: Unregister old email address if any
 		}
-		//FIX: Fail if email address is already registered to another user
-		//FIX: Unregister old email address if any
 	}
 	return nil
 }
 
-// Invalidates the channel list of a user by saving its AllChannels property as nil.
-func (auth *Authenticator) InvalidateUserChannels(name string) error {
-	user, err := auth.GetUser(name)
-	if err != nil {
-		return err
-	}
-	if user != nil && user.AllChannels != nil {
-		user.AllChannels = nil
-		if err := auth.SaveUser(user); err != nil {
+// Invalidates the channel list of a user/role by saving its Channels() property as nil.
+func (auth *Authenticator) InvalidateChannels(p Principal) error {
+	if p != nil && p.Channels() != nil {
+		p.setChannels(nil)
+		if err := auth.Save(p); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Deletes a user.
-func (auth *Authenticator) DeleteUser(user *User) error {
-	if user.Email != "" {
-		auth.bucket.Delete(docIDForUserEmail(user.Email))
+// Deletes a user/role.
+func (auth *Authenticator) Delete(p Principal) error {
+	if user, ok := p.(User); ok {
+		if user.Email() != "" {
+			auth.bucket.Delete(docIDForUserEmail(user.Email()))
+		}
 	}
-	return auth.bucket.Delete(docIDForUser(user.Name))
+	return auth.bucket.Delete(p.docID())
 }
 
 // Authenticates a user given the username and password.
 // If the username and password are both "", it will return a default empty User object, not nil.
-func (auth *Authenticator) AuthenticateUser(username string, password string) *User {
+func (auth *Authenticator) AuthenticateUser(username string, password string) User {
 	user, _ := auth.GetUser(username)
 	if user == nil || !user.Authenticate(password) {
 		return nil

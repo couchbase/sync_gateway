@@ -19,10 +19,10 @@ import (
 )
 
 /** A group that users can belong to, with associated channel permisisons. */
-type Role struct {
-	Name          string `json:"name,omitempty"`
-	AdminChannels ch.Set `json:"admin_channels"`
-	AllChannels   ch.Set `json:"all_channels,omitempty"`
+type roleImpl struct {
+	Name_             string `json:"name,omitempty"`
+	ExplicitChannels_ ch.Set `json:"admin_channels"`
+	Channels_         ch.Set `json:"all_channels,omitempty"`
 }
 
 var kValidNameRegexp *regexp.Regexp
@@ -35,24 +35,58 @@ func init() {
 	}
 }
 
-func (role *Role) initRole(name string, channels ch.Set) error {
+func (role *roleImpl) initRole(name string, channels ch.Set) error {
 	channels = channels.ExpandingStar()
-	role.Name = name
-	role.AdminChannels = channels
-	role.AllChannels = channels
-	return role.Validate()
+	role.Name_ = name
+	role.ExplicitChannels_ = channels
+	role.Channels_ = channels
+	return role.validate()
 }
 
 // Creates a new Role object.
-func NewRole(name string, channels ch.Set) (*Role, error) {
-	role := &Role{}
-	return role, role.initRole(name, channels)
+func NewRole(name string, channels ch.Set) (Role, error) {
+	role := &roleImpl{}
+	if err := role.initRole(name, channels); err != nil {
+		return nil, err
+	}
+	return role, nil
 }
 
-// Checks whether this User object contains valid data; if not, returns an error.
-func (role *Role) Validate() error {
-	if !kValidNameRegexp.MatchString(role.Name) {
-		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid name %q", role.Name)}
+func docIDForRole(name string) string {
+	return "role:" + name
+}
+
+func (role *roleImpl) docID() string {
+	return docIDForRole(role.Name_)
+}
+
+// Key used in 'access' view (not same meaning as doc ID)
+func (role *roleImpl) accessViewKey() string {
+	return "role:" + role.Name_
+}
+
+//////// ACCESSORS:
+
+func (role *roleImpl) Name() string {
+	return role.Name_
+}
+
+func (role *roleImpl) Channels() ch.Set {
+	return role.Channels_
+}
+
+func (role *roleImpl) setChannels(channels ch.Set) {
+	role.Channels_ = channels
+}
+
+func (role *roleImpl) ExplicitChannels() ch.Set {
+	return role.ExplicitChannels_
+}
+
+// Checks whether this role object contains valid data; if not, returns an error.
+func (role *roleImpl) validate() error {
+	if !kValidNameRegexp.MatchString(role.Name_) {
+		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid name %q", role.Name_)}
 	}
 	return nil
 }
@@ -62,9 +96,9 @@ func (role *Role) Validate() error {
 // If a channel list contains a wildcard ("*"), replace it with all the role's accessible channels.
 // Do this before calling any of the CanSee or Authorize methods below, as they interpret a
 // channel named "*" as, literally, the wildcard channel that contains all documents.
-func (role *Role) ExpandWildCardChannel(channels ch.Set) ch.Set {
+func (role *roleImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
 	if channels.Contains("*") {
-		channels = role.AllChannels
+		channels = role.Channels_
 		if channels == nil {
 			channels = ch.Set{}
 		}
@@ -72,8 +106,8 @@ func (role *Role) ExpandWildCardChannel(channels ch.Set) ch.Set {
 	return channels
 }
 
-func (role *Role) UnauthError(message string) error {
-	if role.Name == "" {
+func (role *roleImpl) UnauthError(message string) error {
+	if role.Name_ == "" {
 		return &base.HTTPError{http.StatusUnauthorized, "login required"}
 	}
 	return &base.HTTPError{http.StatusForbidden, message}
@@ -81,13 +115,13 @@ func (role *Role) UnauthError(message string) error {
 
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
-func (role *Role) CanSeeChannel(channel string) bool {
-	return role == nil || role.AllChannels.Contains(channel) || role.AllChannels.Contains("*")
+func (role *roleImpl) CanSeeChannel(channel string) bool {
+	return role == nil || role.Channels_.Contains(channel) || role.Channels_.Contains("*")
 }
 
 // Returns true if the Role is allowed to access all of the given channels.
 // A nil Role means access control is disabled, so the function will return true.
-func (role *Role) CanSeeAllChannels(channels ch.Set) bool {
+func (role *roleImpl) CanSeeAllChannels(channels ch.Set) bool {
 	if channels != nil {
 		for channel, _ := range channels {
 			if !role.CanSeeChannel(channel) {
@@ -100,7 +134,7 @@ func (role *Role) CanSeeAllChannels(channels ch.Set) bool {
 
 // Returns an HTTP 403 error if the Role is not allowed to access all the given channels.
 // A nil Role means access control is disabled, so the function will return nil.
-func (role *Role) AuthorizeAllChannels(channels ch.Set) error {
+func (role *roleImpl) AuthorizeAllChannels(channels ch.Set) error {
 	var forbidden []string
 	for channel, _ := range channels {
 		if !role.CanSeeChannel(channel) {

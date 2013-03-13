@@ -35,7 +35,7 @@ type DatabaseContext struct {
 // Represents a simulated CouchDB database.
 type Database struct {
 	*DatabaseContext
-	user *auth.User
+	user auth.User
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
@@ -61,7 +61,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 }
 
 // Makes a Database object given its name and bucket.
-func GetDatabase(context *DatabaseContext, user *auth.User) (*Database, error) {
+func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{context, user}, nil
 }
 

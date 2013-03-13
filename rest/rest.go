@@ -359,7 +359,7 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	userChannels := h.user.AllChannels
+	userChannels := h.user.Channels()
 	filter := h.getQuery("filter")
 	if filter != "" {
 		if filter != "sync_gateway/bychannel" {
@@ -639,38 +639,39 @@ func (h *handler) handleDesign() error {
 }
 
 // Initialize REST handlers. Call this once on launch.
-func InitREST(bucket base.Bucket, dbName string, serverURL string) *context {
+func InitREST(bucket base.Bucket, dbName string, serverURL string, nag bool) (*context, http.Handler, error) {
 	if dbName == "" {
 		dbName = bucket.GetName()
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
 	if err != nil {
-		return nil
+		return nil, nil, err
 	}
 	newdb, err := db.GetDatabase(dbcontext, nil)
 	if err != nil {
-		return nil
+		return nil, nil, err
 	}
 	newdb.ReadDesignDocument()
 
 	if dbcontext.ChannelMapper == nil {
-		base.Warn("Channel mapper undefined; using default")
+		if nag {
+			base.Warn("Channel mapper undefined; using default")
+		}
 		// Always have a channel mapper object even if it does nothing:
 		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 	}
-	if dbcontext.Validator == nil {
+	if dbcontext.Validator == nil && nag {
 		base.Warn("Validator undefined; no validation")
 	}
 
 	c := &context{
 		dbcontext: dbcontext,
-		auth:      auth.NewAuthenticator(bucket),
+		auth:      auth.NewAuthenticator(bucket, dbcontext),
 		serverURL: serverURL,
 	}
 
-	http.Handle("/", createHandler(c))
-	return c
+	return c, createHandler(c), nil
 }
 
 func createHandler(c *context) http.Handler {
@@ -746,7 +747,12 @@ func ServerMain() {
 		*dbName = bucket.GetName()
 	}
 
-	context := InitREST(bucket, *dbName, *siteURL)
+	context, handler, err := InitREST(bucket, *dbName, *siteURL, true)
+	if err != nil {
+		base.LogPanic("Error initializing REST API:  %v\n", err)
+	}
+
+	http.Handle("/", handler)
 	if authAddr != nil {
 		base.Log("Starting auth server on %s", *authAddr)
 		StartAuthListener(*authAddr, context)

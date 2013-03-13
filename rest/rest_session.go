@@ -26,10 +26,11 @@ func (h *handler) respondWithSessionInfo() error {
 	var name *string
 	allChannels := channels.Set{}
 	if h.user != nil {
-		if h.user.Name != "" {
-			name = &h.user.Name
+		userName := h.user.Name()
+		if userName != "" {
+			name = &userName
 		}
-		allChannels = h.user.AllChannels
+		allChannels = h.user.Channels()
 	}
 	// Return a JSON struct similar to what CouchDB returns:
 	userCtx := db.Body{"name": name, "channels": allChannels}
@@ -58,7 +59,7 @@ func (h *handler) handleSessionPOST() error {
 	if err != nil {
 		return err
 	}
-	var user *auth.User
+	var user auth.User
 	user, err = h.context.auth.GetUser(params.Name)
 	if err != nil {
 		return err
@@ -69,13 +70,13 @@ func (h *handler) handleSessionPOST() error {
 	return h.makeSession(user)
 }
 
-func (h *handler) makeSession(user *auth.User) error {
+func (h *handler) makeSession(user auth.User) error {
 	if user == nil {
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
 	h.user = user
 	auth := h.context.auth
-	session, err := auth.CreateSession(user.Name, kDefaultSessionTTL)
+	session, err := auth.CreateSession(user.Name(), kDefaultSessionTTL)
 	if err != nil {
 		return err
 	}

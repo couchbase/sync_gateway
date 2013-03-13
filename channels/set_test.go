@@ -92,6 +92,19 @@ func TestSet(t *testing.T) {
 	assert.DeepEquals(t, set2, set)
 }
 
+func TestUnion(t *testing.T) {
+	var nilSet Set
+	empty := Set{}
+	set1 := SetOf("foo", "bar", "baz")
+	set2 := SetOf("bar", "block", "deny")
+	assert.DeepEquals(t, set1.Union(empty), set1)
+	assert.DeepEquals(t, empty.Union(set1), set1)
+	assert.DeepEquals(t, set1.Union(nilSet), set1)
+	assert.DeepEquals(t, nilSet.Union(set1), set1)
+	assert.DeepEquals(t, nilSet.Union(nilSet), nilSet)
+	assert.Equals(t, set1.Union(set2).String(), "{bar, baz, block, deny, foo}")
+}
+
 func TestSetUnmarshal(t *testing.T) {
 	var str struct {
 		Channels Set

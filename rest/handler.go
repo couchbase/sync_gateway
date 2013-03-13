@@ -40,7 +40,7 @@ type handler struct {
 	rq       *http.Request
 	response http.ResponseWriter
 	db       *db.Database
-	user     *auth.User
+	user     auth.User
 	admin    bool
 }
 

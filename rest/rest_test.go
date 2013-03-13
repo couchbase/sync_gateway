@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,6 @@ import (
 	"github.com/sdegutis/go.assert"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -39,36 +39,44 @@ func init() {
 }
 
 func callREST(method, resource string, body string) *httptest.ResponseRecorder {
+	_, handler, err := InitREST(gTestBucket, "db", "", false)
+	if err != nil {
+		panic(fmt.Sprintf("Error from InitREST: %v", err))
+	}
+
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	response := httptest.NewRecorder()
-	mapper, _ := channels.NewDefaultChannelMapper()
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
-	dbcontext, _ := db.NewDatabaseContext("db", gTestBucket)
-	dbcontext.ChannelMapper = mapper
-	context := &context{dbcontext, nil, ""}
-	handler := createHandler(context)
+
 	handler.ServeHTTP(response, request)
 	return response
 }
 
+func assertStatus(t *testing.T, response *httptest.ResponseRecorder, expectedStatus int) {
+	if response.Code != expectedStatus {
+		t.Errorf("Response status %d (expected %d): %s",
+			response.Code, expectedStatus, response.Body)
+	}
+}
+
 func TestRoot(t *testing.T) {
 	response := callREST("GET", "/", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	assert.Equals(t, response.Body.String(),
 		"{\"couchdb\":\"welcome\",\"version\":\""+VersionString+"\"}")
 
 	response = callREST("HEAD", "/", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	response = callREST("OPTIONS", "/", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	response = callREST("PUT", "/", "")
-	assert.Equals(t, response.Code, 405)
+	assertStatus(t, response, 405)
 }
 
 func createDoc(t *testing.T, docid string) string {
 	response := callREST("PUT", "/db/"+docid, `{"prop":true}`)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["ok"], true)
@@ -84,13 +92,13 @@ func TestDocLifecycle(t *testing.T) {
 	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
 	response := callREST("DELETE", "/db/doc?rev="+revid, "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 }
 
 func TestBulkDocs(t *testing.T) {
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}]}`
 	response := callREST("POST", "/db/_bulk_docs", input)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 2)
@@ -108,7 +116,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
 	response := callREST("POST", "/db/_bulk_docs", input)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 2)
@@ -123,7 +131,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
                    "_revisions": {"start": 14, "ids": ["jkl", "def", "abc", "eleven", "ten", "nine"]}}
             ]}`
 	response = callREST("POST", "/db/_bulk_docs", input)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	json.Unmarshal(response.Body.Bytes(), &docs)
 	assert.Equals(t, len(docs), 1)
 	assert.DeepEquals(t, docs[0],
@@ -142,7 +150,7 @@ func TestRevsDiff(t *testing.T) {
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
 	response := callREST("POST", "/db/_bulk_docs", input)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 
 	// Now call _revs_diff:
 	input = `{"rd1": ["13-def", "12-abc", "11-eleven"],
@@ -150,7 +158,7 @@ func TestRevsDiff(t *testing.T) {
               "rd9": ["1-a", "2-b", "3-c"]
              }`
 	response = callREST("POST", "/db/_revs_diff", input)
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	var diffResponse RevsDiffResponse
 	json.Unmarshal(response.Body.Bytes(), &diffResponse)
 	sort.Strings(diffResponse["rd1"]["possible_ancestors"])
@@ -162,35 +170,35 @@ func TestRevsDiff(t *testing.T) {
 
 func TestLocalDocs(t *testing.T) {
 	response := callREST("GET", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 404)
+	assertStatus(t, response, 404)
 
 	response = callREST("PUT", "/db/_local/loc1", `{"hi": "there"}`)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	response = callREST("GET", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-1","hi":"there"}`)
 
 	response = callREST("PUT", "/db/_local/loc1", `{"hi": "there"}`)
-	assert.Equals(t, response.Code, 409)
+	assertStatus(t, response, 409)
 	response = callREST("PUT", "/db/_local/loc1", `{"hi": "again", "_rev": "0-1"}`)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	response = callREST("GET", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-2","hi":"again"}`)
 
 	// Check the handling of large integers, which caused trouble for us at one point:
 	response = callREST("PUT", "/db/_local/loc1", `{"big": 123456789, "_rev": "0-2"}`)
-	assert.Equals(t, response.Code, 201)
+	assertStatus(t, response, 201)
 	response = callREST("GET", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-3","big":123456789}`)
 
 	response = callREST("DELETE", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 409)
+	assertStatus(t, response, 409)
 	response = callREST("DELETE", "/db/_local/loc1?rev=0-3", "")
-	assert.Equals(t, response.Code, 200)
+	assertStatus(t, response, 200)
 	response = callREST("GET", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 404)
+	assertStatus(t, response, 404)
 	response = callREST("DELETE", "/db/_local/loc1", "")
-	assert.Equals(t, response.Code, 404)
+	assertStatus(t, response, 404)
 }

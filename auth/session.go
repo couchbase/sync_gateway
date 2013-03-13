@@ -25,7 +25,7 @@ type LoginSession struct {
 
 const CookieName = "SyncGatewaySession"
 
-func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
+func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (User, error) {
 	cookie, _ := rq.Cookie(CookieName)
 	if cookie == nil {
 		return nil, nil
@@ -41,7 +41,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (*User, error) {
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
 	user, err := auth.GetUser(session.Username)
-	if user != nil && user.Disabled {
+	if user != nil && user.Disabled() {
 		user = nil
 	}
 	return user, err

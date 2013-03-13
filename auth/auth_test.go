@@ -10,6 +10,8 @@
 package auth
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"testing"
 
@@ -43,12 +45,27 @@ func TestValidateGuestUser(t *testing.T) {
 }
 
 func TestValidateUser(t *testing.T) {
-	user, _ := NewUser("invalid:name", "", nil)
-	assert.Equals(t, user, (*User)(nil))
-	user, _ = NewUser("ValidName", "", nil)
+	user, err := NewUser("invalid:name", "", nil)
+	assert.Equals(t, user, (User)(nil))
+	assert.True(t, err != nil)
+	user, err = NewUser("ValidName", "", nil)
 	assert.True(t, user != nil)
-	user, _ = NewUser("ValidName", "letmein", nil)
+	assert.Equals(t, err, nil)
+	user, err = NewUser("ValidName", "letmein", nil)
 	assert.True(t, user != nil)
+	assert.Equals(t, err, nil)
+}
+
+func TestValidateRole(t *testing.T) {
+	role, err := NewRole("invalid:name", nil)
+	assert.Equals(t, role, (User)(nil))
+	assert.True(t, err != nil)
+	role, err = NewRole("ValidName", nil)
+	assert.True(t, role != nil)
+	assert.Equals(t, err, nil)
+	role, err = NewRole("ValidName", nil)
+	assert.True(t, role != nil)
+	assert.Equals(t, err, nil)
 }
 
 func TestValidateUserEmail(t *testing.T) {
@@ -61,10 +78,8 @@ func TestValidateUserEmail(t *testing.T) {
 		assert.True(t, IsValidEmail(e))
 	}
 	user, _ := NewUser("ValidName", "letmein", nil)
-	user.Email = "foo"
-	assert.False(t, user.Validate() == nil)
-	user.Email = "foo@example.com"
-	assert.True(t, user.Validate() == nil)
+	assert.False(t, user.SetEmail("foo") == nil)
+	assert.Equals(t, user.SetEmail("foo@example.com"), nil)
 }
 
 func TestUserPasswords(t *testing.T) {
@@ -79,19 +94,32 @@ func TestUserPasswords(t *testing.T) {
 
 func TestSerializeUser(t *testing.T) {
 	user, _ := NewUser("me", "letmein", ch.SetOf("me", "public"))
-	user.Email = "foo@example.com"
-	encoded, _ := user.Marshal()
+	user.SetEmail("foo@example.com")
+	encoded, _ := json.Marshal(user)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled User as: %s", encoded)
 
-	resu, err := UnmarshalUser(encoded)
+	resu := &userImpl{}
+	err := json.Unmarshal(encoded, resu)
 	assert.True(t, err == nil)
-	assert.DeepEquals(t, resu.Name, user.Name)
-	assert.DeepEquals(t, resu.Email, user.Email)
-	assert.DeepEquals(t, resu.PasswordHash, user.PasswordHash)
-	assert.DeepEquals(t, resu.AdminChannels, user.AdminChannels)
+	assert.DeepEquals(t, resu.Name(), user.Name())
+	assert.DeepEquals(t, resu.Email(), user.Email())
+	assert.DeepEquals(t, resu.ExplicitChannels(), user.ExplicitChannels())
 	assert.True(t, resu.Authenticate("letmein"))
 	assert.False(t, resu.Authenticate("123456"))
+}
+
+func TestSerializeRole(t *testing.T) {
+	role, _ := NewRole("froods", ch.SetOf("hoopy", "public"))
+	encoded, _ := json.Marshal(role)
+	assert.True(t, encoded != nil)
+	log.Printf("Marshaled Role as: %s", encoded)
+
+	elor := &roleImpl{}
+	err := json.Unmarshal(encoded, elor)
+	assert.True(t, err == nil)
+	assert.DeepEquals(t, elor.Name(), role.Name())
+	assert.DeepEquals(t, elor.ExplicitChannels(), role.ExplicitChannels())
 }
 
 func TestUserAccess(t *testing.T) {
@@ -106,7 +134,7 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with access to one channel:
-	user.AllChannels = ch.SetOf("x")
+	user.setChannels(ch.SetOf("x"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x"))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
@@ -115,7 +143,7 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with access to one channel and one derived channel:
-	user.AllChannels = ch.SetOf("x", "z")
+	user.setChannels(ch.SetOf("x", "z"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x", "z"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("x")), ch.SetOf("x"))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
@@ -125,7 +153,7 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with access to two channels:
-	user.AllChannels = ch.SetOf("x", "z")
+	user.setChannels(ch.SetOf("x", "z"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x", "z"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("x")), ch.SetOf("x"))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
@@ -134,7 +162,7 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
-	user.AllChannels = ch.SetOf("x", "y")
+	user.setChannels(ch.SetOf("x", "y"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("x", "y"))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf("x")))
@@ -144,7 +172,7 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
 
 	// User with wildcard access:
-	user.AllChannels = ch.SetOf("*", "q")
+	user.setChannels(ch.SetOf("*", "q"))
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("*", "q"))
 	assert.True(t, user.CanSeeChannel("*"))
 	assert.True(t, user.CanSeeAllChannels(ch.SetOf()))
@@ -155,7 +183,7 @@ func TestUserAccess(t *testing.T) {
 }
 
 func TestGetMissingUser(t *testing.T) {
-	auth := NewAuthenticator(gTestBucket)
+	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.GetUser("noSuchUser")
 	assert.Equals(t, err, nil)
 	assert.True(t, user == nil)
@@ -164,8 +192,15 @@ func TestGetMissingUser(t *testing.T) {
 	assert.True(t, user == nil)
 }
 
+func TestGetMissingRole(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket, nil)
+	role, err := auth.GetRole("noSuchRole")
+	assert.Equals(t, err, nil)
+	assert.True(t, role == nil)
+}
+
 func TestGetGuestUser(t *testing.T) {
-	auth := NewAuthenticator(gTestBucket)
+	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.GetUser("")
 	assert.Equals(t, err, nil)
 	assert.DeepEquals(t, user, defaultGuestUser())
@@ -173,9 +208,9 @@ func TestGetGuestUser(t *testing.T) {
 }
 
 func TestSaveUsers(t *testing.T) {
-	auth := NewAuthenticator(gTestBucket)
+	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := NewUser("testUser", "password", ch.SetOf("test"))
-	err := auth.SaveUser(user)
+	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
 	user2, err := auth.GetUser("testUser")
@@ -183,16 +218,65 @@ func TestSaveUsers(t *testing.T) {
 	assert.DeepEquals(t, user2, user)
 }
 
+func TestSaveRoles(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket, nil)
+	role, _ := NewRole("testRole", ch.SetOf("test"))
+	err := auth.Save(role)
+	assert.Equals(t, err, nil)
+
+	role2, err := auth.GetRole("testRole")
+	assert.Equals(t, err, nil)
+	assert.DeepEquals(t, role2, role)
+}
+
+type mockComputer struct {
+	channels ch.Set
+	err      error
+}
+
+func (self *mockComputer) ComputeChannelsForPrincipal(Principal) (ch.Set, error) {
+	return self.channels, self.err
+}
+
 func TestRebuildUserChannels(t *testing.T) {
-	auth := NewAuthenticator(gTestBucket)
-	user, _ := NewUser("testUser", "password", ch.SetOf("test"))
-	user.AllChannels = nil
-	err := auth.SaveUser(user)
+	computer := mockComputer{channels: ch.SetOf("derived1", "derived2")}
+	auth := NewAuthenticator(gTestBucket, &computer)
+	user, _ := NewUser("testUser", "password", ch.SetOf("explicit1"))
+	user.setChannels(nil)
+	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
 	user2, err := auth.GetUser("testUser")
 	assert.Equals(t, err, nil)
 	if user2 != nil {
-		assert.DeepEquals(t, user2.AllChannels, user.AdminChannels)
+		log.Printf("Channels = %s", user2.Channels())
+		assert.DeepEquals(t, user2.Channels(), ch.SetOf("explicit1", "derived1", "derived2"))
 	}
+}
+
+func TestRebuildRoleChannels(t *testing.T) {
+	computer := mockComputer{channels: ch.SetOf("derived1", "derived2")}
+	auth := NewAuthenticator(gTestBucket, &computer)
+	role, _ := NewRole("testRole", ch.SetOf("explicit1"))
+	err := auth.InvalidateChannels(role)
+	assert.Equals(t, err, nil)
+
+	role2, err := auth.GetRole("testRole")
+	assert.Equals(t, err, nil)
+	if role2 != nil {
+		assert.DeepEquals(t, role2.Channels(), ch.SetOf("explicit1", "derived1", "derived2"))
+	}
+}
+
+func TestRebuildChannelsError(t *testing.T) {
+	intendedError := fmt.Errorf("I'm sorry, Dave.")
+	computer := mockComputer{err: intendedError}
+	auth := NewAuthenticator(gTestBucket, &computer)
+	role, _ := NewRole("testRole2", ch.SetOf("explicit1"))
+	err := auth.InvalidateChannels(role)
+	assert.Equals(t, err, nil)
+
+	role2, err := auth.GetRole("testRole2")
+	assert.Equals(t, role2, nil)
+	assert.DeepEquals(t, err, intendedError)
 }

@@ -27,27 +27,28 @@ import (
 // Handles PUT or POST to /username
 func putUserCommon(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
 	body, _ := ioutil.ReadAll(rq.Body)
-	var user auth.User
-	err := json.Unmarshal(body, &user)
+	user, err := auth.UnmarshalUser(body, username)
 	if err != nil {
 		return err
 	}
-	if user.AdminChannels == nil {
+	if user.ExplicitChannels() == nil {
 		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
 	}
-	user.AllChannels = nil // Force it to be recomputed
+	a.InvalidateChannels(user)
 
 	if rq.Method == "POST" {
-		username = user.Name
+		username = user.Name()
 		if username == "" {
 			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
 		}
-	} else if user.Name == "" {
-		user.Name = username
-	} else if user.Name != username {
+	} else if user.Name() != username {
 		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
-	return a.SaveUser(&user)
+	err = a.Save(user)
+	if err == nil {
+		r.WriteHeader(http.StatusCreated)
+	}
+	return err
 }
 
 func postUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
@@ -108,7 +109,7 @@ func deleteUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticato
 		}
 		return err
 	}
-	return auth.DeleteUser(user)
+	return auth.Delete(user)
 }
 
 func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {

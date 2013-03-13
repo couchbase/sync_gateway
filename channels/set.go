@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
+	"strings"
 )
 
 // An immutable set of channel names, represented as a map.
@@ -80,6 +82,12 @@ func (set Set) ToArray() []string {
 	return result
 }
 
+func (set Set) String() string {
+	list := set.ToArray()
+	sort.Strings(list)
+	return fmt.Sprintf("{%s}", strings.Join(list, ", "))
+}
+
 func (set Set) copy() Set {
 	result := make(Set, len(set))
 	for name, _ := range set {
@@ -96,6 +104,11 @@ func (set Set) Contains(ch string) bool {
 
 // Returns the union of two sets.
 func (set Set) Union(other Set) Set {
+	if len(set) == 0 {
+		return other
+	} else if len(other) == 0 {
+		return set
+	}
 	result := set.copy()
 	for ch, _ := range other {
 		result[ch] = present{}
@@ -123,7 +136,9 @@ func (set Set) IgnoringStar() Set {
 // JSON encoding/decoding:
 
 func (set Set) MarshalJSON() ([]byte, error) {
-	return json.Marshal(set.ToArray())
+	list := set.ToArray()
+	sort.Strings(list) // sort the array so it's written in a consistent order; helps testability
+	return json.Marshal(list)
 }
 
 func (setPtr *Set) UnmarshalJSON(data []byte) error {

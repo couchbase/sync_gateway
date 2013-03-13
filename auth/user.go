@@ -21,14 +21,19 @@ import (
 	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
-/** Persistent information about a user. */
-type User struct {
-	Role                                    // User "inherits from" Role
-	Email        string                     `json:"email,omitempty"`
-	Disabled     bool                       `json:"disabled,omitempty"`
-	PasswordHash *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	Password     *string                    `json:"password,omitempty"`
-	RoleNames    []string                   `json:"roles,omitempty"`
+// Actual implementation of User interface
+type userImpl struct {
+	roleImpl // userImpl "inherits from" Role
+	userImplBody
+}
+
+// Body is stored in separate struct from userImpl to work around limitations of JSON marshaling.
+type userImplBody struct {
+	Email_        string                     `json:"email,omitempty"`
+	Disabled_     bool                       `json:"disabled,omitempty"`
+	PasswordHash_ *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
+	Password_     *string                    `json:"password,omitempty"`
+	RoleNames_    []string                   `json:"roles,omitempty"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -45,18 +50,18 @@ func IsValidEmail(email string) bool {
 	return kValidEmailRegexp.MatchString(email)
 }
 
-func defaultGuestUser() *User {
-	return &User{
-		Role: Role{
-			AdminChannels: ch.SetOf("*"),
-			AllChannels:   ch.SetOf("*"),
+func defaultGuestUser() User {
+	return &userImpl{
+		roleImpl: roleImpl{
+			ExplicitChannels_: ch.SetOf("*"),
+			Channels_:         ch.SetOf("*"),
 		},
 	}
 }
 
 // Creates a new User object.
-func NewUser(username string, password string, channels ch.Set) (*User, error) {
-	user := &User{}
+func NewUser(username string, password string, channels ch.Set) (User, error) {
+	user := &userImpl{}
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
@@ -64,37 +69,91 @@ func NewUser(username string, password string, channels ch.Set) (*User, error) {
 	return user, nil
 }
 
-// Checks whether this User object contains valid data; if not, returns an error.
-func (user *User) Validate() error {
-	if err := (&user.Role).Validate(); err != nil {
+func UnmarshalUser(data []byte, defaultName string) (User, error) {
+	user := &userImpl{}
+	if err := json.Unmarshal(data, user); err != nil {
+		return nil, err
+	}
+	if user.Name_ == "" {
+		user.Name_ = defaultName
+	}
+	if user.Password_ != nil {
+		user.SetPassword(*user.Password_)
+		user.Password_ = nil
+	}
+	if err := user.validate(); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// Checks whether this userImpl object contains valid data; if not, returns an error.
+func (user *userImpl) validate() error {
+	if err := (&user.roleImpl).validate(); err != nil {
 		return err
-	} else if user.Email != "" && !IsValidEmail(user.Email) {
+	} else if user.Email_ != "" && !IsValidEmail(user.Email_) {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
+	} else if (user.Name_ == "") != (user.PasswordHash_ == nil) {
+		// Real user must have a password; anon user must not have a password
+		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
 	return nil
 }
 
+func docIDForUser(username string) string {
+	return "user:" + username
+}
+
+func (user *userImpl) docID() string {
+	return docIDForUser(user.Name_)
+}
+
+// Key used in 'access' view (not same meaning as doc ID)
+func (user *userImpl) accessViewKey() string {
+	return user.Name_
+}
+
+func (user *userImpl) Disabled() bool {
+	return user.Disabled_
+}
+
+func (user *userImpl) Email() string {
+	return user.Email_
+}
+
+func (user *userImpl) SetEmail(email string) error {
+	if email != "" && !IsValidEmail(email) {
+		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
+	}
+	user.Email_ = email
+	return nil
+}
+
+func (user *userImpl) RoleNames() []string {
+	return user.RoleNames_
+}
+
 // Returns true if the given password is correct for this user.
-func (user *User) Authenticate(password string) bool {
+func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
 		return false
 	}
-	if user.PasswordHash == nil {
+	if user.PasswordHash_ == nil {
 		if password != "" {
 			return false
 		}
-	} else if !user.PasswordHash.EqualToPassword(password) {
+	} else if !user.PasswordHash_.EqualToPassword(password) {
 		return false
 	}
-	return !user.Disabled
+	return !user.Disabled_
 }
 
 // Changes a user's password to the given string.
-func (user *User) SetPassword(password string) {
+func (user *userImpl) SetPassword(password string) {
 	if password == "" {
-		user.PasswordHash = nil
+		user.PasswordHash_ = nil
 	} else {
-		user.PasswordHash = passwordhash.New(password)
+		user.PasswordHash_ = passwordhash.New(password)
 	}
 }
 
@@ -102,27 +161,27 @@ func (user *User) SetPassword(password string) {
 // Go 1.0.3 limitation that the JSON package won't traverse into unnamed/embedded
 // fields of structs (i.e. the Role).
 
-func (user *User) Marshal() ([]byte, error) {
+func (user *userImpl) MarshalJSON() ([]byte, error) {
 	var err error
-	data, err := json.Marshal(user.Role)
+	data, err := json.Marshal(user.roleImpl)
 	if err != nil {
 		return nil, err
 	}
-	userData, err := json.Marshal(user)
+	userData, err := json.Marshal(user.userImplBody)
 	if err != nil {
 		return nil, err
 	}
+	// Splice the two JSON bodies together:
 	data = data[0 : len(data)-1]
 	userData = userData[1:len(userData)]
 	return bytes.Join([][]byte{data, userData}, []byte(",")), nil
 }
 
-func UnmarshalUser(data []byte) (*User, error) {
-	user := &User{}
-	if err := json.Unmarshal(data, user); err != nil {
-		return nil, err
-	} else if err := json.Unmarshal(data, &user.Role); err != nil {
-		return nil, err
+func (user *userImpl) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &user.userImplBody); err != nil {
+		return err
+	} else if err := json.Unmarshal(data, &user.roleImpl); err != nil {
+		return err
 	}
-	return user, nil
+	return nil
 }
