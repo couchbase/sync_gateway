@@ -40,18 +40,19 @@ func TestValidatorException(t *testing.T) {
 }
 
 func TestValidatorUser(t *testing.T) {
+	var a *auth.Authenticator
 	validator, err := NewValidator(`function(doc,oldDoc,userCtx) {
 										if (doc.owner != userCtx.name)
 											throw({"forbidden": userCtx.name});}`)
 	assertNoError(t, err, "Couldn't create validator")
 
-	fred, _ := auth.NewUser("fred", "password", nil)
+	fred, _ := a.NewUser("fred", "password", nil)
 
 	status, _, err := validator.callValidator(`{"owner":"fred"}`, `{"owner":"fred"}`, fred)
 	assertNoError(t, err, "callValidator failed")
 	assert.Equals(t, status, 200)
 
-	eve, _ := auth.NewUser("eve", "password", nil)
+	eve, _ := a.NewUser("eve", "password", nil)
 
 	status, msg, err := validator.callValidator(`{"owner":"fred"}`, `{"owner":"fred"}`, eve)
 	assertNoError(t, err, "callValidator failed")

@@ -71,7 +71,7 @@ func (h *handler) BrowserIDEnabled() bool {
 // Username will be the same as the verified email address. Password will be random.
 // The user will have access to no channels.
 func (h *handler) registerBrowserIDUser(verifiedInfo *BrowserIDResponse) (auth.User, error) {
-	user, err := auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), channels.Set{})
+	user, err := h.context.auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), channels.Set{})
 	if err != nil {
 		return nil, err
 	}

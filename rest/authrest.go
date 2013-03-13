@@ -27,7 +27,7 @@ import (
 // Handles PUT or POST to /username
 func putUserCommon(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
 	body, _ := ioutil.ReadAll(rq.Body)
-	user, err := auth.UnmarshalUser(body, username)
+	user, err := a.UnmarshalUser(body, username)
 	if err != nil {
 		return err
 	}

@@ -12,6 +12,7 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 
@@ -25,9 +26,12 @@ import (
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
 	userImplBody
+	auth  *Authenticator
+	roles []Role
 }
 
-// Body is stored in separate struct from userImpl to work around limitations of JSON marshaling.
+// Marshalable data is stored in separate struct from userImpl,
+// to work around limitations of JSON marshaling.
 type userImplBody struct {
 	Email_        string                     `json:"email,omitempty"`
 	Disabled_     bool                       `json:"disabled,omitempty"`
@@ -50,18 +54,19 @@ func IsValidEmail(email string) bool {
 	return kValidEmailRegexp.MatchString(email)
 }
 
-func defaultGuestUser() User {
+func (auth *Authenticator) defaultGuestUser() User {
 	return &userImpl{
 		roleImpl: roleImpl{
 			ExplicitChannels_: ch.SetOf("*"),
 			Channels_:         ch.SetOf("*"),
 		},
+		auth: auth,
 	}
 }
 
 // Creates a new User object.
-func NewUser(username string, password string, channels ch.Set) (User, error) {
-	user := &userImpl{}
+func (auth *Authenticator) NewUser(username string, password string, channels ch.Set) (User, error) {
+	user := &userImpl{auth: auth}
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
@@ -69,8 +74,8 @@ func NewUser(username string, password string, channels ch.Set) (User, error) {
 	return user, nil
 }
 
-func UnmarshalUser(data []byte, defaultName string) (User, error) {
-	user := &userImpl{}
+func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string) (User, error) {
+	user := &userImpl{auth: auth}
 	if err := json.Unmarshal(data, user); err != nil {
 		return nil, err
 	}
@@ -133,6 +138,11 @@ func (user *userImpl) RoleNames() []string {
 	return user.RoleNames_
 }
 
+func (user *userImpl) SetRoleNames(names []string) {
+	user.RoleNames_ = names
+	user.roles = nil // invalidate cache
+}
+
 // Returns true if the given password is correct for this user.
 func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
@@ -156,6 +166,62 @@ func (user *userImpl) SetPassword(password string) {
 		user.PasswordHash_ = passwordhash.New(password)
 	}
 }
+
+//////// CHANNEL ACCESS:
+
+func (user *userImpl) GetRoles() []Role {
+	if user.roles == nil {
+		roles := make([]Role, 0, len(user.RoleNames_))
+		for _, name := range user.RoleNames_ {
+			role, err := user.auth.GetRole(name)
+			if err != nil {
+				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
+			} else if role != nil {
+				roles = append(roles, role)
+			}
+		}
+		user.roles = roles
+	}
+	return user.roles
+}
+
+func (user *userImpl) CanSeeChannel(channel string) bool {
+	if user.roleImpl.CanSeeChannel(channel) {
+		return true
+	}
+	for _, role := range user.GetRoles() {
+		if role.CanSeeChannel(channel) {
+			return true
+		}
+	}
+	return false
+}
+
+func (user *userImpl) AuthorizeAllChannels(channels ch.Set) error {
+	return authorizeAllChannels(user, channels)
+}
+
+func (user *userImpl) InheritedChannels() ch.Set {
+	channels := user.Channels()
+	// This could be optimized to do less copying.
+	for _, role := range user.GetRoles() {
+		channels = channels.Union(role.Channels())
+	}
+	return channels
+}
+
+// If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
+func (user *userImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
+	if channels.Contains("*") {
+		channels = user.InheritedChannels()
+		if channels == nil {
+			channels = ch.Set{}
+		}
+	}
+	return channels
+}
+
+//////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current
 // Go 1.0.3 limitation that the JSON package won't traverse into unnamed/embedded

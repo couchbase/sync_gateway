@@ -53,11 +53,17 @@ func docIDForUserEmail(email string) string {
 // be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(name string) (User, error) {
 	princ, err := auth.getPrincipal(docIDForUser(name), func() Principal { return &userImpl{} })
-	if princ == nil && err == nil && name == "" {
-		princ = defaultGuestUser()
+	if err != nil {
+		return nil, err
+	} else if princ == nil {
+		if name == "" {
+			princ = auth.defaultGuestUser()
+		} else {
+			return nil, nil
+		}
 	}
-	user, _ := princ.(User)
-	return user, err
+	princ.(*userImpl).auth = auth
+	return princ.(User), err
 }
 
 // Looks up the information for a role.

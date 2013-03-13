@@ -11,9 +11,8 @@ type Principal interface {
 	ExplicitChannels() ch.Set
 
 	CanSeeChannel(channel string) bool
-	CanSeeAllChannels(channels ch.Set) bool
 	AuthorizeAllChannels(channels ch.Set) error
-	ExpandWildCardChannel(channels ch.Set) ch.Set
+	UnauthError(message string) error
 
 	docID() string
 	accessViewKey() string
@@ -21,6 +20,12 @@ type Principal interface {
 	setChannels(ch.Set)
 }
 
+// Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.
+type Role interface {
+	Principal
+}
+
+// A User is a Principal that can log in and have multiple Roles.
 type User interface {
 	Principal
 
@@ -28,11 +33,11 @@ type User interface {
 	SetEmail(string) error
 	Disabled() bool
 	Authenticate(password string) bool
-	UnauthError(message string) error
 	SetPassword(password string)
-	RoleNames() []string
-}
 
-type Role interface {
-	Principal
+	RoleNames() []string
+	SetRoleNames([]string)
+
+	InheritedChannels() ch.Set
+	ExpandWildCardChannel(channels ch.Set) ch.Set
 }

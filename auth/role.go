@@ -93,19 +93,6 @@ func (role *roleImpl) validate() error {
 
 //////// CHANNEL AUTHORIZATION:
 
-// If a channel list contains a wildcard ("*"), replace it with all the role's accessible channels.
-// Do this before calling any of the CanSee or Authorize methods below, as they interpret a
-// channel named "*" as, literally, the wildcard channel that contains all documents.
-func (role *roleImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
-	if channels.Contains("*") {
-		channels = role.Channels_
-		if channels == nil {
-			channels = ch.Set{}
-		}
-	}
-	return channels
-}
-
 func (role *roleImpl) UnauthError(message string) error {
 	if role.Name_ == "" {
 		return &base.HTTPError{http.StatusUnauthorized, "login required"}
@@ -119,25 +106,16 @@ func (role *roleImpl) CanSeeChannel(channel string) bool {
 	return role == nil || role.Channels_.Contains(channel) || role.Channels_.Contains("*")
 }
 
-// Returns true if the Role is allowed to access all of the given channels.
-// A nil Role means access control is disabled, so the function will return true.
-func (role *roleImpl) CanSeeAllChannels(channels ch.Set) bool {
-	if channels != nil {
-		for channel, _ := range channels {
-			if !role.CanSeeChannel(channel) {
-				return false
-			}
-		}
-	}
-	return true
+func (role *roleImpl) AuthorizeAllChannels(channels ch.Set) error {
+	return authorizeAllChannels(role, channels)
 }
 
 // Returns an HTTP 403 error if the Role is not allowed to access all the given channels.
 // A nil Role means access control is disabled, so the function will return nil.
-func (role *roleImpl) AuthorizeAllChannels(channels ch.Set) error {
+func authorizeAllChannels(princ Principal, channels ch.Set) error {
 	var forbidden []string
 	for channel, _ := range channels {
-		if !role.CanSeeChannel(channel) {
+		if !princ.CanSeeChannel(channel) {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))
 			}
@@ -145,7 +123,7 @@ func (role *roleImpl) AuthorizeAllChannels(channels ch.Set) error {
 		}
 	}
 	if forbidden != nil {
-		return role.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
+		return princ.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
 	}
 	return nil
 }
