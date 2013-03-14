@@ -5,12 +5,15 @@ Gluing TouchDB (and CouchDB) to Couchbase Server
 
 ## About
 
-This is an **experimental prototype** adapter that can allow Couchbase Server 2 to act as a replication endpoint for TouchDB, CouchDB and other compatible libraries like PouchDB. It does this by running an HTTP listener process that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
+This is an **experimental prototype** adapter that can allow Couchbase Server 2* to act as a replication endpoint for TouchDB, CouchDB and other compatible libraries like PouchDB. It does this by running an HTTP listener process that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
+
+\* _It can actually run without Couchbase Server, using a simple built-in database called Walrus. This is useful for testing or for very lightweight use. More details below._
 
 ### Limitations
 
-* Sync Gateway currently supports only a _single_ database. Its name defaults to the name of the underlying bucket, but can be changed using the `dbname` command-line flag. Any attempt to use the CouchDB REST API to access or create other databases, or delete the existing one, will fail with an appropriate HTTP error.
+* Sync Gateway currently supports only a _single_ database. Its name defaults to the name of the underlying bucket, but can be changed using the `dbname` command-line flag. Any attempt to use the CouchDB REST API to access or create other databases will fail with an appropriate HTTP error.
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
+* Only a subset of the CouchDB REST API is supported: this is intentional. The gateway is _not_ a CouchDB replacement, rather a compatible sync endpoint.
 * Explicit garbage collection is required to free up space, via a REST call to `/_vacuum`. This is not yet scheduled automatically, so you'll have to call it yourself.
 * Performance is probably not that great. We'll be optimizing more later.
 
@@ -22,22 +25,40 @@ Apache 2 license, like all Couchbase stuff.
 
 ## How To Run It
 
-### Setup
+### Quick installation
 
-0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) on localhost.
+2. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang".
+3. Go needs [Git](http://git-scm.com) and [Mercurial](http://mercurial.selenic.com/downloads/) for for downloading packages. You may already have these installed. Enter `git --version` and `hg --version` in a shell to check. If not, go get 'em.
+4. Now install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`
+
+### Quick startup
+
+The Sync Gateway launcher tool is `bin/sync_gateway` in the first directory in your GOPATH. If you've already added this directory to your PATH, you can invoke it from a shell as `sync_gateway`, otherwise you'll need to give its full path. Either way, start the gateway from a shell using the following arguments:
+
+    sync_gateway -url walrus:
+
+That's it! You now have a sort of mock-CouchDB listening on port 4984 (and with an admin API on port 4985.) It has a single database called "sync_gateway". It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible database (including TouchDB) to replicate with it.
+
+(To use a different database name, use the `-dbname` flag: e.g. `-dbname mydb`.)
+
+The gateway is using a simple in-memory database called [Walrus](https://github.com/couchbaselabs/walrus) instead of Couchbase Server. This is very convenient for quick testing. Walrus is _so_ simple, in fact, that by default it doesn't persist its data to disk at all, so every time the sync_gateway process exits it loses all of its data! Great for unit testing, not great for any actual use. You can make your database persistent by adding a `-url` command-line option followed by a path to an already-existing filesystem directory:
+
+    mkdir /data
+    sync_gateway -url /data
+
+The gateway will now periodically save its state to a file `/data/sync_gateway.walrus`. This is by no means highly scalable, but it will work for casual use.
+
+### Connecting with a real Couchbase server
+
+Using a real Couchbase server, once you've got one set up, is as easy as changing the URL:
+
+0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) or later.
 1. Create a bucket named `sync_gateway` in the default pool.
-2. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later.
-3. Install [Mercurial](http://mercurial.selenic.com/downloads/).
-4. `go get -u github.com/couchbaselabs/sync_gateway`
+2. Start the sync gateway with an argument `-url` followed by the HTTP URL of the Couchbase server:
 
-### Startup
+    sync_gateway -url http://localhost:8091
 
-The Sync Gateway launcher tool is `bin/sync_gateway` in the first directory in your GOPATH. If you've already added this directory to your PATH, you can just enter `sync_gateway` from a shell to run it.
-
-You now have a sort of mock-CouchDB listening on port 4984. It definitely won't do everything CouchDB does, but you can tell another CouchDB-compatible database (including TouchDB) to replicate with it.
-
-If you want to run Couchbase on a different host, or use a different name for the bucket, or listen on a different port, you can do that with command-line options. Use the `--help` flag to see a list of options.
-
+If you want to use a different name for the bucket, or listen on a different port, you can do that with command-line options. Use the `--help` flag to see a list of options.
 
 ## Channels
 
@@ -55,29 +76,29 @@ Valid channel names consist of Unicode letter and digit characters, as well as "
 
 ### Mapping documents to channels
 
-There are currently two ways to assign documents to channels. Both of these operate implicitly: there's not a separate action that assigns a doc to a channel, rather the contents of the document determine what channels its in.
+There are currently two ways to assign documents to channels. Both of these operate implicitly: there's not a separate action that assigns a doc to a channel, rather the _contents_ of the document determine what channels its in.
 
 #### Explicit property
 
 The default (simple and limited) way is to add a `channels` property to a document. Its value is an array of strings. The strings are the names of channels that this document will be available through. A document with no `channels` property will not appear in any channels.
 
-#### Mapping function
+#### Sync function
 
-The more flexible way is to define a sync function. This is a JavaScript function, similar to a "map", that takes a document body as input and can decide based on that what channels it should go into. Like a regular map function, it may not reference any external state and it must return the same results every time it's called on the same input.
+The more flexible way is to define a **sync function**. This is a JavaScript function, similar to a CouchDB validation function, that takes a document body as input and can decide based on that what channels it should go into. Like a regular CouchDB function, it may not reference any external state and it must return the same results every time it's called on the same input.
 
-The sync function goes in a design document with ID `_design/channels`, in a property named `sync`.
+The sync function goes in a design document with ID `_design/channels`, in a property named `sync`. Since design documents are for admins only, they are accessible only on the admin port (by default 4985.)
 
-To add the current document to a channel, the function should call the special function `sync` which takes one or more channel names (or arrays of channel names) as arguments. For convenience, `sync` ignores `null` or `undefined` argument values.
+To add the current document to a channel, the function should call the special function `channel` which takes one or more channel names (or arrays of channel names) as arguments. For convenience, `channel` ignores `null` or `undefined` argument values.
 
-Defining a sync overrides the default channel mapping mechanism; that is, the `channels` property will be ignored.
+Defining a sync function overrides the default channel mapping mechanism; that is, the document's `channels` property will be ignored. The default mechanism is equivalent to the following simple sync function:
 
-The default mechanism is equivalent to the following simple sync function:
-
-    function (doc) { sync(doc.channels); }
+    function (doc) { channel(doc.channels); }
 
 ### Replicating channels to CouchDB or TouchDB
 
-The basics are simple: When pulling from Sync Gateway using the CouchDB API, configure the replication to use a filter named `sync_gateway/bychannel`, and a filter parameter `channels` whose value is a comma-separated list of channels to subscribe to. The replication will now only pull documents tagged with those channels.
+The basics are simple: When pulling from Sync Gateway using the CouchDB API, configure the replication to use a filter named `sync_gateway/bychannel`, and a filter parameter `channels` whose value is a comma-separated list of channels to fetch. The replication will now only pull documents tagged with those channels.
+
+(Yes, this sounds just like CouchDB filtered replication. The difference is that the implementation is much, much more efficient because it uses a B-tree index to find the matching documents, rather than simply calling a JavaScript filter function on every single document.)
 
 #### Removal from channels
 
@@ -89,31 +110,41 @@ The effect on the client will be that after a replication it sees the next revis
 
 This could seem weird ("why am I downloading documents I don't need?") but it ensures that any views running in the client will correctly no longer include the document, instead of including an obsolete revision. If the app code uses views to filter instead of just assuming that all docs in its local db must be relevant, it should be fine.
 
+
 ## Authentication & Authorization
 
-Sync Gateway supports user accounts that are allowed to access only a subset of channels.
+Sync Gateway supports user accounts that are allowed to access only a subset of channels (and hence documents).
 
 ### Accounts
 
 Accounts are managed through a parallel REST interface that runs on port 4985 (by default, but this can be customized via the `authaddr` command-line argument). This interface is privileged and for internal use only; instead, we assume you have some other server-side mechanism for users to manage accounts, which will call through to this API.
 
-The URL for a user account is simply "/user/_name_" where _name_ is the username. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
+The URL for a user account is simply "/_database_/user/_name_" where _name_ is the username and _database_ is the configured name of the database. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
 
 * "name": The user name (same as in the URL path). Names must consist of alphanumeric ASCII characters or underscores.
 * "admin_channels": An array of strings -- the channels that the user is granted access to by the administrator. The name "*" means "all channels". An empty array or missing property denies access to all channels.
-* "all_channels": Like "admin_channels" but also includes channels the user is given access to by other documents via a channel-mapper function. (This is a derived property and changes to it will be ignored.)
+* "all_channels": Like "admin_channels" but also includes channels the user is given access to by other documents via a sync function. (This is a derived property and changes to it will be ignored.)
+* "roles": An optional array of strings -- the roles (q.v.) the user belongs to.
 * "password": In a PUT or POST request, put the user's password here. It will not be returned by a GET.
 * "passwordhash": Securely hashed version of the password. This will be returned from a GET. If you want to update a user without changing the password, leave this alone when sending the modified JSON object back through PUT.
 * "disabled": Normally missing; if set to `true`, disables access for that account.
 * "email": The user's email address. Optional, but BrowserID login (q.v.) needs it.
 
-You can create a new user either with a PUT to its URL, or by POST to `/user/`.
+You can create a new user either with a PUT to its URL, or by POST to `/$DB/user/`.
 
-There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
+There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `admin_channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
 
 To disable all guest access, set the guest user's `disabled` property:
 
-    curl -X PUT localhost:4985/user/GUEST --data '{"disabled":true, "channels":[]}'
+    curl -X PUT localhost:4985/$DB/user/GUEST --data '{"disabled":true, "channels":[]}'
+
+### Roles
+
+A user account can be assigned to zero or more _roles_. Roles are simply named collections of channels; a user inherits the channel access of all roles it belongs to. This is very much like CouchDB; or like Unix groups, except that roles do not form a hierarchy.
+
+Roles are accessed through the admin REST API much like users are, through URLs of the form "/_database_/role/_name_". Role resources have a subset of the properties that users do: `name`, `admin_channels`, `all_channels`.
+
+Roles have a separate namespace from users, so it's legal to have a user and a role with the same name.
 
 ### Authentication
 
@@ -147,57 +178,38 @@ Any GET request to a document not assigned to one or more of the user's availabl
 
 Accessing a `_changes` feed with any channel names that are not available to the user will fail with a 403.
 
-There is not yet any _write_ protection; this is TBD. It's going to be conceptually trickier because there are definitely use cases where you create or update documents that are tagged with channels you don't have access to. We may just need a separate validation function as in CouchDB.
+Write protection is done by document validation functions, as in CouchDB: the function can look at the current user and determine whether that user should be able to make the change; if not, it throws an exception with a 403 Forbidden status code.
 
 There is currently an edge case where after a user is granted access to a new channel, their client will not automatically sync with pre-existing documents in that channel (that they didn't have access to before.) The workaround is for the client to do a one-shot sync from only that new channel, which having no checkpoint will start over from the beginning and fetch all the old documents.
 
 #### Programmatic Authorization
 
-It is possible for documents to grant users access to channels. A typical example is a document representing a shared resource (like a chat room or photo gallery), which has a property like `members` that lists the users who should have access to that resource. If the documents belonging to that resource are all tagged with a specific channel, then a channel-map function can be used to detect the membership property and assign access to the users listed in it:
+It is possible for documents to grant users access to channels; this is done by writing a sync function that recognizes such documents and calls a special `access()` function to grant access.
+
+`access() takes two parameters: the first is a user name or array of user names; the second is a channel name or array of channel names. For convenience, null values are ignored (treated as empty arrays.)
+
+A typical example is a document representing a shared resource (like a chat room or photo gallery), which has a property like `members` that lists the users who should have access to that resource. If the documents belonging to that resource are all tagged with a specific channel, then a sync function can be used to detect the membership property and assign access to the users listed in it:
 
 	function(doc) {
 		if (doc.type == "chatroom") {
-			access(doc.channel_id, doc.members)
+			access(doc.members, doc.channel_id)
 		}
 	}
 
 In this example, a chat room is represented by a document with a "type" property "chatroom". The "channel_id" property names the associated channel (with which the actual chat messages will be tagged), and the "members" property lists the users who have access.
 
+`access()` can also operate on roles: if a username string begins with `role:` then the remainder of the string is interpreted as a role name. (There's no ambiguity here, since ":" is an illegal character in a user or role name.)
 
-## Schema
+#### Authorizing Document Updates
 
-Unfortunately there isn't a simple one-to-one mapping between CouchDB and Couchbase documents, since Couchbase lacks support for multiple revisions.
+As mentioned earlier, sync functions can also authorize document updates. Just like a CouchDB validation function, a sync function can reject the document by throwing an exception:
 
-### Documents
+    throw({forbidden: "error message"})
 
-A CouchDB document is represented by a Couchbase document whose ID is `doc:` followed by the CouchDB document ID. The contents look like:
+A 403 Forbidden status and the given error string will be returned to the client.
 
-    { "id": "docid", "rev": "1-currentrevid",
-      "sequence": 1234
-      "history": {"revs": [...], "parents": [...], "keys": [...], "deleted": [...]} }
+To validate a document you often need to know which user is changing it, and sometimes you need to compare the old and new revisions. For those reasons the sync function actually takes up to three parameters, like a CouchDB validation function. To get access to the old revision and the user, declare it like this:
 
-`id` and `rev` are the IDs of the document and of its current (winning) revision. If the current revision is a deletion, there is also a `deleted` property whose value is `true`.
+    function(doc, oldDoc, user) { ... }
 
-`sequence` is the sequence number assigned to the latest change made to this document. This is only used for generating the view for the `_changes` feed.
-
-`history` is the revision tree, encoded as parallel arrays: `revs` is an array of revision IDs, and `parents` is an array of integers. For each revision in `revs`, the corresponding element of `parents` is the index of its parent revision (or -1 if the revision has no parent.) The `keys` array gives the key under which that revision's contents are stored in Couchbase. The optional `deleted` array is not parallel with the others; it's just an array of indexes of revisions that are deletions.
-
-### Local Documents
-
-Local documents have an ID prefix of `ldoc:`. The contents are the same as the CouchDB properties, including the specisl `_rev` property that stores the current revision ID.
-
-### Revisions
-
-The contents of a CouchDB document revision are stored in a Couchbase document whose ID starts with `rev:`. The rest of the ID is the revision key as found in the `keys` array of a document's `history` object. This key is in practice a base64'd SHA-1 digest of the revision's JSON.
-
-The contents of a revision document are simply the contents of that revision. For maximum reuse, the `_id` and `_rev` properties are not included, although `_deleted` and `_attachments` are.
-
-Note that revisions are a _content-addressable store_, in that the document key is derived from the contents. This allows revisions with the same contents to be stored only once, saving space. This is especially important for use cases like Syncpoint, where a document may be replicated into large numbers of databases. As long as all the databases are in the same bucket, each revision of the document will only be stored once. However, an explicit garbage collection is required to locate and delete revisions that are no longer referred to by any document.
-
-### Attachments
-
-Revisions store attachment metadata in stubbed-out form, with a `"stub":true` property and no data. The `digest` property in the metadata is used to look up an attachment body.
-
-An attachment's body is stored in a Couchbase document whose ID is `att:` followed by the attachment metadata's `digest` property. (Attachments are therefore another content-addressable store, with a different namespace, and have the same benefit that a specific file will only ever be stored once no matter how many documents it's attached to.)
-
-An attachment document's body is _not_ JSON. It's simply the raw binary contents. The metadata of an attachment, such as name and MIME type, lives in the `_attachments` property of a revision that refers to it.
+`oldDoc` is the old revision of the document (or empty if this is a new document.) `user` is an object with properties `name` (the username), `roles` (an array of the names of the user's roles), and `channels` (an array of all channels the user has access to.)

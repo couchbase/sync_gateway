@@ -3,7 +3,7 @@
 package base
 
 import (
-	"strings"
+	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -39,7 +39,7 @@ func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucke
 }
 
 func GetBucket(url, poolName, bucketName string) (bucket Bucket, err error) {
-	if strings.HasPrefix(url, "walrus:") {
+	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, url); isWalrus {
 		walrus.Logging = true
 		return walrus.GetBucket(url, poolName, bucketName)
 	}

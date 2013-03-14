@@ -70,11 +70,12 @@ func NewValidator(funcSource string) (*Validator, error) {
 
 func makeUserCtx(user auth.User) string {
 	if user == nil {
-		return `{"name":null, "channels":[]}`
+		return `{"name":null, "roles":[], "channels":[]}`
 	}
 	info := map[string]interface{}{}
 	info["name"] = user.Name()
-	info["channels"] = user.Channels()
+	info["roles"] = user.RoleNames()
+	info["channels"] = user.InheritedChannels()
 	json, _ := json.Marshal(info)
 	return string(json)
 }
