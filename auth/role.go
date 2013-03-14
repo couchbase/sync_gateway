@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -52,6 +53,20 @@ func NewRole(name string, channels ch.Set) (Role, error) {
 	return role, nil
 }
 
+func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string) (Role, error) {
+	role := &roleImpl{}
+	if err := json.Unmarshal(data, role); err != nil {
+		return nil, err
+	}
+	if role.Name_ == "" {
+		role.Name_ = defaultName
+	}
+	if err := role.validate(); err != nil {
+		return nil, err
+	}
+	return role, nil
+}
+
 func docIDForRole(name string) string {
 	return "role:" + name
 }
@@ -88,7 +103,7 @@ func (role *roleImpl) validate() error {
 	if !kValidNameRegexp.MatchString(role.Name_) {
 		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid name %q", role.Name_)}
 	}
-	return nil
+	return role.ExplicitChannels_.Validate()
 }
 
 //////// CHANNEL AUTHORIZATION:

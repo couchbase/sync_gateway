@@ -55,7 +55,7 @@ func TestDesignDocs(t *testing.T) {
 
 func TestUserAPI(t *testing.T) {
 	// PUT a user
-	assertStatus(t, callAuthREST("GET", "/db/users/snej", ""), 404)
+	assertStatus(t, callAuthREST("GET", "/db/user/snej", ""), 404)
 	response := callAuthREST("PUT", "/db/user/snej", `{"password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
 
@@ -81,4 +81,34 @@ func TestUserAPI(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["name"], "snej")
 	assertStatus(t, callAuthREST("DELETE", "/db/user/snej", ""), 200)
+}
+
+func TestRoleAPI(t *testing.T) {
+	// PUT a role
+	assertStatus(t, callAuthREST("GET", "/db/role/hipster", ""), 404)
+	response := callAuthREST("PUT", "/db/role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
+	assertStatus(t, response, 201)
+
+	// GET the role and make sure the result is OK
+	response = callAuthREST("GET", "/db/role/hipster", "")
+	assertStatus(t, response, 200)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["name"], "hipster")
+	assert.DeepEquals(t, body["admin_channels"], []interface{}{"fedoras", "fixies"})
+	assert.Equals(t, body["password"], nil)
+
+	// DELETE the role
+	assertStatus(t, callAuthREST("DELETE", "/db/role/hipster", ""), 200)
+	assertStatus(t, callAuthREST("GET", "/db/role/hipster", ""), 404)
+
+	// POST a role
+	response = callAuthREST("POST", "/db/role", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
+	assertStatus(t, response, 201)
+	response = callAuthREST("GET", "/db/role/hipster", "")
+	assertStatus(t, response, 200)
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["name"], "hipster")
+	assertStatus(t, callAuthREST("DELETE", "/db/role/hipster", ""), 200)
 }

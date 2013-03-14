@@ -62,6 +62,15 @@ func SetFromArray(names []string, mode StarMode) (Set, error) {
 	return result, nil
 }
 
+func (set Set) Validate() error {
+	for name, _ := range set {
+		if !IsValidChannel(name) {
+			return fmt.Errorf("Illegal channel name %q", name)
+		}
+	}
+	return nil
+}
+
 // Creates a set from zero or more inline string arguments.
 // Channel names must be valid, else the function will panic, so this should only be called
 // with hardcoded known-valid strings.

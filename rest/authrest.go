@@ -22,47 +22,110 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-//////// USER REQUESTS:
+//////// USER & ROLE REQUESTS:
 
-// Handles PUT or POST to /username
-func putUserCommon(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, username string) error {
-	body, _ := ioutil.ReadAll(rq.Body)
-	user, err := a.UnmarshalUser(body, username)
-	if err != nil {
-		return err
-	}
-	if user.ExplicitChannels() == nil {
+// Common behavior of putUser and putRole
+func putPrincipal(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, name string, princ auth.Principal) error {
+	if princ.ExplicitChannels() == nil {
 		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
 	}
-	a.InvalidateChannels(user)
+	a.InvalidateChannels(princ)
 
 	if rq.Method == "POST" {
-		username = user.Name()
-		if username == "" {
+		name = princ.Name()
+		if name == "" {
 			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
 		}
-	} else if user.Name() != username {
+	} else if princ.Name() != name {
 		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
-	err = a.Save(user)
+	err := a.Save(princ)
 	if err == nil {
 		r.WriteHeader(http.StatusCreated)
 	}
 	return err
 }
 
-func postUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	return putUserCommon(r, rq, auth, "")
-}
-
-func putUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+// Handles PUT or POST to /user/*
+func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator) error {
 	muxed := mux.Vars(rq)
 	username := muxed["name"]
 	if username == "GUEST" {
 		username = "" //todo handle this at model layer?
 	}
-	return putUserCommon(r, rq, auth, username)
+	body, _ := ioutil.ReadAll(rq.Body)
+	user, err := a.UnmarshalUser(body, username)
+	if err != nil {
+		return err
+	}
+	return putPrincipal(r, rq, a, username, user)
 }
+
+// Handles PUT or POST to /role/*
+func putRole(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator) error {
+	rolename := mux.Vars(rq)["name"]
+	body, _ := ioutil.ReadAll(rq.Body)
+	role, err := a.UnmarshalRole(body, rolename)
+	if err != nil {
+		return err
+	}
+	return putPrincipal(r, rq, a, rolename, role)
+}
+
+func deleteUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	user, err := auth.GetUser(mux.Vars(rq)["name"])
+	if user == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+	return auth.Delete(user)
+}
+
+func deleteRole(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	role, err := auth.GetRole(mux.Vars(rq)["name"])
+	if role == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+	return auth.Delete(role)
+}
+
+func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	muxed := mux.Vars(rq)
+	username := muxed["name"]
+	if username == "GUEST" {
+		username = "" //todo handle this at model layer?
+	}
+	user, err := auth.GetUser(username)
+	if user == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+	bytes, err := json.Marshal(user)
+	r.Write(bytes)
+	return err
+}
+
+func getRoleInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+	role, err := auth.GetRole(mux.Vars(rq)["name"])
+	if role == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+	bytes, err := json.Marshal(role)
+	r.Write(bytes)
+	return err
+}
+
+//////// SESSION:
 
 // Generates a login session for a user and returns the session ID and cookie name.
 func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *auth.Authenticator) error {
@@ -99,38 +162,8 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	return nil
 }
 
-func deleteUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	muxed := mux.Vars(rq)
-	username := muxed["name"]
-	user, err := auth.GetUser(username)
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
-		return err
-	}
-	return auth.Delete(user)
-}
 
-func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	muxed := mux.Vars(rq)
-	username := muxed["name"]
-	if username == "GUEST" {
-		username = "" //todo handle this at model layer?
-	}
-	user, err := auth.GetUser(username)
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
-		return err
-	}
-	bytes, _ := json.Marshal(user)
-	r.Write(bytes)
-	return nil
-}
-
-// DESIGN DOCUMENTS:
+//////// DESIGN DOCUMENTS:
 
 func (h *handler) handleGetDesignDoc() error {
 	docid := h.PathVars()["docid"]
@@ -166,7 +199,7 @@ func (h *handler) handleDelDesignDoc() error {
 	return h.db.DeleteSpecial("design", docid, h.getQuery("rev"))
 }
 
-// HTTP HANDLER:
+//////// HTTP HANDLER:
 
 func renderError(err error, r http.ResponseWriter) {
 	status, message := base.ErrorAsHTTPStatus(err)
@@ -191,10 +224,10 @@ func handleAuthReq(auth *auth.Authenticator, fun authHandler) func(http.Response
 func createAuthHandler(c *context) http.Handler {
 	auth := c.auth
 	r := mux.NewRouter()
-	// r.StrictSlash(true)
 
 	r.HandleFunc("/{db}/_session",
 		handleAuthReq(auth, createUserSession)).Methods("POST")
+
 	r.HandleFunc("/{db}/user/{name}",
 		handleAuthReq(auth, getUserInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/user/{name}",
@@ -202,7 +235,16 @@ func createAuthHandler(c *context) http.Handler {
 	r.HandleFunc("/{db}/user/{name}",
 		handleAuthReq(auth, deleteUser)).Methods("DELETE")
 	r.HandleFunc("/{db}/user",
-		handleAuthReq(auth, postUser)).Methods("POST")
+		handleAuthReq(auth, putUser)).Methods("POST")
+
+	r.HandleFunc("/{db}/role/{name}",
+		handleAuthReq(auth, getRoleInfo)).Methods("GET", "HEAD")
+	r.HandleFunc("/{db}/role/{name}",
+		handleAuthReq(auth, putRole)).Methods("PUT")
+	r.HandleFunc("/{db}/role/{name}",
+		handleAuthReq(auth, deleteRole)).Methods("DELETE")
+	r.HandleFunc("/{db}/role",
+		handleAuthReq(auth, putRole)).Methods("POST")
 
 	dbr := r.PathPrefix("/{db}/").Subrouter()
 	dbr.Handle("/_design/{docid}",
@@ -212,7 +254,6 @@ func createAuthHandler(c *context) http.Handler {
 	dbr.Handle("/_design/{docid}",
 		makeAdminHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
 
-	// http.Handle("/", r);
 	return r
 }
 

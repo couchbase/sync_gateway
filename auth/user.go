@@ -102,6 +102,11 @@ func (user *userImpl) validate() error {
 		// Real user must have a password; anon user must not have a password
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
+	for _, roleName := range user.RoleNames_ {
+		if !kValidNameRegexp.MatchString(roleName) {
+			return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid role name %q", roleName)}
+		}
+	}
 	return nil
 }
 
