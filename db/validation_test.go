@@ -40,7 +40,7 @@ func TestValidatorException(t *testing.T) {
 }
 
 func TestValidatorUser(t *testing.T) {
-	var a *auth.Authenticator
+	a := auth.NewAuthenticator(nil, nil)
 	validator, err := NewValidator(`function(doc,oldDoc,userCtx) {
 										if (doc.owner != userCtx.name)
 											throw({"forbidden": userCtx.name});}`)

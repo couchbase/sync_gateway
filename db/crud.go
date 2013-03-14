@@ -355,7 +355,8 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 	}
 
 	if db.ChannelMapper != nil {
-		output, err := db.ChannelMapper.MapToChannelsAndAccess(string(newJson), string(oldJson),
+		var output *channels.ChannelMapperOutput
+		output, err = db.ChannelMapper.MapToChannelsAndAccess(string(newJson), string(oldJson),
 			makeUserCtx(db.user))
 		if err == nil {
 			result = output.Channels
@@ -363,7 +364,10 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 			err = output.Rejection
 			if err != nil {
 				base.Log("Sync fn rejected: new=%s  old=%s --> %s", newJson, oldJson, err)
+			} else if !validateAccessMap(access) {
+				err = &base.HTTPError{500, fmt.Sprintf("Error in JS sync function")}
 			}
+
 		} else {
 			base.Warn("Sync fn exception: %v; doc = %s", err, newJson)
 			err = &base.HTTPError{500, "Exception in JS sync function"}
@@ -416,12 +420,27 @@ func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (
 	return changed
 }
 
+// Are the principal and role names in an AccessMap all valid?
+func validateAccessMap(access channels.AccessMap) bool {
+	for name, _ := range access {
+		if strings.HasPrefix(name, "role:") {
+			name = name[5:] // Roles are identified in access view by a "role:" prefix
+		}
+		if !auth.IsValidPrincipalName(name) {
+			base.Warn("Invalid user/role name %q in access() call", name)
+			return false
+		}
+	}
+	return true
+}
+
 // Updates the Access property of a document object
 func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
 	oldAccess := doc.Access
 	if reflect.DeepEqual(newAccess, oldAccess) {
 		return false
 	}
+
 	doc.Access = newAccess
 	base.LogTo("CRUD", "\tDoc %q grants access: %+v", doc.ID, newAccess)
 
@@ -444,20 +463,23 @@ func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap)
 func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.Set, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
-		key = "role:" + key
+		key = "role:" + key // Roles are identified in access view by a "role:" prefix
 	}
 	opts := map[string]interface{}{"stale": false, "key": key}
 	vres := couchbase.ViewResult{}
-	if verr := context.Bucket.ViewCustom("sync_gateway_auth", "access", opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
 		return nil, verr
 	}
+	base.TEMP("VIEW opts=%v, result=%v", opts, vres)
 	allChannels := make([]string, 0, 50)
 	for _, row := range vres.Rows {
 		for _, item := range row.Value.([]interface{}) {
 			allChannels = append(allChannels, item.(string))
 		}
 	}
-	return channels.SetFromArray(allChannels, channels.RemoveStar)
+	channelSet, err := channels.SetFromArray(allChannels, channels.RemoveStar)
+	base.LogTo("CRUD", "Computed channels for %q: %s", princ.Name(), channelSet)
+	return channelSet, err
 }
 
 //////// REVS_DIFF:

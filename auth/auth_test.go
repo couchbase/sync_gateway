@@ -32,7 +32,6 @@ func init() {
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
-	err = InstallDesignDoc(gTestBucket)
 	if err != nil {
 		log.Fatalf("Couldn't install design doc: %v", err)
 	}
@@ -68,13 +67,14 @@ func TestValidateUser(t *testing.T) {
 }
 
 func TestValidateRole(t *testing.T) {
-	role, err := NewRole("invalid:name", nil)
+	auth := NewAuthenticator(gTestBucket, nil)
+	role, err := auth.NewRole("invalid:name", nil)
 	assert.Equals(t, role, (User)(nil))
 	assert.True(t, err != nil)
-	role, err = NewRole("ValidName", nil)
+	role, err = auth.NewRole("ValidName", nil)
 	assert.True(t, role != nil)
 	assert.Equals(t, err, nil)
-	role, err = NewRole("ValidName", nil)
+	role, err = auth.NewRole("ValidName", nil)
 	assert.True(t, role != nil)
 	assert.Equals(t, err, nil)
 }
@@ -124,7 +124,8 @@ func TestSerializeUser(t *testing.T) {
 }
 
 func TestSerializeRole(t *testing.T) {
-	role, _ := NewRole("froods", ch.SetOf("hoopy", "public"))
+	auth := NewAuthenticator(gTestBucket, nil)
+	role, _ := auth.NewRole("froods", ch.SetOf("hoopy", "public"))
 	encoded, _ := json.Marshal(role)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled Role as: %s", encoded)
@@ -235,7 +236,7 @@ func TestSaveUsers(t *testing.T) {
 
 func TestSaveRoles(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket, nil)
-	role, _ := NewRole("testRole", ch.SetOf("test"))
+	role, _ := auth.NewRole("testRole", ch.SetOf("test"))
 	err := auth.Save(role)
 	assert.Equals(t, err, nil)
 
@@ -270,7 +271,7 @@ func TestRebuildUserChannels(t *testing.T) {
 func TestRebuildRoleChannels(t *testing.T) {
 	computer := mockComputer{channels: ch.SetOf("derived1", "derived2")}
 	auth := NewAuthenticator(gTestBucket, &computer)
-	role, _ := NewRole("testRole", ch.SetOf("explicit1"))
+	role, _ := auth.NewRole("testRole", ch.SetOf("explicit1"))
 	err := auth.InvalidateChannels(role)
 	assert.Equals(t, err, nil)
 
@@ -280,24 +281,25 @@ func TestRebuildRoleChannels(t *testing.T) {
 }
 
 func TestRebuildChannelsError(t *testing.T) {
-	intendedError := fmt.Errorf("I'm sorry, Dave.")
-	computer := mockComputer{err: intendedError}
+	computer := mockComputer{}
 	auth := NewAuthenticator(gTestBucket, &computer)
-	role, _ := NewRole("testRole2", ch.SetOf("explicit1"))
-	err := auth.InvalidateChannels(role)
+	role, err := auth.NewRole("testRole2", ch.SetOf("explicit1"))
 	assert.Equals(t, err, nil)
+	assert.Equals(t, auth.InvalidateChannels(role), nil)
+
+	computer.err = fmt.Errorf("I'm sorry, Dave.")
 
 	role2, err := auth.GetRole("testRole2")
 	assert.Equals(t, role2, nil)
-	assert.DeepEquals(t, err, intendedError)
+	assert.DeepEquals(t, err, computer.err)
 }
 
 func TestRoleInheritance(t *testing.T) {
 	// Create some roles:
 	auth := NewAuthenticator(gTestBucket, nil)
-	role, _ := NewRole("square", ch.SetOf("dull", "duller", "dullest"))
+	role, _ := auth.NewRole("square", ch.SetOf("dull", "duller", "dullest"))
 	assert.Equals(t, auth.Save(role), nil)
-	role, _ = NewRole("frood", ch.SetOf("hoopy", "hoopier", "hoopiest"))
+	role, _ = auth.NewRole("frood", ch.SetOf("hoopy", "hoopier", "hoopiest"))
 	assert.Equals(t, auth.Save(role), nil)
 
 	user, _ := auth.NewUser("arthur", "password", ch.SetOf("britain"))

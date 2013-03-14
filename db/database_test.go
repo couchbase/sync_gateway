@@ -16,6 +16,7 @@ import (
 
 	"github.com/sdegutis/go.assert"
 
+	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
@@ -47,6 +48,12 @@ func tearDownTestDB(t *testing.T, db *Database) {
 	if status != 200 && status != 404 {
 		assertNoError(t, err, "Couldn't delete database 'db'")
 	}
+}
+
+func assertHTTPError(t *testing.T, err error, status int) {
+	httpErr, ok := err.(*base.HTTPError)
+	assert.True(t, ok)
+	assert.Equals(t, httpErr.Status, 500)
 }
 
 func TestDatabase(t *testing.T) {
@@ -203,4 +210,80 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, channels.Set(nil))
 	}
+}
+
+func TestInvalidChannel(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
+
+	body := Body{"channels": []string{"bad name"}}
+	_, err := db.Put("doc", body)
+	assertHTTPError(t, err, 500)
+}
+
+func TestAccessFunctionValidation(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	var err error
+	db.ChannelMapper, err = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+	assertNoError(t, err, "Couldn't create channel mapper")
+
+	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
+	_, err = db.Put("doc1", body)
+	assertNoError(t, err, "")
+
+	body = Body{"users": []string{"role:rolename"}, "userChannels": []string{"BBC1"}}
+	_, err = db.Put("doc2", body)
+	assertNoError(t, err, "")
+
+	body = Body{"users": []string{"bad username"}, "userChannels": []string{"BBC1"}}
+	_, err = db.Put("doc3", body)
+	assertHTTPError(t, err, 500)
+
+	body = Body{"users": []string{"role:bad rolename"}, "userChannels": []string{"BBC1"}}
+	_, err = db.Put("doc4", body)
+	assertHTTPError(t, err, 500)
+
+	body = Body{"users": []string{"roll:over"}, "userChannels": []string{"BBC1"}}
+	_, err = db.Put("doc5", body)
+	assertHTTPError(t, err, 500)
+
+	body = Body{"users": []string{"username"}, "userChannels": []string{"bad name"}}
+	_, err = db.Put("doc6", body)
+	assertHTTPError(t, err, 500)
+}
+
+func TestAccessFunction(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+
+	var err error
+	db.ChannelMapper, err = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+	assertNoError(t, err, "Couldn't create channel mapper")
+
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
+	user.SetRoleNames([]string{"animefan", "tumblr"})
+	authenticator.Save(user)
+
+	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
+	_, err = db.Put("doc1", body)
+	assertNoError(t, err, "")
+
+	body = Body{"users": []string{"role:animefan"}, "userChannels": []string{"CrunchyRoll"}}
+	_, err = db.Put("doc2", body)
+	assertNoError(t, err, "")
+
+	// Create the role _after_ creating the documents, to make sure the previously-indexed access
+	// privileges are applied.
+	role, _ := authenticator.NewRole("animefan", nil)
+	authenticator.Save(role)
+
+	user, _ = authenticator.GetUser("naomi")
+	assert.DeepEquals(t, user.Channels(), channels.SetOf("Hulu", "Netflix"))
+	assert.DeepEquals(t, user.InheritedChannels(), channels.SetOf("Hulu", "CrunchyRoll", "Netflix"))
 }

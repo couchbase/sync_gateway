@@ -40,14 +40,21 @@ func (role *roleImpl) initRole(name string, channels ch.Set) error {
 	channels = channels.ExpandingStar()
 	role.Name_ = name
 	role.ExplicitChannels_ = channels
-	role.Channels_ = channels
 	return role.validate()
 }
 
+// Is this string a valid name for a User/Role? (Valid chars are alphanumeric and any of "_-+.@")
+func IsValidPrincipalName(name string) bool {
+	return kValidNameRegexp.MatchString(name)
+}
+
 // Creates a new Role object.
-func NewRole(name string, channels ch.Set) (Role, error) {
+func (auth *Authenticator) NewRole(name string, channels ch.Set) (Role, error) {
 	role := &roleImpl{}
 	if err := role.initRole(name, channels); err != nil {
+		return nil, err
+	}
+	if err := auth.rebuildChannels(role); err != nil {
 		return nil, err
 	}
 	return role, nil
@@ -100,7 +107,7 @@ func (role *roleImpl) ExplicitChannels() ch.Set {
 
 // Checks whether this role object contains valid data; if not, returns an error.
 func (role *roleImpl) validate() error {
-	if !kValidNameRegexp.MatchString(role.Name_) {
+	if !IsValidPrincipalName(role.Name_) {
 		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid name %q", role.Name_)}
 	}
 	return role.ExplicitChannels_.Validate()

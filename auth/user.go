@@ -70,6 +70,9 @@ func (auth *Authenticator) NewUser(username string, password string, channels ch
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
+	if err := auth.rebuildChannels(user); err != nil {
+		return nil, err
+	}
 	user.SetPassword(password)
 	return user, nil
 }
@@ -103,7 +106,7 @@ func (user *userImpl) validate() error {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
 	for _, roleName := range user.RoleNames_ {
-		if !kValidNameRegexp.MatchString(roleName) {
+		if !IsValidPrincipalName(roleName) {
 			return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid role name %q", roleName)}
 		}
 	}
@@ -179,6 +182,7 @@ func (user *userImpl) GetRoles() []Role {
 		roles := make([]Role, 0, len(user.RoleNames_))
 		for _, name := range user.RoleNames_ {
 			role, err := user.auth.GetRole(name)
+			base.LogTo("Auth", "User %s role %q = %v", user.Name_, name, role)
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {

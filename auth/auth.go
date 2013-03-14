@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 
 	"github.com/couchbaselabs/go-couchbase"
-	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
@@ -91,17 +90,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			// Principal is valid, so stop the update
 			return nil, couchbase.UpdateCancel
 		}
-		// Channel list has been invalidated by a doc update -- rebuild from view:
-		channels := princ.ExplicitChannels()
-		if auth.channelComputer != nil {
-			set, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
-			if err != nil {
-				return nil, err
-			}
-			channels = channels.Union(set)
+		// Channel list has been invalidated by a doc update -- rebuild it:
+		if err := auth.rebuildChannels(princ); err != nil {
+			return nil, err
 		}
-		princ.setChannels(channels)
-
 		// Save the updated doc:
 		return json.Marshal(princ)
 	})
@@ -110,6 +102,19 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		return nil, err
 	}
 	return princ, nil
+}
+
+func (auth *Authenticator) rebuildChannels(princ Principal) error {
+	channels := princ.ExplicitChannels()
+	if auth.channelComputer != nil {
+		set, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
+		if err != nil {
+			return err
+		}
+		channels = channels.Union(set)
+	}
+	princ.setChannels(channels)
+	return nil
 }
 
 // Looks up a User by email address.
@@ -146,6 +151,7 @@ func (auth *Authenticator) Save(p Principal) error {
 			//FIX: Unregister old email address if any
 		}
 	}
+	base.LogTo("Auth", "Saved %s: %s", p.docID(), data)
 	return nil
 }
 
@@ -178,29 +184,4 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 		return nil
 	}
 	return user
-}
-
-// Installs the design document necessary for authentication.
-func InstallDesignDoc(bucket base.Bucket) error {
-	// By-access view
-	access_map := `function (doc, meta) {
-	                    var sync = doc._sync;
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                        return;
-	                    var sequence = sync.sequence;
-	                    if (sync.deleted || sequence === undefined)
-	                        return;
-	                    var access = sync.access;
-	                    if (access) {
-	                        for (var name in access) {
-	                            emit(name, access[name]);
-	                        }
-	                    }
-	               }`
-	ddoc := walrus.DesignDoc{Views: walrus.ViewMap{"access": walrus.ViewDef{Map: access_map}}}
-	err := bucket.PutDDoc("sync_gateway_auth", ddoc)
-	if err != nil {
-		base.Warn("Error installing Couchbase auth design doc: %v", err)
-	}
-	return err
 }

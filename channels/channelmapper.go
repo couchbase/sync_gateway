@@ -48,7 +48,7 @@ type ChannelMapper struct {
 	js       *walrus.JSServer
 }
 
-// Maps user names to arrays of channel names
+// Maps user names (or role names prefixed with "role:") to arrays of channel names
 type AccessMap map[string]Set
 
 // Converts a JS array into a Go string array.

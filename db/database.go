@@ -46,9 +46,6 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Buc
 	}
 	base.Log("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
 	err = installViews(bucket)
-	if err == nil {
-		err = auth.InstallDesignDoc(bucket)
-	}
 	return
 }
 
@@ -173,12 +170,28 @@ func installViews(bucket base.Bucket) error {
 							}
 						}
 					}`
+	// Channel access view, used by ComputeChannelsForPrincipal()
+	access_map := `function (doc, meta) {
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                        return;
+	                    var sequence = sync.sequence;
+	                    if (sync.deleted || sequence === undefined)
+	                        return;
+	                    var access = sync.access;
+	                    if (access) {
+	                        for (var name in access) {
+	                            emit(name, access[name]);
+	                        }
+	                    }
+	               }`
 
 	ddoc := walrus.DesignDoc{
 		Views: walrus.ViewMap{
 			"all_bits": walrus.ViewDef{Map: allbits_map},
 			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			"channels": walrus.ViewDef{Map: channels_map},
+			"access":   walrus.ViewDef{Map: access_map},
 			"changes":  walrus.ViewDef{Map: changes_map},
 		},
 	}
