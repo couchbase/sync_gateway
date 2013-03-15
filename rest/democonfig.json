@@ -1,0 +1,9 @@
+{
+	"log": ["CRUD", "REST+"],
+	"databases": [
+		{
+			"name": "db",
+			"server": "walrus:"
+		}
+	]
+}

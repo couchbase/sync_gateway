@@ -12,13 +12,13 @@ package rest
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"os"
 	"strings"
 	"time"
-
-	"fmt"
 
 	"github.com/gorilla/mux"
 
@@ -718,6 +718,12 @@ func createHandler(c *context) http.Handler {
 	return r
 }
 
+func fail(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+	panic("unreachable")
+}
+
 // Main entry point for a simple server; you can have your main() function just call this.
 func ServerMain() {
 	siteURL := flag.String("site", "", "Server's official URL")
@@ -732,6 +738,51 @@ func ServerMain() {
 	logKeys := flag.String("log", "", "Log keywords, comma separated")
 	flag.Parse()
 
+	if flag.NArg() > 0 {
+		// Use a configuration file if one is given:
+		if flag.NArg() > 1 {
+			fail("Sorry, multiple config files not supported.")
+		}
+
+		config, err := ReadConfig(flag.Arg(0))
+		if err != nil {
+			fail("Can't read config file: %v", err)
+		} else if len(config.Databases) != 1 {
+			fail("Config must have exactly one database")
+		}
+
+		pretty = &config.Pretty
+		if config.Log != nil {
+			arg := strings.Join(config.Log, ",")
+			logKeys = &arg
+		}
+		if config.Interface != nil {
+			addr = config.Interface
+		}
+		if config.AdminInterface != nil {
+			authAddr = config.AdminInterface
+		}
+		if config.BrowserID != nil && config.BrowserID.Origin != nil {
+			siteURL = config.BrowserID.Origin
+		}
+		db := config.Databases[0]
+		if db.Name == nil {
+			fail("Missing database name in config file")
+		}
+		dbName = db.Name
+		if db.Server != nil {
+			couchbaseURL = db.Server
+		}
+		if db.Pool != nil {
+			poolName = db.Pool
+		}
+		if db.BucketName != nil {
+			bucketName = db.BucketName
+		} else {
+			bucketName = db.Name
+		}
+	}
+
 	PrettyPrint = *pretty
 
 	base.LogKeys["HTTP"] = true
@@ -740,7 +791,7 @@ func ServerMain() {
 
 	bucket, err := db.ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
 	if err != nil {
-		base.LogPanic("Error getting bucket '%s':  %v\n", *bucketName, err)
+		fail("Error getting bucket '%s':  %v\n", *bucketName, err)
 	}
 
 	if *dbName == "" {
@@ -749,7 +800,7 @@ func ServerMain() {
 
 	context, handler, err := InitREST(bucket, *dbName, *siteURL, true)
 	if err != nil {
-		base.LogPanic("Error initializing REST API:  %v\n", err)
+		fail("Error initializing REST API:  %v\n", err)
 	}
 
 	http.Handle("/", handler)
@@ -761,6 +812,6 @@ func ServerMain() {
 	base.Log("Starting server on %s for database %q", *addr, *dbName)
 	err = http.ListenAndServe(*addr, nil)
 	if err != nil {
-		base.LogPanic("Server failed: ", err.Error())
+		fail("Server failed: ", err.Error())
 	}
 }
