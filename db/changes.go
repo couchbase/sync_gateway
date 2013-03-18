@@ -184,10 +184,11 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 			i := 0
 			for name, _ := range channels {
 				var err error
-				feeds[i], err = db.ChangesFeed(name, options)
+				feed, err := db.ChangesFeed(name, options)
 				if err != nil {
 					return
 				}
+        feeds = append(feeds,feed)
 				i++
 			}
 
