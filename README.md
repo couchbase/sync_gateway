@@ -60,6 +60,25 @@ Using a real Couchbase server, once you've got one set up, is as easy as changin
 
 If you want to use a different name for the bucket, or listen on a different port, you can do that with command-line options. Use the `--help` flag to see a list of options.
 
+### Configuration files
+
+Instead of entering the settings on the command-line, you can store them in a JSON file and then just provide the path to that file as a command-line argument. As a bonus, the file lets you run multiple databases.
+
+Here's an example configuration file that starts a server with the default settings:
+
+    {
+        "interface": ":4984",
+        "adminInterface": ":4985",
+        "log": ["CRUD", "REST"],
+        "databases": [
+            {
+                "name": "sync_gateway",
+                "server": "http://localhost:8091"
+                "bucket": "sync_gateway"
+            }
+        ]
+    }
+
 ## Channels
 
 Channels are the intermediaries between documents and users. Every document belongs to a set of channels, and every user has a set of channels s/he is allowed to access. Additionally, a replication from Sync Gateway specifies what channels it wants to replicate; documents not in any of these channels will be ignored (even if the user has access to them.)

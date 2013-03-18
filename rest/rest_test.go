@@ -39,10 +39,11 @@ func init() {
 }
 
 func callREST(method, resource string, body string) *httptest.ResponseRecorder {
-	_, handler, err := InitREST(gTestBucket, "db", "", false)
-	if err != nil {
-		panic(fmt.Sprintf("Error from InitREST: %v", err))
+	sc := newServerContext(&ServerConfig{})
+	if err := sc.addDatabase(gTestBucket, "db", false); err != nil {
+		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
+	handler := createHandler(sc)
 
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)

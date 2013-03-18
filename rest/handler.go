@@ -36,6 +36,7 @@ var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
+	server   *serverContext
 	context  *context
 	rq       *http.Request
 	response http.ResponseWriter
@@ -47,12 +48,12 @@ type handler struct {
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeAdminHandler(context *context, method handlerMethod) http.Handler {
+func makeAdminHandler(server *serverContext, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := &handler{
+			server:   server,
 			rq:       rq,
 			response: r,
-			context:  context,
 			admin:    true,
 		}
 		err := h.invoke(method)
@@ -61,12 +62,12 @@ func makeAdminHandler(context *context, method handlerMethod) http.Handler {
 }
 
 // Creates an http.Handler that will run a handler with the given method
-func makeHandler(context *context, method handlerMethod) http.Handler {
+func makeHandler(server *serverContext, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := &handler{
+			server:   server,
 			rq:       rq,
 			response: r,
-			context:  context,
 			admin:    false,
 		}
 		err := h.invoke(method)
@@ -89,7 +90,8 @@ func (h *handler) invoke(method handlerMethod) error {
 	// If there is a "db" path variable, look up the database:
 	if dbname, ok := h.PathVars()["db"]; ok {
 		var err error
-		if dbname == h.context.dbcontext.Name {
+		h.context = h.server.databases[dbname]
+		if h.context != nil {
 			h.db, err = db.GetDatabase(h.context.dbcontext, h.user)
 		} else {
 			err = &base.HTTPError{http.StatusNotFound, "no such database"}
@@ -104,7 +106,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 func (h *handler) checkAuth() error {
 	h.user = nil
-	if h.context.auth == nil {
+	if h.context == nil || h.context.auth == nil {
 		return nil
 	}
 

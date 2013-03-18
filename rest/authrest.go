@@ -162,7 +162,6 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	return nil
 }
 
-
 //////// DESIGN DOCUMENTS:
 
 func (h *handler) handleGetDesignDoc() error {
@@ -211,9 +210,14 @@ func renderError(err error, r http.ResponseWriter) {
 
 type authHandler func(http.ResponseWriter, *http.Request, *auth.Authenticator) error
 
-func handleAuthReq(auth *auth.Authenticator, fun authHandler) func(http.ResponseWriter, *http.Request) {
+func handleAuthReq(sc *serverContext, fun authHandler) func(http.ResponseWriter, *http.Request) {
 	return func(r http.ResponseWriter, rq *http.Request) {
-		err := fun(r, rq, auth)
+		dbContext := sc.databases[mux.Vars(rq)["db"]]
+		if dbContext == nil {
+			r.WriteHeader(http.StatusNotFound)
+			return
+		}
+		err := fun(r, rq, dbContext.auth)
 		if err != nil {
 			renderError(err, r)
 		}
@@ -221,42 +225,41 @@ func handleAuthReq(auth *auth.Authenticator, fun authHandler) func(http.Response
 }
 
 // Starts a simple REST listener that will get and set user credentials.
-func createAuthHandler(c *context) http.Handler {
-	auth := c.auth
+func createAuthHandler(sc *serverContext) http.Handler {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/{db}/_session",
-		handleAuthReq(auth, createUserSession)).Methods("POST")
+		handleAuthReq(sc, createUserSession)).Methods("POST")
 
 	r.HandleFunc("/{db}/user/{name}",
-		handleAuthReq(auth, getUserInfo)).Methods("GET", "HEAD")
+		handleAuthReq(sc, getUserInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/user/{name}",
-		handleAuthReq(auth, putUser)).Methods("PUT")
+		handleAuthReq(sc, putUser)).Methods("PUT")
 	r.HandleFunc("/{db}/user/{name}",
-		handleAuthReq(auth, deleteUser)).Methods("DELETE")
+		handleAuthReq(sc, deleteUser)).Methods("DELETE")
 	r.HandleFunc("/{db}/user",
-		handleAuthReq(auth, putUser)).Methods("POST")
+		handleAuthReq(sc, putUser)).Methods("POST")
 
 	r.HandleFunc("/{db}/role/{name}",
-		handleAuthReq(auth, getRoleInfo)).Methods("GET", "HEAD")
+		handleAuthReq(sc, getRoleInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/role/{name}",
-		handleAuthReq(auth, putRole)).Methods("PUT")
+		handleAuthReq(sc, putRole)).Methods("PUT")
 	r.HandleFunc("/{db}/role/{name}",
-		handleAuthReq(auth, deleteRole)).Methods("DELETE")
+		handleAuthReq(sc, deleteRole)).Methods("DELETE")
 	r.HandleFunc("/{db}/role",
-		handleAuthReq(auth, putRole)).Methods("POST")
+		handleAuthReq(sc, putRole)).Methods("POST")
 
 	dbr := r.PathPrefix("/{db}/").Subrouter()
 	dbr.Handle("/_design/{docid}",
-		makeAdminHandler(c, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+		makeAdminHandler(sc, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/{docid}",
-		makeAdminHandler(c, (*handler).handlePutDesignDoc)).Methods("PUT")
+		makeAdminHandler(sc, (*handler).handlePutDesignDoc)).Methods("PUT")
 	dbr.Handle("/_design/{docid}",
-		makeAdminHandler(c, (*handler).handleDelDesignDoc)).Methods("DELETE")
+		makeAdminHandler(sc, (*handler).handleDelDesignDoc)).Methods("DELETE")
 
 	return r
 }
 
-func StartAuthListener(addr string, c *context) {
-	go http.ListenAndServe(addr, createAuthHandler(c))
+func StartAuthListener(addr string, sc *serverContext) {
+	go http.ListenAndServe(addr, createAuthHandler(sc))
 }

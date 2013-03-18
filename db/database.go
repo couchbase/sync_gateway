@@ -24,6 +24,8 @@ import (
 
 var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
+// Basic description of a database. Shared between all Database objects on the same database.
+// This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
 	Name          string
 	Bucket        base.Bucket
@@ -32,7 +34,8 @@ type DatabaseContext struct {
 	Validator     *Validator
 }
 
-// Represents a simulated CouchDB database.
+// Represents a simulated CouchDB database. A new instance is created for each HTTP request,
+// so this struct does not have to be thread-safe.
 type Database struct {
 	*DatabaseContext
 	user auth.User
@@ -57,6 +60,44 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 	return &DatabaseContext{Name: dbName, Bucket: bucket, sequences: sequences}, nil
 }
 
+// Sets the database context's channelMapper and validator based on the JS code in _design/channels
+func (context *DatabaseContext) ReadDesignDocument() error {
+	db := &Database{context, nil}
+	var err error
+	body, err := db.GetSpecial("design", "channels")
+	if err != nil {
+		if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
+			err = nil // missing design document is not an error
+		}
+		return err
+	}
+	if src, ok := body["sync"].(string); ok {
+		base.Log("Sync function = %s", src)
+		if context.ChannelMapper != nil {
+			_, err = context.ChannelMapper.SetFunction(src)
+		} else {
+			context.ChannelMapper, err = channels.NewChannelMapper(src)
+		}
+		if err != nil {
+			base.Warn("Error loading channel mapper: %s", err)
+			return err
+		}
+	}
+	if src, ok := body["validate_doc_update"].(string); ok {
+		base.Log("Validator = %s", src)
+		if context.Validator != nil {
+			_, err = context.Validator.SetFunction(src)
+		} else {
+			context.Validator, err = NewValidator(src)
+		}
+		if err != nil {
+			base.Warn("Error loading validator: %s", err)
+			return err
+		}
+	}
+	return nil
+}
+
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{context, user}, nil
@@ -69,45 +110,6 @@ func CreateDatabase(context *DatabaseContext) (*Database, error) {
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
 		db.Bucket == otherdb.Bucket
-}
-
-// Sets the database object's channelMapper and validator based on the JS code in _design/channels
-func (db *Database) ReadDesignDocument() error {
-	var err error
-	body, err := db.GetSpecial("design", "channels")
-	if err != nil {
-		if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
-			err = nil // missing design document is not an error
-		}
-		return err
-	}
-	src, ok := body["sync"].(string)
-	if ok {
-		base.Log("Sync function = %s", src)
-		if db.ChannelMapper != nil {
-			_, err = db.ChannelMapper.SetFunction(src)
-		} else {
-			db.ChannelMapper, err = channels.NewChannelMapper(src)
-		}
-		if err != nil {
-			base.Warn("Error loading channel mapper: %s", err)
-			return err
-		}
-	}
-	src, ok = body["validate_doc_update"].(string)
-	if ok {
-		base.Log("Validator = %s", src)
-		if db.Validator != nil {
-			_, err = db.Validator.SetFunction(src)
-		} else {
-			db.Validator, err = NewValidator(src)
-		}
-		if err != nil {
-			base.Warn("Error loading validator: %s", err)
-			return err
-		}
-	}
-	return nil
 }
 
 //////// ALL DOCUMENTS:

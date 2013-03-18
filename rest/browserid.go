@@ -64,7 +64,7 @@ func VerifyBrowserID(assertion string, audience string) (*BrowserIDResponse, err
 }
 
 func (h *handler) BrowserIDEnabled() bool {
-	return h.context.serverURL != ""
+	return h.server.config.BrowserID != nil
 }
 
 // Registers a new user account based on a BrowserID verified assertion.
@@ -93,14 +93,16 @@ func (h *handler) handleBrowserIDPOST() error {
 	if err != nil {
 		return err
 	}
-	if h.context.serverURL == "" {
+	
+	origin := h.server.config.BrowserID.Origin
+	if origin == "" {
 		base.Warn("Can't accept BrowserID logins: Server URL not configured")
 		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
 	}
 
 	// OK, now verify it:
-	base.Log("BrowserID: Verifying assertion %q for %q", params.Assertion, h.context.serverURL)
-	verifiedInfo, err := VerifyBrowserID(params.Assertion, h.context.serverURL)
+	base.Log("BrowserID: Verifying assertion %q for %q", params.Assertion, origin)
+	verifiedInfo, err := VerifyBrowserID(params.Assertion, origin)
 	if err != nil {
 		base.Log("BrowserID: Failed verify: %v", err)
 		return err

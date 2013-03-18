@@ -39,10 +39,15 @@ func LogNoColor() {
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlag(flag string) {
-	if flag == "" {
-		return
+	if flag != "" {
+		ParseLogFlags(strings.Split(flag, ","))
 	}
-	for _, key := range strings.Split(flag, ",") {
+}
+
+// Parses an array of log keys, probably coming from a argv flags.
+// The key "bw" is interpreted as a call to LogNoColor, not a key.
+func ParseLogFlags(flags []string) {
+	for _, key := range flags {
 		if key == "bw" {
 			LogNoColor()
 		} else {
@@ -53,7 +58,7 @@ func ParseLogFlag(flag string) {
 			}
 		}
 	}
-	Log("Enabling logging: %s", flag)
+	Log("Enabling logging: %s", flags)
 }
 
 // Returns a string identifying a function on the call stack.
@@ -113,6 +118,12 @@ func TEMP(format string, args ...interface{}) {
 func LogPanic(format string, args ...interface{}) {
 	logWithCaller(fgRed, "PANIC", format, args...)
 	panic(fmt.Sprintf(format, args...))
+}
+
+// Logs a warning to the console, then exits the process.
+func LogFatal(format string, args ...interface{}) {
+	logWithCaller(fgRed, "FATAL", format, args...)
+	os.Exit(1)
 }
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {

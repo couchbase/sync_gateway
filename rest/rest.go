@@ -11,12 +11,10 @@ package rest
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"os"
 	"strings"
 	"time"
 
@@ -30,12 +28,9 @@ import (
 
 const VersionString = "Couchbase Sync Gateway/0.3"
 
-// Shared context of HTTP handlers. It's important that this remain immutable, because the
-// handlers will access it from multiple goroutines.
 type context struct {
 	dbcontext *db.DatabaseContext
 	auth      *auth.Authenticator
-	serverURL string
 }
 
 // HTTP handler for a GET of a document
@@ -601,7 +596,7 @@ func (h *handler) handleVacuum() error {
 }
 
 func (h *handler) handleCreateDB() error {
-	if h.PathVars()["newdb"] == h.context.dbcontext.Name {
+	if h.server.databases[h.PathVars()["newdb"]] != nil {
 		return &base.HTTPError{http.StatusConflict, "already exists"}
 	} else {
 		return &base.HTTPError{http.StatusForbidden, "can't create any databases"}
@@ -622,8 +617,8 @@ func (h *handler) handleGetDB() error {
 }
 
 func (h *handler) handleDeleteDB() error {
-	return h.db.Delete()
-}
+		return h.db.Delete()
+	}
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
@@ -638,180 +633,47 @@ func (h *handler) handleDesign() error {
 	return nil
 }
 
-// Initialize REST handlers. Call this once on launch.
-func InitREST(bucket base.Bucket, dbName string, serverURL string, nag bool) (*context, http.Handler, error) {
-	if dbName == "" {
-		dbName = bucket.GetName()
-	}
-
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
-	if err != nil {
-		return nil, nil, err
-	}
-	newdb, err := db.GetDatabase(dbcontext, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	newdb.ReadDesignDocument()
-
-	if dbcontext.ChannelMapper == nil {
-		if nag {
-			base.Warn("Channel mapper undefined; using default")
-		}
-		// Always have a channel mapper object even if it does nothing:
-		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
-	}
-	if dbcontext.Validator == nil && nag {
-		base.Warn("Validator undefined; no validation")
-	}
-
-	c := &context{
-		dbcontext: dbcontext,
-		auth:      auth.NewAuthenticator(bucket, dbcontext),
-		serverURL: serverURL,
-	}
-
-	return c, createHandler(c), nil
-}
-
-func createHandler(c *context) http.Handler {
+// Creates a GorillaMux router containing the HTTP handlers for a server.
+func createHandler(sc *serverContext) http.Handler {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	// Global operations:
-	r.Handle("/", makeHandler(c, (*handler).handleRoot)).Methods("GET", "HEAD")
-	r.Handle("/_all_dbs", makeHandler(c, (*handler).handleAllDbs)).Methods("GET", "HEAD")
-	r.Handle("/_session", makeHandler(c, (*handler).handleSessionGET)).Methods("GET", "HEAD")
-	r.Handle("/_session", makeHandler(c, (*handler).handleSessionPOST)).Methods("POST")
-	r.Handle("/_browserid", makeHandler(c, (*handler).handleBrowserIDPOST)).Methods("POST")
-	r.Handle("/_vacuum", makeHandler(c, (*handler).handleVacuum)).Methods("GET", "HEAD")
+	r.Handle("/", makeHandler(sc, (*handler).handleRoot)).Methods("GET", "HEAD")
+	r.Handle("/_all_dbs", makeHandler(sc, (*handler).handleAllDbs)).Methods("GET", "HEAD")
+	r.Handle("/_session", makeHandler(sc, (*handler).handleSessionGET)).Methods("GET", "HEAD")
+	r.Handle("/_session", makeHandler(sc, (*handler).handleSessionPOST)).Methods("POST")
+	r.Handle("/_browserid", makeHandler(sc, (*handler).handleBrowserIDPOST)).Methods("POST")
 
 	// Operations on databases:
-	r.Handle("/{newdb}/", makeHandler(c, (*handler).handleCreateDB)).Methods("PUT")
-	r.Handle("/{db}/", makeHandler(c, (*handler).handleGetDB)).Methods("GET", "HEAD")
-	r.Handle("/{db}/", makeHandler(c, (*handler).handleDeleteDB)).Methods("DELETE")
-	r.Handle("/{db}/", makeHandler(c, (*handler).handlePostDoc)).Methods("POST")
+	r.Handle("/{newdb}/", makeHandler(sc, (*handler).handleCreateDB)).Methods("PUT")
+	r.Handle("/{db}/", makeHandler(sc, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	r.Handle("/{db}/", makeHandler(sc, (*handler).handleDeleteDB)).Methods("DELETE")
+	r.Handle("/{db}/", makeHandler(sc, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
 	dbr := r.PathPrefix("/{db}/").Subrouter()
-	dbr.Handle("/_all_docs", makeHandler(c, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_bulk_docs", makeHandler(c, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", makeHandler(c, (*handler).handleBulkGet)).Methods("GET", "HEAD")
-	dbr.Handle("/_changes", makeHandler(c, (*handler).handleChanges)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/sync_gateway", makeHandler(c, (*handler).handleDesign)).Methods("GET", "HEAD")
-	dbr.Handle("/_ensure_full_commit", makeHandler(c, (*handler).handleEFC)).Methods("POST")
-	dbr.Handle("/_revs_diff", makeHandler(c, (*handler).handleRevsDiff)).Methods("POST")
+	dbr.Handle("/_all_docs", makeHandler(sc, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_bulk_docs", makeHandler(sc, (*handler).handleBulkDocs)).Methods("POST")
+	dbr.Handle("/_bulk_get", makeHandler(sc, (*handler).handleBulkGet)).Methods("GET", "HEAD")
+	dbr.Handle("/_changes", makeHandler(sc, (*handler).handleChanges)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/sync_gateway", makeHandler(sc, (*handler).handleDesign)).Methods("GET", "HEAD")
+	dbr.Handle("/_ensure_full_commit", makeHandler(sc, (*handler).handleEFC)).Methods("POST")
+	dbr.Handle("/_revs_diff", makeHandler(sc, (*handler).handleRevsDiff)).Methods("POST")
 
 	// Document URLs:
-	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local/{docid}", makeHandler(c, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleGetDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid}", makeHandler(c, (*handler).handlePutDoc)).Methods("PUT")
-	dbr.Handle("/{docid}", makeHandler(c, (*handler).handleDeleteDoc)).Methods("DELETE")
+	dbr.Handle("/{docid}", makeHandler(sc, (*handler).handleGetDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid}", makeHandler(sc, (*handler).handlePutDoc)).Methods("PUT")
+	dbr.Handle("/{docid}", makeHandler(sc, (*handler).handleDeleteDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid}/{attach}", makeHandler(c, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid}/{attach}", makeHandler(sc, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
 
-	r.PathPrefix("/").Methods("OPTIONS").Handler(makeHandler(c, (*handler).handleOptions))
-	r.PathPrefix("/").Handler(makeHandler(c, (*handler).handleBadRoute))
+	// Fallbacks that have to be added last:
+	r.PathPrefix("/").Methods("OPTIONS").Handler(makeHandler(sc, (*handler).handleOptions))
+	r.PathPrefix("/").Handler(makeHandler(sc, (*handler).handleBadRoute))
 
 	return r
-}
-
-func fail(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
-	os.Exit(1)
-	panic("unreachable")
-}
-
-// Main entry point for a simple server; you can have your main() function just call this.
-func ServerMain() {
-	siteURL := flag.String("site", "", "Server's official URL")
-	addr := flag.String("addr", ":4984", "Address to bind to")
-	authAddr := flag.String("authaddr", ":4985", "Address to bind the auth interface to")
-	couchbaseURL := flag.String("url", "http://localhost:8091", "Address of Couchbase server")
-	poolName := flag.String("pool", "default", "Name of pool")
-	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
-	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := flag.Bool("verbose", false, "Log more info about requests")
-	logKeys := flag.String("log", "", "Log keywords, comma separated")
-	flag.Parse()
-
-	if flag.NArg() > 0 {
-		// Use a configuration file if one is given:
-		if flag.NArg() > 1 {
-			fail("Sorry, multiple config files not supported.")
-		}
-
-		config, err := ReadConfig(flag.Arg(0))
-		if err != nil {
-			fail("Can't read config file: %v", err)
-		} else if len(config.Databases) != 1 {
-			fail("Config must have exactly one database")
-		}
-
-		pretty = &config.Pretty
-		if config.Log != nil {
-			arg := strings.Join(config.Log, ",")
-			logKeys = &arg
-		}
-		if config.Interface != nil {
-			addr = config.Interface
-		}
-		if config.AdminInterface != nil {
-			authAddr = config.AdminInterface
-		}
-		if config.BrowserID != nil && config.BrowserID.Origin != nil {
-			siteURL = config.BrowserID.Origin
-		}
-		db := config.Databases[0]
-		if db.Name == nil {
-			fail("Missing database name in config file")
-		}
-		dbName = db.Name
-		if db.Server != nil {
-			couchbaseURL = db.Server
-		}
-		if db.Pool != nil {
-			poolName = db.Pool
-		}
-		if db.BucketName != nil {
-			bucketName = db.BucketName
-		} else {
-			bucketName = db.Name
-		}
-	}
-
-	PrettyPrint = *pretty
-
-	base.LogKeys["HTTP"] = true
-	base.LogKeys["HTTP+"] = *verbose
-	base.ParseLogFlag(*logKeys)
-
-	bucket, err := db.ConnectToBucket(*couchbaseURL, *poolName, *bucketName)
-	if err != nil {
-		fail("Error getting bucket '%s':  %v\n", *bucketName, err)
-	}
-
-	if *dbName == "" {
-		*dbName = bucket.GetName()
-	}
-
-	context, handler, err := InitREST(bucket, *dbName, *siteURL, true)
-	if err != nil {
-		fail("Error initializing REST API:  %v\n", err)
-	}
-
-	http.Handle("/", handler)
-	if authAddr != nil {
-		base.Log("Starting auth server on %s", *authAddr)
-		StartAuthListener(*authAddr, context)
-	}
-
-	base.Log("Starting server on %s for database %q", *addr, *dbName)
-	err = http.ListenAndServe(*addr, nil)
-	if err != nil {
-		fail("Server failed: ", err.Error())
-	}
 }
