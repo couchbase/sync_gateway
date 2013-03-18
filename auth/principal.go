@@ -41,6 +41,7 @@ type User interface {
 	Email() string
 	SetEmail(string) error
 	Disabled() bool
+	SetDisabled(bool)
 	Authenticate(password string) bool
 	SetPassword(password string)
 

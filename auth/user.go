@@ -130,6 +130,10 @@ func (user *userImpl) Disabled() bool {
 	return user.Disabled_
 }
 
+func (user *userImpl) SetDisabled(disabled bool) {
+	user.Disabled_ = disabled
+}
+
 func (user *userImpl) Email() string {
 	return user.Email_
 }

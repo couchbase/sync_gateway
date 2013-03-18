@@ -470,7 +470,6 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 	if verr := context.Bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
 		return nil, verr
 	}
-	base.TEMP("VIEW opts=%v, result=%v", opts, vres)
 	allChannels := make([]string, 0, 50)
 	for _, row := range vres.Rows {
 		for _, item := range row.Value.([]interface{}) {

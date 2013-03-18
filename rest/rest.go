@@ -643,9 +643,6 @@ func createHandler(sc *serverContext) http.Handler {
 	// Global operations:
 	r.Handle("/", makeHandler(sc, (*handler).handleRoot)).Methods("GET", "HEAD")
 	r.Handle("/_all_dbs", makeHandler(sc, (*handler).handleAllDbs)).Methods("GET", "HEAD")
-	r.Handle("/_session", makeHandler(sc, (*handler).handleSessionGET)).Methods("GET", "HEAD")
-	r.Handle("/_session", makeHandler(sc, (*handler).handleSessionPOST)).Methods("POST")
-	r.Handle("/_browserid", makeHandler(sc, (*handler).handleBrowserIDPOST)).Methods("POST")
 
 	// Operations on databases:
 	r.Handle("/{newdb}/", makeHandler(sc, (*handler).handleCreateDB)).Methods("PUT")
@@ -662,6 +659,11 @@ func createHandler(sc *serverContext) http.Handler {
 	dbr.Handle("/_design/sync_gateway", makeHandler(sc, (*handler).handleDesign)).Methods("GET", "HEAD")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(sc, (*handler).handleRevsDiff)).Methods("POST")
+
+	// Session/login URLs are per-database (unlike in CouchDB)
+	dbr.Handle("/_session", makeAdminHandler(sc, (*handler).handleSessionGET)).Methods("GET", "HEAD")
+	dbr.Handle("/_session", makeAdminHandler(sc, (*handler).handleSessionPOST)).Methods("POST")
+	dbr.Handle("/_browserid", makeAdminHandler(sc, (*handler).handleBrowserIDPOST)).Methods("POST")
 
 	// Document URLs:
 	dbr.Handle("/_local/{docid}", makeHandler(sc, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")

@@ -75,27 +75,30 @@ func makeHandler(server *serverContext, method handlerMethod) http.Handler {
 	})
 }
 
+// Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
 	base.LogTo("HTTP", "%s %s", h.rq.Method, h.rq.URL)
 	h.setHeader("Server", VersionString)
 
-	// Authenticate all paths other than "/_session":
-	path := h.rq.URL.Path
-	if h.admin != true && path != "/_session" && path != "/_browserid" {
-		if err := h.checkAuth(); err != nil {
+	// If there is a "db" path variable, look up the database context:
+	if dbname, ok := h.PathVars()["db"]; ok {
+		h.context = h.server.databases[dbname]
+		if h.context == nil {
+			return &base.HTTPError{http.StatusNotFound, "no such database"}
+		}
+	}
+
+	// Authenticate; admin handlers can ignore missing credentials
+	if err := h.checkAuth(); err != nil {
+		if !h.admin {
 			return err
 		}
 	}
 
-	// If there is a "db" path variable, look up the database:
-	if dbname, ok := h.PathVars()["db"]; ok {
+	// Now look up the database:
+	if h.context != nil {
 		var err error
-		h.context = h.server.databases[dbname]
-		if h.context != nil {
-			h.db, err = db.GetDatabase(h.context.dbcontext, h.user)
-		} else {
-			err = &base.HTTPError{http.StatusNotFound, "no such database"}
-		}
+		h.db, err = db.GetDatabase(h.context.dbcontext, h.user)
 		if err != nil {
 			return err
 		}

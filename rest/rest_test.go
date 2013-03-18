@@ -21,7 +21,9 @@ import (
 
 	"github.com/sdegutis/go.assert"
 
+	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -38,9 +40,9 @@ func init() {
 	}
 }
 
-func callREST(method, resource string, body string) *httptest.ResponseRecorder {
+func callRESTOn(bucket base.Bucket, method, resource string, body string) *httptest.ResponseRecorder {
 	sc := newServerContext(&ServerConfig{})
-	if err := sc.addDatabase(gTestBucket, "db", false); err != nil {
+	if err := sc.addDatabase(bucket, "db", false); err != nil {
 		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
 	handler := createHandler(sc)
@@ -52,6 +54,10 @@ func callREST(method, resource string, body string) *httptest.ResponseRecorder {
 
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func callREST(method, resource string, body string) *httptest.ResponseRecorder {
+	return callRESTOn(gTestBucket, method, resource, body)
 }
 
 func assertStatus(t *testing.T, response *httptest.ResponseRecorder, expectedStatus int) {
@@ -202,4 +208,29 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 404)
 	response = callREST("DELETE", "/db/_local/loc1", "")
 	assertStatus(t, response, 404)
+}
+
+func TestLogin(t *testing.T) {
+	bucket, _ := db.ConnectToBucket("walrus:", "default", "test")
+	a := auth.NewAuthenticator(bucket, nil)
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	user, err = a.GetUser("")
+	assert.Equals(t, err, nil)
+	assert.True(t, user.Disabled())
+
+	response := callRESTOn(bucket, "PUT", "/db/doc", `{"hi": "there"}`)
+	assertStatus(t, response, 401)
+
+	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
+	a.Save(user)
+
+	response = callRESTOn(bucket, "POST", "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
+	assertStatus(t, response, 200)
+	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
+	assert.True(t, response.Header().Get("Set-Cookie") != "")
 }

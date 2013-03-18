@@ -80,6 +80,8 @@ func (h *handler) makeSession(user auth.User) error {
 	if err != nil {
 		return err
 	}
-	http.SetCookie(h.response, auth.MakeSessionCookie(session))
+	cookie := auth.MakeSessionCookie(session)
+	cookie.Path = "/" + h.context.dbcontext.Name + "/"
+	http.SetCookie(h.response, cookie)
 	return h.respondWithSessionInfo()
 }
