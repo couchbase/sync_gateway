@@ -249,7 +249,12 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	r.HandleFunc("/{db}/role",
 		handleAuthReq(sc, putRole)).Methods("POST")
 
+	// The routes below are part of the CouchDB REST API but should only be available to admins,
+	// so the handlers are moved to the admin port.
+	r.Handle("/{db}/", makeAdminHandler(sc, (*handler).handleDeleteDB)).Methods("DELETE")
 	dbr := r.PathPrefix("/{db}/").Subrouter()
+	dbr.Handle("/_vacuum",
+		makeAdminHandler(sc, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_design/{docid}",
 		makeAdminHandler(sc, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/{docid}",

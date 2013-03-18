@@ -617,8 +617,11 @@ func (h *handler) handleGetDB() error {
 }
 
 func (h *handler) handleDeleteDB() error {
-		return h.db.Delete()
+	if !h.admin {
+		return &base.HTTPError{http.StatusForbidden, "forbidden (admins only)"}
 	}
+	return h.db.Delete()
+}
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
