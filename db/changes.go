@@ -180,16 +180,15 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 
 		for {
 			feeds := make([]<-chan *ChangeEntry, 0, len(channels))
-			current := make([]*ChangeEntry, len(channels))
-			i := 0
 			for name, _ := range channels {
-				var err error
-				feeds[i], err = db.ChangesFeed(name, options)
+				feed, err := db.ChangesFeed(name, options)
 				if err != nil {
+					base.Warn("Error reading changes feed %q: %v", name, err)
 					return
 				}
-				i++
+				feeds = append(feeds, feed)
 			}
+			current := make([]*ChangeEntry, len(feeds))
 
 			wroteAnything := false
 			for {
