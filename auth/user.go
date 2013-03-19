@@ -250,10 +250,13 @@ func (user *userImpl) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Splice the two JSON bodies together:
-	data = data[0 : len(data)-1]
-	userData = userData[1:len(userData)]
-	return bytes.Join([][]byte{data, userData}, []byte(",")), nil
+	if len(userData) > 2 {
+		// Splice the two JSON bodies together if the user data is not just "{}"
+		data = data[0 : len(data)-1]
+		userData = userData[1:len(userData)]
+		data, err = bytes.Join([][]byte{data, userData}, []byte(",")), nil
+	}
+	return data, err
 }
 
 func (user *userImpl) UnmarshalJSON(data []byte) error {

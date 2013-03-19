@@ -105,6 +105,11 @@ func (role *roleImpl) ExplicitChannels() ch.Set {
 	return role.ExplicitChannels_
 }
 
+func (role *roleImpl) SetExplicitChannels(channels ch.Set) {
+	role.ExplicitChannels_ = channels
+	role.setChannels(nil)
+}
+
 // Checks whether this role object contains valid data; if not, returns an error.
 func (role *roleImpl) validate() error {
 	if !IsValidPrincipalName(role.Name_) {

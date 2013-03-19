@@ -61,37 +61,43 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 }
 
 // Sets the database context's channelMapper and validator based on the JS code in _design/channels
-func (context *DatabaseContext) ReadDesignDocument() error {
+func (context *DatabaseContext) ReadDesignDocument(defaultBody Body) error {
 	db := &Database{context, nil}
 	var err error
 	body, err := db.GetSpecial("design", "channels")
 	if err != nil {
-		if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusNotFound {
-			err = nil // missing design document is not an error
+		if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
+			return err
 		}
-		return err
+		if defaultBody == nil {
+			return nil
+		}
+		base.Log("Installing _design/channels document")
+		if _, err := db.PutSpecial("design", "channels", defaultBody); err != nil {
+			return err
+		}
+		body = defaultBody
 	}
+
 	if src, ok := body["sync"].(string); ok {
-		base.Log("Sync function = %s", src)
 		if context.ChannelMapper != nil {
 			_, err = context.ChannelMapper.SetFunction(src)
 		} else {
 			context.ChannelMapper, err = channels.NewChannelMapper(src)
 		}
 		if err != nil {
-			base.Warn("Error loading channel mapper: %s", err)
+			base.Warn("Error loading sync function: %s", err)
 			return err
 		}
 	}
 	if src, ok := body["validate_doc_update"].(string); ok {
-		base.Log("Validator = %s", src)
 		if context.Validator != nil {
 			_, err = context.Validator.SetFunction(src)
 		} else {
 			context.Validator, err = NewValidator(src)
 		}
 		if err != nil {
-			base.Warn("Error loading validator: %s", err)
+			base.Warn("Error loading validator function: %s", err)
 			return err
 		}
 	}

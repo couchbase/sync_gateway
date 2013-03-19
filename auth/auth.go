@@ -46,6 +46,20 @@ func docIDForUserEmail(email string) string {
 	return "useremail:" + email
 }
 
+func (auth *Authenticator) UnmarshalPrincipal(data []byte, defaultName string, isUser bool) (Principal, error) {
+	if isUser {
+		return auth.UnmarshalUser(data, defaultName)
+	}
+	return auth.UnmarshalRole(data, defaultName)
+}
+
+func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, error) {
+	if isUser {
+		return auth.GetUser(name)
+	}
+	return auth.GetRole(name)
+}
+
 // Looks up the information for a user.
 // If the username is "" it will return the default (guest) User object, not nil.
 // By default the guest User has access to everything, i.e. Admin Party! This can

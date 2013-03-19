@@ -42,7 +42,7 @@ func init() {
 
 func callRESTOn(bucket base.Bucket, method, resource string, body string) *httptest.ResponseRecorder {
 	sc := newServerContext(&ServerConfig{})
-	if err := sc.addDatabase(bucket, "db", false); err != nil {
+	if _, err := sc.addDatabase(bucket, "db", nil, false); err != nil {
 		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
 	handler := createHandler(sc)

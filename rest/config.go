@@ -40,10 +40,13 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	Name   string  // Database name in REST API
-	Server *string // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Bucket *string // Bucket name on server; defaults to same as 'name'
-	Pool   *string // Couchbase pool name, default "default"
+	Name      string                     // Database name in REST API
+	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
+	Pool      *string                    // Couchbase pool name, default "default"
+	DesignDoc db.Body                    // Default "channels" design document to install on first run
+	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
+	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
 }
 
 type BrowserIDConfig struct {
@@ -103,25 +106,25 @@ func newServerContext(config *ServerConfig) *serverContext {
 }
 
 // Adds a database to the serverContext given its Bucket.
-func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, nag bool) error {
+func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, defaultDesignDoc db.Body, nag bool) (*context, error) {
 	if dbName == "" {
 		dbName = bucket.GetName()
 	}
 
 	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
-		return fmt.Errorf("Illegal database name: %s", dbName)
+		return nil, fmt.Errorf("Illegal database name: %s", dbName)
 	}
 
 	if sc.databases[dbName] != nil {
-		return fmt.Errorf("Duplicate database name %q", dbName)
+		return nil, fmt.Errorf("Duplicate database name %q", dbName)
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := dbcontext.ReadDesignDocument(); err != nil {
-		return err
+	if err := dbcontext.ReadDesignDocument(defaultDesignDoc); err != nil {
+		return nil, err
 	}
 
 	if dbcontext.ChannelMapper == nil {
@@ -141,7 +144,7 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, nag bool
 	}
 
 	sc.databases[dbName] = c
-	return nil
+	return c, nil
 }
 
 // Adds a database to the serverContext given its configuration.
@@ -160,11 +163,48 @@ func (sc *serverContext) addDatabaseFromConfig(config DbConfig) error {
 		bucketName = *config.Bucket
 	}
 
+	// Connect to the bucket and add the database:
 	bucket, err := db.ConnectToBucket(server, pool, bucketName)
 	if err != nil {
 		return err
 	}
-	return sc.addDatabase(bucket, config.Name, true)
+	context, err := sc.addDatabase(bucket, config.Name, config.DesignDoc, true)
+	if err != nil {
+		return err
+	}
+
+	// Create default users & roles:
+	if err := sc.installPrincipals(context, config.Roles, "role"); err != nil {
+		return nil
+	}
+	return sc.installPrincipals(context, config.Users, "user")
+}
+
+func (sc *serverContext) installPrincipals(context *context, spec map[string]json.RawMessage, what string) error {
+	for name, data := range spec {
+		isUsers := (what == "user")
+		if name == "GUEST" && isUsers {
+			name = ""
+		}
+		newPrincipal, err := context.auth.UnmarshalPrincipal(data, name, isUsers)
+		if err != nil {
+			return fmt.Errorf("Invalid config for %s %q: %v", what, name, err)
+		}
+		oldPrincipal, err := context.auth.GetPrincipal(newPrincipal.Name(), isUsers)
+		if oldPrincipal == nil || name == "" {
+			if err == nil {
+				err = context.auth.Save(newPrincipal)
+			}
+			if err != nil {
+				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
+			} else if name == "" {
+				base.Log("Reset guest user to config")
+			} else {
+				base.Log("Created %s %q", what, name)
+			}
+		}
+	}
+	return nil
 }
 
 // Reads the command line flags and the optional config file.

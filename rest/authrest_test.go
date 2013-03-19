@@ -7,7 +7,6 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-
 package rest
 
 import (
@@ -25,7 +24,7 @@ import (
 
 func callAuthREST(method, resource string, body string) *httptest.ResponseRecorder {
 	sc := newServerContext(&ServerConfig{})
-	if err := sc.addDatabase(gTestBucket, "db", false); err != nil {
+	if _, err := sc.addDatabase(gTestBucket, "db", nil, false); err != nil {
 		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
 	authHandler := createAuthHandler(sc)

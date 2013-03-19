@@ -3,7 +3,22 @@
 	"databases": [
 		{
 			"name": "db",
-			"server": "walrus:"
+			"server": "walrus:",
+			"designDoc": {
+				"sync": "function(doc){channel(doc.channels);}",
+				"validate_doc_update": "function(newDoc,oldDoc){}"
+			},
+			"users": {
+				"pupshaw": {
+					"admin_channels": ["all"],
+					"admin_roles": ["froods"],
+					"password": "foo"
+				},
+				"GUEST": {"disabled": true}
+			},
+			"roles": {
+				"froods": {"admin_channels": ["hoopy"]}
+			}
 		}
 	]
 }

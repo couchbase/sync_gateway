@@ -111,6 +111,18 @@ func (set Set) Contains(ch string) bool {
 	return exists
 }
 
+func (set Set) Equals(other Set) bool {
+	if len(other) != len(set) {
+		return false
+	}
+	for name, _ := range set {
+		if _, exists := other[name]; !exists {
+			return false
+		}
+	}
+	return true
+}
+
 // Returns the union of two sets.
 func (set Set) Union(other Set) Set {
 	if len(set) == 0 {

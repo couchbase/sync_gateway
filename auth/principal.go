@@ -18,6 +18,7 @@ type Principal interface {
 	Name() string
 	Channels() ch.Set
 	ExplicitChannels() ch.Set
+	SetExplicitChannels(ch.Set)
 
 	CanSeeChannel(channel string) bool
 	AuthorizeAllChannels(channels ch.Set) error
