@@ -579,11 +579,12 @@ func (h *handler) handleBadRoute() error {
 }
 
 func (h *handler) handleAllDbs() error {
-	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
-		h.writeJSON([]string{h.context.dbcontext.Name})
-		return nil
+	dbs := []string{}
+	for _, db := range h.server.databases {
+		dbs = append(dbs, db.dbcontext.Name)
 	}
-	return kBadMethodError
+	h.writeJSON(dbs)
+	return nil
 }
 
 func (h *handler) handleVacuum() error {
