@@ -1,6 +1,6 @@
 # Couchbase Sync Gateway
 
-Gluing TouchDB (and CouchDB) to Couchbase Server
+Gluing Couchbase Lite (and TouchDB / CouchDB) to Couchbase Server
 
 
 ## About
