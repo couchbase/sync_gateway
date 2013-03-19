@@ -35,12 +35,12 @@ type ServerConfig struct {
 	BrowserID      *BrowserIDConfig
 	Log            []string // Log keywords to enable
 	Pretty         bool     // Pretty-print JSON responses?
-	Databases      []DbConfig
+	Databases      map[string]*DbConfig
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	Name      string                     // Database name in REST API
+	name      string                     // Database name in REST API (stored as key in JSON)
 	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
 	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
 	Pool      *string                    // Couchbase pool name, default "default"
@@ -75,27 +75,44 @@ func ReadConfig(path string) (*ServerConfig, error) {
 	}
 
 	// Validation:
-	if len(config.Databases) == 0 {
-		return nil, fmt.Errorf("no databases listed")
-	}
-	if config.Interface == nil {
-		config.Interface = &DefaultInterface
-	}
-	if config.AdminInterface == nil {
-		config.AdminInterface = &DefaultAdminInterface
-	}
-	for _, dbConfig := range config.Databases {
+	for name, dbConfig := range config.Databases {
+		dbConfig.name = name
+		if dbConfig.Bucket == nil {
+			dbConfig.Bucket = &dbConfig.name
+		}
 		if dbConfig.Server == nil {
 			dbConfig.Server = &DefaultServer
-		}
-		if dbConfig.Bucket == nil {
-			dbConfig.Bucket = &dbConfig.Name
 		}
 		if dbConfig.Pool == nil {
 			dbConfig.Pool = &DefaultPool
 		}
 	}
 	return config, nil
+}
+
+func (self *ServerConfig) MergeWith(other *ServerConfig) error {
+	if self.Interface == nil {
+		self.Interface = other.Interface
+	}
+	if self.AdminInterface == nil {
+		self.AdminInterface = other.AdminInterface
+	}
+	if self.BrowserID == nil {
+		self.BrowserID = other.BrowserID
+	}
+	for _, flag := range other.Log {
+		self.Log = append(self.Log, flag)
+	}
+	if other.Pretty {
+		self.Pretty = true
+	}
+	for name, db := range other.Databases {
+		if self.Databases[name] != nil {
+			return fmt.Errorf("Database %q already specified earlier", name)
+		}
+		self.Databases[name] = db
+	}
+	return nil
 }
 
 func newServerContext(config *ServerConfig) *serverContext {
@@ -148,10 +165,10 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, defaultD
 }
 
 // Adds a database to the serverContext given its configuration.
-func (sc *serverContext) addDatabaseFromConfig(config DbConfig) error {
+func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
 	server := "http://localhost:8091"
 	pool := "default"
-	bucketName := config.Name
+	bucketName := config.name
 
 	if config.Server != nil {
 		server = *config.Server
@@ -168,7 +185,7 @@ func (sc *serverContext) addDatabaseFromConfig(config DbConfig) error {
 	if err != nil {
 		return err
 	}
-	context, err := sc.addDatabase(bucket, config.Name, config.DesignDoc, true)
+	context, err := sc.addDatabase(bucket, config.name, config.DesignDoc, true)
 	if err != nil {
 		return err
 	}
@@ -224,15 +241,20 @@ func ParseCommandLine() *ServerConfig {
 	var config *ServerConfig
 
 	if flag.NArg() > 0 {
-		// Use a configuration file if one is given:
-		if flag.NArg() > 1 {
-			base.LogFatal("Sorry, multiple config files not supported.")
-		}
-
-		var err error
-		config, err = ReadConfig(flag.Arg(0))
-		if err != nil {
-			base.LogFatal("Error reading config file: %v", err)
+		// Read the configuration file(s), if any:
+		for i := 0; i < flag.NArg(); i++ {
+			filename := flag.Arg(i)
+			c, err := ReadConfig(filename)
+			if err != nil {
+				base.LogFatal("Error reading config file %s: %v", filename, err)
+			}
+			if config == nil {
+				config = c
+			} else {
+				if err := config.MergeWith(c); err != nil {
+					base.LogFatal("Error reading config file %s: %v", filename, err)
+				}
+			}
 		}
 
 		// Override the config file with global settings from command line flags:
@@ -248,6 +270,17 @@ func ParseCommandLine() *ServerConfig {
 		if config.Log != nil {
 			base.ParseLogFlags(config.Log)
 		}
+
+		if len(config.Databases) == 0 {
+			base.LogFatal("No databases!")
+		}
+		if config.Interface == nil {
+			config.Interface = &DefaultInterface
+		}
+		if config.AdminInterface == nil {
+			config.AdminInterface = &DefaultAdminInterface
+		}
+
 	} else {
 		// If no config file is given, create a default config, filled in from command line flags:
 		if *dbName == "" {
@@ -257,9 +290,8 @@ func ParseCommandLine() *ServerConfig {
 			Interface:      addr,
 			AdminInterface: authAddr,
 			Pretty:         *pretty,
-			Databases: []DbConfig{
-				DbConfig{
-					Name:   *dbName,
+			Databases: map[string]*DbConfig{
+				*dbName: {
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,

@@ -1,8 +1,7 @@
 {
-	"log": ["CRUD", "REST+"],
-	"databases": [
-		{
-			"name": "db",
+	"log": ["CRUD", "REST+", "Bar"],
+	"databases": {
+		"db": {
 			"server": "walrus:",
 			"designDoc": {
 				"sync": "function(doc){channel(doc.channels);}",
@@ -20,5 +19,5 @@
 				"froods": {"admin_channels": ["hoopy"]}
 			}
 		}
-	]
+	}
 }

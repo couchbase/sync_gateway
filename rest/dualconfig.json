@@ -1,13 +1,11 @@
 {
-	"log": ["CRUD", "REST+"],
-	"databases": [
-		{
-			"name": "db1",
+	"log": ["CRUD", "REST+", "Foo"],
+	"databases": {
+		"db1": {
 			"server": "walrus:"
 		},
-		{
-			"name": "db2",
+		"db2": {
 			"server": "walrus:"
 		}
-	]
+	}
 }
