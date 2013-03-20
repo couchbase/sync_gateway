@@ -46,6 +46,7 @@ type ChannelMapper struct {
 	channels []string
 	access   map[string][]string
 	js       *walrus.JSServer
+	Src 	 string
 }
 
 // Maps user names (or role names prefixed with "role:") to arrays of channel names
@@ -77,6 +78,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper := &ChannelMapper{}
 	var err error
 	mapper.js, err = walrus.NewJSServer(funcSource)
+	mapper.Src = funcSource
 	if err != nil {
 		return nil, err
 	}
