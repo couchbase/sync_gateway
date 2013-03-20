@@ -4,7 +4,9 @@
 		"db": {
 			"server": "walrus:",
 			"designDoc": {
-				"sync": "function(doc){channel(doc.channels);}",
+				"sync": `function(doc){
+							channel(doc.channels);
+						}`,
 				"validate_doc_update": "function(newDoc,oldDoc){}"
 			},
 			"users": {

@@ -13,6 +13,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 )
 
 func GenerateRandomSecret() string {
@@ -53,4 +55,27 @@ func FixJSONNumbers(value interface{}) interface{} {
 	default:
 	}
 	return value
+}
+
+var kBackquoteStringRegexp *regexp.Regexp
+
+// Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,
+// and escapes any newlines or double-quotes within them with backslashes.
+func ConvertBackQuotedStrings(data []byte) []byte {
+	if kBackquoteStringRegexp == nil {
+		kBackquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
+	}
+	// Find backquote-delimited strings and replace them:
+	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(bytes []byte) []byte {
+		str := string(bytes)
+		// Escape newlines and double-quotes:
+		str = strings.Replace(str, "\n", `\n`, -1)
+		str = strings.Replace(str, "\t", `\t`, -1)
+		str = strings.Replace(str, `"`, `\"`, -1)
+		bytes = []byte(str)
+		// Replace the backquotes with double-quotes
+		bytes[0] = '"'
+		bytes[len(bytes)-1] = '"'
+		return bytes
+	})
 }

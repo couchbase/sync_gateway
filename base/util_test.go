@@ -7,7 +7,6 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-
 package base
 
 import (
@@ -27,4 +26,26 @@ func TestFixJSONNumbers(t *testing.T) {
 		[]interface{}{1, int64(123456)})
 	assert.DeepEquals(t, FixJSONNumbers(map[string]interface{}{"foo": float64(123456)}),
 		map[string]interface{}{"foo": int64(123456)})
+}
+
+func TestBackQuotedStrings(t *testing.T) {
+	input := `{"foo": "bar"}`
+	output := ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), input)
+
+	input = "{\"foo\": `bar`}"
+	output = ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), `{"foo": "bar"}`)
+
+	input = "{\"foo\": `bar\nbaz\nboo`}"
+	output = ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), `{"foo": "bar\nbaz\nboo"}`)
+
+	input = "{\"foo\": `bar\n\"baz\n\tboo`}"
+	output = ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), `{"foo": "bar\n\"baz\n\tboo"}`)
+
+	input = "{\"foo\": `bar\n`, \"baz\": `howdy`}"
+	output = ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "howdy"}`)
 }

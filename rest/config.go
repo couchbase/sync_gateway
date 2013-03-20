@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
@@ -68,9 +69,13 @@ func ReadConfig(path string) (*ServerConfig, error) {
 	}
 	defer file.Close()
 
-	dec := json.NewDecoder(file)
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	data = base.ConvertBackQuotedStrings(data)
 	var config *ServerConfig
-	if err := dec.Decode(&config); err != nil {
+	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
 
