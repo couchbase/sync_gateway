@@ -61,20 +61,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 }
 
 // Sets the database context's channelMapper based on the JS code from config
-func (context *DatabaseContext) ApplySyncFun(syncFun *string) error {
-	// db := &Database{context, nil}
+func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
 	var err error
-
-	if syncFun != nil {
-		if context.ChannelMapper != nil {
-			_, err = context.ChannelMapper.SetFunction(*syncFun)
-		} else {
-			context.ChannelMapper, err = channels.NewChannelMapper(*syncFun)
-		}
-		if err != nil {
-			base.Warn("Error loading sync function: %s", err)
-			return err
-		}
+	if context.ChannelMapper != nil {
+		_, err = context.ChannelMapper.SetFunction(syncFun)
+	} else {
+		context.ChannelMapper, err = channels.NewChannelMapper(syncFun)
+	}
+	if err != nil {
+		base.Warn("Error setting sync function: %s", err)
+		return err
 	}
 	return nil
 }

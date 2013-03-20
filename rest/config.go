@@ -41,13 +41,13 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name      string                     // Database name in REST API (stored as key in JSON)
-	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
-	Pool      *string                    // Couchbase pool name, default "default"
-	SyncFun   *string                    // Sync function defines which users can see which data
-	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
-	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
+	name   string                     // Database name in REST API (stored as key in JSON)
+	Server *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Bucket *string                    // Bucket name on server; defaults to same as 'name'
+	Pool   *string                    // Couchbase pool name, default "default"
+	Sync   *string                    // Sync function defines which users can see which data
+	Users  map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
+	Roles  map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
 }
 
 type BrowserIDConfig struct {
@@ -128,7 +128,7 @@ func newServerContext(config *ServerConfig) *serverContext {
 }
 
 // Adds a database to the serverContext given its Bucket.
-func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
+func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun string, nag bool) (*context, error) {
 	if dbName == "" {
 		dbName = bucket.GetName()
 	}
@@ -145,8 +145,10 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun 
 	if err != nil {
 		return nil, err
 	}
-	if err := dbcontext.ApplySyncFun(syncFun); err != nil {
-		return nil, err
+	if syncFun != "" {
+		if err := dbcontext.ApplySyncFun(syncFun); err != nil {
+			return nil, err
+		}
 	}
 
 	if dbcontext.ChannelMapper == nil {
@@ -187,7 +189,7 @@ func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
 	if err != nil {
 		return err
 	}
-	context, err := sc.addDatabase(bucket, config.name, config.SyncFun, true)
+	context, err := sc.addDatabase(bucket, config.name, *config.Sync, true)
 	if err != nil {
 		return err
 	}

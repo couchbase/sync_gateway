@@ -3,7 +3,7 @@
 	"databases": {
 		"db": {
 			"server": "walrus:",
-			"syncFun": `
+			"sync": `
 function(doc){
 	channel(doc.channels);
 }`,
