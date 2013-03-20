@@ -45,7 +45,7 @@ type DbConfig struct {
 	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
 	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
 	Pool      *string                    // Couchbase pool name, default "default"
-	DesignDoc db.Body                    // Default "channels" design document to install on first run
+	SyncFun   *string                    // Sync function defines which users can see which data
 	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
 	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
 }
@@ -128,7 +128,7 @@ func newServerContext(config *ServerConfig) *serverContext {
 }
 
 // Adds a database to the serverContext given its Bucket.
-func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, defaultDesignDoc db.Body, nag bool) (*context, error) {
+func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
 	if dbName == "" {
 		dbName = bucket.GetName()
 	}
@@ -145,7 +145,7 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, defaultD
 	if err != nil {
 		return nil, err
 	}
-	if err := dbcontext.ReadDesignDocument(defaultDesignDoc); err != nil {
+	if err := dbcontext.ApplySyncFun(syncFun); err != nil {
 		return nil, err
 	}
 
@@ -155,9 +155,6 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, defaultD
 		}
 		// Always have a channel mapper object even if it does nothing:
 		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
-	}
-	if dbcontext.Validator == nil && nag {
-		base.Warn("Validator undefined; no validation")
 	}
 
 	c := &context{
@@ -190,7 +187,7 @@ func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
 	if err != nil {
 		return err
 	}
-	context, err := sc.addDatabase(bucket, config.name, config.DesignDoc, true)
+	context, err := sc.addDatabase(bucket, config.name, config.SyncFun, true)
 	if err != nil {
 		return err
 	}

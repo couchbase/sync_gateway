@@ -19,7 +19,6 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 //////// USER & ROLE REQUESTS:
@@ -162,41 +161,6 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	return nil
 }
 
-//////// DESIGN DOCUMENTS:
-
-func (h *handler) handleGetDesignDoc() error {
-	docid := h.PathVars()["docid"]
-	value, err := h.db.GetSpecial("design", docid)
-	if err != nil {
-		return err
-	}
-	if value == nil {
-		return kNotFoundError
-	}
-	value["_id"] = "_design/" + docid
-	value.FixJSONNumbers()
-	h.writeJSON(value)
-	return nil
-}
-
-func (h *handler) handlePutDesignDoc() error {
-	docid := h.PathVars()["docid"]
-	body, err := h.readJSON()
-	if err == nil {
-		body.FixJSONNumbers()
-		var revid string
-		revid, err = h.db.PutSpecial("design", docid, body)
-		if err == nil {
-			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": "_design/" + docid, "rev": revid})
-		}
-	}
-	return err
-}
-
-func (h *handler) handleDelDesignDoc() error {
-	docid := h.PathVars()["docid"]
-	return h.db.DeleteSpecial("design", docid, h.getQuery("rev"))
-}
 
 //////// HTTP HANDLER:
 
@@ -255,12 +219,6 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	dbr := r.PathPrefix("/{db}/").Subrouter()
 	dbr.Handle("/_vacuum",
 		makeAdminHandler(sc, (*handler).handleVacuum)).Methods("POST")
-	dbr.Handle("/_design/{docid}",
-		makeAdminHandler(sc, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/{docid}",
-		makeAdminHandler(sc, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_design/{docid}",
-		makeAdminHandler(sc, (*handler).handleDelDesignDoc)).Methods("DELETE")
 
 	return r
 }

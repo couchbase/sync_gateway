@@ -70,11 +70,6 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 		panic("unreachable")
 	})
 
-	// Ugly hack to detect changes to the channel-mapper function:
-	if err == nil && doctype == "design" && docid == "channels" {
-		db.ReadDesignDocument(nil)
-	}
-
 	return revid, err
 }
 

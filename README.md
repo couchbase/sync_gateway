@@ -105,7 +105,7 @@ The default (simple and limited) way is to add a `channels` property to a docume
 
 The more flexible way is to define a **sync function**. This is a JavaScript function, similar to a CouchDB validation function, that takes a document body as input and can decide based on that what channels it should go into. Like a regular CouchDB function, it may not reference any external state and it must return the same results every time it's called on the same input.
 
-The sync function goes in a design document with ID `_design/channels`, in a property named `sync`. Since design documents are for admins only, they are accessible only on the admin port (by default 4985.)
+The sync function is specified in the config file for your database. Each sync function applies to one database.
 
 To add the current document to a channel, the function should call the special function `channel` which takes one or more channel names (or arrays of channel names) as arguments. For convenience, `channel` ignores `null` or `undefined` argument values.
 
@@ -113,7 +113,7 @@ Defining a sync function overrides the default channel mapping mechanism; that i
 
     function (doc) { channel(doc.channels); }
 
-### Replicating channels to CouchDB or TouchDB
+### Replicating channels to Couchbase Lite, CouchDB or TouchDB
 
 The basics are simple: When pulling from Sync Gateway using the CouchDB API, configure the replication to use a filter named `sync_gateway/bychannel`, and a filter parameter `channels` whose value is a comma-separated list of channels to fetch. The replication will now only pull documents tagged with those channels.
 
@@ -129,6 +129,7 @@ The effect on the client will be that after a replication it sees the next revis
 
 This could seem weird ("why am I downloading documents I don't need?") but it ensures that any views running in the client will correctly no longer include the document, instead of including an obsolete revision. If the app code uses views to filter instead of just assuming that all docs in its local db must be relevant, it should be fine.
 
+Note that in cases where the user's access to a channel is revoked, this will not remove documents from the user's device which are part of the revoked channels but have already been synced.
 
 ## Authentication & Authorization
 

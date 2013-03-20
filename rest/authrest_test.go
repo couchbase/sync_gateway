@@ -38,28 +38,6 @@ func callAuthREST(method, resource string, body string) *httptest.ResponseRecord
 	return response
 }
 
-func TestDesignDocs(t *testing.T) {
-	response := callAuthREST("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 404)
-
-	response = callAuthREST("PUT", "/db/_design/foo", `{"hi": "there"}`)
-	assertStatus(t, response, 201)
-	response = callAuthREST("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 200)
-	var body db.Body
-	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, db.Body{
-		"_id":  "_design/foo",
-		"_rev": "0-1",
-		"hi":   "there"})
-
-	response = callAuthREST("DELETE", "/db/_design/foo?rev=0-1", "")
-	assertStatus(t, response, 200)
-
-	response = callAuthREST("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 404)
-}
-
 func TestUserAPI(t *testing.T) {
 	// PUT a user
 	assertStatus(t, callAuthREST("GET", "/db/user/snej", ""), 404)

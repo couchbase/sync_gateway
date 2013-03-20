@@ -633,6 +633,8 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 func (h *handler) handleDesign() error {
 	// we serve this content here so that CouchDB 1.2 has something to
 	// hash into the replication-id, to correspond to our filter.
+	// TODO this should include a hash of the body of the sync function
+	// instead of the token "ok"
 	h.writeJSON(db.Body{"filters": db.Body{"bychannel": "ok"}})
 	return nil
 }
