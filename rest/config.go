@@ -33,7 +33,7 @@ var DefaultPool = "default"
 type ServerConfig struct {
 	Interface      *string // Interface to bind REST API to, default ":4984"
 	AdminInterface *string // Interface to bind admin API to, default ":4985"
-	BrowserID      *BrowserIDConfig
+	Persona      *PersonaConfig
 	Log            []string // Log keywords to enable
 	Pretty         bool     // Pretty-print JSON responses?
 	Databases      map[string]*DbConfig
@@ -50,8 +50,8 @@ type DbConfig struct {
 	Roles  map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
 }
 
-type BrowserIDConfig struct {
-	Origin string // Canonical server URL for BrowserID authentication
+type PersonaConfig struct {
+	Origin string // Canonical server URL for Persona authentication
 }
 
 // Shared context of HTTP handlers. It's important that this remain immutable, because the
@@ -102,8 +102,8 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.AdminInterface == nil {
 		self.AdminInterface = other.AdminInterface
 	}
-	if self.BrowserID == nil {
-		self.BrowserID = other.BrowserID
+	if self.Persona == nil {
+		self.Persona = other.Persona
 	}
 	for _, flag := range other.Log {
 		self.Log = append(self.Log, flag)
@@ -305,7 +305,7 @@ func ParseCommandLine() *ServerConfig {
 	}
 
 	if *siteURL != "" {
-		config.BrowserID = &BrowserIDConfig{Origin: *siteURL}
+		config.Persona = &PersonaConfig{Origin: *siteURL}
 	}
 
 	base.LogKeys["HTTP"] = true

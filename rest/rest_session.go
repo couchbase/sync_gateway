@@ -35,8 +35,8 @@ func (h *handler) respondWithSessionInfo() error {
 	// Return a JSON struct similar to what CouchDB returns:
 	userCtx := db.Body{"name": name, "channels": allChannels}
 	handlers := []string{"default", "cookie"}
-	if h.BrowserIDEnabled() {
-		handlers = append(handlers, "browserid")
+	if h.PersonaEnabled() {
+		handlers = append(handlers, "persona")
 	}
 	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
 	h.writeJSON(response)

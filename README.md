@@ -148,7 +148,7 @@ The URL for a user account is simply "/_database_/user/_name_" where _name_ is t
 * "password": In a PUT or POST request, put the user's password here. It will not be returned by a GET.
 * "passwordhash": Securely hashed version of the password. This will be returned from a GET. If you want to update a user without changing the password, leave this alone when sending the modified JSON object back through PUT.
 * "disabled": Normally missing; if set to `true`, disables access for that account.
-* "email": The user's email address. Optional, but BrowserID login (q.v.) needs it.
+* "email": The user's email address. Optional, but Persona login (q.v.) needs it.
 
 You can create a new user either with a PUT to its URL, or by POST to `/$DB/user/`.
 
@@ -168,25 +168,28 @@ Roles have a separate namespace from users, so it's legal to have a user and a r
 
 ### Authentication
 
-[Like CouchDB](http://wiki.apache.org/couchdb/Session_API), Sync Gateway allows clients to authenticate using either HTTP Basic Auth or cookie-based sessions.
+[Like CouchDB](http://wiki.apache.org/couchdb/Session_API), Sync Gateway allows clients to authenticate using either HTTP Basic Auth or cookie-based sessions. The only difference is that we've moved the session URL from `/_session` to `/dbname/_session`, because in the Sync Gateway user accounts are per-database, not global to the server.
 
-#### BrowserID
+#### Persona
 
-Sync Gateway also supports [Mozilla's BrowserID (aka Persona) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
+Sync Gateway also supports [Mozilla's Persona (aka BrowserID) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
 
-To enable it, you need to add a `-site` command-line argument when starting the server, to tell it what its canonical URL is; for example:
+To enable it, you need to add a top-level `persona` property to your server config file. Its value should be an object with an `origin` property containing your server's canonical root URL, like so:
 
-    sync_gateway -site=http://example.com/
+    {
+        "persona": { "origin": "http://example.com/" }
 
-(This is necessary because the BrowserID protocol requires both client and server to agree on this name, and there's no reliable way to derive it on the server, especially if it's behind a proxy.)
+Alternatively, you can use a `-site` command-line flag whose value is the origin URL.
+
+(This is necessary because the Persona protocol requires both client and server to agree on the server's ID, and there's no reliable way to derive the URL on the server, especially if it's behind a proxy.)
 
 Once that's set up, you need to set the `email` property of user accounts, so that the server can determine the account based on the email address.
 
-Clients log in the same way they would to a CouchDB server running the [BrowserID plugin](https://github.com/iriscouch/browserid_couchdb): by POSTing to `/_browserid`, with a JSON body containing an `assertion` property whose value is the signed assertion received from the identity provider. Just as with a `_session` login, the response will set a session cookie.
+Clients log in by POSTing to `/dbname/_persona`, with a JSON body containing an `assertion` property whose value is the signed assertion received from the identity provider. Just as with a `_session` login, the response will set a session cookie.
 
 #### Indirect Authentication
 
-An app server can also create a session for a user by POSTing to `/_session` on the privileged port-4985 REST interface. The request body should be a JSON document with two properties: `name` (the user name) and `ttl` time-to-live measured in seconds. The response will be a JSON document with properties `cookie_name` (the name of the session cookie the client should send), `session_id` (the value of the session cookie) and `expires` (the time the session expires).
+An app server can also create a session for a user by POSTing to `/dbname/_session` on the privileged port-4985 REST interface. The request body should be a JSON document with two properties: `name` (the user name) and `ttl` time-to-live measured in seconds. The response will be a JSON document with properties `cookie_name` (the name of the session cookie the client should send), `session_id` (the value of the session cookie) and `expires` (the time the session expires).
 
 This allows the app server to optionally do its own authentication: the client sends credentials to it, and then it uses this API to generate a login session and send the cookie data back to the client, which can then send it in requests to Sync Gateway.
 

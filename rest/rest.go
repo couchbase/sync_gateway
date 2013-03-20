@@ -659,11 +659,11 @@ func createHandler(sc *serverContext) http.Handler {
 		for _, db := range sc.databases {
 			path := "/" + db.dbcontext.Name
 			r.Handle("/_session", http.RedirectHandler(path+"/_session", http.StatusTemporaryRedirect))
-			r.Handle("/_browserid", http.RedirectHandler(path+"/_browserid", http.StatusTemporaryRedirect))
+			r.Handle("/_persona", http.RedirectHandler(path+"/_persona", http.StatusTemporaryRedirect))
 		}
 	} else {
 		r.Handle("/_session", http.NotFoundHandler())
-		r.Handle("/_browserid", http.NotFoundHandler())
+		r.Handle("/_persona", http.NotFoundHandler())
 	}
 
 	// Operations on databases:
@@ -685,7 +685,7 @@ func createHandler(sc *serverContext) http.Handler {
 	// Session/login URLs are per-database (unlike in CouchDB)
 	dbr.Handle("/_session", makeAdminHandler(sc, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	dbr.Handle("/_session", makeAdminHandler(sc, (*handler).handleSessionPOST)).Methods("POST")
-	dbr.Handle("/_browserid", makeAdminHandler(sc, (*handler).handleBrowserIDPOST)).Methods("POST")
+	dbr.Handle("/_persona", makeAdminHandler(sc, (*handler).handlePersonaPOST)).Methods("POST")
 
 	// Document URLs:
 	dbr.Handle("/_local/{docid}", makeHandler(sc, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")

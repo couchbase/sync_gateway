@@ -22,9 +22,9 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-// Response from a BrowserID assertion verification.
-// VerifyBrowserID will never return a response whose status is not "okay"; returns nil instead.
-type BrowserIDResponse struct {
+// Response from a Persona assertion verification.
+// VerifyPersona will never return a response whose status is not "okay"; returns nil instead.
+type PersonaResponse struct {
 	Status   string // "okay" or "failure"
 	Reason   string // On failure, the error message
 	Email    string // The verified email address
@@ -33,11 +33,11 @@ type BrowserIDResponse struct {
 	Issuer   string // Hostname of the identity provider that issued the assertion
 }
 
-// Verifies a BrowserID/Persona assertion received from a client, returning either the verification
+// Verifies a Persona/BrowserID assertion received from a client, returning either the verification
 // response (which includes the verified email address) or an error.
 // The 'audience' parameter must be the same as the 'origin' parameter the client used when
 // requesting the assertion, i.e. the root URL of this website.
-func VerifyBrowserID(assertion string, audience string) (*BrowserIDResponse, error) {
+func VerifyPersona(assertion string, audience string) (*PersonaResponse, error) {
 	// See <https://developer.mozilla.org/en-US/docs/Persona/Remote_Verification_API>
 	res, err := http.PostForm("https://verifier.login.persona.org/verify",
 		url.Values{"assertion": {assertion}, "audience": {audience}})
@@ -47,15 +47,15 @@ func VerifyBrowserID(assertion string, audience string) (*BrowserIDResponse, err
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
 		return nil, &base.HTTPError{http.StatusBadGateway,
-			fmt.Sprintf("BrowserID verification server status %d", res.Status)}
+			fmt.Sprintf("Persona verification server status %d", res.Status)}
 	}
 	responseBody, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from BrowserID verifier"}
+		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Persona verifier"}
 	}
-	var response BrowserIDResponse
+	var response PersonaResponse
 	if err = json.Unmarshal(responseBody, &response); err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from BrowserID verifier"}
+		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Persona verifier"}
 	}
 	if response.Status != "okay" {
 		return nil, &base.HTTPError{http.StatusUnauthorized, response.Reason}
@@ -63,14 +63,14 @@ func VerifyBrowserID(assertion string, audience string) (*BrowserIDResponse, err
 	return &response, nil
 }
 
-func (h *handler) BrowserIDEnabled() bool {
-	return h.server.config.BrowserID != nil
+func (h *handler) PersonaEnabled() bool {
+	return h.server.config.Persona != nil
 }
 
-// Registers a new user account based on a BrowserID verified assertion.
+// Registers a new user account based on a Persona verified assertion.
 // Username will be the same as the verified email address. Password will be random.
 // The user will have access to no channels.
-func (h *handler) registerBrowserIDUser(verifiedInfo *BrowserIDResponse) (auth.User, error) {
+func (h *handler) registerPersonaUser(verifiedInfo *PersonaResponse) (auth.User, error) {
 	user, err := h.context.auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), channels.Set{})
 	if err != nil {
 		return nil, err
@@ -83,9 +83,9 @@ func (h *handler) registerBrowserIDUser(verifiedInfo *BrowserIDResponse) (auth.U
 	return user, err
 }
 
-// POST /_browserid creates a browserID-based login session and sets its cookie.
+// POST /_persona creates a browserID-based login session and sets its cookie.
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
-func (h *handler) handleBrowserIDPOST() error {
+func (h *handler) handlePersonaPOST() error {
 	var params struct {
 		Assertion string `json:"assertion"`
 	}
@@ -93,21 +93,21 @@ func (h *handler) handleBrowserIDPOST() error {
 	if err != nil {
 		return err
 	}
-	
-	origin := h.server.config.BrowserID.Origin
+
+	origin := h.server.config.Persona.Origin
 	if origin == "" {
-		base.Warn("Can't accept BrowserID logins: Server URL not configured")
+		base.Warn("Can't accept Persona logins: Server URL not configured")
 		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
 	}
 
 	// OK, now verify it:
-	base.Log("BrowserID: Verifying assertion %q for %q", params.Assertion, origin)
-	verifiedInfo, err := VerifyBrowserID(params.Assertion, origin)
+	base.Log("Persona: Verifying assertion %q for %q", params.Assertion, origin)
+	verifiedInfo, err := VerifyPersona(params.Assertion, origin)
 	if err != nil {
-		base.Log("BrowserID: Failed verify: %v", err)
+		base.Log("Persona: Failed verify: %v", err)
 		return err
 	}
-	base.Log("BrowserID: Logged in %q!", verifiedInfo.Email)
+	base.Log("Persona: Logged in %q!", verifiedInfo.Email)
 
 	// Email is verified. Look up the user and make a login session for her:
 	user, err := h.context.auth.GetUserByEmail(verifiedInfo.Email)
@@ -118,7 +118,7 @@ func (h *handler) handleBrowserIDPOST() error {
 		// The email address is authentic but we have no user account for it.
 		// Create a User for this session, with the given email address but no
 		// channel access and a random password.
-		user, err = h.registerBrowserIDUser(verifiedInfo)
+		user, err = h.registerPersonaUser(verifiedInfo)
 		if err != nil {
 			return err
 		}
