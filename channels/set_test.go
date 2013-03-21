@@ -114,11 +114,39 @@ func TestUnion(t *testing.T) {
 	assert.Equals(t, set1.Union(set2).String(), "{bar, baz, block, deny, foo}")
 }
 
+func TestSetMarshal(t *testing.T) {
+	var str struct {
+		Channels Set
+	}
+	bytes, err := json.Marshal(str)
+	assertNoError(t, err, "Marshal")
+	assert.Equals(t, string(bytes), `{"Channels":null}`)
+
+	str.Channels = SetOf()
+	bytes, err = json.Marshal(str)
+	assertNoError(t, err, "Marshal")
+	assert.Equals(t, string(bytes), `{"Channels":[]}`)
+
+	str.Channels = SetOf("a", "b")
+	bytes, err = json.Marshal(str)
+	assertNoError(t, err, "Marshal")
+	assert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
+}
+
 func TestSetUnmarshal(t *testing.T) {
 	var str struct {
 		Channels Set
 	}
-	err := json.Unmarshal([]byte(`{"channels":["foo"]}`), &str)
+	err := json.Unmarshal([]byte(`{"channels":null}`), &str)
+	assertNoError(t, err, "Unmarshal")
+	assert.DeepEquals(t, str.Channels, Set(nil))
+
+	err = json.Unmarshal([]byte(`{"channels":[]}`), &str)
+	assertNoError(t, err, "Unmarshal")
+	assert.DeepEquals(t, str.Channels, SetOf())
+
+	err = json.Unmarshal([]byte(`{"channels":["foo"]}`), &str)
 	assertNoError(t, err, "Unmarshal")
 	assert.DeepEquals(t, str.Channels.ToArray(), []string{"foo"})
+
 }

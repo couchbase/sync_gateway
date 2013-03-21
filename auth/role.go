@@ -23,7 +23,7 @@ import (
 type roleImpl struct {
 	Name_             string `json:"name,omitempty"`
 	ExplicitChannels_ ch.Set `json:"admin_channels"`
-	Channels_         ch.Set `json:"all_channels,omitempty"`
+	Channels_         ch.Set `json:"all_channels"`
 }
 
 var kValidNameRegexp *regexp.Regexp

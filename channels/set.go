@@ -157,25 +157,27 @@ func (set Set) IgnoringStar() Set {
 // JSON encoding/decoding:
 
 func (set Set) MarshalJSON() ([]byte, error) {
+	if set == nil {
+		return []byte("null"), nil
+	}
 	list := set.ToArray()
 	sort.Strings(list) // sort the array so it's written in a consistent order; helps testability
 	return json.Marshal(list)
 }
 
 func (setPtr *Set) UnmarshalJSON(data []byte) error {
-	if *setPtr == nil {
-		*setPtr = Set{}
-	}
-	set := *setPtr
 	var names []string
 	if err := json.Unmarshal(data, &names); err != nil {
 		return err
 	}
-	if len(set) > 0 {
-		panic("unmarshaling into non-empty Set") // I don't _think_ this can ever occur?
+	if names == nil {
+		*setPtr = nil
+		return nil
 	}
+	set := Set{}
 	for _, name := range names {
 		set[name] = present{}
 	}
+	*setPtr = set
 	return nil
 }
