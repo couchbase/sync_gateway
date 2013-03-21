@@ -10,15 +10,15 @@
 package rest
 
 import (
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"strings"
 	"time"
-	"crypto/sha1"
-	"io"
 
 	"github.com/gorilla/mux"
 
@@ -636,7 +636,7 @@ func (h *handler) handleDesign() error {
 	// we serve this content here so that CouchDB 1.2 has something to
 	// hash into the replication-id, to correspond to our filter.
 	filter := "ok"
-	if (h.db.DatabaseContext.ChannelMapper != nil) {
+	if h.db.DatabaseContext.ChannelMapper != nil {
 		hash := sha1.New()
 		io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Src)
 		filter = fmt.Sprint(hash.Sum(nil))
@@ -685,7 +685,9 @@ func createHandler(sc *serverContext) http.Handler {
 	// Session/login URLs are per-database (unlike in CouchDB)
 	dbr.Handle("/_session", makeAdminHandler(sc, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	dbr.Handle("/_session", makeAdminHandler(sc, (*handler).handleSessionPOST)).Methods("POST")
-	dbr.Handle("/_persona", makeAdminHandler(sc, (*handler).handlePersonaPOST)).Methods("POST")
+	if sc.config.Persona != nil {
+		dbr.Handle("/_persona", makeAdminHandler(sc, (*handler).handlePersonaPOST)).Methods("POST")
+	}
 
 	// Document URLs:
 	dbr.Handle("/_local/{docid}", makeHandler(sc, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
