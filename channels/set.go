@@ -34,7 +34,7 @@ var kValidChannelRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	kValidChannelRegexp, err = regexp.Compile(`^([-+=_.@\p{L}\p{Nd}]+|\*)$`)
+	kValidChannelRegexp, err = regexp.Compile(`^([-+=/_.@\p{L}\p{Nd}]+|\*)$`)
 	if err != nil {
 		panic("Bad IsValidChannel regexp")
 	}
