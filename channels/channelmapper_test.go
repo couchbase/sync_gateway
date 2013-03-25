@@ -10,7 +10,7 @@
 package channels
 
 import (
-	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go.assert"
 	"testing"
 
 	"github.com/couchbaselabs/sync_gateway/base"

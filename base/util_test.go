@@ -10,7 +10,7 @@
 package base
 
 import (
-	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go.assert"
 	"testing"
 )
 

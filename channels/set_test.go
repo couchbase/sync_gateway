@@ -14,7 +14,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestIsValidChannel(t *testing.T) {

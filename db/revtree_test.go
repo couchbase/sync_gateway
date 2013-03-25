@@ -12,7 +12,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go.assert"
 	"runtime"
 	"sort"
 	"strings"

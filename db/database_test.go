@@ -14,7 +14,7 @@ import (
 	"log"
 	"testing"
 
-	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go.assert"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"

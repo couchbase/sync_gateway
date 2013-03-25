@@ -11,7 +11,7 @@ package db
 
 import (
 	"github.com/couchbaselabs/sync_gateway/auth"
-	"github.com/sdegutis/go.assert"
+	"github.com/couchbaselabs/go.assert"
 	"testing"
 )
 
