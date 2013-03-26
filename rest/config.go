@@ -33,7 +33,7 @@ var DefaultPool = "default"
 type ServerConfig struct {
 	Interface      *string // Interface to bind REST API to, default ":4984"
 	AdminInterface *string // Interface to bind admin API to, default ":4985"
-	Persona      *PersonaConfig
+	Persona        *PersonaConfig
 	Log            []string // Log keywords to enable
 	Pretty         bool     // Pretty-print JSON responses?
 	Databases      map[string]*DbConfig
@@ -230,9 +230,9 @@ func (sc *serverContext) installPrincipals(context *context, spec map[string]jso
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() *ServerConfig {
-	siteURL := flag.String("site", "", "Server's official URL")
-	addr := flag.String("addr", DefaultInterface, "Address to bind to")
-	authAddr := flag.String("authaddr", DefaultAdminInterface, "Address to bind admin interface to")
+	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
+	addr := flag.String("interface", DefaultInterface, "Address to bind to")
+	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
 	poolName := flag.String("pool", DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
