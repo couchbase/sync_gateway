@@ -33,7 +33,7 @@ var DefaultPool = "default"
 type ServerConfig struct {
 	Interface      *string // Interface to bind REST API to, default ":4984"
 	AdminInterface *string // Interface to bind admin API to, default ":4985"
-	Persona        *PersonaConfig
+	Persona      *PersonaConfig
 	Log            []string // Log keywords to enable
 	Pretty         bool     // Pretty-print JSON responses?
 	Databases      map[string]*DbConfig
@@ -230,47 +230,24 @@ func (sc *serverContext) installPrincipals(context *context, spec map[string]jso
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() *ServerConfig {
-	// globalFlags flags
-	globalFlags := flag.NewFlagSet("server", flag.ContinueOnError)
-
-	siteURL := globalFlags.String("personaOrigin", "", "Base URL that clients use to connect to the server")
-	addr := globalFlags.String("interface", DefaultInterface, "Address to bind to")
-	authAddr := globalFlags.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	pretty := globalFlags.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := globalFlags.Bool("verbose", false, "Log more info about HTTP requests")
-	logKeys := globalFlags.String("log", "", "Log keywords, comma separated. Options include: Auth, Attach, CRUD, HTTP, HTTP+, and Changes")
-	needHelp := globalFlags.Bool("help", false, "This help message")
-
-	// database specific flags (these are illegal if you have a config file)
-	dbFlags := flag.NewFlagSet("database", flag.ContinueOnError)
-
-	couchbaseURL := dbFlags.String("url", DefaultServer, "Address of Couchbase Server")
-	poolName := dbFlags.String("pool", DefaultPool, "Name of pool")
-	bucketName := dbFlags.String("bucket", "sync_gateway", "Name of Couchbase Server bucket")
-	dbName := dbFlags.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
-	dbFlags.Bool("help", false, "This help message")
-
-	globalFlags.Usage = func () {}
-	dbFlags.Usage = func () {}
-
-	globalFlags.Parse(os.Args[1:])
-	dbFlags.Parse(os.Args[1:])
-
-	if *needHelp == true {
-		fmt.Println("Server configuration (overrides any config files)")
-		globalFlags.PrintDefaults()
-		fmt.Println("\nDatabase configuration (ignored if a config file is used)")
-		dbFlags.PrintDefaults()
-		fmt.Println("\nPass paths to config files on the command line after all flags.")
-		os.Exit(2)
-	}
+	siteURL := flag.String("site", "", "Server's official URL")
+	addr := flag.String("addr", DefaultInterface, "Address to bind to")
+	authAddr := flag.String("authaddr", DefaultAdminInterface, "Address to bind admin interface to")
+	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
+	poolName := flag.String("pool", DefaultPool, "Name of pool")
+	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
+	dbName := flag.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
+	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
+	verbose := flag.Bool("verbose", false, "Log more info about requests")
+	logKeys := flag.String("log", "", "Log keywords, comma separated")
+	flag.Parse()
 
 	var config *ServerConfig
 
-	if globalFlags.NArg() > 0 {
+	if flag.NArg() > 0 {
 		// Read the configuration file(s), if any:
-		for i := 0; i < globalFlags.NArg(); i++ {
-			filename := globalFlags.Arg(i)
+		for i := 0; i < flag.NArg(); i++ {
+			filename := flag.Arg(i)
 			c, err := ReadConfig(filename)
 			if err != nil {
 				base.LogFatal("Error reading config file %s: %v", filename, err)
@@ -284,7 +261,7 @@ func ParseCommandLine() *ServerConfig {
 			}
 		}
 
-		// Override the config file with globalFlags settings from command line flags:
+		// Override the config file with global settings from command line flags:
 		if *addr != DefaultInterface {
 			config.Interface = addr
 		}
@@ -334,9 +311,6 @@ func ParseCommandLine() *ServerConfig {
 	base.LogKeys["HTTP"] = true
 	base.LogKeys["HTTP+"] = *verbose
 	base.ParseLogFlag(*logKeys)
-
-	configJSON, _ := json.MarshalIndent(config, "  ", "  ")
-	fmt.Printf("Sync Gateway starting with config settings:\n  %s\n", configJSON)
 
 	return config
 }
