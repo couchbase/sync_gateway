@@ -128,7 +128,7 @@ func newServerContext(config *ServerConfig) *serverContext {
 }
 
 // Adds a database to the serverContext given its Bucket.
-func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun string, nag bool) (*context, error) {
+func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
 	if dbName == "" {
 		dbName = bucket.GetName()
 	}
@@ -145,15 +145,15 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun 
 	if err != nil {
 		return nil, err
 	}
-	if syncFun != "" {
-		if err := dbcontext.ApplySyncFun(syncFun); err != nil {
+	if syncFun != nil {
+		if err := dbcontext.ApplySyncFun(*syncFun); err != nil {
 			return nil, err
 		}
 	}
 
 	if dbcontext.ChannelMapper == nil {
 		if nag {
-			base.Warn("Channel mapper undefined; using default")
+			base.Warn("Sync function undefined; using default")
 		}
 		// Always have a channel mapper object even if it does nothing:
 		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
@@ -189,7 +189,7 @@ func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
 	if err != nil {
 		return err
 	}
-	context, err := sc.addDatabase(bucket, config.name, *config.Sync, true)
+	context, err := sc.addDatabase(bucket, config.name, config.Sync, true)
 	if err != nil {
 		return err
 	}
