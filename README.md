@@ -1,17 +1,18 @@
 # Couchbase Sync Gateway
 
-Gluing Couchbase Lite (and TouchDB / CouchDB) to Couchbase Server
+Gluing [Couchbase Lite][COUCHBASE_LITE] (and [TouchDB][TOUCHDB] / [CouchDB][COUCHDB]) to [Couchbase Server][COUCHBASE_SERVER]
 
 
 ## About
 
-This is an **experimental prototype** adapter that can allow Couchbase Server 2* to act as a replication endpoint for TouchDB, CouchDB and other compatible libraries like PouchDB. It does this by running an HTTP listener process that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
+This is an adapter that can allow [Couchbase Server 2][COUCHBASE_SERVER]* to act as a replication endpoint for [Couchbase Lite][COUCHBASE_LITE], [TouchDB][TOUCHDB], [CouchDB][COUCHDB], and other compatible libraries like PouchDB. It does this by running an HTTP listener process that speaks enough of CouchDB's REST API to serve as a passive endpoint of replication, and using a Couchbase bucket as the persistent storage of all the documents.
 
-\* _It can actually run without Couchbase Server, using a simple built-in database called Walrus. This is useful for testing or for very lightweight use. More details below._
+It also provides a mechanism called _channels_ that makes it feasible to share a database between a large number of users, with each user given access only to a subset of the database. This is a frequent use case for mobile apps, and one that doesn't work very well with CouchDB.
+
+<small>\* _It can actually run without Couchbase Server, using a simple built-in database called [Walrus][WALRUS]. This is useful for testing or for very lightweight use. More details below._</small>
 
 ### Limitations
 
-* Sync Gateway currently supports only a _single_ database. Its name defaults to the name of the underlying bucket, but can be changed using the `dbname` command-line flag. Any attempt to use the CouchDB REST API to access or create other databases will fail with an appropriate HTTP error.
 * Document IDs longer than about 180 characters will overflow Couchbase's key size limit and cause an HTTP error.
 * Only a subset of the CouchDB REST API is supported: this is intentional. The gateway is _not_ a CouchDB replacement, rather a compatible sync endpoint.
 * Explicit garbage collection is required to free up space, via a REST call to `/_vacuum`. This is not yet scheduled automatically, so you'll have to call it yourself.
@@ -23,15 +24,15 @@ Apache 2 license, like all Couchbase stuff.
 
 
 
-## How To Run It
+# How To Run It
 
-### Quick installation
+## Quick installation
 
 2. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang".
 3. Go needs [Git](http://git-scm.com) and [Mercurial](http://mercurial.selenic.com/downloads/) for for downloading packages. You may already have these installed. Enter `git --version` and `hg --version` in a shell to check. If not, go get 'em.
 4. Now install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`
 
-### Quick startup
+## Quick startup
 
 The Sync Gateway launcher tool is `bin/sync_gateway` in the first directory in your GOPATH. If you've already added this directory to your PATH, you can invoke it from a shell as `sync_gateway`, otherwise you'll need to give its full path. Either way, start the gateway from a shell using the following arguments:
 
@@ -41,26 +42,28 @@ That's it! You now have a sort of mock-CouchDB listening on port 4984 (and with 
 
 (To use a different database name, use the `-dbname` flag: e.g. `-dbname mydb`.)
 
-The gateway is using a simple in-memory database called [Walrus](https://github.com/couchbaselabs/walrus) instead of Couchbase Server. This is very convenient for quick testing. Walrus is _so_ simple, in fact, that by default it doesn't persist its data to disk at all, so every time the sync_gateway process exits it loses all of its data! Great for unit testing, not great for any actual use. You can make your database persistent by adding a `-url` command-line option followed by a path to an already-existing filesystem directory:
+The gateway is using a simple in-memory database called [Walrus][WALRUS] instead of Couchbase Server. This is very convenient for quick testing. Walrus is _so_ simple, in fact, that by default it doesn't persist its data to disk at all, so every time the sync_gateway process exits it loses all of its data! Great for unit testing, not great for any actual use. You can make your database persistent by changing the `-url` value to a path to an already-existing filesystem directory:
 
     mkdir /data
     sync_gateway -url /data
 
 The gateway will now periodically save its state to a file `/data/sync_gateway.walrus`. This is by no means highly scalable, but it will work for casual use.
 
-### Connecting with a real Couchbase server
+## Connecting with a real Couchbase server
 
 Using a real Couchbase server, once you've got one set up, is as easy as changing the URL:
 
-0. Install and start [Couchbase Server 2.0](http://www.couchbase.com) or later.
+0. Install and start [Couchbase Server 2.0][COUCHBASE_SERVER] or later.
 1. Create a bucket named `sync_gateway` in the default pool.
 2. Start the sync gateway with an argument `-url` followed by the HTTP URL of the Couchbase server:
 
+```
     sync_gateway -url http://localhost:8091
+```
 
 If you want to use a different name for the bucket, or listen on a different port, you can do that with command-line options. Use the `--help` flag to see a list of options.
 
-### Configuration files
+## Configuration files
 
 Instead of entering the settings on the command-line, you can store them in a JSON file and then just provide the path to that file as a command-line argument. As a bonus, the file lets you run multiple databases.
 
@@ -70,16 +73,17 @@ Here's an example configuration file that starts a server with the default setti
         "interface": ":4984",
         "adminInterface": ":4985",
         "log": ["CRUD", "REST"],
-        "databases": [
-            {
-                "name": "sync_gateway",
+        "databases": {
+            "sync_gateway": {
                 "server": "http://localhost:8091"
                 "bucket": "sync_gateway"
             }
-        ]
+        }
     }
 
-## Channels
+If you want to run multiple databases you can either add more entries to the `databases` property in the config file, or you can put each of them in its own config file (just like above) and list each of the config files on the command line.
+
+# Channels
 
 Channels are the intermediaries between documents and users. Every document belongs to a set of channels, and every user has a set of channels s/he is allowed to access. Additionally, a replication from Sync Gateway specifies what channels it wants to replicate; documents not in any of these channels will be ignored (even if the user has access to them.)
 
@@ -93,15 +97,15 @@ There is no need to register or preassign channels. Channels come into existence
 
 Valid channel names consist of Unicode letter and digit characters, as well as "_", "-" and ".". The empty string is not allowed. The special meta-channel name "*" denotes all channels. Channel names are compared literally, so they are case- and diacritical-sensitive.
 
-### Mapping documents to channels
+## Mapping documents to channels
 
 There are currently two ways to assign documents to channels. Both of these operate implicitly: there's not a separate action that assigns a doc to a channel, rather the _contents_ of the document determine what channels its in.
 
-#### Explicit property
+### Explicit property
 
 The default (simple and limited) way is to add a `channels` property to a document. Its value is an array of strings. The strings are the names of channels that this document will be available through. A document with no `channels` property will not appear in any channels.
 
-#### Sync function
+### Sync function
 
 The more flexible way is to define a **sync function**. This is a JavaScript function, similar to a CouchDB validation function, that takes a document body as input and can decide based on that what channels it should go into. Like a regular CouchDB function, it may not reference any external state and it must return the same results every time it's called on the same input.
 
@@ -113,13 +117,13 @@ Defining a sync function overrides the default channel mapping mechanism; that i
 
     function (doc) { channel(doc.channels); }
 
-### Replicating channels to Couchbase Lite, CouchDB or TouchDB
+## Replicating channels to Couchbase Lite, CouchDB or TouchDB
 
 The basics are simple: When pulling from Sync Gateway using the CouchDB API, configure the replication to use a filter named `sync_gateway/bychannel`, and a filter parameter `channels` whose value is a comma-separated list of channels to fetch. The replication will now only pull documents tagged with those channels.
 
 (Yes, this sounds just like CouchDB filtered replication. The difference is that the implementation is much, much more efficient because it uses a B-tree index to find the matching documents, rather than simply calling a JavaScript filter function on every single document.)
 
-#### Removal from channels
+### Removal from channels
 
 There is a tricky edge case of a document being "removed" from a channel without being deleted, i.e. when a new revision is not added to one or more channels that the previous revision was in. Subscribers (downstream databases pulling from this db) should know about this change, but it's not exactly the same as a deletion. CouchDB's existing filtered-replication mechanism does not address this, which has made things difficult for some clients.
 
@@ -131,11 +135,11 @@ This could seem weird ("why am I downloading documents I don't need?") but it en
 
 Note that in cases where the user's access to a channel is revoked, this will not remove documents from the user's device which are part of the revoked channels but have already been synced.
 
-## Authentication & Authorization
+# Authentication & Authorization
 
 Sync Gateway supports user accounts that are allowed to access only a subset of channels (and hence documents).
 
-### Accounts
+## Accounts
 
 Accounts are managed through a parallel REST interface that runs on port 4985 (by default, but this can be customized via the `authaddr` command-line argument). This interface is privileged and for internal use only; instead, we assume you have some other server-side mechanism for users to manage accounts, which will call through to this API.
 
@@ -158,7 +162,7 @@ To disable all guest access, set the guest user's `disabled` property:
 
     curl -X PUT localhost:4985/$DB/user/GUEST --data '{"disabled":true, "channels":[]}'
 
-### Roles
+## Roles
 
 A user account can be assigned to zero or more _roles_. Roles are simply named collections of channels; a user inherits the channel access of all roles it belongs to. This is very much like CouchDB; or like Unix groups, except that roles do not form a hierarchy.
 
@@ -166,20 +170,21 @@ Roles are accessed through the admin REST API much like users are, through URLs 
 
 Roles have a separate namespace from users, so it's legal to have a user and a role with the same name.
 
-### Authentication
+## Authentication
 
 [Like CouchDB](http://wiki.apache.org/couchdb/Session_API), Sync Gateway allows clients to authenticate using either HTTP Basic Auth or cookie-based sessions. The only difference is that we've moved the session URL from `/_session` to `/dbname/_session`, because in the Sync Gateway user accounts are per-database, not global to the server.
 
-#### Persona
+### Persona
 
 Sync Gateway also supports [Mozilla's Persona (aka BrowserID) protocol](https://developer.mozilla.org/en-US/docs/persona) that allows users to log in using their email addresses.
 
 To enable it, you need to add a top-level `persona` property to your server config file. Its value should be an object with an `origin` property containing your server's canonical root URL, like so:
 
     {
-        "persona": { "origin": "http://example.com/" }
+        "persona": { "origin": "http://example.com/" },
+        ...
 
-Alternatively, you can use a `-site` command-line flag whose value is the origin URL.
+Alternatively, you can use a `-personaOrigin` command-line flag whose value is the origin URL.
 
 (This is necessary because the Persona protocol requires both client and server to agree on the server's ID, and there's no reliable way to derive the URL on the server, especially if it's behind a proxy.)
 
@@ -187,13 +192,13 @@ Once that's set up, you need to set the `email` property of user accounts, so th
 
 Clients log in by POSTing to `/dbname/_persona`, with a JSON body containing an `assertion` property whose value is the signed assertion received from the identity provider. Just as with a `_session` login, the response will set a session cookie.
 
-#### Indirect Authentication
+### Indirect Authentication
 
 An app server can also create a session for a user by POSTing to `/dbname/_session` on the privileged port-4985 REST interface. The request body should be a JSON document with two properties: `name` (the user name) and `ttl` time-to-live measured in seconds. The response will be a JSON document with properties `cookie_name` (the name of the session cookie the client should send), `session_id` (the value of the session cookie) and `expires` (the time the session expires).
 
 This allows the app server to optionally do its own authentication: the client sends credentials to it, and then it uses this API to generate a login session and send the cookie data back to the client, which can then send it in requests to Sync Gateway.
 
-### Authorization
+## Authorization
 
 The `all_channels` property of a user account determines what channels that user may access.
 
@@ -205,7 +210,7 @@ Write protection is done by document validation functions, as in CouchDB: the fu
 
 There is currently an edge case where after a user is granted access to a new channel, their client will not automatically sync with pre-existing documents in that channel (that they didn't have access to before.) The workaround is for the client to do a one-shot sync from only that new channel, which having no checkpoint will start over from the beginning and fetch all the old documents.
 
-#### Programmatic Authorization
+### Programmatic Authorization
 
 It is possible for documents to grant users access to channels; this is done by writing a sync function that recognizes such documents and calls a special `access()` function to grant access.
 
@@ -223,7 +228,7 @@ In this example, a chat room is represented by a document with a "type" property
 
 `access()` can also operate on roles: if a username string begins with `role:` then the remainder of the string is interpreted as a role name. (There's no ambiguity here, since ":" is an illegal character in a user or role name.)
 
-#### Authorizing Document Updates
+### Authorizing Document Updates
 
 As mentioned earlier, sync functions can also authorize document updates. Just like a CouchDB validation function, a sync function can reject the document by throwing an exception:
 
@@ -236,3 +241,9 @@ To validate a document you often need to know which user is changing it, and som
     function(doc, oldDoc, user) { ... }
 
 `oldDoc` is the old revision of the document (or empty if this is a new document.) `user` is an object with properties `name` (the username), `roles` (an array of the names of the user's roles), and `channels` (an array of all channels the user has access to.)
+
+[COUCHBASE_LITE]: https://github.com/couchbase/couchbase-lite-ios
+[TOUCHDB]: https://github.com/couchbaselabs/TouchDB-iOS
+[COUCHDB]: http://couchdb.apache.org
+[COUCHBASE_SERVER]: http://www.couchbase.com/couchbase-server/overview
+[WALRUS]:https://github.com/couchbaselabs/walrus
