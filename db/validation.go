@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
+	_ "github.com/robertkrimen/otto/underscore"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 )
