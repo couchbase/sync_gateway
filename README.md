@@ -30,7 +30,8 @@ Apache 2 license, like all Couchbase stuff.
 
 2. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang".
 3. Go needs [Git](http://git-scm.com) and [Mercurial](http://mercurial.selenic.com/downloads/) for for downloading packages. You may already have these installed. Enter `git --version` and `hg --version` in a shell to check. If not, go get 'em.
-4. Now install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`
+4. If you've just installed go, you need to set your $GOPATH to a location where you want packages such as sync_gateway to be installed. 
+5. Now install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`   
 
 ## Quick startup
 
