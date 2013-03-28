@@ -28,13 +28,18 @@ Apache 2 license, like all Couchbase stuff.
 
 ## Quick installation
 
-2. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang".
-3. Go needs [Git](http://git-scm.com) and [Mercurial](http://mercurial.selenic.com/downloads/) for for downloading packages. You may already have these installed. Enter `git --version` and `hg --version` in a shell to check. If not, go get 'em.
-4. Now install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`
+The Sync Gateway is known to work on Mac OS X, Windows and Ubuntu Linux. It has no external dependencies other than the Go language.
+
+1. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang".
+2. Go needs [Git](http://git-scm.com) and [Mercurial](http://mercurial.selenic.com/downloads/) for for downloading packages. You may already have these installed. Enter `git --version` and `hg --version` in a shell to check. If not, go get 'em.
+3. We recommend setting a `GOPATH` so 3rd party packages don't get installed into your system Go installation. If you haven't done this yet, make an empty directory someplace (like maybe `~/lib/Go`), then edit your .bash_profile or other shell startup script to set and export a `$GOPATH` variable pointing to it. (While you're at it, you might want to add its `bin` subdirectory to your `$PATH`.) Don't forget to start a new shell so the variable takes effect.
+4. Now you can install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`
 
 ## Quick startup
 
-The Sync Gateway launcher tool is `bin/sync_gateway` in the first directory in your GOPATH. If you've already added this directory to your PATH, you can invoke it from a shell as `sync_gateway`, otherwise you'll need to give its full path. Either way, start the gateway from a shell using the following arguments:
+The Sync Gateway launcher tool is `bin/sync_gateway` in the directory pointed to by your GOPATH (see item 3 above.) If you didn't set a GOPATH, it'll be somewhere inside your system Go installation directory (like `/usr/local/go`, or `/usr/local/Cellar/go` if you used Homebrew.)
+
+If you've already added this `bin` directory to your shell PATH, you can invoke it from a shell as `sync_gateway`, otherwise you'll need to give its full path. Either way, start the gateway from a shell using the following arguments:
 
     sync_gateway -url walrus:
 
