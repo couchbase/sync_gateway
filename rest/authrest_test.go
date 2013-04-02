@@ -24,7 +24,7 @@ import (
 
 func callAuthREST(method, resource string, body string) *httptest.ResponseRecorder {
 	sc := newServerContext(&ServerConfig{})
-	if _, err := sc.addDatabase(gTestBucket, "db", "", false); err != nil {
+	if _, err := sc.addDatabase(gTestBucket, "db", nil, false); err != nil {
 		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
 	authHandler := createAuthHandler(sc)
