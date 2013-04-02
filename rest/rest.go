@@ -423,21 +423,27 @@ func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesO
 }
 
 func (h *handler) handleContinuousChanges(channels channels.Set, options db.ChangesOptions) error {
-	var timeout <-chan time.Time
+	var timeoutInterval time.Duration
+	var timer *time.Timer
 	var heartbeat <-chan time.Time
 	if ms := h.getIntQuery("heartbeat", 0); ms > 0 {
 		ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
 		defer ticker.Stop()
 		heartbeat = ticker.C
-	} else if ms := h.getIntQuery("timeout", 0); ms > 0 {
-		timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
-		defer timer.Stop()
-		timeout = timer.C
+	} else if ms := h.getIntQuery("timeout", 60000); ms > 0 {
+		timeoutInterval = time.Duration(ms) * time.Millisecond
+		defer func() {
+			if timer != nil {
+				timer.Stop()
+			}
+		}()
 	}
 
 	options.Wait = true // we want the feed channel to wait for changes
 	var feed <-chan *db.ChangeEntry
+	var timeout <-chan time.Time
 	var err error
+
 loop:
 	for {
 		if feed == nil {
@@ -448,7 +454,12 @@ loop:
 			}
 		}
 
-		// Wait for either a new change, or a heartbeat:
+		if timeoutInterval > 0 && timer == nil {
+			timer = time.NewTimer(timeoutInterval)
+			timeout = timer.C
+		}
+
+		// Wait for either a new change, a heartbeat, or a timeout:
 		select {
 		case entry := <-feed:
 			if entry == nil {
@@ -466,11 +477,15 @@ loop:
 					}
 				}
 			}
+			// Reset the timeout after sending an entry:
+			timer.Stop()
+			timer = nil
 		case <-heartbeat:
 			err = h.writeln([]byte{})
 		case <-timeout:
 			break loop
 		}
+
 		if err != nil {
 			return nil // error is probably because the client closed the connection
 		}
