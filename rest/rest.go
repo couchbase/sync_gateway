@@ -429,7 +429,7 @@ func (h *handler) handleContinuousChanges(channels channels.Set, options db.Chan
 		ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
 		defer ticker.Stop()
 		heartbeat = ticker.C
-	} else if ms := h.getIntQuery("timeout", 60); ms > 0 {
+	} else if ms := h.getIntQuery("timeout", 0); ms > 0 {
 		timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
 		defer timer.Stop()
 		timeout = timer.C
