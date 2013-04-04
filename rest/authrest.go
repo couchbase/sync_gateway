@@ -161,7 +161,6 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	return nil
 }
 
-
 //////// HTTP HANDLER:
 
 func renderError(err error, r http.ResponseWriter) {
@@ -191,6 +190,7 @@ func handleAuthReq(sc *serverContext, fun authHandler) func(http.ResponseWriter,
 // Starts a simple REST listener that will get and set user credentials.
 func createAuthHandler(sc *serverContext) http.Handler {
 	r := mux.NewRouter()
+	r.StrictSlash(true)
 
 	r.HandleFunc("/{db}/_session",
 		handleAuthReq(sc, createUserSession)).Methods("POST")
@@ -201,7 +201,7 @@ func createAuthHandler(sc *serverContext) http.Handler {
 		handleAuthReq(sc, putUser)).Methods("PUT")
 	r.HandleFunc("/{db}/user/{name}",
 		handleAuthReq(sc, deleteUser)).Methods("DELETE")
-	r.HandleFunc("/{db}/user",
+	r.HandleFunc("/{db}/user/",
 		handleAuthReq(sc, putUser)).Methods("POST")
 
 	r.HandleFunc("/{db}/role/{name}",
@@ -210,7 +210,7 @@ func createAuthHandler(sc *serverContext) http.Handler {
 		handleAuthReq(sc, putRole)).Methods("PUT")
 	r.HandleFunc("/{db}/role/{name}",
 		handleAuthReq(sc, deleteRole)).Methods("DELETE")
-	r.HandleFunc("/{db}/role",
+	r.HandleFunc("/{db}/role/",
 		handleAuthReq(sc, putRole)).Methods("POST")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,

@@ -59,6 +59,8 @@ func TestUserAPI(t *testing.T) {
 
 	// POST a user
 	response = callAuthREST("POST", "/db/user", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 301)
+	response = callAuthREST("POST", "/db/user/", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
 	response = callAuthREST("GET", "/db/user/snej", "")
 	assertStatus(t, response, 200)
@@ -89,6 +91,8 @@ func TestRoleAPI(t *testing.T) {
 
 	// POST a role
 	response = callAuthREST("POST", "/db/role", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
+	assertStatus(t, response, 301)
+	response = callAuthREST("POST", "/db/role/", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
 	assertStatus(t, response, 201)
 	response = callAuthREST("GET", "/db/role/hipster", "")
 	assertStatus(t, response, 200)
