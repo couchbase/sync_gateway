@@ -80,7 +80,7 @@ Here's an example configuration file that starts a server with the default setti
         "log": ["CRUD", "REST"],
         "databases": {
             "sync_gateway": {
-                "server": "http://localhost:8091"
+                "server": "http://localhost:8091",
                 "bucket": "sync_gateway"
             }
         }
