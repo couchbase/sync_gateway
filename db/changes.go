@@ -163,6 +163,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 // Returns of all the changes made to multiple channels. Does NOT check authorization.
 func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", channels, options)
 	if len(channels) == 0 {
 		return nil, nil
 	} else if len(channels) == 1 {

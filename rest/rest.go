@@ -366,7 +366,8 @@ func (h *handler) handleChanges() error {
 		if channelsParam == "" {
 			return &base.HTTPError{http.StatusBadRequest, "Missing 'channels' filter parameter"}
 		}
-		userChannels, err := channels.SetFromArray(strings.Split(channelsParam, ","),
+		var err error
+		userChannels, err = channels.SetFromArray(strings.Split(channelsParam, ","),
 			channels.ExpandStar)
 		if err != nil {
 			return err
