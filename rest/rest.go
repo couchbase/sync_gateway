@@ -375,13 +375,14 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-		if err := h.user.AuthorizeAllChannels(userChannels); err != nil {
-			return err
+		if len(userChannels) > 0 {
+			if err := h.user.AuthorizeAllChannels(userChannels); err != nil {
+				return err
+			}
+			if len(userChannels) == 0 {
+				return &base.HTTPError{http.StatusForbidden, "You don't have access to these channels"}
+			}
 		}
-	}
-
-	if len(userChannels) == 0 {
-		return &base.HTTPError{http.StatusForbidden, "You don't have access to these channels"}
 	}
 
 	switch h.getQuery("feed") {
