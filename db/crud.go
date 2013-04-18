@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -436,26 +435,18 @@ func validateAccessMap(access channels.AccessMap) bool {
 
 // Updates the Access property of a document object
 func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
-	oldAccess := doc.Access
-	if reflect.DeepEqual(newAccess, oldAccess) {
-		return false
-	}
-
-	doc.Access = newAccess
-	base.LogTo("CRUD", "\tDoc %q grants access: %+v", doc.ID, newAccess)
-
 	authr := auth.NewAuthenticator(db.Bucket, nil)
-	for name, _ := range oldAccess {
+	channels.ForChangedUsers(doc.Access, newAccess, func(name string) {
+		changed = true
 		if user, _ := authr.GetUser(name); user != nil {
 			authr.InvalidateChannels(user)
 		}
+	})
+	if changed {
+		doc.Access = newAccess
+		base.LogTo("CRUD", "\tDoc %q grants access: %+v", doc.ID, newAccess)
 	}
-	for name, _ := range newAccess {
-		if user, _ := authr.GetUser(name); user != nil {
-			authr.InvalidateChannels(user)
-		}
-	}
-	return true
+	return
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.

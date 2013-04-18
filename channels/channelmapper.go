@@ -47,11 +47,25 @@ type ChannelMapper struct {
 	channels []string
 	access   map[string][]string
 	js       *walrus.JSServer
-	Src 	 string
+	Src      string
 }
 
 // Maps user names (or role names prefixed with "role:") to arrays of channel names
 type AccessMap map[string]Set
+
+// Calls the function for each user whose access is different between the two AccessMaps
+func ForChangedUsers(a, b AccessMap, fn func(user string)) {
+	for name, access := range a {
+		if !access.Equals(b[name]) {
+			fn(name)
+		}
+	}
+	for name, _ := range b {
+		if _, existed := a[name]; !existed {
+			fn(name)
+		}
+	}
+}
 
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array *otto.Object) []string {

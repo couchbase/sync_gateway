@@ -169,11 +169,11 @@ func TestEmptyChannelMapper(t *testing.T) {
 
 // channel mapper fn that uses _ underscore JS library
 func TestChannelMapperUnderscoreLib(t *testing.T) {
-        mapper, err := NewChannelMapper(`function(doc) {channel(_.first(doc.channels));}`)
-        assertNoError(t, err, "Couldn't create mapper")
-        res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
-        assertNoError(t, err, "callMapper failed")
-        assert.DeepEquals(t, res.Channels, SetOf("foo"))
+	mapper, err := NewChannelMapper(`function(doc) {channel(_.first(doc.channels));}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	res, err := mapper.callMapper(`{"channels": ["foo", "bar", "baz"]}`, `{}`, noUser)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, res.Channels, SetOf("foo"))
 }
 
 // Validation by calling reject()
@@ -225,6 +225,17 @@ func TestSetFunction(t *testing.T) {
 	assertNoError(t, err, "callMapper failed")
 	assert.DeepEquals(t, output.Channels, SetOf("all"))
 	mapper.Stop()
+}
+
+func TestChangedUsers(t *testing.T) {
+	a := AccessMap{"alice": SetOf("x", "y"), "bita": SetOf("z"), "claire": SetOf("w")}
+	b := AccessMap{"alice": SetOf("x", "z"), "bita": SetOf("z"), "diana": SetOf("w")}
+
+	changes := map[string]bool{}
+	ForChangedUsers(a, b, func(name string) {
+		changes[name] = true
+	})
+	assert.DeepEquals(t, changes, map[string]bool{"alice": true, "claire": true, "diana": true})
 }
 
 //////// HELPERS:
