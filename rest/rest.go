@@ -278,8 +278,9 @@ func (h *handler) handleBulkGet() error {
 
 		body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
 		if err != nil {
-			status, msg := base.ErrorAsHTTPStatus(err)
-			body = db.Body{"id": docid, "error": msg, "status": status}
+			status, reason := base.ErrorAsHTTPStatus(err)
+			errStr := base.CouchHTTPErrorName(status)
+			body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
 			if revid != "" {
 				body["rev"] = revid
 			}
@@ -332,8 +333,10 @@ func (h *handler) handleBulkDocs() error {
 			status["id"] = docid
 		}
 		if err != nil {
-			_, msg := base.ErrorAsHTTPStatus(err)
-			status["error"] = msg
+			code, msg := base.ErrorAsHTTPStatus(err)
+			status["status"] = code
+			status["error"] = base.CouchHTTPErrorName(code)
+			status["reason"] = msg
 			base.Log("\tBulkDocs: Doc %q --> %v", docid, err)
 			err = nil // wrote it to output already; not going to return it
 		} else {

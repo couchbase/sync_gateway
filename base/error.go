@@ -54,6 +54,32 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 
+// Returns the standard CouchDB error string for an HTTP error status.
+// These are important for compatibility, as some REST APIs don't show numeric statuses,
+// only these strings.
+func CouchHTTPErrorName(status int) string {
+	switch status {
+	case 400:
+		return "bad_request"
+	case 401:
+		return "unauthorized"
+	case 404:
+		return "not_found"
+	case 403:
+		return "forbidden"
+	case 406:
+		return "not_acceptable"
+	case 409:
+		return "conflict"
+	case 412:
+		return "file_exists"
+	case 415:
+		return "bad_content_type"
+	default:
+		return fmt.Sprintf("%d", status)
+	}
+}
+
 // Returns true if an error is a Couchbase doc-not-found error
 func IsDocNotFoundError(err error) bool {
 	switch err := err.(type) {
