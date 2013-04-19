@@ -30,7 +30,7 @@ Apache 2 license, like all Couchbase stuff.
 
 The Sync Gateway is known to work on Mac OS X, Windows and Ubuntu Linux. It has no external dependencies other than the Go language.
 
-1. Install [Go](http://golang.org). Make sure you have version 1.0.3 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang".
+1. Install [Go](http://golang.org). Make sure you have version 1.1b1 or later. You can download and run a [binary installer](http://code.google.com/p/go/downloads/list), or tell your favorite package manager like apt-get or brew or MacPorts to install "golang". (Just check that it's going to install 1.1 and not 1.0.3.)
 2. Go needs [Git](http://git-scm.com) and [Mercurial](http://mercurial.selenic.com/downloads/) for for downloading packages. You may already have these installed. Enter `git --version` and `hg --version` in a shell to check. If not, go get 'em.
 3. We recommend setting a `GOPATH` so 3rd party packages don't get installed into your system Go installation. If you haven't done this yet, make an empty directory someplace (like maybe `~/lib/Go`), then edit your .bash_profile or other shell startup script to set and export a `$GOPATH` variable pointing to it. (While you're at it, you might want to add its `bin` subdirectory to your `$PATH`.) Don't forget to start a new shell so the variable takes effect.
 4. Now you can install the gateway simply by running `go get -u github.com/couchbaselabs/sync_gateway`
