@@ -293,7 +293,8 @@ func TestAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &viewResult)
+	err = json.Unmarshal(response.Body.Bytes(), &viewResult)
+	assert.Equals(t, err, nil)
 	assert.Equals(t, len(viewResult.Rows), 2)
 	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
 	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
@@ -305,7 +306,8 @@ func TestAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &viewResult)
+	err = json.Unmarshal(response.Body.Bytes(), &viewResult)
+	assert.Equals(t, err, nil)
 	assert.Equals(t, len(viewResult.Rows), 2)
 	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
 	assert.Equals(t, viewResult.Rows[1].ID, "doc4")

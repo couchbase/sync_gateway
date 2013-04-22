@@ -209,8 +209,11 @@ func (h *handler) handleAllDocs() error {
 		Rows      []viewRow `json:"rows"`
 	}
 
+	h.setHeader("Content-Type", "application/json")
+	h.response.Write([]byte(`{"rows":[` + "\n"))
+
 	// Assemble the result (and read docs if includeDocs is set)
-	result := viewResult{Rows: make([]viewRow, 0, len(ids))}
+	totalRows := 0
 	for _, id := range ids {
 		row := viewRow{ID: id.DocID, Key: id.DocID}
 		if includeDocs || id.RevID == "" {
@@ -228,11 +231,15 @@ func (h *handler) handleAllDocs() error {
 			continue
 		}
 		row.Value = map[string]string{"rev": id.RevID}
-		result.Rows = append(result.Rows, row)
-	}
-	result.TotalRows = len(result.Rows)
 
-	h.writeJSON(result)
+		if totalRows > 0 {
+			h.response.Write([]byte(",\n"))
+		}
+		totalRows++
+		h.addJSON(row)
+	}
+
+	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d}`, totalRows)))
 	return nil
 }
 
@@ -245,8 +252,10 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
-	result := make([]db.Body, 0, 5)
-	for _, item := range body["docs"].([]interface{}) {
+	h.setHeader("Content-Type", "application/json")
+	h.response.Write([]byte(`[`))
+
+	for i, item := range body["docs"].([]interface{}) {
 		doc := item.(map[string]interface{})
 		docid, _ := doc["id"].(string)
 		revid := ""
@@ -288,10 +297,14 @@ func (h *handler) handleBulkGet() error {
 				body["rev"] = revid
 			}
 		}
-		result = append(result, body)
+
+		if i > 0 {
+			h.response.Write([]byte(",\n"))
+		}
+		h.addJSON(body)
 	}
 
-	h.writeJSONStatus(http.StatusOK, result)
+	h.response.Write([]byte(`]`))
 	return nil
 }
 

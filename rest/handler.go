@@ -241,6 +241,15 @@ func (h *handler) writeJSON(value interface{}) {
 	h.writeJSONStatus(http.StatusOK, value)
 }
 
+func (h *handler) addJSON(value interface{}) {
+	jsonOut, err := json.Marshal(value)
+	if err != nil {
+		base.Warn("Couldn't serialize JSON for %v", value)
+		panic("JSON serialization failed")
+	}
+	h.response.Write(jsonOut)
+}
+
 func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	if !h.requestAccepts("multipart/") {
 		return &base.HTTPError{Status: http.StatusNotAcceptable}
