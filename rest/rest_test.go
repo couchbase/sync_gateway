@@ -40,20 +40,24 @@ func init() {
 	}
 }
 
-func callRESTOn(bucket base.Bucket, method, resource string, body string) *httptest.ResponseRecorder {
+func callRESTOnRequest(bucket base.Bucket, request *http.Request) *httptest.ResponseRecorder {
 	sc := newServerContext(&ServerConfig{})
 	if _, err := sc.addDatabase(bucket, "db", nil, false); err != nil {
 		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
 	handler := createHandler(sc)
 
-	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	response := httptest.NewRecorder()
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func callRESTOn(bucket base.Bucket, method, resource string, body string) *httptest.ResponseRecorder {
+	input := bytes.NewBufferString(body)
+	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	return callRESTOnRequest(bucket, request)
 }
 
 func callREST(method, resource string, body string) *httptest.ResponseRecorder {
@@ -233,4 +237,76 @@ func TestLogin(t *testing.T) {
 	assertStatus(t, response, 200)
 	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
+}
+
+func TestAccessControl(t *testing.T) {
+	type viewRow struct {
+		ID    string            `json:"id"`
+		Key   string            `json:"key"`
+		Value map[string]string `json:"value"`
+		Doc   db.Body           `json:"doc,omitempty"`
+	}
+	var viewResult struct {
+		TotalRows int       `json:"total_rows"`
+		Offset    int       `json:"offset"`
+		Rows      []viewRow `json:"rows"`
+	}
+
+	// Create some docs:
+	bucket, _ := db.ConnectToBucket("walrus:", "default", "test")
+	a := auth.NewAuthenticator(bucket, nil)
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	assertStatus(t, callRESTOn(bucket, "PUT", "/db/doc1", `{"channels":[]}`), 201)
+	assertStatus(t, callRESTOn(bucket, "PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
+	assertStatus(t, callRESTOn(bucket, "PUT", "/db/doc3", `{"channels":["CBS", "Cinemax"]}`), 201)
+	assertStatus(t, callRESTOn(bucket, "PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
+
+	guest.SetDisabled(true)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create a user:
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf("Cinemax"))
+	a.Save(alice)
+
+	// Get a single doc the user has access to:
+	request, _ := http.NewRequest("GET", "/db/doc3", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response := callRESTOnRequest(bucket, request)
+	assertStatus(t, response, 200)
+
+	// Get a single doc the user doesn't have access to:
+	request, _ = http.NewRequest("GET", "/db/doc2", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = callRESTOnRequest(bucket, request)
+	assertStatus(t, response, 403)
+
+	// Check that _all_docs only returns the docs the user has access to:
+	request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = callRESTOnRequest(bucket, request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &viewResult)
+	assert.Equals(t, len(viewResult.Rows), 2)
+	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
+	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
+
+	// Check _all_docs with include_docs option:
+	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = callRESTOnRequest(bucket, request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &viewResult)
+	assert.Equals(t, len(viewResult.Rows), 2)
+	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
+	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
 }

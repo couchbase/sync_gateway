@@ -51,9 +51,7 @@ func (db *Database) Get(docid string) (Body, error) {
 }
 
 // Returns the body of a revision of a document.
-func (db *Database) GetRev(docid, revid string,
-	listRevisions bool,
-	attachmentsSince []string) (Body, error) {
+func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
 		return nil, err
@@ -80,19 +78,25 @@ func (db *Database) GetRev(docid, revid string,
 	return body, nil
 }
 
+// Checks whether the current user is allowed to access the given doc ID.
+// If not, returns an error.
+func (db *Database) AuthorizeDoc(docid string) error {
+	doc, err := db.getDoc(docid)
+	if doc == nil {
+		return err
+	}
+	return AuthorizeAnyDocChannels(db.user, doc.Channels)
+}
+
 // Returns an HTTP 403 error if the User is not allowed to access any of the document's channels.
 // A nil User means access control is disabled, so the function will return nil.
 func AuthorizeAnyDocChannels(user auth.User, channels ChannelMap) error {
 	if user == nil {
 		return nil
 	}
-	for channel, _ := range user.Channels() {
-		if channel == "*" {
+	for channel, removed := range channels {
+		if removed == nil && user.CanSeeChannel(channel) {
 			return nil
-		}
-		value, exists := channels[channel]
-		if exists && value == nil {
-			return nil // yup, it's in this channel
 		}
 	}
 	return user.UnauthError("You are not allowed to see this")

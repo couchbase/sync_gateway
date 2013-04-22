@@ -210,7 +210,7 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	// Assemble the result (and read docs if includeDocs is set)
-	result := viewResult{TotalRows: len(ids), Rows: make([]viewRow, 0, len(ids))}
+	result := viewResult{Rows: make([]viewRow, 0, len(ids))}
 	for _, id := range ids {
 		row := viewRow{ID: id.DocID, Key: id.DocID}
 		if includeDocs || id.RevID == "" {
@@ -224,10 +224,13 @@ func (h *handler) handleAllDocs() error {
 			} else {
 				continue
 			}
+		} else if err := h.db.AuthorizeDoc(id.DocID); err != nil {
+			continue
 		}
 		row.Value = map[string]string{"rev": id.RevID}
 		result.Rows = append(result.Rows, row)
 	}
+	result.TotalRows = len(result.Rows)
 
 	h.writeJSON(result)
 	return nil
