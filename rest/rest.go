@@ -13,6 +13,7 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -203,12 +204,6 @@ func (h *handler) handleAllDocs() error {
 		Value map[string]string `json:"value"`
 		Doc   db.Body           `json:"doc,omitempty"`
 	}
-	type viewResult struct {
-		TotalRows int       `json:"total_rows"`
-		Offset    int       `json:"offset"`
-		Rows      []viewRow `json:"rows"`
-	}
-
 	h.setHeader("Content-Type", "application/json")
 	h.response.Write([]byte(`{"rows":[` + "\n"))
 
@@ -240,6 +235,35 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d}`, totalRows)))
+	return nil
+}
+
+// HTTP handler for _dump
+func (h *handler) handleDump() error {
+	viewName := h.PathVars()["view"]
+	base.LogTo("HTTP", "Dump view %q", viewName)
+	opts := db.Body{"stale": false, "reduce": false}
+	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
+	if err != nil {
+		return err
+	}
+	title := fmt.Sprintf("/%s: “%s” View", html.EscapeString(h.db.Name), html.EscapeString(viewName))
+	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
+	h.response.Write([]byte(fmt.Sprintf(
+		`<!DOCTYPE html><html><head><title>%s</title></head><body>
+		<h1>%s</h1><code>
+		<table border=1>
+		`,
+		title, title)))
+	h.response.Write([]byte("\t<tr><th>Key</th><th>Value</th><th>ID</th></tr>\n"))
+	for _, row := range result.Rows {
+		key, _ := json.Marshal(row.Key)
+		value, _ := json.Marshal(row.Value)
+		h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%s</td><td>%s</td><td><em>%s</em></td>",
+			html.EscapeString(string(key)), html.EscapeString(string(value)), html.EscapeString(row.ID))))
+		h.response.Write([]byte("</tr>\n"))
+	}
+	h.response.Write([]byte("</table>\n</code></html></body>"))
 	return nil
 }
 

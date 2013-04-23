@@ -219,6 +219,8 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	dbr := r.PathPrefix("/{db}/").Subrouter()
 	dbr.Handle("/_vacuum",
 		makeAdminHandler(sc, (*handler).handleVacuum)).Methods("POST")
+	dbr.Handle("/_dump/{view}",
+		makeAdminHandler(sc, (*handler).handleDump)).Methods("GET")
 
 	return r
 }

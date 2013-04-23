@@ -143,7 +143,7 @@ func installViews(bucket base.Bucket) error {
 						}
 					}`
 	// Channel access view, used by ComputeChannelsForPrincipal()
-	// Key is username; value is map(channelname => bool)
+	// Key is username; value is array of channel names
 	access_map := `function (doc, meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
