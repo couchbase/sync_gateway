@@ -105,9 +105,11 @@ func (db *Database) DocCount() int {
 
 func installViews(bucket base.Bucket) error {
 	// View for finding every Couchbase doc (used when deleting a database)
+	// Key is docid; value is null
 	allbits_map := `function (doc, meta) {
                       emit(meta.id, null); }`
 	// View for _all_docs
+	// Key is docid; value is revid
 	alldocs_map := `function (doc, meta) {
                      var sync = doc._sync;
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
@@ -115,18 +117,9 @@ func installViews(bucket base.Bucket) error {
                      if (sync.deleted)
                        return;
                      emit(meta.id, sync.rev); }`
-	// View for _changes feed, i.e. a by-sequence index
-	changes_map := `function (doc, meta) {
-                    var sync = doc._sync;
-                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-                        return;
-                    if (sync.sequence === undefined)
-                        return;
-                    var value = [meta.id, sync.rev];
-                    if (sync.deleted)
-                        value.push(true);
-                    emit(sync.sequence, value); }`
-	// By-channels view
+	// By-channels view.
+	// Key is [channelname, sequence]; value is [docid, revid, flag?]
+	// where flag is true for doc deletion, false for removed from channel, missing otherwise
 	channels_map := `function (doc, meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
@@ -150,6 +143,7 @@ func installViews(bucket base.Bucket) error {
 						}
 					}`
 	// Channel access view, used by ComputeChannelsForPrincipal()
+	// Key is username; value is map(channelname => bool)
 	access_map := `function (doc, meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
@@ -171,7 +165,6 @@ func installViews(bucket base.Bucket) error {
 			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			"channels": walrus.ViewDef{Map: channels_map},
 			"access":   walrus.ViewDef{Map: access_map},
-			"changes":  walrus.ViewDef{Map: changes_map},
 		},
 	}
 	err := bucket.PutDDoc("sync_gateway", ddoc)
