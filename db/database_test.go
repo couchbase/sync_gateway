@@ -287,3 +287,12 @@ func TestAccessFunction(t *testing.T) {
 	assert.DeepEquals(t, user.Channels(), channels.SetOf("Hulu", "Netflix"))
 	assert.DeepEquals(t, user.InheritedChannels(), channels.SetOf("Hulu", "CrunchyRoll", "Netflix"))
 }
+
+func TestDocIDs(t *testing.T) {
+	var db *Database
+	assert.Equals(t, db.realDocID(""), "")
+	assert.Equals(t, db.realDocID("_"), "")
+	assert.Equals(t, db.realDocID("_foo"), "")
+	assert.Equals(t, db.realDocID("foo"), "foo")
+	assert.Equals(t, db.realDocID("_design/foo"), "_design/foo")
+}

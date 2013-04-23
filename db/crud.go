@@ -26,8 +26,11 @@ import (
 //////// READING DOCUMENTS:
 
 func (db *Database) realDocID(docid string) string {
-	if len(docid) > 250 || strings.HasPrefix(docid, "_") {
+	if len(docid) > 250 {
 		return "" // Invalid doc IDs
+	}
+	if strings.HasPrefix(docid, "_") && !strings.HasPrefix(docid, "_design/") {
+		return "" // Disallow "_" prefix, except in "_design/"" (for CouchDB compatibility)
 	}
 	return docid
 }
