@@ -51,4 +51,5 @@ type User interface {
 
 	InheritedChannels() ch.Set
 	ExpandWildCardChannel(channels ch.Set) ch.Set
+	FilterToAvailableChannels(channels ch.Set) ch.Set
 }

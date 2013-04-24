@@ -161,16 +161,17 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 	return feed, nil
 }
 
-// Returns of all the changes made to multiple channels. Does NOT check authorization.
-func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", channels, options)
-	if len(channels) == 0 {
+// Returns of all the changes made to multiple channels.
+func (db *Database) MultiChangesFeed(origChannels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", origChannels, options)
+	if len(origChannels) == 0 {
 		return nil, nil
-	} else if len(channels) == 1 {
-		for channel, _ := range channels {
+	} else if len(origChannels) == 1 && !origChannels.Contains("*") {
+		for channel, _ := range origChannels {
 			return db.ChangesFeed(channel, options)
 		}
 	}
+	var origFilteredChannels channels.Set
 
 	waitMode := options.Wait
 	options.Wait = false
@@ -180,9 +181,20 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 		defer close(output)
 
 		for {
+			// Restrict to available channels, and expand wild-card:
+			channels := db.user.FilterToAvailableChannels(origChannels)
+			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channels)
+			if origFilteredChannels == nil {
+				origFilteredChannels = channels
+			}
+
 			feeds := make([]<-chan *ChangeEntry, 0, len(channels))
 			for name, _ := range channels {
-				feed, err := db.ChangesFeed(name, options)
+				feedOpts := options
+				if !origFilteredChannels.Contains(name) {
+					feedOpts.Since = 0  // channel just became available, so start from beginning
+				}
+				feed, err := db.ChangesFeed(name, feedOpts)
 				if err != nil {
 					base.Warn("Error reading changes feed %q: %v", name, err)
 					return
@@ -191,7 +203,7 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 			}
 			current := make([]*ChangeEntry, len(feeds))
 
-			wroteAnything := false
+			var lastSeqSent uint64
 			for {
 				//FIX: This assumes Reverse or Limit aren't set in the options
 				// Read more entries to fill up the current[] array:
@@ -215,7 +227,7 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 					}
 				}
 				if minEntry == nil {
-					break
+					break // Exit the loop when there are no more entries
 				}
 
 				// Clear the current entries for the sequence just sent:
@@ -233,13 +245,13 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 					}
 				}
 
-				// Send the entry:
+				// Send the entry, and repeat the loop:
 				output <- minEntry
-				wroteAnything = true
+				lastSeqSent = minEntry.Seq
 			}
 
-			// In wait mode, wait for the db to change, then run again
-			if wroteAnything || !waitMode || !db.WaitForRevision() {
+			// If nothing found, and in wait mode: wait for the db to change, then run again
+			if lastSeqSent > 0 || !waitMode || !db.WaitForRevision() {
 				break
 			}
 		}
@@ -249,7 +261,6 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 }
 
 // Synchronous convenience function that returns all changes as a simple array.
-// Does NOT check authorization.
 func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([]*ChangeEntry, error) {
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)

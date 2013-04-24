@@ -399,7 +399,7 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	userChannels := h.user.Channels()
+	userChannels := channels.SetOf("*")
 	filter := h.getQuery("filter")
 	if filter != "" {
 		if filter != "sync_gateway/bychannel" {
@@ -415,13 +415,8 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-		if len(userChannels) > 0 {
-			if err := h.user.AuthorizeAllChannels(userChannels); err != nil {
-				return err
-			}
-			if len(userChannels) == 0 {
-				return &base.HTTPError{http.StatusForbidden, "You don't have access to these channels"}
-			}
+		if len(userChannels) == 0 {
+			return &base.HTTPError{http.StatusBadRequest, "Empty channel list"}
 		}
 	}
 

@@ -234,6 +234,22 @@ func (user *userImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
 	return channels
 }
 
+func (user *userImpl) FilterToAvailableChannels(channels ch.Set) ch.Set {
+	var output []string
+	for channel, _ := range channels {
+		if channel == "*" {
+			return user.InheritedChannels()
+		} else if user.CanSeeChannel(channel) {
+			output = append(output, channel)
+		}
+	}
+	if len(output) == len(channels) {
+		return channels // unchanged
+	}
+	set, _ := ch.SetFromArray(output, ch.ExpandStar)
+	return set
+}
+
 //////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current
