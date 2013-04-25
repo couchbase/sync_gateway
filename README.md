@@ -30,7 +30,12 @@ The Sync Gateway is known to work on Mac OS X, Windows and Ubuntu Linux. It has 
 
 ## Using a precompiled build
 
-If you downloaded a build of the gateway, then next to this README.md file will be an executable file called `sync_gateway`. Simply run it as you would any other command-line tool. (You will probably want to move it to some directory in your shell $PATH, for convenience.)
+The latest stable build of the gateway is available:
+
+* [For Mac OS][MAC_STABLE_BUILD] (Requires Mac OS X 10.6 or later and a 64-bit CPU)
+* _Linux and Windows builds coming soon_
+
+In the unzipped folder next to this README.md file will be an executable file called `sync_gateway`. Simply run it as you would any other command-line tool. (You will probably want to move it to some directory in your shell $PATH, for convenience.)
 
 ## Building from source
 
@@ -271,3 +276,4 @@ If you're having trouble, feel free to ask for help on the [mailing list][MAILIN
 [HTTPIE]: http://httpie.org
 [MAILING_LIST]: https://groups.google.com/forum/?fromgroups#!forum/mobile-couchbase
 [ISSUE_TRACKER]: https://github.com/couchbaselabs/sync_gateway/issues?state=open
+[MAC_STABLE_BUILD]: http://cbfs-ext.hq.couchbase.com/mobile/SyncGateway/SyncGateway-Mac.zip
