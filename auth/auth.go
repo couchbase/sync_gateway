@@ -27,7 +27,7 @@ type Authenticator struct {
 // Interface for deriving the set of channels a User/Role has access to.
 // The instantiator of an Authenticator must provide an implementation.
 type ChannelComputer interface {
-	ComputeChannelsForPrincipal(Principal) (ch.Set, error)
+	ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error)
 }
 
 type userByEmailInfo struct {
@@ -119,14 +119,15 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 }
 
 func (auth *Authenticator) rebuildChannels(princ Principal) error {
-	channels := princ.ExplicitChannels()
+	channels := princ.ExplicitChannels().Copy()
 	if auth.channelComputer != nil {
 		set, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
 			return err
 		}
-		channels = channels.Union(set)
+		channels.Add(set)
 	}
+	base.LogTo("Access", "Computed channels for %q: %s", princ.Name(), channels)
 	princ.setChannels(channels)
 	return nil
 }
@@ -172,6 +173,7 @@ func (auth *Authenticator) Save(p Principal) error {
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
 func (auth *Authenticator) InvalidateChannels(p Principal) error {
 	if p != nil && p.Channels() != nil {
+		base.LogTo("Access", "Invalidate access of %q", p.Name())
 		p.setChannels(nil)
 		if err := auth.Save(p); err != nil {
 			return err

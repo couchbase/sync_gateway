@@ -55,13 +55,14 @@ func IsValidEmail(email string) bool {
 }
 
 func (auth *Authenticator) defaultGuestUser() User {
-	return &userImpl{
+	user := &userImpl{
 		roleImpl: roleImpl{
-			ExplicitChannels_: ch.SetOf("*"),
-			Channels_:         ch.SetOf("*"),
+			ExplicitChannels_: ch.SetOf("*").AtSequence(1),
 		},
 		auth: auth,
 	}
+	user.Channels_ = user.ExplicitChannels_.Copy()
+	return user
 }
 
 // Creates a new User object.
@@ -210,15 +211,26 @@ func (user *userImpl) CanSeeChannel(channel string) bool {
 	return false
 }
 
+func (user *userImpl) CanSeeChannelSince(channel string) uint64 {
+	if seq := user.roleImpl.CanSeeChannelSince(channel); seq > 0 {
+		return seq
+	}
+	for _, role := range user.GetRoles() {
+		if seq := role.CanSeeChannelSince(channel); seq > 0 {
+			return seq
+		}
+	}
+	return 0
+}
+
 func (user *userImpl) AuthorizeAllChannels(channels ch.Set) error {
 	return authorizeAllChannels(user, channels)
 }
 
-func (user *userImpl) InheritedChannels() ch.Set {
-	channels := user.Channels()
-	// This could be optimized to do less copying.
+func (user *userImpl) InheritedChannels() ch.TimedSet {
+	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
-		channels = channels.Union(role.Channels())
+		channels.Add(role.Channels())
 	}
 	return channels
 }
@@ -226,28 +238,20 @@ func (user *userImpl) InheritedChannels() ch.Set {
 // If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
 func (user *userImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
 	if channels.Contains("*") {
-		channels = user.InheritedChannels()
-		if channels == nil {
-			channels = ch.Set{}
-		}
+		channels = user.InheritedChannels().AsSet()
 	}
 	return channels
 }
 
-func (user *userImpl) FilterToAvailableChannels(channels ch.Set) ch.Set {
-	var output []string
+func (user *userImpl) FilterToAvailableChannels(channels ch.Set) ch.TimedSet {
+	output := ch.TimedSet{}
 	for channel, _ := range channels {
 		if channel == "*" {
-			return user.InheritedChannels()
-		} else if user.CanSeeChannel(channel) {
-			output = append(output, channel)
+			return user.InheritedChannels().Copy()
 		}
+		output.AddChannel(channel, user.CanSeeChannelSince(channel))
 	}
-	if len(output) == len(channels) {
-		return channels // unchanged
-	}
-	set, _ := ch.SetFromArray(output, ch.ExpandStar)
-	return set
+	return output
 }
 
 //////// MARSHALING:

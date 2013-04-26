@@ -16,18 +16,19 @@ import (
 // A Principal is an abstract object that can have access to channels.
 type Principal interface {
 	Name() string
-	Channels() ch.Set
-	ExplicitChannels() ch.Set
-	SetExplicitChannels(ch.Set)
+	Channels() ch.TimedSet
+	ExplicitChannels() ch.TimedSet
+	SetExplicitChannels(ch.TimedSet)
 
 	CanSeeChannel(channel string) bool
+	CanSeeChannelSince(channel string) uint64
 	AuthorizeAllChannels(channels ch.Set) error
 	UnauthError(message string) error
 
 	docID() string
 	accessViewKey() string
 	validate() error
-	setChannels(ch.Set)
+	setChannels(ch.TimedSet)
 }
 
 // Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.
@@ -49,7 +50,7 @@ type User interface {
 	RoleNames() []string
 	SetRoleNames([]string)
 
-	InheritedChannels() ch.Set
+	InheritedChannels() ch.TimedSet
 	ExpandWildCardChannel(channels ch.Set) ch.Set
-	FilterToAvailableChannels(channels ch.Set) ch.Set
+	FilterToAvailableChannels(channels ch.Set) ch.TimedSet
 }

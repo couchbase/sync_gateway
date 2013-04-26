@@ -40,24 +40,47 @@ func init() {
 	}
 }
 
+func newTempContext(dbName string, syncFn string) *serverContext {
+	var syncFnPtr *string
+	if len(syncFn) > 0 {
+		syncFnPtr = &syncFn
+	}
+	sc := newServerContext(&ServerConfig{})
+	bucket, _ := db.ConnectToBucket("walrus:", "default", dbName)
+	if _, err := sc.addDatabase(bucket, "db", syncFnPtr, false); err != nil {
+		panic(fmt.Sprintf("Error from addDatabase: %v", err))
+	}
+	return sc
+}
+
+func callRESTOnContext(sc *serverContext, request *http.Request) *httptest.ResponseRecorder {
+	response := httptest.NewRecorder()
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+	createHandler(sc).ServeHTTP(response, request)
+	return response
+}
+
 func callRESTOnRequest(bucket base.Bucket, request *http.Request) *httptest.ResponseRecorder {
 	sc := newServerContext(&ServerConfig{})
 	if _, err := sc.addDatabase(bucket, "db", nil, false); err != nil {
 		panic(fmt.Sprintf("Error from addDatabase: %v", err))
 	}
-	handler := createHandler(sc)
+	return callRESTOnContext(sc, request)
+}
 
-	response := httptest.NewRecorder()
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+func request(method, resource, body string) *http.Request {
+	request, _ := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
+	return request
+}
 
-	handler.ServeHTTP(response, request)
-	return response
+func requestByUser(method, resource, body, username string) *http.Request {
+	r := request(method, resource, body)
+	r.SetBasicAuth(username, "letmein")
+	return r
 }
 
 func callRESTOn(bucket base.Bucket, method, resource string, body string) *httptest.ResponseRecorder {
-	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
-	return callRESTOnRequest(bucket, request)
+	return callRESTOnRequest(bucket, request(method, resource, body))
 }
 
 func callREST(method, resource string, body string) *httptest.ResponseRecorder {
@@ -66,7 +89,7 @@ func callREST(method, resource string, body string) *httptest.ResponseRecorder {
 
 func assertStatus(t *testing.T, response *httptest.ResponseRecorder, expectedStatus int) {
 	if response.Code != expectedStatus {
-		t.Errorf("Response status %d (expected %d): %s",
+		t.Fatalf("Response status %d (expected %d): %s",
 			response.Code, expectedStatus, response.Body)
 	}
 }
@@ -311,4 +334,76 @@ func TestAccessControl(t *testing.T) {
 	assert.Equals(t, len(viewResult.Rows), 2)
 	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
 	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
+}
+
+func TestAccessChanges(t *testing.T) {
+	//base.LogKeys["Access"] = true
+	//base.LogKeys["CRUD"] = true
+
+	sc := newTempContext("testaccesschanges", `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`)
+	a := sc.databases["db"].auth
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create users:
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf("zero"))
+	a.Save(alice)
+	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf("zero"))
+	a.Save(zegpold)
+
+	// Create some docs that give users access:
+	response := callRESTOnContext(sc, request("PUT", "/db/alpha", `{"owner":"alice"}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	alphaRevID := body["rev"].(string)
+
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/delta", `{"owner":"alice"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/gamma", `{"owner":"zegpold"}`)), 201)
+
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
+
+	// Check user access:
+	alice, _ = a.GetUser("alice")
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x1, "delta": 0x3})
+	zegpold, _ = a.GetUser("zegpold")
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "gamma": 0x4})
+
+	// Update a document to revoke access to alice and grant it to zegpold:
+	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/alpha", str)), 201)
+
+	// Check user access again:
+	alice, _ = a.GetUser("alice")
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "delta": 0x3})
+	zegpold, _ = a.GetUser("zegpold")
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
+
+	// The complete _changes feed for zegpold contains docs a1 and g1:
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Results[0].ID, "a1")
+	assert.Equals(t, changes.Results[1].ID, "g1")
+
+	// Changes feed with since=8 would ordinarily be empty, but zegpold got access to channel
+	// alpha after sequence 8, so the pre-existing docs in that channel are included:
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes?since=8", "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	changes.Results = nil
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "a1")
 }

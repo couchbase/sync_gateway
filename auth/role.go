@@ -21,9 +21,9 @@ import (
 
 /** A group that users can belong to, with associated channel permisisons. */
 type roleImpl struct {
-	Name_             string `json:"name,omitempty"`
-	ExplicitChannels_ ch.Set `json:"admin_channels"`
-	Channels_         ch.Set `json:"all_channels"`
+	Name_             string      `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet `json:"admin_channels"`
+	Channels_         ch.TimedSet `json:"all_channels"`
 }
 
 var kValidNameRegexp *regexp.Regexp
@@ -39,7 +39,7 @@ func init() {
 func (role *roleImpl) initRole(name string, channels ch.Set) error {
 	channels = channels.ExpandingStar()
 	role.Name_ = name
-	role.ExplicitChannels_ = channels
+	role.ExplicitChannels_ = channels.AtSequence(1)
 	return role.validate()
 }
 
@@ -93,19 +93,19 @@ func (role *roleImpl) Name() string {
 	return role.Name_
 }
 
-func (role *roleImpl) Channels() ch.Set {
+func (role *roleImpl) Channels() ch.TimedSet {
 	return role.Channels_
 }
 
-func (role *roleImpl) setChannels(channels ch.Set) {
+func (role *roleImpl) setChannels(channels ch.TimedSet) {
 	role.Channels_ = channels
 }
 
-func (role *roleImpl) ExplicitChannels() ch.Set {
+func (role *roleImpl) ExplicitChannels() ch.TimedSet {
 	return role.ExplicitChannels_
 }
 
-func (role *roleImpl) SetExplicitChannels(channels ch.Set) {
+func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet) {
 	role.ExplicitChannels_ = channels
 	role.setChannels(nil)
 }
@@ -131,6 +131,15 @@ func (role *roleImpl) UnauthError(message string) error {
 // A nil Role means access control is disabled, so the function will return true.
 func (role *roleImpl) CanSeeChannel(channel string) bool {
 	return role == nil || role.Channels_.Contains(channel) || role.Channels_.Contains("*")
+}
+
+// Returns the sequence number since which the Role has been able to access the channel, else zero.
+func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
+	seq := role.Channels_[channel]
+	if seq == 0 {
+		seq = role.Channels_["*"]
+	}
+	return seq
 }
 
 func (role *roleImpl) AuthorizeAllChannels(channels ch.Set) error {

@@ -284,8 +284,11 @@ func TestAccessFunction(t *testing.T) {
 	authenticator.Save(role)
 
 	user, _ = authenticator.GetUser("naomi")
-	assert.DeepEquals(t, user.Channels(), channels.SetOf("Hulu", "Netflix"))
-	assert.DeepEquals(t, user.InheritedChannels(), channels.SetOf("Hulu", "CrunchyRoll", "Netflix"))
+	expected := channels.SetOf("Hulu", "Netflix").AtSequence(1)
+	assert.DeepEquals(t, user.Channels(), expected)
+
+	expected.AddChannel("CrunchyRoll", 2)
+	assert.DeepEquals(t, user.InheritedChannels(), expected)
 }
 
 func TestDocIDs(t *testing.T) {

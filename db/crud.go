@@ -440,43 +440,63 @@ func validateAccessMap(access channels.AccessMap) bool {
 	return true
 }
 
+func (db *Database) invalUserChannels(username string) {
+	authr := auth.NewAuthenticator(db.Bucket, nil)
+	if user, _ := authr.GetUser(username); user != nil {
+		authr.InvalidateChannels(user)
+	}
+}
+
 // Updates the Access property of a document object
 func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
-	authr := auth.NewAuthenticator(db.Bucket, nil)
-	channels.ForChangedUsers(doc.Access, newAccess, func(name string) {
-		changed = true
-		if user, _ := authr.GetUser(name); user != nil {
-			authr.InvalidateChannels(user)
+	for name, access := range doc.Access {
+		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
+			if len(access) == 0 {
+				delete(doc.Access, name)
+			}
+			changed = true
+			db.invalUserChannels(name)
 		}
-	})
+	}
+	for name, access := range newAccess {
+		if _, existed := doc.Access[name]; !existed {
+			changed = true
+			if doc.Access == nil {
+				doc.Access = UserAccessMap{}
+			}
+			doc.Access[name] = access.AtSequence(doc.Sequence)
+			db.invalUserChannels(name)
+		}
+	}
 	if changed {
-		doc.Access = newAccess
-		base.LogTo("CRUD", "\tDoc %q grants access: %+v", doc.ID, newAccess)
+		base.LogTo("Access", "Doc %q grants access: %v", doc.ID, doc.Access)
 	}
 	return
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.Set, error) {
+func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = "role:" + key // Roles are identified in access view by a "role:" prefix
 	}
+
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
 	opts := map[string]interface{}{"stale": false, "key": key}
-	vres := couchbase.ViewResult{}
 	if verr := context.Bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
 		return nil, verr
 	}
-	allChannels := make([]string, 0, 50)
+	channelSet := channels.TimedSet{}
 	for _, row := range vres.Rows {
-		for _, item := range row.Value.([]interface{}) {
-			allChannels = append(allChannels, item.(string))
-		}
+		channelSet.Add(row.Value)
 	}
-	channelSet, err := channels.SetFromArray(allChannels, channels.RemoveStar)
-	base.LogTo("CRUD", "Computed channels for %q: %s", princ.Name(), channelSet)
-	return channelSet, err
+	return channelSet, nil
 }
 
 //////// REVS_DIFF:

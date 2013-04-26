@@ -162,16 +162,15 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 }
 
 // Returns of all the changes made to multiple channels.
-func (db *Database) MultiChangesFeed(origChannels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", origChannels, options)
-	if len(origChannels) == 0 {
+func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", channels, options)
+	if len(channels) == 0 {
 		return nil, nil
-	} else if len(origChannels) == 1 && !origChannels.Contains("*") {
-		for channel, _ := range origChannels {
+	} else if len(channels) == 1 && !channels.Contains("*") {
+		for channel, _ := range channels {
 			return db.ChangesFeed(channel, options)
 		}
 	}
-	var origFilteredChannels channels.Set
 
 	waitMode := options.Wait
 	options.Wait = false
@@ -181,18 +180,16 @@ func (db *Database) MultiChangesFeed(origChannels channels.Set, options ChangesO
 		defer close(output)
 
 		for {
-			// Restrict to available channels, and expand wild-card:
-			channels := db.user.FilterToAvailableChannels(origChannels)
-			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channels)
-			if origFilteredChannels == nil {
-				origFilteredChannels = channels
-			}
+			// Restrict to available channels, expand wild-card, and find since when these channels
+			// have been available to the user:
+			channelsSince := db.user.FilterToAvailableChannels(channels)
+			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
-			feeds := make([]<-chan *ChangeEntry, 0, len(channels))
-			for name, _ := range channels {
+			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
+			for name, _ := range channelsSince {
 				feedOpts := options
-				if !origFilteredChannels.Contains(name) {
-					feedOpts.Since = 0  // channel just became available, so start from beginning
+				if channelsSince[name] > options.Since {
+					feedOpts.Since = 0 // channel wasn't available before, so start from beginning
 				}
 				feed, err := db.ChangesFeed(name, feedOpts)
 				if err != nil {

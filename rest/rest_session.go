@@ -24,7 +24,7 @@ const kDefaultSessionTTL = 24 * time.Hour
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfo() error {
 	var name *string
-	allChannels := channels.Set{}
+	allChannels := channels.TimedSet{}
 	if h.user != nil {
 		userName := h.user.Name()
 		if userName != "" {
