@@ -11,7 +11,6 @@ package channels
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
@@ -68,21 +67,19 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 }
 
 // Converts a JS array into a Go string array.
-func ottoArrayToStrings(array *otto.Object) []string {
-	lengthVal, err := array.Get("length")
+func ottoArrayToStrings(array otto.Value) []string {
+	goValue, err := array.Export()
 	if err != nil {
 		return nil
 	}
-	length, err := lengthVal.ToInteger()
-	if err != nil || length <= 0 {
+	goArray, ok := goValue.([]interface{})
+	if !ok || len(goArray) == 0 {
 		return nil
 	}
-
-	result := make([]string, 0, length)
-	for i := 0; i < int(length); i++ {
-		item, err := array.Get(strconv.Itoa(i))
-		if err == nil && item.IsString() {
-			result = append(result, item.String())
+	result := make([]string, 0, len(goArray))
+	for _, item := range goArray {
+		if str, ok := item.(string); ok {
+			result = append(result, str)
 		}
 	}
 	return result
@@ -104,7 +101,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 			if arg.IsString() {
 				mapper.channels = append(mapper.channels, arg.String())
 			} else if arg.Class() == "Array" {
-				array := ottoArrayToStrings(arg.Object())
+				array := ottoArrayToStrings(arg)
 				if array != nil {
 					mapper.channels = append(mapper.channels, array...)
 				}
@@ -121,13 +118,13 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		if username.IsString() {
 			usernameArray = []string{username.String()}
 		} else if username.Class() == "Array" {
-			usernameArray = ottoArrayToStrings(username.Object())
+			usernameArray = ottoArrayToStrings(username)
 		}
 		for _, name := range usernameArray {
 			if channels.IsString() {
 				mapper.access[name] = append(mapper.access[name], channels.String())
 			} else if channels.Class() == "Array" {
-				array := ottoArrayToStrings(channels.Object())
+				array := ottoArrayToStrings(channels)
 				if array != nil {
 					mapper.access[name] = append(mapper.access[name], array...)
 				}
