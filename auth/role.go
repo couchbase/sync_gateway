@@ -75,7 +75,7 @@ func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string) (Role,
 }
 
 func docIDForRole(name string) string {
-	return "role:" + name
+	return "_sync:role:" + name
 }
 
 func (role *roleImpl) docID() string {

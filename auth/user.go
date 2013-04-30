@@ -115,7 +115,7 @@ func (user *userImpl) validate() error {
 }
 
 func docIDForUser(username string) string {
-	return "user:" + username
+	return "_sync:user:" + username
 }
 
 func (user *userImpl) docID() string {
