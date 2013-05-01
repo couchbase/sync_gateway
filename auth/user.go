@@ -90,7 +90,7 @@ func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string, defaul
 		user.SetPassword(*user.Password_)
 		user.Password_ = nil
 	}
-	for channel,seq := range user.ExplicitChannels_ {
+	for channel, seq := range user.ExplicitChannels_ {
 		if seq == 0 {
 			user.ExplicitChannels_[channel] = defaultSequence
 		}
@@ -217,15 +217,13 @@ func (user *userImpl) CanSeeChannel(channel string) bool {
 }
 
 func (user *userImpl) CanSeeChannelSince(channel string) uint64 {
-	if seq := user.roleImpl.CanSeeChannelSince(channel); seq > 0 {
-		return seq
-	}
+	minSeq := user.roleImpl.CanSeeChannelSince(channel)
 	for _, role := range user.GetRoles() {
-		if seq := role.CanSeeChannelSince(channel); seq > 0 {
-			return seq
+		if seq := role.CanSeeChannelSince(channel); seq > 0 && (seq < minSeq || minSeq == 0) {
+			minSeq = seq
 		}
 	}
-	return 0
+	return minSeq
 }
 
 func (user *userImpl) AuthorizeAllChannels(channels ch.Set) error {

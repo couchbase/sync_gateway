@@ -15,14 +15,30 @@ import (
 
 // A Principal is an abstract object that can have access to channels.
 type Principal interface {
+	// The Principal's identifier.
 	Name() string
+
+	// The set of channels the Principal belongs to, and what sequence access was granted.
 	Channels() ch.TimedSet
+
+	// The channels the Principal was explicitly granted access to thru the admin API.
 	ExplicitChannels() ch.TimedSet
+
+	// Sets the explicit channels the Principal has access to.
 	SetExplicitChannels(ch.TimedSet)
 
+	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
+
+	// If the Principal has access to the given channel, returns the sequence number at which
+	// access was granted; else returns zero.
 	CanSeeChannelSince(channel string) uint64
+
+	// Returns an error if the Principal does not have access to all the channels in the set.
 	AuthorizeAllChannels(channels ch.Set) error
+
+	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
+	// the guest user, else 403.
 	UnauthError(message string) error
 
 	docID() string
@@ -40,17 +56,38 @@ type Role interface {
 type User interface {
 	Principal
 
+	// The user's email address.
 	Email() string
+
+	// Sets the user's email address.
 	SetEmail(string) error
+
+	// If true, the user is unable to authenticate.
 	Disabled() bool
+
+	// Sets the disabled property
 	SetDisabled(bool)
+
+	// Authenticates the user's password.
 	Authenticate(password string) bool
+
+	// Changes the user's password.
 	SetPassword(password string)
 
+	// The set of Roles the user belongs to.
 	RoleNames() []string
+
+	// Changes the set of Roles the user belongs to.
 	SetRoleNames([]string)
 
+	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
+
+	// If the input set contains the wildcard "*" channel, returns the user's InheritedChannels;
+	// else returns the input channel list unaltered.
 	ExpandWildCardChannel(channels ch.Set) ch.Set
+
+	// Returns a TimedSet containing only the channels from the input set that the user has access
+	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels ch.Set) ch.TimedSet
 }
