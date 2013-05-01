@@ -175,11 +175,12 @@ You can create a new user either with a PUT to its URL, or by POST to `/$DB/user
 
 A note on changing a user's `admin_channels` property: If you add channels to the dictionary, set the associated sequence number to 0. When saved it will be changed to the database's current maximum sequence. This ensures that the user's changes feed will correctly send the documents with that channel.
 
-There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `admin_channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
+### Anonymous/Guest Access
 
-To disable all guest access, set the guest user's `disabled` property:
+There is a special user account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header or a session cookie is treated as coming from the `GUEST` account. This account (and hence, all anonymous access) is disabled by default; to enable it you can clear its `disabled` property. You'll probably also want to give it access to some channels, else anonymous requests won't be able to access any documents:
 
-    curl -X PUT localhost:4985/$DB/user/GUEST --data '{"disabled":true, "channels":[]}'
+    curl -X PUT localhost:4985/$DB/user/GUEST --data \
+        '{"disabled":false, "admin_channels":["public"]}'
 
 ## Roles
 
@@ -252,6 +253,8 @@ A typical example is a document representing a shared resource (like a chat room
 In this example, a chat room is represented by a document with a "type" property "chatroom". The "channel_id" property names the associated channel (with which the actual chat messages will be tagged), and the "members" property lists the users who have access.
 
 `access()` can also operate on roles: if a username string begins with `role:` then the remainder of the string is interpreted as a role name. (There's no ambiguity here, since ":" is an illegal character in a user or role name.)
+
+Since anonymous requests are authenticated as the user "GUEST", you can make a channel and its documents public by calling `access` with a username of `GUEST`.
 
 ### Authorizing Document Updates
 

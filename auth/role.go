@@ -22,7 +22,7 @@ import (
 /** A group that users can belong to, with associated channel permisisons. */
 type roleImpl struct {
 	Name_             string      `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet `json:"admin_channels"`
+	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet `json:"all_channels"`
 }
 
@@ -68,7 +68,7 @@ func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string, defaul
 	if role.Name_ == "" {
 		role.Name_ = defaultName
 	}
-	for channel,seq := range role.ExplicitChannels_ {
+	for channel, seq := range role.ExplicitChannels_ {
 		if seq == 0 {
 			role.ExplicitChannels_[channel] = defaultSeq
 		}

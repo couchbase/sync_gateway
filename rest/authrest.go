@@ -25,9 +25,6 @@ import (
 
 // Common behavior of putUser and putRole
 func putPrincipal(r http.ResponseWriter, rq *http.Request, context *context, name string, princ auth.Principal) error {
-	if princ.ExplicitChannels() == nil {
-		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
-	}
 	context.auth.InvalidateChannels(princ)
 
 	if rq.Method == "POST" {
