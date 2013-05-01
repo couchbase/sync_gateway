@@ -1,5 +1,5 @@
 {
-	"log": ["CRUD", "REST+", "Foo"],
+	"log": ["CRUD", "REST+"],
 	"databases": {
 		"db1": {
 			"server": "walrus:"

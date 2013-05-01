@@ -219,6 +219,13 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	dbr.Handle("/_dump/{view}",
 		makeAdminHandler(sc, (*handler).handleDump)).Methods("GET")
 
+	// These routes are available on both the regular and admin ports; the admin port is useful
+	// because it gives 'superuser' access.
+	dbr.Handle("/_all_docs",
+		makeAdminHandler(sc, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_changes",
+		makeAdminHandler(sc, (*handler).handleChanges)).Methods("GET", "HEAD")
+
 	return r
 }
 

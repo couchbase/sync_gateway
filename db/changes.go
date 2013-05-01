@@ -162,12 +162,12 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 }
 
 // Returns of all the changes made to multiple channels.
-func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", channels, options)
-	if len(channels) == 0 {
+func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", chans, options)
+	if len(chans) == 0 {
 		return nil, nil
-	} else if len(channels) == 1 && !channels.Contains("*") {
-		for channel, _ := range channels {
+	} else if len(chans) == 1 && !chans.Contains("*") {
+		for channel, _ := range chans {
 			return db.ChangesFeed(channel, options)
 		}
 	}
@@ -182,7 +182,12 @@ func (db *Database) MultiChangesFeed(channels channels.Set, options ChangesOptio
 		for {
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
-			channelsSince := db.user.FilterToAvailableChannels(channels)
+			var channelsSince channels.TimedSet
+			if db.user != nil {
+				channelsSince = db.user.FilterToAvailableChannels(chans)
+			} else {
+				channelsSince = chans.AtSequence(1)
+			}
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))

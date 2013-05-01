@@ -102,6 +102,9 @@ func AuthorizeAnyDocChannels(user auth.User, channels ChannelMap) error {
 			return nil
 		}
 	}
+	if user.CanSeeChannel("*") {
+		return nil // Doc is not in any channels, but user has all-access
+	}
 	return user.UnauthError("You are not allowed to see this")
 }
 
