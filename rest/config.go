@@ -207,7 +207,7 @@ func (sc *serverContext) installPrincipals(context *context, spec map[string]jso
 		if name == "GUEST" && isUsers {
 			name = ""
 		}
-		newPrincipal, err := context.auth.UnmarshalPrincipal(data, name, isUsers)
+		newPrincipal, err := context.auth.UnmarshalPrincipal(data, name, 1, isUsers)
 		if err != nil {
 			return fmt.Errorf("Invalid config for %s %q: %v", what, name, err)
 		}

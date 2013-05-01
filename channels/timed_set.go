@@ -10,6 +10,7 @@
 package channels
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 )
@@ -21,10 +22,8 @@ type TimedSet map[string]uint64
 // Creates a new TimedSet from a Set plus a sequence
 func (set Set) AtSequence(sequence uint64) TimedSet {
 	result := make(TimedSet, len(set))
-	if sequence > 0 {
-		for name, _ := range set {
-			result[name] = sequence
-		}
+	for name, _ := range set {
+		result[name] = sequence
 	}
 	return result
 }
@@ -122,4 +121,24 @@ func (set TimedSet) Add(other TimedSet) bool {
 		}
 	}
 	return changed
+}
+
+// TimedSet can unmarshal either from the regular format {"channel":sequence, ...}
+// or from an array of channel names. In the latter case all the sequences will be 0.
+func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
+	var normalForm map[string]uint64
+	if err := json.Unmarshal(data, &normalForm); err != nil {
+		var altForm []string
+		if err2 := json.Unmarshal(data, &altForm); err2 == nil {
+			set, err := SetFromArray(altForm, KeepStar)
+			if err == nil {
+				*setPtr = set.AtSequence(0)
+			}
+			return err
+		}
+		return err
+	}
+	*setPtr = TimedSet(normalForm)
+	return nil
+
 }

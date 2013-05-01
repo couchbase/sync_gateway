@@ -163,7 +163,7 @@ Accounts are managed through a parallel REST interface that runs on port 4985 (b
 The URL for a user account is simply "/*databasename*/user/*name*" where _name_ is the username and _databasename_ is the configured name of the database. The typical GET, PUT and DELETE methods apply. The contents of the resource are a JSON object with the properties:
 
 * "name": The user name (same as in the URL path). Names must consist of alphanumeric ASCII characters or underscores.
-* "admin_channels": An array of strings -- the channels that the user is granted access to by the administrator. The name "*" means "all channels". An empty array or missing property denies access to all channels.
+* "admin_channels": Describes the channels that the user is granted access to by the administrator. Its format is a dictionary/object whose keys are channel names and values are integers. Each value represents the database sequence number at which the user got access to that channel.
 * "all_channels": Like "admin_channels" but also includes channels the user is given access to by other documents via a sync function. (This is a derived property and changes to it will be ignored.)
 * "roles": An optional array of strings -- the roles (q.v.) the user belongs to.
 * "password": In a PUT or POST request, put the user's password here. It will not be returned by a GET.
@@ -172,6 +172,8 @@ The URL for a user account is simply "/*databasename*/user/*name*" where _name_ 
 * "email": The user's email address. Optional, but Persona login (q.v.) needs it.
 
 You can create a new user either with a PUT to its URL, or by POST to `/$DB/user/`. (On the admin port, remember.)
+
+A note on changing a user's `admin_channels` property: If you add channels to the dictionary, set the associated sequence number to 0. When saved it will be changed to the database's current maximum sequence. This ensures that the user's changes feed will correctly send the documents with that channel.
 
 There is a special account named `GUEST` that applies to unauthenticated requests. Any request to the public API that does not have an `Authorization` header is treated as the `GUEST` user. The default `admin_channels` property of the guest user is `["*"]`, which gives access to all channels. In other words, it's the equivalent of CouchDB's "admin party". If you want any channels to be read-protected, you'll need to change this first.
 
@@ -217,15 +219,21 @@ This allows the app server to optionally do its own authentication: the client s
 
 ## Authorization
 
-The `all_channels` property of a user account determines what channels that user may access.
+The `all_channels` property of a user account determines what channels that user may access. Its value is derived from the union of:
 
-Any GET request to a document not assigned to one or more of the user's available channels will fail with a 403.
+* The user's `admin_channels` property (which is settable via the admin REST API);
+* The channels that user has been given access to by `access()` calls from `sync` functions invoked for current revisions of documents (see "Programmatic Authorization" below);
+* The `all_channels` properties of all roles the user belongs to. (Which are themselves computed according to the above two rules.)
 
-Accessing a `_changes` feed with any channel names that are not available to the user will fail with a 403.
+The only documents a user can access are ones whose current revisions are assigned to one or more channels the user has access to:
 
-Write protection is done by document validation functions, as in CouchDB: the function can look at the current user and determine whether that user should be able to make the change; if not, it throws an exception with a 403 Forbidden status code.
+* Any GET/PUT/DELETE request to a document not assigned to one or more of the user's available channels will fail with a 403.
+* `_all_docs` is filtered to return only documents that are visible to the user.
+* `_changes` ignores requests (via the `channels` parameter) for channels not visible to the user.
 
-There is currently an edge case where after a user is granted access to a new channel, their client will not automatically sync with pre-existing documents in that channel (that they didn't have access to before.) The workaround is for the client to do a one-shot sync from only that new channel, which having no checkpoint will start over from the beginning and fetch all the old documents.
+Write protection -- access control of document PUTs or DELETEs -- is done by document validation, as in CouchDB, although that job is done by the sync function rather than a separate validation function. (See below.)
+
+After a user is granted access to a new channel, the changes feed will incorporate all the existing documents in that channel, even those from earlier sequences than the client's `since` parameter. That way the next client pull will retrieve all those documents the user now has access to.
 
 ### Programmatic Authorization
 

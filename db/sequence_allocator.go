@@ -27,10 +27,10 @@ func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 	return s, s.reserveSequences(0) // just reads latest sequence from bucket
 }
 
-func (s *sequenceAllocator) lastSequence() (uint64, error) {
+func (s *sequenceAllocator) lastSequence() (uint64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	return s.last, nil
+	return s.last
 }
 
 func (s *sequenceAllocator) nextSequence() (uint64, error) {

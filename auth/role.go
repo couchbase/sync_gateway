@@ -60,13 +60,18 @@ func (auth *Authenticator) NewRole(name string, channels ch.Set) (Role, error) {
 	return role, nil
 }
 
-func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string) (Role, error) {
+func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string, defaultSeq uint64) (Role, error) {
 	role := &roleImpl{}
 	if err := json.Unmarshal(data, role); err != nil {
 		return nil, err
 	}
 	if role.Name_ == "" {
 		role.Name_ = defaultName
+	}
+	for channel,seq := range role.ExplicitChannels_ {
+		if seq == 0 {
+			role.ExplicitChannels_[channel] = defaultSeq
+		}
 	}
 	if err := role.validate(); err != nil {
 		return nil, err

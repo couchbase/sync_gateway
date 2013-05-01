@@ -24,11 +24,11 @@ import (
 //////// USER & ROLE REQUESTS:
 
 // Common behavior of putUser and putRole
-func putPrincipal(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator, name string, princ auth.Principal) error {
+func putPrincipal(r http.ResponseWriter, rq *http.Request, context *context, name string, princ auth.Principal) error {
 	if princ.ExplicitChannels() == nil {
 		return &base.HTTPError{http.StatusBadRequest, "Missing admin_channels property"}
 	}
-	a.InvalidateChannels(princ)
+	context.auth.InvalidateChannels(princ)
 
 	if rq.Method == "POST" {
 		name = princ.Name()
@@ -38,7 +38,7 @@ func putPrincipal(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator
 	} else if princ.Name() != name {
 		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 	}
-	err := a.Save(princ)
+	err := context.auth.Save(princ)
 	if err == nil {
 		r.WriteHeader(http.StatusCreated)
 	}
@@ -46,60 +46,60 @@ func putPrincipal(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator
 }
 
 // Handles PUT or POST to /user/*
-func putUser(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator) error {
+func putUser(r http.ResponseWriter, rq *http.Request, context *context) error {
 	muxed := mux.Vars(rq)
 	username := muxed["name"]
 	if username == "GUEST" {
 		username = "" //todo handle this at model layer?
 	}
 	body, _ := ioutil.ReadAll(rq.Body)
-	user, err := a.UnmarshalUser(body, username)
+	user, err := context.auth.UnmarshalUser(body, username, context.dbcontext.LastSequence()+1)
 	if err != nil {
 		return err
 	}
-	return putPrincipal(r, rq, a, username, user)
+	return putPrincipal(r, rq, context, username, user)
 }
 
 // Handles PUT or POST to /role/*
-func putRole(r http.ResponseWriter, rq *http.Request, a *auth.Authenticator) error {
+func putRole(r http.ResponseWriter, rq *http.Request, context *context) error {
 	rolename := mux.Vars(rq)["name"]
 	body, _ := ioutil.ReadAll(rq.Body)
-	role, err := a.UnmarshalRole(body, rolename)
+	role, err := context.auth.UnmarshalRole(body, rolename, context.dbcontext.LastSequence()+1)
 	if err != nil {
 		return err
 	}
-	return putPrincipal(r, rq, a, rolename, role)
+	return putPrincipal(r, rq, context, rolename, role)
 }
 
-func deleteUser(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	user, err := auth.GetUser(mux.Vars(rq)["name"])
+func deleteUser(r http.ResponseWriter, rq *http.Request, context *context) error {
+	user, err := context.auth.GetUser(mux.Vars(rq)["name"])
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return auth.Delete(user)
+	return context.auth.Delete(user)
 }
 
-func deleteRole(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	role, err := auth.GetRole(mux.Vars(rq)["name"])
+func deleteRole(r http.ResponseWriter, rq *http.Request, context *context) error {
+	role, err := context.auth.GetRole(mux.Vars(rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return auth.Delete(role)
+	return context.auth.Delete(role)
 }
 
-func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
+func getUserInfo(r http.ResponseWriter, rq *http.Request, context *context) error {
 	muxed := mux.Vars(rq)
 	username := muxed["name"]
 	if username == "GUEST" {
 		username = "" //todo handle this at model layer?
 	}
-	user, err := auth.GetUser(username)
+	user, err := context.auth.GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -111,8 +111,8 @@ func getUserInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticat
 	return err
 }
 
-func getRoleInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticator) error {
-	role, err := auth.GetRole(mux.Vars(rq)["name"])
+func getRoleInfo(r http.ResponseWriter, rq *http.Request, context *context) error {
+	role, err := context.auth.GetRole(mux.Vars(rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -127,7 +127,7 @@ func getRoleInfo(r http.ResponseWriter, rq *http.Request, auth *auth.Authenticat
 //////// SESSION:
 
 // Generates a login session for a user and returns the session ID and cookie name.
-func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *auth.Authenticator) error {
+func createUserSession(r http.ResponseWriter, rq *http.Request, context *context) error {
 	body, err := ioutil.ReadAll(rq.Body)
 	if err != nil {
 		return err
@@ -143,7 +143,7 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, authenticator *a
 	if params.Name == "" || params.TTL < 0 {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
 	}
-	session, err := authenticator.CreateSession(params.Name, params.TTL)
+	session, err := context.auth.CreateSession(params.Name, params.TTL)
 	if err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func renderError(err error, r http.ResponseWriter) {
 	r.Write(jsonOut)
 }
 
-type authHandler func(http.ResponseWriter, *http.Request, *auth.Authenticator) error
+type authHandler func(http.ResponseWriter, *http.Request, *context) error
 
 func handleAuthReq(sc *serverContext, fun authHandler) func(http.ResponseWriter, *http.Request) {
 	return func(r http.ResponseWriter, rq *http.Request) {
@@ -180,7 +180,7 @@ func handleAuthReq(sc *serverContext, fun authHandler) func(http.ResponseWriter,
 			r.WriteHeader(http.StatusNotFound)
 			return
 		}
-		err := fun(r, rq, dbContext.auth)
+		err := fun(r, rq, dbContext)
 		if err != nil {
 			renderError(err, r)
 		}

@@ -663,7 +663,7 @@ func (h *handler) handleCreateDB() error {
 }
 
 func (h *handler) handleGetDB() error {
-	lastSeq, _ := h.db.LastSequence()
+	lastSeq := h.db.LastSequence()
 	response := db.Body{
 		"db_name":              h.db.Name,
 		"doc_count":            h.db.DocCount(),

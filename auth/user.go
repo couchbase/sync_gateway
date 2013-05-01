@@ -78,7 +78,7 @@ func (auth *Authenticator) NewUser(username string, password string, channels ch
 	return user, nil
 }
 
-func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string) (User, error) {
+func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string, defaultSequence uint64) (User, error) {
 	user := &userImpl{auth: auth}
 	if err := json.Unmarshal(data, user); err != nil {
 		return nil, err
@@ -89,6 +89,11 @@ func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string) (User,
 	if user.Password_ != nil {
 		user.SetPassword(*user.Password_)
 		user.Password_ = nil
+	}
+	for channel,seq := range user.ExplicitChannels_ {
+		if seq == 0 {
+			user.ExplicitChannels_[channel] = defaultSequence
+		}
 	}
 	if err := user.validate(); err != nil {
 		return nil, err

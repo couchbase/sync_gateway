@@ -74,8 +74,8 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 	feed := make(chan *ChangeEntry, kChangesPageSize)
 
-	lastSeq, err := db.LastSequence()
-	if err == nil && options.Since >= lastSeq && !options.Wait {
+	lastSeq := db.LastSequence()
+	if options.Since >= lastSeq && !options.Wait {
 		close(feed)
 		return feed, nil
 	}
@@ -280,8 +280,8 @@ func (db *Database) NotifyRevision() {
 	notify("")
 }
 
-func (db *Database) LastSequence() (uint64, error) {
-	return db.sequences.lastSequence()
+func (context *DatabaseContext) LastSequence() uint64 {
+	return context.sequences.lastSequence()
 }
 
 func (db *Database) ReserveSequences(numToReserve uint64) error {

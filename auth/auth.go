@@ -46,11 +46,11 @@ func docIDForUserEmail(email string) string {
 	return "useremail:" + email
 }
 
-func (auth *Authenticator) UnmarshalPrincipal(data []byte, defaultName string, isUser bool) (Principal, error) {
+func (auth *Authenticator) UnmarshalPrincipal(data []byte, defaultName string, defaultSeq uint64, isUser bool) (Principal, error) {
 	if isUser {
-		return auth.UnmarshalUser(data, defaultName)
+		return auth.UnmarshalUser(data, defaultName, defaultSeq)
 	}
-	return auth.UnmarshalRole(data, defaultName)
+	return auth.UnmarshalRole(data, defaultName, defaultSeq)
 }
 
 func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, error) {
