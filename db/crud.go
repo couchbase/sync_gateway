@@ -334,48 +334,31 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 //////// CHANNELS:
 
-// Calls the JS ChannelMapper and Validation functions to assign the doc to channels, grant users
+// Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
 func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result channels.Set, access channels.AccessMap, err error) {
-	base.LogTo("CRUD", "Invoking validate/sync on doc %q rev %s", doc.ID, body["_rev"])
-	newJson, _ := json.Marshal(body)
-	var oldJson []byte
+	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
+	var oldJson string
 	if parentRevID != "" {
-		oldJson = doc.getRevisionJSON(parentRevID)
-	}
-
-	if db.Validator != nil {
-		var status int
-		var msg string
-		status, msg, err = db.Validator.Validate(string(newJson), string(oldJson), db.user)
-		if err != nil {
-			base.Warn("Validator exception: %v; doc = %s", err, newJson)
-			status = http.StatusInternalServerError
-			msg = "Exception in JS validation function"
-		}
-		if status >= 300 {
-			base.Log("Validator rejected: new=%s  old=%s --> %d %q", newJson, oldJson, status, msg)
-			err = &base.HTTPError{status, msg}
-			return
-		}
+		oldJson = string(doc.getRevisionJSON(parentRevID))
 	}
 
 	if db.ChannelMapper != nil {
 		var output *channels.ChannelMapperOutput
-		output, err = db.ChannelMapper.MapToChannelsAndAccess(string(newJson), string(oldJson),
+		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
 		if err == nil {
 			result = output.Channels
 			access = output.Access
 			err = output.Rejection
 			if err != nil {
-				base.Log("Sync fn rejected: new=%s  old=%s --> %s", newJson, oldJson, err)
+				base.Log("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
 			} else if !validateAccessMap(access) {
 				err = &base.HTTPError{500, fmt.Sprintf("Error in JS sync function")}
 			}
 
 		} else {
-			base.Warn("Sync fn exception: %v; doc = %s", err, newJson)
+			base.Warn("Sync fn exception: %+v; doc = %s", err, body)
 			err = &base.HTTPError{500, "Exception in JS sync function"}
 		}
 
@@ -394,6 +377,22 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 		}
 	}
 	return
+}
+
+// Creates a userCtx object to be passed to the sync function
+func makeUserCtx(user auth.User) map[string]interface{} {
+	if user == nil {
+		return map[string]interface{}{
+			"name":     nil,
+			"roles":    []interface{}{},
+			"channels": []interface{}{},
+		}
+	}
+	return map[string]interface{}{
+		"name":     user.Name(),
+		"roles":    user.RoleNames(),
+		"channels": user.InheritedChannels(),
+	}
 }
 
 // Updates the Channels property of a document object with current & past channels

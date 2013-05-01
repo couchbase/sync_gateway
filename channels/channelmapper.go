@@ -177,13 +177,13 @@ func NewDefaultChannelMapper() (*ChannelMapper, error) {
 }
 
 // This is just for testing
-func (mapper *ChannelMapper) callMapper(body string, oldBody string, userCtx string) (*ChannelMapperOutput, error) {
-	res, err := mapper.js.DirectCallFunction([]string{body, oldBody, userCtx})
+func (mapper *ChannelMapper) callMapper(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	res, err := mapper.js.DirectCall(body, walrus.JSONString(oldBodyJSON), userCtx)
 	return res.(*ChannelMapperOutput), err
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body string, oldBody string, userCtx string) (*ChannelMapperOutput, error) {
-	result1, err := mapper.js.CallFunction([]string{body, oldBody, userCtx})
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	result1, err := mapper.js.Call(body, walrus.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err
 	}

@@ -31,7 +31,6 @@ type DatabaseContext struct {
 	Bucket        base.Bucket
 	sequences     *sequenceAllocator
 	ChannelMapper *channels.ChannelMapper
-	Validator     *Validator
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
