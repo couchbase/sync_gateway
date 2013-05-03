@@ -163,14 +163,15 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 // Returns of all the changes made to multiple channels.
 func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	base.LogTo("Changes", "MultiChangesFeed(%s, %v) ...", chans, options)
 	if len(chans) == 0 {
 		return nil, nil
 	} else if len(chans) == 1 && !chans.Contains("*") {
 		for channel, _ := range chans {
+			base.LogTo("Changes", "ChangesFeed(%s, %+v) ...", channel, options)
 			return db.ChangesFeed(channel, options)
 		}
 	}
+	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
 
 	waitMode := options.Wait
 	options.Wait = false
@@ -257,6 +258,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 				break
 			}
 		}
+		base.LogTo("Changes", "MultiChangesFeed done")
 	}()
 
 	return output, nil
@@ -275,9 +277,9 @@ func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([
 }
 
 func (db *Database) WaitForRevision() bool {
-	base.Log("\twaiting for a revision...")
+	base.LogTo("Changes", "\twaiting for a revision...")
 	waitFor("")
-	base.Log("\t...done waiting")
+	base.LogTo("Changes", "\t...done waiting")
 	return true
 }
 
