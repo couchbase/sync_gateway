@@ -29,7 +29,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.41"
+const VersionString = "Couchbase Sync Gateway/0.42"
 
 type context struct {
 	dbcontext *db.DatabaseContext
