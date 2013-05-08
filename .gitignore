@@ -1,2 +1,8 @@
-sync_gateway
+/bin
+/pkg
+/vendor/pkg
+/vendor/src/code.google.com/
+/vendor/src/github.com/dustin/
+/vendor/src/github.com/gorilla/context/
+
 *.walrus

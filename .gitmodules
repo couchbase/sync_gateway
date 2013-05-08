@@ -1,0 +1,18 @@
+[submodule "vendor/src/github.com/couchbaselabs/go-couchbase"]
+	path = vendor/src/github.com/couchbaselabs/go-couchbase
+	url = https://github.com/couchbaselabs/go-couchbase
+[submodule "vendor/src/github.com/couchbaselabs/go.assert"]
+	path = vendor/src/github.com/couchbaselabs/go.assert
+	url = https://github.com/couchbaselabs/go.assert
+[submodule "vendor/src/github.com/couchbaselabs/walrus"]
+	path = vendor/src/github.com/couchbaselabs/walrus
+	url = https://github.com/couchbaselabs/walrus
+[submodule "vendor/src/github.com/dchest/passwordhash"]
+	path = vendor/src/github.com/dchest/passwordhash
+	url = https://github.com/dchest/passwordhash
+[submodule "vendor/src/github.com/gorilla/mux"]
+	path = vendor/src/github.com/gorilla/mux
+	url = https://github.com/gorilla/mux
+[submodule "vendor/src/github.com/robertkrimen/otto"]
+	path = vendor/src/github.com/robertkrimen/otto
+	url = https://github.com/robertkrimen/otto
