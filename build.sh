@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script builds the sync gateway. You can't just run "go install" on its own, because we
+# This script builds the sync gateway. You can't just run "go install" directly, because we
 # need to tell the Go compiler how to find the dependent packages (in vendor) and the gateway
 # source code (in src) by setting $GOPATH.
 

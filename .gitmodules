@@ -16,3 +16,9 @@
 [submodule "vendor/src/github.com/robertkrimen/otto"]
 	path = vendor/src/github.com/robertkrimen/otto
 	url = https://github.com/robertkrimen/otto
+[submodule "vendor/src/github.com/dustin/gomemcached"]
+	path = vendor/src/github.com/dustin/gomemcached
+	url = https://github.com/dustin/gomemcached
+[submodule "vendor/src/github.com/gorilla/context"]
+	path = vendor/src/github.com/gorilla/context
+	url = https://github.com/gorilla/context
