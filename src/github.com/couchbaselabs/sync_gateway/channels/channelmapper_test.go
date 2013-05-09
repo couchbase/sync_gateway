@@ -25,6 +25,15 @@ func parse(jsonStr string) map[string]interface{} {
 
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
 
+// verify that our version of Otto treats JSON parsed arrays like real arrays
+func TestJavaScriptWorks(t *testing.T) {
+	mapper, err := NewChannelMapper(`function(doc) {channel(doc.x.concat(doc.y));}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	res, err := mapper.callMapper(parse(`{"x":["abc"],"y":["xyz"]}`), `{}`, noUser)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, res.Channels, SetOf("abc", "xyz"))
+}
+
 // Just verify that the calls to the channel() fn show up in the output channel list.
 func TestSyncFunction(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {channel("foo", "bar"); channel("baz")}`)
