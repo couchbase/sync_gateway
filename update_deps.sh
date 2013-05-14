@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # This script uses 'go get' to pull the latest revisions of all of the 3rd party Go packages
 # the gateway imports (and their transitive dependencies.) This is good to do periodically
