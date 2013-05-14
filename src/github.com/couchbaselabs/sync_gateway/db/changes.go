@@ -257,6 +257,13 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 			if lastSeqSent > 0 || !waitMode || !db.WaitForRevision() {
 				break
 			}
+
+			// Before checking again, update the User object in case its channel access has
+			// changed while waiting:
+			if err := db.ReloadUser(); err != nil {
+				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+				return
+			}
 		}
 		base.LogTo("Changes", "MultiChangesFeed done")
 	}()

@@ -443,7 +443,7 @@ func validateAccessMap(access channels.AccessMap) bool {
 }
 
 func (db *Database) invalUserChannels(username string) {
-	authr := auth.NewAuthenticator(db.Bucket, nil)
+	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		authr.InvalidateChannels(user)
 	}

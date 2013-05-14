@@ -59,6 +59,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 	return &DatabaseContext{Name: dbName, Bucket: bucket, sequences: sequences}, nil
 }
 
+func (context *DatabaseContext) Authenticator() *auth.Authenticator {
+	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
+	return auth.NewAuthenticator(context.Bucket, context)
+}
+
 // Sets the database context's channelMapper based on the JS code from config
 func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
 	var err error
@@ -86,6 +91,18 @@ func CreateDatabase(context *DatabaseContext) (*Database, error) {
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
 		db.Bucket == otherdb.Bucket
+}
+
+// Reloads the database's User object, in case its persistent properties have been changed.
+func (db *Database) ReloadUser() error {
+	if db.user == nil {
+		return nil
+	}
+	user, err := db.Authenticator().GetUser(db.user.Name())
+	if err == nil {
+		db.user = user
+	}
+	return err
 }
 
 //////// ALL DOCUMENTS:

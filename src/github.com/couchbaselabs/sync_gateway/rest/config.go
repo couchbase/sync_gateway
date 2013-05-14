@@ -18,7 +18,6 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -161,7 +160,7 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun 
 
 	c := &context{
 		dbcontext: dbcontext,
-		auth:      auth.NewAuthenticator(bucket, dbcontext),
+		auth:      dbcontext.Authenticator(),
 	}
 
 	sc.databases[dbName] = c
