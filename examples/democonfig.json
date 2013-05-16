@@ -1,0 +1,23 @@
+{
+	"log": ["CRUD", "REST+"],
+	"databases": {
+		"db": {
+			"server": "walrus:",
+			"sync": `
+function(doc){
+	channel(doc.channels);
+}`,
+			"users": {
+				"pupshaw": {
+					"admin_channels": ["all"],
+					"admin_roles": ["froods"],
+					"password": "foo"
+				},
+				"GUEST": {"disabled": true}
+			},
+			"roles": {
+				"froods": {"admin_channels": ["hoopy"]}
+			}
+		}
+	}
+}

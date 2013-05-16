@@ -1,2 +1,5 @@
-sync_gateway
+/bin
+/pkg
+/vendor/pkg
+
 *.walrus

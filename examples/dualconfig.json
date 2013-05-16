@@ -1,0 +1,11 @@
+{
+	"log": ["CRUD", "REST+"],
+	"databases": {
+		"db1": {
+			"server": "walrus:"
+		},
+		"db2": {
+			"server": "walrus:"
+		}
+	}
+}
