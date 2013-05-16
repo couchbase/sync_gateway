@@ -3,3 +3,4 @@
 /vendor/pkg
 
 *.walrus
+*.sublime-workspace
