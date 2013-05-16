@@ -36,6 +36,10 @@ func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interfac
 	return vres, bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
 }
 
+func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+	panic("unimplemented") // temporary for 1.0a1c4; implemented in master branch
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucket, err error) {
 	cbbucket, err := couchbase.GetBucket(couchbaseURL, poolName, bucketName)
