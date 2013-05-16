@@ -52,8 +52,11 @@ func tearDownTestDB(t *testing.T, db *Database) {
 
 func assertHTTPError(t *testing.T, err error, status int) {
 	httpErr, ok := err.(*base.HTTPError)
-	assert.True(t, ok)
-	assert.Equals(t, httpErr.Status, 500)
+	if !ok {
+		assert.Errorf(t, "assertHTTPError: Expected an HTTP %d; got error %T %v", status, err, err)
+	} else {
+		assert.Equals(t, httpErr.Status, 500)
+	}
 }
 
 func TestDatabase(t *testing.T) {

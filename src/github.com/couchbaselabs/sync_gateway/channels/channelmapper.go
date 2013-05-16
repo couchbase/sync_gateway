@@ -66,11 +66,18 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 	}
 }
 
+func isOttoArray(value otto.Value) bool {
+	return value.Class() == "Array" || value.Class() == "GoArray"
+}
+
 // Converts a JS array into a Go string array.
 func ottoArrayToStrings(array otto.Value) []string {
 	goValue, err := array.Export()
 	if err != nil {
 		return nil
+	}
+	if result, ok := goValue.([]string); ok {
+		return result
 	}
 	goArray, ok := goValue.([]interface{})
 	if !ok || len(goArray) == 0 {
@@ -100,7 +107,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		for _, arg := range call.ArgumentList {
 			if arg.IsString() {
 				mapper.channels = append(mapper.channels, arg.String())
-			} else if arg.Class() == "Array" {
+			} else if isOttoArray(arg) {
 				array := ottoArrayToStrings(arg)
 				if array != nil {
 					mapper.channels = append(mapper.channels, array...)
@@ -117,13 +124,13 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		usernameArray := []string{}
 		if username.IsString() {
 			usernameArray = []string{username.String()}
-		} else if username.Class() == "Array" {
+		} else if isOttoArray(username) {
 			usernameArray = ottoArrayToStrings(username)
 		}
 		for _, name := range usernameArray {
 			if channels.IsString() {
 				mapper.access[name] = append(mapper.access[name], channels.String())
-			} else if channels.Class() == "Array" {
+			} else if isOttoArray(channels) {
 				array := ottoArrayToStrings(channels)
 				if array != nil {
 					mapper.access[name] = append(mapper.access[name], array...)
