@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"strings"
+	"sync"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -27,10 +29,11 @@ var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name          string
-	Bucket        base.Bucket
-	sequences     *sequenceAllocator
-	ChannelMapper *channels.ChannelMapper
+	Name          string                  // Database name
+	Bucket        base.Bucket             // Storage
+	tapNotifier   *sync.Cond              // Posts notifications when documents are updated
+	sequences     *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper *channels.ChannelMapper // Runs JS 'sync' function
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -52,11 +55,37 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Buc
 }
 
 func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
-	sequences, err := newSequenceAllocator(bucket)
+	context := &DatabaseContext{
+		Name:        dbName,
+		Bucket:      bucket,
+		tapNotifier: sync.NewCond(&sync.Mutex{}),
+	}
+	var err error
+	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
 		return nil, err
 	}
-	return &DatabaseContext{Name: dbName, Bucket: bucket, sequences: sequences}, nil
+	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
+	if err != nil {
+		return nil, err
+	}
+
+	// Start a goroutine to broadcast to the tapNotifier whenever a document changes:
+	go func() {
+		for event := range tapFeed.Events() {
+			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
+				key := string(event.Key)
+				if strings.HasPrefix(key, "_sync:") && !strings.HasPrefix(key, "_sync:user") &&
+					!strings.HasPrefix(key, "_sync:role") {
+					continue // ignore metadata docs (sequence counter, attachments, local docs...)
+				}
+				base.LogTo("Changes", "Notifying that %q changed (key=%q)", dbName, event.Key)
+				context.tapNotifier.Broadcast()
+			}
+		}
+	}()
+
+	return context, nil
 }
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {

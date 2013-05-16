@@ -14,13 +14,25 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
+	"github.com/dustin/gomemcached/client"
 )
 
 type Bucket walrus.Bucket
+type TapArguments walrus.TapArguments
+type TapFeed walrus.TapFeed
 
 // Implementation of walrus.Bucket that talks to a Couchbase server
 type couchbaseBucket struct {
 	*couchbase.Bucket
+}
+
+type couchbaseFeedImpl struct {
+	*couchbase.TapFeed
+	events <-chan walrus.TapEvent
+}
+
+func (feed *couchbaseFeedImpl) Events() <-chan walrus.TapEvent {
+	return feed.events
 }
 
 func (bucket couchbaseBucket) GetName() string {
@@ -34,6 +46,34 @@ func (bucket couchbaseBucket) Update(k string, exp int, callback walrus.UpdateFu
 func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
 	vres := walrus.ViewResult{}
 	return vres, bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
+}
+
+func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+	cbArgs := memcached.TapArguments{
+		Backfill: args.Backfill,
+		Dump:     args.Dump,
+		KeysOnly: args.KeysOnly,
+	}
+	cbFeed, err := bucket.Bucket.StartTapFeed(&cbArgs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a bridge from the Couchbase tap feed to a Walrus tap feed:
+	events := make(chan walrus.TapEvent)
+	impl := couchbaseFeedImpl{cbFeed, events}
+	go func() {
+		for cbEvent := range cbFeed.C {
+			events <- walrus.TapEvent{
+				Opcode: walrus.TapOpcode(cbEvent.Opcode),
+				Expiry: cbEvent.Expiry,
+				Flags:  cbEvent.Flags,
+				Key:    cbEvent.Key,
+				Value:  cbEvent.Value,
+			}
+		}
+	}()
+	return &impl, nil
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.

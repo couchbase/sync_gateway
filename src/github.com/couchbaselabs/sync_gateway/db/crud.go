@@ -311,7 +311,6 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
 	}
 
-	db.NotifyRevision()
 	return newRevID, nil
 }
 

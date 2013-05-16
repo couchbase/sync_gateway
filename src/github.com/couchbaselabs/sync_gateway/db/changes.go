@@ -285,13 +285,11 @@ func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([
 
 func (db *Database) WaitForRevision() bool {
 	base.LogTo("Changes", "\twaiting for a revision...")
-	waitFor("")
+	db.tapNotifier.L.Lock()
+	defer db.tapNotifier.L.Unlock()
+	db.tapNotifier.Wait()
 	base.LogTo("Changes", "\t...done waiting")
 	return true
-}
-
-func (db *Database) NotifyRevision() {
-	notify("")
 }
 
 func (context *DatabaseContext) LastSequence() uint64 {
