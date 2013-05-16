@@ -1,0 +1,35 @@
+{
+	"folders":
+	[
+		{
+			"name": "sync_gateway",
+			"path": "src/github.com/couchbaselabs/sync_gateway"
+		},
+		{
+			"path": "vendor/src/github.com/couchbaselabs/go-couchbase",
+			"file_exclude_patterns": [".*"]
+		},
+		{
+			"path": "vendor/src/github.com/dustin/gomemcached",
+			"file_exclude_patterns": [".*"]
+		},
+		{
+			"path": "vendor/src/github.com/couchbaselabs/walrus",
+			"file_exclude_patterns": [".*"]
+		}
+	],
+	"settings":
+	{
+		"GoSublime": {
+			"env":
+			{
+				"GOPATH": "/Couchbase/sync_gateway:/Couchbase/sync_gateway/vendor"
+			}
+		},
+		"rulers":[100],
+		"tab_size":4,
+		"translate_tabs_to_spaces":false,
+		"trim_automatic_white_space":true,
+		"trim_trailing_white_space_on_save":true
+	}
+}
