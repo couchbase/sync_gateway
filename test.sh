@@ -12,4 +12,4 @@ go test ./... "$@"
 # to vet to tell it just what you want, but he invocation is a lot
 # more awkward, so I'm just going to grep away the thing we don't care
 # about so we can see the things we do.
-go vet ./... 2>&1 | grep -v "literal uses untagged fields"
+go vet ./... 2>&1 | grep -v "literal uses untagged fields" || true
