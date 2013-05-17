@@ -1,8 +1,5 @@
 language: go
 
-install:
-  git submodule update --init
-
 script:
   - ./build.sh
   - ./test.sh
