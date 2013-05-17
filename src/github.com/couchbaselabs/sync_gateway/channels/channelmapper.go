@@ -92,6 +92,25 @@ func ottoArrayToStrings(array otto.Value) []string {
 	return result
 }
 
+func ottoValueToStringArray(value otto.Value) []string {
+	{
+		value, _ := value.Export()
+		switch value := value.(type) {
+		case string:
+			return []string{value}
+		case []interface{}:
+			result := make([]string, 0, len(value))
+			for _, item := range value {
+				if value, ok := item.(string); ok {
+					result = append(result, value)
+				}
+			}
+			return result
+		}
+	}
+	return nil
+}
+
 func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	funcSource = fmt.Sprintf(funcWrapper, funcSource)
 	mapper := &ChannelMapper{}
@@ -105,13 +124,9 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	// Implementation of the 'channel()' callback:
 	mapper.js.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
-			if arg.IsString() {
-				mapper.channels = append(mapper.channels, arg.String())
-			} else if isOttoArray(arg) {
-				array := ottoArrayToStrings(arg)
-				if array != nil {
-					mapper.channels = append(mapper.channels, array...)
-				}
+			array := ottoValueToStringArray(arg)
+			if array != nil {
+				mapper.channels = append(mapper.channels, array...)
 			}
 		}
 		return otto.UndefinedValue()
@@ -121,21 +136,10 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	mapper.js.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
 		username := call.Argument(0)
 		channels := call.Argument(1)
-		usernameArray := []string{}
-		if username.IsString() {
-			usernameArray = []string{username.String()}
-		} else if isOttoArray(username) {
-			usernameArray = ottoArrayToStrings(username)
-		}
+		usernameArray := ottoValueToStringArray(username)
+		channelsArray := ottoValueToStringArray(channels)
 		for _, name := range usernameArray {
-			if channels.IsString() {
-				mapper.access[name] = append(mapper.access[name], channels.String())
-			} else if isOttoArray(channels) {
-				array := ottoArrayToStrings(channels)
-				if array != nil {
-					mapper.access[name] = append(mapper.access[name], array...)
-				}
-			}
+			mapper.access[name] = append(mapper.access[name], channelsArray...)
 		}
 		return otto.UndefinedValue()
 	})
