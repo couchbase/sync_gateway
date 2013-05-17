@@ -325,12 +325,11 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	http.Handle("/", createHandler(sc))
 	base.Log("Starting auth server on %s", *config.AdminInterface)
 	StartAuthListener(*config.AdminInterface, sc)
 
 	base.Log("Starting server on %s ...", *config.Interface)
-	if err := http.ListenAndServe(*config.Interface, nil); err != nil {
+	if err := http.ListenAndServe(*config.Interface, createHandler(sc)); err != nil {
 		base.LogFatal("Server failed: ", err.Error())
 	}
 }
