@@ -1,6 +1,7 @@
+*.sublime-workspace
+*.walrus
+*~
+.#*
 /bin
 /pkg
 /vendor/pkg
-
-*.walrus
-*.sublime-workspace
