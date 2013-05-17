@@ -1,7 +1,9 @@
 language: go
 
-script:
+install:
   - ./build.sh
+
+script:
   - ./test.sh
 
 notifications:
