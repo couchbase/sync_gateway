@@ -75,9 +75,8 @@ func CouchHTTPErrorName(status int) string {
 		return "file_exists"
 	case 415:
 		return "bad_content_type"
-	default:
-		return fmt.Sprintf("%d", status)
 	}
+	return fmt.Sprintf("%d", status)
 }
 
 // Returns true if an error is a Couchbase doc-not-found error
