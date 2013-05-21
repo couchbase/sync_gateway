@@ -5,7 +5,6 @@
 # dependent packages (in vendor) and the gateway source code (in src)
 # by setting $GOPATH.
 
-export GOPATH="`pwd`:`pwd`/vendor"
 export GOBIN="`pwd`/bin"
-go install github.com/couchbaselabs/sync_gateway
+./go.sh install github.com/couchbaselabs/sync_gateway
 echo "Success! Output is bin/sync_gateway"
