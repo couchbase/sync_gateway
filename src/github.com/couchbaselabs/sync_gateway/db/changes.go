@@ -47,6 +47,7 @@ type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
+// One "changes" row in a ViewResult
 type ViewRow struct {
 	ID    string
 	Key   interface{}
@@ -54,15 +55,34 @@ type ViewRow struct {
 	Doc   *ViewDoc
 }
 
+// Unmarshaled JSON structure for "changes" view results
 type ViewResult struct {
 	TotalRows int `json:"total_rows"`
 	Rows      []ViewRow
 	Errors    []couchbase.ViewError
 }
 
-const kChangesPageSize = 200
+// Number of rows to query from the changes view at one time
+const kChangesViewPageSize = 200
 
-// Returns a list of all the changes made on a channel. Does NOT check authorization.
+func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, options ChangesOptions) {
+	if doc != nil {
+		revID := entry.Changes[0]["rev"]
+		if options.Conflicts {
+			for _, leafID := range doc.History.getLeaves() {
+				if leafID != revID {
+					entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+				}
+			}
+		}
+		if options.IncludeDocs {
+			entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
+		}
+	}
+}
+
+// Returns a list of all the changes made on a channel.
+// Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	log, err := db.GetChannelLog(channel, options.Since)
 	if err != nil {
@@ -73,6 +93,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 	go func() {
 		defer close(feed)
 		for _, logEntry := range log {
+			// Write each entry to the 'feed' channel in turn:
 			change := ChangeEntry{
 				Seq:     logEntry.Sequence,
 				ID:      logEntry.DocID,
@@ -81,12 +102,9 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 			}
 			if logEntry.Removed {
 				change.Removed = channels.SetOf(channel)
-			}
-			if options.IncludeDocs && !logEntry.Removed {
-				change.Doc, _ = db.GetRev(logEntry.DocID, logEntry.RevID, false, nil)
-			}
-			if options.Conflicts {
-				//FIX: Handle conflicts somehow??
+			} else if options.IncludeDocs || options.Conflicts {
+				doc, _ := db.getDoc(logEntry.DocID)
+				db.addDocToChangeEntry(doc, &change, options)
 			}
 			feed <- &change
 
@@ -112,7 +130,7 @@ func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) 
 		"endkey":       endkey,
 		"include_docs": usingDocs}
 
-	feed := make(chan *ChangeEntry, kChangesPageSize)
+	feed := make(chan *ChangeEntry, kChangesViewPageSize)
 
 	lastSeq := db.LastSequence()
 	if options.Since >= lastSeq && !options.Wait {
@@ -127,8 +145,8 @@ func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) 
 			// Query the 'channels' view:
 			opts["startkey"] = []interface{}{channel, lastSequence + 1}
 			limit := totalLimit
-			if limit == 0 || limit > kChangesPageSize {
-				limit = kChangesPageSize
+			if limit == 0 || limit > kChangesViewPageSize {
+				limit = kChangesViewPageSize
 			}
 			opts["limit"] = limit
 
@@ -162,28 +180,16 @@ func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) 
 				}
 				if len(value) >= 4 && value[3].(bool) {
 					entry.Removed = channels.SetOf(channel)
-				}
-				if usingDocs {
-					doc, err := unmarshalDocument(docID, row.Doc.Json)
-					if err == nil {
-						if options.Conflicts {
-							for _, leafID := range doc.History.getLeaves() {
-								if leafID != revID {
-									entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
-								}
-							}
-						}
-						if options.IncludeDocs {
-							entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-						}
-					}
+				} else if usingDocs {
+					doc, _ := unmarshalDocument(docID, row.Doc.Json)
+					db.addDocToChangeEntry(doc, entry, options)
 				}
 				feed <- entry
 			}
 
 			// Step to the next page of results:
 			nRows := len(vres.Rows)
-			if nRows < kChangesPageSize || options.Wait {
+			if nRows < kChangesViewPageSize || options.Wait {
 				break
 			}
 			if totalLimit > 0 {
@@ -208,7 +214,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 	waitMode := options.Wait
 	options.Wait = false
 
-	output := make(chan *ChangeEntry, kChangesPageSize)
+	output := make(chan *ChangeEntry, kChangesViewPageSize)
 	go func() {
 		defer close(output)
 
