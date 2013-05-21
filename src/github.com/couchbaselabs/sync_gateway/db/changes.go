@@ -89,11 +89,52 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 		return nil, err
 	}
 
+	var viewFeed <-chan *ChangeEntry
+	if len(log) == 0 || log[0].Sequence > options.Since+1 {
+		// Channel log may not go back far enough, so also fetch view-based change feed:
+		viewFeed, err = db.ChangesFeedFromView(channel, options)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	feed := make(chan *ChangeEntry, 5)
 	go func() {
 		defer close(feed)
+
+		// First, if we need to backfill from the view, its early entries to the 'feed' channel:
+		if viewFeed != nil {
+			var newLog channels.ChannelLog
+			for change := range viewFeed {
+				if len(log) > 0 && change.Seq >= log[0].Sequence {
+					// TODO: Close the view-based feed somehow
+					break
+				}
+				feed <- change
+				if log == nil {
+					// If there wasn't any channel log, build up a new one from the view:
+					newLog.Add(channels.LogEntry{
+						Sequence: change.Seq,
+						DocID:    change.ID,
+						RevID:    change.Changes[0]["rev"],
+						Deleted:  change.Deleted,
+						Removed:  (change.Removed != nil),
+					})
+				}
+			}
+
+			if log == nil {
+				// Save the missing channel log we just rebuilt:
+				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
+					channel, len(newLog))
+				if _, err := db.AddChannelLog(channel, newLog); err != nil {
+					base.Warn("ChangesFeed: AddChannelLog failed, %v", err)
+				}
+			}
+		}
+
+		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
-			// Write each entry to the 'feed' channel in turn:
 			change := ChangeEntry{
 				Seq:     logEntry.Sequence,
 				ID:      logEntry.DocID,
@@ -380,6 +421,11 @@ func (db *Database) GetChannelLog(channelName string, since uint64) (channels.Ch
 		return nil, err
 	}
 	return log.Since(since), nil
+}
+
+// Saves a channel log, _if_ there isn't already one in the database.
+func (db *Database) AddChannelLog(channelName string, log channels.ChannelLog) (added bool, err error) {
+	return db.Bucket.Add(channelLogDocID(channelName), 0, log)
 }
 
 // Adds a new change to a channel log.

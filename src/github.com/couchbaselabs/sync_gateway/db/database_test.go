@@ -148,6 +148,12 @@ func TestAllDocs(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
+	// Lower the log capacity to 50 to ensure the test will overflow, causing logs to be truncated,
+	// so the changes feed will have to backfill from its view.
+	oldMaxLogLength := channels.MaxLogLength
+	channels.MaxLogLength = 50
+	defer func() { channels.MaxLogLength = oldMaxLogLength }()
+
 	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 
 	ids := make([]IDAndRev, 100)
@@ -204,6 +210,7 @@ func TestAllDocs(t *testing.T) {
 		assert.DeepEquals(t, change.Removed, removed)
 	}
 
+	options.IncludeDocs = true
 	changes, err = db.GetChanges(channels.SetOf("KFJC"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 10)
@@ -212,7 +219,32 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, channels.Set(nil))
+		assert.Equals(t, change.Doc["serialnumber"], float64(10*i))
 	}
+
+	// Inspect the channel log to confirm that it's only got the last 50 sequences.
+	// There are 101 sequences overall, so the 1st one it has should be #52.
+	log, _ := db.GetChannelLog("all", 0)
+	assert.Equals(t, len(log), 50)
+	assert.Equals(t, int(log[0].Sequence), 52)
+
+	// Trying to add the existing log should fail with no error
+	added, err := db.AddChannelLog("all", log)
+	assertNoError(t, err, "add channel log")
+	assert.False(t, added)
+
+	// Delete the channel log to test if it can be rebuilt:
+	assertNoError(t, db.Bucket.Delete(channelLogDocID("all")), "delete channel log")
+
+	// Get the changes feed; result should still be correct:
+	changes, err = db.GetChanges(channels.SetOf("all"), options)
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 100)
+
+	// Verify it was rebuilt
+	log, _ = db.GetChannelLog("all", 0)
+	assert.Equals(t, len(log), 50)
+	assert.Equals(t, int(log[0].Sequence), 52)
 }
 
 func TestInvalidChannel(t *testing.T) {
