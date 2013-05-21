@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -65,26 +64,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 	if err != nil {
 		return nil, err
 	}
-	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
-	if err != nil {
-		return nil, err
-	}
-
-	// Start a goroutine to broadcast to the tapNotifier whenever a document changes:
-	go func() {
-		for event := range tapFeed.Events() {
-			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
-				key := string(event.Key)
-				if strings.HasPrefix(key, "_sync:") && !strings.HasPrefix(key, "_sync:user") &&
-					!strings.HasPrefix(key, "_sync:role") {
-					continue // ignore metadata docs (sequence counter, attachments, local docs...)
-				}
-				base.LogTo("Changes", "Notifying that %q changed (key=%q)", dbName, event.Key)
-				context.tapNotifier.Broadcast()
-			}
-		}
-	}()
-
+	context.startRevisionNotifier()
 	return context, nil
 }
 

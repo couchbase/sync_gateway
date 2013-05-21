@@ -12,8 +12,10 @@ package db
 import (
 	"encoding/json"
 	"math"
+	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -313,6 +315,30 @@ func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([
 	return changes, err
 }
 
+//////// WAITING FOR NEW REVISIONS:
+
+func (context *DatabaseContext) startRevisionNotifier() error {
+	tapFeed, err := context.Bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
+	if err != nil {
+		return err
+	}
+
+	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
+	go func() {
+		for event := range tapFeed.Events() {
+			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
+				key := string(event.Key)
+				if strings.HasPrefix(key, "_sync:log:") ||
+					strings.HasPrefix(key, "_sync:user") || strings.HasPrefix(key, "_sync:role") {
+					base.LogTo("Changes", "Notifying that %q changed (key=%q)", context.Name, key)
+					context.tapNotifier.Broadcast()
+				}
+			}
+		}
+	}()
+	return nil
+}
+
 func (db *Database) WaitForRevision(chans channels.Set) bool {
 	base.LogTo("Changes", "\twaiting for a revision...")
 	db.tapNotifier.L.Lock()
@@ -321,6 +347,8 @@ func (db *Database) WaitForRevision(chans channels.Set) bool {
 	base.LogTo("Changes", "\t...done waiting")
 	return true
 }
+
+//////// SEQUENCE ALLOCATION:
 
 func (context *DatabaseContext) LastSequence() uint64 {
 	return context.sequences.lastSequence()
