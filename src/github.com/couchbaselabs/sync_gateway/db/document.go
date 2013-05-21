@@ -17,8 +17,9 @@ import (
 )
 
 type ChannelRemoval struct {
-	Seq uint64 `json:"seq"`
-	Rev string `json:"rev"`
+	Seq     uint64 `json:"seq"`
+	RevID   string `json:"rev"`
+	Deleted bool   `json:"del,omitempty"`
 }
 type ChannelMap map[string]*ChannelRemoval
 

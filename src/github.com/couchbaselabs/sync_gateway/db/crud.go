@@ -246,10 +246,13 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 	var newRevID string
 	var body Body
+	var doc *document
+	var changedChannels channels.Set
 
 	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		doc, err := unmarshalDocument(docid, currentValue)
+		var err error
+		doc, err = unmarshalDocument(docid, currentValue)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +298,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		if err != nil {
 			return nil, err
 		}
-		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
+		changedChannels = db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
 		db.updateDocAccess(doc, access)
 
 		// Tell Couchbase to store the document:
@@ -307,9 +310,15 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
-	if newRevID != "" {
-		base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
-	}
+	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+
+	// Add doc channels to change-logs:
+	db.AddToChannelLogs(changedChannels, doc.Channels, channels.LogEntry{
+		Sequence: doc.Sequence,
+		DocID:    docid,
+		RevID:    doc.CurrentRev,
+		Deleted:  doc.Deleted,
+	})
 
 	return newRevID, nil
 }
@@ -397,34 +406,40 @@ func makeUserCtx(user auth.User) map[string]interface{} {
 	}
 }
 
-// Updates the Channels property of a document object with current & past channels
-func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (changed bool) {
-	channels := doc.Channels
-	if channels == nil {
-		channels = ChannelMap{}
-		doc.Channels = channels
+// Updates the Channels property of a document object with current & past channels.
+// Returns the set of channels that have changed (document joined or left in this revision)
+func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (changedChannels channels.Set) {
+	var changed []string
+	oldChannels := doc.Channels
+	if oldChannels == nil {
+		oldChannels = ChannelMap{}
+		doc.Channels = oldChannels
 	} else {
-		// Mark every previous channel as unsubscribed:
+		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
-		for channel, seq := range channels {
-			if seq == nil {
-				channels[channel] = &ChannelRemoval{curSequence, doc.CurrentRev}
-				changed = true
+		for channel, removal := range oldChannels {
+			if removal == nil && !newChannels.Contains(channel) {
+				oldChannels[channel] = &ChannelRemoval{
+					Seq:     curSequence,
+					RevID:   doc.CurrentRev,
+					Deleted: doc.Deleted}
+				changed = append(changed, channel)
 			}
 		}
 	}
 
 	// Mark every current channel as subscribed:
 	for channel, _ := range newChannels {
-		if value, exists := channels[channel]; value != nil || !exists {
-			channels[channel] = nil
-			changed = true
+		if value, exists := oldChannels[channel]; value != nil || !exists {
+			oldChannels[channel] = nil
+			changed = append(changed, channel)
 		}
 	}
-	if changed {
+	if changed != nil {
 		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
+		changedChannels = channels.SetOf(changed...)
 	}
-	return changed
+	return
 }
 
 // Are the principal and role names in an AccessMap all valid?

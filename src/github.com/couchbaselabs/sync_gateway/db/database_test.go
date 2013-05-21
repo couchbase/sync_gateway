@@ -196,7 +196,7 @@ func TestAllDocs(t *testing.T) {
 			seq++
 		}
 		assert.Equals(t, int(change.Seq), seq)
-		assert.Equals(t, change.Deleted, false)
+		assert.Equals(t, change.Deleted, i == 99)
 		var removed channels.Set
 		if i == 99 {
 			removed = channels.SetOf("all")

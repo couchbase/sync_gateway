@@ -183,7 +183,8 @@ func installViews(bucket base.Bucket) error {
 								if (!removed)
 									emit([name, sequence], value);
 								else
-									emit([name, removed.seq], [meta.id, removed.rev, false]);
+									emit([name, removed.seq],
+										 [meta.id, removed.rev, removed.del, true]);
 							}
 						}
 					}`

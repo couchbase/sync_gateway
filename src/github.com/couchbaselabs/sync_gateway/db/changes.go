@@ -21,12 +21,11 @@ import (
 
 // Options for Database.getChanges
 type ChangesOptions struct {
-	Since          uint64
-	Limit          int
-	Conflicts      bool
-	IncludeDocs    bool
-	includeDocMeta bool
-	Wait           bool
+	Since       uint64
+	Limit       int
+	Conflicts   bool
+	IncludeDocs bool
+	Wait        bool
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -38,7 +37,6 @@ type ChangeEntry struct {
 	Removed channels.Set `json:"removed,omitempty"`
 	Doc     Body         `json:"doc,omitempty"`
 	Changes []ChangeRev  `json:"changes"`
-	docMeta *document
 }
 
 type ChangeRev map[string]string
@@ -64,10 +62,50 @@ const kChangesPageSize = 200
 
 // Returns a list of all the changes made on a channel. Does NOT check authorization.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	log, err := db.GetChannelLog(channel, options.Since)
+	if err != nil {
+		return nil, err
+	}
+
+	feed := make(chan *ChangeEntry, 5)
+	go func() {
+		defer close(feed)
+		for _, logEntry := range log {
+			change := ChangeEntry{
+				Seq:     logEntry.Sequence,
+				ID:      logEntry.DocID,
+				Deleted: logEntry.Deleted,
+				Changes: []ChangeRev{{"rev": logEntry.RevID}},
+			}
+			if logEntry.Removed {
+				change.Removed = channels.SetOf(channel)
+			}
+			if options.IncludeDocs && !logEntry.Removed {
+				change.Doc, _ = db.GetRev(logEntry.DocID, logEntry.RevID, false, nil)
+			}
+			if options.Conflicts {
+				//FIX: Handle conflicts somehow??
+			}
+			feed <- &change
+
+			if options.Limit > 0 {
+				options.Limit--
+				if options.Limit == 0 {
+					break
+				}
+			}
+		}
+	}()
+	return feed, nil
+}
+
+// Returns a list of all the changes made on a channel, reading from a view instead of the
+// channel log. This will include all historical changes, but may omit very recent ones.
+func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	lastSequence := options.Since
 	endkey := []interface{}{channel, map[string]interface{}{}}
 	totalLimit := options.Limit
-	usingDocs := options.Conflicts || options.IncludeDocs || options.includeDocMeta
+	usingDocs := options.Conflicts || options.IncludeDocs
 	opts := Body{"stale": false, "update_seq": true,
 		"endkey":       endkey,
 		"include_docs": usingDocs}
@@ -102,7 +140,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 					return
 				}
 				if len(vres.Rows) == 0 {
-					if !options.Wait || !db.WaitForRevision() {
+					if !options.Wait || !db.WaitForRevision(channels.SetOf(channel)) {
 						return
 					}
 				}
@@ -120,7 +158,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 					Changes: []ChangeRev{{"rev": revID}},
 					Deleted: (len(value) >= 3 && value[2].(bool)),
 				}
-				if len(value) >= 3 && !value[2].(bool) {
+				if len(value) >= 4 && value[3].(bool) {
 					entry.Removed = channels.SetOf(channel)
 				}
 				if usingDocs {
@@ -135,9 +173,6 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 						}
 						if options.IncludeDocs {
 							entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
-						}
-						if options.includeDocMeta {
-							entry.docMeta = doc
 						}
 					}
 				}
@@ -165,11 +200,6 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	if len(chans) == 0 {
 		return nil, nil
-	} else if len(chans) == 1 && !chans.Contains("*") {
-		for channel, _ := range chans {
-			base.LogTo("Changes", "ChangesFeed(%s, %+v) ...", channel, options)
-			return db.ChangesFeed(channel, options)
-		}
 	}
 	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
 
@@ -254,7 +284,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again
-			if lastSeqSent > 0 || !waitMode || !db.WaitForRevision() {
+			if lastSeqSent > 0 || !waitMode || !db.WaitForRevision(chans) {
 				break
 			}
 
@@ -283,7 +313,7 @@ func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([
 	return changes, err
 }
 
-func (db *Database) WaitForRevision() bool {
+func (db *Database) WaitForRevision(chans channels.Set) bool {
 	base.LogTo("Changes", "\twaiting for a revision...")
 	db.tapNotifier.L.Lock()
 	defer db.tapNotifier.L.Unlock()
@@ -298,4 +328,57 @@ func (context *DatabaseContext) LastSequence() uint64 {
 
 func (db *Database) ReserveSequences(numToReserve uint64) error {
 	return db.sequences.reserveSequences(numToReserve)
+}
+
+//////// CHANNEL LOG DOCUMENTS:
+
+func channelLogDocID(channelName string) string {
+	return "_sync:log:" + channelName
+}
+
+// Loads a channel's log from the database and returns it.
+func (db *Database) GetChannelLog(channelName string, since uint64) (channels.ChannelLog, error) {
+	var log channels.ChannelLog
+	if err := db.Bucket.Get(channelLogDocID(channelName), &log); err != nil {
+		if base.IsDocNotFoundError(err) {
+			err = nil
+		}
+		return nil, err
+	}
+	return log.Since(since), nil
+}
+
+// Adds a new change to a channel log.
+func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry) error {
+	logDocID := channelLogDocID(channelName)
+	err := db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
+		// Be careful: this block can be invoked multiple times if there are races!
+		var log channels.ChannelLog
+		if currentValue != nil {
+			if err := json.Unmarshal(currentValue, &log); err != nil {
+				base.Warn("ChannelLog %q is unreadable; resetting", logDocID)
+				log = nil
+			}
+		}
+		if !log.Add(entry) {
+			return nil, couchbase.UpdateCancel // nothing to change, so cancel
+		}
+		return json.Marshal(log)
+	})
+	if err == couchbase.UpdateCancel {
+		err = nil
+	}
+	return err
+}
+
+func (db *Database) AddToChannelLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry) error {
+	var err error
+	base.LogTo("Changes", "Updating #%d %q/%q in channels %s", entry.Sequence, entry.DocID, entry.RevID, changedChannels)
+	for channel, _ := range changedChannels {
+		entry.Removed = (channelMap[channel] != nil)
+		if err1 := db.AddToChannelLog(channel, entry); err != nil {
+			err = err1
+		}
+	}
+	return err
 }
