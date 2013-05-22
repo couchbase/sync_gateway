@@ -154,6 +154,9 @@ func TestAllDocs(t *testing.T) {
 	channels.MaxLogLength = 50
 	defer func() { channels.MaxLogLength = oldMaxLogLength }()
 
+	base.LogKeys["Changes"] = true
+	defer func() { base.LogKeys["Changes"] = false }()
+
 	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 
 	ids := make([]IDAndRev, 100)
@@ -225,11 +228,11 @@ func TestAllDocs(t *testing.T) {
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
 	log, _ := db.GetChannelLog("all", 0)
-	assert.Equals(t, len(log), 50)
-	assert.Equals(t, int(log[0].Sequence), 52)
+	assert.Equals(t, len(log.Entries), 50)
+	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 
 	// Trying to add the existing log should fail with no error
-	added, err := db.AddChannelLog("all", log)
+	added, err := db.AddChannelLog("all", *log)
 	assertNoError(t, err, "add channel log")
 	assert.False(t, added)
 
@@ -243,8 +246,8 @@ func TestAllDocs(t *testing.T) {
 
 	// Verify it was rebuilt
 	log, _ = db.GetChannelLog("all", 0)
-	assert.Equals(t, len(log), 50)
-	assert.Equals(t, int(log[0].Sequence), 52)
+	assert.Equals(t, len(log.Entries), 50)
+	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 }
 
 func TestInvalidChannel(t *testing.T) {

@@ -84,13 +84,17 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, optio
 // Returns a list of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	log, err := db.GetChannelLog(channel, options.Since)
+	channelLog, err := db.GetChannelLog(channel, options.Since)
 	if err != nil {
 		return nil, err
 	}
+	var log []channels.LogEntry
+	if channelLog != nil {
+		log = channelLog.Entries
+	}
 
 	var viewFeed <-chan *ChangeEntry
-	if len(log) == 0 || log[0].Sequence > options.Since+1 {
+	if channelLog == nil || channelLog.Since > options.Since {
 		// Channel log may not go back far enough, so also fetch view-based change feed:
 		viewFeed, err = db.ChangesFeedFromView(channel, options)
 		if err != nil {
@@ -104,14 +108,14 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// First, if we need to backfill from the view, its early entries to the 'feed' channel:
 		if viewFeed != nil {
-			var newLog channels.ChannelLog
+			newLog := channels.ChannelLog{Since: options.Since}
 			for change := range viewFeed {
 				if len(log) > 0 && change.Seq >= log[0].Sequence {
 					// TODO: Close the view-based feed somehow
 					break
 				}
 				feed <- change
-				if log == nil {
+				if channelLog == nil {
 					// If there wasn't any channel log, build up a new one from the view:
 					newLog.Add(channels.LogEntry{
 						Sequence: change.Seq,
@@ -123,10 +127,10 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				}
 			}
 
-			if log == nil {
+			if channelLog == nil {
 				// Save the missing channel log we just rebuilt:
 				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
-					channel, len(newLog))
+					channel, len(newLog.Entries))
 				if _, err := db.AddChannelLog(channel, newLog); err != nil {
 					base.Warn("ChangesFeed: AddChannelLog failed, %v", err)
 				}
@@ -163,6 +167,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 // Returns a list of all the changes made on a channel, reading from a view instead of the
 // channel log. This will include all historical changes, but may omit very recent ones.
 func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	base.LogTo("Changes", "Getting 'changes' view for channel %q %#v", channel, options)
 	lastSequence := options.Since
 	endkey := []interface{}{channel, map[string]interface{}{}}
 	totalLimit := options.Limit
@@ -412,7 +417,7 @@ func channelLogDocID(channelName string) string {
 }
 
 // Loads a channel's log from the database and returns it.
-func (db *Database) GetChannelLog(channelName string, since uint64) (channels.ChannelLog, error) {
+func (db *Database) GetChannelLog(channelName string, since uint64) (*channels.ChannelLog, error) {
 	var log channels.ChannelLog
 	if err := db.Bucket.Get(channelLogDocID(channelName), &log); err != nil {
 		if base.IsDocNotFoundError(err) {
@@ -420,7 +425,8 @@ func (db *Database) GetChannelLog(channelName string, since uint64) (channels.Ch
 		}
 		return nil, err
 	}
-	return log.Since(since), nil
+	log.FilterSince(since)
+	return &log, nil
 }
 
 // Saves a channel log, _if_ there isn't already one in the database.
@@ -437,7 +443,6 @@ func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry)
 		if currentValue != nil {
 			if err := json.Unmarshal(currentValue, &log); err != nil {
 				base.Warn("ChannelLog %q is unreadable; resetting", logDocID)
-				log = nil
 			}
 		}
 		if !log.Add(entry) {

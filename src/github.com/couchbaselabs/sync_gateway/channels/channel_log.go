@@ -20,17 +20,20 @@ type LogEntry struct {
 // The log is sorted by ascending sequence.
 // Only a document's latest (by sequence) revision appears in the log.
 // An empty RevID denotes a removal from the channel.
-type ChannelLog []LogEntry
+type ChannelLog struct {
+	Since   uint64 // Sequence this is valid after
+	Entries []LogEntry
+}
 
 // Adds a new entry to a ChannelLog, in sorted sequence order.
 // Any earlier entry with the same document ID will be deleted.
 // Returns true if the entry was added, false if not (it already exists or is too old)
 func (cp *ChannelLog) Add(newEntry LogEntry) bool {
-	c := *cp
+	c := cp.Entries
 	// Figure out which entry if any to remove (earlier sequence for same docID)
 	// and where to insert the new entry:
-	remove := -1
-	insert := -1
+	remove := -1 // index of entry to remove
+	insert := -1 // index to insert newEntry at
 	for i, entry := range c {
 		if entry.Sequence == newEntry.Sequence {
 			return false // already have this entry
@@ -51,6 +54,7 @@ func (cp *ChannelLog) Add(newEntry LogEntry) bool {
 	if remove < 0 && len(c) >= MaxLogLength {
 		// Log is full so remove the oldest item
 		remove = 0
+		cp.Since = c[0].Sequence + 1
 	}
 
 	if remove >= 0 {
@@ -58,20 +62,39 @@ func (cp *ChannelLog) Add(newEntry LogEntry) bool {
 		copy(c[remove:insert], c[remove+1:insert+1])
 		c[insert-1] = newEntry
 	} else {
-		// or just insert:
+		// or just insert, first updating Since:
+		if len(c) == 0 || newEntry.Sequence <= cp.Since {
+			cp.Since = newEntry.Sequence - 1
+		}
 		insertion := []LogEntry{newEntry}
-		*cp = append(c[:insert], append(insertion, c[insert:]...)...)
+		cp.Entries = append(c[:insert], append(insertion, c[insert:]...)...)
 	}
 	return true
 }
 
 // Returns a slice of all entries with sequences greater than 'since'.
-func (c ChannelLog) Since(since uint64) []LogEntry {
-	if c == nil || since == 0 {
-		return c
+func (cp *ChannelLog) EntriesSince(since uint64) []LogEntry {
+	entries := cp.Entries
+	if entries == nil || since <= cp.Since {
+		return entries
 	}
-	start := sort.Search(len(c), func(i int) bool {
-		return c[i].Sequence > since
+	start := sort.Search(len(entries), func(i int) bool {
+		return entries[i].Sequence > since
 	})
-	return c[start:]
+	return entries[start:]
+}
+
+// Filters the log to only the entries with sequences greater than 'since'.
+func (cp *ChannelLog) FilterSince(since uint64) {
+	entries := cp.Entries
+	if entries == nil || since <= cp.Since {
+		return
+	}
+	start := sort.Search(len(entries), func(i int) bool {
+		return entries[i].Sequence > since
+	})
+	if start > 0 {
+		cp.Since = entries[start-1].Sequence + 1
+		cp.Entries = entries[start:]
+	}
 }
