@@ -154,8 +154,8 @@ func TestAllDocs(t *testing.T) {
 	channels.MaxLogLength = 50
 	defer func() { channels.MaxLogLength = oldMaxLogLength }()
 
-	base.LogKeys["Changes"] = true
-	defer func() { base.LogKeys["Changes"] = false }()
+	// base.LogKeys["Changes"] = true
+	// defer func() { base.LogKeys["Changes"] = false }()
 
 	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 
@@ -248,6 +248,53 @@ func TestAllDocs(t *testing.T) {
 	log, _ = db.GetChannelLog("all", 0)
 	assert.Equals(t, len(log.Entries), 50)
 	assert.Equals(t, int(log.Entries[0].Sequence), 52)
+}
+
+func TestConflicts(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
+
+	base.LogKeys["CRUD"] = true
+	base.LogKeys["Changes"] = true
+
+	body := Body{"n": 1, "channels": []string{"all"}}
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
+
+	log, _ := db.GetChannelLog("all", 0)
+	assert.Equals(t, len(log.Entries), 1)
+	assert.Equals(t, int(log.Since), 0)
+
+	body["n"] = 2
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-b", "1-a"}), "add 2-b")
+	body["n"] = 3
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
+
+	log, _ = db.GetChannelLog("all", 0)
+	assert.Equals(t, len(log.Entries), 2)
+	assert.Equals(t, int(log.Since), 0)
+	assert.DeepEquals(t, log.Entries[0], channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
+	assert.DeepEquals(t, log.Entries[1], channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Hidden: true})
+
+	changes, err := db.GetChanges(channels.SetOf("all"), ChangesOptions{Conflicts: true})
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 2)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:     2,
+		ID:      "doc",
+		Changes: []ChangeRev{{"rev": "2-b"}}})
+	assert.DeepEquals(t, changes[1], &ChangeEntry{
+		Seq:     3,
+		ID:      "doc",
+		Changes: []ChangeRev{{"rev": "2-a"}}})
+
+	changes, err = db.GetChanges(channels.SetOf("all"), ChangesOptions{Conflicts: false})
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:     2,
+		ID:      "doc",
+		Changes: []ChangeRev{{"rev": "2-b"}}})
 }
 
 func TestInvalidChannel(t *testing.T) {

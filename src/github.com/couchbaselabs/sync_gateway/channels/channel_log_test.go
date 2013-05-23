@@ -2,6 +2,7 @@ package channels
 
 import (
 	"testing"
+	"fmt"
 
 	"github.com/couchbaselabs/go.assert"
 )
@@ -67,15 +68,15 @@ func TestDuplicate(t *testing.T) {
 	assert.False(t, cl.Add(e(3, "zog", "1-a")))
 }
 
-func TestObsolete(t *testing.T) {
-	var cl ChannelLog
-	cl.Add(e(10, "foo", "9-i"))
-	cl.Add(e(20, "bar", "9-i"))
-	cl.Add(e(30, "zog", "9-i"))
-	assert.False(t, cl.Add(e(1, "foo", "1-a")))
-	assert.False(t, cl.Add(e(2, "bar", "1-a")))
-	assert.False(t, cl.Add(e(3, "zog", "1-a")))
-}
+// func TestObsolete(t *testing.T) {
+// 	var cl ChannelLog
+// 	cl.Add(e(10, "foo", "9-i"))
+// 	cl.Add(e(20, "bar", "9-i"))
+// 	cl.Add(e(30, "zog", "9-i"))
+// 	assert.False(t, cl.Add(e(1, "foo", "1-a")))
+// 	assert.False(t, cl.Add(e(2, "bar", "1-a")))
+// 	assert.False(t, cl.Add(e(3, "zog", "1-a")))
+// }
 
 func TestReplace(t *testing.T) {
 	// Add three sequences in order:
@@ -85,17 +86,26 @@ func TestReplace(t *testing.T) {
 	cl.Add(e(3, "zog", "1-a"))
 
 	// Replace 'foo'
-	cl.Add(e(4, "foo", "2-b"))
+	cl.Update(e(4, "foo", "2-b"), "1-a")
 	assert.DeepEquals(t, cl, mklog(0, e(2, "bar", "1-a"), e(3, "zog", "1-a"), e(4, "foo", "2-b")))
 
 	// Replace 'zog'
-	cl.Add(e(5, "zog", "2-b"))
+	cl.Update(e(5, "zog", "2-b"), "1-a")
 	assert.DeepEquals(t, cl, mklog(0, e(2, "bar", "1-a"), e(4, "foo", "2-b"), e(5, "zog", "2-b")))
 
 	// Replace 'zog' again
-	cl.Add(e(6, "zog", "3-c"))
+	cl.Update(e(6, "zog", "3-c"), "2-b")
 	assert.DeepEquals(t, cl, mklog(0, e(2, "bar", "1-a"), e(4, "foo", "2-b"), e(6, "zog", "3-c")))
 
 	// Add duplicate 'foo', make sure it's ignored
-	assert.False(t, cl.Add(e(1, "foo", "1-a")))
+	assert.False(t, cl.Add(e(4, "foo", "2-b")))
+}
+
+func TestTruncate(t *testing.T) {
+	var cl ChannelLog
+	for i := 1; i < 2*MaxLogLength; i++ {
+		cl.Add(e(uint64(i), "foo", fmt.Sprintf("%d-x", i)))
+	}
+	assert.Equals(t, len(cl.Entries), MaxLogLength)
+	assert.Equals(t, int(cl.Since), MaxLogLength)
 }

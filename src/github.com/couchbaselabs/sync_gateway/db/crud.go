@@ -244,7 +244,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-	var newRevID string
+	var newRevID, parentRevID string
 	var body Body
 	var doc *document
 	var changedChannels channels.Set
@@ -265,6 +265,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
+		parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
@@ -292,7 +293,6 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		}
 
 		// Run the validation and sync functions
-		parentRevID := doc.History[newRevID].Parent
 		body["_id"] = doc.ID
 		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
@@ -316,9 +316,10 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	db.AddToChannelLogs(changedChannels, doc.Channels, channels.LogEntry{
 		Sequence: doc.Sequence,
 		DocID:    docid,
-		RevID:    doc.CurrentRev,
-		Deleted:  doc.Deleted,
-	})
+		RevID:    newRevID,
+		Deleted:  doc.History[newRevID].Deleted,
+		Hidden:   newRevID != doc.CurrentRev,
+	}, parentRevID)
 
 	return newRevID, nil
 }

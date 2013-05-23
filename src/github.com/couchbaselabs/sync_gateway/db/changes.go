@@ -65,17 +65,17 @@ type ViewResult struct {
 // Number of rows to query from the changes view at one time
 const kChangesViewPageSize = 200
 
-func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, options ChangesOptions) {
+func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, includeDocs, includeConflicts bool) {
 	if doc != nil {
 		revID := entry.Changes[0]["rev"]
-		if options.Conflicts {
+		if includeConflicts {
 			for _, leafID := range doc.History.getLeaves() {
 				if leafID != revID {
 					entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
 				}
 			}
 		}
-		if options.IncludeDocs {
+		if includeDocs {
 			entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
 		}
 	}
@@ -139,6 +139,9 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
+			if logEntry.Hidden && !options.Conflicts {
+				continue
+			}
 			change := ChangeEntry{
 				Seq:     logEntry.Sequence,
 				ID:      logEntry.DocID,
@@ -149,7 +152,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				change.Removed = channels.SetOf(channel)
 			} else if options.IncludeDocs || options.Conflicts {
 				doc, _ := db.getDoc(logEntry.DocID)
-				db.addDocToChangeEntry(doc, &change, options)
+				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, false)
 			}
 			feed <- &change
 
@@ -228,7 +231,7 @@ func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) 
 					entry.Removed = channels.SetOf(channel)
 				} else if usingDocs {
 					doc, _ := unmarshalDocument(docID, row.Doc.Json)
-					db.addDocToChangeEntry(doc, entry, options)
+					db.addDocToChangeEntry(doc, entry, options.IncludeDocs, options.Conflicts)
 				}
 				feed <- entry
 			}
@@ -264,6 +267,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 	go func() {
 		defer close(output)
 
+		// This loop is used to re-run the fetch after every database change, in Wait mode
 		for {
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
@@ -290,6 +294,8 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 			}
 			current := make([]*ChangeEntry, len(feeds))
 
+			// This loop reads the available entries from all the feeds in parallel, merges them,
+			// and writes them to the output channel:
 			var lastSeqSent uint64
 			for {
 				//FIX: This assumes Reverse or Limit aren't set in the options
@@ -435,7 +441,7 @@ func (db *Database) AddChannelLog(channelName string, log channels.ChannelLog) (
 }
 
 // Adds a new change to a channel log.
-func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry) error {
+func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry, parentRevID string) error {
 	logDocID := channelLogDocID(channelName)
 	err := db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -445,7 +451,7 @@ func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry)
 				base.Warn("ChannelLog %q is unreadable; resetting", logDocID)
 			}
 		}
-		if !log.Add(entry) {
+		if !log.Update(entry, parentRevID) {
 			return nil, couchbase.UpdateCancel // nothing to change, so cancel
 		}
 		return json.Marshal(log)
@@ -456,12 +462,15 @@ func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry)
 	return err
 }
 
-func (db *Database) AddToChannelLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry) error {
+func (db *Database) AddToChannelLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
 	var err error
 	base.LogTo("Changes", "Updating #%d %q/%q in channels %s", entry.Sequence, entry.DocID, entry.RevID, changedChannels)
-	for channel, _ := range changedChannels {
-		entry.Removed = (channelMap[channel] != nil)
-		if err1 := db.AddToChannelLog(channel, entry); err != nil {
+	for channel, removal := range channelMap {
+		if removal != nil && removal.Seq != entry.Sequence {
+			continue
+		}
+		entry.Removed = (removal != nil)
+		if err1 := db.AddToChannelLog(channel, entry, parentRevID); err != nil {
 			err = err1
 		}
 	}

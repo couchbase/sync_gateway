@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"fmt"
 	"sort"
 )
 
@@ -14,6 +15,7 @@ type LogEntry struct {
 	RevID    string `json:"rev"`
 	Deleted  bool   `json:"del,omitempty"`
 	Removed  bool   `json:"rmv,omitempty"`
+	Hidden   bool   `json:"hid,omitempty"`
 }
 
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
@@ -25,51 +27,58 @@ type ChannelLog struct {
 	Entries []LogEntry
 }
 
-// Adds a new entry to a ChannelLog, in sorted sequence order.
-// Any earlier entry with the same document ID will be deleted.
-// Returns true if the entry was added, false if not (it already exists or is too old)
-func (cp *ChannelLog) Add(newEntry LogEntry) bool {
-	c := cp.Entries
-	// Figure out which entry if any to remove (earlier sequence for same docID)
-	// and where to insert the new entry:
-	remove := -1 // index of entry to remove
-	insert := -1 // index to insert newEntry at
-	for i, entry := range c {
-		if entry.Sequence == newEntry.Sequence {
-			return false // already have this entry
-		} else if entry.Sequence > newEntry.Sequence {
-			if entry.DocID == newEntry.DocID {
-				return false // already have newer entry for this doc
-			}
-			if insert < 0 {
-				insert = i // here's where to insert it
-			}
-		} else if entry.DocID == newEntry.DocID {
-			remove = i // older entry for this doc can be removed
-		}
+func (cp *ChannelLog) Insert(newEntry LogEntry) bool {
+	if newEntry.Sequence == 0 || newEntry.DocID == "" || newEntry.RevID == "" {
+		panic(fmt.Sprintf("Invalid entry: %+v", newEntry))
 	}
-	if insert < 0 {
-		insert = len(c)
+	entries := cp.Entries
+	where := sort.Search(len(entries), func(i int) bool {
+		return entries[i].Sequence >= newEntry.Sequence
+	})
+	if where < len(entries) && entries[where].Sequence == newEntry.Sequence {
+		return false
 	}
-	if remove < 0 && len(c) >= MaxLogLength {
-		// Log is full so remove the oldest item
-		remove = 0
-		cp.Since = c[0].Sequence + 1
+	if len(entries) == 0 || newEntry.Sequence <= cp.Since {
+		cp.Since = newEntry.Sequence - 1
 	}
-
-	if remove >= 0 {
-		// Remove the item at index 'remove' and insert a new one at index 'insert':
-		copy(c[remove:insert], c[remove+1:insert+1])
-		c[insert-1] = newEntry
-	} else {
-		// or just insert, first updating Since:
-		if len(c) == 0 || newEntry.Sequence <= cp.Since {
-			cp.Since = newEntry.Sequence - 1
-		}
-		insertion := []LogEntry{newEntry}
-		cp.Entries = append(c[:insert], append(insertion, c[insert:]...)...)
-	}
+	insertion := []LogEntry{newEntry}
+	cp.Entries = append(entries[:where], append(insertion, entries[where:]...)...)
 	return true
+}
+
+// Remove a specific doc/revision, if present
+func (cp *ChannelLog) Remove(docID, revID string) bool {
+	if revID != "" {
+		entries := cp.Entries
+		for i, entry := range entries {
+			if entry.DocID == docID && entry.RevID == revID {
+				copy(entries[i:], entries[i+1:])
+				cp.Entries = entries[:len(entries)-1]
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (cp *ChannelLog) TruncateTo(maxLength int) {
+	if remove := len(cp.Entries) - maxLength; remove > 0 {
+		cp.Since = cp.Entries[remove-1].Sequence + 1
+		cp.Entries = cp.Entries[remove:]
+	}
+}
+
+func (cp *ChannelLog) Update(newEntry LogEntry, parentRevID string) bool {
+	if !cp.Insert(newEntry) {
+		return false
+	}
+	cp.Remove(newEntry.DocID, parentRevID)
+	cp.TruncateTo(MaxLogLength)
+	return true
+}
+
+func (cp *ChannelLog) Add(newEntry LogEntry) bool {
+	return cp.Update(newEntry, "")
 }
 
 // Returns a slice of all entries with sequences greater than 'since'.
