@@ -21,6 +21,10 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
+// The maximum number of entries that will be kept in a ChangeLog. If the length would overflow
+// this limit, the earliest/oldest entries are removed to make room.
+var MaxChangeLogLength = 500
+
 // Options for Database.getChanges
 type ChangesOptions struct {
 	Since       uint64
@@ -84,7 +88,7 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 // Returns a list of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	channelLog, err := db.GetChannelLog(channel, options.Since)
+	channelLog, err := db.GetChangeLog(channel, options.Since)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +100,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 	var viewFeed <-chan *ChangeEntry
 	if channelLog == nil || channelLog.Since > options.Since {
 		// Channel log may not go back far enough, so also fetch view-based change feed:
-		viewFeed, err = db.ChangesFeedFromView(channel, options)
+		viewFeed, err = db.changesFeedFromView(channel, options)
 		if err != nil {
 			return nil, err
 		}
@@ -106,9 +110,9 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 	go func() {
 		defer close(feed)
 
-		// First, if we need to backfill from the view, its early entries to the 'feed' channel:
+		// First, if we need to backfill from the view, write its early entries to the channel:
 		if viewFeed != nil {
-			newLog := channels.ChannelLog{Since: options.Since}
+			newLog := channels.ChangeLog{Since: options.Since}
 			for change := range viewFeed {
 				if len(log) > 0 && change.Seq >= log[0].Sequence {
 					// TODO: Close the view-based feed somehow
@@ -124,6 +128,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 						Deleted:  change.Deleted,
 						Removed:  (change.Removed != nil),
 					})
+					newLog.TruncateTo(MaxChangeLogLength)
 				}
 			}
 
@@ -131,8 +136,8 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				// Save the missing channel log we just rebuilt:
 				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
 					channel, len(newLog.Entries))
-				if _, err := db.AddChannelLog(channel, newLog); err != nil {
-					base.Warn("ChangesFeed: AddChannelLog failed, %v", err)
+				if _, err := db.AddChangeLog(channel, newLog); err != nil {
+					base.Warn("ChangesFeed: AddChangeLog failed, %v", err)
 				}
 			}
 		}
@@ -169,7 +174,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 // Returns a list of all the changes made on a channel, reading from a view instead of the
 // channel log. This will include all historical changes, but may omit very recent ones.
-func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeedFromView(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	base.LogTo("Changes", "Getting 'changes' view for channel %q %#v", channel, options)
 	lastSequence := options.Since
 	endkey := []interface{}{channel, map[string]interface{}{}}
@@ -253,7 +258,7 @@ func (db *Database) ChangesFeedFromView(channel string, options ChangesOptions) 
 	return feed, nil
 }
 
-// Returns of all the changes made to multiple channels.
+// Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	if len(chans) == 0 {
 		return nil, nil
@@ -423,8 +428,8 @@ func channelLogDocID(channelName string) string {
 }
 
 // Loads a channel's log from the database and returns it.
-func (db *Database) GetChannelLog(channelName string, since uint64) (*channels.ChannelLog, error) {
-	var log channels.ChannelLog
+func (db *Database) GetChangeLog(channelName string, since uint64) (*channels.ChangeLog, error) {
+	var log channels.ChangeLog
 	if err := db.Bucket.Get(channelLogDocID(channelName), &log); err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil
@@ -436,24 +441,25 @@ func (db *Database) GetChannelLog(channelName string, since uint64) (*channels.C
 }
 
 // Saves a channel log, _if_ there isn't already one in the database.
-func (db *Database) AddChannelLog(channelName string, log channels.ChannelLog) (added bool, err error) {
+func (db *Database) AddChangeLog(channelName string, log channels.ChangeLog) (added bool, err error) {
 	return db.Bucket.Add(channelLogDocID(channelName), 0, log)
 }
 
 // Adds a new change to a channel log.
-func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry, parentRevID string) error {
+func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, parentRevID string) error {
 	logDocID := channelLogDocID(channelName)
 	err := db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		var log channels.ChannelLog
+		var log channels.ChangeLog
 		if currentValue != nil {
 			if err := json.Unmarshal(currentValue, &log); err != nil {
-				base.Warn("ChannelLog %q is unreadable; resetting", logDocID)
+				base.Warn("ChangeLog %q is unreadable; resetting", logDocID)
 			}
 		}
 		if !log.Update(entry, parentRevID) {
 			return nil, couchbase.UpdateCancel // nothing to change, so cancel
 		}
+		log.TruncateTo(MaxChangeLogLength)
 		return json.Marshal(log)
 	})
 	if err == couchbase.UpdateCancel {
@@ -462,7 +468,7 @@ func (db *Database) AddToChannelLog(channelName string, entry channels.LogEntry,
 	return err
 }
 
-func (db *Database) AddToChannelLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
+func (db *Database) AddToChangeLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
 	var err error
 	base.LogTo("Changes", "Updating #%d %q/%q in channels %s", entry.Sequence, entry.DocID, entry.RevID, changedChannels)
 	for channel, removal := range channelMap {
@@ -470,7 +476,7 @@ func (db *Database) AddToChannelLogs(changedChannels channels.Set, channelMap Ch
 			continue
 		}
 		entry.Removed = (removal != nil)
-		if err1 := db.AddToChannelLog(channel, entry, parentRevID); err != nil {
+		if err1 := db.AddToChangeLog(channel, entry, parentRevID); err != nil {
 			err = err1
 		}
 	}

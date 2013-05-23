@@ -313,7 +313,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
 
 	// Add doc channels to change-logs:
-	db.AddToChannelLogs(changedChannels, doc.Channels, channels.LogEntry{
+	db.AddToChangeLogs(changedChannels, doc.Channels, channels.LogEntry{
 		Sequence: doc.Sequence,
 		DocID:    docid,
 		RevID:    newRevID,

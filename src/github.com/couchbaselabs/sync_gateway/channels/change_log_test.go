@@ -1,8 +1,8 @@
 package channels
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 
 	"github.com/couchbaselabs/go.assert"
 )
@@ -15,12 +15,12 @@ func e(seq uint64, docid string, revid string) LogEntry {
 	}
 }
 
-func mklog(since uint64, entries ...LogEntry) ChannelLog {
-	return ChannelLog{Since: since, Entries: entries}
+func mklog(since uint64, entries ...LogEntry) ChangeLog {
+	return ChangeLog{Since: since, Entries: entries}
 }
 
 func TestEmptyLog(t *testing.T) {
-	var cl ChannelLog
+	var cl ChangeLog
 	assert.Equals(t, len(cl.EntriesSince(1234)), 0)
 
 	cl.Add(e(1, "foo", "1-a"))
@@ -30,7 +30,7 @@ func TestEmptyLog(t *testing.T) {
 }
 
 func TestAddInOrder(t *testing.T) {
-	var cl ChannelLog
+	var cl ChangeLog
 	cl.Add(e(1, "foo", "1-a"))
 	cl.Add(e(2, "bar", "1-a"))
 	assert.DeepEquals(t, cl.EntriesSince(0), []LogEntry{e(1, "foo", "1-a"), e(2, "bar", "1-a")})
@@ -42,7 +42,7 @@ func TestAddInOrder(t *testing.T) {
 }
 
 func TestAddOutOfOrder(t *testing.T) {
-	var cl ChannelLog
+	var cl ChangeLog
 	cl.Add(e(20, "bar", "1-a"))
 	cl.Add(e(10, "foo", "1-a"))
 	assert.Equals(t, cl.Since, uint64(9))
@@ -59,7 +59,7 @@ func TestAddOutOfOrder(t *testing.T) {
 }
 
 func TestDuplicate(t *testing.T) {
-	var cl ChannelLog
+	var cl ChangeLog
 	cl.Add(e(1, "foo", "1-a"))
 	cl.Add(e(2, "bar", "1-a"))
 	cl.Add(e(3, "zog", "1-a"))
@@ -69,7 +69,7 @@ func TestDuplicate(t *testing.T) {
 }
 
 // func TestObsolete(t *testing.T) {
-// 	var cl ChannelLog
+// 	var cl ChangeLog
 // 	cl.Add(e(10, "foo", "9-i"))
 // 	cl.Add(e(20, "bar", "9-i"))
 // 	cl.Add(e(30, "zog", "9-i"))
@@ -80,7 +80,7 @@ func TestDuplicate(t *testing.T) {
 
 func TestReplace(t *testing.T) {
 	// Add three sequences in order:
-	var cl ChannelLog
+	var cl ChangeLog
 	cl.Add(e(1, "foo", "1-a"))
 	cl.Add(e(2, "bar", "1-a"))
 	cl.Add(e(3, "zog", "1-a"))
@@ -102,10 +102,12 @@ func TestReplace(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	var cl ChannelLog
-	for i := 1; i < 2*MaxLogLength; i++ {
+	const maxLogLength = 50
+	var cl ChangeLog
+	for i := 1; i < 2*maxLogLength; i++ {
 		cl.Add(e(uint64(i), "foo", fmt.Sprintf("%d-x", i)))
+		cl.TruncateTo(maxLogLength)
 	}
-	assert.Equals(t, len(cl.Entries), MaxLogLength)
-	assert.Equals(t, int(cl.Since), MaxLogLength)
+	assert.Equals(t, len(cl.Entries), maxLogLength)
+	assert.Equals(t, int(cl.Since), maxLogLength)
 }

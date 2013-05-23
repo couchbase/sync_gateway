@@ -5,10 +5,6 @@ import (
 	"sort"
 )
 
-// The maximum number of entries that will be kept in a log. If the length would overflow this
-// limit, the earliest/oldest entries are removed to make room.
-var MaxLogLength = 500
-
 type LogEntry struct {
 	Sequence uint64 `json:"seq"`
 	DocID    string `json:"doc"`
@@ -22,12 +18,13 @@ type LogEntry struct {
 // The log is sorted by ascending sequence.
 // Only a document's latest (by sequence) revision appears in the log.
 // An empty RevID denotes a removal from the channel.
-type ChannelLog struct {
+type ChangeLog struct {
 	Since   uint64 // Sequence this is valid after
 	Entries []LogEntry
 }
 
-func (cp *ChannelLog) Insert(newEntry LogEntry) bool {
+// Adds a new entry, or returns false if it already exists in the log.
+func (cp *ChangeLog) Add(newEntry LogEntry) bool {
 	if newEntry.Sequence == 0 || newEntry.DocID == "" || newEntry.RevID == "" {
 		panic(fmt.Sprintf("Invalid entry: %+v", newEntry))
 	}
@@ -46,8 +43,8 @@ func (cp *ChannelLog) Insert(newEntry LogEntry) bool {
 	return true
 }
 
-// Remove a specific doc/revision, if present
-func (cp *ChannelLog) Remove(docID, revID string) bool {
+// Removes a specific doc/revision, if present
+func (cp *ChangeLog) Remove(docID, revID string) bool {
 	if revID != "" {
 		entries := cp.Entries
 		for i, entry := range entries {
@@ -61,28 +58,25 @@ func (cp *ChannelLog) Remove(docID, revID string) bool {
 	return false
 }
 
-func (cp *ChannelLog) TruncateTo(maxLength int) {
+// Inserts a new entry, removing the one for the parent revision (if any).
+func (cp *ChangeLog) Update(newEntry LogEntry, parentRevID string) bool {
+	if !cp.Add(newEntry) {
+		return false
+	}
+	cp.Remove(newEntry.DocID, parentRevID)
+	return true
+}
+
+// Removes the oldest entries to limit the log's length to `maxLength`.
+func (cp *ChangeLog) TruncateTo(maxLength int) {
 	if remove := len(cp.Entries) - maxLength; remove > 0 {
 		cp.Since = cp.Entries[remove-1].Sequence + 1
 		cp.Entries = cp.Entries[remove:]
 	}
 }
 
-func (cp *ChannelLog) Update(newEntry LogEntry, parentRevID string) bool {
-	if !cp.Insert(newEntry) {
-		return false
-	}
-	cp.Remove(newEntry.DocID, parentRevID)
-	cp.TruncateTo(MaxLogLength)
-	return true
-}
-
-func (cp *ChannelLog) Add(newEntry LogEntry) bool {
-	return cp.Update(newEntry, "")
-}
-
 // Returns a slice of all entries with sequences greater than 'since'.
-func (cp *ChannelLog) EntriesSince(since uint64) []LogEntry {
+func (cp *ChangeLog) EntriesSince(since uint64) []LogEntry {
 	entries := cp.Entries
 	if entries == nil || since <= cp.Since {
 		return entries
@@ -94,7 +88,7 @@ func (cp *ChannelLog) EntriesSince(since uint64) []LogEntry {
 }
 
 // Filters the log to only the entries with sequences greater than 'since'.
-func (cp *ChannelLog) FilterSince(since uint64) {
+func (cp *ChangeLog) FilterSince(since uint64) {
 	entries := cp.Entries
 	if entries == nil || since <= cp.Since {
 		return

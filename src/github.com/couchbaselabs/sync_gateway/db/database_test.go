@@ -150,9 +150,9 @@ func TestAllDocs(t *testing.T) {
 
 	// Lower the log capacity to 50 to ensure the test will overflow, causing logs to be truncated,
 	// so the changes feed will have to backfill from its view.
-	oldMaxLogLength := channels.MaxLogLength
-	channels.MaxLogLength = 50
-	defer func() { channels.MaxLogLength = oldMaxLogLength }()
+	oldMaxLogLength := MaxChangeLogLength
+	MaxChangeLogLength = 50
+	defer func() { MaxChangeLogLength = oldMaxLogLength }()
 
 	// base.LogKeys["Changes"] = true
 	// defer func() { base.LogKeys["Changes"] = false }()
@@ -227,12 +227,12 @@ func TestAllDocs(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	log, _ := db.GetChannelLog("all", 0)
+	log, _ := db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log.Entries), 50)
 	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 
 	// Trying to add the existing log should fail with no error
-	added, err := db.AddChannelLog("all", *log)
+	added, err := db.AddChangeLog("all", *log)
 	assertNoError(t, err, "add channel log")
 	assert.False(t, added)
 
@@ -245,7 +245,7 @@ func TestAllDocs(t *testing.T) {
 	assert.Equals(t, len(changes), 100)
 
 	// Verify it was rebuilt
-	log, _ = db.GetChannelLog("all", 0)
+	log, _ = db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log.Entries), 50)
 	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 }
@@ -261,7 +261,7 @@ func TestConflicts(t *testing.T) {
 	body := Body{"n": 1, "channels": []string{"all"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
 
-	log, _ := db.GetChannelLog("all", 0)
+	log, _ := db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log.Entries), 1)
 	assert.Equals(t, int(log.Since), 0)
 
@@ -270,7 +270,7 @@ func TestConflicts(t *testing.T) {
 	body["n"] = 3
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
 
-	log, _ = db.GetChannelLog("all", 0)
+	log, _ = db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log.Entries), 2)
 	assert.Equals(t, int(log.Since), 0)
 	assert.DeepEquals(t, log.Entries[0], channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
