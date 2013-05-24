@@ -154,8 +154,8 @@ func TestAllDocs(t *testing.T) {
 	MaxChangeLogLength = 50
 	defer func() { MaxChangeLogLength = oldMaxLogLength }()
 
-	// base.LogKeys["Changes"] = true
-	// defer func() { base.LogKeys["Changes"] = false }()
+	base.LogKeys["Changes"] = true
+	defer func() { base.LogKeys["Changes"] = false }()
 
 	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 
@@ -194,6 +194,13 @@ func TestAllDocs(t *testing.T) {
 		assert.DeepEquals(t, entry, ids[j])
 	}
 
+	// Inspect the channel log to confirm that it's only got the last 50 sequences.
+	// There are 101 sequences overall, so the 1st one it has should be #52.
+	log, _ := db.GetChangeLog("all", 0)
+	assert.Equals(t, log.Since, uint64(51))
+	assert.Equals(t, len(log.Entries), 50)
+	assert.Equals(t, int(log.Entries[0].Sequence), 52)
+
 	// Now check the changes feed:
 	var options ChangesOptions
 	changes, err := db.GetChanges(channels.SetOf("all"), options)
@@ -225,12 +232,6 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.Doc["serialnumber"], float64(10*i))
 	}
 
-	// Inspect the channel log to confirm that it's only got the last 50 sequences.
-	// There are 101 sequences overall, so the 1st one it has should be #52.
-	log, _ := db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 50)
-	assert.Equals(t, int(log.Entries[0].Sequence), 52)
-
 	// Trying to add the existing log should fail with no error
 	added, err := db.AddChangeLog("all", *log)
 	assertNoError(t, err, "add channel log")
@@ -245,7 +246,8 @@ func TestAllDocs(t *testing.T) {
 	assert.Equals(t, len(changes), 100)
 
 	// Verify it was rebuilt
-	log, _ = db.GetChangeLog("all", 0)
+	log, err = db.GetChangeLog("all", 0)
+	assertNoError(t, err, "GetChangeLog")
 	assert.Equals(t, len(log.Entries), 50)
 	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 }
@@ -271,14 +273,16 @@ func TestConflicts(t *testing.T) {
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
 
 	log, _ = db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 2)
+	assert.Equals(t, len(log.Entries), 3)
 	assert.Equals(t, int(log.Since), 0)
-	assert.DeepEquals(t, log.Entries[0], channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
-	assert.DeepEquals(t, log.Entries[1], channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Hidden: true})
+	assert.DeepEquals(t, log.Entries[0], channels.LogEntry{Sequence: 1})
+	assert.DeepEquals(t, log.Entries[1], channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
+	assert.DeepEquals(t, log.Entries[2], channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Hidden: true})
 
 	changes, err := db.GetChanges(channels.SetOf("all"), ChangesOptions{Conflicts: true})
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 2)
+	// (CouchDB would merge these into one entry, but the gateway doesn't.)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     2,
 		ID:      "doc",

@@ -144,7 +144,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
-			if logEntry.Hidden && !options.Conflicts {
+			if logEntry.RevID == "" || (logEntry.Hidden && !options.Conflicts) {
 				continue
 			}
 			change := ChangeEntry{
@@ -393,7 +393,7 @@ func (context *DatabaseContext) startRevisionNotifier() error {
 				key := string(event.Key)
 				if strings.HasPrefix(key, "_sync:log:") ||
 					strings.HasPrefix(key, "_sync:user") || strings.HasPrefix(key, "_sync:role") {
-					base.LogTo("Changes", "Notifying that %q changed (key=%q)", context.Name, key)
+					base.LogTo("Changes+", "Notifying that %q changed (key=%q)", context.Name, key)
 					context.tapNotifier.Broadcast()
 				}
 			}
@@ -428,7 +428,7 @@ func channelLogDocID(channelName string) string {
 }
 
 // Loads a channel's log from the database and returns it.
-func (db *Database) GetChangeLog(channelName string, since uint64) (*channels.ChangeLog, error) {
+func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
 	var log channels.ChangeLog
 	if err := db.Bucket.Get(channelLogDocID(channelName), &log); err != nil {
 		if base.IsDocNotFoundError(err) {
@@ -436,7 +436,7 @@ func (db *Database) GetChangeLog(channelName string, since uint64) (*channels.Ch
 		}
 		return nil, err
 	}
-	log.FilterSince(since)
+	log.FilterAfter(afterSeq)
 	return &log, nil
 }
 
@@ -448,7 +448,7 @@ func (db *Database) AddChangeLog(channelName string, log channels.ChangeLog) (ad
 // Adds a new change to a channel log.
 func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, parentRevID string) error {
 	logDocID := channelLogDocID(channelName)
-	err := db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
+	return db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		var log channels.ChangeLog
 		if currentValue != nil {
@@ -456,16 +456,10 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 				base.Warn("ChangeLog %q is unreadable; resetting", logDocID)
 			}
 		}
-		if !log.Update(entry, parentRevID) {
-			return nil, couchbase.UpdateCancel // nothing to change, so cancel
-		}
+		log.Update(entry, parentRevID)
 		log.TruncateTo(MaxChangeLogLength)
 		return json.Marshal(log)
 	})
-	if err == couchbase.UpdateCancel {
-		err = nil
-	}
-	return err
 }
 
 func (db *Database) AddToChangeLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
