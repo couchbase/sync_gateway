@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
@@ -55,19 +57,6 @@ func (set TimedSet) AllChannels() []string {
 		result = append(result, name)
 	}
 	return result
-}
-
-func (set TimedSet) String() string {
-	list := set.AllChannels()
-	sort.Strings(list)
-	result := "{"
-	for i, ch := range list {
-		if i > 0 {
-			result += ", "
-		}
-		result += fmt.Sprintf("%s@%d", ch, set[ch])
-	}
-	return result + "}"
 }
 
 func (set TimedSet) Copy() TimedSet {
@@ -141,4 +130,50 @@ func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 	*setPtr = TimedSet(normalForm)
 	return nil
 
+}
+
+//////// STRING ENCODING:
+
+// This is a simple compact round-trippable string encoding. It's used for sequence IDs in the
+// public REST API.
+// Note: Making incompatible changes to the format of these strings will potentially invalidate
+// the saved checkpoint of every pull replication of every client in the world. This isn't fatal
+// but will cause those replications to start over from the beginning. Think first.
+
+// Encodes a TimedSet as a string (as sent in the public _changes feed.)
+// This string can later be turned back into a TimedSet by calling TimedSetFromString().
+func (set TimedSet) String() string {
+	var items []string
+	for channel, seqNo := range set {
+		if seqNo > 0 {
+			items = append(items, fmt.Sprintf("%s:%d", channel, seqNo))
+		}
+	}
+	sort.Strings(items) // not strictly necessary but makes the string reproducible
+	return strings.Join(items, ",")
+}
+
+// Parses a string as generated from TimedSet.String().
+// Returns nil on failure. An empty string successfully parses to an empty TimedSet.
+func TimedSetFromString(encoded string) TimedSet {
+	items := strings.Split(encoded, ",")
+	set := make(TimedSet, len(items))
+	if encoded != "" {
+		for _, item := range items {
+			components := strings.Split(item, ":")
+			if len(components) != 2 {
+				return nil
+			}
+			channel := components[0]
+			seqNo, err := strconv.ParseUint(components[1], 10, 64)
+			if err != nil || seqNo == 0 || !IsValidChannel(channel) {
+				return nil
+			}
+			if _, found := set[channel]; found {
+				return nil // duplicate channel
+			}
+			set[channel] = seqNo
+		}
+	}
+	return set
 }

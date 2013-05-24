@@ -371,6 +371,17 @@ func TestAccessChanges(t *testing.T) {
 	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
 	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
 
+	// Check the _changes feed:
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	since := changes.Results[0].Seq
+	assert.Equals(t, since, "gamma:8")
+
 	// Check user access:
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x1, "delta": 0x3})
@@ -388,9 +399,7 @@ func TestAccessChanges(t *testing.T) {
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
-	var changes struct {
-		Results []db.ChangeEntry
-	}
+	changes.Results = nil
 	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -398,9 +407,9 @@ func TestAccessChanges(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "a1")
 	assert.Equals(t, changes.Results[1].ID, "g1")
 
-	// Changes feed with since=8 would ordinarily be empty, but zegpold got access to channel
+	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes?since=8", "", "zegpold"))
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)

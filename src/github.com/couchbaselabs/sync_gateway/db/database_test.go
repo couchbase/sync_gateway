@@ -211,7 +211,7 @@ func TestAllDocs(t *testing.T) {
 		if i >= 23 {
 			seq++
 		}
-		assert.Equals(t, int(change.Seq), seq)
+		assert.Equals(t, change.Seq, fmt.Sprintf("all:%d", seq))
 		assert.Equals(t, change.Deleted, i == 99)
 		var removed channels.Set
 		if i == 99 {
@@ -225,7 +225,7 @@ func TestAllDocs(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 10)
 	for i, change := range changes {
-		assert.Equals(t, int(change.Seq), 10*i+1)
+		assert.Equals(t, change.Seq, fmt.Sprintf("KFJC:%d", 10*i+1))
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, channels.Set(nil))
@@ -284,11 +284,11 @@ func TestConflicts(t *testing.T) {
 	assert.Equals(t, len(changes), 2)
 	// (CouchDB would merge these into one entry, but the gateway doesn't.)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     2,
+		Seq:     "all:2",
 		ID:      "doc",
 		Changes: []ChangeRev{{"rev": "2-b"}}})
 	assert.DeepEquals(t, changes[1], &ChangeEntry{
-		Seq:     3,
+		Seq:     "all:3",
 		ID:      "doc",
 		Changes: []ChangeRev{{"rev": "2-a"}}})
 
@@ -296,7 +296,7 @@ func TestConflicts(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     2,
+		Seq:     "all:2",
 		ID:      "doc",
 		Changes: []ChangeRev{{"rev": "2-b"}}})
 }

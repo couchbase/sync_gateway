@@ -27,7 +27,7 @@ var MaxChangeLogLength = 500
 
 // Options for Database.getChanges
 type ChangesOptions struct {
-	Since       uint64
+	Since       channels.TimedSet // maps channel -> last sequence # seen on it
 	Limit       int
 	Conflicts   bool
 	IncludeDocs bool
@@ -37,7 +37,8 @@ type ChangesOptions struct {
 // A changes entry; Database.getChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq     uint64       `json:"seq"`
+	seqNo   uint64       // Internal use only: sequence # in specific channel
+	Seq     string       `json:"seq"` // Public sequence ID (TimedSet)
 	ID      string       `json:"id"`
 	Deleted bool         `json:"deleted,omitempty"`
 	Removed channels.Set `json:"removed,omitempty"`
@@ -87,8 +88,9 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 
 // Returns a list of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	channelLog, err := db.GetChangeLog(channel, options.Since)
+func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	since := options.Since[channel]
+	channelLog, err := db.GetChangeLog(channel, since)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +100,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 	}
 
 	var viewFeed <-chan *ChangeEntry
-	if channelLog == nil || channelLog.Since > options.Since {
+	if channelLog == nil || channelLog.Since > since {
 		// Channel log may not go back far enough, so also fetch view-based change feed:
 		viewFeed, err = db.changesFeedFromView(channel, options)
 		if err != nil {
@@ -112,9 +114,9 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// First, if we need to backfill from the view, write its early entries to the channel:
 		if viewFeed != nil {
-			newLog := channels.ChangeLog{Since: options.Since}
+			newLog := channels.ChangeLog{Since: since}
 			for change := range viewFeed {
-				if len(log) > 0 && change.Seq >= log[0].Sequence {
+				if len(log) > 0 && change.seqNo >= log[0].Sequence {
 					// TODO: Close the view-based feed somehow
 					break
 				}
@@ -122,7 +124,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				if channelLog == nil {
 					// If there wasn't any channel log, build up a new one from the view:
 					newLog.Add(channels.LogEntry{
-						Sequence: change.Seq,
+						Sequence: change.seqNo,
 						DocID:    change.ID,
 						RevID:    change.Changes[0]["rev"],
 						Deleted:  change.Deleted,
@@ -148,7 +150,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 				continue
 			}
 			change := ChangeEntry{
-				Seq:     logEntry.Sequence,
+				seqNo:   logEntry.Sequence,
 				ID:      logEntry.DocID,
 				Deleted: logEntry.Deleted,
 				Changes: []ChangeRev{{"rev": logEntry.RevID}},
@@ -176,7 +178,7 @@ func (db *Database) ChangesFeed(channel string, options ChangesOptions) (<-chan 
 // channel log. This will include all historical changes, but may omit very recent ones.
 func (db *Database) changesFeedFromView(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	base.LogTo("Changes", "Getting 'changes' view for channel %q %#v", channel, options)
-	lastSequence := options.Since
+	since := options.Since[channel]
 	endkey := []interface{}{channel, map[string]interface{}{}}
 	totalLimit := options.Limit
 	usingDocs := options.Conflicts || options.IncludeDocs
@@ -187,7 +189,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 	feed := make(chan *ChangeEntry, kChangesViewPageSize)
 
 	lastSeq := db.LastSequence()
-	if options.Since >= lastSeq && !options.Wait {
+	if since >= lastSeq && !options.Wait {
 		close(feed)
 		return feed, nil
 	}
@@ -197,7 +199,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 		defer close(feed)
 		for {
 			// Query the 'channels' view:
-			opts["startkey"] = []interface{}{channel, lastSequence + 1}
+			opts["startkey"] = []interface{}{channel, since + 1}
 			limit := totalLimit
 			if limit == 0 || limit > kChangesViewPageSize {
 				limit = kChangesViewPageSize
@@ -222,12 +224,12 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 
 			for _, row := range vres.Rows {
 				key := row.Key.([]interface{})
-				lastSequence = uint64(key[1].(float64))
+				since = uint64(key[1].(float64))
 				value := row.Value.([]interface{})
 				docID := value[0].(string)
 				revID := value[1].(string)
 				entry := &ChangeEntry{
-					Seq:     lastSequence,
+					seqNo:   since,
 					ID:      docID,
 					Changes: []ChangeRev{{"rev": revID}},
 					Deleted: (len(value) >= 3 && value[2].(bool)),
@@ -268,6 +270,10 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 	waitMode := options.Wait
 	options.Wait = false
 
+	if options.Since == nil {
+		options.Since = channels.TimedSet{}
+	}
+
 	output := make(chan *ChangeEntry, kChangesViewPageSize)
 	go func() {
 		defer close(output)
@@ -285,17 +291,15 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
+			names := make([]string, 0, len(channelsSince))
 			for name, _ := range channelsSince {
-				feedOpts := options
-				if channelsSince[name] > options.Since {
-					feedOpts.Since = 0 // channel wasn't available before, so start from beginning
-				}
-				feed, err := db.ChangesFeed(name, feedOpts)
+				feed, err := db.changesFeed(name, options)
 				if err != nil {
 					base.Warn("Error reading changes feed %q: %v", name, err)
 					return
 				}
 				feeds = append(feeds, feed)
+				names = append(names, name)
 			}
 			current := make([]*ChangeEntry, len(feeds))
 
@@ -319,8 +323,8 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 				var minSeq uint64 = math.MaxUint64
 				var minEntry *ChangeEntry
 				for _, cur := range current {
-					if cur != nil && cur.Seq < minSeq {
-						minSeq = cur.Seq
+					if cur != nil && cur.seqNo < minSeq {
+						minSeq = cur.seqNo
 						minEntry = cur
 					}
 				}
@@ -330,8 +334,12 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 
 				// Clear the current entries for the sequence just sent:
 				for i, cur := range current {
-					if cur != nil && cur.Seq == minEntry.Seq {
+					if cur != nil && cur.seqNo == minSeq {
 						current[i] = nil
+						// Update the public sequence ID and encode it into the entry:
+						options.Since[names[i]] = minSeq
+						cur.Seq = options.Since.String()
+						cur.seqNo = 0
 						// Also concatenate the matching entries' Removed arrays:
 						if cur != minEntry && cur.Removed != nil {
 							if minEntry.Removed == nil {
@@ -345,7 +353,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 
 				// Send the entry, and repeat the loop:
 				output <- minEntry
-				lastSeqSent = minEntry.Seq
+				lastSeqSent = minEntry.seqNo
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again
