@@ -274,17 +274,6 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 		options.Since = channels.TimedSet{}
 	}
 
-	// If Since has a global sequence number (associated with channel '*'), then there are no
-	// changes unless/until the database's last sequence number exceeds it:
-	if lastSeq := options.Since["*"]; lastSeq > 0 {
-		for lastSeq >= db.LastSequence() {
-			if !waitMode {
-				return nil, nil
-			}
-			db.WaitForRevision(nil)
-		}
-	}
-
 	output := make(chan *ChangeEntry, kChangesViewPageSize)
 	go func() {
 		defer close(output)
@@ -349,9 +338,6 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 						current[i] = nil
 						// Update the public sequence ID and encode it into the entry:
 						options.Since[names[i]] = minSeq
-						if minSeq > options.Since["*"] {
-							options.Since["*"] = minSeq
-						}
 						cur.Seq = options.Since.String()
 						cur.seqNo = 0
 						// Also concatenate the matching entries' Removed arrays:
