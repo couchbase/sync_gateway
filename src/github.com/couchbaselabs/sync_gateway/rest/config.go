@@ -50,7 +50,8 @@ type DbConfig struct {
 }
 
 type PersonaConfig struct {
-	Origin string // Canonical server URL for Persona authentication
+	Origin   string // Canonical server URL for Persona authentication
+	Register bool   // If true, server will register new user accounts
 }
 
 // Shared context of HTTP handlers. It's important that this remain immutable, because the

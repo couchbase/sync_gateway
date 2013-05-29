@@ -116,8 +116,10 @@ func (h *handler) handlePersonaPOST() error {
 	}
 	if user == nil {
 		// The email address is authentic but we have no user account for it.
-		// Create a User for this session, with the given email address but no
-		// channel access and a random password.
+		if !h.server.config.Persona.Register {
+			return &base.HTTPError{http.StatusUnauthorized, "No such user"}
+		}
+		// Create a User with the given email address as username and a random password.
 		user, err = h.registerPersonaUser(verifiedInfo)
 		if err != nil {
 			return err
