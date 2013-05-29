@@ -380,7 +380,7 @@ func TestAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, since, "gamma:8")
+	assert.Equals(t, since, "*:8,gamma:8")
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
