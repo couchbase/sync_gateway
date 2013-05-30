@@ -121,7 +121,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 					break
 				}
 				feed <- change
-				if channelLog == nil {
+				if channelLog == nil && channel != "*" {
 					// If there wasn't any channel log, build up a new one from the view:
 					newLog.Add(channels.LogEntry{
 						Sequence: change.seqNo,
@@ -134,7 +134,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				}
 			}
 
-			if channelLog == nil {
+			if channelLog == nil && channel != "*" {
 				// Save the missing channel log we just rebuilt:
 				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
 					channel, len(newLog.Entries))
@@ -455,6 +455,9 @@ func (db *Database) AddChangeLog(channelName string, log channels.ChangeLog) (ad
 
 // Adds a new change to a channel log.
 func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, parentRevID string) error {
+	if channelName == "*" {
+		return nil // never keep a channel log for "*": there'd be too much contention
+	}
 	logDocID := channelLogDocID(channelName)
 	return db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
