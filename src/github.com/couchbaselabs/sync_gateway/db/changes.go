@@ -305,7 +305,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 
 			// This loop reads the available entries from all the feeds in parallel, merges them,
 			// and writes them to the output channel:
-			var lastSeqSent uint64
+			var sentSomething bool
 			for {
 				//FIX: This assumes Reverse or Limit aren't set in the options
 				// Read more entries to fill up the current[] array:
@@ -353,11 +353,11 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 
 				// Send the entry, and repeat the loop:
 				output <- minEntry
-				lastSeqSent = minEntry.seqNo
+				sentSomething = true
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again
-			if lastSeqSent > 0 || !waitMode || !db.WaitForRevision(chans) {
+			if sentSomething || !waitMode || !db.WaitForRevision(chans) {
 				break
 			}
 
