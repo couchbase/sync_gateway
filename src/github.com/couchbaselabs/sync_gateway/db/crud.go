@@ -294,8 +294,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			return nil, err
 		}
 
-		// Now that we know doc is valid, assign it the next sequence number, for _changes feed:
-		if docSequence == 0 {
+		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
+		// But be careful not to request a second sequence # on a retry if we don't need one.
+		if docSequence <= doc.Sequence {
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return nil, err
 			}

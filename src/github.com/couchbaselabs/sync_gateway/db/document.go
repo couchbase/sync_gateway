@@ -143,6 +143,7 @@ func (doc *document) updateChannels(newChannels channels.Set) (changedChannels c
 // Updates the Access property of a document object.
 // Returns an array of names of users/roles whose channel access has changed as a result.
 func (doc *document) updateAccess(newAccess channels.AccessMap) (changedUsers []string) {
+	// Update users already appearing in doc.Access:
 	for name, access := range doc.Access {
 		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
 			if len(access) == 0 {
@@ -151,6 +152,7 @@ func (doc *document) updateAccess(newAccess channels.AccessMap) (changedUsers []
 			changedUsers = append(changedUsers, name)
 		}
 	}
+	// Add new users who are in newAccess but not doc.Access:
 	for name, access := range newAccess {
 		if _, existed := doc.Access[name]; !existed {
 			if doc.Access == nil {
