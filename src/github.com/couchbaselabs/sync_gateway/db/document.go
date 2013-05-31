@@ -102,6 +102,70 @@ func (doc *document) setRevision(revid string, body Body) {
 	}
 }
 
+//////// CHANNELS & ACCESS:
+
+// Updates the Channels property of a document object with current & past channels.
+// Returns the set of channels that have changed (document joined or left in this revision)
+func (doc *document) updateChannels(newChannels channels.Set) (changedChannels channels.Set) {
+	var changed []string
+	oldChannels := doc.Channels
+	if oldChannels == nil {
+		oldChannels = ChannelMap{}
+		doc.Channels = oldChannels
+	} else {
+		// Mark every no-longer-current channel as unsubscribed:
+		curSequence := doc.Sequence
+		for channel, removal := range oldChannels {
+			if removal == nil && !newChannels.Contains(channel) {
+				oldChannels[channel] = &ChannelRemoval{
+					Seq:     curSequence,
+					RevID:   doc.CurrentRev,
+					Deleted: doc.Deleted}
+				changed = append(changed, channel)
+			}
+		}
+	}
+
+	// Mark every current channel as subscribed:
+	for channel, _ := range newChannels {
+		if value, exists := oldChannels[channel]; value != nil || !exists {
+			oldChannels[channel] = nil
+			changed = append(changed, channel)
+		}
+	}
+	if changed != nil {
+		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
+		changedChannels = channels.SetOf(changed...)
+	}
+	return
+}
+
+// Updates the Access property of a document object.
+// Returns an array of names of users/roles whose channel access has changed as a result.
+func (doc *document) updateAccess(newAccess channels.AccessMap) (changedUsers []string) {
+	for name, access := range doc.Access {
+		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
+			if len(access) == 0 {
+				delete(doc.Access, name)
+			}
+			changedUsers = append(changedUsers, name)
+		}
+	}
+	for name, access := range newAccess {
+		if _, existed := doc.Access[name]; !existed {
+			if doc.Access == nil {
+				doc.Access = UserAccessMap{}
+			}
+			doc.Access[name] = access.AtSequence(doc.Sequence)
+			changedUsers = append(changedUsers, name)
+		}
+	}
+	if changedUsers != nil {
+		base.LogTo("Access", "Doc %q grants access: %v", doc.ID, doc.Access)
+	}
+	return
+}
+
 //////// MARSHALING ////////
 
 type documentRoot struct {

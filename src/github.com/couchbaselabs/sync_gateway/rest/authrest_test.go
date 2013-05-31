@@ -53,6 +53,10 @@ func TestUserAPI(t *testing.T) {
 	assert.DeepEquals(t, body["admin_channels"], map[string]interface{}{"foo": 1.0, "bar": 1.0})
 	assert.Equals(t, body["password"], nil)
 
+	response = callAuthREST("GET", "/db/user", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), `["snej"]`)
+
 	// DELETE the user
 	assertStatus(t, callAuthREST("DELETE", "/db/user/snej", ""), 200)
 	assertStatus(t, callAuthREST("GET", "/db/user/snej", ""), 404)
@@ -84,6 +88,10 @@ func TestRoleAPI(t *testing.T) {
 	assert.Equals(t, body["name"], "hipster")
 	assert.DeepEquals(t, body["admin_channels"], map[string]interface{}{"fedoras": 1.0, "fixies": 2.0})
 	assert.Equals(t, body["password"], nil)
+
+	response = callAuthREST("GET", "/db/role", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), `["hipster"]`)
 
 	// DELETE the role
 	assertStatus(t, callAuthREST("DELETE", "/db/role/hipster", ""), 200)

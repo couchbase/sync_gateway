@@ -244,21 +244,22 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
+
 	var newRevID, parentRevID string
-	var body Body
 	var doc *document
 	var changedChannels channels.Set
+	var changedPrincipals []string
+	var docSequence uint64
 
 	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		var err error
-		doc, err = unmarshalDocument(docid, currentValue)
-		if err != nil {
+		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return nil, err
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, err = callback(doc)
+		body, err := callback(doc)
 		if err != nil {
 			return nil, err
 		}
@@ -286,20 +287,25 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			doc.History.setRevisionBody(doc.CurrentRev, nil)
 		}
 
-		// Assign the document the next sequence number, for the _changes feed:
-		doc.Sequence, err = db.sequences.nextSequence()
-		if err != nil {
-			return nil, err
-		}
-
-		// Run the validation and sync functions
+		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
 		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
 			return nil, err
 		}
-		changedChannels = db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
-		db.updateDocAccess(doc, access)
+
+		// Now that we know doc is valid, assign it the next sequence number, for _changes feed:
+		if docSequence == 0 {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
+				return nil, err
+			}
+		}
+		doc.Sequence = docSequence
+
+		// Update the document struct's channel assignment and user access.
+		// (This uses the new sequence # so has to be done after updating doc.Sequence)
+		changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
+		changedPrincipals = doc.updateAccess(access)
 
 		// Tell Couchbase to store the document:
 		return json.Marshal(doc)
@@ -310,9 +316,16 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
+
+	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
 
-	// Add doc channels to change-logs:
+	// Mark affected users/roles as needing to recompute their channel access:
+	for _, name := range changedPrincipals {
+		db.invalUserOrRoleChannels(name)
+	}
+
+	// Add the new revision to the change logs of all affected channels:
 	db.AddToChangeLogs(changedChannels, doc.Channels, channels.LogEntry{
 		Sequence: doc.Sequence,
 		DocID:    docid,
@@ -407,42 +420,6 @@ func makeUserCtx(user auth.User) map[string]interface{} {
 	}
 }
 
-// Updates the Channels property of a document object with current & past channels.
-// Returns the set of channels that have changed (document joined or left in this revision)
-func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (changedChannels channels.Set) {
-	var changed []string
-	oldChannels := doc.Channels
-	if oldChannels == nil {
-		oldChannels = ChannelMap{}
-		doc.Channels = oldChannels
-	} else {
-		// Mark every no-longer-current channel as unsubscribed:
-		curSequence := doc.Sequence
-		for channel, removal := range oldChannels {
-			if removal == nil && !newChannels.Contains(channel) {
-				oldChannels[channel] = &ChannelRemoval{
-					Seq:     curSequence,
-					RevID:   doc.CurrentRev,
-					Deleted: doc.Deleted}
-				changed = append(changed, channel)
-			}
-		}
-	}
-
-	// Mark every current channel as subscribed:
-	for channel, _ := range newChannels {
-		if value, exists := oldChannels[channel]; value != nil || !exists {
-			oldChannels[channel] = nil
-			changed = append(changed, channel)
-		}
-	}
-	if changed != nil {
-		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
-		changedChannels = channels.SetOf(changed...)
-	}
-	return
-}
-
 // Are the principal and role names in an AccessMap all valid?
 func validateAccessMap(access channels.AccessMap) bool {
 	for name, _ := range access {
@@ -455,40 +432,6 @@ func validateAccessMap(access channels.AccessMap) bool {
 		}
 	}
 	return true
-}
-
-func (db *Database) invalUserChannels(username string) {
-	authr := db.Authenticator()
-	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateChannels(user)
-	}
-}
-
-// Updates the Access property of a document object
-func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
-	for name, access := range doc.Access {
-		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
-			if len(access) == 0 {
-				delete(doc.Access, name)
-			}
-			changed = true
-			db.invalUserChannels(name)
-		}
-	}
-	for name, access := range newAccess {
-		if _, existed := doc.Access[name]; !existed {
-			changed = true
-			if doc.Access == nil {
-				doc.Access = UserAccessMap{}
-			}
-			doc.Access[name] = access.AtSequence(doc.Sequence)
-			db.invalUserChannels(name)
-		}
-	}
-	if changed {
-		base.LogTo("Access", "Doc %q grants access: %v", doc.ID, doc.Access)
-	}
-	return
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
