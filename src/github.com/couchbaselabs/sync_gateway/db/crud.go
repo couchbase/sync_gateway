@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
 
@@ -251,17 +252,16 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	var changedPrincipals []string
 	var docSequence uint64
 
-	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		var err error
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
-			return nil, err
+			return
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
 		body, err := callback(doc)
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
@@ -291,14 +291,14 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		body["_id"] = doc.ID
 		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
 		// But be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
-				return nil, err
+				return
 			}
 		}
 		doc.Sequence = docSequence
@@ -307,9 +307,16 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		// (This uses the new sequence # so has to be done after updating doc.Sequence)
 		changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
 		changedPrincipals = doc.updateAccess(access)
+		if len(changedPrincipals) > 0 {
+			// If this update affects user/role access privileges, make sure the write blocks till
+			// the new value is indexable, otherwise when a User/Role updates (using a view) it
+			// might not incorporate the effects of this change.
+			writeOpts |= walrus.Indexable
+		}
 
-		// Tell Couchbase to store the document:
-		return json.Marshal(doc)
+		// Return the new raw document value for the bucket to store.
+		raw, err = json.Marshal(doc)
+		return
 	})
 
 	if err == couchbase.UpdateCancel {
