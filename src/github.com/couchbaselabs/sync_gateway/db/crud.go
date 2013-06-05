@@ -248,8 +248,8 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 	var newRevID, parentRevID string
 	var doc *document
-	var changedChannels channels.Set
-	var changedPrincipals []string
+	var changedChannels base.Set
+	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
@@ -289,7 +289,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
-		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+		channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
 			return
 		}
@@ -306,8 +306,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		// Update the document struct's channel assignment and user access.
 		// (This uses the new sequence # so has to be done after updating doc.Sequence)
 		changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
-		changedPrincipals = doc.updateAccess(access)
-		if len(changedPrincipals) > 0 {
+		changedPrincipals = doc.Access.updateAccess(doc, access)
+		changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
+		if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
 			// If this update affects user/role access privileges, make sure the write blocks till
 			// the new value is indexable, otherwise when a User/Role updates (using a view) it
 			// might not incorporate the effects of this change.
@@ -331,6 +332,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	// Mark affected users/roles as needing to recompute their channel access:
 	for _, name := range changedPrincipals {
 		db.invalUserOrRoleChannels(name)
+	}
+	for _, name := range changedRoleUsers {
+		db.invalUserRoles(name)
 	}
 
 	// Add the new revision to the change logs of all affected channels:
@@ -369,7 +373,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result channels.Set, access channels.AccessMap, err error) {
+func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
 	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 	var oldJson string
 	if parentRevID != "" {
@@ -383,10 +387,11 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 		if err == nil {
 			result = output.Channels
 			access = output.Access
+			roles = output.Roles
 			err = output.Rejection
 			if err != nil {
 				base.Log("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
-			} else if !validateAccessMap(access) {
+			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = &base.HTTPError{500, fmt.Sprintf("Error in JS sync function")}
 			}
 
@@ -435,8 +440,23 @@ func validateAccessMap(access channels.AccessMap) bool {
 			name = name[5:] // Roles are identified in access view by a "role:" prefix
 		}
 		if !auth.IsValidPrincipalName(name) {
-			base.Warn("Invalid user/role name %q in access() call", name)
+			base.Warn("Invalid principal name %q in access() or role() call", name)
 			return false
+		}
+	}
+	return true
+}
+
+func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
+	if !validateAccessMap(roleAccess) {
+		return false
+	}
+	for _, roles := range roleAccess {
+		for rolename, _ := range roles {
+			if !auth.IsValidPrincipalName(rolename) {
+				base.Warn("Invalid role name %q in role() call", rolename)
+				return false
+			}
 		}
 	}
 	return true
@@ -465,6 +485,34 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 		channelSet.Add(row.Value)
 	}
 	return channelSet, nil
+}
+
+// Recomputes the set of roles a User has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, error) {
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
+	opts := map[string]interface{}{"stale": false, "key": user.Name()}
+	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
+		return nil, verr
+	}
+	// Boil the list of TimedSets down to a simple set of role names:
+	all := map[string]bool{}
+	for _, row := range vres.Rows {
+		for name, _ := range row.Value {
+			all[name] = true
+		}
+	}
+	// Then turn that set into an array to return:
+	values := make([]string, 0, len(all))
+	for name, _ := range all {
+		values = append(values, name)
+	}
+	return values, nil
 }
 
 //////// REVS_DIFF:

@@ -213,7 +213,7 @@ func TestAllDocs(t *testing.T) {
 		}
 		assert.Equals(t, change.Seq, fmt.Sprintf("all:%d", seq))
 		assert.Equals(t, change.Deleted, i == 99)
-		var removed channels.Set
+		var removed base.Set
 		if i == 99 {
 			removed = channels.SetOf("all")
 		}
@@ -228,7 +228,7 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.Seq, fmt.Sprintf("KFJC:%d", 10*i+1))
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
-		assert.DeepEquals(t, change.Removed, channels.Set(nil))
+		assert.DeepEquals(t, change.Removed, base.Set(nil))
 		assert.Equals(t, change.Doc["serialnumber"], float64(10*i))
 	}
 
@@ -257,8 +257,8 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes"] = true
+	// base.LogKeys["CRUD"] = true
+	// base.LogKeys["Changes"] = true
 
 	body := Body{"n": 1, "channels": []string{"all"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
@@ -346,6 +346,9 @@ func TestAccessFunctionValidation(t *testing.T) {
 }
 
 func TestAccessFunction(t *testing.T) {
+	base.LogKeys["CRUD"] = true
+	base.LogKeys["Access"] = true
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
@@ -356,8 +359,8 @@ func TestAccessFunction(t *testing.T) {
 	assertNoError(t, err, "Couldn't create channel mapper")
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	user.SetRoleNames([]string{"animefan", "tumblr"})
-	authenticator.Save(user)
+	user.SetExplicitRoleNames([]string{"animefan", "tumblr"})
+	assertNoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
 	_, err = db.Put("doc1", body)
@@ -372,8 +375,9 @@ func TestAccessFunction(t *testing.T) {
 	role, _ := authenticator.NewRole("animefan", nil)
 	authenticator.Save(role)
 
-	user, _ = authenticator.GetUser("naomi")
-	expected := channels.SetOf("Hulu", "Netflix").AtSequence(1)
+	user, err = authenticator.GetUser("naomi")
+	assertNoError(t, err, "GetUser")
+	expected := channels.AtSequence(channels.SetOf("Hulu", "Netflix"), 1)
 	assert.DeepEquals(t, user.Channels(), expected)
 
 	expected.AddChannel("CrunchyRoll", 2)

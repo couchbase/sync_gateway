@@ -33,11 +33,12 @@ type userImpl struct {
 // Marshalable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_        string                     `json:"email,omitempty"`
-	Disabled_     bool                       `json:"disabled,omitempty"`
-	PasswordHash_ *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	Password_     *string                    `json:"password,omitempty"`
-	RoleNames_    []string                   `json:"roles,omitempty"`
+	Email_             string                     `json:"email,omitempty"`
+	Disabled_          bool                       `json:"disabled,omitempty"`
+	PasswordHash_      *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
+	Password_          *string                    `json:"password,omitempty"`
+	ExplicitRoleNames_ []string                   `json:"admin_roles,omitempty"`
+	RoleNames_         []string                   `json:"roles,omitempty"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -57,7 +58,7 @@ func IsValidEmail(email string) bool {
 func (auth *Authenticator) defaultGuestUser() User {
 	user := &userImpl{
 		roleImpl: roleImpl{
-			ExplicitChannels_: ch.SetOf("*").AtSequence(1),
+			ExplicitChannels_: ch.AtSequence(ch.SetOf("*"),1),
 		},
 		auth: auth,
 	}
@@ -66,7 +67,7 @@ func (auth *Authenticator) defaultGuestUser() User {
 }
 
 // Creates a new User object.
-func (auth *Authenticator) NewUser(username string, password string, channels ch.Set) (User, error) {
+func (auth *Authenticator) NewUser(username string, password string, channels base.Set) (User, error) {
 	user := &userImpl{auth: auth}
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
@@ -111,7 +112,7 @@ func (user *userImpl) validate() error {
 		// Real user must have a password; anon user must not have a password
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
-	for _, roleName := range user.RoleNames_ {
+	for _, roleName := range user.ExplicitRoleNames_ {
 		if !IsValidPrincipalName(roleName) {
 			return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid role name %q", roleName)}
 		}
@@ -156,9 +157,18 @@ func (user *userImpl) RoleNames() []string {
 	return user.RoleNames_
 }
 
-func (user *userImpl) SetRoleNames(names []string) {
+func (user *userImpl) setRoleNames(names []string) {
 	user.RoleNames_ = names
-	user.roles = nil // invalidate cache
+	user.roles = nil // invalidate in-memory cache list of Role objects
+}
+
+func (user *userImpl) ExplicitRoleNames() []string {
+	return user.ExplicitRoleNames_
+}
+
+func (user *userImpl) SetExplicitRoleNames(names []string) {
+	user.ExplicitRoleNames_ = names
+	user.setRoleNames(nil) // invalidate persistent cache of role names
 }
 
 // Returns true if the given password is correct for this user.
@@ -226,7 +236,7 @@ func (user *userImpl) CanSeeChannelSince(channel string) uint64 {
 	return minSeq
 }
 
-func (user *userImpl) AuthorizeAllChannels(channels ch.Set) error {
+func (user *userImpl) AuthorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(user, channels)
 }
 
@@ -239,14 +249,14 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 }
 
 // If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
-func (user *userImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
+func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
 	if channels.Contains("*") {
 		channels = user.InheritedChannels().AsSet()
 	}
 	return channels
 }
 
-func (user *userImpl) FilterToAvailableChannels(channels ch.Set) ch.TimedSet {
+func (user *userImpl) FilterToAvailableChannels(channels base.Set) ch.TimedSet {
 	output := ch.TimedSet{}
 	for channel, _ := range channels {
 		if channel == "*" {

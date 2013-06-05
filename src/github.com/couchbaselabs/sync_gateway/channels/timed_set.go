@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
@@ -22,7 +24,7 @@ import (
 type TimedSet map[string]uint64
 
 // Creates a new TimedSet from a Set plus a sequence
-func (set Set) AtSequence(sequence uint64) TimedSet {
+func AtSequence(set base.Set, sequence uint64) TimedSet {
 	result := make(TimedSet, len(set))
 	for name, _ := range set {
 		result[name] = sequence
@@ -31,15 +33,15 @@ func (set Set) AtSequence(sequence uint64) TimedSet {
 }
 
 // Converts a TimedSet to a Set
-func (set TimedSet) AsSet() Set {
+func (set TimedSet) AsSet() base.Set {
 	if set == nil {
 		return nil
 	}
-	result := make(Set, len(set))
+	result := make([]string, 0, len(set))
 	for ch, _ := range set {
-		result[ch] = present{}
+		result = append(result, ch)
 	}
-	return result
+	return base.SetFromArray(result)
 }
 
 func (set TimedSet) Validate() error {
@@ -74,7 +76,7 @@ func (set TimedSet) Contains(ch string) bool {
 }
 
 // Updates membership to match the given Set. Newly added members will have the given sequence.
-func (set TimedSet) UpdateAtSequence(other Set, sequence uint64) bool {
+func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 	changed := false
 	for name, _ := range set {
 		if !other.Contains(name) {
@@ -121,7 +123,7 @@ func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 		if err2 := json.Unmarshal(data, &altForm); err2 == nil {
 			set, err := SetFromArray(altForm, KeepStar)
 			if err == nil {
-				*setPtr = set.AtSequence(0)
+				*setPtr = AtSequence(set, 0)
 			}
 			return err
 		}

@@ -429,7 +429,7 @@ func (h *handler) handleChanges() error {
 	return h.handleSimpleChanges(userChannels, options)
 }
 
-func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesOptions) error {
+func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptions) error {
 	var lastSeqID string
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
@@ -460,7 +460,7 @@ func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesO
 	return err
 }
 
-func (h *handler) handleContinuousChanges(inChannels channels.Set, options db.ChangesOptions) error {
+func (h *handler) handleContinuousChanges(inChannels base.Set, options db.ChangesOptions) error {
 	var timeoutInterval time.Duration
 	var timer *time.Timer
 	var heartbeat <-chan time.Time

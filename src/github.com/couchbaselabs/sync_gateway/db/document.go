@@ -23,7 +23,7 @@ type ChannelRemoval struct {
 }
 type ChannelMap map[string]*ChannelRemoval
 
-// Maps what users have access to what channels, and when they got that access.
+// Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
@@ -34,6 +34,7 @@ type syncData struct {
 	History    RevTree       `json:"history"`
 	Channels   ChannelMap    `json:"channels,omitempty"`
 	Access     UserAccessMap `json:"access,omitempty"`
+	RoleAccess UserAccessMap `json:"role_access,omitempty"`
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -106,7 +107,7 @@ func (doc *document) setRevision(revid string, body Body) {
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *document) updateChannels(newChannels channels.Set) (changedChannels channels.Set) {
+func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.Set) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -140,32 +141,36 @@ func (doc *document) updateChannels(newChannels channels.Set) (changedChannels c
 	return
 }
 
-// Updates the Access property of a document object.
-// Returns an array of names of users/roles whose channel access has changed as a result.
-func (doc *document) updateAccess(newAccess channels.AccessMap) (changedUsers []string) {
+// Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
+// Returns an array of the user/role names whose access has changed as a result.
+func (accessMap *UserAccessMap) updateAccess(doc *document, newAccess channels.AccessMap) (changedUsers []string) {
 	// Update users already appearing in doc.Access:
-	for name, access := range doc.Access {
+	for name, access := range *accessMap {
 		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
 			if len(access) == 0 {
-				delete(doc.Access, name)
+				delete(*accessMap, name)
 			}
 			changedUsers = append(changedUsers, name)
 		}
 	}
-	// Add new users who are in newAccess but not doc.Access:
+	// Add new users who are in newAccess but not accessMap:
 	for name, access := range newAccess {
-		if _, existed := doc.Access[name]; !existed {
-			if doc.Access == nil {
-				doc.Access = UserAccessMap{}
+		if _, existed := (*accessMap)[name]; !existed {
+			if *accessMap == nil {
+				*accessMap = UserAccessMap{}
 			}
-			doc.Access[name] = access.AtSequence(doc.Sequence)
+			(*accessMap)[name] = channels.AtSequence(access, doc.Sequence)
 			changedUsers = append(changedUsers, name)
 		}
 	}
 	if changedUsers != nil {
-		base.LogTo("Access", "Doc %q grants access: %v", doc.ID, doc.Access)
+		what := "channel"
+		if accessMap == &doc.RoleAccess {
+			what = "role"
+		}
+		base.LogTo("Access", "Doc %q grants %s access: %v (users=%v)", doc.ID, what, *accessMap, changedUsers)
 	}
-	return
+	return changedUsers
 }
 
 //////// MARSHALING ////////

@@ -37,13 +37,13 @@ type ChangesOptions struct {
 // A changes entry; Database.getChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	seqNo   uint64       // Internal use only: sequence # in specific channel
-	Seq     string       `json:"seq"` // Public sequence ID (TimedSet)
-	ID      string       `json:"id"`
-	Deleted bool         `json:"deleted,omitempty"`
-	Removed channels.Set `json:"removed,omitempty"`
-	Doc     Body         `json:"doc,omitempty"`
-	Changes []ChangeRev  `json:"changes"`
+	seqNo   uint64      // Internal use only: sequence # in specific channel
+	Seq     string      `json:"seq"` // Public sequence ID (TimedSet)
+	ID      string      `json:"id"`
+	Deleted bool        `json:"deleted,omitempty"`
+	Removed base.Set    `json:"removed,omitempty"`
+	Doc     Body        `json:"doc,omitempty"`
+	Changes []ChangeRev `json:"changes"`
 }
 
 type ChangeRev map[string]string
@@ -261,7 +261,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 }
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
-func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	if len(chans) == 0 {
 		return nil, nil
 	}
@@ -286,7 +286,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 			if db.user != nil {
 				channelsSince = db.user.FilterToAvailableChannels(chans)
 			} else {
-				channelsSince = chans.AtSequence(1)
+				channelsSince = channels.AtSequence(chans, 1)
 			}
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
@@ -375,7 +375,7 @@ func (db *Database) MultiChangesFeed(chans channels.Set, options ChangesOptions)
 }
 
 // Synchronous convenience function that returns all changes as a simple array.
-func (db *Database) GetChanges(channels channels.Set, options ChangesOptions) ([]*ChangeEntry, error) {
+func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {
@@ -410,7 +410,7 @@ func (context *DatabaseContext) startRevisionNotifier() error {
 	return nil
 }
 
-func (db *Database) WaitForRevision(chans channels.Set) bool {
+func (db *Database) WaitForRevision(chans base.Set) bool {
 	base.LogTo("Changes", "\twaiting for a revision...")
 	db.tapNotifier.L.Lock()
 	defer db.tapNotifier.L.Unlock()
@@ -473,7 +473,7 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 	})
 }
 
-func (db *Database) AddToChangeLogs(changedChannels channels.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
+func (db *Database) AddToChangeLogs(changedChannels base.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
 	var err error
 	base.LogTo("Changes", "Updating #%d %q/%q in channels %s", entry.Sequence, entry.DocID, entry.RevID, changedChannels)
 	for channel, removal := range channelMap {

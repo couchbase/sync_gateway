@@ -36,7 +36,8 @@ const funcWrapper = `
 
 /** Result of running a channel-mapper function. */
 type ChannelMapperOutput struct {
-	Channels  Set
+	Channels  base.Set
+	Roles     AccessMap // roles granted to users via role() callback
 	Access    AccessMap
 	Rejection error
 }
@@ -44,13 +45,14 @@ type ChannelMapperOutput struct {
 type ChannelMapper struct {
 	output   *ChannelMapperOutput
 	channels []string
-	access   map[string][]string
+	access   map[string][]string // channels granted to users via access() callback
+	roles    map[string][]string // roles granted to users via role() callback
 	js       *walrus.JSServer
 	Src      string
 }
 
-// Maps user names (or role names prefixed with "role:") to arrays of channel names
-type AccessMap map[string]Set
+// Maps user names (or role names prefixed with "role:") to arrays of channel or role names
+type AccessMap map[string]base.Set
 
 // Calls the function for each user whose access is different between the two AccessMaps
 func ForChangedUsers(a, b AccessMap, fn func(user string)) {
@@ -119,25 +121,12 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 
 	// Implementation of the 'access()' callback:
 	mapper.js.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
-		username := call.Argument(0)
-		channels := call.Argument(1)
-		usernameArray := []string{}
-		if username.IsString() {
-			usernameArray = []string{username.String()}
-		} else if isOttoArray(username) {
-			usernameArray = ottoArrayToStrings(username)
-		}
-		for _, name := range usernameArray {
-			if channels.IsString() {
-				mapper.access[name] = append(mapper.access[name], channels.String())
-			} else if isOttoArray(channels) {
-				array := ottoArrayToStrings(channels)
-				if array != nil {
-					mapper.access[name] = append(mapper.access[name], array...)
-				}
-			}
-		}
-		return otto.UndefinedValue()
+		return mapper.addValueForUser(call.Argument(0), call.Argument(1), mapper.access)
+	})
+
+	// Implementation of the 'role()' callback:
+	mapper.js.DefineNativeFunction("role", func(call otto.FunctionCall) otto.Value {
+		return mapper.addValueForUser(call.Argument(0), call.Argument(1), mapper.roles)
 	})
 
 	// Implementation of the 'reject()' callback:
@@ -158,6 +147,7 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		mapper.output = &ChannelMapperOutput{}
 		mapper.channels = []string{}
 		mapper.access = map[string][]string{}
+		mapper.roles = map[string][]string{}
 	}
 	mapper.js.After = func(result otto.Value, err error) (interface{}, error) {
 		output := mapper.output
@@ -165,12 +155,9 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		if err == nil {
 			output.Channels, err = SetFromArray(mapper.channels, ExpandStar)
 			if err == nil {
-				output.Access = make(AccessMap, len(mapper.access))
-				for username, channels := range mapper.access {
-					output.Access[username], err = SetFromArray(channels, RemoveStar)
-					if err != nil {
-						break
-					}
+				output.Access, err = compileAccessMap(mapper.access)
+				if err == nil {
+					output.Roles, err = compileAccessMap(mapper.roles)
 				}
 			}
 		}
@@ -181,6 +168,38 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 
 func NewDefaultChannelMapper() (*ChannelMapper, error) {
 	return NewChannelMapper(`function(doc){channel(doc.channels);}`)
+}
+
+// Common implementation of 'access()' and 'role()' callbacks
+func (mapper *ChannelMapper) addValueForUser(user otto.Value, value otto.Value, mapping map[string][]string) otto.Value {
+	usernameArray := []string{}
+	if user.IsString() {
+		usernameArray = []string{user.String()}
+	} else if isOttoArray(user) {
+		usernameArray = ottoArrayToStrings(user)
+	}
+	for _, name := range usernameArray {
+		if value.IsString() {
+			mapping[name] = append(mapping[name], value.String())
+		} else if isOttoArray(value) {
+			array := ottoArrayToStrings(value)
+			if array != nil {
+				mapping[name] = append(mapping[name], array...)
+			}
+		}
+	}
+	return otto.UndefinedValue()
+}
+
+func compileAccessMap(input map[string][]string) (AccessMap, error) {
+	access := make(AccessMap, len(input))
+	for name, values := range input {
+		var err error
+		if access[name], err = SetFromArray(values, RemoveStar); err != nil {
+			return nil, err
+		}
+	}
+	return access, nil
 }
 
 // This is just for testing

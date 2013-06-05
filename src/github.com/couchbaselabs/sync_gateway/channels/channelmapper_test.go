@@ -152,6 +152,16 @@ func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
 	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
+// Just verify that the calls to the role() fn show up in the output. (It shares a common
+// implementation with access(), so most of the above tests also apply to it.)
+func TestRoleFunction(t *testing.T) {
+	mapper, err := NewChannelMapper(`function(doc) {role(["foo","bar","baz"], "froods")}`)
+	assertNoError(t, err, "Couldn't create mapper")
+	res, err := mapper.callMapper(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "callMapper failed")
+	assert.DeepEquals(t, res.Roles, AccessMap{"bar": SetOf("froods"), "baz": SetOf("froods"), "foo": SetOf("froods")})
+}
+
 // Now just make sure the input comes through intact
 func TestInputParse(t *testing.T) {
 	mapper, err := NewChannelMapper(`function(doc) {channel(doc.channel);}`)
@@ -171,7 +181,7 @@ func TestDefaultChannelMapper(t *testing.T) {
 
 	res, err = mapper.callMapper(parse(`{"x": "y"}`), `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.Channels, Set{})
+	assert.DeepEquals(t, res.Channels, base.Set{})
 }
 
 // Empty/no-op channel mapper fn
@@ -180,7 +190,7 @@ func TestEmptyChannelMapper(t *testing.T) {
 	assertNoError(t, err, "Couldn't create mapper")
 	res, err := mapper.callMapper(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")
-	assert.DeepEquals(t, res.Channels, Set{})
+	assert.DeepEquals(t, res.Channels, base.Set{})
 }
 
 // channel mapper fn that uses _ underscore JS library

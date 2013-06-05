@@ -36,10 +36,10 @@ func init() {
 	}
 }
 
-func (role *roleImpl) initRole(name string, channels ch.Set) error {
-	channels = channels.ExpandingStar()
+func (role *roleImpl) initRole(name string, channels base.Set) error {
+	channels = ch.ExpandingStar(channels)
 	role.Name_ = name
-	role.ExplicitChannels_ = channels.AtSequence(1)
+	role.ExplicitChannels_ = ch.AtSequence(channels,1)
 	return role.validate()
 }
 
@@ -49,7 +49,7 @@ func IsValidPrincipalName(name string) bool {
 }
 
 // Creates a new Role object.
-func (auth *Authenticator) NewRole(name string, channels ch.Set) (Role, error) {
+func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error) {
 	role := &roleImpl{}
 	if err := role.initRole(name, channels); err != nil {
 		return nil, err
@@ -147,13 +147,13 @@ func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
 	return seq
 }
 
-func (role *roleImpl) AuthorizeAllChannels(channels ch.Set) error {
+func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(role, channels)
 }
 
 // Returns an HTTP 403 error if the Role is not allowed to access all the given channels.
 // A nil Role means access control is disabled, so the function will return nil.
-func authorizeAllChannels(princ Principal, channels ch.Set) error {
+func authorizeAllChannels(princ Principal, channels base.Set) error {
 	var forbidden []string
 	for channel, _ := range channels {
 		if !princ.CanSeeChannel(channel) {
