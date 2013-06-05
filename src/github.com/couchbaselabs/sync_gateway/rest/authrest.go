@@ -224,7 +224,7 @@ func createAuthHandler(sc *serverContext) http.Handler {
 		handleAuthReq(sc, putUser)).Methods("POST")
 
 	r.HandleFunc("/{db}/role",
-		handleAuthReq(sc, getUsers)).Methods("GET", "HEAD")
+		handleAuthReq(sc, getRoles)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/role/{name}",
 		handleAuthReq(sc, getRoleInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/role/{name}",
