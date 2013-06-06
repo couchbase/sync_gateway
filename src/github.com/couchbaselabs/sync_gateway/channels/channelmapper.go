@@ -11,6 +11,7 @@ package channels
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
@@ -155,9 +156,9 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		if err == nil {
 			output.Channels, err = SetFromArray(mapper.channels, ExpandStar)
 			if err == nil {
-				output.Access, err = compileAccessMap(mapper.access)
+				output.Access, err = compileAccessMap(mapper.access, "")
 				if err == nil {
-					output.Roles, err = compileAccessMap(mapper.roles)
+					output.Roles, err = compileAccessMap(mapper.roles, "role:")
 				}
 			}
 		}
@@ -191,9 +192,19 @@ func (mapper *ChannelMapper) addValueForUser(user otto.Value, value otto.Value, 
 	return otto.UndefinedValue()
 }
 
-func compileAccessMap(input map[string][]string) (AccessMap, error) {
+func compileAccessMap(input map[string][]string, prefix string) (AccessMap, error) {
 	access := make(AccessMap, len(input))
 	for name, values := range input {
+		// If a prefix is specified, strip it from all values or return error if missing:
+		if prefix != "" {
+			for i, value := range values {
+				if strings.HasPrefix(value, prefix) {
+					values[i] = value[len(prefix):]
+				} else {
+					return nil, fmt.Errorf("Value %q does not begin with %q", value, prefix)
+				}
+			}
+		}
 		var err error
 		if access[name], err = SetFromArray(values, RemoveStar); err != nil {
 			return nil, err

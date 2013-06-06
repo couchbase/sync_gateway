@@ -58,7 +58,7 @@ func IsValidEmail(email string) bool {
 func (auth *Authenticator) defaultGuestUser() User {
 	user := &userImpl{
 		roleImpl: roleImpl{
-			ExplicitChannels_: ch.AtSequence(ch.SetOf("*"),1),
+			ExplicitChannels_: ch.AtSequence(ch.SetOf("*"), 1),
 		},
 		auth: auth,
 	}
@@ -202,7 +202,7 @@ func (user *userImpl) GetRoles() []Role {
 		roles := make([]Role, 0, len(user.RoleNames_))
 		for _, name := range user.RoleNames_ {
 			role, err := user.auth.GetRole(name)
-			base.LogTo("Auth", "User %s role %q = %v", user.Name_, name, role)
+			//base.LogTo("Access", "User %s role %q = %v", user.Name_, name, role)
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {

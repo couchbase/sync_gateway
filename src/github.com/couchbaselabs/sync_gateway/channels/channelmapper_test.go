@@ -155,7 +155,7 @@ func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
 // Just verify that the calls to the role() fn show up in the output. (It shares a common
 // implementation with access(), so most of the above tests also apply to it.)
 func TestRoleFunction(t *testing.T) {
-	mapper, err := NewChannelMapper(`function(doc) {role(["foo","bar","baz"], "froods")}`)
+	mapper, err := NewChannelMapper(`function(doc) {role(["foo","bar","baz"], "role:froods")}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	res, err := mapper.callMapper(parse(`{}`), `{}`, noUser)
 	assertNoError(t, err, "callMapper failed")

@@ -168,7 +168,7 @@ func (accessMap *UserAccessMap) updateAccess(doc *document, newAccess channels.A
 		if accessMap == &doc.RoleAccess {
 			what = "role"
 		}
-		base.LogTo("Access", "Doc %q grants %s access: %v (users=%v)", doc.ID, what, *accessMap, changedUsers)
+		base.LogTo("Access", "Doc %q grants %s access: %v", doc.ID, what, *accessMap)
 	}
 	return changedUsers
 }

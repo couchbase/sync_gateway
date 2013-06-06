@@ -415,6 +415,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "a1")
+
+	// What happens if we call access() with a nonexistent username?
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
 }
 
 func TestRoleAccessChanges(t *testing.T) {
@@ -440,7 +443,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Create some docs in the channels:
 	response := callRESTOnContext(sc, request("PUT", "/db/fashion",
-		`{"user":"alice","role":"hipster"}`))
+		`{"user":"alice","role":["role:hipster","role:bogus"]}`))
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
@@ -455,7 +458,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Check user access:
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1, "gamma": 0x1})
-	assert.DeepEquals(t, alice.RoleNames(), []string{"hipster"})
+	assert.DeepEquals(t, alice.RoleNames(), []string{"bogus", "hipster"})
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1})
 	assert.DeepEquals(t, zegpold.RoleNames(), []string(nil))
@@ -480,7 +483,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.Equals(t, since, "beta:4")
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
-	str := fmt.Sprintf(`{"user":"zegpold", "role":"hipster", "_rev":%q}`, fashionRevID)
+	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
 	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/fashion", str)), 201)
 
 	// Check user access again:
