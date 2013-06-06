@@ -69,30 +69,26 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 	}
 }
 
-func isOttoArray(value otto.Value) bool {
-	return value.Class() == "Array" || value.Class() == "GoArray"
-}
-
-// Converts a JS array into a Go string array.
-func ottoArrayToStrings(array otto.Value) []string {
-	goValue, err := array.Export()
-	if err != nil {
-		return nil
-	}
-	if result, ok := goValue.([]string); ok {
-		return result
-	}
-	goArray, ok := goValue.([]interface{})
-	if !ok || len(goArray) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(goArray))
-	for _, item := range goArray {
-		if str, ok := item.(string); ok {
-			result = append(result, str)
+// Converts a JS string or array into a Go string array.
+func ottoValueToStringArray(value otto.Value) []string {
+	nativeValue, _ := value.Export()
+	switch nativeValue := nativeValue.(type) {
+	case string:
+		return []string{nativeValue}
+	case []string:
+		return nativeValue
+	case []interface{}:
+		result := make([]string, 0, len(nativeValue))
+		for _, item := range nativeValue {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			}
 		}
+		return result
+	default:
+		//base.Warn("ottoValueToStringArray can't decode %#v (JS value has class %s", nativeValue, value.Class())
+		return nil
 	}
-	return result
 }
 
 func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
@@ -108,13 +104,10 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 	// Implementation of the 'channel()' callback:
 	mapper.js.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
-			if arg.IsString() {
-				mapper.channels = append(mapper.channels, arg.String())
-			} else if isOttoArray(arg) {
-				array := ottoArrayToStrings(arg)
-				if array != nil {
-					mapper.channels = append(mapper.channels, array...)
-				}
+			if strings := ottoValueToStringArray(arg); strings != nil {
+				mapper.channels = append(mapper.channels, strings...)
+			} else {
+				base.Warn("Unknown argument to channel() callback: %v", arg)
 			}
 		}
 		return otto.UndefinedValue()
@@ -173,20 +166,10 @@ func NewDefaultChannelMapper() (*ChannelMapper, error) {
 
 // Common implementation of 'access()' and 'role()' callbacks
 func (mapper *ChannelMapper) addValueForUser(user otto.Value, value otto.Value, mapping map[string][]string) otto.Value {
-	usernameArray := []string{}
-	if user.IsString() {
-		usernameArray = []string{user.String()}
-	} else if isOttoArray(user) {
-		usernameArray = ottoArrayToStrings(user)
-	}
-	for _, name := range usernameArray {
-		if value.IsString() {
-			mapping[name] = append(mapping[name], value.String())
-		} else if isOttoArray(value) {
-			array := ottoArrayToStrings(value)
-			if array != nil {
-				mapping[name] = append(mapping[name], array...)
-			}
+	valueStrings := ottoValueToStringArray(value)
+	if len(valueStrings) > 0 {
+		for _, name := range ottoValueToStringArray(user) {
+			mapping[name] = append(mapping[name], valueStrings...)
 		}
 	}
 	return otto.UndefinedValue()

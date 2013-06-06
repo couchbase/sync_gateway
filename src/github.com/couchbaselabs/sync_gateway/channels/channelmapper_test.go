@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/robertkrimen/otto"
 )
 
 func parse(jsonStr string) map[string]interface{} {
@@ -24,6 +25,13 @@ func parse(jsonStr string) map[string]interface{} {
 }
 
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
+
+func TestOttoValueToStringArray(t *testing.T) {
+	// Test for https://github.com/robertkrimen/otto/issues/24
+	value, _ := otto.New().ToValue([]string{"foo", "bar", "baz"})
+	strings := ottoValueToStringArray(value)
+	assert.DeepEquals(t, strings, []string{"foo", "bar", "baz"})
+}
 
 // verify that our version of Otto treats JSON parsed arrays like real arrays
 func TestJavaScriptWorks(t *testing.T) {
