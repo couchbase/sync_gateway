@@ -392,7 +392,7 @@ func (h *handler) handleBulkDocs() error {
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	var options db.ChangesOptions
-	options.Since = h.getIntQuery("since", 0)
+	options.Since = channels.TimedSetFromString(h.getQuery("since"))
 	options.Limit = int(h.getIntQuery("limit", 0))
 	options.Conflicts = (h.getQuery("style") == "all_docs")
 	options.IncludeDocs = (h.getBoolQuery("include_docs"))
@@ -429,8 +429,8 @@ func (h *handler) handleChanges() error {
 	return h.handleSimpleChanges(userChannels, options)
 }
 
-func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesOptions) error {
-	var lastSeq uint64 = 0
+func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptions) error {
+	var lastSeqID string
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
 	if err == nil {
@@ -438,9 +438,6 @@ func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesO
 		h.writeln([]byte("{\"results\":["))
 		if feed != nil {
 			for entry := range feed {
-				if lastSeq < entry.Seq {
-					lastSeq = entry.Seq
-				}
 				str, _ := json.Marshal(entry)
 				var buf []byte
 				if first {
@@ -454,15 +451,16 @@ func (h *handler) handleSimpleChanges(channels channels.Set, options db.ChangesO
 					err = nil
 					break
 				}
+				lastSeqID = entry.Seq
 			}
 		}
-		s := fmt.Sprintf("],\n\"last_seq\":%d}", lastSeq)
+		s := fmt.Sprintf("],\n\"last_seq\":%q}", lastSeqID)
 		h.writeln([]byte(s))
 	}
 	return err
 }
 
-func (h *handler) handleContinuousChanges(channels channels.Set, options db.ChangesOptions) error {
+func (h *handler) handleContinuousChanges(inChannels base.Set, options db.ChangesOptions) error {
 	var timeoutInterval time.Duration
 	var timer *time.Timer
 	var heartbeat <-chan time.Time
@@ -480,6 +478,7 @@ func (h *handler) handleContinuousChanges(channels channels.Set, options db.Chan
 	}
 
 	options.Wait = true // we want the feed channel to wait for changes
+	var lastSeqID string
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
 	var err error
@@ -488,7 +487,10 @@ loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			feed, err = h.db.MultiChangesFeed(channels, options)
+			if lastSeqID != "" { // start after end of last feed
+				options.Since = channels.TimedSetFromString(lastSeqID)
+			}
+			feed, err = h.db.MultiChangesFeed(inChannels, options)
 			if err != nil || feed == nil {
 				return err
 			}
@@ -509,7 +511,7 @@ loop:
 				base.LogTo("Changes", "send change: %s", str)
 				err = h.writeln(str)
 
-				options.Since = entry.Seq // so next call to ChangesFeed will start from end
+				lastSeqID = entry.Seq
 				if options.Limit > 0 {
 					options.Limit--
 					if options.Limit == 0 {

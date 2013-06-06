@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
 
@@ -244,24 +245,28 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-	var newRevID string
-	var body Body
 
-	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+	var newRevID, parentRevID string
+	var doc *document
+	var changedChannels base.Set
+	var changedPrincipals, changedRoleUsers []string
+	var docSequence uint64
+
+	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		doc, err := unmarshalDocument(docid, currentValue)
-		if err != nil {
-			return nil, err
+		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
+			return
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, err = callback(doc)
+		body, err := callback(doc)
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
+		parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
@@ -282,24 +287,37 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			doc.History.setRevisionBody(doc.CurrentRev, nil)
 		}
 
-		// Assign the document the next sequence number, for the _changes feed:
-		doc.Sequence, err = db.sequences.nextSequence()
-		if err != nil {
-			return nil, err
-		}
-
-		// Run the validation and sync functions
-		parentRevID := doc.History[newRevID].Parent
+		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
-		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+		channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
-			return nil, err
+			return
 		}
-		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
-		db.updateDocAccess(doc, access)
 
-		// Tell Couchbase to store the document:
-		return json.Marshal(doc)
+		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
+		// But be careful not to request a second sequence # on a retry if we don't need one.
+		if docSequence <= doc.Sequence {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
+				return
+			}
+		}
+		doc.Sequence = docSequence
+
+		// Update the document struct's channel assignment and user access.
+		// (This uses the new sequence # so has to be done after updating doc.Sequence)
+		changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
+		changedPrincipals = doc.Access.updateAccess(doc, access)
+		changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
+		if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
+			// If this update affects user/role access privileges, make sure the write blocks till
+			// the new value is indexable, otherwise when a User/Role updates (using a view) it
+			// might not incorporate the effects of this change.
+			writeOpts |= walrus.Indexable
+		}
+
+		// Return the new raw document value for the bucket to store.
+		raw, err = json.Marshal(doc)
+		return
 	})
 
 	if err == couchbase.UpdateCancel {
@@ -307,9 +325,26 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	} else if err != nil {
 		return "", err
 	}
-	if newRevID != "" {
-		base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+
+	// Now that the document has successfully been stored, we can make other db changes:
+	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+
+	// Mark affected users/roles as needing to recompute their channel access:
+	for _, name := range changedPrincipals {
+		db.invalUserOrRoleChannels(name)
 	}
+	for _, name := range changedRoleUsers {
+		db.invalUserRoles(name)
+	}
+
+	// Add the new revision to the change logs of all affected channels:
+	db.AddToChangeLogs(changedChannels, doc.Channels, channels.LogEntry{
+		Sequence: doc.Sequence,
+		DocID:    docid,
+		RevID:    newRevID,
+		Deleted:  doc.History[newRevID].Deleted,
+		Hidden:   newRevID != doc.CurrentRev,
+	}, parentRevID)
 
 	return newRevID, nil
 }
@@ -338,7 +373,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result channels.Set, access channels.AccessMap, err error) {
+func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
 	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 	var oldJson string
 	if parentRevID != "" {
@@ -352,10 +387,11 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 		if err == nil {
 			result = output.Channels
 			access = output.Access
+			roles = output.Roles
 			err = output.Rejection
 			if err != nil {
 				base.Log("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
-			} else if !validateAccessMap(access) {
+			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = &base.HTTPError{500, fmt.Sprintf("Error in JS sync function")}
 			}
 
@@ -397,36 +433,6 @@ func makeUserCtx(user auth.User) map[string]interface{} {
 	}
 }
 
-// Updates the Channels property of a document object with current & past channels
-func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (changed bool) {
-	channels := doc.Channels
-	if channels == nil {
-		channels = ChannelMap{}
-		doc.Channels = channels
-	} else {
-		// Mark every previous channel as unsubscribed:
-		curSequence := doc.Sequence
-		for channel, seq := range channels {
-			if seq == nil {
-				channels[channel] = &ChannelRemoval{curSequence, doc.CurrentRev}
-				changed = true
-			}
-		}
-	}
-
-	// Mark every current channel as subscribed:
-	for channel, _ := range newChannels {
-		if value, exists := channels[channel]; value != nil || !exists {
-			channels[channel] = nil
-			changed = true
-		}
-	}
-	if changed {
-		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
-	}
-	return changed
-}
-
 // Are the principal and role names in an AccessMap all valid?
 func validateAccessMap(access channels.AccessMap) bool {
 	for name, _ := range access {
@@ -434,45 +440,26 @@ func validateAccessMap(access channels.AccessMap) bool {
 			name = name[5:] // Roles are identified in access view by a "role:" prefix
 		}
 		if !auth.IsValidPrincipalName(name) {
-			base.Warn("Invalid user/role name %q in access() call", name)
+			base.Warn("Invalid principal name %q in access() or role() call", name)
 			return false
 		}
 	}
 	return true
 }
 
-func (db *Database) invalUserChannels(username string) {
-	authr := db.Authenticator()
-	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateChannels(user)
+func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
+	if !validateAccessMap(roleAccess) {
+		return false
 	}
-}
-
-// Updates the Access property of a document object
-func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
-	for name, access := range doc.Access {
-		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
-			if len(access) == 0 {
-				delete(doc.Access, name)
+	for _, roles := range roleAccess {
+		for rolename, _ := range roles {
+			if !auth.IsValidPrincipalName(rolename) {
+				base.Warn("Invalid role name %q in role() call", rolename)
+				return false
 			}
-			changed = true
-			db.invalUserChannels(name)
 		}
 	}
-	for name, access := range newAccess {
-		if _, existed := doc.Access[name]; !existed {
-			changed = true
-			if doc.Access == nil {
-				doc.Access = UserAccessMap{}
-			}
-			doc.Access[name] = access.AtSequence(doc.Sequence)
-			db.invalUserChannels(name)
-		}
-	}
-	if changed {
-		base.LogTo("Access", "Doc %q grants access: %v", doc.ID, doc.Access)
-	}
-	return
+	return true
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
@@ -498,6 +485,34 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 		channelSet.Add(row.Value)
 	}
 	return channelSet, nil
+}
+
+// Recomputes the set of roles a User has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, error) {
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
+	opts := map[string]interface{}{"stale": false, "key": user.Name()}
+	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
+		return nil, verr
+	}
+	// Boil the list of TimedSets down to a simple set of role names:
+	all := map[string]bool{}
+	for _, row := range vres.Rows {
+		for name, _ := range row.Value {
+			all[name] = true
+		}
+	}
+	// Then turn that set into an array to return:
+	values := make([]string, 0, len(all))
+	for name, _ := range all {
+		values = append(values, name)
+	}
+	return values, nil
 }
 
 //////// REVS_DIFF:

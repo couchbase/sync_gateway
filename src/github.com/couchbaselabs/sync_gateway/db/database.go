@@ -65,26 +65,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 	if err != nil {
 		return nil, err
 	}
-	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
-	if err != nil {
-		return nil, err
-	}
-
-	// Start a goroutine to broadcast to the tapNotifier whenever a document changes:
-	go func() {
-		for event := range tapFeed.Events() {
-			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
-				key := string(event.Key)
-				if strings.HasPrefix(key, "_sync:") && !strings.HasPrefix(key, "_sync:user") &&
-					!strings.HasPrefix(key, "_sync:role") {
-					continue // ignore metadata docs (sequence counter, attachments, local docs...)
-				}
-				base.LogTo("Changes", "Notifying that %q changed (key=%q)", dbName, event.Key)
-				context.tapNotifier.Broadcast()
-			}
-		}
-	}()
-
+	context.startRevisionNotifier()
 	return context, nil
 }
 
@@ -162,6 +143,13 @@ func installViews(bucket base.Bucket) error {
                      if (sync.deleted)
                        return;
                      emit(meta.id, sync.rev); }`
+	// All-principals view
+	// Key is name; value is true for user, false for role
+	principals_map := `function (doc, meta) {
+							 var prefix = meta.id.substring(0,11);
+							 //emit("foo","bar");
+							 if (prefix == "_sync:user:" || prefix == "_sync:role:")
+			                     emit(meta.id.substring(11), prefix == "_sync:user:"); }`
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
 	// where flag is true for doc deletion, false for removed from channel, missing otherwise
@@ -183,12 +171,13 @@ func installViews(bucket base.Bucket) error {
 								if (!removed)
 									emit([name, sequence], value);
 								else
-									emit([name, removed.seq], [meta.id, removed.rev, false]);
+									emit([name, removed.seq],
+										 [meta.id, removed.rev, removed.del, true]);
 							}
 						}
 					}`
 	// Channel access view, used by ComputeChannelsForPrincipal()
-	// Key is username; value is dictionary channelName->firstSequence
+	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
@@ -203,13 +192,30 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
-
+	// Role access view, used by ComputeRolesForUser()
+	// Key is username; value is array of role names
+	roleAccess_map := `function (doc, meta) {
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                        return;
+	                    var sequence = sync.sequence;
+	                    if (sync.deleted || sequence === undefined)
+	                        return;
+	                    var access = sync.role_access;
+	                    if (access) {
+	                        for (var name in access) {
+	                            emit(name, access[name]);
+	                        }
+	                    }
+	               }`
 	ddoc := walrus.DesignDoc{
 		Views: walrus.ViewMap{
-			"all_bits": walrus.ViewDef{Map: allbits_map},
-			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
-			"channels": walrus.ViewDef{Map: channels_map},
-			"access":   walrus.ViewDef{Map: access_map},
+			"all_bits":    walrus.ViewDef{Map: allbits_map},
+			"all_docs":    walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			"principals":  walrus.ViewDef{Map: principals_map},
+			"channels":    walrus.ViewDef{Map: channels_map},
+			"access":      walrus.ViewDef{Map: access_map},
+			"role_access": walrus.ViewDef{Map: roleAccess_map},
 		},
 	}
 	err := bucket.PutDDoc("sync_gateway", ddoc)
@@ -239,6 +245,25 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	return result, nil
 }
 
+// Returns the IDs of all users and roles
+func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
+	vres, err := db.Bucket.View("sync_gateway", "principals", Body{"stale": false})
+	if err != nil {
+		return
+	}
+	users = []string{}
+	roles = []string{}
+	for _, row := range vres.Rows {
+		name := row.Key.(string)
+		if row.Value.(bool) {
+			users = append(users, name)
+		} else {
+			roles = append(roles, name)
+		}
+	}
+	return
+}
+
 func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View("sync_gateway", "all_docs", opts)
@@ -247,6 +272,8 @@ func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	}
 	return vres, err
 }
+
+//////// HOUSEKEEPING:
 
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
@@ -298,14 +325,15 @@ func (db *Database) UpdateAllDocChannels() error {
 				return nil, err
 			}
 			parentRevID := doc.History[doc.CurrentRev].Parent
-			channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+			channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 			if err != nil {
 				// Probably the validator rejected the doc
 				access = nil
 				channels = nil
 			}
-			db.updateDocAccess(doc, access)
-			db.updateDocChannels(doc, channels)
+			doc.Access.updateAccess(doc,access)
+			doc.RoleAccess.updateAccess(doc,roles)
+			doc.updateChannels(channels)
 			base.Log("\tSaving updated channels and access grants of %q", docid)
 			return json.Marshal(doc)
 		})
@@ -313,5 +341,44 @@ func (db *Database) UpdateAllDocChannels() error {
 			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
+
+	// Now invalidate channel cache of all users/roles:
+	users, roles, _ := db.AllPrincipalIDs()
+	for _, name := range users {
+		db.invalUserChannels(name)
+	}
+	for _, name := range roles {
+		db.invalRoleChannels(name)
+	}
+
 	return nil
+}
+
+func (db *Database) invalUserRoles(username string) {
+	authr := db.Authenticator()
+	if user, _ := authr.GetUser(username); user != nil {
+		authr.InvalidateRoles(user)
+	}
+}
+
+func (db *Database) invalUserChannels(username string) {
+	authr := db.Authenticator()
+	if user, _ := authr.GetUser(username); user != nil {
+		authr.InvalidateChannels(user)
+	}
+}
+
+func (db *Database) invalRoleChannels(rolename string) {
+	authr := db.Authenticator()
+	if role, _ := authr.GetRole(rolename); role != nil {
+		authr.InvalidateChannels(role)
+	}
+}
+
+func (db *Database) invalUserOrRoleChannels(name string) {
+	if strings.HasPrefix(name, "role:") {
+		db.invalRoleChannels(name[5:])
+	} else {
+		db.invalUserChannels(name)
+	}
 }

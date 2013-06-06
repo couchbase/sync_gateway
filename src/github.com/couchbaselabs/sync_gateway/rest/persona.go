@@ -18,7 +18,6 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -71,7 +70,7 @@ func (h *handler) PersonaEnabled() bool {
 // Username will be the same as the verified email address. Password will be random.
 // The user will have access to no channels.
 func (h *handler) registerPersonaUser(verifiedInfo *PersonaResponse) (auth.User, error) {
-	user, err := h.context.auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), channels.Set{})
+	user, err := h.context.auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), base.Set{})
 	if err != nil {
 		return nil, err
 	}

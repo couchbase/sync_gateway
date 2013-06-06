@@ -336,7 +336,7 @@ func TestAccessControl(t *testing.T) {
 	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
 }
 
-func TestAccessChanges(t *testing.T) {
+func TestChannelAccessChanges(t *testing.T) {
 	//base.LogKeys["Access"] = true
 	//base.LogKeys["CRUD"] = true
 
@@ -371,6 +371,17 @@ func TestAccessChanges(t *testing.T) {
 	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
 	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
 
+	// Check the _changes feed:
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	since := changes.Results[0].Seq
+	assert.Equals(t, since, "gamma:8")
+
 	// Check user access:
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x1, "delta": 0x3})
@@ -388,9 +399,7 @@ func TestAccessChanges(t *testing.T) {
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
-	var changes struct {
-		Results []db.ChangeEntry
-	}
+	changes.Results = nil
 	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -398,12 +407,107 @@ func TestAccessChanges(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "a1")
 	assert.Equals(t, changes.Results[1].ID, "g1")
 
-	// Changes feed with since=8 would ordinarily be empty, but zegpold got access to channel
+	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes?since=8", "", "zegpold"))
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "a1")
+
+	// What happens if we call access() with a nonexistent username?
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
+}
+
+func TestRoleAccessChanges(t *testing.T) {
+	base.LogKeys["Access"] = true
+	base.LogKeys["CRUD"] = true
+
+	sc := newTempContext("testroleaccesschanges", `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`)
+	a := sc.databases["db"].auth
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create users:
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf("alpha"))
+	a.Save(alice)
+	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf("beta"))
+	a.Save(zegpold)
+
+	hipster, err := a.NewRole("hipster", channels.SetOf("gamma"))
+	a.Save(hipster)
+
+	// Create some docs in the channels:
+	response := callRESTOnContext(sc, request("PUT", "/db/fashion",
+		`{"user":"alice","role":["role:hipster","role:bogus"]}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	fashionRevID := body["rev"].(string)
+
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
+
+	// Check user access:
+	alice, _ = a.GetUser("alice")
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1, "gamma": 0x1})
+	assert.DeepEquals(t, alice.RoleNames(), []string{"bogus", "hipster"})
+	zegpold, _ = a.GetUser("zegpold")
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1})
+	assert.DeepEquals(t, zegpold.RoleNames(), []string(nil))
+
+	// Check the _changes feed:
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq string
+	}
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "alice"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	since := changes.Last_Seq
+	assert.Equals(t, since, "alpha:3,gamma:2")
+
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	since = changes.Last_Seq
+	assert.Equals(t, since, "beta:4")
+
+	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
+	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
+	assertStatus(t, callRESTOnContext(sc, request("PUT", "/db/fashion", str)), 201)
+
+	// Check user access again:
+	alice, _ = a.GetUser("alice")
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1})
+	zegpold, _ = a.GetUser("zegpold")
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1, "gamma": 0x1})
+
+	// The complete _changes feed for zegpold contains docs g1 and b1:
+	changes.Results = nil
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Last_Seq, "beta:4,gamma:2")
+	assert.Equals(t, changes.Results[0].ID, "g1")
+	assert.Equals(t, changes.Results[1].ID, "b1")
+
+	// Changes feed with since=beta:4 would ordinarily be empty, but zegpold got access to channel
+	// gamma after sequence 4, so the pre-existing docs in that channel are included:
+	response = callRESTOnContext(sc, requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	changes.Results = nil
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "g1")
 }

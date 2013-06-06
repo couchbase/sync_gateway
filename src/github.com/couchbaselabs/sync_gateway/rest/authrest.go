@@ -121,6 +121,26 @@ func getRoleInfo(r http.ResponseWriter, rq *http.Request, context *context) erro
 	return err
 }
 
+func getUsers(r http.ResponseWriter, rq *http.Request, context *context) error {
+	users, _, err := context.dbcontext.AllPrincipalIDs()
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(users)
+	r.Write(bytes)
+	return err
+}
+
+func getRoles(r http.ResponseWriter, rq *http.Request, context *context) error {
+	_, roles, err := context.dbcontext.AllPrincipalIDs()
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(roles)
+	r.Write(bytes)
+	return err
+}
+
 //////// SESSION:
 
 // Generates a login session for a user and returns the session ID and cookie name.
@@ -192,6 +212,8 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	r.HandleFunc("/{db}/_session",
 		handleAuthReq(sc, createUserSession)).Methods("POST")
 
+	r.HandleFunc("/{db}/user",
+		handleAuthReq(sc, getUsers)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/user/{name}",
 		handleAuthReq(sc, getUserInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/user/{name}",
@@ -201,6 +223,8 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	r.HandleFunc("/{db}/user/",
 		handleAuthReq(sc, putUser)).Methods("POST")
 
+	r.HandleFunc("/{db}/role",
+		handleAuthReq(sc, getRoles)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/role/{name}",
 		handleAuthReq(sc, getRoleInfo)).Methods("GET", "HEAD")
 	r.HandleFunc("/{db}/role/{name}",

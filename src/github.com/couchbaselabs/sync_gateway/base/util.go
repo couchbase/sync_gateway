@@ -79,3 +79,18 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 		return bytes
 	})
 }
+
+// Concatenates and merges multiple string arrays into one, discarding all duplicates (including
+// duplicates within a single array.) Ordering is preserved.
+func MergeStringArrays(arrays ...[]string) (merged []string) {
+	seen := make(map[string]bool)
+	for _, array := range arrays {
+		for _, str := range array {
+			if !seen[str] {
+				seen[str] = true
+				merged = append(merged, str)
+			}
+		}
+	}
+	return
+}

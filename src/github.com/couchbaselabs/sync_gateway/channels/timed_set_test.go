@@ -29,7 +29,7 @@ func TestTimedSetMarshal(t *testing.T) {
 	assertNoError(t, err, "Marshal")
 	assert.Equals(t, string(bytes), `{"Channels":{}}`)
 
-	str.Channels = SetOf("a", "b").AtSequence(17)
+	str.Channels = AtSequence(SetOf("a", "b"), 17)
 	bytes, err = json.Marshal(str)
 	assertNoError(t, err, "Marshal")
 	assert.Equals(t, string(bytes), `{"Channels":{"a":17,"b":17}}`)
@@ -59,4 +59,26 @@ func TestTimedSetUnmarshal(t *testing.T) {
 	err = json.Unmarshal([]byte(`{"channels":["a","b"]}`), &str)
 	assertNoError(t, err, "Unmarshal")
 	assert.DeepEquals(t, str.Channels, TimedSet{"a": 0, "b": 0})
+}
+
+func TestEncodeSequenceID(t *testing.T) {
+	set := TimedSet{"ABC": 17, "CBS": 23, "BBC": 1}
+	encoded := set.String()
+	assert.Equals(t, encoded, "ABC:17,BBC:1,CBS:23")
+	decoded := TimedSetFromString(encoded)
+	assert.DeepEquals(t, decoded, set)
+
+	assert.Equals(t, TimedSet{"ABC": 17, "CBS": 0}.String(), "ABC:17")
+
+	assert.DeepEquals(t, TimedSetFromString(""), TimedSet{})
+	assert.DeepEquals(t, TimedSetFromString("ABC:17"), TimedSet{"ABC": 17})
+
+	assert.DeepEquals(t, TimedSetFromString(":17"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString("ABC:"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString("ABC:0"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString("ABC:-1"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString("ABC:17,"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString(",ABC:17"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString("ABC:17,,NBC:12"), TimedSet(nil))
+	assert.DeepEquals(t, TimedSetFromString("ABC:17,ABC:12"), TimedSet(nil))
 }

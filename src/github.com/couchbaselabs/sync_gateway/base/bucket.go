@@ -39,8 +39,21 @@ func (bucket couchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
+func (bucket couchbaseBucket) Write(k string, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
+	return bucket.Bucket.Write(k, exp, v, couchbase.WriteOptions(opt))
+}
+
 func (bucket couchbaseBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
+}
+
+func (bucket couchbaseBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) error {
+	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
+		updated, walrusOpt, err := callback(current)
+		opt = couchbase.WriteOptions(walrusOpt)
+		return
+	}
+	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
 func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
