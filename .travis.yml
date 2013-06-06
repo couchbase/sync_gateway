@@ -8,4 +8,4 @@ script:
 
 notifications:
   email:
-    - mobile_dev@couchbase.com
+    - dustin@couchbase.com
