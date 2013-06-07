@@ -101,7 +101,7 @@ func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucke
 func GetBucket(url, poolName, bucketName string) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, url); isWalrus {
 		Log("Opening Walrus database %s on <%s>", bucketName, url)
-		walrus.Logging = true
+		walrus.Logging = LogKeys["Walrus"]
 		return walrus.GetBucket(url, poolName, bucketName)
 	}
 	Log("Opening Couchbase database %s on <%s>", bucketName, url)

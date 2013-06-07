@@ -24,18 +24,16 @@ import (
 //const kTestURL = "http://localhost:8091"
 const kTestURL = "walrus:"
 
-var gTestBucket base.Bucket
-
-func init() {
-	var err error
-	gTestBucket, err = ConnectToBucket(kTestURL, "default", "sync_gateway_tests")
+func testBucket() base.Bucket {
+	bucket, err := ConnectToBucket(kTestURL, "default", "sync_gateway_tests")
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
+	return bucket
 }
 
 func setupTestDB(t *testing.T) *Database {
-	context, err := NewDatabaseContext("db", gTestBucket)
+	context, err := NewDatabaseContext("db", testBucket())
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -48,6 +46,7 @@ func tearDownTestDB(t *testing.T, db *Database) {
 	if status != 200 && status != 404 {
 		assertNoError(t, err, "Couldn't delete database 'db'")
 	}
+	db.Close()
 }
 
 func assertHTTPError(t *testing.T, err error, status int) {

@@ -35,8 +35,9 @@ func tojson(obj interface{}) string {
 }
 
 func TestAttachments(t *testing.T) {
-	context, err := NewDatabaseContext("db", gTestBucket)
+	context, err := NewDatabaseContext("db", testBucket())
 	assertNoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
 

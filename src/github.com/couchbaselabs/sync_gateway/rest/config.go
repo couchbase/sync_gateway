@@ -127,6 +127,12 @@ func newServerContext(config *ServerConfig) *serverContext {
 	}
 }
 
+func (sc *serverContext) close() {
+	for _, ctx := range sc.databases {
+		ctx.dbcontext.Close()
+	}
+}
+
 // Adds a database to the serverContext given its Bucket.
 func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
 	if dbName == "" {

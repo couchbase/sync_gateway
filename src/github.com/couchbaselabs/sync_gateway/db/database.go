@@ -31,6 +31,7 @@ var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 type DatabaseContext struct {
 	Name          string                  // Database name
 	Bucket        base.Bucket             // Storage
+	tapFeed       base.TapFeed            // Observes changes to bucket
 	tapNotifier   *sync.Cond              // Posts notifications when documents are updated
 	sequences     *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper *channels.ChannelMapper // Runs JS 'sync' function
@@ -54,6 +55,7 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Buc
 	return
 }
 
+// Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
 	context := &DatabaseContext{
 		Name:        dbName,
@@ -67,6 +69,17 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 	}
 	context.startRevisionNotifier()
 	return context, nil
+}
+
+func (context *DatabaseContext) Close() {
+	if context.ChannelMapper != nil {
+		context.ChannelMapper.Stop()
+	}
+	if context.tapFeed != nil {
+		context.tapFeed.Close()
+	}
+	context.Bucket.Close()
+	context.Bucket = nil
 }
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
@@ -331,8 +344,8 @@ func (db *Database) UpdateAllDocChannels() error {
 				access = nil
 				channels = nil
 			}
-			doc.Access.updateAccess(doc,access)
-			doc.RoleAccess.updateAccess(doc,roles)
+			doc.Access.updateAccess(doc, access)
+			doc.RoleAccess.updateAccess(doc, roles)
 			doc.updateChannels(channels)
 			base.Log("\tSaving updated channels and access grants of %q", docid)
 			return json.Marshal(doc)

@@ -407,6 +407,7 @@ func (context *DatabaseContext) startRevisionNotifier() error {
 			}
 		}
 	}()
+	context.tapFeed = tapFeed
 	return nil
 }
 
