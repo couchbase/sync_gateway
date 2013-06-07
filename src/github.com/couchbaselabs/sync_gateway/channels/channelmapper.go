@@ -86,7 +86,9 @@ func ottoValueToStringArray(value otto.Value) []string {
 		}
 		return result
 	default:
-		//base.Warn("ottoValueToStringArray can't decode %#v (JS value has class %s", nativeValue, value.Class())
+		if !value.IsNull() && !value.IsUndefined() {
+			base.Warn("ChannelMapper: Non-string, non-array passed to JS callback: %s", value)
+		}
 		return nil
 	}
 }
@@ -106,8 +108,6 @@ func NewChannelMapper(funcSource string) (*ChannelMapper, error) {
 		for _, arg := range call.ArgumentList {
 			if strings := ottoValueToStringArray(arg); strings != nil {
 				mapper.channels = append(mapper.channels, strings...)
-			} else {
-				base.Warn("Unknown argument to channel() callback: %v", arg)
 			}
 		}
 		return otto.UndefinedValue()
