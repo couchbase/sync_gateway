@@ -151,16 +151,17 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, context *context
 	}
 	var params struct {
 		Name string        `json:"name"`
-		TTL  time.Duration `json:"ttl"`
+		TTL  int    `json:"ttl"`
 	}
 	err = json.Unmarshal(body, &params)
 	if err != nil {
 		return err
 	}
-	if params.Name == "" || params.TTL < 0 {
+	ttl := time.Duration(params.TTL) * time.Second
+	if params.Name == "" || ttl < 1.0 {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
 	}
-	session, err := context.auth.CreateSession(params.Name, params.TTL)
+	session, err := context.auth.CreateSession(params.Name, ttl)
 	if err != nil {
 		return err
 	}
