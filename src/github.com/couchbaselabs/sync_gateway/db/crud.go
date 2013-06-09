@@ -109,6 +109,38 @@ func AuthorizeAnyDocChannels(user auth.User, channels ChannelMap) error {
 	return user.UnauthError("You are not allowed to see this")
 }
 
+// Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
+// This method adds the magic _id and _rev properties.
+func (db *Database) getRevision(doc *document, revid string) (Body, error) {
+	var body Body
+	if body = doc.getRevision(revid); body == nil {
+		// No inline body, so look for separate doc:
+		if !doc.History.contains(revid) {
+			return nil, &base.HTTPError{Status: 404, Message: "missing"}
+		} else if data, err := db.getOldRevisionJSON(doc.ID, revid); data == nil {
+			return nil, err
+		} else if err = json.Unmarshal(data, &body); err != nil {
+			return nil, err
+		}
+	}
+	body["_id"] = doc.ID
+	body["_rev"] = revid
+	return body, nil
+}
+
+// Gets a revision of a document as raw JSON.
+// If it's obsolete it will be loaded from the database if possible.
+// Does not add _id or _rev properties.
+func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error) {
+	if body := doc.getRevisionJSON(revid); body != nil {
+		return body, nil
+	} else if !doc.History.contains(revid) {
+		return nil, &base.HTTPError{Status: 404, Message: "missing"}
+	} else {
+		return db.getOldRevisionJSON(doc.ID, revid)
+	}
+}
+
 // Returns the body of a revision given a document struct
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
 	if err := AuthorizeAnyDocChannels(db.user, doc.Channels); err != nil {
@@ -121,9 +153,10 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 			return nil, &base.HTTPError{Status: 404, Message: "deleted"}
 		}
 	}
-	body := doc.getRevision(revid)
-	if body == nil {
-		return nil, &base.HTTPError{Status: 404, Message: "missing"}
+	var body Body
+	var err error
+	if body, err = db.getRevision(doc, revid); err != nil {
+		return nil, err
 	}
 	if doc.History[revid].Deleted {
 		body["_deleted"] = true
@@ -139,11 +172,30 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 // Does NOT fill in _id, _rev, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if body := doc.getRevision(revid); body != nil {
+		if body, _ := db.getRevision(doc, revid); body != nil {
 			return body, nil
 		}
 	}
 	return nil, &base.HTTPError{404, "missing"}
+}
+
+// Moves a revision's body out of the document object and into a separate db doc.
+func (db *Database) backupObsoleteRev(doc *document, revid string) error {
+	json := doc.getRevisionJSON(revid)
+	if json == nil {
+		return nil
+	}
+	if err := db.setOldRevisionJSON(doc.ID, revid, json); err != nil {
+		return err
+	}
+	// Nil out the rev's body in the document struct:
+	if revid == doc.CurrentRev {
+		doc.body = nil
+	} else {
+		doc.History.setRevisionBody(revid, nil)
+	}
+	base.LogTo("CRUD+", "Backed up obsolete rev %q/%q", doc.ID, revid)
+	return nil
 }
 
 //////// UPDATING DOCUMENTS:
@@ -185,6 +237,14 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		if err := db.storeAttachments(doc, body, generation, matchRev); err != nil {
 			return nil, err
 		}
+
+		// Move the body of the replaced revision out of the document so it can be compacted later.
+		if matchRev != "" {
+			if err := db.backupObsoleteRev(doc, matchRev); err != nil {
+				return nil, err
+			}
+		}
+
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
@@ -216,6 +276,13 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		if currentRevIndex == 0 {
 			return nil, couchbase.UpdateCancel // No new revisions to add
+		}
+
+		// Move the body of the replaced revision out of the document so it can be compacted later.
+		if parent != "" {
+			if err := db.backupObsoleteRev(doc, parent); err != nil {
+				return nil, err
+			}
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -271,7 +338,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
 
-		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
+		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
 			bodyJSON, _ := json.Marshal(doc.body)
 			doc.History.setRevisionBody(prevCurrentRev, bodyJSON)
@@ -377,7 +444,12 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 	var oldJson string
 	if parentRevID != "" {
-		oldJson = string(doc.getRevisionJSON(parentRevID))
+		var oldJsonBytes []byte
+		oldJsonBytes, err = db.getRevisionJSON(doc, parentRevID)
+		if err != nil {
+			return
+		}
+		oldJson = string(oldJsonBytes)
 	}
 
 	if db.ChannelMapper != nil {

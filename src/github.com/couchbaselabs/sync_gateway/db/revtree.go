@@ -12,7 +12,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	
+
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
@@ -232,16 +232,12 @@ func (tree RevTree) setRevisionBody(revid string, body []byte) {
 
 func (tree RevTree) getParsedRevisionBody(revid string) Body {
 	bodyJSON, found := tree.getRevisionBody(revid)
-	if !found {
+	if !found || len(bodyJSON) == 0 {
 		return nil
 	}
 	var body Body
-	if bodyJSON == nil {
-		body = Body{}
-	} else {
-		if err := json.Unmarshal(bodyJSON, &body); err != nil {
-			panic(fmt.Sprintf("Unexpected error parsing body of rev %q", revid))
-		}
+	if err := json.Unmarshal(bodyJSON, &body); err != nil {
+		panic(fmt.Sprintf("Unexpected error parsing body of rev %q", revid))
 	}
 	return body
 }

@@ -646,6 +646,15 @@ func (h *handler) handleAllDbs() error {
 	return nil
 }
 
+func (h *handler) handleCompact() error {
+	revsDeleted, err := h.db.Compact()
+	if err != nil {
+		return err
+	}
+	h.writeJSON(db.Body{"revs": revsDeleted})
+	return nil
+}
+
 func (h *handler) handleVacuum() error {
 	attsDeleted, err := db.VacuumAttachments(h.context.dbcontext.Bucket)
 	if err != nil {

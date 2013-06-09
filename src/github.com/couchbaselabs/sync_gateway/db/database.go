@@ -156,6 +156,12 @@ func installViews(bucket base.Bucket) error {
                      if (sync.deleted)
                        return;
                      emit(meta.id, sync.rev); }`
+	// View for compaction -- finds all revision docs
+	// Key and value are ignored.
+	oldrevs_map := `function (doc, meta) {
+                     var sync = doc._sync;
+                     if (meta.id.substring(0,10) == "_sync:rev:")
+	                     emit("",null); }`
 	// All-principals view
 	// Key is name; value is true for user, false for role
 	principals_map := `function (doc, meta) {
@@ -221,10 +227,9 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
+
 	ddoc := walrus.DesignDoc{
 		Views: walrus.ViewMap{
-			"all_bits":    walrus.ViewDef{Map: allbits_map},
-			"all_docs":    walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			"principals":  walrus.ViewDef{Map: principals_map},
 			"channels":    walrus.ViewDef{Map: channels_map},
 			"access":      walrus.ViewDef{Map: access_map},
@@ -235,6 +240,19 @@ func installViews(bucket base.Bucket) error {
 	if err != nil {
 		base.Warn("Error installing Couchbase design doc: %v", err)
 	}
+
+	ddoc = walrus.DesignDoc{
+		Views: walrus.ViewMap{
+			"all_bits": walrus.ViewDef{Map: allbits_map},
+			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			"old_revs": walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
+		},
+	}
+	err = bucket.PutDDoc("sync_housekeeping", ddoc)
+	if err != nil {
+		base.Warn("Error installing Couchbase design doc: %v", err)
+	}
+
 	return err
 }
 
@@ -279,7 +297,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 
 func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.Bucket.View("sync_gateway", "all_docs", opts)
+	vres, err := db.Bucket.View("sync_housekeeping", "all_docs", opts)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 	}
@@ -291,7 +309,7 @@ func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 // Deletes a database (and all documents)
 func (db *Database) Delete() error {
 	opts := Body{"stale": false}
-	vres, err := db.Bucket.View("sync_gateway", "all_bits", opts)
+	vres, err := db.Bucket.View("sync_housekeeping", "all_bits", opts)
 	if err != nil {
 		base.Warn("all_bits view returned %v", err)
 		return err
@@ -306,6 +324,29 @@ func (db *Database) Delete() error {
 		}
 	}
 	return nil
+}
+
+// Deletes old revisions that have been moved to individual docs
+func (db *Database) Compact() (int, error) {
+	opts := Body{"stale": false, "reduce": false}
+	vres, err := db.Bucket.View("sync_housekeeping", "old_revs", opts)
+	if err != nil {
+		base.Warn("old_revs view returned %v", err)
+		return 0, err
+	}
+
+	//FIX: Is there a way to do this in one operation?
+	base.Log("Deleting %d old revs of %q ...", len(vres.Rows), db.Name)
+	count := 0
+	for _, row := range vres.Rows {
+		base.LogTo("CRUD", "\tDeleting %q", row.ID)
+		if err := db.Bucket.Delete(row.ID); err != nil {
+			base.Warn("Error deleting %q: %v", row.ID, err)
+		} else {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // Deletes all orphaned CouchDB attachments not used by any revisions.

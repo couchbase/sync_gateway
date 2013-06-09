@@ -73,8 +73,6 @@ func (doc *document) getRevision(revid string) Body {
 			return nil
 		}
 	}
-	body["_id"] = doc.ID
-	body["_rev"] = revid
 	return body
 }
 

@@ -11,6 +11,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -150,7 +151,7 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, context *context
 		return err
 	}
 	var params struct {
-		Name string        `json:"name"`
+		Name string `json:"name"`
 		TTL  int    `json:"ttl"`
 	}
 	err = json.Unmarshal(body, &params)
@@ -193,9 +194,11 @@ type authHandler func(http.ResponseWriter, *http.Request, *context) error
 
 func handleAuthReq(sc *serverContext, fun authHandler) func(http.ResponseWriter, *http.Request) {
 	return func(r http.ResponseWriter, rq *http.Request) {
+		base.LogTo("HTTP", "(admin) %s %s", rq.Method, rq.URL)
 		dbContext := sc.databases[mux.Vars(rq)["db"]]
 		if dbContext == nil {
 			r.WriteHeader(http.StatusNotFound)
+			r.Write([]byte(fmt.Sprintf(`{"error":"No such database"}`)))
 			return
 		}
 		err := fun(r, rq, dbContext)
@@ -239,6 +242,8 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	// so the handlers are moved to the admin port.
 	r.Handle("/{db}/", makeAdminHandler(sc, (*handler).handleDeleteDB)).Methods("DELETE")
 	dbr := r.PathPrefix("/{db}/").Subrouter()
+	dbr.Handle("/_compact",
+		makeAdminHandler(sc, (*handler).handleCompact)).Methods("POST")
 	dbr.Handle("/_vacuum",
 		makeAdminHandler(sc, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_dump/{view}",

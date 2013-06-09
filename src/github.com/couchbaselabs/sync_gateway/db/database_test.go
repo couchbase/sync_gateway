@@ -24,6 +24,11 @@ import (
 //const kTestURL = "http://localhost:8091"
 const kTestURL = "walrus:"
 
+func init() {
+	//base.LogKeys["CRUD"] = true
+	//base.LogKeys["CRUD+"] = true
+}
+
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(kTestURL, "default", "sync_gateway_tests")
 	if err != nil {
@@ -65,19 +70,19 @@ func TestDatabase(t *testing.T) {
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
 	body := Body{"key1": "value1", "key2": 1234}
-	revid, err := db.Put("doc1", body)
+	rev1id, err := db.Put("doc1", body)
 	assertNoError(t, err, "Couldn't create document")
-	assert.Equals(t, revid, body["_rev"])
-	assert.Equals(t, revid, "1-cb0c9a22be0e5a1b01084ec019defa81")
+	assert.Equals(t, rev1id, body["_rev"])
+	assert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
 	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
 	body["key2"] = float64(4321) // otherwise the DeepEquals call below fails
-	revid, err = db.Put("doc1", body)
+	rev2id, err := db.Put("doc1", body)
 	body["_id"] = "doc1"
 	assertNoError(t, err, "Couldn't update document")
-	assert.Equals(t, revid, body["_rev"])
-	assert.Equals(t, revid, "2-488724414d0ed6b398d6d2aeb228d797")
+	assert.Equals(t, rev2id, body["_rev"])
+	assert.Equals(t, rev2id, "2-488724414d0ed6b398d6d2aeb228d797")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc...")
@@ -85,7 +90,13 @@ func TestDatabase(t *testing.T) {
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
 
-	gotbody, err = db.GetRev("doc1", revid, false, nil)
+	log.Printf("Retrieve rev 1...")
+	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
+	assertNoError(t, err, "Couldn't get document with rev 1")
+	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234.0, "_id": "doc1", "_rev": rev1id})
+
+	log.Printf("Retrieve rev 2...")
+	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
 	assertNoError(t, err, "Couldn't get document with rev")
 	assert.DeepEquals(t, gotbody, body)
 
@@ -95,7 +106,7 @@ func TestDatabase(t *testing.T) {
 
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
-	gotbody, err = db.GetRev("doc1", revid, true, nil)
+	gotbody, err = db.GetRev("doc1", rev2id, true, nil)
 	revisions := gotbody["_revisions"].(Body)
 	assert.Equals(t, revisions["start"], 2)
 	assert.DeepEquals(t, revisions["ids"],
@@ -141,6 +152,11 @@ func TestDatabase(t *testing.T) {
 	gotbody, err = db.Get("doc1")
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
+
+	// Compact and check how many obsolete revs were deleted:
+	revsDeleted, err := db.Compact()
+	assertNoError(t, err, "Compact failed")
+	assert.Equals(t, revsDeleted, 2)
 }
 
 func TestAllDocs(t *testing.T) {
