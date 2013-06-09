@@ -10,7 +10,6 @@
 package db
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"github.com/couchbaselabs/walrus"
@@ -179,15 +178,25 @@ func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	return nil, &base.HTTPError{404, "missing"}
 }
 
-// Moves a revision's body out of the document object and into a separate db doc.
-func (db *Database) backupObsoleteRev(doc *document, revid string) error {
-	json := doc.getRevisionJSON(revid)
-	if json == nil {
-		return nil
+// Moves a revision's ancestor's body out of the document object and into a separate db doc.
+func (db *Database) backupAncestorRevs(doc *document, revid string) error {
+	// Find an ancestor that still has JSON in the document:
+	var json []byte
+	for {
+		if revid = doc.History.getParent(revid); revid == "" {
+			return nil // No ancestors with JSON found
+		} else if json = doc.getRevisionJSON(revid); json != nil {
+			break
+		}
 	}
+
+	// Store the JSON as a separate doc in the bucket:
 	if err := db.setOldRevisionJSON(doc.ID, revid, json); err != nil {
+		// This isn't fatal since we haven't lost any information; just warn about it.
+		base.Warn("backupAncestorRevs failed: doc=%q rev=%q err=%v", doc.ID, revid, err)
 		return err
 	}
+
 	// Nil out the rev's body in the document struct:
 	if revid == doc.CurrentRev {
 		doc.body = nil
@@ -238,13 +247,6 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 			return nil, err
 		}
 
-		// Move the body of the replaced revision out of the document so it can be compacted later.
-		if matchRev != "" {
-			if err := db.backupObsoleteRev(doc, matchRev); err != nil {
-				return nil, err
-			}
-		}
-
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
@@ -276,13 +278,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		if currentRevIndex == 0 {
 			return nil, couchbase.UpdateCancel // No new revisions to add
-		}
-
-		// Move the body of the replaced revision out of the document so it can be compacted later.
-		if parent != "" {
-			if err := db.backupObsoleteRev(doc, parent); err != nil {
-				return nil, err
-			}
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -361,6 +356,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			return
 		}
 
+		// Move the body of the replaced revision out of the document so it can be compacted later.
+		db.backupAncestorRevs(doc, newRevID)
+
 		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
 		// But be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
@@ -422,7 +420,7 @@ func (db *Database) Post(body Body) (string, string, error) {
 		return "", "", &base.HTTPError{Status: http.StatusNotFound,
 			Message: "No previous revision to replace"}
 	}
-	docid := createUUID()
+	docid := base.CreateUUID()
 	rev, err := db.Put(docid, body)
 	if err != nil {
 		docid = ""
@@ -442,6 +440,8 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 // access to channels, and reject invalid documents.
 func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
 	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
+
+	// Get the parent revision, to pass to the sync function:
 	var oldJson string
 	if parentRevID != "" {
 		var oldJsonBytes []byte
@@ -453,6 +453,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 	}
 
 	if db.ChannelMapper != nil {
+		// Call the ChannelMapper:
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
@@ -617,7 +618,7 @@ func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
 	doc, err := db.getDoc(docid)
 	if err != nil {
-		if !isMissingDocError(err) {
+		if !base.IsDocNotFoundError(err) {
 			base.Warn("RevDiff(%q) --> %T %v", docid, err, err)
 			// If something goes wrong getting the doc, treat it as though it's nonexistent.
 		}
@@ -657,22 +658,4 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 		}
 	}
 	return
-}
-
-//////// HELPER FUNCTIONS:
-
-// Returns a cryptographically-random 160-bit number encoded as a hex string.
-func createUUID() string {
-	bytes := make([]byte, 16)
-	n, err := rand.Read(bytes)
-	if n < 16 {
-		base.LogPanic("Failed to generate random ID: %s", err)
-	}
-	return fmt.Sprintf("%x", bytes)
-}
-
-// Returns true if the input error is an HTTP 404 status.
-func isMissingDocError(err error) bool {
-	httpstatus, _ := base.ErrorAsHTTPStatus(err)
-	return httpstatus == 404
 }

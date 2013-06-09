@@ -26,6 +26,16 @@ func GenerateRandomSecret() string {
 	return fmt.Sprintf("%x", randomBytes)
 }
 
+// Returns a cryptographically-random 160-bit number encoded as a hex string.
+func CreateUUID() string {
+	bytes := make([]byte, 16)
+	n, err := rand.Read(bytes)
+	if n < 16 {
+		LogPanic("Failed to generate random ID: %s", err)
+	}
+	return fmt.Sprintf("%x", bytes)
+}
+
 // This is a workaround for an incompatibility between Go's JSON marshaler and CouchDB.
 // Go parses JSON numbers into float64 type, and then when it marshals float64 to JSON it uses
 // scientific notation if the number is more than six digits long, even if it's an integer.

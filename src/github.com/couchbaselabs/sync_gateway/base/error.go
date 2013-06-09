@@ -79,13 +79,16 @@ func CouchHTTPErrorName(status int) string {
 	return fmt.Sprintf("%d", status)
 }
 
-// Returns true if an error is a Couchbase doc-not-found error
+// Returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
 	switch err := err.(type) {
 	case *gomemcached.MCResponse:
 		return err.Status == gomemcached.KEY_ENOENT
 	case walrus.MissingError:
 		return true
+	case *HTTPError:
+		return err.Status == http.StatusNotFound
+	default:
+		return false
 	}
-	return false
 }
