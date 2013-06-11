@@ -22,51 +22,127 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+func internalUserName(name string) string {
+	if name == "GUEST" {
+		return ""
+	}
+	return name
+}
+
+func externalUserName(name string) string {
+	if name == "" {
+		return "GUEST"
+	}
+	return name
+}
+
 //////// USER & ROLE REQUESTS:
 
-// Common behavior of putUser and putRole
-func putPrincipal(r http.ResponseWriter, rq *http.Request, context *context, name string, princ auth.Principal) error {
-	context.auth.InvalidateChannels(princ)
+// Public serialization of User/Role as used in the admin REST API.
+type PrincipalJSON struct {
+	Name              *string  `json:"name,omitempty"`
+	ExplicitChannels  base.Set `json:"admin_channels,omitempty"`
+	Channels          base.Set `json:"all_channels"`
+	Email             string   `json:"email,omitempty"`
+	Disabled          bool     `json:"disabled,omitempty"`
+	Password          *string  `json:"password,omitempty"`
+	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
+	RoleNames         []string `json:"roles,omitempty"`
+}
 
+func marshalPrincipal(princ auth.Principal) ([]byte, error) {
+	name := externalUserName(princ.Name())
+	info := PrincipalJSON{
+		Name:             &name,
+		ExplicitChannels: princ.ExplicitChannels().AsSet(),
+		Channels:         princ.Channels().AsSet(),
+	}
+	if user, ok := princ.(auth.User); ok {
+		info.Email = user.Email()
+		info.Disabled = user.Disabled()
+		info.ExplicitRoleNames = user.ExplicitRoleNames()
+		info.RoleNames = user.RoleNames()
+	}
+	return json.Marshal(info)
+}
+
+// Handles PUT and POST for a user or a role.
+func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, name string, isUser bool) error {
+	// Unmarshal the request body into a PrincipalJSON struct:
+	body, _ := ioutil.ReadAll(rq.Body)
+	var newInfo PrincipalJSON
+	var err error
+	if err = json.Unmarshal(body, &newInfo); err != nil {
+		return err
+	}
+
+	var princ auth.Principal
+	var user auth.User
 	if rq.Method == "POST" {
-		name = princ.Name()
-		if name == "" {
+		// On POST, take the name from the "name" property in the request body:
+		if newInfo.Name == nil {
 			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
 		}
-	} else if princ.Name() != name {
-		return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
+		name = *newInfo.Name
+	} else {
+		// ON PUT, get the existing user/role (if any):
+		if newInfo.Name != nil && *newInfo.Name != name {
+			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
+		}
+		if isUser {
+			user, err = context.auth.GetUser(internalUserName(name))
+			princ = user
+		} else {
+			princ, err = context.auth.GetRole(name)
+		}
+		if err != nil {
+			return err
+		}
 	}
-	err := context.auth.Save(princ)
-	if err == nil {
-		r.WriteHeader(http.StatusCreated)
+
+	if princ == nil {
+		// If user/role didn't exist already, instantiate a new one:
+		if isUser {
+			user, err = context.auth.NewUser(internalUserName(name), "", nil)
+			princ = user
+		} else {
+			princ, err = context.auth.NewRole(name, nil)
+		}
+		if err != nil {
+			return err
+		}
 	}
-	return err
+
+	// Now update the Principal object from the properties in the request:
+	princ.ExplicitChannels().UpdateAtSequence(newInfo.ExplicitChannels,
+		context.dbcontext.LastSequence()+1)
+	if isUser {
+		user.SetEmail(newInfo.Email)
+		if newInfo.Password != nil {
+			user.SetPassword(*newInfo.Password)
+		}
+		user.SetDisabled(newInfo.Disabled)
+		user.SetExplicitRoleNames(newInfo.ExplicitRoleNames)
+	}
+
+	// And finally save the Principal:
+	if err = context.auth.Save(princ); err != nil {
+		return err
+	}
+	r.WriteHeader(http.StatusCreated)
+	return nil
 }
 
 // Handles PUT or POST to /user/*
 func putUser(r http.ResponseWriter, rq *http.Request, context *context) error {
-	muxed := mux.Vars(rq)
-	username := muxed["name"]
-	if username == "GUEST" {
-		username = "" //todo handle this at model layer?
-	}
-	body, _ := ioutil.ReadAll(rq.Body)
-	user, err := context.auth.UnmarshalUser(body, username, context.dbcontext.LastSequence()+1)
-	if err != nil {
-		return err
-	}
-	return putPrincipal(r, rq, context, username, user)
+	username := mux.Vars(rq)["name"]
+	return updatePrincipal(r, rq, context, username, true)
 }
 
 // Handles PUT or POST to /role/*
 func putRole(r http.ResponseWriter, rq *http.Request, context *context) error {
 	rolename := mux.Vars(rq)["name"]
-	body, _ := ioutil.ReadAll(rq.Body)
-	role, err := context.auth.UnmarshalRole(body, rolename, context.dbcontext.LastSequence()+1)
-	if err != nil {
-		return err
-	}
-	return putPrincipal(r, rq, context, rolename, role)
+	return updatePrincipal(r, rq, context, rolename, false)
 }
 
 func deleteUser(r http.ResponseWriter, rq *http.Request, context *context) error {
@@ -92,19 +168,15 @@ func deleteRole(r http.ResponseWriter, rq *http.Request, context *context) error
 }
 
 func getUserInfo(r http.ResponseWriter, rq *http.Request, context *context) error {
-	muxed := mux.Vars(rq)
-	username := muxed["name"]
-	if username == "GUEST" {
-		username = "" //todo handle this at model layer?
-	}
-	user, err := context.auth.GetUser(username)
+	user, err := context.auth.GetUser(internalUserName(mux.Vars(rq)["name"]))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	bytes, err := json.Marshal(user)
+
+	bytes, err := marshalPrincipal(user)
 	r.Write(bytes)
 	return err
 }
@@ -117,7 +189,7 @@ func getRoleInfo(r http.ResponseWriter, rq *http.Request, context *context) erro
 		}
 		return err
 	}
-	bytes, err := json.Marshal(role)
+	bytes, err := marshalPrincipal(role)
 	r.Write(bytes)
 	return err
 }
