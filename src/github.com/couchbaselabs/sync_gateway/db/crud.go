@@ -142,8 +142,14 @@ func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error)
 
 // Returns the body of a revision given a document struct
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
+	// FIX: This only authorizes vs the current revision, not the one the client asked for!
 	if err := AuthorizeAnyDocChannels(db.user, doc.Channels); err != nil {
-		// FIX: This only authorizes vs the current revision, not the one the client asked for!
+		// As a special case, you don't need channel access to see a deletion revision,
+		// otherwise the client's replicator can't process the deletion (since deletions
+		// usually aren't on any channels at all!) But don't show the full body. (See #59)
+		if revid != "" && doc.History[revid].Deleted {
+			return Body{"_id": doc.ID, "_rev": revid, "_deleted": true}, nil
+		}
 		return nil, err
 	}
 	if revid == "" {
