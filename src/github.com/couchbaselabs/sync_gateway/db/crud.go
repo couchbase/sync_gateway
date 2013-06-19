@@ -103,7 +103,7 @@ func (db *Database) authorizeDoc(doc *document, revid string) error {
 		// Authenticate against specific revision:
 		return db.user.AuthorizeAnyChannel(rev.Channels)
 	} else {
-		// No such revision
+		// No such revision; let the caller proceed and return a 404
 		return nil
 	}
 }
@@ -376,16 +376,47 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		}
 		doc.Sequence = docSequence
 
-		// Update the document struct's channel assignment and user access.
-		// (This uses the new sequence # so has to be done after updating doc.Sequence)
-		changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
-		changedPrincipals = doc.Access.updateAccess(doc, access)
-		changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
-		if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-			// If this update affects user/role access privileges, make sure the write blocks till
-			// the new value is indexable, otherwise when a User/Role updates (using a view) it
-			// might not incorporate the effects of this change.
-			writeOpts |= walrus.Indexable
+		if doc.CurrentRev != prevCurrentRev {
+			// Most of the time this update will change the doc's current rev. (The exception is
+			// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
+			// need to update the doc's top-level Channels and Access properties to correspond
+			// to the current rev's state.
+			if newRevID != doc.CurrentRev {
+				// In some cases an older revision might become the current one. If so, get its
+				// channels & access, for purposes of updating the doc:
+				var curBody Body
+				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
+					base.LogTo("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
+						docid, newRevID, doc.CurrentRev)
+					curParent := doc.History[doc.CurrentRev].Parent
+					channels, access, roles, err = db.getChannelsAndAccess(doc, curBody, curParent)
+					if err != nil {
+						return
+					}
+				} else {
+					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
+					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+						"on it (err=%v)", docid, doc.CurrentRev, err)
+					channels = nil
+					access = nil
+					roles = nil
+				}
+			} else {
+				base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
+					docid, newRevID, prevCurrentRev)
+			}
+
+			// Update the document struct's channel assignment and user access.
+			// (This uses the new sequence # so has to be done after updating doc.Sequence)
+			changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
+			changedPrincipals = doc.Access.updateAccess(doc, access)
+			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
+			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
+				// If this update affects user/role access privileges, make sure the write blocks till
+				// the new value is indexable, otherwise when a User/Role updates (using a view) it
+				// might not incorporate the effects of this change.
+				writeOpts |= walrus.Indexable
+			}
 		}
 
 		// Return the new raw document value for the bucket to store.
