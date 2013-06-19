@@ -19,6 +19,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
+	"github.com/robertkrimen/otto/underscore"
 )
 
 //const kTestURL = "http://localhost:8091"
@@ -27,6 +28,7 @@ const kTestURL = "walrus:"
 func init() {
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["CRUD+"] = true
+	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
 func testBucket() base.Bucket {
@@ -361,8 +363,8 @@ func TestAccessFunctionValidation(t *testing.T) {
 }
 
 func TestAccessFunction(t *testing.T) {
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Access"] = true
+	//base.LogKeys["CRUD"] = true
+	//base.LogKeys["Access"] = true
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
@@ -406,4 +408,18 @@ func TestDocIDs(t *testing.T) {
 	assert.Equals(t, db.realDocID("_foo"), "")
 	assert.Equals(t, db.realDocID("foo"), "foo")
 	assert.Equals(t, db.realDocID("_design/foo"), "_design/foo")
+}
+
+func BenchmarkDatabase(b *testing.B) {
+	base.LogLevel = 2
+	for i := 0; i < b.N; i++ {
+		bucket, _ := ConnectToBucket(kTestURL, "default", fmt.Sprintf("b-%d", i))
+		context, _ := NewDatabaseContext("db", bucket)
+		db, _ := CreateDatabase(context)
+
+		body := Body{"key1": "value1", "key2": 1234}
+		db.Put(fmt.Sprintf("doc%d", i), body)
+
+		db.Close()
+	}
 }

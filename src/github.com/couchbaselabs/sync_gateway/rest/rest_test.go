@@ -21,12 +21,17 @@ import (
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
+	"github.com/robertkrimen/otto/underscore"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
+
+func init() {
+	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
+}
 
 //////// REST TESTER HELPER CLASS:
 

@@ -16,7 +16,12 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/robertkrimen/otto"
+	"github.com/robertkrimen/otto/underscore"
 )
+
+func init() {
+	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
+}
 
 func parse(jsonStr string) map[string]interface{} {
 	var parsed map[string]interface{}
@@ -222,6 +227,8 @@ func TestEmptyChannelMapper(t *testing.T) {
 
 // channel mapper fn that uses _ underscore JS library
 func TestChannelMapperUnderscoreLib(t *testing.T) {
+	underscore.Enable() // It really slows down unit tests (by making otto.New take a lot longer)
+	defer underscore.Disable()
 	mapper, err := NewChannelMapper(`function(doc) {channel(_.first(doc.channels));}`)
 	assertNoError(t, err, "Couldn't create mapper")
 	defer mapper.Stop()
