@@ -302,6 +302,7 @@ func ParseCommandLine() *ServerConfig {
 			Pretty:         *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
+					name:   *dbName,
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,
