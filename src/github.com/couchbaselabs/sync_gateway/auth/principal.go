@@ -38,6 +38,9 @@ type Principal interface {
 	// Returns an error if the Principal does not have access to all the channels in the set.
 	AuthorizeAllChannels(channels base.Set) error
 
+	// Returns an error if the Principal does not have access to any of the channels in the set.
+	AuthorizeAnyChannel(channels base.Set) error
+
 	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
 	// the guest user, else 403.
 	UnauthError(message string) error

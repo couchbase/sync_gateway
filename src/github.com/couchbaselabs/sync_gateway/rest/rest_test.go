@@ -590,10 +590,15 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &docBody)
 	assert.DeepEquals(t, docBody, db.Body{"_id": "alpha", "_rev": rev2, "_deleted": true})
 
-	// Access without deletion revID shouldn't be allowed since doc is not in Alice's channels:
+	// Access without deletion revID shouldn't be allowed (since doc is not in Alice's channels):
 	response = rt.send(requestByUser("GET", "/db/alpha", "", "alice"))
 	assert.Equals(t, response.Code, 403)
 
+	// A bogus rev ID should return a 404:
 	response = rt.send(requestByUser("GET", "/db/alpha?rev=bogus", "", "alice"))
-	assert.Equals(t, response.Code, 403)
+	assert.Equals(t, response.Code, 404)
+
+	// Get the old revision, which should still be accessible:
+	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
+	assert.Equals(t, response.Code, 200)
 }

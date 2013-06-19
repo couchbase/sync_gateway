@@ -222,7 +222,7 @@ func (h *handler) handleAllDocs() error {
 			} else {
 				continue
 			}
-		} else if err := h.db.AuthorizeDoc(id.DocID); err != nil {
+		} else if err := h.db.AuthorizeDocID(id.DocID, id.RevID); err != nil {
 			continue
 		}
 		row.Value = map[string]string{"rev": id.RevID}

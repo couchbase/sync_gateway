@@ -12,22 +12,24 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbaselabs/go.assert"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
-					"2-two": {ID: "2-two", Parent: "1-one"},
-					"1-one": {ID: "1-one"}}
+					"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
+					"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
 var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"2-two":  {ID: "2-two", Parent: "1-one"},
 	"1-one":  {ID: "1-one"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
-const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""]}`
+const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}

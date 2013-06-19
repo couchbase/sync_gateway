@@ -20,31 +20,34 @@ type RevKey string
 
 // Information about a single revision.
 type RevInfo struct {
-	ID      string
-	Parent  string
-	Deleted bool
-	Body    []byte
+	ID       string
+	Parent   string
+	Deleted  bool
+	Body     []byte
+	Channels base.Set
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
-type RevTree map[string]RevInfo
+type RevTree map[string]*RevInfo
 
 // The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs    []string `json:"revs"`              // The revision IDs
-	Parents []int    `json:"parents"`           // Index of parent of each revision (-1 if root)
-	Deleted []int    `json:"deleted,omitempty"` // Indexes of revisions that are deletions
-	Bodies  []string `json:"bodies,omitempty"`  // JSON of each revision
+	Revs     []string   `json:"revs"`              // The revision IDs
+	Parents  []int      `json:"parents"`           // Index of parent of each revision (-1 if root)
+	Deleted  []int      `json:"deleted,omitempty"` // Indexes of revisions that are deletions
+	Bodies   []string   `json:"bodies,omitempty"`  // JSON of each revision
+	Channels []base.Set `json:"channels"`
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
 	n := len(tree)
 	rep := revTreeList{
-		Revs:    make([]string, n),
-		Parents: make([]int, n),
-		Bodies:  make([]string, n),
+		Revs:     make([]string, n),
+		Parents:  make([]int, n),
+		Bodies:   make([]string, n),
+		Channels: make([]base.Set, n),
 	}
 	revIndexes := map[string]int{"": -1}
 
@@ -53,6 +56,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
 		rep.Bodies[i] = string(info.Body)
+		rep.Channels[i] = info.Channels
 		if info.Deleted {
 			if rep.Deleted == nil {
 				rep.Deleted = make([]int, 0, 1)
@@ -85,11 +89,14 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		if rep.Bodies != nil && len(rep.Bodies[i]) > 0 {
 			info.Body = []byte(rep.Bodies[i])
 		}
+		if rep.Channels != nil {
+			info.Channels = rep.Channels[i]
+		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
 		}
-		tree[revid] = info
+		tree[revid] = &info
 	}
 	if rep.Deleted != nil {
 		for _, i := range rep.Deleted {
@@ -113,7 +120,7 @@ func (tree RevTree) getInfo(revid string) *RevInfo {
 	if !exists {
 		panic("can't find rev")
 	}
-	return &info
+	return info
 }
 
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
@@ -204,7 +211,7 @@ func (tree RevTree) addRevision(info RevInfo) {
 	if parent != "" && !tree.contains(parent) {
 		panic(fmt.Sprintf("parent id %q is missing", parent))
 	}
-	tree[revid] = info
+	tree[revid] = &info
 }
 
 func (tree RevTree) getRevisionBody(revid string) ([]byte, bool) {
@@ -227,7 +234,6 @@ func (tree RevTree) setRevisionBody(revid string, body []byte) {
 		panic(fmt.Sprintf("rev id %q not found", revid))
 	}
 	info.Body = body
-	tree[revid] = info // yes, this is necessary, because info is a _copy_
 }
 
 func (tree RevTree) getParsedRevisionBody(revid string) Body {

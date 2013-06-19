@@ -81,31 +81,31 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	return body, nil
 }
 
-// Checks whether the current user is allowed to access the given doc ID.
-// If not, returns an error.
-func (db *Database) AuthorizeDoc(docid string) error {
+// Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
+func (db *Database) AuthorizeDocID(docid, revid string) error {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
 		return err
 	}
-	return AuthorizeAnyDocChannels(db.user, doc.Channels)
+	return db.authorizeDoc(doc, revid)
 }
 
-// Returns an HTTP 403 error if the User is not allowed to access any of the document's channels.
-// A nil User means access control is disabled, so the function will return nil.
-func AuthorizeAnyDocChannels(user auth.User, channels ChannelMap) error {
-	if user == nil {
+// Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
+func (db *Database) authorizeDoc(doc *document, revid string) error {
+	user := db.user
+	if doc == nil || user == nil {
+		return nil // A nil User means access control is disabled
+	}
+	if revid == "" {
+		revid = doc.CurrentRev
+	}
+	if rev := doc.History[revid]; rev != nil {
+		// Authenticate against specific revision:
+		return db.user.AuthorizeAnyChannel(rev.Channels)
+	} else {
+		// No such revision
 		return nil
 	}
-	for channel, removed := range channels {
-		if removed == nil && user.CanSeeChannel(channel) {
-			return nil
-		}
-	}
-	if user.CanSeeChannel("*") {
-		return nil // Doc is not in any channels, but user has all-access
-	}
-	return user.UnauthError("You are not allowed to see this")
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
@@ -140,14 +140,13 @@ func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error)
 	}
 }
 
-// Returns the body of a revision given a document struct
+// Returns the body of a revision given a document struct. Checks user access.
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
-	// FIX: This only authorizes vs the current revision, not the one the client asked for!
-	if err := AuthorizeAnyDocChannels(db.user, doc.Channels); err != nil {
+	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
-		if revid != "" && doc.History[revid].Deleted {
+		if revid != "" && doc.History[revid] != nil && doc.History[revid].Deleted {
 			return Body{"_id": doc.ID, "_rev": revid, "_deleted": true}, nil
 		}
 		return nil, err
@@ -360,6 +359,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
 			return
+		}
+		if len(channels) > 0 {
+			doc.History[newRevID].Channels = channels
 		}
 
 		// Move the body of the replaced revision out of the document so it can be compacted later.

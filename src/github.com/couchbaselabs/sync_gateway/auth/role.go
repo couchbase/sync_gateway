@@ -39,7 +39,7 @@ func init() {
 func (role *roleImpl) initRole(name string, channels base.Set) error {
 	channels = ch.ExpandingStar(channels)
 	role.Name_ = name
-	role.ExplicitChannels_ = ch.AtSequence(channels,1)
+	role.ExplicitChannels_ = ch.AtSequence(channels, 1)
 	return role.validate()
 }
 
@@ -151,8 +151,12 @@ func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(role, channels)
 }
 
-// Returns an HTTP 403 error if the Role is not allowed to access all the given channels.
-// A nil Role means access control is disabled, so the function will return nil.
+func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
+	return authorizeAnyChannel(role, channels)
+}
+
+// Returns an HTTP 403 error if the Principal is not allowed to access all the given channels.
+// A nil Principal means access control is disabled, so the function will return nil.
 func authorizeAllChannels(princ Principal, channels base.Set) error {
 	var forbidden []string
 	for channel, _ := range channels {
@@ -167,4 +171,15 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 		return princ.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
 	}
 	return nil
+}
+
+// Returns an HTTP 403 error if the Principal is not allowed to access any of the given channels.
+// A nil Role means access control is disabled, so the function will return nil.
+func authorizeAnyChannel(princ Principal, channels base.Set) error {
+	for channel, _ := range channels {
+		if princ.CanSeeChannel(channel) {
+			return nil
+		}
+	}
+	return princ.UnauthError("You are not allowed to see this")
 }

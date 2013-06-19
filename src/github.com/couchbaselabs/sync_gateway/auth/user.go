@@ -240,6 +240,10 @@ func (user *userImpl) AuthorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(user, channels)
 }
 
+func (user *userImpl) AuthorizeAnyChannel(channels base.Set) error {
+	return authorizeAnyChannel(user, channels)
+}
+
 func (user *userImpl) InheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
