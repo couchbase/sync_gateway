@@ -12,10 +12,8 @@ package db
 import (
 	"encoding/json"
 	"math"
-	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
-	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -24,6 +22,11 @@ import (
 // The maximum number of entries that will be kept in a ChangeLog. If the length would overflow
 // this limit, the earliest/oldest entries are removed to make room.
 var MaxChangeLogLength = 500
+
+// Enable keeping a channel-log for the "*" channel. *ALL* revisions are written to this channel,
+// which could be expensive in a busy environment. The only time this channel is needed is if
+// someone has access to "*" (e.g. admin-party) and tracks its changes feed.
+var EnableStarChannelLog = true
 
 // Options for Database.getChanges
 type ChangesOptions struct {
@@ -114,6 +117,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// First, if we need to backfill from the view, write its early entries to the channel:
 		if viewFeed != nil {
+			rebuildLog := channelLog == nil && (EnableStarChannelLog || channel != "*")
 			newLog := channels.ChangeLog{Since: since}
 			for change := range viewFeed {
 				if len(log) > 0 && change.seqNo >= log[0].Sequence {
@@ -121,7 +125,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 					break
 				}
 				feed <- change
-				if channelLog == nil && channel != "*" {
+				if rebuildLog {
 					// If there wasn't any channel log, build up a new one from the view:
 					newLog.Add(channels.LogEntry{
 						Sequence: change.seqNo,
@@ -134,7 +138,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				}
 			}
 
-			if channelLog == nil && channel != "*" {
+			if rebuildLog {
 				// Save the missing channel log we just rebuilt:
 				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
 					channel, len(newLog.Entries))
@@ -206,6 +210,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 			}
 			opts["limit"] = limit
 
+			changeWaiter := db.tapListener.NewWaiter()
 			var vres ViewResult
 			var err error
 			for len(vres.Rows) == 0 {
@@ -216,7 +221,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 					return
 				}
 				if len(vres.Rows) == 0 {
-					if !options.Wait || !db.WaitForRevision(channels.SetOf(channel)) {
+					if !options.Wait || !changeWaiter.Wait() {
 						return
 					}
 				}
@@ -277,6 +282,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	output := make(chan *ChangeEntry, kChangesViewPageSize)
 	go func() {
 		defer close(output)
+		changeWaiter := db.tapListener.NewWaiter()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 		for {
@@ -357,7 +363,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again
-			if sentSomething || !waitMode || !db.WaitForRevision(chans) {
+			if sentSomething || !waitMode || !changeWaiter.Wait() {
 				break
 			}
 
@@ -384,40 +390,6 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 		}
 	}
 	return changes, err
-}
-
-//////// WAITING FOR NEW REVISIONS:
-
-func (context *DatabaseContext) startRevisionNotifier() error {
-	tapFeed, err := context.Bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
-	if err != nil {
-		return err
-	}
-
-	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
-	go func() {
-		for event := range tapFeed.Events() {
-			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
-				key := string(event.Key)
-				if strings.HasPrefix(key, "_sync:log:") ||
-					strings.HasPrefix(key, "_sync:user") || strings.HasPrefix(key, "_sync:role") {
-					base.LogTo("Changes+", "Notifying that %q changed (key=%q)", context.Name, key)
-					context.tapNotifier.Broadcast()
-				}
-			}
-		}
-	}()
-	context.tapFeed = tapFeed
-	return nil
-}
-
-func (db *Database) WaitForRevision(chans base.Set) bool {
-	base.LogTo("Changes", "\twaiting for a revision...")
-	db.tapNotifier.L.Lock()
-	defer db.tapNotifier.L.Unlock()
-	db.tapNotifier.Wait()
-	base.LogTo("Changes", "\t...done waiting")
-	return true
 }
 
 //////// SEQUENCE ALLOCATION:
@@ -456,8 +428,8 @@ func (db *Database) AddChangeLog(channelName string, log channels.ChangeLog) (ad
 
 // Adds a new change to a channel log.
 func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, parentRevID string) error {
-	if channelName == "*" {
-		return nil // never keep a channel log for "*": there'd be too much contention
+	if channelName == "*" && !EnableStarChannelLog {
+		return nil
 	}
 	logDocID := channelLogDocID(channelName)
 	return db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
@@ -486,5 +458,13 @@ func (db *Database) AddToChangeLogs(changedChannels base.Set, channelMap Channel
 			err = err1
 		}
 	}
+
+	// Finally, add to the universal "*" channel.
+	if EnableStarChannelLog {
+		if err1 := db.AddToChangeLog("*", entry, parentRevID); err != nil {
+			err = err1
+		}
+	}
+
 	return err
 }

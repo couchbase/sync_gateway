@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -31,8 +30,7 @@ var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 type DatabaseContext struct {
 	Name          string                  // Database name
 	Bucket        base.Bucket             // Storage
-	tapFeed       base.TapFeed            // Observes changes to bucket
-	tapNotifier   *sync.Cond              // Posts notifications when documents are updated
+	tapListener   changeListener          // Listens on server Tap feed
 	sequences     *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper *channels.ChannelMapper // Runs JS 'sync' function
 }
@@ -58,16 +56,17 @@ func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Buc
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
 	context := &DatabaseContext{
-		Name:        dbName,
-		Bucket:      bucket,
-		tapNotifier: sync.NewCond(&sync.Mutex{}),
+		Name:   dbName,
+		Bucket: bucket,
 	}
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
 		return nil, err
 	}
-	context.startRevisionNotifier()
+	if err = context.tapListener.Start(bucket); err != nil {
+		return nil, err
+	}
 	return context, nil
 }
 
@@ -75,9 +74,7 @@ func (context *DatabaseContext) Close() {
 	if context.ChannelMapper != nil {
 		context.ChannelMapper.Stop()
 	}
-	if context.tapFeed != nil {
-		context.tapFeed.Close()
-	}
+	context.tapListener.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil
 }
