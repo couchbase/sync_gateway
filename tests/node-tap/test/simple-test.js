@@ -7,7 +7,8 @@ var //config = require("./config.js"),
   var httpAgent = require("http").globalAgent;
   httpAgent.maxSockets = 1000000;
 
-var db = coax("http://localhost:4984/default")
+// launch with ./run.sh examples/admin_party.json
+var db = coax("http://localhost:4984/db")
 
 
 test("sync gateway database is reachable", function(t){
