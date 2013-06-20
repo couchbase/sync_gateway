@@ -520,8 +520,10 @@ loop:
 				}
 			}
 			// Reset the timeout after sending an entry:
-			timer.Stop()
-			timer = nil
+			if timer != nil {
+				timer.Stop()
+				timer = nil
+			}
 		case <-heartbeat:
 			err = h.writeln([]byte{})
 		case <-timeout:
