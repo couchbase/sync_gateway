@@ -493,7 +493,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.DeepEquals(t, alice.RoleNames(), []string{"bogus", "hipster"})
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1})
-	assert.DeepEquals(t, zegpold.RoleNames(), []string(nil))
+	assert.DeepEquals(t, zegpold.RoleNames(), []string{})
 
 	// Check the _changes feed:
 	var changes struct {

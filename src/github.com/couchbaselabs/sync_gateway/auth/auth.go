@@ -114,8 +114,8 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 				if err := auth.rebuildRoles(user); err != nil {
 					return nil, err
 				}
+				changed = true
 			}
-			changed = true
 		}
 
 		if changed {
@@ -159,6 +159,9 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		}
 	}
 	roles := base.MergeStringArrays(user.ExplicitRoleNames(), computedRoles)
+	if roles == nil {
+		roles = []string{} // it mustn't be nil; nil means it's unknown
+	}
 	base.LogTo("Access", "Computed roles for %q: %s", user.Name(), roles)
 	user.setRoleNames(roles)
 	return nil

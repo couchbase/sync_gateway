@@ -38,7 +38,7 @@ type userImplBody struct {
 	PasswordHash_      *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
 	Password_          *string                    `json:"password,omitempty"`
 	ExplicitRoleNames_ []string                   `json:"admin_roles,omitempty"`
-	RoleNames_         []string                   `json:"roles,omitempty"`
+	RoleNames_         []string                   `json:"roles"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -68,7 +68,10 @@ func (auth *Authenticator) defaultGuestUser() User {
 
 // Creates a new User object.
 func (auth *Authenticator) NewUser(username string, password string, channels base.Set) (User, error) {
-	user := &userImpl{auth: auth}
+	user := &userImpl{
+		auth:         auth,
+		userImplBody: userImplBody{RoleNames_: []string{}},
+	}
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
