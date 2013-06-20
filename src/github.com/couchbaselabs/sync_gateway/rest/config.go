@@ -25,7 +25,7 @@ import (
 
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = ":4985"
-var DefaultServer = "http://localhost:8091"
+var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
 // JSON object that defines the server configuration.
