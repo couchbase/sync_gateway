@@ -1,0 +1,22 @@
+{
+  "name": "sync-gateway-tap",
+  "version": "0.0.0",
+  "description": "Tests for Rest api correctness and performance on Sync Gateway.",
+  "main": "test.js",
+  "repository": "",
+  "keywords": [
+    "test",
+    "Couchbase",
+    "mobile",
+    "sync"
+  ],
+  "dependencies" : ["coax", "fast-stats", "async"],
+  "devDependencies": {
+    "tap": "~0.3.3"
+  },
+  "scripts": {
+    "test": "tap ./test --tap"
+  },
+  "author": "Chris Anderson",
+  "license": "Apache 2"
+}

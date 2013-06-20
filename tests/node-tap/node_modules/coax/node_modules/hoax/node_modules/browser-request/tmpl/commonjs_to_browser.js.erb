@@ -1,0 +1,42 @@
+<%# Convert a CommonJS file to a traditional browser Javascript file.
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  #     http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+%>
+
+!function() {
+  function require(path) {
+    if(path === './xmlhttprequest')
+      return window && {'XMLHttpRequest':window.XMLHttpRequest}
+    throw new Error('require() unsupported in the browser build. Use RequireJS or Ender.')
+  }
+
+  var exports = {}
+    , module = { 'exports': exports }
+
+  if(typeof window === 'undefined') {
+    if(typeof console !== 'undefined' && console && console.error)
+      console.error('Cannot find global "window" object. Is this a browser?')
+
+    // XXX Global variable
+    window = {}
+  }
+
+  run_module()
+  window["<%= module_name %>"] = module.exports
+
+  function run_module() {
+    // Begin CommonJS file
+<%= content %>
+    // End CommonJS file
+  }
+}();
