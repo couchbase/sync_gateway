@@ -1,0 +1,60 @@
+<%# Convert a browser Javascript file to CommonJS.
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  #     http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+%>
+
+!function(window) {
+  if(typeof exports === 'undefined')
+    throw new Error('Cannot find global "exports" object. Is this really CommonJS?')
+  if(typeof module === 'undefined')
+    throw new Error('Cannot find global "module" object. Is this really CommonJS?')
+  if(!module.exports)
+    throw new Error('Cannot find global "module.exports" object. Is this really CommonJS?')
+
+  // Define globals to simulate a browser environment.
+  window = window || {}
+
+  var document = window.document || {}
+  if(!window.document)
+    window.document = document
+
+  var navigator = window.navigator || {}
+  if(!window.navigator)
+    window.navigator = navigator
+
+  if(!navigator.userAgent)
+    navigator.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_2) AppleWebKit/534.51.22 (KHTML, like Gecko) Version/5.1.1 Safari/534.51.22';
+
+  // Remember the old values in window. If the inner code changes anything, export that as a module and restore the old window value.
+  var win = {}
+    , key
+
+  for (key in window)
+    if(window.hasOwnProperty(key))
+      win[key] = window[key]
+
+  run_code()
+
+  for (key in window)
+    if(window.hasOwnProperty(key))
+      if(window[key] !== win[key]) {
+        exports[key] = window[key]
+        window[key] = win[key]
+      }
+
+  function run_code() {
+    // Begin browser file: <%= module_name %>
+<%= content %>
+    // End browser file: <%= module_name %>
+  }
+}(typeof window !== 'undefined' ? window : {});

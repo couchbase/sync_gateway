@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Browser Request Test: {{name}}</title>
+  </head>
+  <body>
+    <p>
+      Tests for <a href="https://github.com/iriscouch/browser-request">Browser Request</a>: {{name}}
+    </p>
+
+    <div id="foo">
+      So far, this is a "semi-automated" test suite.
+      <ol>
+        <li>Open the Javascript console or Firebug</li>
+        <li>Type out some request() calls</li>
+        <li>Repeat</li>
+      </ol>
+    </div>
+
+    <a href="..">Back</a>
+
+    <script>
+      function t(request) {
+        console.log('1..2')
+
+        request('/_all_dbs', function(er, res) {
+          if(er) throw er
+          console.log('ok 1 GET /_all_dbs %d: %s', res.statusCode, res.body)
+
+          request({'url':'/', 'json':true}, function(er, res) {
+            if(er) throw er
+            console.log('ok 2 GET / %d: %o', res.statusCode, res.body)
+          })
+        })
+      }
+    </script>
+
+    <script data-main="test.js" src="{{script}}"></script>
+
+    {{#start_me}}
+      <script>
+        // The browser (and minified browser) tests need a manual test suite kick-off.
+        t(window.request)
+      </script>
+    {{/start_me}}
+  </body>
+</html>
