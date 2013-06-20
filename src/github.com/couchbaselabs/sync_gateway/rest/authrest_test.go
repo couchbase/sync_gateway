@@ -110,13 +110,14 @@ func TestRoleAPI(t *testing.T) {
 }
 
 func TestGuestUser(t *testing.T) {
-	var rt restTester
+	rt := restTester{noAdminParty: true}
 	response := rt.sendAdminRequest("GET", "/db/user/GUEST", "")
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["name"], "GUEST")
-	assert.DeepEquals(t, body["admin_channels"], []interface{}{"*"})
+	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
+	assert.DeepEquals(t, body["admin_channels"], nil)
 
 	response = rt.sendAdminRequest("PUT", "/db/user/GUEST", `{"disabled":true}`)
 	assertStatus(t, response, 201)

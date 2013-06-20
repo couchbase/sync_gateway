@@ -283,10 +283,12 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	roles = []string{}
 	for _, row := range vres.Rows {
 		name := row.Key.(string)
-		if row.Value.(bool) {
-			users = append(users, name)
-		} else {
-			roles = append(roles, name)
+		if name != "" {
+			if row.Value.(bool) {
+				users = append(users, name)
+			} else {
+				roles = append(roles, name)
+			}
 		}
 	}
 	return

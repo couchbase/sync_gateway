@@ -58,7 +58,10 @@ func IsValidEmail(email string) bool {
 func (auth *Authenticator) defaultGuestUser() User {
 	user := &userImpl{
 		roleImpl: roleImpl{
-			ExplicitChannels_: ch.AtSequence(ch.SetOf("*"), 1),
+			ExplicitChannels_: ch.AtSequence(ch.SetOf(), 1),
+		},
+		userImplBody: userImplBody{
+			Disabled_: true,
 		},
 		auth: auth,
 	}

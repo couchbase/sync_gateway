@@ -38,9 +38,10 @@ func init() {
 var gBucketCounter = 0
 
 type restTester struct {
-	_bucket base.Bucket
-	_sc     *serverContext
-	syncFn  string // put the sync() function source in here (optional)
+	_bucket      base.Bucket
+	_sc          *serverContext
+	noAdminParty bool   // Unless this is true, Admin Party is in full effect
+	syncFn       string // put the sync() function source in here (optional)
 }
 
 func (rt *restTester) bucket() base.Bucket {
@@ -63,6 +64,10 @@ func (rt *restTester) bucket() base.Bucket {
 			panic(fmt.Sprintf("Error from addDatabase: %v", err))
 		}
 
+		if !rt.noAdminParty {
+			rt.setAdminParty(true)
+		}
+
 		runtime.SetFinalizer(rt, func(rt *restTester) {
 			log.Printf("Finalizing bucket %s", rt._bucket.GetName())
 			rt._sc.close()
@@ -74,6 +79,18 @@ func (rt *restTester) bucket() base.Bucket {
 func (rt *restTester) serverContext() *serverContext {
 	rt.bucket()
 	return rt._sc
+}
+
+func (rt *restTester) setAdminParty(partyTime bool) {
+	a := rt.serverContext().databases["db"].auth
+	guest, _ := a.GetUser("")
+	guest.SetDisabled(!partyTime)
+	var chans channels.TimedSet
+	if partyTime {
+		chans = channels.AtSequence(base.SetOf("*"), 1)
+	}
+	guest.SetExplicitChannels(chans)
+	a.Save(guest)
 }
 
 func (rt *restTester) sendRequest(method, resource string, body string) *httptest.ResponseRecorder {
