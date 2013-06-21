@@ -676,6 +676,9 @@ func (h *handler) handleCreateDB() error {
 }
 
 func (h *handler) handleGetDB() error {
+	if h.rq.Method == "HEAD" {
+		return nil
+	}
 	lastSeq := h.db.LastSequence()
 	response := db.Body{
 		"db_name":              h.db.Name,

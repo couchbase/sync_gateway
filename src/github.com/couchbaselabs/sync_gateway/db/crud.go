@@ -478,7 +478,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
 func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
-	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
+	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 
 	// Get the parent revision, to pass to the sync function:
 	var oldJson string
