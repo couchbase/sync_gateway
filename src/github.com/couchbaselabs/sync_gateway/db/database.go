@@ -163,7 +163,6 @@ func installViews(bucket base.Bucket) error {
 	// Key is name; value is true for user, false for role
 	principals_map := `function (doc, meta) {
 							 var prefix = meta.id.substring(0,11);
-							 //emit("foo","bar");
 							 if (prefix == "_sync:user:" || prefix == "_sync:role:")
 			                     emit(meta.id.substring(11), prefix == "_sync:user:"); }`
 	// By-channels view.
@@ -188,7 +187,7 @@ func installViews(bucket base.Bucket) error {
 									emit([name, sequence], value);
 								else
 									emit([name, removed.seq],
-										 [meta.id, removed.rev, removed.del, true]);
+										 [meta.id, removed.rev, !!removed.del, true]);
 							}
 						}
 					}`
