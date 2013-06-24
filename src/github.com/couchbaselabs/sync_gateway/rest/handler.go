@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -29,6 +30,13 @@ import (
 
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
+
+// If set to true, diagnostic data will be dumped if there's a problem with MIME multipart data
+var DebugMultipart bool = false
+
+func init() {
+	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
+}
 
 var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
 var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
@@ -168,8 +176,22 @@ func (h *handler) readDocument() (db.Body, error) {
 	case "", "application/json":
 		return h.readJSON()
 	case "multipart/related":
-		reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
-		return db.ReadMultipartDocument(reader)
+		if DebugMultipart {
+			raw, err := ioutil.ReadAll(h.rq.Body)
+			if err != nil {
+				return nil, err
+			}
+			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
+			body, err := db.ReadMultipartDocument(reader)
+			if err != nil {
+				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
+				base.Warn("Error reading MIME data: copied to file GatewayPUT.mime")
+			}
+			return body, err
+		} else {
+			reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
+			return db.ReadMultipartDocument(reader)
+		}
 	}
 	return nil, &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
 }
