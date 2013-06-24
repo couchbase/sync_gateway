@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -252,6 +254,40 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, context *context
 	return nil
 }
 
+func handleProfiling(r http.ResponseWriter, rq *http.Request) {
+	err := func() error {
+		var params struct {
+			File string `json:"file"`
+		}
+		body, err := ioutil.ReadAll(rq.Body)
+		if err != nil {
+			return err
+		}
+		if len(body) > 0 {
+			if err = json.Unmarshal(body, &params); err != nil {
+				return err
+			}
+		}
+
+		if params.File != "" {
+			base.Log("Profiling to %s ...", params.File)
+			f, err := os.Create(params.File)
+			if err != nil {
+				return err
+			}
+			pprof.StartCPUProfile(f)
+		} else {
+			base.Log("...ending profile.")
+			pprof.StopCPUProfile()
+		}
+		return nil
+	}()
+	if err != nil {
+		status, _ := base.ErrorAsHTTPStatus(err)
+		r.WriteHeader(status)
+	}
+}
+
 //////// HTTP HANDLER:
 
 func renderError(err error, r http.ResponseWriter) {
@@ -327,6 +363,8 @@ func createAuthHandler(sc *serverContext) http.Handler {
 		makeAdminHandler(sc, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_changes",
 		makeAdminHandler(sc, (*handler).handleChanges)).Methods("GET", "HEAD")
+
+	r.HandleFunc("/_profile", handleProfiling).Methods("POST")
 
 	return r
 }
