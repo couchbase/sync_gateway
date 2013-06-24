@@ -21,6 +21,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -35,6 +37,8 @@ var PrettyPrint bool = false
 // If set to true, diagnostic data will be dumped if there's a problem with MIME multipart data
 var DebugMultipart bool = false
 
+var lastSerialNum uint64 = 0
+
 func init() {
 	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
 }
@@ -45,13 +49,15 @@ var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server   *serverContext
-	context  *context
-	rq       *http.Request
-	response http.ResponseWriter
-	db       *db.Database
-	user     auth.User
-	admin    bool
+	server       *serverContext
+	context      *context
+	rq           *http.Request
+	response     http.ResponseWriter
+	db           *db.Database
+	user         auth.User
+	admin        bool
+	startTime    time.Time
+	serialNumber uint64
 }
 
 type handlerMethod func(*handler) error
@@ -59,12 +65,8 @@ type handlerMethod func(*handler) error
 // Creates an http.Handler that will run a handler with the given method
 func makeAdminHandler(server *serverContext, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := &handler{
-			server:   server,
-			rq:       rq,
-			response: r,
-			admin:    true,
-		}
+		h := newHandler(server, r, rq)
+		h.admin = true
 		err := h.invoke(method)
 		h.writeError(err)
 	})
@@ -73,20 +75,28 @@ func makeAdminHandler(server *serverContext, method handlerMethod) http.Handler 
 // Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *serverContext, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := &handler{
-			server:   server,
-			rq:       rq,
-			response: r,
-			admin:    false,
-		}
+		h := newHandler(server, r, rq)
 		err := h.invoke(method)
 		h.writeError(err)
 	})
 }
 
+func newHandler(server *serverContext, r http.ResponseWriter, rq *http.Request) *handler {
+	h := &handler{
+		server:       server,
+		rq:           rq,
+		response:     r,
+		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
+	}
+	if base.LogKeys["HTTP+"] {
+		h.startTime = time.Now()
+	}
+	return h
+}
+
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
-	base.LogTo("HTTP", "%s %s", h.rq.Method, h.rq.URL)
+	base.LogTo("HTTP", " #%03d: %s %s", h.serialNumber, h.rq.Method, h.rq.URL)
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
@@ -223,7 +233,11 @@ func (h *handler) setHeader(name string, value string) {
 }
 
 func (h *handler) logStatus(status int, message string) {
-	base.LogTo("HTTP+", "    --> %d %s", status, message)
+	if base.LogKeys["HTTP+"] {
+		duration := float64(time.Since(h.startTime)) / float64(time.Millisecond)
+		base.LogTo("HTTP+", "#%03d:     --> %d %s  (%.1f ms)",
+			h.serialNumber, status, message, duration)
+	}
 }
 
 // Writes an object to the response in JSON format.
@@ -349,7 +363,7 @@ func (h *handler) writeStatus(status int, message string) {
 
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	base.LogTo("HTTP", "    --> %d %s", status, message)
+	base.LogTo("HTTP", " #%03d:     --> %d %s", h.serialNumber, status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
