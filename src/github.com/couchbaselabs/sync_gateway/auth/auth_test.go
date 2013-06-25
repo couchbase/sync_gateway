@@ -148,6 +148,8 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, canSeeAllChannels(user, ch.SetOf("x", "y")))
 	assert.False(t, canSeeAllChannels(user, ch.SetOf("*")))
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
+	assert.False(t, user.AuthorizeAnyChannel(ch.SetOf("x", "y")) == nil)
+	assert.False(t, user.AuthorizeAnyChannel(ch.SetOf()) == nil)
 
 	// User with access to one channel:
 	user.setChannels(ch.AtSequence(ch.SetOf("x"), 1))
@@ -157,6 +159,9 @@ func TestUserAccess(t *testing.T) {
 	assert.False(t, canSeeAllChannels(user, ch.SetOf("x", "y")))
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
 	assert.False(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
+	assert.True(t, user.AuthorizeAnyChannel(ch.SetOf("x", "y")) == nil)
+	assert.False(t, user.AuthorizeAnyChannel(ch.SetOf("y")) == nil)
+	assert.False(t, user.AuthorizeAnyChannel(ch.SetOf()) == nil)
 
 	// User with access to one channel and one derived channel:
 	user.setChannels(ch.AtSequence(ch.SetOf("x", "z"), 1))
@@ -196,6 +201,9 @@ func TestUserAccess(t *testing.T) {
 	assert.True(t, canSeeAllChannels(user, ch.SetOf("x", "y")))
 	assert.True(t, user.AuthorizeAllChannels(ch.SetOf("x", "y")) == nil)
 	assert.True(t, user.AuthorizeAllChannels(ch.SetOf("*")) == nil)
+	assert.True(t, user.AuthorizeAnyChannel(ch.SetOf("x")) == nil)
+	assert.True(t, user.AuthorizeAnyChannel(ch.SetOf("*")) == nil)
+	assert.True(t, user.AuthorizeAnyChannel(ch.SetOf()) == nil)
 }
 
 func TestGetMissingUser(t *testing.T) {

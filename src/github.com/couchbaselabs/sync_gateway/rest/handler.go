@@ -150,6 +150,9 @@ func (h *handler) checkAuth() error {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
+	if h.user != nil && h.user.Name() != "" {
+		base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
+	}
 	return nil
 }
 

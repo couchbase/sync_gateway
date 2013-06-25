@@ -127,7 +127,7 @@ func (role *roleImpl) validate() error {
 
 func (role *roleImpl) UnauthError(message string) error {
 	if role.Name_ == "" {
-		return &base.HTTPError{http.StatusUnauthorized, "login required"}
+		return &base.HTTPError{http.StatusUnauthorized, "login required: " + message}
 	}
 	return &base.HTTPError{http.StatusForbidden, message}
 }
@@ -176,10 +176,14 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 // Returns an HTTP 403 error if the Principal is not allowed to access any of the given channels.
 // A nil Role means access control is disabled, so the function will return nil.
 func authorizeAnyChannel(princ Principal, channels base.Set) error {
-	for channel, _ := range channels {
-		if princ.CanSeeChannel(channel) {
-			return nil
+	if len(channels) > 0 {
+		for channel, _ := range channels {
+			if princ.CanSeeChannel(channel) {
+				return nil
+			}
 		}
+	} else if princ.Channels().Contains("*") {
+		return nil
 	}
 	return princ.UnauthError("You are not allowed to see this")
 }
