@@ -19,7 +19,6 @@ import (
 	"regexp"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -161,8 +160,6 @@ func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun 
 		if nag {
 			base.Warn("Sync function undefined; using default")
 		}
-		// Always have a channel mapper object even if it does nothing:
-		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
 	}
 
 	c := &context{
