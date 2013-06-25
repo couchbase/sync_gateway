@@ -71,9 +71,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 }
 
 func (context *DatabaseContext) Close() {
-	if context.ChannelMapper != nil {
-		context.ChannelMapper.Stop()
-	}
 	context.tapListener.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil

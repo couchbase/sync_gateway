@@ -196,12 +196,6 @@ func compileAccessMap(input map[string][]string, prefix string) (AccessMap, erro
 	return access, nil
 }
 
-// This is just for testing
-func (mapper *ChannelMapper) callMapper(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	res, err := mapper.js.DirectCall(body, walrus.JSONString(oldBodyJSON), userCtx)
-	return res.(*ChannelMapperOutput), err
-}
-
 func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	result1, err := mapper.js.Call(body, walrus.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
@@ -213,8 +207,4 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{},
 
 func (mapper *ChannelMapper) SetFunction(fnSource string) (bool, error) {
 	return mapper.js.SetFunction(fnSource)
-}
-
-func (mapper *ChannelMapper) Stop() {
-	mapper.js.Stop()
 }
