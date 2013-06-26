@@ -442,13 +442,18 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 
 	// Add the new revision to the change logs of all affected channels:
-	db.AddToChangeLogs(changedChannels, doc.Channels, channels.LogEntry{
+	newEntry := channels.LogEntry{
 		Sequence: doc.Sequence,
 		DocID:    docid,
 		RevID:    newRevID,
-		Deleted:  doc.History[newRevID].Deleted,
-		Hidden:   newRevID != doc.CurrentRev,
-	}, parentRevID)
+	}
+	if doc.History[newRevID].Deleted {
+		newEntry.Flags |= channels.Deleted
+	}
+	if newRevID != doc.CurrentRev {
+		newEntry.Flags |= channels.Hidden
+	}
+	db.AddToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
 
 	return newRevID, nil
 }

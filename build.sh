@@ -6,5 +6,5 @@
 # by setting $GOPATH.
 
 export GOBIN="`pwd`/bin"
-./go.sh install github.com/couchbaselabs/sync_gateway
+./go.sh install -v github.com/couchbaselabs/sync_gateway
 echo "Success! Output is bin/sync_gateway"

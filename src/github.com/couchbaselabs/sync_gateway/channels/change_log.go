@@ -5,20 +5,24 @@ import (
 )
 
 type LogEntry struct {
-	Sequence uint64 `json:"seq"`           // Sequence number
-	DocID    string `json:"doc,omitempty"` // Empty if this entry has been replaced
-	RevID    string `json:"rev,omitempty"` // Empty if this entry has been replaced
-	Deleted  bool   `json:"del,omitempty"` // True for deletion tombstone revision
-	Removed  bool   `json:"rmv,omitempty"` // True for channel-removal tombstone revision
-	Hidden   bool   `json:"hid,omitempty"` // True for losing rev of a conflict
+	Sequence uint64 // Sequence number
+	DocID    string // Empty if this entry has been replaced
+	RevID    string // Empty if this entry has been replaced
+	Flags    uint8  // Deleted/Removed/Hidden flags
 }
+
+const (
+	Deleted = 1 << iota
+	Removed
+	Hidden
+)
 
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
 // The log is sorted by order revisions were added; this is mostly but not always by sequence.
 // Revisions replaced by children are not removed but their doc/rev IDs are changed to "".
 type ChangeLog struct {
-	Since   uint64     // Sequence this is valid after
-	Entries []LogEntry // Entries in order they were added (not sequence order!)
+	Since   uint64      // Sequence this is valid after
+	Entries []*LogEntry // Entries in order they were added (not sequence order!)
 }
 
 // Adds a new entry, always at the end of the log.
@@ -29,7 +33,7 @@ func (cp *ChangeLog) Add(newEntry LogEntry) {
 	if len(cp.Entries) == 0 || newEntry.Sequence <= cp.Since {
 		cp.Since = newEntry.Sequence - 1
 	}
-	cp.Entries = append(cp.Entries, newEntry)
+	cp.Entries = append(cp.Entries, &newEntry)
 }
 
 // Removes a specific doc/revision, if present. (It's actually marked as empty, not removed.)
@@ -55,16 +59,18 @@ func (cp *ChangeLog) Update(newEntry LogEntry, parentRevID string) {
 }
 
 // Removes the oldest entries to limit the log's length to `maxLength`.
-func (cp *ChangeLog) TruncateTo(maxLength int) {
+func (cp *ChangeLog) TruncateTo(maxLength int) int {
 	if remove := len(cp.Entries) - maxLength; remove > 0 {
 		cp.Since = cp.Entries[remove-1].Sequence
 		cp.Entries = cp.Entries[remove:]
+		return remove
 	}
+	return 0
 }
 
 // Returns a slice of all entries added after the one with sequence number 'after'.
 // (They're not guaranteed to have higher sequence numbers; sequences may be added out of order.)
-func (cp *ChangeLog) EntriesAfter(after uint64) []LogEntry {
+func (cp *ChangeLog) EntriesAfter(after uint64) []*LogEntry {
 	entries := cp.Entries
 	for i, entry := range entries {
 		if entry.Sequence == after {
