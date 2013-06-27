@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -322,6 +323,14 @@ func ParseCommandLine() *ServerConfig {
 // Starts and runs the server given its configuration. (This function never returns.)
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
+
+	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
+		cpus := runtime.NumCPU()
+		if cpus > 1 {
+			runtime.GOMAXPROCS(cpus)
+			base.Log("Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+		}
+	}
 
 	sc := newServerContext(config)
 	for _, dbConfig := range config.Databases {
