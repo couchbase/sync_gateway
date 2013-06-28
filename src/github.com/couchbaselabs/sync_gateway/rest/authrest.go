@@ -22,6 +22,7 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
+	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
 func internalUserName(name string) string {
@@ -113,6 +114,12 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 		if err != nil {
 			return err
 		}
+	}
+
+	// workaround for issue #99
+	if princ.ExplicitChannels() == nil {
+		newSet := make(ch.TimedSet, 0)
+		princ.SetExplicitChannels(newSet)
 	}
 
 	// Now update the Principal object from the properties in the request:
