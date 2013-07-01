@@ -177,7 +177,7 @@ func TestAllDocs(t *testing.T) {
 	base.LogKeys["Changes"] = true
 	defer func() { base.LogKeys["Changes"] = false }()
 
-	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	ids := make([]IDAndRev, 100)
 	for i := 0; i < 100; i++ {
@@ -279,7 +279,7 @@ func TestConflicts(t *testing.T) {
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
-	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// base.LogKeys["CRUD"] = true
 	// base.LogKeys["Changes"] = true
@@ -362,7 +362,7 @@ func TestInvalidChannel(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	db.ChannelMapper, _ = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	body := Body{"channels": []string{"bad name"}}
 	_, err := db.Put("doc", body)
@@ -374,8 +374,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	var err error
-	db.ChannelMapper, err = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
-	assertNoError(t, err, "Couldn't create channel mapper")
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
 	_, err = db.Put("doc1", body)
@@ -412,8 +411,7 @@ func TestAccessFunction(t *testing.T) {
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 
 	var err error
-	db.ChannelMapper, err = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
-	assertNoError(t, err, "Couldn't create channel mapper")
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
 	user.SetExplicitRoleNames([]string{"animefan", "tumblr"})

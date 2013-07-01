@@ -709,7 +709,7 @@ func (h *handler) handleDesign() error {
 	filter := "ok"
 	if h.db.DatabaseContext.ChannelMapper != nil {
 		hash := sha1.New()
-		io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Src)
+		io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
 		filter = fmt.Sprint(hash.Sum(nil))
 	}
 	h.writeJSON(db.Body{"filters": db.Body{"bychannel": filter}})

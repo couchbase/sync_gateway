@@ -87,7 +87,7 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
 	if context.ChannelMapper != nil {
 		_, err = context.ChannelMapper.SetFunction(syncFun)
 	} else {
-		context.ChannelMapper, err = channels.NewChannelMapper(syncFun)
+		context.ChannelMapper = channels.NewChannelMapper(syncFun)
 	}
 	if err != nil {
 		base.Warn("Error setting sync function: %s", err)
