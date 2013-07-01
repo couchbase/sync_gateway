@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -293,89 +292,4 @@ func handleProfiling(r http.ResponseWriter, rq *http.Request) {
 		status, _ := base.ErrorAsHTTPStatus(err)
 		r.WriteHeader(status)
 	}
-}
-
-//////// HTTP HANDLER:
-
-func renderError(err error, r http.ResponseWriter) {
-	status, message := base.ErrorAsHTTPStatus(err)
-	r.Header().Set("Content-Type", "application/json")
-	r.WriteHeader(status)
-	jsonOut, _ := json.Marshal(map[string]interface{}{"error": status, "reason": message})
-	r.Write(jsonOut)
-}
-
-type authHandler func(http.ResponseWriter, *http.Request, *context) error
-
-func handleAuthReq(sc *serverContext, fun authHandler) func(http.ResponseWriter, *http.Request) {
-	return func(r http.ResponseWriter, rq *http.Request) {
-		base.LogTo("HTTP", "(admin) %s %s", rq.Method, rq.URL)
-		dbContext := sc.databases[mux.Vars(rq)["db"]]
-		if dbContext == nil {
-			r.WriteHeader(http.StatusNotFound)
-			r.Write([]byte(fmt.Sprintf(`{"error":"No such database"}`)))
-			return
-		}
-		err := fun(r, rq, dbContext)
-		if err != nil {
-			renderError(err, r)
-		}
-	}
-}
-
-// Starts a simple REST listener that will get and set user credentials.
-func createAuthHandler(sc *serverContext) http.Handler {
-	r := mux.NewRouter()
-	r.StrictSlash(true)
-
-	r.HandleFunc("/{db}/_session",
-		handleAuthReq(sc, createUserSession)).Methods("POST")
-
-	r.HandleFunc("/{db}/_user",
-		handleAuthReq(sc, getUsers)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/_user/{name}",
-		handleAuthReq(sc, getUserInfo)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/_user/{name}",
-		handleAuthReq(sc, putUser)).Methods("PUT")
-	r.HandleFunc("/{db}/_user/{name}",
-		handleAuthReq(sc, deleteUser)).Methods("DELETE")
-	r.HandleFunc("/{db}/_user/",
-		handleAuthReq(sc, putUser)).Methods("POST")
-
-	r.HandleFunc("/{db}/_role",
-		handleAuthReq(sc, getRoles)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/_role/{name}",
-		handleAuthReq(sc, getRoleInfo)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/_role/{name}",
-		handleAuthReq(sc, putRole)).Methods("PUT")
-	r.HandleFunc("/{db}/_role/{name}",
-		handleAuthReq(sc, deleteRole)).Methods("DELETE")
-	r.HandleFunc("/{db}/_role/",
-		handleAuthReq(sc, putRole)).Methods("POST")
-
-	// The routes below are part of the CouchDB REST API but should only be available to admins,
-	// so the handlers are moved to the admin port.
-	r.Handle("/{db}/", makeAdminHandler(sc, (*handler).handleDeleteDB)).Methods("DELETE")
-	dbr := r.PathPrefix("/{db}/").Subrouter()
-	dbr.Handle("/_compact",
-		makeAdminHandler(sc, (*handler).handleCompact)).Methods("POST")
-	dbr.Handle("/_vacuum",
-		makeAdminHandler(sc, (*handler).handleVacuum)).Methods("POST")
-	dbr.Handle("/_dump/{view}",
-		makeAdminHandler(sc, (*handler).handleDump)).Methods("GET")
-
-	// These routes are available on both the regular and admin ports; the admin port is useful
-	// because it gives 'superuser' access.
-	dbr.Handle("/_all_docs",
-		makeAdminHandler(sc, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_changes",
-		makeAdminHandler(sc, (*handler).handleChanges)).Methods("GET", "HEAD")
-
-	r.HandleFunc("/_profile", handleProfiling).Methods("POST")
-
-	return r
-}
-
-func StartAuthListener(addr string, sc *serverContext) {
-	go http.ListenAndServe(addr, createAuthHandler(sc))
 }

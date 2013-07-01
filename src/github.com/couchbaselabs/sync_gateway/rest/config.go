@@ -340,7 +340,7 @@ func RunServer(config *ServerConfig) {
 	}
 
 	base.Log("Starting auth server on %s", *config.AdminInterface)
-	StartAuthListener(*config.AdminInterface, sc)
+	go http.ListenAndServe(*config.AdminInterface, createAdminHandler(sc))
 
 	base.Log("Starting server on %s ...", *config.Interface)
 	if err := http.ListenAndServe(*config.Interface, createHandler(sc)); err != nil {

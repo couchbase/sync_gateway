@@ -110,7 +110,7 @@ func (rt *restTester) sendAdminRequest(method, resource string, body string) *ht
 	response := httptest.NewRecorder()
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
-	createAuthHandler(rt.serverContext()).ServeHTTP(response, request)
+	createAdminHandler(rt.serverContext()).ServeHTTP(response, request)
 	return response
 }
 
