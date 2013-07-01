@@ -142,13 +142,13 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 	return nil
 }
 
-// Handles PUT or POST to /user/*
+// Handles PUT or POST to /_user/*
 func putUser(r http.ResponseWriter, rq *http.Request, context *context) error {
 	username := mux.Vars(rq)["name"]
 	return updatePrincipal(r, rq, context, username, true)
 }
 
-// Handles PUT or POST to /role/*
+// Handles PUT or POST to /_role/*
 func putRole(r http.ResponseWriter, rq *http.Request, context *context) error {
 	rolename := mux.Vars(rq)["name"]
 	return updatePrincipal(r, rq, context, rolename, false)
@@ -331,26 +331,26 @@ func createAuthHandler(sc *serverContext) http.Handler {
 	r.HandleFunc("/{db}/_session",
 		handleAuthReq(sc, createUserSession)).Methods("POST")
 
-	r.HandleFunc("/{db}/user",
+	r.HandleFunc("/{db}/_user",
 		handleAuthReq(sc, getUsers)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/user/{name}",
+	r.HandleFunc("/{db}/_user/{name}",
 		handleAuthReq(sc, getUserInfo)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/user/{name}",
+	r.HandleFunc("/{db}/_user/{name}",
 		handleAuthReq(sc, putUser)).Methods("PUT")
-	r.HandleFunc("/{db}/user/{name}",
+	r.HandleFunc("/{db}/_user/{name}",
 		handleAuthReq(sc, deleteUser)).Methods("DELETE")
-	r.HandleFunc("/{db}/user/",
+	r.HandleFunc("/{db}/_user/",
 		handleAuthReq(sc, putUser)).Methods("POST")
 
-	r.HandleFunc("/{db}/role",
+	r.HandleFunc("/{db}/_role",
 		handleAuthReq(sc, getRoles)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/role/{name}",
+	r.HandleFunc("/{db}/_role/{name}",
 		handleAuthReq(sc, getRoleInfo)).Methods("GET", "HEAD")
-	r.HandleFunc("/{db}/role/{name}",
+	r.HandleFunc("/{db}/_role/{name}",
 		handleAuthReq(sc, putRole)).Methods("PUT")
-	r.HandleFunc("/{db}/role/{name}",
+	r.HandleFunc("/{db}/_role/{name}",
 		handleAuthReq(sc, deleteRole)).Methods("DELETE")
-	r.HandleFunc("/{db}/role/",
+	r.HandleFunc("/{db}/_role/",
 		handleAuthReq(sc, putRole)).Methods("POST")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
