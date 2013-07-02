@@ -29,8 +29,8 @@ var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
 const (
-	CurrentBranch     = ""
-	CurrentCommit     = ""
+	CurrentBranch     = "myFork"
+	CurrentCommit     = "0b4e3dafc8726bf44d1d47a5d86b5714cc1cb559"
 	FullVersionString = VersionString + " (" + CurrentBranch + " - " + CurrentCommit + ")"
 )
 
