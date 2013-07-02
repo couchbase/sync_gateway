@@ -69,9 +69,9 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 }
 
 // Handles PUT and POST for a user or a role.
-func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, name string, isUser bool) error {
+func (h *handler) updatePrincipal(name string, isUser bool) error {
 	// Unmarshal the request body into a PrincipalJSON struct:
-	body, _ := ioutil.ReadAll(rq.Body)
+	body, _ := ioutil.ReadAll(h.rq.Body)
 	var newInfo PrincipalJSON
 	var err error
 	if err = json.Unmarshal(body, &newInfo); err != nil {
@@ -80,7 +80,7 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 
 	var princ auth.Principal
 	var user auth.User
-	if rq.Method == "POST" {
+	if h.rq.Method == "POST" {
 		// On POST, take the name from the "name" property in the request body:
 		if newInfo.Name == nil {
 			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
@@ -92,10 +92,10 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 		}
 		if isUser {
-			user, err = context.auth.GetUser(internalUserName(name))
+			user, err = h.context.auth.GetUser(internalUserName(name))
 			princ = user
 		} else {
-			princ, err = context.auth.GetRole(name)
+			princ, err = h.context.auth.GetRole(name)
 		}
 		if err != nil {
 			return err
@@ -105,10 +105,10 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 	if princ == nil {
 		// If user/role didn't exist already, instantiate a new one:
 		if isUser {
-			user, err = context.auth.NewUser(internalUserName(name), "", nil)
+			user, err = h.context.auth.NewUser(internalUserName(name), "", nil)
 			princ = user
 		} else {
-			princ, err = context.auth.NewRole(name, nil)
+			princ, err = h.context.auth.NewRole(name, nil)
 		}
 		if err != nil {
 			return err
@@ -123,7 +123,7 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 
 	// Now update the Principal object from the properties in the request:
 	princ.ExplicitChannels().UpdateAtSequence(newInfo.ExplicitChannels,
-		context.dbcontext.LastSequence()+1)
+		h.context.dbcontext.LastSequence()+1)
 	if isUser {
 		user.SetEmail(newInfo.Email)
 		if newInfo.Password != nil {
@@ -134,49 +134,49 @@ func updatePrincipal(r http.ResponseWriter, rq *http.Request, context *context, 
 	}
 
 	// And finally save the Principal:
-	if err = context.auth.Save(princ); err != nil {
+	if err = h.context.auth.Save(princ); err != nil {
 		return err
 	}
-	r.WriteHeader(http.StatusCreated)
+	h.response.WriteHeader(http.StatusCreated)
 	return nil
 }
 
 // Handles PUT or POST to /_user/*
-func putUser(r http.ResponseWriter, rq *http.Request, context *context) error {
-	username := mux.Vars(rq)["name"]
-	return updatePrincipal(r, rq, context, username, true)
+func (h *handler) putUser() error {
+	username := mux.Vars(h.rq)["name"]
+	return h.updatePrincipal(username, true)
 }
 
 // Handles PUT or POST to /_role/*
-func putRole(r http.ResponseWriter, rq *http.Request, context *context) error {
-	rolename := mux.Vars(rq)["name"]
-	return updatePrincipal(r, rq, context, rolename, false)
+func (h *handler) putRole() error {
+	rolename := mux.Vars(h.rq)["name"]
+	return h.updatePrincipal(rolename, false)
 }
 
-func deleteUser(r http.ResponseWriter, rq *http.Request, context *context) error {
-	user, err := context.auth.GetUser(mux.Vars(rq)["name"])
+func (h *handler) deleteUser() error {
+	user, err := h.context.auth.GetUser(mux.Vars(h.rq)["name"])
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return context.auth.Delete(user)
+	return h.context.auth.Delete(user)
 }
 
-func deleteRole(r http.ResponseWriter, rq *http.Request, context *context) error {
-	role, err := context.auth.GetRole(mux.Vars(rq)["name"])
+func (h *handler) deleteRole() error {
+	role, err := h.context.auth.GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return context.auth.Delete(role)
+	return h.context.auth.Delete(role)
 }
 
-func getUserInfo(r http.ResponseWriter, rq *http.Request, context *context) error {
-	user, err := context.auth.GetUser(internalUserName(mux.Vars(rq)["name"]))
+func (h *handler) getUserInfo() error {
+	user, err := h.context.auth.GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -185,12 +185,12 @@ func getUserInfo(r http.ResponseWriter, rq *http.Request, context *context) erro
 	}
 
 	bytes, err := marshalPrincipal(user)
-	r.Write(bytes)
+	h.response.Write(bytes)
 	return err
 }
 
-func getRoleInfo(r http.ResponseWriter, rq *http.Request, context *context) error {
-	role, err := context.auth.GetRole(mux.Vars(rq)["name"])
+func (h *handler) getRoleInfo() error {
+	role, err := h.context.auth.GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -198,35 +198,35 @@ func getRoleInfo(r http.ResponseWriter, rq *http.Request, context *context) erro
 		return err
 	}
 	bytes, err := marshalPrincipal(role)
-	r.Write(bytes)
+	h.response.Write(bytes)
 	return err
 }
 
-func getUsers(r http.ResponseWriter, rq *http.Request, context *context) error {
-	users, _, err := context.dbcontext.AllPrincipalIDs()
+func (h *handler) getUsers() error {
+	users, _, err := h.context.dbcontext.AllPrincipalIDs()
 	if err != nil {
 		return err
 	}
 	bytes, err := json.Marshal(users)
-	r.Write(bytes)
+	h.response.Write(bytes)
 	return err
 }
 
-func getRoles(r http.ResponseWriter, rq *http.Request, context *context) error {
-	_, roles, err := context.dbcontext.AllPrincipalIDs()
+func (h *handler) getRoles() error {
+	_, roles, err := h.context.dbcontext.AllPrincipalIDs()
 	if err != nil {
 		return err
 	}
 	bytes, err := json.Marshal(roles)
-	r.Write(bytes)
+	h.response.Write(bytes)
 	return err
 }
 
 //////// SESSION:
 
 // Generates a login session for a user and returns the session ID and cookie name.
-func createUserSession(r http.ResponseWriter, rq *http.Request, context *context) error {
-	body, err := ioutil.ReadAll(rq.Body)
+func (h *handler) createUserSession() error {
+	body, err := ioutil.ReadAll(h.rq.Body)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, context *context
 	if params.Name == "" || ttl < 1.0 {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
 	}
-	session, err := context.auth.CreateSession(params.Name, ttl)
+	session, err := h.context.auth.CreateSession(params.Name, ttl)
 	if err != nil {
 		return err
 	}
@@ -255,41 +255,35 @@ func createUserSession(r http.ResponseWriter, rq *http.Request, context *context
 	response.Expires = session.Expiration
 	response.CookieName = auth.CookieName
 	bytes, _ := json.Marshal(response)
-	r.Header().Set("Content-Type", "application/json")
-	r.Write(bytes)
+	h.response.Header().Set("Content-Type", "application/json")
+	h.response.Write(bytes)
 	return nil
 }
 
-func handleProfiling(r http.ResponseWriter, rq *http.Request) {
-	err := func() error {
-		var params struct {
-			File string `json:"file"`
+func (h *handler) handleProfiling() error {
+	var params struct {
+		File string `json:"file"`
+	}
+	body, err := ioutil.ReadAll(h.rq.Body)
+	if err != nil {
+		return err
+	}
+	if len(body) > 0 {
+		if err = json.Unmarshal(body, &params); err != nil {
+			return err
 		}
-		body, err := ioutil.ReadAll(rq.Body)
+	}
+
+	if params.File != "" {
+		base.Log("Profiling to %s ...", params.File)
+		f, err := os.Create(params.File)
 		if err != nil {
 			return err
 		}
-		if len(body) > 0 {
-			if err = json.Unmarshal(body, &params); err != nil {
-				return err
-			}
-		}
-
-		if params.File != "" {
-			base.Log("Profiling to %s ...", params.File)
-			f, err := os.Create(params.File)
-			if err != nil {
-				return err
-			}
-			pprof.StartCPUProfile(f)
-		} else {
-			base.Log("...ending profile.")
-			pprof.StopCPUProfile()
-		}
-		return nil
-	}()
-	if err != nil {
-		status, _ := base.ErrorAsHTTPStatus(err)
-		r.WriteHeader(status)
+		pprof.StartCPUProfile(f)
+	} else {
+		base.Log("...ending profile.")
+		pprof.StopCPUProfile()
 	}
+	return nil
 }

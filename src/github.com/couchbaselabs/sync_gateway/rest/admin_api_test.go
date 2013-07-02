@@ -37,7 +37,7 @@ func TestUserAPI(t *testing.T) {
 	assert.Equals(t, body["password"], nil)
 
 	// Check the list of all users:
-	response = rt.sendAdminRequest("GET", "/db/_user", "")
+	response = rt.sendAdminRequest("GET", "/db/_user/", "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, string(response.Body.Bytes()), `["snej"]`)
 
@@ -88,7 +88,7 @@ func TestRoleAPI(t *testing.T) {
 	assert.DeepEquals(t, body["admin_channels"], []interface{}{"fedoras", "fixies"})
 	assert.Equals(t, body["password"], nil)
 
-	response = rt.sendAdminRequest("GET", "/db/_role", "")
+	response = rt.sendAdminRequest("GET", "/db/_role/", "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, string(response.Body.Bytes()), `["hipster"]`)
 

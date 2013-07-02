@@ -339,12 +339,16 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	base.Log("Starting auth server on %s", *config.AdminInterface)
-	go http.ListenAndServe(*config.AdminInterface, createAdminHandler(sc))
+	base.Log("Starting admin server on %s", *config.AdminInterface)
+	go func() {
+		if err := http.ListenAndServe(*config.AdminInterface, CreateAdminHandler(sc)); err != nil {
+			base.LogFatal("HTTP server failed: %v", err)
+		}
+	}()
 
 	base.Log("Starting server on %s ...", *config.Interface)
-	if err := http.ListenAndServe(*config.Interface, createHandler(sc)); err != nil {
-		base.LogFatal("Server failed: ", err.Error())
+	if err := http.ListenAndServe(*config.Interface, CreatePublicHandler(sc)); err != nil {
+		base.LogFatal("HTTP server failed: %v", err)
 	}
 }
 

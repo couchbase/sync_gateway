@@ -37,16 +37,6 @@ func (h *handler) handleRoot() error {
 	return nil
 }
 
-func (h *handler) handleOptions() error {
-	//FIX: This is inaccurate; should figure out what methods the requested URL handles.
-	h.setHeader("Accept", "GET, HEAD, PUT, DELETE, POST")
-	return nil
-}
-
-func (h *handler) handleBadRoute() error {
-	return &base.HTTPError{http.StatusMethodNotAllowed, "unknown route"}
-}
-
 func (h *handler) handleAllDbs() error {
 	dbs := []string{}
 	for _, db := range h.server.databases {

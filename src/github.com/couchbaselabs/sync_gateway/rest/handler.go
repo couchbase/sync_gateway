@@ -63,19 +63,10 @@ type handler struct {
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeAdminHandler(server *serverContext, method handlerMethod) http.Handler {
+func makeHandler(server *serverContext, isAdmin bool, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := newHandler(server, r, rq)
-		h.admin = true
-		err := h.invoke(method)
-		h.writeError(err)
-	})
-}
-
-// Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *serverContext, method handlerMethod) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, r, rq)
+		h.admin = isAdmin
 		err := h.invoke(method)
 		h.writeError(err)
 	})
@@ -103,7 +94,7 @@ func (h *handler) invoke(method handlerMethod) error {
 	if dbname, ok := h.PathVars()["db"]; ok {
 		h.context = h.server.databases[dbname]
 		if h.context == nil {
-			return &base.HTTPError{http.StatusNotFound, "no such database"}
+			return &base.HTTPError{http.StatusNotFound, "no such database '" + dbname + "'"}
 		}
 	}
 

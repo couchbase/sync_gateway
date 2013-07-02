@@ -93,24 +93,29 @@ func (rt *restTester) setAdminParty(partyTime bool) {
 	a.Save(guest)
 }
 
-func (rt *restTester) sendRequest(method, resource string, body string) *httptest.ResponseRecorder {
+type testResponse struct {
+	*httptest.ResponseRecorder
+	rq *http.Request
+}
+
+func (rt *restTester) sendRequest(method, resource string, body string) *testResponse {
 	return rt.send(request(method, resource, body))
 }
 
-func (rt *restTester) send(request *http.Request) *httptest.ResponseRecorder {
-	response := httptest.NewRecorder()
+func (rt *restTester) send(request *http.Request) *testResponse {
+	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
-	createHandler(rt.serverContext()).ServeHTTP(response, request)
+	CreatePublicHandler(rt.serverContext()).ServeHTTP(response, request)
 	return response
 }
 
-func (rt *restTester) sendAdminRequest(method, resource string, body string) *httptest.ResponseRecorder {
+func (rt *restTester) sendAdminRequest(method, resource string, body string) *testResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
-	response := httptest.NewRecorder()
+	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
-	createAdminHandler(rt.serverContext()).ServeHTTP(response, request)
+	CreateAdminHandler(rt.serverContext()).ServeHTTP(response, request)
 	return response
 }
 
@@ -128,10 +133,10 @@ func requestByUser(method, resource, body, username string) *http.Request {
 	return r
 }
 
-func assertStatus(t *testing.T, response *httptest.ResponseRecorder, expectedStatus int) {
+func assertStatus(t *testing.T, response *testResponse, expectedStatus int) {
 	if response.Code != expectedStatus {
-		t.Fatalf("Response status %d (expected %d): %s",
-			response.Code, expectedStatus, response.Body)
+		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
+			response.Code, expectedStatus, response.rq.Method, response.rq.URL, response.Body)
 	}
 }
 
