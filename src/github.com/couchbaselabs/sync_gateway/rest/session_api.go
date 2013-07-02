@@ -12,6 +12,8 @@ package rest
 import (
 	"net/http"
 	"time"
+	"io/ioutil"
+	"encoding/json"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -85,3 +87,41 @@ func (h *handler) makeSession(user auth.User) error {
 	http.SetCookie(h.response, cookie)
 	return h.respondWithSessionInfo()
 }
+
+// ADMIN API: Generates a login session for a user and returns the session ID and cookie name.
+func (h *handler) createUserSession() error {
+	h.assertAdminOnly()
+	body, err := ioutil.ReadAll(h.rq.Body)
+	if err != nil {
+		return err
+	}
+	var params struct {
+		Name string `json:"name"`
+		TTL  int    `json:"ttl"`
+	}
+	err = json.Unmarshal(body, &params)
+	if err != nil {
+		return err
+	}
+	ttl := time.Duration(params.TTL) * time.Second
+	if params.Name == "" || ttl < 1.0 {
+		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
+	}
+	session, err := h.context.auth.CreateSession(params.Name, ttl)
+	if err != nil {
+		return err
+	}
+	var response struct {
+		SessionID  string    `json:"session_id"`
+		Expires    time.Time `json:"expires"`
+		CookieName string    `json:"cookie_name"`
+	}
+	response.SessionID = session.ID
+	response.Expires = session.Expiration
+	response.CookieName = auth.CookieName
+	bytes, _ := json.Marshal(response)
+	h.response.Header().Set("Content-Type", "application/json")
+	h.response.Write(bytes)
+	return nil
+}
+

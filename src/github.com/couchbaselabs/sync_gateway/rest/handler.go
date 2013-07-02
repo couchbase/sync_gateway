@@ -147,6 +147,12 @@ func (h *handler) checkAuth() error {
 	return nil
 }
 
+func (h *handler) assertAdminOnly() {
+	if !h.admin {
+		panic("Admin-only handler called without admin privileges, on " + h.rq.RequestURI)
+	}
+}
+
 func (h *handler) PathVars() map[string]string {
 	return mux.Vars(h.rq)
 }

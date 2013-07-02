@@ -13,14 +13,18 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"encoding/json"
 	"net/http"
+	"os"
+	"runtime/pprof"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.51"
+const VersionString = "Couchbase Sync Gateway/0.59"
 
 type context struct {
 	dbcontext *db.DatabaseContext
@@ -29,9 +33,12 @@ type context struct {
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
-	response := map[string]string{
+	response := map[string]interface{}{
 		"couchdb": "welcome",
 		"version": VersionString,
+	}
+	if h.admin {
+		response["ADMIN"] = true
 	}
 	h.writeJSON(response)
 	return nil
@@ -111,5 +118,34 @@ func (h *handler) handleDesign() error {
 		filter = fmt.Sprint(hash.Sum(nil))
 	}
 	h.writeJSON(db.Body{"filters": db.Body{"bychannel": filter}})
+	return nil
+}
+
+// ADMIN API to turn Go CPU profiling on/off
+func (h *handler) handleProfiling() error {
+	var params struct {
+		File string `json:"file"`
+	}
+	body, err := ioutil.ReadAll(h.rq.Body)
+	if err != nil {
+		return err
+	}
+	if len(body) > 0 {
+		if err = json.Unmarshal(body, &params); err != nil {
+			return err
+		}
+	}
+
+	if params.File != "" {
+		base.Log("Profiling to %s ...", params.File)
+		f, err := os.Create(params.File)
+		if err != nil {
+			return err
+		}
+		pprof.StartCPUProfile(f)
+	} else {
+		base.Log("...ending profile.")
+		pprof.StopCPUProfile()
+	}
 	return nil
 }

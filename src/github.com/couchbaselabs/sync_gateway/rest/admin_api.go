@@ -13,9 +13,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"runtime/pprof"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -70,6 +67,7 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 
 // Handles PUT and POST for a user or a role.
 func (h *handler) updatePrincipal(name string, isUser bool) error {
+	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalJSON struct:
 	body, _ := ioutil.ReadAll(h.rq.Body)
 	var newInfo PrincipalJSON
@@ -154,6 +152,7 @@ func (h *handler) putRole() error {
 }
 
 func (h *handler) deleteUser() error {
+	h.assertAdminOnly()
 	user, err := h.context.auth.GetUser(mux.Vars(h.rq)["name"])
 	if user == nil {
 		if err == nil {
@@ -165,6 +164,7 @@ func (h *handler) deleteUser() error {
 }
 
 func (h *handler) deleteRole() error {
+	h.assertAdminOnly()
 	role, err := h.context.auth.GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
@@ -176,6 +176,7 @@ func (h *handler) deleteRole() error {
 }
 
 func (h *handler) getUserInfo() error {
+	h.assertAdminOnly()
 	user, err := h.context.auth.GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if user == nil {
 		if err == nil {
@@ -190,6 +191,7 @@ func (h *handler) getUserInfo() error {
 }
 
 func (h *handler) getRoleInfo() error {
+	h.assertAdminOnly()
 	role, err := h.context.auth.GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
@@ -220,70 +222,4 @@ func (h *handler) getRoles() error {
 	bytes, err := json.Marshal(roles)
 	h.response.Write(bytes)
 	return err
-}
-
-//////// SESSION:
-
-// Generates a login session for a user and returns the session ID and cookie name.
-func (h *handler) createUserSession() error {
-	body, err := ioutil.ReadAll(h.rq.Body)
-	if err != nil {
-		return err
-	}
-	var params struct {
-		Name string `json:"name"`
-		TTL  int    `json:"ttl"`
-	}
-	err = json.Unmarshal(body, &params)
-	if err != nil {
-		return err
-	}
-	ttl := time.Duration(params.TTL) * time.Second
-	if params.Name == "" || ttl < 1.0 {
-		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
-	}
-	session, err := h.context.auth.CreateSession(params.Name, ttl)
-	if err != nil {
-		return err
-	}
-	var response struct {
-		SessionID  string    `json:"session_id"`
-		Expires    time.Time `json:"expires"`
-		CookieName string    `json:"cookie_name"`
-	}
-	response.SessionID = session.ID
-	response.Expires = session.Expiration
-	response.CookieName = auth.CookieName
-	bytes, _ := json.Marshal(response)
-	h.response.Header().Set("Content-Type", "application/json")
-	h.response.Write(bytes)
-	return nil
-}
-
-func (h *handler) handleProfiling() error {
-	var params struct {
-		File string `json:"file"`
-	}
-	body, err := ioutil.ReadAll(h.rq.Body)
-	if err != nil {
-		return err
-	}
-	if len(body) > 0 {
-		if err = json.Unmarshal(body, &params); err != nil {
-			return err
-		}
-	}
-
-	if params.File != "" {
-		base.Log("Profiling to %s ...", params.File)
-		f, err := os.Create(params.File)
-		if err != nil {
-			return err
-		}
-		pprof.StartCPUProfile(f)
-	} else {
-		base.Log("...ending profile.")
-		pprof.StopCPUProfile()
-	}
-	return nil
 }
