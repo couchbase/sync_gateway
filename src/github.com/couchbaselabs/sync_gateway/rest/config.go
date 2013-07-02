@@ -28,6 +28,12 @@ var DefaultAdminInterface = ":4985"
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
+const (
+	CurrentBranch     = ""
+	CurrentCommit     = ""
+	FullVersionString = VersionString + " (" + CurrentBranch + " - " + CurrentCommit + ")"
+)
+
 // JSON object that defines the server configuration.
 type ServerConfig struct {
 	Interface      *string // Interface to bind REST API to, default ":4984"
@@ -351,5 +357,6 @@ func RunServer(config *ServerConfig) {
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain() {
+	fmt.Println(FullVersionString)
 	RunServer(ParseCommandLine())
 }
