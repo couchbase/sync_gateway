@@ -153,8 +153,10 @@ func TestRoot(t *testing.T) {
 	assertStatus(t, response, 200)
 	response = rt.sendRequest("OPTIONS", "/", "")
 	assertStatus(t, response, 200)
+	assert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
 	response = rt.sendRequest("PUT", "/", "")
 	assertStatus(t, response, 405)
+	assert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
 }
 
 func (rt *restTester) createDoc(t *testing.T, docid string) string {

@@ -11,10 +11,9 @@ package rest
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
-
-	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // Regexes that match database or doc ID component of a path.
@@ -61,9 +60,6 @@ func createHandler(sc *serverContext, admin bool) (*mux.Router, *mux.Router) {
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, admin, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
 
-	// Handle OPTIONS method for any URL:
-	r.PathPrefix("/").Methods("OPTIONS").Handler(makeHandler(sc, admin, (*handler).handleOptions))
-
 	return r, dbr
 }
 
@@ -92,10 +88,7 @@ func CreatePublicHandler(sc *serverContext) http.Handler {
 		r.Handle("/_persona", http.NotFoundHandler())
 	}
 
-	// Global error handler for any unrecognized URL (must be added last):
-	r.PathPrefix("/").Handler(makeHandler(sc, false, (*handler).handleBadRoute))
-
-	return r
+	return wrapRouter(r)
 }
 
 //////// ADMIN API:
@@ -141,18 +134,41 @@ func CreateAdminHandler(sc *serverContext) http.Handler {
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, true, (*handler).handleDump)).Methods("GET")
 
-	// Global error handler for any unrecognized URL (must be added last):
-	r.PathPrefix("/").Handler(makeHandler(sc, true, (*handler).handleBadRoute))
-
-	return r
+	return wrapRouter(r)
 }
 
-func (h *handler) handleOptions() error {
-	//FIX: This is inaccurate; should figure out what methods the requested URL handles.
-	h.setHeader("Accept", "GET, HEAD, PUT, DELETE, POST")
-	return nil
+// Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't
+// match anything -- it handles the OPTIONS method as well as returning either a 404 or 405
+// for URLs that don't match a route.
+func wrapRouter(router *mux.Router) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
+		var match mux.RouteMatch
+		if router.Match(rq, &match) {
+			router.ServeHTTP(response, rq)
+		} else {
+			// What methods would have matched?
+			var options []string
+			for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE"} {
+				if wouldMatch(router, rq, method) {
+					options = append(options, method)
+				}
+			}
+			if len(options) == 0 {
+				response.WriteHeader(http.StatusNotFound)
+			} else {
+				response.Header().Add("Allow", strings.Join(options, ", "))
+				if rq.Method != "OPTIONS" {
+					response.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			}
+		}
+	})
 }
 
-func (h *handler) handleBadRoute() error {
-	return &base.HTTPError{http.StatusMethodNotAllowed, "unknown route"}
+func wouldMatch(router *mux.Router, rq *http.Request, method string) bool {
+	savedMethod := rq.Method
+	rq.Method = method
+	defer func() { rq.Method = savedMethod }()
+	var matchInfo mux.RouteMatch
+	return router.Match(rq, &matchInfo)
 }
