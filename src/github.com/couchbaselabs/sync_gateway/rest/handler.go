@@ -86,7 +86,6 @@ func newHandler(server *ServerContext, r http.ResponseWriter, rq *http.Request) 
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
-	base.LogTo("HTTP", " #%03d: %s %s", h.serialNumber, h.rq.Method, h.rq.URL)
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
@@ -94,6 +93,7 @@ func (h *handler) invoke(method handlerMethod) error {
 	if dbname, ok := h.PathVars()["db"]; ok {
 		dbContext = h.server.Database(dbname)
 		if dbContext == nil {
+			h.logRequestLine()
 			return &base.HTTPError{http.StatusNotFound, "no such database '" + dbname + "'"}
 		}
 	}
@@ -101,9 +101,12 @@ func (h *handler) invoke(method handlerMethod) error {
 	// Authenticate; admin handlers can ignore missing credentials
 	if err := h.checkAuth(dbContext); err != nil {
 		if !h.admin {
+			h.logRequestLine()
 			return err
 		}
 	}
+
+	h.logRequestLine()
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
@@ -117,6 +120,19 @@ func (h *handler) invoke(method handlerMethod) error {
 	return method(h) // Call the actual handler code
 }
 
+func (h *handler) logRequestLine() {
+	if !base.LogKeys["HTTP"] {
+		return
+	}
+	as := ""
+	if h.admin {
+		as = "  (ADMIN)"
+	} else if h.user != nil && h.user.Name() != "" {
+		as = fmt.Sprintf("  (as %s)", h.user.Name)
+	}
+	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
+}
+
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	h.user = nil
 	if context == nil {
@@ -124,20 +140,17 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 
 	// Check cookie first, then HTTP auth:
-	base.TEMP("check cookie")
 	var err error
 	h.user, err = context.Authenticator().AuthenticateCookie(h.rq)
 	if err != nil {
 		return err
 	}
-	base.TEMP("check basic auth")
 	var userName, password string
 	if h.user == nil {
 		userName, password = h.getBasicAuth()
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 	}
 
-	base.TEMP("checkAuth: h.user=%v", h.user)
 	if h.user == nil && !h.admin {
 		cookie, _ := h.rq.Cookie(auth.CookieName)
 		base.Log("Auth failed for username=%q, cookie=%q", userName, cookie)

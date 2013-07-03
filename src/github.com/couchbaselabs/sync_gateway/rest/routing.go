@@ -73,7 +73,7 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 		dbr.Handle("/_persona", makeHandler(sc, true, (*handler).handlePersonaPOST)).Methods("POST")
 	}
 
-	return wrapRouter(r)
+	return wrapRouter(sc, false, r)
 }
 
 //////// ADMIN API:
@@ -124,18 +124,23 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, true, (*handler).handleDump)).Methods("GET")
 
-	return wrapRouter(r)
+	return wrapRouter(sc, true, r)
 }
 
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't
 // match anything -- it handles the OPTIONS method as well as returning either a 404 or 405
 // for URLs that don't match a route.
-func wrapRouter(router *mux.Router) http.Handler {
+func wrapRouter(sc *ServerContext, isAdmin bool, router *mux.Router) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
 		var match mux.RouteMatch
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
 		} else {
+			// Log the request
+			h := newHandler(sc, response, rq)
+			h.admin = isAdmin
+			h.logRequestLine()
+
 			// What methods would have matched?
 			var options []string
 			for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE"} {
@@ -144,11 +149,11 @@ func wrapRouter(router *mux.Router) http.Handler {
 				}
 			}
 			if len(options) == 0 {
-				response.WriteHeader(http.StatusNotFound)
+				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
 				if rq.Method != "OPTIONS" {
-					response.WriteHeader(http.StatusMethodNotAllowed)
+					h.writeStatus(http.StatusMethodNotAllowed, "")
 				}
 			}
 		}
