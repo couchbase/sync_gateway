@@ -301,8 +301,8 @@ func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 
 //////// HOUSEKEEPING:
 
-// Deletes a database (and all documents)
-func (db *Database) Delete() error {
+// Deletes all documents in the database
+func (db *Database) DeleteAllDocs() error {
 	opts := Body{"stale": false}
 	vres, err := db.Bucket.View("sync_housekeeping", "all_bits", opts)
 	if err != nil {

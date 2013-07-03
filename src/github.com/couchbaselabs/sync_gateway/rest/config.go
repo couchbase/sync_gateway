@@ -133,18 +133,27 @@ func (sc *serverContext) close() {
 	}
 }
 
+func checkDbName(dbName string) error {
+	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
+		return &base.HTTPError{http.StatusBadRequest,
+			fmt.Sprintf("Illegal database name: %s", dbName)}
+	}
+	return nil
+}
+
 // Adds a database to the serverContext given its Bucket.
 func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
 	if dbName == "" {
 		dbName = bucket.GetName()
 	}
 
-	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
-		return nil, fmt.Errorf("Illegal database name: %s", dbName)
+	if err := checkDbName(dbName); err != nil {
+		return nil, err
 	}
 
 	if sc.databases[dbName] != nil {
-		return nil, fmt.Errorf("Duplicate database name %q", dbName)
+		return nil, &base.HTTPError{http.StatusConflict,
+			fmt.Sprintf("Duplicate database name %q", dbName)}
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
@@ -187,13 +196,20 @@ func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
 	if config.Bucket != nil {
 		bucketName = *config.Bucket
 	}
+	dbName := config.name
+	if dbName == "" {
+		dbName = bucketName
+	}
+	if err := checkDbName(dbName); err != nil {
+		return err
+	}
 
 	// Connect to the bucket and add the database:
 	bucket, err := db.ConnectToBucket(server, pool, bucketName)
 	if err != nil {
 		return err
 	}
-	context, err := sc.addDatabase(bucket, config.name, config.Sync, true)
+	context, err := sc.addDatabase(bucket, dbName, config.Sync, true)
 	if err != nil {
 		return err
 	}
@@ -203,6 +219,16 @@ func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
 		return nil
 	}
 	return sc.installPrincipals(context, config.Users, "user")
+}
+
+func (sc *serverContext) removeDatabase(dbName string) bool {
+	context := sc.databases[dbName]
+	if context == nil {
+		return false
+	}
+	context.dbcontext.Close()
+	delete(sc.databases, dbName)
+	return true
 }
 
 func (sc *serverContext) installPrincipals(context *context, spec map[string]json.RawMessage, what string) error {

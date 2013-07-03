@@ -178,7 +178,12 @@ func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) 
 // Parses a JSON request body, returning it as a Body map.
 func (h *handler) readJSON() (db.Body, error) {
 	var body db.Body
-	return body, db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &body)
+	return body, h.readJSONInto(&body)
+}
+
+// Parses a JSON request body into a custom structure.
+func (h *handler) readJSONInto(into interface{}) error {
+	return db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, into)
 }
 
 func (h *handler) readDocument() (db.Body, error) {

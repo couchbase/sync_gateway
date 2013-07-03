@@ -33,9 +33,7 @@ func createHandler(sc *serverContext, admin bool) (*mux.Router, *mux.Router) {
 	r.Handle("/_all_dbs", makeHandler(sc, admin, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	r.Handle("/{newdb:"+dbRegex+"}/", makeHandler(sc, admin, (*handler).handleCreateDB)).Methods("PUT")
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, admin, (*handler).handleGetDB)).Methods("GET", "HEAD")
-	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, admin, (*handler).handleDeleteDB)).Methods("DELETE")
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, admin, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
@@ -127,6 +125,11 @@ func CreateAdminHandler(sc *serverContext) http.Handler {
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
+	r.Handle("/{newdb:"+dbRegex+"}/",
+		makeHandler(sc, true, (*handler).handleCreateDB)).Methods("PUT")
+	r.Handle("/{db:"+dbRegex+"}/",
+		makeHandler(sc, true, (*handler).handleDeleteDB)).Methods("DELETE")
+
 	dbr.Handle("/_compact",
 		makeHandler(sc, true, (*handler).handleCompact)).Methods("POST")
 	dbr.Handle("/_vacuum",

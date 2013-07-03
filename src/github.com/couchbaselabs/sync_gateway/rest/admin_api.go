@@ -21,6 +21,38 @@ import (
 	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
+//////// DATABASE MAINTENANCE:
+
+// "Create" a database (actually just register an existing bucket)
+func (h *handler) handleCreateDB() error {
+	h.assertAdminOnly()
+	dbName := h.PathVars()["newdb"]
+	var config *DbConfig
+	if err := h.readJSONInto(&config); err != nil {
+		return err
+	}
+	if config.name == "" {
+		config.name = dbName
+	} else if config.name != dbName {
+		return &base.HTTPError{http.StatusBadRequest, "name mismatch"}
+	}
+	if err := h.server.addDatabaseFromConfig(config); err != nil {
+		return err
+	}
+	return &base.HTTPError{http.StatusCreated, "created"}
+}
+
+// "Delete" a database (it doesn't actually do anything to the underlying bucket)
+func (h *handler) handleDeleteDB() error {
+	h.assertAdminOnly()
+	if !h.server.removeDatabase(h.db.Name) {
+		return &base.HTTPError{http.StatusNotFound, "missing"}
+	}
+	return nil
+}
+
+//////// USERS & ROLES:
+
 func internalUserName(name string) string {
 	if name == "GUEST" {
 		return ""
@@ -34,8 +66,6 @@ func externalUserName(name string) string {
 	}
 	return name
 }
-
-//////// USER & ROLE REQUESTS:
 
 // Public serialization of User/Role as used in the admin REST API.
 type PrincipalJSON struct {

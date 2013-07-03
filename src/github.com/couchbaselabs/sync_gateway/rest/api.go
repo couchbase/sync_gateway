@@ -71,15 +71,6 @@ func (h *handler) handleVacuum() error {
 	return nil
 }
 
-func (h *handler) handleCreateDB() error {
-	if h.server.databases[h.PathVars()["newdb"]] != nil {
-		return &base.HTTPError{http.StatusConflict, "already exists"}
-	} else {
-		return &base.HTTPError{http.StatusForbidden, "can't create any databases"}
-	}
-	return nil // unreachable
-}
-
 func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
@@ -93,13 +84,6 @@ func (h *handler) handleGetDB() error {
 	}
 	h.writeJSON(response)
 	return nil
-}
-
-func (h *handler) handleDeleteDB() error {
-	if !h.admin {
-		return &base.HTTPError{http.StatusForbidden, "forbidden (admins only)"}
-	}
-	return h.db.Delete()
 }
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
