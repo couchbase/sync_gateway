@@ -28,12 +28,6 @@ var DefaultAdminInterface = ":4985"
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
-const (
-	CurrentBranch     = "myFork"
-	CurrentCommit     = "0b4e3dafc8726bf44d1d47a5d86b5714cc1cb559"
-	FullVersionString = VersionString + " (" + CurrentBranch + " - " + CurrentCommit + ")"
-)
-
 // JSON object that defines the server configuration.
 type ServerConfig struct {
 	Interface      *string // Interface to bind REST API to, default ":4984"
