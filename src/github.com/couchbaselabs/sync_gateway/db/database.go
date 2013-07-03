@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -22,8 +23,6 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
-
-var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
@@ -42,19 +41,32 @@ type Database struct {
 	user auth.User
 }
 
+func ValidateDatabaseName(dbName string) error {
+	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
+	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
+		return &base.HTTPError{http.StatusBadRequest,
+			fmt.Sprintf("Illegal database name: %s", dbName)}
+	}
+	return nil
+}
+
 // Helper function to open a Couchbase connection and return a specific bucket.
 func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Bucket, err error) {
 	bucket, err = base.GetBucket(couchbaseURL, poolName, bucketName)
 	if err != nil {
-		return
+		err = &base.HTTPError{http.StatusBadGateway,
+			fmt.Sprintf("Unable to connect to server: %s", err)}
+	} else {
+		err = installViews(bucket)
 	}
-	base.Log("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
-	err = installViews(bucket)
 	return
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
+	if err := ValidateDatabaseName(dbName); err != nil {
+		return nil, err
+	}
 	context := &DatabaseContext{
 		Name:   dbName,
 		Bucket: bucket,

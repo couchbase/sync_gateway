@@ -46,13 +46,9 @@ type restTester struct {
 
 func (rt *restTester) bucket() base.Bucket {
 	if rt._bucket == nil {
-		name := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
+		server := "walrus:"
+		bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
 		gBucketCounter++
-		bucket, err := db.ConnectToBucket("walrus:", "default", name)
-		if err != nil {
-			log.Fatalf("Couldn't connect to bucket: %v", err)
-		}
-		rt._bucket = bucket
 
 		var syncFnPtr *string
 		if len(rt.syncFn) > 0 {
@@ -60,9 +56,17 @@ func (rt *restTester) bucket() base.Bucket {
 		}
 
 		rt._sc = NewServerContext(&ServerConfig{})
-		if _, err := rt._sc.AddDatabase(bucket, "db", syncFnPtr, false); err != nil {
-			panic(fmt.Sprintf("Error from addDatabase: %v", err))
+
+		err := rt._sc.AddDatabaseFromConfig(&DbConfig{
+			Server: &server,
+			Bucket: &bucketName,
+			name:   "db",
+			Sync:   syncFnPtr,
+		})
+		if err != nil {
+			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 		}
+		rt._bucket = rt._sc.Database("db").Bucket
 
 		if !rt.noAdminParty {
 			rt.setAdminParty(true)

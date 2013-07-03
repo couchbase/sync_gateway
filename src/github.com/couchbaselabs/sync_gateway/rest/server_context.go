@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"sync"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -47,14 +46,6 @@ func (sc *ServerContext) Close() {
 	sc.databases_ = nil
 }
 
-func checkDbName(dbName string) error {
-	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
-		return &base.HTTPError{http.StatusBadRequest,
-			fmt.Sprintf("Illegal database name: %s", dbName)}
-	}
-	return nil
-}
-
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
@@ -73,43 +64,17 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
-// Adds a database to the ServerContext given its Bucket.
-func (sc *ServerContext) AddDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*db.DatabaseContext, error) {
-	if dbName == "" {
-		dbName = bucket.GetName()
-	}
-
-	if err := checkDbName(dbName); err != nil {
-		return nil, err
-	}
-
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
-	if err != nil {
-		return nil, err
-	}
-	if syncFun != nil {
-		if err := dbcontext.ApplySyncFun(*syncFun); err != nil {
-			return nil, err
-		}
-	}
-
-	if dbcontext.ChannelMapper == nil {
-		if nag {
-			base.Warn("Sync function undefined; using default")
-		}
-	}
-
-	// Now register the database with the ServerContext:
+func (sc *ServerContext) registerDatabase(dbcontext *db.DatabaseContext) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	if sc.databases_[dbName] != nil {
-		dbcontext.Close()
-		return nil, &base.HTTPError{http.StatusPreconditionFailed, // what CouchDB returns
-			fmt.Sprintf("Duplicate database name %q", dbName)}
+	name := dbcontext.Name
+	if sc.databases_[name] != nil {
+		return &base.HTTPError{http.StatusPreconditionFailed, // what CouchDB returns
+			fmt.Sprintf("Duplicate database name %q", name)}
 	}
-	sc.databases_[dbName] = dbcontext
-	return dbcontext, nil
+	sc.databases_[name] = dbcontext
+	return nil
 }
 
 // Adds a database to the ServerContext given its configuration.
@@ -131,7 +96,10 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 	if dbName == "" {
 		dbName = bucketName
 	}
-	if err := checkDbName(dbName); err != nil {
+	base.Log("Opening db /%s as bucket %q, pool %q, server <%s>",
+		dbName, bucketName, pool, server)
+
+	if err := db.ValidateDatabaseName(dbName); err != nil {
 		return err
 	}
 
@@ -140,16 +108,32 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 	if err != nil {
 		return err
 	}
-	context, err := sc.AddDatabase(bucket, dbName, config.Sync, true)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
 	if err != nil {
 		return err
 	}
+	if config.Sync != nil {
+		if err := dbcontext.ApplySyncFun(*config.Sync); err != nil {
+			return err
+		}
+	}
+
+	if dbcontext.ChannelMapper == nil {
+		base.Warn("Database %q sync function undefined; using default", dbName)
+	}
 
 	// Create default users & roles:
-	if err := sc.installPrincipals(context, config.Roles, "role"); err != nil {
-		return nil
+	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
+		return err
+	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
+		return err
 	}
-	return sc.installPrincipals(context, config.Users, "user")
+
+	// Register it so HTTP handlers can find it:
+	if err := sc.registerDatabase(dbcontext); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (sc *ServerContext) RemoveDatabase(dbName string) bool {
@@ -160,6 +144,7 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	if context == nil {
 		return false
 	}
+	base.Log("Closing db /%s (bucket %q)", context.Name, context.Bucket.GetName())
 	context.Close()
 	delete(sc.databases_, dbName)
 	return true
@@ -184,9 +169,9 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 			if err != nil {
 				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
 			} else if name == "" {
-				base.Log("Reset guest user to config")
+				base.Log("    Reset guest user to config")
 			} else {
-				base.Log("Created %s %q", what, name)
+				base.Log("    Created %s %q", what, name)
 			}
 		}
 	}
