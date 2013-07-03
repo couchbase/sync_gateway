@@ -48,11 +48,6 @@ func setupTestDB(t *testing.T) *Database {
 }
 
 func tearDownTestDB(t *testing.T, db *Database) {
-	err := db.Delete()
-	status, _ := base.ErrorAsHTTPStatus(err)
-	if status != 200 && status != 404 {
-		assertNoError(t, err, "Couldn't delete database 'db'")
-	}
 	db.Close()
 }
 

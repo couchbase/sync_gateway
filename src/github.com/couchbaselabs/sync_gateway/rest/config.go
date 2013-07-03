@@ -16,11 +16,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"regexp"
 	"runtime"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 var DefaultInterface = ":4984"
@@ -52,13 +50,6 @@ type DbConfig struct {
 type PersonaConfig struct {
 	Origin   string // Canonical server URL for Persona authentication
 	Register bool   // If true, server will register new user accounts
-}
-
-// Shared context of HTTP handlers. It's important that this remain immutable, because the
-// handlers will access it from multiple goroutines.
-type serverContext struct {
-	config    *ServerConfig
-	databases map[string]*context
 }
 
 // Reads a ServerConfig from a JSON file.
@@ -116,144 +107,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 			return fmt.Errorf("Database %q already specified earlier", name)
 		}
 		self.Databases[name] = db
-	}
-	return nil
-}
-
-func newServerContext(config *ServerConfig) *serverContext {
-	return &serverContext{
-		config:    config,
-		databases: map[string]*context{},
-	}
-}
-
-func (sc *serverContext) close() {
-	for _, ctx := range sc.databases {
-		ctx.dbcontext.Close()
-	}
-}
-
-func checkDbName(dbName string) error {
-	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
-		return &base.HTTPError{http.StatusBadRequest,
-			fmt.Sprintf("Illegal database name: %s", dbName)}
-	}
-	return nil
-}
-
-// Adds a database to the serverContext given its Bucket.
-func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
-	if dbName == "" {
-		dbName = bucket.GetName()
-	}
-
-	if err := checkDbName(dbName); err != nil {
-		return nil, err
-	}
-
-	if sc.databases[dbName] != nil {
-		return nil, &base.HTTPError{http.StatusConflict,
-			fmt.Sprintf("Duplicate database name %q", dbName)}
-	}
-
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
-	if err != nil {
-		return nil, err
-	}
-	if syncFun != nil {
-		if err := dbcontext.ApplySyncFun(*syncFun); err != nil {
-			return nil, err
-		}
-	}
-
-	if dbcontext.ChannelMapper == nil {
-		if nag {
-			base.Warn("Sync function undefined; using default")
-		}
-	}
-
-	c := &context{
-		dbcontext: dbcontext,
-		auth:      dbcontext.Authenticator(),
-	}
-
-	sc.databases[dbName] = c
-	return c, nil
-}
-
-// Adds a database to the serverContext given its configuration.
-func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
-	server := "http://localhost:8091"
-	pool := "default"
-	bucketName := config.name
-
-	if config.Server != nil {
-		server = *config.Server
-	}
-	if config.Pool != nil {
-		pool = *config.Pool
-	}
-	if config.Bucket != nil {
-		bucketName = *config.Bucket
-	}
-	dbName := config.name
-	if dbName == "" {
-		dbName = bucketName
-	}
-	if err := checkDbName(dbName); err != nil {
-		return err
-	}
-
-	// Connect to the bucket and add the database:
-	bucket, err := db.ConnectToBucket(server, pool, bucketName)
-	if err != nil {
-		return err
-	}
-	context, err := sc.addDatabase(bucket, dbName, config.Sync, true)
-	if err != nil {
-		return err
-	}
-
-	// Create default users & roles:
-	if err := sc.installPrincipals(context, config.Roles, "role"); err != nil {
-		return nil
-	}
-	return sc.installPrincipals(context, config.Users, "user")
-}
-
-func (sc *serverContext) removeDatabase(dbName string) bool {
-	context := sc.databases[dbName]
-	if context == nil {
-		return false
-	}
-	context.dbcontext.Close()
-	delete(sc.databases, dbName)
-	return true
-}
-
-func (sc *serverContext) installPrincipals(context *context, spec map[string]json.RawMessage, what string) error {
-	for name, data := range spec {
-		isUsers := (what == "user")
-		if name == "GUEST" && isUsers {
-			name = ""
-		}
-		newPrincipal, err := context.auth.UnmarshalPrincipal(data, name, 1, isUsers)
-		if err != nil {
-			return fmt.Errorf("Invalid config for %s %q: %v", what, name, err)
-		}
-		oldPrincipal, err := context.auth.GetPrincipal(newPrincipal.Name(), isUsers)
-		if oldPrincipal == nil || name == "" {
-			if err == nil {
-				err = context.auth.Save(newPrincipal)
-			}
-			if err != nil {
-				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
-			} else if name == "" {
-				base.Log("Reset guest user to config")
-			} else {
-				base.Log("Created %s %q", what, name)
-			}
-		}
 	}
 	return nil
 }
@@ -358,9 +211,9 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	sc := newServerContext(config)
+	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
-		if err := sc.addDatabaseFromConfig(dbConfig); err != nil {
+		if err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
 		}
 	}

@@ -25,7 +25,7 @@ const docRegex = "[^_/][^/]*"
 // Creates a GorillaMux router containing the basic HTTP handlers for a server.
 // This is the common functionality of the public and admin ports.
 // The 'admin' flag specifies whether or not authentication is needed.
-func createHandler(sc *serverContext, admin bool) (*mux.Router, *mux.Router) {
+func createHandler(sc *ServerContext, admin bool) (*mux.Router, *mux.Router) {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	// Global operations:
@@ -62,7 +62,7 @@ func createHandler(sc *serverContext, admin bool) (*mux.Router, *mux.Router) {
 }
 
 // Creates the HTTP handler for the public API of a gateway server.
-func CreatePublicHandler(sc *serverContext) http.Handler {
+func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, false)
 
 	// Session/login URLs are per-database (unlike in CouchDB)
@@ -77,7 +77,7 @@ func CreatePublicHandler(sc *serverContext) http.Handler {
 		// If there is exactly one database we can handle the standard /_session by just redirecting
 		// it to that database's _session handler.
 		for _, db := range sc.databases {
-			path := "/" + db.dbcontext.Name
+			path := "/" + db.Name
 			r.Handle("/_session", http.RedirectHandler(path+"/_session", http.StatusTemporaryRedirect))
 			r.Handle("/_persona", http.RedirectHandler(path+"/_persona", http.StatusTemporaryRedirect))
 		}
@@ -92,7 +92,7 @@ func CreatePublicHandler(sc *serverContext) http.Handler {
 //////// ADMIN API:
 
 // Creates the HTTP handler for the PRIVATE admin API of a gateway server.
-func CreateAdminHandler(sc *serverContext) http.Handler {
+func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, true)
 
 	dbr.Handle("/_session",

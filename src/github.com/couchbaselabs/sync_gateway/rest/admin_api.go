@@ -36,7 +36,7 @@ func (h *handler) handleCreateDB() error {
 	} else if config.name != dbName {
 		return &base.HTTPError{http.StatusBadRequest, "name mismatch"}
 	}
-	if err := h.server.addDatabaseFromConfig(config); err != nil {
+	if err := h.server.AddDatabaseFromConfig(config); err != nil {
 		return err
 	}
 	return &base.HTTPError{http.StatusCreated, "created"}
@@ -45,7 +45,7 @@ func (h *handler) handleCreateDB() error {
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
-	if !h.server.removeDatabase(h.db.Name) {
+	if !h.server.RemoveDatabase(h.db.Name) {
 		return &base.HTTPError{http.StatusNotFound, "missing"}
 	}
 	return nil
@@ -120,10 +120,10 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 		}
 		if isUser {
-			user, err = h.context.auth.GetUser(internalUserName(name))
+			user, err = h.db.Authenticator().GetUser(internalUserName(name))
 			princ = user
 		} else {
-			princ, err = h.context.auth.GetRole(name)
+			princ, err = h.db.Authenticator().GetRole(name)
 		}
 		if err != nil {
 			return err
@@ -133,10 +133,10 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if princ == nil {
 		// If user/role didn't exist already, instantiate a new one:
 		if isUser {
-			user, err = h.context.auth.NewUser(internalUserName(name), "", nil)
+			user, err = h.db.Authenticator().NewUser(internalUserName(name), "", nil)
 			princ = user
 		} else {
-			princ, err = h.context.auth.NewRole(name, nil)
+			princ, err = h.db.Authenticator().NewRole(name, nil)
 		}
 		if err != nil {
 			return err
@@ -151,7 +151,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 	// Now update the Principal object from the properties in the request:
 	princ.ExplicitChannels().UpdateAtSequence(newInfo.ExplicitChannels,
-		h.context.dbcontext.LastSequence()+1)
+		h.db.LastSequence()+1)
 	if isUser {
 		user.SetEmail(newInfo.Email)
 		if newInfo.Password != nil {
@@ -162,7 +162,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	// And finally save the Principal:
-	if err = h.context.auth.Save(princ); err != nil {
+	if err = h.db.Authenticator().Save(princ); err != nil {
 		return err
 	}
 	h.response.WriteHeader(http.StatusCreated)
@@ -183,31 +183,31 @@ func (h *handler) putRole() error {
 
 func (h *handler) deleteUser() error {
 	h.assertAdminOnly()
-	user, err := h.context.auth.GetUser(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator().GetUser(mux.Vars(h.rq)["name"])
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return h.context.auth.Delete(user)
+	return h.db.Authenticator().Delete(user)
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
-	role, err := h.context.auth.GetRole(mux.Vars(h.rq)["name"])
+	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return h.context.auth.Delete(role)
+	return h.db.Authenticator().Delete(role)
 }
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.context.auth.GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	user, err := h.db.Authenticator().GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -222,7 +222,7 @@ func (h *handler) getUserInfo() error {
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.context.auth.GetRole(mux.Vars(h.rq)["name"])
+	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -235,7 +235,7 @@ func (h *handler) getRoleInfo() error {
 }
 
 func (h *handler) getUsers() error {
-	users, _, err := h.context.dbcontext.AllPrincipalIDs()
+	users, _, err := h.db.AllPrincipalIDs()
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func (h *handler) getUsers() error {
 }
 
 func (h *handler) getRoles() error {
-	_, roles, err := h.context.dbcontext.AllPrincipalIDs()
+	_, roles, err := h.db.AllPrincipalIDs()
 	if err != nil {
 		return err
 	}

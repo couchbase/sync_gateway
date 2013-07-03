@@ -49,8 +49,7 @@ var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server       *serverContext
-	context      *context
+	server       *ServerContext
 	rq           *http.Request
 	response     http.ResponseWriter
 	db           *db.Database
@@ -63,7 +62,7 @@ type handler struct {
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *serverContext, isAdmin bool, method handlerMethod) http.Handler {
+func makeHandler(server *ServerContext, isAdmin bool, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		h := newHandler(server, r, rq)
 		h.admin = isAdmin
@@ -72,7 +71,7 @@ func makeHandler(server *serverContext, isAdmin bool, method handlerMethod) http
 	})
 }
 
-func newHandler(server *serverContext, r http.ResponseWriter, rq *http.Request) *handler {
+func newHandler(server *ServerContext, r http.ResponseWriter, rq *http.Request) *handler {
 	h := &handler{
 		server:       server,
 		rq:           rq,
@@ -91,24 +90,25 @@ func (h *handler) invoke(method handlerMethod) error {
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
+	var dbContext *db.DatabaseContext
 	if dbname, ok := h.PathVars()["db"]; ok {
-		h.context = h.server.databases[dbname]
-		if h.context == nil {
+		dbContext = h.server.databases[dbname]
+		if dbContext == nil {
 			return &base.HTTPError{http.StatusNotFound, "no such database '" + dbname + "'"}
 		}
 	}
 
 	// Authenticate; admin handlers can ignore missing credentials
-	if err := h.checkAuth(); err != nil {
+	if err := h.checkAuth(dbContext); err != nil {
 		if !h.admin {
 			return err
 		}
 	}
 
-	// Now look up the database:
-	if h.context != nil {
+	// Now set the request's Database (i.e. context + user)
+	if dbContext != nil {
 		var err error
-		h.db, err = db.GetDatabase(h.context.dbcontext, h.user)
+		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
 		}
@@ -117,24 +117,27 @@ func (h *handler) invoke(method handlerMethod) error {
 	return method(h) // Call the actual handler code
 }
 
-func (h *handler) checkAuth() error {
+func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	h.user = nil
-	if h.context == nil || h.context.auth == nil {
+	if context == nil {
 		return nil
 	}
 
 	// Check cookie first, then HTTP auth:
+	base.TEMP("check cookie")
 	var err error
-	h.user, err = h.context.auth.AuthenticateCookie(h.rq)
+	h.user, err = context.Authenticator().AuthenticateCookie(h.rq)
 	if err != nil {
 		return err
 	}
+	base.TEMP("check basic auth")
 	var userName, password string
 	if h.user == nil {
 		userName, password = h.getBasicAuth()
-		h.user = h.context.auth.AuthenticateUser(userName, password)
+		h.user = context.Authenticator().AuthenticateUser(userName, password)
 	}
 
+	base.TEMP("checkAuth: h.user=%v", h.user)
 	if h.user == nil && !h.admin {
 		cookie, _ := h.rq.Cookie(auth.CookieName)
 		base.Log("Auth failed for username=%q, cookie=%q", userName, cookie)

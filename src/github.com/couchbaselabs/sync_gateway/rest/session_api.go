@@ -47,7 +47,6 @@ func (h *handler) respondWithSessionInfo() error {
 
 // GET /_session returns info about the current user
 func (h *handler) handleSessionGET() error {
-	h.checkAuth() // ignore result; this URL is always accessible
 	return h.respondWithSessionInfo()
 }
 
@@ -62,7 +61,7 @@ func (h *handler) handleSessionPOST() error {
 		return err
 	}
 	var user auth.User
-	user, err = h.context.auth.GetUser(params.Name)
+	user, err = h.db.Authenticator().GetUser(params.Name)
 	if err != nil {
 		return err
 	}
@@ -77,13 +76,13 @@ func (h *handler) makeSession(user auth.User) error {
 		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
 	}
 	h.user = user
-	auth := h.context.auth
+	auth := h.db.Authenticator()
 	session, err := auth.CreateSession(user.Name(), kDefaultSessionTTL)
 	if err != nil {
 		return err
 	}
 	cookie := auth.MakeSessionCookie(session)
-	cookie.Path = "/" + h.context.dbcontext.Name + "/"
+	cookie.Path = "/" + h.db.Name + "/"
 	http.SetCookie(h.response, cookie)
 	return h.respondWithSessionInfo()
 }
@@ -107,7 +106,7 @@ func (h *handler) createUserSession() error {
 	if params.Name == "" || ttl < 1.0 {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
 	}
-	session, err := h.context.auth.CreateSession(params.Name, ttl)
+	session, err := h.db.Authenticator().CreateSession(params.Name, ttl)
 	if err != nil {
 		return err
 	}

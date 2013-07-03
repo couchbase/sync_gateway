@@ -70,12 +70,12 @@ func (h *handler) PersonaEnabled() bool {
 // Username will be the same as the verified email address. Password will be random.
 // The user will have access to no channels.
 func (h *handler) registerPersonaUser(verifiedInfo *PersonaResponse) (auth.User, error) {
-	user, err := h.context.auth.NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), base.Set{})
+	user, err := h.db.Authenticator().NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), base.Set{})
 	if err != nil {
 		return nil, err
 	}
 	user.SetEmail(verifiedInfo.Email)
-	err = h.context.auth.Save(user)
+	err = h.db.Authenticator().Save(user)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (h *handler) handlePersonaPOST() error {
 	base.Log("Persona: Logged in %q!", verifiedInfo.Email)
 
 	// Email is verified. Look up the user and make a login session for her:
-	user, err := h.context.auth.GetUserByEmail(verifiedInfo.Email)
+	user, err := h.db.Authenticator().GetUserByEmail(verifiedInfo.Email)
 	if err != nil {
 		return err
 	}

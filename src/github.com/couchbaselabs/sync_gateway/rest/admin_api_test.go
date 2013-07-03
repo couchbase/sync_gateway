@@ -42,7 +42,7 @@ func TestUserAPI(t *testing.T) {
 	assert.Equals(t, string(response.Body.Bytes()), `["snej"]`)
 
 	// Check that the actual User object is correct:
-	user, _ := rt.serverContext().databases["db"].auth.GetUser("snej")
+	user, _ := rt.ServerContext().databases["db"].Authenticator().GetUser("snej")
 	assert.Equals(t, user.Name(), "snej")
 	assert.Equals(t, user.Email(), "jens@couchbase.com")
 	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{"bar": 0x1, "foo": 0x1})
@@ -52,7 +52,7 @@ func TestUserAPI(t *testing.T) {
 	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
 
-	user, _ = rt.serverContext().databases["db"].auth.GetUser("snej")
+	user, _ = rt.ServerContext().databases["db"].Authenticator().GetUser("snej")
 	assert.True(t, user.Authenticate("123"))
 
 	// DELETE the user
@@ -129,7 +129,7 @@ func TestGuestUser(t *testing.T) {
 	assert.DeepEquals(t, body["disabled"], true)
 
 	// Check that the actual User object is correct:
-	user, _ := rt.serverContext().databases["db"].auth.GetUser("")
+	user, _ := rt.ServerContext().databases["db"].Authenticator().GetUser("")
 	assert.Equals(t, user.Name(), "")
 	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet(nil))
 	assert.Equals(t, user.Disabled(), true)

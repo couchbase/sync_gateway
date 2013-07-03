@@ -39,7 +39,7 @@ var gBucketCounter = 0
 
 type restTester struct {
 	_bucket      base.Bucket
-	_sc          *serverContext
+	_sc          *ServerContext
 	noAdminParty bool   // Unless this is true, Admin Party is in full effect
 	syncFn       string // put the sync() function source in here (optional)
 }
@@ -59,8 +59,8 @@ func (rt *restTester) bucket() base.Bucket {
 			syncFnPtr = &rt.syncFn
 		}
 
-		rt._sc = newServerContext(&ServerConfig{})
-		if _, err := rt._sc.addDatabase(bucket, "db", syncFnPtr, false); err != nil {
+		rt._sc = NewServerContext(&ServerConfig{})
+		if _, err := rt._sc.AddDatabase(bucket, "db", syncFnPtr, false); err != nil {
 			panic(fmt.Sprintf("Error from addDatabase: %v", err))
 		}
 
@@ -70,19 +70,19 @@ func (rt *restTester) bucket() base.Bucket {
 
 		runtime.SetFinalizer(rt, func(rt *restTester) {
 			log.Printf("Finalizing bucket %s", rt._bucket.GetName())
-			rt._sc.close()
+			rt._sc.Close()
 		})
 	}
 	return rt._bucket
 }
 
-func (rt *restTester) serverContext() *serverContext {
+func (rt *restTester) ServerContext() *ServerContext {
 	rt.bucket()
 	return rt._sc
 }
 
 func (rt *restTester) setAdminParty(partyTime bool) {
-	a := rt.serverContext().databases["db"].auth
+	a := rt.ServerContext().databases["db"].Authenticator()
 	guest, _ := a.GetUser("")
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet
@@ -105,7 +105,7 @@ func (rt *restTester) sendRequest(method, resource string, body string) *testRes
 func (rt *restTester) send(request *http.Request) *testResponse {
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
-	CreatePublicHandler(rt.serverContext()).ServeHTTP(response, request)
+	CreatePublicHandler(rt.ServerContext()).ServeHTTP(response, request)
 	return response
 }
 
@@ -115,7 +115,7 @@ func (rt *restTester) sendAdminRequest(method, resource string, body string) *te
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
-	CreateAdminHandler(rt.serverContext()).ServeHTTP(response, request)
+	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
 	return response
 }
 
@@ -397,7 +397,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
-	a := rt.serverContext().databases["db"].auth
+	a := rt.ServerContext().databases["db"].Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
@@ -481,7 +481,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["CRUD"] = true
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	a := rt.serverContext().databases["db"].auth
+	a := rt.ServerContext().databases["db"].Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
@@ -573,7 +573,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
-	a := rt.serverContext().databases["db"].auth
+	a := rt.ServerContext().databases["db"].Authenticator()
 
 	// Create user:
 	alice, _ := a.NewUser("alice", "letmein", channels.SetOf("zero"))

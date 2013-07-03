@@ -19,17 +19,11 @@ import (
 	"os"
 	"runtime/pprof"
 
-	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 const VersionString = "Couchbase Sync Gateway/0.59"
-
-type context struct {
-	dbcontext *db.DatabaseContext
-	auth      *auth.Authenticator
-}
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
@@ -47,7 +41,7 @@ func (h *handler) handleRoot() error {
 func (h *handler) handleAllDbs() error {
 	dbs := []string{}
 	for _, db := range h.server.databases {
-		dbs = append(dbs, db.dbcontext.Name)
+		dbs = append(dbs, db.Name)
 	}
 	h.writeJSON(dbs)
 	return nil
@@ -63,7 +57,7 @@ func (h *handler) handleCompact() error {
 }
 
 func (h *handler) handleVacuum() error {
-	attsDeleted, err := db.VacuumAttachments(h.context.dbcontext.Bucket)
+	attsDeleted, err := db.VacuumAttachments(h.db.Bucket)
 	if err != nil {
 		return err
 	}
