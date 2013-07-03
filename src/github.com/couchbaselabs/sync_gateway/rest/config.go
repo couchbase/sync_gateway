@@ -157,10 +157,6 @@ func ParseCommandLine() *ServerConfig {
 		if config.Log != nil {
 			base.ParseLogFlags(config.Log)
 		}
-
-		if len(config.Databases) == 0 {
-			base.LogFatal("No databases!")
-		}
 		if config.Interface == nil {
 			config.Interface = &DefaultInterface
 		}
