@@ -14,29 +14,37 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sync"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-// Shared context of HTTP handlers. It's important that this remain immutable, because the
-// handlers will access it from multiple goroutines.
+// Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
+// the configuration settings so handlers can refer to them.
+// This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
+// be thread-safe.
 type ServerContext struct {
-	config    *ServerConfig
-	databases map[string]*db.DatabaseContext
+	config     *ServerConfig
+	databases_ map[string]*db.DatabaseContext
+	lock       sync.RWMutex
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
 	return &ServerContext{
-		config:    config,
-		databases: map[string]*db.DatabaseContext{},
+		config:     config,
+		databases_: map[string]*db.DatabaseContext{},
 	}
 }
 
 func (sc *ServerContext) Close() {
-	for _, ctx := range sc.databases {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	for _, ctx := range sc.databases_ {
 		ctx.Close()
 	}
+	sc.databases_ = nil
 }
 
 func checkDbName(dbName string) error {
@@ -47,6 +55,24 @@ func checkDbName(dbName string) error {
 	return nil
 }
 
+func (sc *ServerContext) Database(name string) *db.DatabaseContext {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+
+	return sc.databases_[name]
+}
+
+func (sc *ServerContext) AllDatabaseNames() []string {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	names := make([]string, 0, len(sc.databases_))
+	for name, _ := range sc.databases_ {
+		names = append(names, name)
+	}
+	return names
+}
+
 // Adds a database to the ServerContext given its Bucket.
 func (sc *ServerContext) AddDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*db.DatabaseContext, error) {
 	if dbName == "" {
@@ -55,11 +81,6 @@ func (sc *ServerContext) AddDatabase(bucket base.Bucket, dbName string, syncFun 
 
 	if err := checkDbName(dbName); err != nil {
 		return nil, err
-	}
-
-	if sc.databases[dbName] != nil {
-		return nil, &base.HTTPError{http.StatusConflict,
-			fmt.Sprintf("Duplicate database name %q", dbName)}
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
@@ -78,7 +99,16 @@ func (sc *ServerContext) AddDatabase(bucket base.Bucket, dbName string, syncFun 
 		}
 	}
 
-	sc.databases[dbName] = dbcontext
+	// Now register the database with the ServerContext:
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	if sc.databases_[dbName] != nil {
+		dbcontext.Close()
+		return nil, &base.HTTPError{http.StatusPreconditionFailed, // what CouchDB returns
+			fmt.Sprintf("Duplicate database name %q", dbName)}
+	}
+	sc.databases_[dbName] = dbcontext
 	return dbcontext, nil
 }
 
@@ -123,12 +153,15 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 }
 
 func (sc *ServerContext) RemoveDatabase(dbName string) bool {
-	context := sc.databases[dbName]
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	context := sc.databases_[dbName]
 	if context == nil {
 		return false
 	}
 	context.Close()
-	delete(sc.databases, dbName)
+	delete(sc.databases_, dbName)
 	return true
 }
 

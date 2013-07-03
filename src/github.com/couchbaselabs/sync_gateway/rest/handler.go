@@ -92,7 +92,7 @@ func (h *handler) invoke(method handlerMethod) error {
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
 	if dbname, ok := h.PathVars()["db"]; ok {
-		dbContext = h.server.databases[dbname]
+		dbContext = h.server.Database(dbname)
 		if dbContext == nil {
 			return &base.HTTPError{http.StatusNotFound, "no such database '" + dbname + "'"}
 		}

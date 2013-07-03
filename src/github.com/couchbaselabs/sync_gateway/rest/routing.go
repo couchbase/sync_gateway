@@ -73,19 +73,6 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 		dbr.Handle("/_persona", makeHandler(sc, true, (*handler).handlePersonaPOST)).Methods("POST")
 	}
 
-	if len(sc.databases) == 1 {
-		// If there is exactly one database we can handle the standard /_session by just redirecting
-		// it to that database's _session handler.
-		for _, db := range sc.databases {
-			path := "/" + db.Name
-			r.Handle("/_session", http.RedirectHandler(path+"/_session", http.StatusTemporaryRedirect))
-			r.Handle("/_persona", http.RedirectHandler(path+"/_persona", http.StatusTemporaryRedirect))
-		}
-	} else {
-		r.Handle("/_session", http.NotFoundHandler())
-		r.Handle("/_persona", http.NotFoundHandler())
-	}
-
 	return wrapRouter(r)
 }
 

@@ -39,11 +39,7 @@ func (h *handler) handleRoot() error {
 }
 
 func (h *handler) handleAllDbs() error {
-	dbs := []string{}
-	for _, db := range h.server.databases {
-		dbs = append(dbs, db.Name)
-	}
-	h.writeJSON(dbs)
+	h.writeJSON(h.server.AllDatabaseNames())
 	return nil
 }
 

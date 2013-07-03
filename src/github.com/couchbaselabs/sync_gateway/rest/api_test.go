@@ -82,7 +82,7 @@ func (rt *restTester) ServerContext() *ServerContext {
 }
 
 func (rt *restTester) setAdminParty(partyTime bool) {
-	a := rt.ServerContext().databases["db"].Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator()
 	guest, _ := a.GetUser("")
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet
@@ -397,7 +397,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
-	a := rt.ServerContext().databases["db"].Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
@@ -481,7 +481,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["CRUD"] = true
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	a := rt.ServerContext().databases["db"].Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
@@ -573,7 +573,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
-	a := rt.ServerContext().databases["db"].Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator()
 
 	// Create user:
 	alice, _ := a.NewUser("alice", "letmein", channels.SetOf("zero"))
