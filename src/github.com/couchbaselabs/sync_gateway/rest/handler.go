@@ -128,7 +128,7 @@ func (h *handler) logRequestLine() {
 	if h.admin {
 		as = "  (ADMIN)"
 	} else if h.user != nil && h.user.Name() != "" {
-		as = fmt.Sprintf("  (as %s)", h.user.Name)
+		as = fmt.Sprintf("  (as %s)", h.user.Name())
 	}
 	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
 }
