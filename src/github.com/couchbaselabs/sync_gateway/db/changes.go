@@ -16,6 +16,7 @@ import (
 	"math/rand"
 
 	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -417,7 +418,7 @@ func (db *Database) ReserveSequences(numToReserve uint64) error {
 //////// CHANNEL LOG DOCUMENTS:
 
 func channelLogDocID(channelName string) string {
-	// The "2" is a version tag. Update this if we change the format later.
+// The "2" is a version tag. Update this if we change the format later.
 	return "_sync:log2:" + channelName
 }
 
@@ -468,7 +469,7 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 	fullUpdateAttempts := 0
 
 	logDocID := channelLogDocID(channelName)
-	err := db.Bucket.Update(logDocID, 0, func(currentValue []byte) ([]byte, error) {
+	err := db.Bucket.WriteUpdate(logDocID, 0, func(currentValue []byte) ([]byte, walrus.WriteOptions, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Should I do a full update of the change log, removing older entries to limit its size?
 		// This has to be done occasionaly, but it's slower than simply appending to it. This
@@ -480,7 +481,7 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 		if len(currentValue) == 0 {
 			channelLog := channels.ChangeLog{}
 			channelLog.Add(entry)
-			return encodeChannelLog(&channelLog), nil
+			return encodeChannelLog(&channelLog), walrus.Raw, nil
 		}
 
 		if fullUpdate {
@@ -490,14 +491,14 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 				MaxChangeLogLength-1, &newValue)
 			if removedCount > 0 {
 				entry.Encode(&newValue, parentRevID)
-				return newValue.Bytes(), nil
+				return newValue.Bytes(), walrus.Raw, nil
 			}
 		}
 
 		w := bytes.NewBuffer(make([]byte, 0, 50000))
 		entry.Encode(w, parentRevID)
 		currentValue = append(currentValue, w.Bytes()...)
-		return currentValue, nil
+		return currentValue, walrus.Raw, nil
 	})
 
 	/*if fullUpdate {

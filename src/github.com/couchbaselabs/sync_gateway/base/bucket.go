@@ -89,6 +89,10 @@ func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 	return &impl, nil
 }
 
+func (bucket couchbaseBucket) Dump() {
+	Warn("Dump not implemented for couchbaseBucket")
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucket, err error) {
 	cbbucket, err := couchbase.GetBucket(couchbaseURL, poolName, bucketName)
