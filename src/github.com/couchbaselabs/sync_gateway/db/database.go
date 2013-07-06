@@ -93,21 +93,6 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	return auth.NewAuthenticator(context.Bucket, context)
 }
 
-// Sets the database context's channelMapper based on the JS code from config
-func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
-	var err error
-	if context.ChannelMapper != nil {
-		_, err = context.ChannelMapper.SetFunction(syncFun)
-	} else {
-		context.ChannelMapper = channels.NewChannelMapper(syncFun)
-	}
-	if err != nil {
-		base.Warn("Error setting sync function: %s", err)
-		return err
-	}
-	return nil
-}
-
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{context, user}, nil
@@ -314,8 +299,13 @@ func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 //////// HOUSEKEEPING:
 
 // Deletes all documents in the database
-func (db *Database) DeleteAllDocs() error {
+func (db *Database) DeleteAllDocs(docType string) error {
 	opts := Body{"stale": false}
+	if docType != "" {
+		opts["startkey"] = "_sync:" + docType + ":"
+		opts["endkey"] = "_sync:" + docType + "~"
+		opts["inclusive_end"] = false
+	}
 	vres, err := db.Bucket.View("sync_housekeeping", "all_bits", opts)
 	if err != nil {
 		base.Warn("all_bits view returned %v", err)
@@ -361,14 +351,61 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, &base.HTTPError{http.StatusNotImplemented, "Vacuum is temporarily out of order"}
 }
 
+//////// SYNC FUNCTION:
+
+const kSyncDataKey = "_sync:syncdata"
+
+// Sets the database context's channelMapper based on the JS code from config
+func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
+	var err error
+	if syncFun == "" {
+		context.ChannelMapper = nil
+	} else if context.ChannelMapper != nil {
+		_, err = context.ChannelMapper.SetFunction(syncFun)
+	} else {
+		context.ChannelMapper = channels.NewChannelMapper(syncFun)
+	}
+	if err != nil {
+		base.Warn("Error setting sync function: %s", err)
+		return err
+	}
+
+	// Check whether the sync function is different from the previous one:
+	var syncData struct {
+		Sync string
+	}
+	err = context.Bucket.Get(kSyncDataKey, &syncData)
+	syncDataMissing := base.IsDocNotFoundError(err)
+	if err != nil && !syncDataMissing {
+		return err
+	} else if syncFun == syncData.Sync {
+		return nil
+	}
+
+	if !syncDataMissing {
+		// It's changed, so re-run it on all docs:
+		db := &Database{context, nil}
+		if err = db.UpdateAllDocChannels(); err != nil {
+			return err
+		}
+	}
+
+	// Finally save the new function source:
+	syncData.Sync = syncFun
+	return context.Bucket.Set(kSyncDataKey, 0, syncData)
+}
+
 // Re-runs the channelMapper on every document in the database.
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels() error {
 	base.Log("Recomputing document channels...")
-	vres, err := db.Bucket.View("sync_gateway", "all_docs", Body{"stale": false, "reduce": false})
+
+	vres, err := db.Bucket.View("sync_housekeeping", "all_docs",
+		Body{"stale": false, "reduce": false})
 	if err != nil {
 		return err
 	}
+	base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
 	for _, row := range vres.Rows {
 		docid := row.Key.(string)
 		key := db.realDocID(docid)
@@ -389,21 +426,32 @@ func (db *Database) UpdateAllDocChannels() error {
 			channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 			if err != nil {
 				// Probably the validator rejected the doc
+				base.Warn("Error calling sync() on doc %q: %v", docid, err)
 				access = nil
 				channels = nil
 			}
-			doc.Access.updateAccess(doc, access)
-			doc.RoleAccess.updateAccess(doc, roles)
-			doc.updateChannels(channels)
-			base.Log("\tSaving updated channels and access grants of %q", docid)
-			return json.Marshal(doc)
+			changed := len(doc.Access.updateAccess(doc, access)) +
+				len(doc.RoleAccess.updateAccess(doc, roles)) +
+				len(doc.updateChannels(channels))
+			if changed > 0 {
+				base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+				return json.Marshal(doc)
+			} else {
+				return nil, couchbase.UpdateCancel
+			}
 		})
 		if err != nil && err != couchbase.UpdateCancel {
 			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
 
+	// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
+	if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
+		return err
+	}
+
 	// Now invalidate channel cache of all users/roles:
+	base.Log("Invalidating channel caches of users/roles...")
 	users, roles, _ := db.AllPrincipalIDs()
 	for _, name := range users {
 		db.invalUserChannels(name)
@@ -412,6 +460,7 @@ func (db *Database) UpdateAllDocChannels() error {
 		db.invalRoleChannels(name)
 	}
 
+	base.Log("Finished updating to new sync function")
 	return nil
 }
 

@@ -478,6 +478,21 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// What happens if we call access() with a nonexistent username?
 	assertStatus(t, rt.send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
+
+	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
+	// be changed while the database is in use (only when it's re-opened) but for testing purposes
+	// we do it now because we can't close and re-open an ephemeral Walrus database.
+	err = rt.ServerContext().Database("db").ApplySyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	assert.Equals(t, err, nil)
+	changes.Results = nil
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
+	assert.Equals(t, len(changes.Results), len(expectedIDs))
+	for i, expectedID := range expectedIDs {
+		assert.Equals(t, changes.Results[i].ID, expectedID)
+	}
 }
 
 func TestRoleAccessChanges(t *testing.T) {

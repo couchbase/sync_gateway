@@ -417,9 +417,11 @@ func (db *Database) ReserveSequences(numToReserve uint64) error {
 
 //////// CHANNEL LOG DOCUMENTS:
 
-func channelLogDocID(channelName string) string {
 // The "2" is a version tag. Update this if we change the format later.
-	return "_sync:log2:" + channelName
+const kChannelLogDocType = "log2"
+
+func channelLogDocID(channelName string) string {
+	return "_sync:" + kChannelLogDocType + ":" + channelName
 }
 
 func decodeChannelLog(raw []byte) (*channels.ChangeLog, error) {
