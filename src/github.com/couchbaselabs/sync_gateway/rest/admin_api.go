@@ -115,23 +115,27 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		}
 		name = *newInfo.Name
 	} else {
-		// ON PUT, get the existing user/role (if any):
+		// ON PUT, verify the name matches, if given:
 		if newInfo.Name != nil && *newInfo.Name != name {
 			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
 		}
-		if isUser {
-			user, err = h.db.Authenticator().GetUser(internalUserName(name))
-			princ = user
-		} else {
-			princ, err = h.db.Authenticator().GetRole(name)
-		}
-		if err != nil {
-			return err
-		}
 	}
 
+	// Get the existing principal, or if this is a POST make sure there isn't one:
+	if isUser {
+		user, err = h.db.Authenticator().GetUser(internalUserName(name))
+		princ = user
+	} else {
+		princ, err = h.db.Authenticator().GetRole(name)
+	}
+	if err != nil {
+		return err
+	}
+
+	status := http.StatusOK
 	if princ == nil {
 		// If user/role didn't exist already, instantiate a new one:
+		status = http.StatusCreated
 		if isUser {
 			user, err = h.db.Authenticator().NewUser(internalUserName(name), "", nil)
 			princ = user
@@ -141,6 +145,8 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		if err != nil {
 			return err
 		}
+	} else if h.rq.Method == "POST" {
+		return &base.HTTPError{http.StatusConflict, "Already exists"}
 	}
 
 	// Now update the Principal object from the properties in the request, first the channels:
@@ -165,7 +171,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if err = h.db.Authenticator().Save(princ); err != nil {
 		return err
 	}
-	h.response.WriteHeader(http.StatusCreated)
+	h.response.WriteHeader(status)
 	return nil
 }
 
