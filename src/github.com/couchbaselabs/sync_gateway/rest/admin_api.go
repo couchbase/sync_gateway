@@ -143,15 +143,15 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		}
 	}
 
-	// workaround for issue #99
-	if princ.ExplicitChannels() == nil {
-		newSet := make(ch.TimedSet, 0)
-		princ.SetExplicitChannels(newSet)
+	// Now update the Principal object from the properties in the request, first the channels:
+	updatedChannels := princ.ExplicitChannels()
+	if updatedChannels == nil {
+		updatedChannels = ch.TimedSet{}
 	}
+	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, h.db.LastSequence()+1)
+	princ.SetExplicitChannels(updatedChannels)
 
-	// Now update the Principal object from the properties in the request:
-	princ.ExplicitChannels().UpdateAtSequence(newInfo.ExplicitChannels,
-		h.db.LastSequence()+1)
+	// Then the roles:
 	if isUser {
 		user.SetEmail(newInfo.Email)
 		if newInfo.Password != nil {
