@@ -126,8 +126,11 @@ func (user *userImpl) validate() error {
 	return nil
 }
 
+// Key prefix reserved for user documents in the bucket
+const UserKeyPrefix = "_sync:user:"
+
 func docIDForUser(username string) string {
-	return "_sync:user:" + username
+	return UserKeyPrefix + username
 }
 
 func (user *userImpl) docID() string {

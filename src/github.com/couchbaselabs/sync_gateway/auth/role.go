@@ -79,8 +79,11 @@ func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string, defaul
 	return role, nil
 }
 
+// Key prefix reserved for role documents in the bucket
+const RoleKeyPrefix = "_sync:role:"
+
 func docIDForRole(name string) string {
-	return "_sync:role:" + name
+	return RoleKeyPrefix + name
 }
 
 func (role *roleImpl) docID() string {

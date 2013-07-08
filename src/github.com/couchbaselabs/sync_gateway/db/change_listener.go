@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbaselabs/walrus"
 
+	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
@@ -36,8 +37,9 @@ func (listener *changeListener) Start(bucket base.Bucket) error {
 		for event := range tapFeed.Events() {
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
-				if strings.HasPrefix(key, "_sync:log:") ||
-					strings.HasPrefix(key, "_sync:user:") || strings.HasPrefix(key, "_sync:role:") {
+				if strings.HasPrefix(key, kChannelLogKeyPrefix) ||
+					strings.HasPrefix(key, auth.UserKeyPrefix) ||
+					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					listener.notify(key)
 				}
 			}

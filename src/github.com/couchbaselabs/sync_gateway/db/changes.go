@@ -419,9 +419,10 @@ func (db *Database) ReserveSequences(numToReserve uint64) error {
 
 // The "2" is a version tag. Update this if we change the format later.
 const kChannelLogDocType = "log2"
+const kChannelLogKeyPrefix = "_sync:" + kChannelLogDocType + ":"
 
 func channelLogDocID(channelName string) string {
-	return "_sync:" + kChannelLogDocType + ":" + channelName
+	return kChannelLogKeyPrefix + channelName
 }
 
 func decodeChannelLog(raw []byte) (*channels.ChangeLog, error) {
