@@ -2,6 +2,7 @@
 *.walrus
 *~
 .#*
+build_info.go
 /bin
 /pkg
 /vendor/pkg

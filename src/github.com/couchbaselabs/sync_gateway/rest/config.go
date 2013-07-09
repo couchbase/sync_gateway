@@ -230,5 +230,6 @@ func RunServer(config *ServerConfig) {
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain() {
+	fmt.Println(FullVersionString)
 	RunServer(ParseCommandLine())
 }
