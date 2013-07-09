@@ -50,7 +50,7 @@ func TestUserAPI(t *testing.T) {
 
 	// Change the password and verify it:
 	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	assertStatus(t, response, 200)
 
 	user, _ = rt.ServerContext().Database("db").Authenticator().GetUser("snej")
 	assert.True(t, user.Authenticate("123"))
@@ -120,7 +120,7 @@ func TestGuestUser(t *testing.T) {
 	assert.DeepEquals(t, body["admin_channels"], nil)
 
 	response = rt.sendAdminRequest("PUT", "/db/_user/GUEST", `{"disabled":true}`)
-	assertStatus(t, response, 201)
+	assertStatus(t, response, 200)
 
 	response = rt.sendAdminRequest("GET", "/db/_user/GUEST", "")
 	assertStatus(t, response, 200)

@@ -316,6 +316,8 @@ func TestLogin(t *testing.T) {
 	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
 	a.Save(user)
 
+	assertStatus(t, rt.sendRequest("GET", "/db/_session", ""), 200)
+
 	response = rt.sendRequest("POST", "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
 	assertStatus(t, response, 200)
 	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))

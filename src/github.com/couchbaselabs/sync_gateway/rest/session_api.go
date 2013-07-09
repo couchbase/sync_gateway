@@ -10,10 +10,9 @@
 package rest
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
-	"io/ioutil"
-	"encoding/json"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -90,15 +89,11 @@ func (h *handler) makeSession(user auth.User) error {
 // ADMIN API: Generates a login session for a user and returns the session ID and cookie name.
 func (h *handler) createUserSession() error {
 	h.assertAdminOnly()
-	body, err := ioutil.ReadAll(h.rq.Body)
-	if err != nil {
-		return err
-	}
 	var params struct {
 		Name string `json:"name"`
 		TTL  int    `json:"ttl"`
 	}
-	err = json.Unmarshal(body, &params)
+	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
 	}
@@ -123,4 +118,3 @@ func (h *handler) createUserSession() error {
 	h.response.Write(bytes)
 	return nil
 }
-

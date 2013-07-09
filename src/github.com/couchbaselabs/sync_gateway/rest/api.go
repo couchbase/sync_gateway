@@ -31,7 +31,7 @@ func (h *handler) handleRoot() error {
 		"couchdb": "welcome",
 		"version": VersionString,
 	}
-	if h.admin {
+	if h.privs == adminPrivs {
 		response["ADMIN"] = true
 	}
 	h.writeJSON(response)

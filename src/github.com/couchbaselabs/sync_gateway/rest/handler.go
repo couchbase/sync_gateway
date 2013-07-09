@@ -54,26 +54,34 @@ type handler struct {
 	response     http.ResponseWriter
 	db           *db.Database
 	user         auth.User
-	admin        bool
+	privs        handlerPrivs
 	startTime    time.Time
 	serialNumber uint64
 }
 
+type handlerPrivs int
+
+const (
+	regularPrivs = iota // Handler requires authentication
+	publicPrivs         // Handler checks auth but doesn't require it
+	adminPrivs          // Handler ignores auth, always runs with root/admin privs
+)
+
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *ServerContext, isAdmin bool, method handlerMethod) http.Handler {
+func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, r, rq)
-		h.admin = isAdmin
+		h := newHandler(server, privs, r, rq)
 		err := h.invoke(method)
 		h.writeError(err)
 	})
 }
 
-func newHandler(server *ServerContext, r http.ResponseWriter, rq *http.Request) *handler {
+func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request) *handler {
 	h := &handler{
 		server:       server,
+		privs:        privs,
 		rq:           rq,
 		response:     r,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
@@ -98,9 +106,9 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
-	// Authenticate; admin handlers can ignore missing credentials
-	if err := h.checkAuth(dbContext); err != nil {
-		if !h.admin {
+	// Authenticate, if not on admin port:
+	if h.privs != adminPrivs {
+		if err := h.checkAuth(dbContext); err != nil {
 			h.logRequestLine()
 			return err
 		}
@@ -125,7 +133,7 @@ func (h *handler) logRequestLine() {
 		return
 	}
 	as := ""
-	if h.admin {
+	if h.privs == adminPrivs {
 		as = "  (ADMIN)"
 	} else if h.user != nil && h.user.Name() != "" {
 		as = fmt.Sprintf("  (as %s)", h.user.Name())
@@ -139,32 +147,42 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return nil
 	}
 
-	// Check cookie first, then HTTP auth:
+	// Check cookie first:
 	var err error
 	h.user, err = context.Authenticator().AuthenticateCookie(h.rq)
 	if err != nil {
 		return err
-	}
-	var userName, password string
-	if h.user == nil {
-		userName, password = h.getBasicAuth()
-		h.user = context.Authenticator().AuthenticateUser(userName, password)
+	} else if h.user != nil {
+		base.LogTo("HTTP+", "#%03d: Authenticated as %q via cookie", h.serialNumber, h.user.Name())
+		return nil
 	}
 
-	if h.user == nil && !h.admin {
-		cookie, _ := h.rq.Cookie(auth.CookieName)
-		base.Log("Auth failed for username=%q, cookie=%q", userName, cookie)
+	// If no cookie, check HTTP auth:
+	if userName, password := h.getBasicAuth(); userName != "" {
+		h.user = context.Authenticator().AuthenticateUser(userName, password)
+		if h.user == nil {
+			base.Log("HTTP auth failed for username=%q", userName)
+			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+			return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+		}
+		if h.user.Name() != "" {
+			base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
+		}
+		return nil
+	}
+
+	// No auth given -- check guest access
+	h.user, _ = context.Authenticator().GetUser("")
+	if h.privs == regularPrivs && h.user.Disabled() {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
-		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+		return &base.HTTPError{http.StatusUnauthorized, "Login required"}
 	}
-	if h.user != nil && h.user.Name() != "" {
-		base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
-	}
+
 	return nil
 }
 
 func (h *handler) assertAdminOnly() {
-	if !h.admin {
+	if h.privs != adminPrivs {
 		panic("Admin-only handler called without admin privileges, on " + h.rq.RequestURI)
 	}
 }
