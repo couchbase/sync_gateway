@@ -74,7 +74,7 @@ func TestDatabase(t *testing.T) {
 
 	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
-	body["key2"] = float64(4321) // otherwise the DeepEquals call below fails
+	body["key2"] = int64(4321)
 	rev2id, err := db.Put("doc1", body)
 	body["_id"] = "doc1"
 	assertNoError(t, err, "Couldn't update document")
@@ -90,7 +90,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Retrieve rev 1...")
 	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
 	assertNoError(t, err, "Couldn't get document with rev 1")
-	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234.0, "_id": "doc1", "_rev": rev1id})
+	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": int64(1234), "_id": "doc1", "_rev": rev1id})
 
 	log.Printf("Retrieve rev 2...")
 	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
@@ -138,7 +138,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Check PutExistingRev...")
 	body["_rev"] = "4-four"
 	body["key1"] = "fourth value"
-	body["key2"] = float64(4444)
+	body["key2"] = int64(4444)
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
 		"1-cb0c9a22be0e5a1b01084ec019defa81"}
 	err = db.PutExistingRev("doc1", body, history)
@@ -245,7 +245,7 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, base.Set(nil))
-		assert.Equals(t, change.Doc["serialnumber"], float64(10*i))
+		assert.Equals(t, change.Doc["serialnumber"], int64(10*i))
 	}
 
 	// Trying to add the existing log should fail with no error
@@ -297,15 +297,15 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": 2.0,
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": int64(2),
 		"channels": []interface{}{"all", "2b"}})
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev("doc", "1-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": 1.0,
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": int64(1),
 		"channels": []interface{}{"all", "1"}})
 	gotBody, err = db.GetRev("doc", "2-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3.0,
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
 		"channels": []interface{}{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
@@ -342,7 +342,7 @@ func TestConflicts(t *testing.T) {
 	_, err = db.DeleteDoc("doc", "2-b")
 	assertNoError(t, err, "delete 2-b")
 	gotBody, err = db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3.0,
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
 		"channels": []interface{}{"all", "2a"}})
 
 	// Verify channel assignments are correct for channels defined by 2-a:

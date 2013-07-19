@@ -122,6 +122,7 @@ func (db *Database) getRevision(doc *document, revid string) (Body, error) {
 			return nil, err
 		}
 	}
+	body.FixJSONNumbers() // Make sure big ints won't get output in scientific notation
 	body["_id"] = doc.ID
 	body["_rev"] = revid
 	return body, nil

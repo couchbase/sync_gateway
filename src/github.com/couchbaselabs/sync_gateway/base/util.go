@@ -11,6 +11,7 @@ package base
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -103,4 +104,20 @@ func MergeStringArrays(arrays ...[]string) (merged []string) {
 		}
 	}
 	return
+}
+
+func ToInt64(value interface{}) (int64, bool) {
+	switch value := value.(type) {
+	case int64:
+		return value, true
+	case float64:
+		return int64(value), true
+	case int:
+		return int64(value), true
+	case json.Number:
+		if n, err := value.Int64(); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
 }

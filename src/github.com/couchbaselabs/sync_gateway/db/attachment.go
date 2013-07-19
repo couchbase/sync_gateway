@@ -85,8 +85,8 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 func (db *Database) loadBodyAttachments(body Body, minRevpos int) error {
 	for _, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
-		revpos := int(meta["revpos"].(float64))
-		if revpos >= minRevpos {
+		revpos, ok := base.ToInt64(meta["revpos"])
+		if ok && revpos >= int64(minRevpos) {
 			key := AttachmentKey(meta["digest"].(string))
 			data, err := db.GetAttachment(key)
 			if err != nil {
@@ -231,12 +231,12 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 
 		meta := attachments[name].(map[string]interface{})
-		length, ok := meta["encoded_length"].(float64)
+		length, ok := base.ToInt64(meta["encoded_length"])
 		if !ok {
-			length, ok = meta["length"].(float64)
+			length, ok = base.ToInt64(meta["length"])
 		}
 		if ok {
-			if int(length) != len(data) {
+			if length != int64(len(data)) {
 				return nil, &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
 			}
 		}
