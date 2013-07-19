@@ -10,7 +10,9 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -64,6 +66,7 @@ func (h *handler) handleGetDoc() error {
 		return &base.HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
 
 	} else {
+		attachmentsSince = []string{}
 		var revids []string
 		err := json.Unmarshal([]byte(openRevs), &revids)
 		if err != nil {
@@ -72,17 +75,31 @@ func (h *handler) handleGetDoc() error {
 
 		err = h.writeMultipart(func(writer *multipart.Writer) error {
 			for _, revid := range revids {
-				contentType := "application/json"
-				value, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
-				if err != nil {
-					value = db.Body{"missing": revid} //TODO: More specific error
-					contentType += `; error="true"`
+				var content []byte
+				var contentType string
+				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+				if err == nil && len(db.BodyAttachments(revBody)) > 0 {
+					// Write as multipart, including attachments:
+					var buffer bytes.Buffer
+					docWriter := multipart.NewWriter(&buffer)
+					contentType = fmt.Sprintf("multipart/related; boundary=%q",
+						docWriter.Boundary())
+					h.db.WriteMultipartDocument(revBody, docWriter)
+					docWriter.Close()
+					content = bytes.TrimRight(buffer.Bytes(), "\r\n")
+				} else {
+					// Write as JSON:
+					contentType = "application/json"
+					if err != nil {
+						revBody = db.Body{"missing": revid} //TODO: More specific error
+						contentType += `; error="true"`
+					}
+					content, _ = json.Marshal(revBody)
 				}
-				jsonOut, _ := json.Marshal(value)
 				partHeaders := textproto.MIMEHeader{}
 				partHeaders.Set("Content-Type", contentType)
 				part, _ := writer.CreatePart(partHeaders)
-				part.Write(jsonOut)
+				part.Write(content)
 			}
 			return nil
 		})
