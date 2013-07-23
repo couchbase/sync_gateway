@@ -43,9 +43,10 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		case gomemcached.KEY_EEXISTS:
 			return http.StatusConflict, "Conflict"
 		case gomemcached.E2BIG:
-			return http.StatusRequestEntityTooLarge, "Too Large"
+			return http.StatusRequestEntityTooLarge, "Too Large: " + string(err.Body)
 		default:
-			return http.StatusBadGateway, fmt.Sprintf("MC status %s", err.Status.String())
+			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
+				string(err.Body), err.Status.String())
 		}
 	case walrus.MissingError:
 		return http.StatusNotFound, "missing"

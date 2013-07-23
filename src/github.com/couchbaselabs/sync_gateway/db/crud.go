@@ -402,9 +402,6 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 					access = nil
 					roles = nil
 				}
-			} else {
-				base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
-					docid, newRevID, prevCurrentRev)
 			}
 
 			// Update the document struct's channel assignment and user access.
@@ -418,6 +415,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 				// might not incorporate the effects of this change.
 				writeOpts |= walrus.Indexable
 			}
+		} else {
+			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
+				docid, newRevID, prevCurrentRev)
 		}
 
 		// Return the new raw document value for the bucket to store.
