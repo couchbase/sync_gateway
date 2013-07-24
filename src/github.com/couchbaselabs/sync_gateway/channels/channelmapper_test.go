@@ -228,6 +228,46 @@ func TestPublicChannelMapper(t *testing.T) {
 	assert.DeepEquals(t, output.Channels, SetOf("foo", "bar", "baz"))
 }
 
+// Test the userCtx parameter
+func TestCheckUser(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
+			userCtx.requireUser(doc.owner);
+		}`)
+	var sally = map[string]interface{}{"name": "sally", "channels": []string{}}
+	res, err := mapper.MapToChannelsAndAccess(parse(`{"owner": "sally"}`), `{}`, sally)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	var linus = map[string]interface{}{"name": "linus", "channels": []string{}}
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"owner": "sally"}`), `{}`, linus)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "wrong user"})
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"owner": "sally"}`), `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+}
+
+// Test the userCtx parameter
+func TestCheckRole(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
+			userCtx.requireRole(doc.role);
+		}`)
+	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}}
+	res, err := mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, sally)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}}
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, linus)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "missing role"})
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+}
+
 // Test changing the function
 func TestSetFunction(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(doc.channels);}`)

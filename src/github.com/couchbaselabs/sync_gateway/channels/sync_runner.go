@@ -21,10 +21,58 @@ import (
 )
 
 const funcWrapper = `
-	function(newDoc, oldDoc, userCtx) {
+	function(newDoc, oldDoc, realUserCtx) {
 		var v = %s;
+
+		// Proxy userCtx that allows queries but not direct access to user/roles:
+		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
+		var _userCtx = {
+			requireUser: function() {
+				if (!this.isUser.apply(this, arguments))
+					throw({forbidden: "wrong user"});
+			},
+			requireRole: function() {
+				if (!this.hasRole.apply(this, arguments))
+					throw({forbidden: "missing role"});
+			},
+			requireAccess: function() {
+				if (!this.hasAccess.apply(this, arguments))
+					throw({forbidden: "missing channel access"});
+			},
+			shouldValidate: function() {
+				return shouldValidate;
+			}
+		};
+		if (shouldValidate) {
+			_userCtx.isUser = function() {
+				for (var i = 0; i < arguments.length; ++i) {
+					if (arguments[i] == realUserCtx.name)
+						return true;
+				}
+				return false;
+			};
+			_userCtx.hasRole = function() {
+				for (var i = 0; i < arguments.length; ++i) {
+					if (realUserCtx.roles.indexOf(arguments[i]) >= 0)
+						return true;
+				}
+				return false;
+			};
+			_userCtx.hasAccess = function() {
+				for (var i = 0; i < arguments.length; ++i) {
+					if (realUserCtx.channels.indexOf(arguments[i]) >= 0)
+						return true;
+				}
+				return false;
+			};
+		} else {
+			_userCtx.isUser = _userCtx.hasRole = _userCtx.hasAccess = function() {
+				return true;
+			}
+		}
+
 		try {
-			v(newDoc, oldDoc, userCtx);
+			v(newDoc, oldDoc, _userCtx);
 		} catch(x) {
 			if (x.forbidden)
 				reject(403, x.forbidden);

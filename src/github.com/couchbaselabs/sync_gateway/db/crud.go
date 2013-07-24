@@ -538,11 +538,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 // Creates a userCtx object to be passed to the sync function
 func makeUserCtx(user auth.User) map[string]interface{} {
 	if user == nil {
-		return map[string]interface{}{
-			"name":     nil,
-			"roles":    []interface{}{},
-			"channels": []interface{}{},
-		}
+		return nil
 	}
 	return map[string]interface{}{
 		"name":     user.Name(),
