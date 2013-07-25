@@ -53,13 +53,14 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", value["_rev"].(string))
 
-		if h.requestAccepts("application/json") {
-			h.writeJSON(value)
-		} else {
+		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
+		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			return h.writeMultipart(func(writer *multipart.Writer) error {
 				h.db.WriteMultipartDocument(value, writer)
 				return nil
 			})
+		} else {
+			h.writeJSON(value)
 		}
 
 	} else if openRevs == "all" {
