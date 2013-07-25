@@ -140,8 +140,6 @@ func ParseCommandLine() *ServerConfig {
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
 			c, err := ReadConfig(filename)
-			base.Log("config file: %v", c)
-			base.Log("config.Facebook: %v", c.Facebook)
 			if err != nil {
 				base.LogFatal("Error reading config file %s: %v", filename, err)
 			}
