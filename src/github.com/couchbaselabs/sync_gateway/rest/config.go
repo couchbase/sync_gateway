@@ -31,6 +31,7 @@ type ServerConfig struct {
 	Interface      *string // Interface to bind REST API to, default ":4984"
 	AdminInterface *string // Interface to bind admin API to, default ":4985"
 	Persona        *PersonaConfig
+	Facebook       *FacebookConfig
 	Log            []string // Log keywords to enable
 	Pretty         bool     // Pretty-print JSON responses?
 	Databases      map[string]*DbConfig
@@ -50,6 +51,10 @@ type DbConfig struct {
 type PersonaConfig struct {
 	Origin   string // Canonical server URL for Persona authentication
 	Register bool   // If true, server will register new user accounts
+}
+
+type FacebookConfig struct {
+	Register bool // If true, server will register new user accounts
 }
 
 // Reads a ServerConfig from a JSON file.
@@ -96,6 +101,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.Persona == nil {
 		self.Persona = other.Persona
 	}
+	if self.Facebook == nil {
+		self.Facebook = other.Facebook
+	}
 	for _, flag := range other.Log {
 		self.Log = append(self.Log, flag)
 	}
@@ -132,6 +140,8 @@ func ParseCommandLine() *ServerConfig {
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
 			c, err := ReadConfig(filename)
+			base.Log("config file: %v", c)
+			base.Log("config.Facebook: %v", c.Facebook)
 			if err != nil {
 				base.LogFatal("Error reading config file %s: %v", filename, err)
 			}

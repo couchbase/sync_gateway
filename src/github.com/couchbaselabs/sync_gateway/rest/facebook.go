@@ -48,7 +48,7 @@ func (h *handler) handleFacebookPOST() error {
 
 	base.Log("facebookRespose: %v", facebookResponse)
 
-	createUserIfNeeded := true // TODO! get this from a config var
+	createUserIfNeeded := h.server.config.Facebook.Register
 	return h.makeSessionFromEmail(facebookResponse.Email, createUserIfNeeded)
 
 }
