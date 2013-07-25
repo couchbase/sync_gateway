@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -159,6 +160,15 @@ func (h *handler) handleDumpChannel() error {
 }
 
 // HTTP handler for a POST to _bulk_get
+// Request looks like POST /db/_bulk_get?revs=___&attachments=___
+// where the boolean ?revs parameter adds a revision history to each doc
+// and the boolean ?attachments parameter includes attachment bodies.
+// The body of the request is JSON and looks like:
+// {
+//   "docs": [
+//		{"id": "docid", "rev": "revid", "atts_since": [12,...]}, ...
+// 	 ]
+// }
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
@@ -167,60 +177,56 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
-	h.setHeader("Content-Type", "application/json")
-	h.response.Write([]byte(`[`))
+	err = h.writeMultipart(func(writer *multipart.Writer) error {
+		for _, item := range body["docs"].([]interface{}) {
+			doc := item.(map[string]interface{})
+			docid, _ := doc["id"].(string)
+			revid := ""
+			revok := true
+			if doc["rev"] != nil {
+				revid, revok = doc["rev"].(string)
+			}
+			if docid == "" || !revok {
+				return &base.HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
+			}
 
-	for i, item := range body["docs"].([]interface{}) {
-		doc := item.(map[string]interface{})
-		docid, _ := doc["id"].(string)
-		revid := ""
-		revok := true
-		if doc["rev"] != nil {
-			revid, revok = doc["rev"].(string)
-		}
-		if docid == "" || !revok {
-			return &base.HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
-		}
-
-		var attsSince []string = nil
-		if includeAttachments {
-			if doc["atts_since"] != nil {
-				raw, ok := doc["atts_since"].([]interface{})
-				if ok {
-					attsSince = make([]string, len(raw))
-					for i := 0; i < len(raw); i++ {
-						attsSince[i], ok = raw[i].(string)
-						if !ok {
-							break
+			var attsSince []string = nil
+			if includeAttachments {
+				if doc["atts_since"] != nil {
+					raw, ok := doc["atts_since"].([]interface{})
+					if ok {
+						attsSince = make([]string, len(raw))
+						for i := 0; i < len(raw); i++ {
+							attsSince[i], ok = raw[i].(string)
+							if !ok {
+								break
+							}
 						}
 					}
+					if !ok {
+						return &base.HTTPError{http.StatusBadRequest, "Invalid atts_since"}
+					}
+				} else {
+					attsSince = []string{}
 				}
-				if !ok {
-					return &base.HTTPError{http.StatusBadRequest, "Invalid atts_since"}
+			}
+
+			body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
+			if err != nil {
+				status, reason := base.ErrorAsHTTPStatus(err)
+				errStr := base.CouchHTTPErrorName(status)
+				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
+				if revid != "" {
+					body["rev"] = revid
 				}
-			} else {
-				attsSince = []string{}
 			}
-		}
 
-		body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
-		if err != nil {
-			status, reason := base.ErrorAsHTTPStatus(err)
-			errStr := base.CouchHTTPErrorName(status)
-			body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
-			if revid != "" {
-				body["rev"] = revid
-			}
+			h.db.WriteRevisionAsPart(body, err != nil, writer)
 		}
+		return nil
+	})
 
-		if i > 0 {
-			h.response.Write([]byte(",\n"))
-		}
-		h.addJSON(body)
-	}
-
-	h.response.Write([]byte(`]`))
-	return nil
+	return err
 }
 
 // HTTP handler for a POST to _bulk_docs

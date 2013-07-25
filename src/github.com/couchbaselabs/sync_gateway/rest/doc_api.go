@@ -10,12 +10,9 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"mime/multipart"
 	"net/http"
-	"net/textproto"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -64,9 +61,11 @@ func (h *handler) handleGetDoc() error {
 		}
 
 	} else if openRevs == "all" {
+		// open_revs=all:
 		return &base.HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
 
 	} else {
+		// open_revs=["id1", "id2", ...]
 		attachmentsSince = []string{}
 		var revids []string
 		err := json.Unmarshal([]byte(openRevs), &revids)
@@ -76,31 +75,11 @@ func (h *handler) handleGetDoc() error {
 
 		err = h.writeMultipart(func(writer *multipart.Writer) error {
 			for _, revid := range revids {
-				var content []byte
-				var contentType string
 				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
-				if err == nil && len(db.BodyAttachments(revBody)) > 0 {
-					// Write as multipart, including attachments:
-					var buffer bytes.Buffer
-					docWriter := multipart.NewWriter(&buffer)
-					contentType = fmt.Sprintf("multipart/related; boundary=%q",
-						docWriter.Boundary())
-					h.db.WriteMultipartDocument(revBody, docWriter)
-					docWriter.Close()
-					content = bytes.TrimRight(buffer.Bytes(), "\r\n")
-				} else {
-					// Write as JSON:
-					contentType = "application/json"
-					if err != nil {
-						revBody = db.Body{"missing": revid} //TODO: More specific error
-						contentType += `; error="true"`
-					}
-					content, _ = json.Marshal(revBody)
+				if err != nil {
+					revBody = db.Body{"missing": revid} //TODO: More specific error
 				}
-				partHeaders := textproto.MIMEHeader{}
-				partHeaders.Set("Content-Type", contentType)
-				part, _ := writer.CreatePart(partHeaders)
-				part.Write(content)
+				h.db.WriteRevisionAsPart(revBody, err != nil, writer)
 			}
 			return nil
 		})
