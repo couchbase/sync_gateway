@@ -29,7 +29,6 @@ type FacebookResponse struct {
 // POST /_persona creates a browserID-based login session and sets its cookie.
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
 func (h *handler) handleFacebookPOST() error {
-	base.Log("handleFacebookPOST called")
 
 	var params struct {
 		AccessToken string `json:"access_token"`
@@ -39,14 +38,10 @@ func (h *handler) handleFacebookPOST() error {
 		return err
 	}
 
-	base.Log("params: %v", params.AccessToken)
-
 	facebookResponse, err := verifyFacebook(kFacebookOpenGraphURL, params.AccessToken)
 	if err != nil {
 		return err
 	}
-
-	base.Log("facebookRespose: %v", facebookResponse)
 
 	createUserIfNeeded := h.server.config.Facebook.Register
 	return h.makeSessionFromEmail(facebookResponse.Email, createUserIfNeeded)
@@ -76,8 +71,6 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 	if err != nil {
 		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Facebook verifier"}
 	}
-
-	base.Log("fb response: %v", response)
 
 	return &response, nil
 
