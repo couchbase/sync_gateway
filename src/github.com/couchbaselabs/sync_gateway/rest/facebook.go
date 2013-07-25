@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
-	"io/ioutil"
 	"net/http"
+	"net/url"
 )
 
 const kFacebookOpenGraphURL = "https://graph.facebook.com"
@@ -53,26 +53,28 @@ func (h *handler) handleFacebookPOST() error {
 
 }
 
-func verifyFacebook(fbUrl string, accessToken string) (*FacebookResponse, error) {
+func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 
-	destUrl := fmt.Sprintf("%s/me?fields=id,name,email&access_token=%s", fbUrl, accessToken)
+	params := url.Values{"fields": []string{"id,name,email"}, "access_token": []string{accessToken}}
+	destUrl := fbUrl + "/me?" + params.Encode()
+
 	res, err := http.Get(destUrl)
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode >= 300 {
 		return nil, &base.HTTPError{http.StatusBadGateway,
 			fmt.Sprintf("Facebook verification server status %d", res.Status)}
 	}
 
-	responseBody, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Facebook verifier"}
-	}
+	decoder := json.NewDecoder(res.Body)
 
 	var response FacebookResponse
-	if err = json.Unmarshal(responseBody, &response); err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Unable to umarshal response from Facebook verifier."}
+	err = decoder.Decode(&response)
+	if err != nil {
+		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Facebook verifier"}
 	}
 
 	base.Log("fb response: %v", response)
