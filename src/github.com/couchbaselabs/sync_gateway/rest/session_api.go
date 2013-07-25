@@ -86,6 +86,28 @@ func (h *handler) makeSession(user auth.User) error {
 	return h.respondWithSessionInfo()
 }
 
+func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) error {
+
+	// Email is verified. Look up the user and make a login session for her:
+	user, err := h.db.Authenticator().GetUserByEmail(email)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		// The email address is authentic but we have no user account for it.
+		if !createUserIfNeeded {
+			return &base.HTTPError{http.StatusUnauthorized, "No such user"}
+		}
+		// Create a User with the given email address as username and a random password.
+		user, err = h.registerNewUser(email)
+		if err != nil {
+			return err
+		}
+	}
+	return h.makeSession(user)
+
+}
+
 // ADMIN API: Generates a login session for a user and returns the session ID and cookie name.
 func (h *handler) createUserSession() error {
 	h.assertAdminOnly()

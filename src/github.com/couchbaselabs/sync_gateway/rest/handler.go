@@ -265,6 +265,22 @@ func (h *handler) getBasicAuth() (username string, password string) {
 	return
 }
 
+// Registers a new user account based on the given verified email address.
+// Username will be the same as the verified email address. Password will be random.
+// The user will have access to no channels.
+func (h *handler) registerNewUser(email string) (auth.User, error) {
+	user, err := h.db.Authenticator().NewUser(email, base.GenerateRandomSecret(), base.Set{})
+	if err != nil {
+		return nil, err
+	}
+	user.SetEmail(email)
+	err = h.db.Authenticator().Save(user)
+	if err != nil {
+		return nil, err
+	}
+	return user, err
+}
+
 //////// RESPONSES:
 
 func (h *handler) setHeader(name string, value string) {
