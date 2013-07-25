@@ -26,8 +26,7 @@ type FacebookResponse struct {
 	Email string
 }
 
-// POST /_persona creates a browserID-based login session and sets its cookie.
-// It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
+// POST /_facebook creates a facebook-based login session and sets its cookie.
 func (h *handler) handleFacebookPOST() error {
 
 	var params struct {
