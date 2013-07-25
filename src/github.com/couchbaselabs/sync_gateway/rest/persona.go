@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
@@ -66,22 +65,6 @@ func (h *handler) PersonaEnabled() bool {
 	return h.server.config.Persona != nil
 }
 
-// Registers a new user account based on a Persona verified assertion.
-// Username will be the same as the verified email address. Password will be random.
-// The user will have access to no channels.
-func (h *handler) registerPersonaUser(verifiedInfo *PersonaResponse) (auth.User, error) {
-	user, err := h.db.Authenticator().NewUser(verifiedInfo.Email, base.GenerateRandomSecret(), base.Set{})
-	if err != nil {
-		return nil, err
-	}
-	user.SetEmail(verifiedInfo.Email)
-	err = h.db.Authenticator().Save(user)
-	if err != nil {
-		return nil, err
-	}
-	return user, err
-}
-
 // POST /_persona creates a browserID-based login session and sets its cookie.
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
 func (h *handler) handlePersonaPOST() error {
@@ -108,21 +91,7 @@ func (h *handler) handlePersonaPOST() error {
 	}
 	base.Log("Persona: Logged in %q!", verifiedInfo.Email)
 
-	// Email is verified. Look up the user and make a login session for her:
-	user, err := h.db.Authenticator().GetUserByEmail(verifiedInfo.Email)
-	if err != nil {
-		return err
-	}
-	if user == nil {
-		// The email address is authentic but we have no user account for it.
-		if !h.server.config.Persona.Register {
-			return &base.HTTPError{http.StatusUnauthorized, "No such user"}
-		}
-		// Create a User with the given email address as username and a random password.
-		user, err = h.registerPersonaUser(verifiedInfo)
-		if err != nil {
-			return err
-		}
-	}
-	return h.makeSession(user)
+	createUserIfNeeded := h.server.config.Persona.Register
+	return h.makeSessionFromEmail(verifiedInfo.Email, createUserIfNeeded)
+
 }
