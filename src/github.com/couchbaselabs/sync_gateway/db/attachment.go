@@ -189,23 +189,25 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		return nil, err
 	}
 
-	digestIndex := map[string]string{} // maps digests -> names
-
-	// Now look for "following" attachments:
 	attachments := BodyAttachments(body)
+
+	// Subroutine to look up a 'following' attachment given its digest. I used to precompute a
+	// map from digest->name, which was faster, but that broke down if there were multiple
+	// attachments with the same contents! (See #96)
+	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
 	for name, value := range attachments {
 		meta := value.(map[string]interface{})
 		if meta["follows"] == true {
-			digest, ok := meta["digest"].(string)
-			if !ok {
-				return nil, &base.HTTPError{http.StatusBadRequest, "Missing digest in attachment"}
+				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
+					return name, meta
 			}
-			digestIndex[digest] = name
 		}
+	}
+		return "", nil
 	}
 
 	// Read the parts one by one:
-	for i := 0; i < len(digestIndex); i++ {
+	for i := 0; i < len(attachments); i++ {
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
@@ -221,16 +223,15 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 
 		// Look up the attachment by its digest:
 		digest := sha1DigestKey(data)
-		name, ok := digestIndex[digest]
-		if !ok {
-			name, ok = digestIndex[md5DigestKey(data)]
-		}
-		if !ok {
+		name, meta := findFollowingAttachment(digest)
+		if meta == nil {
+			name, meta = findFollowingAttachment(md5DigestKey(data))
+			if meta == nil {
 			return nil, &base.HTTPError{http.StatusBadRequest,
 				fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
 		}
+		}
 
-		meta := attachments[name].(map[string]interface{})
 		length, ok := base.ToInt64(meta["encoded_length"])
 		if !ok {
 			length, ok = base.ToInt64(meta["length"])
@@ -247,9 +248,12 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	}
 
 	// Make sure there are no unused MIME parts:
-	_, err = reader.NextPart()
-	if err != io.EOF {
-		return nil, &base.HTTPError{http.StatusBadRequest, "Too many MIME parts"}
+	if _, err = reader.NextPart(); err != io.EOF {
+		if err == nil {
+			err = &base.HTTPError{http.StatusBadRequest,
+				fmt.Sprintf("Too many MIME parts (expected %d)", len(attachments)+1)}
+		}
+		return nil, err
 	}
 
 	return body, nil

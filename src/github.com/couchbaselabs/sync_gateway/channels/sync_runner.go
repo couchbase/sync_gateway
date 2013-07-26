@@ -109,6 +109,11 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 	return runner, nil
 }
 
+func (runner *SyncRunner) SetFunction(funcSource string) (bool, error) {
+	funcSource = fmt.Sprintf(funcWrapper, funcSource)
+	return runner.JSRunner.SetFunction(funcSource)
+}
+
 // Common implementation of 'access()' and 'role()' callbacks
 func (runner *SyncRunner) addValueForUser(user otto.Value, value otto.Value, mapping map[string][]string) otto.Value {
 	valueStrings := ottoValueToStringArray(value)
