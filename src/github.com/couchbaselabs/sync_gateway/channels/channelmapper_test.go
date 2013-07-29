@@ -228,7 +228,7 @@ func TestPublicChannelMapper(t *testing.T) {
 	assert.DeepEquals(t, output.Channels, SetOf("foo", "bar", "baz"))
 }
 
-// Test the userCtx parameter
+// Test the userCtx name parameter
 func TestCheckUser(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
 			userCtx.requireUser(doc.owner);
@@ -248,7 +248,27 @@ func TestCheckUser(t *testing.T) {
 	assert.DeepEquals(t, res.Rejection, nil)
 }
 
-// Test the userCtx parameter
+// Test the userCtx name parameter with a list
+func TestCheckUserArray(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
+			userCtx.requireUser(doc.owners);
+		}`)
+	var sally = map[string]interface{}{"name": "sally", "channels": []string{}}
+	res, err := mapper.MapToChannelsAndAccess(parse(`{"owners": ["sally", "joe"]}`), `{}`, sally)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	var linus = map[string]interface{}{"name": "linus", "channels": []string{}}
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"owners": ["sally", "joe"]}`), `{}`, linus)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "wrong user"})
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"owners": ["sally"]}`), `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+}
+
+// Test the userCtx role parameter
 func TestCheckRole(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
 			userCtx.requireRole(doc.role);
@@ -267,6 +287,67 @@ func TestCheckRole(t *testing.T) {
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
 }
+
+// Test the userCtx role parameter with a list
+func TestCheckRoleArray(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
+			userCtx.requireRole(doc.roles);
+		}`)
+	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}}
+	res, err := mapper.MapToChannelsAndAccess(parse(`{"roles": ["kid","girl"]}`), `{}`, sally)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}}
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, linus)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "missing role"})
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+}
+
+// Test the userCtx.channels parameter
+func TestCheckAccess(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
+		userCtx.requireAccess(doc.channel)
+	}`)
+	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
+	res, err := mapper.MapToChannelsAndAccess(parse(`{"channel": "party"}`), `{}`, sally)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"channel": "work"}`), `{}`, linus)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "missing channel access"})
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"channel": "magic"}`), `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+}
+
+// Test the userCtx.channels parameter with a list
+func TestCheckAccessArray(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
+		userCtx.requireAccess(doc.channels)
+	}`)
+	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
+	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["swim","party"]}`), `{}`, sally)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["work"]}`), `{}`, linus)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, &base.HTTPError{403, "missing channel access"})
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["magic"]}`), `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+}
+
 
 // Test changing the function
 func TestSetFunction(t *testing.T) {
