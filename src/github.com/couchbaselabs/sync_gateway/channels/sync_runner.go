@@ -64,12 +64,8 @@ const funcWrapper = `
 				channels = makeArray(channels);
 				if (!anyInArray(realUserCtx.channels, channels))
 					throw({forbidden: "missing channel access"});
-			},
-			shouldValidate: function() {
-				return shouldValidate;
 			}
 		};
-
 
 		try {
 			v(newDoc, oldDoc, _userCtx);
