@@ -230,8 +230,8 @@ func TestPublicChannelMapper(t *testing.T) {
 
 // Test the userCtx name parameter
 func TestCheckUser(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
-			userCtx.requireUser(doc.owner);
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+			requireUser(doc.owner);
 		}`)
 	var sally = map[string]interface{}{"name": "sally", "channels": []string{}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"owner": "sally"}`), `{}`, sally)
@@ -250,8 +250,8 @@ func TestCheckUser(t *testing.T) {
 
 // Test the userCtx name parameter with a list
 func TestCheckUserArray(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
-			userCtx.requireUser(doc.owners);
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+			requireUser(doc.owners);
 		}`)
 	var sally = map[string]interface{}{"name": "sally", "channels": []string{}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"owners": ["sally", "joe"]}`), `{}`, sally)
@@ -270,8 +270,8 @@ func TestCheckUserArray(t *testing.T) {
 
 // Test the userCtx role parameter
 func TestCheckRole(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
-			userCtx.requireRole(doc.role);
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+			requireRole(doc.role);
 		}`)
 	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, sally)
@@ -290,8 +290,8 @@ func TestCheckRole(t *testing.T) {
 
 // Test the userCtx role parameter with a list
 func TestCheckRoleArray(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
-			userCtx.requireRole(doc.roles);
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+			requireRole(doc.roles);
 		}`)
 	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"roles": ["kid","girl"]}`), `{}`, sally)
@@ -310,8 +310,8 @@ func TestCheckRoleArray(t *testing.T) {
 
 // Test the userCtx.channels parameter
 func TestCheckAccess(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
-		userCtx.requireAccess(doc.channel)
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+		requireAccess(doc.channel)
 	}`)
 	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channel": "party"}`), `{}`, sally)
@@ -330,8 +330,8 @@ func TestCheckAccess(t *testing.T) {
 
 // Test the userCtx.channels parameter with a list
 func TestCheckAccessArray(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc, oldDoc, userCtx) {
-		userCtx.requireAccess(doc.channels)
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+		requireAccess(doc.channels)
 	}`)
 	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["swim","party"]}`), `{}`, sally)

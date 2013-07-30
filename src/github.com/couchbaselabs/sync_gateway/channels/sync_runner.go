@@ -46,29 +46,30 @@ const funcWrapper = `
 
 		// Proxy userCtx that allows queries but not direct access to user/roles:
 		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
-		var _userCtx = {
-			requireUser: function(names) {
+
+		function requireUser(names) {
 				if (!shouldValidate) return;
 				names = makeArray(names);
 				if (!inArray(realUserCtx.name, names))
 					throw({forbidden: "wrong user"});
-			},
-			requireRole: function(roles) {
+		}
+
+		function requireRole(roles) {
 				if (!shouldValidate) return;
 				roles = makeArray(roles);
 				if (!anyInArray(realUserCtx.roles, roles))
 					throw({forbidden: "missing role"});
-			},
-			requireAccess: function(channels) {
+		}
+
+		function requireAccess(channels) {
 				if (!shouldValidate) return;
 				channels = makeArray(channels);
 				if (!anyInArray(realUserCtx.channels, channels))
 					throw({forbidden: "missing channel access"});
-			}
-		};
+		}
 
 		try {
-			v(newDoc, oldDoc, _userCtx);
+			v(newDoc, oldDoc);
 		} catch(x) {
 			if (x.forbidden)
 				reject(403, x.forbidden);
