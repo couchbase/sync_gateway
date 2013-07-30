@@ -21,10 +21,54 @@ import (
 )
 
 const funcWrapper = `
-	function(newDoc, oldDoc, userCtx) {
+	function(newDoc, oldDoc, realUserCtx) {
 		var v = %s;
+
+		function makeArray(maybeArray) {
+			if (Array.isArray(maybeArray)) {
+				return maybeArray;
+			} else {
+				return [maybeArray];
+			}
+		}
+
+		function inArray(string, array) {
+			return array.indexOf(string) != -1;
+		}
+
+		function anyInArray(any, array) {
+			for (var i = 0; i < any.length; ++i) {
+				if (inArray(any[i], array))
+					return true;
+			}
+			return false;
+		}
+
+		// Proxy userCtx that allows queries but not direct access to user/roles:
+		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
+		var _userCtx = {
+			requireUser: function(names) {
+				if (!shouldValidate) return;
+				names = makeArray(names);
+				if (!inArray(realUserCtx.name, names))
+					throw({forbidden: "wrong user"});
+			},
+			requireRole: function(roles) {
+				if (!shouldValidate) return;
+				roles = makeArray(roles);
+				if (!anyInArray(realUserCtx.roles, roles))
+					throw({forbidden: "missing role"});
+			},
+			requireAccess: function(channels) {
+				if (!shouldValidate) return;
+				channels = makeArray(channels);
+				if (!anyInArray(realUserCtx.channels, channels))
+					throw({forbidden: "missing channel access"});
+			}
+		};
+
 		try {
-			v(newDoc, oldDoc, userCtx);
+			v(newDoc, oldDoc, _userCtx);
 		} catch(x) {
 			if (x.forbidden)
 				reject(403, x.forbidden);
