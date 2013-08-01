@@ -189,29 +189,36 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		return nil, err
 	}
 
-	attachments := BodyAttachments(body)
-
-	// Subroutine to look up a 'following' attachment given its digest. I used to precompute a
-	// map from digest->name, which was faster, but that broke down if there were multiple
-	// attachments with the same contents! (See #96)
-	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
-	for name, value := range attachments {
-		meta := value.(map[string]interface{})
-		if meta["follows"] == true {
-				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
-					return name, meta
-			}
+	// Collect the attachments with a "follows" property, which will appear as MIME parts:
+	var followingAttachments map[string]map[string]interface{}
+	for name, value := range BodyAttachments(body) {
+		if meta := value.(map[string]interface{}); meta["follows"] == true {
+			followingAttachments[name] = meta
 		}
 	}
+
+	// Subroutine to look up a following attachment given its digest. (I used to precompute a
+	// map from digest->name, which was faster, but that broke down if there were multiple
+	// attachments with the same contents! See #96)
+	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
+		for name, meta := range followingAttachments {
+			if meta["follows"] == true {
+				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
+					return name, meta
+				}
+			}
+		}
 		return "", nil
 	}
 
 	// Read the parts one by one:
-	for i := 0; i < len(attachments); i++ {
+	for i := 0; i < len(followingAttachments); i++ {
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
-				err = &base.HTTPError{http.StatusBadRequest, "Too few MIME parts"}
+				err = &base.HTTPError{http.StatusBadRequest,
+					fmt.Sprintf("Too few MIME parts: expected %d attachments, got %d",
+						len(followingAttachments), i)}
 			}
 			return nil, err
 		}
@@ -227,9 +234,9 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		if meta == nil {
 			name, meta = findFollowingAttachment(md5DigestKey(data))
 			if meta == nil {
-			return nil, &base.HTTPError{http.StatusBadRequest,
-				fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
-		}
+				return nil, &base.HTTPError{http.StatusBadRequest,
+					fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
+			}
 		}
 
 		length, ok := base.ToInt64(meta["encoded_length"])
@@ -242,6 +249,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 			}
 		}
 
+		// Stuff the data into the attachment metadata and remove the "follows" property:
 		delete(meta, "follows")
 		meta["data"] = data
 		meta["digest"] = digest
@@ -251,7 +259,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	if _, err = reader.NextPart(); err != io.EOF {
 		if err == nil {
 			err = &base.HTTPError{http.StatusBadRequest,
-				fmt.Sprintf("Too many MIME parts (expected %d)", len(attachments)+1)}
+				fmt.Sprintf("Too many MIME parts (expected %d)", len(followingAttachments)+1)}
 		}
 		return nil, err
 	}
