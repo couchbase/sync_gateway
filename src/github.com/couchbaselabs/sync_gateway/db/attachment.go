@@ -191,6 +191,14 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 
 	attachments := BodyAttachments(body)
 
+	// Remove attachments from map that don't have follows == true (they won't be available as a part)
+	for key, value := range attachments {
+		meta := value.(map[string]interface{})
+		if meta["follows"] != true {
+			delete(attachments, key)
+		}
+	}
+
 	// Subroutine to look up a 'following' attachment given its digest. I used to precompute a
 	// map from digest->name, which was faster, but that broke down if there were multiple
 	// attachments with the same contents! (See #96)
