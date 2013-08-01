@@ -190,7 +190,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	}
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
-	var followingAttachments map[string]map[string]interface{}
+	followingAttachments := map[string]map[string]interface{}{}
 	for name, value := range BodyAttachments(body) {
 		if meta := value.(map[string]interface{}); meta["follows"] == true {
 			followingAttachments[name] = meta
