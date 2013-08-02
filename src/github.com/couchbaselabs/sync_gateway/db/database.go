@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -32,6 +33,7 @@ type DatabaseContext struct {
 	tapListener   changeListener          // Listens on server Tap feed
 	sequences     *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime     time.Time               // Timestamp when context was instantiated
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -68,8 +70,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 		return nil, err
 	}
 	context := &DatabaseContext{
-		Name:   dbName,
-		Bucket: bucket,
+		Name:      dbName,
+		Bucket:    bucket,
+		StartTime: time.Now(),
 	}
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)

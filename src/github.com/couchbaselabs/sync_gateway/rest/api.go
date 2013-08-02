@@ -11,13 +11,14 @@ package rest
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"encoding/json"
 	"net/http"
 	"os"
 	"runtime/pprof"
+	"strconv"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -71,6 +72,10 @@ func (h *handler) handleGetDB() error {
 		"doc_count":            h.db.DocCount(),
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
+		"instance_start_time":  json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10)),
+		"compact_running":      false, // TODO: Implement this
+		"purge_seq":            0,     // TODO: Should track this value
+		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
 	}
 	h.writeJSON(response)
 	return nil
