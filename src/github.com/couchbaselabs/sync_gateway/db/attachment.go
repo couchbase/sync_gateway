@@ -51,9 +51,14 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			}
 			delete(meta, "data")
 			meta["stub"] = true
-			meta["length"] = len(attachment)
 			meta["digest"] = string(key)
 			meta["revpos"] = generation
+			if meta["encoding"] == nil {
+				meta["length"] = len(attachment)
+				delete(meta, "encoded_length")
+			} else {
+				meta["encoded_length"] = len(attachment)
+			}
 		} else {
 			// No data given; look it up from the parent revision.
 			if parentAttachments == nil {
