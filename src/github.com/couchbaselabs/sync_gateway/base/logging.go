@@ -36,6 +36,10 @@ func LogNoColor() {
 	reset, dim, fgRed, fgYellow = "", "", "", ""
 }
 
+func LogNoTime() {
+	logger.SetFlags(logger.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
+}
+
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlag(flag string) {
@@ -48,13 +52,16 @@ func ParseLogFlag(flag string) {
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlags(flags []string) {
 	for _, key := range flags {
-		if key == "bw" {
+		switch key {
+		case "bw":
 			LogNoColor()
-		} else {
+		case "notime":
+			LogNoTime()
+		default:
 			LogKeys[key] = true
 			for strings.HasSuffix(key, "+") {
 				key = key[0 : len(key)-1]
-				LogKeys[key] = true
+				LogKeys[key] = true // "foo+" also enables "foo"
 			}
 		}
 	}
