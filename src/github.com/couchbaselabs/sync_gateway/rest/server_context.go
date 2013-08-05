@@ -104,7 +104,15 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 	}
 
 	// Connect to the bucket and add the database:
-	bucket, err := db.ConnectToBucket(server, pool, bucketName)
+	spec := base.BucketSpec{
+		Server:     server,
+		PoolName:   pool,
+		BucketName: bucketName,
+	}
+	if config.Username != "" {
+		spec.Auth = config
+	}
+	bucket, err := db.ConnectToBucket(spec)
 	if err != nil {
 		return err
 	}

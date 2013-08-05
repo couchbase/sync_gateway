@@ -10,6 +10,7 @@
 package base
 
 import (
+	"fmt"
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -20,6 +21,13 @@ import (
 type Bucket walrus.Bucket
 type TapArguments walrus.TapArguments
 type TapFeed walrus.TapFeed
+type AuthHandler couchbase.AuthHandler
+
+// Full specification of how to connect to a bucket
+type BucketSpec struct {
+	Server, PoolName, BucketName string
+	Auth                         AuthHandler
+}
 
 // Implementation of walrus.Bucket that talks to a Couchbase server
 type couchbaseBucket struct {
@@ -94,20 +102,37 @@ func (bucket couchbaseBucket) Dump() {
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucket, err error) {
-	cbbucket, err := couchbase.GetBucket(couchbaseURL, poolName, bucketName)
+func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
+	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
+	if err != nil {
+		return
+	}
+	poolName := spec.PoolName
+	if poolName == "" {
+		poolName = "default"
+	}
+	pool, err := client.GetPool(poolName)
+	if err != nil {
+		return
+	}
+	cbbucket, err := pool.GetBucket(spec.BucketName)
 	if err == nil {
 		bucket = couchbaseBucket{cbbucket}
 	}
 	return
 }
 
-func GetBucket(url, poolName, bucketName string) (bucket Bucket, err error) {
-	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, url); isWalrus {
-		Log("Opening Walrus database %s on <%s>", bucketName, url)
+func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
+		Log("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		walrus.Logging = LogKeys["Walrus"]
-		return walrus.GetBucket(url, poolName, bucketName)
+		return walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 	}
-	Log("Opening Couchbase database %s on <%s>", bucketName, url)
-	return GetCouchbaseBucket(url, poolName, bucketName)
+	suffix := ""
+	if spec.Auth != nil {
+		username, _ := spec.Auth.GetCredentials()
+		suffix = fmt.Sprintf(" as user %q", username)
+	}
+	Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+	return GetCouchbaseBucket(spec)
 }

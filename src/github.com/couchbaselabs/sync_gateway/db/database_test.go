@@ -32,7 +32,9 @@ func init() {
 }
 
 func testBucket() base.Bucket {
-	bucket, err := ConnectToBucket(kTestURL, "default", "sync_gateway_tests")
+	bucket, err := ConnectToBucket(base.BucketSpec{
+		Server:     kTestURL,
+		BucketName: "sync_gateway_tests"})
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -446,7 +448,9 @@ func TestDocIDs(t *testing.T) {
 func BenchmarkDatabase(b *testing.B) {
 	base.LogLevel = 2
 	for i := 0; i < b.N; i++ {
-		bucket, _ := ConnectToBucket(kTestURL, "default", fmt.Sprintf("b-%d", i))
+		bucket, _ := ConnectToBucket(base.BucketSpec{
+			Server:     kTestURL,
+			BucketName: fmt.Sprintf("b-%d", i)})
 		context, _ := NewDatabaseContext("db", bucket)
 		db, _ := CreateDatabase(context)
 

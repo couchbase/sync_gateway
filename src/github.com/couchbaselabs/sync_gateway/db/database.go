@@ -53,8 +53,8 @@ func ValidateDatabaseName(dbName string) error {
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(couchbaseURL, poolName, bucketName)
+func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
+	bucket, err = base.GetBucket(spec)
 	if err != nil {
 		err = &base.HTTPError{http.StatusBadGateway,
 			fmt.Sprintf("Unable to connect to server: %s", err)}

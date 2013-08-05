@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 
@@ -39,13 +40,15 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name   string                     // Database name in REST API (stored as key in JSON)
-	Server *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Bucket *string                    // Bucket name on server; defaults to same as 'name'
-	Pool   *string                    // Couchbase pool name, default "default"
-	Sync   *string                    // Sync function defines which users can see which data
-	Users  map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
-	Roles  map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
+	name     string                     // Database name in REST API (stored as key in JSON)
+	Server   *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username string                     // Username for authenticating to server
+	Password string                     // Password for authenticating to server
+	Bucket   *string                    // Bucket name on server; defaults to same as 'name'
+	Pool     *string                    // Couchbase pool name, default "default"
+	Sync     *string                    // Sync function defines which users can see which data
+	Users    map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
+	Roles    map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
 }
 
 type PersonaConfig struct {
@@ -57,8 +60,43 @@ type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
 }
 
+func (dbConfig *DbConfig) setup(name string) error {
+	dbConfig.name = name
+	if dbConfig.Bucket == nil {
+		dbConfig.Bucket = &dbConfig.name
+	}
+	if dbConfig.Server == nil {
+		dbConfig.Server = &DefaultServer
+	}
+	if dbConfig.Pool == nil {
+		dbConfig.Pool = &DefaultPool
+	}
+
+	url, err := url.Parse(*dbConfig.Server)
+	if err == nil && url.User != nil {
+		// Remove credentials from URL and put them into the DbConfig.Username and .Password:
+		if dbConfig.Username == "" {
+			dbConfig.Username = url.User.Username()
+		}
+		if dbConfig.Password == "" {
+			if password, exists := url.User.Password(); exists {
+				dbConfig.Password = password
+			}
+		}
+		url.User = nil
+		urlStr := url.String()
+		dbConfig.Server = &urlStr
+	}
+	return err
+}
+
+// Implementation of AuthHandler interface
+func (dbConfig *DbConfig) GetCredentials() (string, string) {
+	return dbConfig.Username, dbConfig.Password
+}
+
 // Reads a ServerConfig from a JSON file.
-func ReadConfig(path string) (*ServerConfig, error) {
+func ReadServerConfig(path string) (*ServerConfig, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -77,16 +115,7 @@ func ReadConfig(path string) (*ServerConfig, error) {
 
 	// Validation:
 	for name, dbConfig := range config.Databases {
-		dbConfig.name = name
-		if dbConfig.Bucket == nil {
-			dbConfig.Bucket = &dbConfig.name
-		}
-		if dbConfig.Server == nil {
-			dbConfig.Server = &DefaultServer
-		}
-		if dbConfig.Pool == nil {
-			dbConfig.Pool = &DefaultPool
-		}
+		dbConfig.setup(name)
 	}
 	return config, nil
 }
@@ -139,7 +168,7 @@ func ParseCommandLine() *ServerConfig {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
-			c, err := ReadConfig(filename)
+			c, err := ReadServerConfig(filename)
 			if err != nil {
 				base.LogFatal("Error reading config file %s: %v", filename, err)
 			}
