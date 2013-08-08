@@ -31,10 +31,8 @@ func (h *handler) handleCreateDB() error {
 	if err := h.readJSONInto(&config); err != nil {
 		return err
 	}
-	if config.name == "" {
-		config.name = dbName
-	} else if config.name != dbName {
-		return &base.HTTPError{http.StatusBadRequest, "name mismatch"}
+	if err := config.setup(dbName); err != nil {
+		return err
 	}
 	if err := h.server.AddDatabaseFromConfig(config); err != nil {
 		return err
