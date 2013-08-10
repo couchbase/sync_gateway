@@ -186,6 +186,7 @@ func TestAllDocs(t *testing.T) {
 		ids[i].DocID = fmt.Sprintf("alldoc-%02d", i)
 		revid, err := db.Put(ids[i].DocID, body)
 		ids[i].RevID = revid
+		ids[i].Sequence = uint64(i + 1)
 		assertNoError(t, err, "Couldn't create document")
 	}
 

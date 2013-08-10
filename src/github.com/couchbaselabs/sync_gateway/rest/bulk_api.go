@@ -24,6 +24,7 @@ func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
 	includeRevs := h.getBoolQuery("revs")
+	includeSeqs := h.getBoolQuery("update_seq")
 	var ids []db.IDAndRev
 	var err error
 
@@ -51,10 +52,11 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	type viewRow struct {
-		ID    string            `json:"id"`
-		Key   string            `json:"key"`
-		Value map[string]string `json:"value"`
-		Doc   db.Body           `json:"doc,omitempty"`
+		ID        string            `json:"id"`
+		Key       string            `json:"key"`
+		Value     map[string]string `json:"value"`
+		Doc       db.Body           `json:"doc,omitempty"`
+		UpdateSeq uint64            `json:"update_seq,omitempty"`
 	}
 	h.setHeader("Content-Type", "application/json")
 	h.response.Write([]byte(`{"rows":[` + "\n"))
@@ -76,6 +78,9 @@ func (h *handler) handleAllDocs() error {
 			}
 		} else if err := h.db.AuthorizeDocID(id.DocID, id.RevID); err != nil {
 			continue
+		}
+		if includeSeqs {
+			row.UpdateSeq = id.Sequence
 		}
 		row.Value = map[string]string{"rev": id.RevID}
 

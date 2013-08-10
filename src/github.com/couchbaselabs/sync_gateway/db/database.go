@@ -142,14 +142,14 @@ func installViews(bucket base.Bucket) error {
 	allbits_map := `function (doc, meta) {
                       emit(meta.id, null); }`
 	// View for _all_docs
-	// Key is docid; value is revid
+	// Key is docid; value is [revid, sequence]
 	alldocs_map := `function (doc, meta) {
                      var sync = doc._sync;
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
                      if (sync.deleted)
                        return;
-                     emit(meta.id, sync.rev); }`
+                     emit(meta.id, [sync.rev, sync.sequence]); }`
 	// View for compaction -- finds all revision docs
 	// Key and value are ignored.
 	oldrevs_map := `function (doc, meta) {
@@ -253,8 +253,9 @@ func installViews(bucket base.Bucket) error {
 }
 
 type IDAndRev struct {
-	DocID string
-	RevID string
+	DocID    string
+	RevID    string
+	Sequence uint64
 }
 
 // Returns all document IDs as an array.
@@ -267,7 +268,12 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	rows := vres.Rows
 	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, IDAndRev{DocID: row.Key.(string), RevID: row.Value.(string)})
+		value := row.Value.([]interface{})
+		result = append(result, IDAndRev{
+			DocID:    row.Key.(string),
+			RevID:    value[0].(string),
+			Sequence: uint64(value[1].(float64)),
+		})
 	}
 	return result, nil
 }
