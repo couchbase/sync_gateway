@@ -298,6 +298,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		changeWaiter := db.tapListener.NewWaiter()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
+		outer:
 		for {
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
@@ -373,6 +374,14 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				// Send the entry, and repeat the loop:
 				output <- minEntry
 				sentSomething = true
+
+				// Stop when we hit the limit (if any):
+				if options.Limit > 0 {
+					options.Limit--
+					if options.Limit == 0 {
+						break outer
+					}
+				}
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again
