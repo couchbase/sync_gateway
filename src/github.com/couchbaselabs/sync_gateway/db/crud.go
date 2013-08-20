@@ -283,6 +283,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			}
 		}
 		if currentRevIndex == 0 {
+			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid);
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 

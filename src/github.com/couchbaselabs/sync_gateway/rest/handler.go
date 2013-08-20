@@ -172,7 +172,9 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 
 	// No auth given -- check guest access
-	h.user, _ = context.Authenticator().GetUser("")
+	if h.user, err = context.Authenticator().GetUser(""); err != nil {
+		return err
+	}
 	if h.privs == regularPrivs && h.user.Disabled() {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 		return &base.HTTPError{http.StatusUnauthorized, "Login required"}
