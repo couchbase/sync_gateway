@@ -15,3 +15,4 @@ go get -u github.com/dchest/passwordhash
 go get -u github.com/gorilla/mux
 go get -u github.com/robertkrimen/otto
 go get -u github.com/robertkrimen/otto/underscore
+go get -u github.com/tleyden/fakehttp
