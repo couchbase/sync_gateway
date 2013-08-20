@@ -309,6 +309,11 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, callback func(*document) (Body, error)) (string, error) {
+	// As a special case, it's illegal to put a design document except in admin mode:
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return "", &base.HTTPError{Status: 403, Message: "Forbidden to update design doc"}
+	}
+
 	key := db.realDocID(docid)
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}

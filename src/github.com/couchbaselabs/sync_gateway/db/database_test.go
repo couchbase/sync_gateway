@@ -58,7 +58,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 	if !ok {
 		assert.Errorf(t, "assertHTTPError: Expected an HTTP %d; got error %T %v", status, err, err)
 	} else {
-		assert.Equals(t, httpErr.Status, 500)
+		assert.Equals(t, httpErr.Status, status)
 	}
 }
 
@@ -444,6 +444,19 @@ func TestDocIDs(t *testing.T) {
 	assert.Equals(t, db.realDocID("_foo"), "")
 	assert.Equals(t, db.realDocID("foo"), "foo")
 	assert.Equals(t, db.realDocID("_design/foo"), "_design/foo")
+}
+
+func TestUpdateDesignDoc(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	_, err := db.Put("_design/official", Body{})
+	assertNoError(t, err, "add design doc as admin")
+
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
+	_, err = db.Put("_design/pwn3d", Body{})
+	assertHTTPError(t, err, 403)
 }
 
 func BenchmarkDatabase(b *testing.B) {
