@@ -62,6 +62,10 @@ func (h *handler) handleVacuum() error {
 	return nil
 }
 
+func (h *handler) instanceStartTime() json.Number {
+	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
+}
+
 func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
@@ -72,7 +76,7 @@ func (h *handler) handleGetDB() error {
 		"doc_count":            h.db.DocCount(),
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
-		"instance_start_time":  json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10)),
+		"instance_start_time":  h.instanceStartTime(),
 		"compact_running":      false, // TODO: Implement this
 		"purge_seq":            0,     // TODO: Should track this value
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
@@ -83,7 +87,10 @@ func (h *handler) handleGetDB() error {
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true})
+	h.writeJSONStatus(http.StatusCreated, db.Body{
+		"ok": true,
+		"instance_start_time":  h.instanceStartTime(),
+	})
 	return nil
 }
 
