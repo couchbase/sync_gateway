@@ -16,11 +16,13 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/dchest/passwordhash"
+	"code.google.com/p/go.crypto/bcrypt"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
+
+const kBcryptCostFactor = bcrypt.DefaultCost
 
 // Actual implementation of User interface
 type userImpl struct {
@@ -33,12 +35,12 @@ type userImpl struct {
 // Marshalable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_             string                     `json:"email,omitempty"`
-	Disabled_          bool                       `json:"disabled,omitempty"`
-	PasswordHash_      *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	Password_          *string                    `json:"password,omitempty"`
-	ExplicitRoleNames_ []string                   `json:"admin_roles,omitempty"`
-	RoleNames_         []string                   `json:"roles"`
+	Email_             string      `json:"email,omitempty"`
+	Disabled_          bool        `json:"disabled,omitempty"`
+	PasswordHash_      []byte      `json:"passwordhash_bcrypt,omitempty"`
+	OldPasswordHash_   interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	ExplicitRoleNames_ []string    `json:"admin_roles,omitempty"`
+	RoleNames_         []string    `json:"roles"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -93,10 +95,6 @@ func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string, defaul
 	if user.Name_ == "" {
 		user.Name_ = defaultName
 	}
-	if user.Password_ != nil {
-		user.SetPassword(*user.Password_)
-		user.Password_ = nil
-	}
 	for channel, seq := range user.ExplicitChannels_ {
 		if seq == 0 {
 			user.ExplicitChannels_[channel] = defaultSequence
@@ -114,6 +112,8 @@ func (user *userImpl) validate() error {
 		return err
 	} else if user.Email_ != "" && !IsValidEmail(user.Email_) {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
+	} else if user.OldPasswordHash_ != nil {
+		return &base.HTTPError{http.StatusBadRequest, "Obsolete password hash present"}
 	} else if (user.Name_ == "") != (user.PasswordHash_ == nil) {
 		// Real user must have a password; anon user must not have a password
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
@@ -180,16 +180,18 @@ func (user *userImpl) SetExplicitRoleNames(names []string) {
 	user.setRoleNames(nil) // invalidate persistent cache of role names
 }
 
-// Returns true if the given password is correct for this user.
+// Returns true if the given password is correct for this user, and the account isn't disabled.
 func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
 		return false
-	}
-	if user.PasswordHash_ == nil {
+	} else if user.OldPasswordHash_ != nil {
+		base.Warn("User account %q still has pre-beta password hash; need to reset password", user.Name_)
+		return false // Password must be reset to use new (bcrypt) password hash
+	} else if user.PasswordHash_ == nil {
 		if password != "" {
 			return false
 		}
-	} else if !user.PasswordHash_.EqualToPassword(password) {
+	} else if bcrypt.CompareHashAndPassword(user.PasswordHash_, []byte(password)) != nil {
 		return false
 	}
 	return !user.Disabled_
@@ -200,7 +202,11 @@ func (user *userImpl) SetPassword(password string) {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {
-		user.PasswordHash_ = passwordhash.New(password)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), kBcryptCostFactor)
+		if err != nil {
+			panic(fmt.Sprintf("Error hashing password: %v", err))
+		}
+		user.PasswordHash_ = hash
 	}
 }
 
