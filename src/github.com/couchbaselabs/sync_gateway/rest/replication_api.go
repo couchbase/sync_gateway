@@ -65,6 +65,9 @@ func (h *handler) handleChanges() error {
 		}
 	}
 
+	h.db.ChangesClientStats.Increment()
+	defer h.db.ChangesClientStats.Decrement()
+
 	switch h.getQuery("feed") {
 	case "continuous":
 		return h.handleContinuousChanges(userChannels, options)

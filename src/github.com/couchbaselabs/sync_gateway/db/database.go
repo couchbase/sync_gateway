@@ -28,12 +28,13 @@ import (
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name          string                  // Database name
-	Bucket        base.Bucket             // Storage
-	tapListener   changeListener          // Listens on server Tap feed
-	sequences     *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime     time.Time               // Timestamp when context was instantiated
+	Name               string                  // Database name
+	Bucket             base.Bucket             // Storage
+	tapListener        changeListener          // Listens on server Tap feed
+	sequences          *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime          time.Time               // Timestamp when context was instantiated
+	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,

@@ -57,7 +57,7 @@ func (rt *restTester) bucket() base.Bucket {
 
 		rt._sc = NewServerContext(&ServerConfig{})
 
-		_,err := rt._sc.AddDatabaseFromConfig(&DbConfig{
+		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
 			Server: &server,
 			Bucket: &bucketName,
 			name:   "db",
@@ -503,6 +503,14 @@ func TestChannelAccessChanges(t *testing.T) {
 	for i, expectedID := range expectedIDs {
 		assert.Equals(t, changes.Results[i].ID, expectedID)
 	}
+
+	// Check accumulated statistics:
+	db := rt.ServerContext().Database("db")
+	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(4))
+	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
+	db.ChangesClientStats.Reset()
+	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
+	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(0))
 }
 
 func TestRoleAccessChanges(t *testing.T) {
