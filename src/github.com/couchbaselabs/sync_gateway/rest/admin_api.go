@@ -34,7 +34,7 @@ func (h *handler) handleCreateDB() error {
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
-	if err := h.server.AddDatabaseFromConfig(config); err != nil {
+	if _, err := h.server.AddDatabaseFromConfig(config); err != nil {
 		return err
 	}
 	return &base.HTTPError{http.StatusCreated, "created"}

@@ -57,7 +57,7 @@ func (rt *restTester) bucket() base.Bucket {
 
 		rt._sc = NewServerContext(&ServerConfig{})
 
-		err := rt._sc.AddDatabaseFromConfig(&DbConfig{
+		_,err := rt._sc.AddDatabaseFromConfig(&DbConfig{
 			Server: &server,
 			Bucket: &bucketName,
 			name:   "db",
@@ -142,6 +142,14 @@ func assertStatus(t *testing.T, response *testResponse, expectedStatus int) {
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
 			response.Code, expectedStatus, response.rq.Method, response.rq.URL, response.Body)
 	}
+}
+
+func (sc *ServerContext) Database(name string) *db.DatabaseContext {
+	db, err := sc.GetDatabase(name)
+	if err != nil {
+		panic(fmt.Sprintf("Unexpected error getting db %q: %v", name, err))
+	}
+	return db
 }
 
 //////// AND NOW THE TESTS:

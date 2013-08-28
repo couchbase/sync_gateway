@@ -29,13 +29,14 @@ var DefaultPool = "default"
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface      *string // Interface to bind REST API to, default ":4984"
-	AdminInterface *string // Interface to bind admin API to, default ":4985"
-	Persona        *PersonaConfig
-	Facebook       *FacebookConfig
-	Log            []string // Log keywords to enable
-	Pretty         bool     // Pretty-print JSON responses?
-	Databases      map[string]*DbConfig
+	Interface      *string              // Interface to bind REST API to, default ":4984"
+	AdminInterface *string              // Interface to bind admin API to, default ":4985"
+	ConfigServer   *string              // URL of config server (for dynamic db discovery)
+	Persona        *PersonaConfig       // Configuration for Mozilla Persona validation
+	Facebook       *FacebookConfig      // Configuration for Facebook validation
+	Log            []string             // Log keywords to enable
+	Pretty         bool                 // Pretty-print JSON responses?
+	Databases      map[string]*DbConfig // Pre-configured databases, mapped by name
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -127,6 +128,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.AdminInterface == nil {
 		self.AdminInterface = other.AdminInterface
 	}
+	if self.ConfigServer == nil {
+		self.ConfigServer = other.ConfigServer
+	}
 	if self.Persona == nil {
 		self.Persona = other.Persona
 	}
@@ -153,6 +157,7 @@ func ParseCommandLine() *ServerConfig {
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	configServer := flag.String("configServer", "", "URL of server that can return database configs")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
 	poolName := flag.String("pool", DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
@@ -187,6 +192,9 @@ func ParseCommandLine() *ServerConfig {
 		}
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
+		}
+		if configServer != nil {
+			config.ConfigServer = configServer
 		}
 		if *pretty {
 			config.Pretty = *pretty
@@ -246,7 +254,7 @@ func RunServer(config *ServerConfig) {
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
-		if err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
+		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
 		}
 	}

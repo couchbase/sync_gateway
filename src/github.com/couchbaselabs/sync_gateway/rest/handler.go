@@ -99,10 +99,10 @@ func (h *handler) invoke(method handlerMethod) error {
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
 	if dbname, ok := h.PathVars()["db"]; ok {
-		dbContext = h.server.Database(dbname)
-		if dbContext == nil {
+		var err error
+		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
-			return &base.HTTPError{http.StatusNotFound, "no such database '" + dbname + "'"}
+			return err
 		}
 	}
 

@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -27,12 +29,14 @@ type ServerContext struct {
 	config     *ServerConfig
 	databases_ map[string]*db.DatabaseContext
 	lock       sync.RWMutex
+	HTTPClient *http.Client
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
 	return &ServerContext{
 		config:     config,
 		databases_: map[string]*db.DatabaseContext{},
+		HTTPClient: http.DefaultClient,
 	}
 }
 
@@ -46,11 +50,25 @@ func (sc *ServerContext) Close() {
 	sc.databases_ = nil
 }
 
-func (sc *ServerContext) Database(name string) *db.DatabaseContext {
+// Returns the DatabaseContext with the given name
+func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-
-	return sc.databases_[name]
+	db := sc.databases_[name]
+	sc.lock.RUnlock()
+	if db != nil {
+		return db, nil
+	} else if sc.config.ConfigServer == nil {
+		return nil, &base.HTTPError{http.StatusNotFound, "no such database '" + name + "'"}
+	} else {
+		// Let's ask the config server if it knows this database:
+		config, err := sc.getDbConfigFromServer(name)
+		if err == nil {
+			if db, err = sc.AddDatabaseFromConfig(config); err == nil {
+				return db, nil
+			}
+		}
+		return nil, err
+	}
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
@@ -78,7 +96,7 @@ func (sc *ServerContext) registerDatabase(dbcontext *db.DatabaseContext) error {
 }
 
 // Adds a database to the ServerContext given its configuration.
-func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
+func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseContext, error) {
 	server := "http://localhost:8091"
 	pool := "default"
 	bucketName := config.name
@@ -100,7 +118,7 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 		dbName, bucketName, pool, server)
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Connect to the bucket and add the database:
@@ -114,15 +132,15 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 	}
 	bucket, err := db.ConnectToBucket(spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if config.Sync != nil {
 		if err := dbcontext.ApplySyncFun(*config.Sync); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -132,16 +150,17 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) error {
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return err
+		return nil, err
 	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Register it so HTTP handlers can find it:
 	if err := sc.registerDatabase(dbcontext); err != nil {
-		return err
+		dbcontext.Close()
+		return nil, err
 	}
-	return nil
+	return dbcontext, nil
 }
 
 func (sc *ServerContext) RemoveDatabase(dbName string) bool {
@@ -184,4 +203,35 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		}
 	}
 	return nil
+}
+
+// Fetch a configuration for a database from the ConfigServer
+func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {
+	if sc.config.ConfigServer == nil {
+		return nil, &base.HTTPError{http.StatusNotFound, "not_found"}
+	}
+
+	urlStr := *sc.config.ConfigServer
+	if !strings.HasSuffix(urlStr, "/") {
+		urlStr += "/"
+	}
+	urlStr += url.QueryEscape(dbName)
+	base.TEMP("Asking for config at %s", urlStr)
+	res, err := sc.HTTPClient.Get(urlStr)
+	if err != nil {
+		return nil, err
+	} else if res.StatusCode >= 300 {
+		return nil, &base.HTTPError{res.StatusCode, res.Status}
+	}
+
+	var config DbConfig
+	j := json.NewDecoder(res.Body)
+	if err = j.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	if err = config.setup(dbName); err != nil {
+		return nil, err
+	}
+	return &config, nil
 }
