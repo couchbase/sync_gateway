@@ -59,7 +59,7 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode >= 300 {
-		return nil, &base.HTTPError{http.StatusBadGateway,
+		return nil, &base.HTTPError{http.StatusUnauthorized,
 			fmt.Sprintf("Facebook verification server status %d", res.Status)}
 	}
 
