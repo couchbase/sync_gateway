@@ -124,6 +124,37 @@ func (h *handler) handleDump() error {
 	return nil
 }
 
+// HTTP handler for _dumpchannel
+func (h *handler) handleDumpChannel() error {
+	channelName := h.PathVars()["channel"]
+	base.LogTo("HTTP", "Dump channel %q", channelName)
+
+	chanLog, err := h.db.GetChangeLog(channelName, 0)
+	if err != nil {
+		return err
+	} else if chanLog == nil {
+		return &base.HTTPError{http.StatusNotFound, "no such channel"}
+	}
+	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
+	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
+	h.response.Write([]byte(fmt.Sprintf(
+		`<!DOCTYPE html><html><head><title>%s</title></head><body>
+		<h1>%s</h1><code>
+		<p>Since = %d</p>
+		<table border=1>
+		`,
+		title, title, chanLog.Since)))
+	h.response.Write([]byte("\t<tr><th>Seq</th><th>Doc</th><th>Rev</th><th>Flags</th></tr>\n"))
+	for _, entry := range chanLog.Entries {
+		h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
+			entry.Sequence,
+			html.EscapeString(entry.DocID), html.EscapeString(entry.RevID), entry.Flags)))
+		h.response.Write([]byte("</tr>\n"))
+	}
+	h.response.Write([]byte("</table>\n</code></html></body>"))
+	return nil
+}
+
 // HTTP handler for a POST to _bulk_get
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
