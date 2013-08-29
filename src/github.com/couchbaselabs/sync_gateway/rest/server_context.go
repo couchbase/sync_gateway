@@ -10,40 +10,52 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
+
+// The URL that stats will be reported to if deployment_id is set in the config
+const kStatsReportURL = "http://localhost:9999/stats"
+const kStatsReportInterval = time.Hour
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config     *ServerConfig
-	databases_ map[string]*db.DatabaseContext
-	lock       sync.RWMutex
-	HTTPClient *http.Client
+	config      *ServerConfig
+	databases_  map[string]*db.DatabaseContext
+	lock        sync.RWMutex
+	statsTicker *time.Ticker
+	HTTPClient  *http.Client
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
-	return &ServerContext{
+	sc := &ServerContext{
 		config:     config,
 		databases_: map[string]*db.DatabaseContext{},
 		HTTPClient: http.DefaultClient,
 	}
+	if config.DeploymentID != nil {
+		sc.startStatsReporter()
+	}
+	return sc
 }
 
 func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
+	sc.stopStatsReporter()
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
 	}
@@ -234,4 +246,53 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 		return nil, err
 	}
 	return &config, nil
+}
+
+//////// STATISTICS REPORT:
+
+func (sc *ServerContext) startStatsReporter() {
+	sc.statsTicker = time.NewTicker(kStatsReportInterval)
+	go func() {
+		for _ = range sc.statsTicker.C {
+			sc.reportStats()
+		}
+	}()
+}
+
+func (sc *ServerContext) stopStatsReporter() {
+	if sc.statsTicker != nil {
+		sc.statsTicker.Stop()
+		sc.reportStats() // Report stuff since the last tick
+	}
+}
+
+// POST a report of database statistics
+func (sc *ServerContext) reportStats() {
+	if sc.config.DeploymentID == nil {
+		panic("Can't reportStats without DeploymentID")
+	}
+	base.Log("Reporting server stats to %s ...", kStatsReportURL)
+	body, _ := json.Marshal(sc.Stats())
+	bodyReader := bytes.NewReader(body)
+	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
+	if err != nil {
+		base.Warn("Error posting stats: %v", err)
+	}
+}
+
+func (sc *ServerContext) Stats() map[string]interface{} {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	var stats []map[string]interface{}
+	for _, dbc := range sc.databases_ {
+		stats = append(stats, map[string]interface{}{
+			"max_connections":   dbc.ChangesClientStats.MaxCount(),
+			"total_connections": dbc.ChangesClientStats.TotalCount(),
+		})
+		dbc.ChangesClientStats.Reset()
+	}
+	return map[string]interface{}{
+		"deployment_id": sc.config.DeploymentID,
+		"databases":     stats,
+	}
 }

@@ -36,6 +36,7 @@ type ServerConfig struct {
 	Facebook       *FacebookConfig      // Configuration for Facebook validation
 	Log            []string             // Log keywords to enable
 	Pretty         bool                 // Pretty-print JSON responses?
+	DeploymentID   *string              // Optional customer/deployment ID, used by stats reporting
 	Databases      map[string]*DbConfig // Pre-configured databases, mapped by name
 }
 
@@ -131,6 +132,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.ConfigServer == nil {
 		self.ConfigServer = other.ConfigServer
 	}
+	if self.DeploymentID == nil {
+		self.DeploymentID = other.DeploymentID
+	}
 	if self.Persona == nil {
 		self.Persona = other.Persona
 	}
@@ -158,6 +162,7 @@ func ParseCommandLine() *ServerConfig {
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	configServer := flag.String("configServer", "", "URL of server that can return database configs")
+	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
 	poolName := flag.String("pool", DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
@@ -195,6 +200,9 @@ func ParseCommandLine() *ServerConfig {
 		}
 		if configServer != nil {
 			config.ConfigServer = configServer
+		}
+		if deploymentID != nil {
+			config.DeploymentID = deploymentID
 		}
 		if *pretty {
 			config.Pretty = *pretty
