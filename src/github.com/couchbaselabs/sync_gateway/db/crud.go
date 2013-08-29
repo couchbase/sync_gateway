@@ -283,7 +283,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			}
 		}
 		if currentRevIndex == 0 {
-			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid);
+			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
@@ -433,6 +433,10 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 
 	if err == couchbase.UpdateCancel {
 		return "", nil
+	} else if err == couchbase.ErrOverwritten {
+		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
+		base.LogTo("CRUD+", "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
+			docid, newRevID)
 	} else if err != nil {
 		return "", err
 	}
