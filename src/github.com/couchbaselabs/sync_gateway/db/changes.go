@@ -107,6 +107,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 	rebuildLog := channelLog == nil && err == nil && (EnableStarChannelLog || channel != "*")
 	var log []*channels.LogEntry
 	if channelLog != nil {
+		channelLog.Sort()
 		log = channelLog.Entries
 	}
 
@@ -127,7 +128,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 		if viewFeed != nil {
 			newLog := channels.ChangeLog{Since: since}
 			for change := range viewFeed {
-				if len(log) > 0 && change.seqNo >= log[0].Sequence {
+				if !rebuildLog && change.seqNo > channelLog.Since {
 					// TODO: Close the view-based feed somehow
 					break
 				}
@@ -298,7 +299,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		changeWaiter := db.tapListener.NewWaiter()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
-		outer:
+	outer:
 		for {
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:

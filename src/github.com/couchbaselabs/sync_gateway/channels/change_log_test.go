@@ -140,3 +140,21 @@ func TestChangeLogEncoding(t *testing.T) {
 	assert.DeepEquals(t, cl3.Entries[0], cl2.Entries[2])
 	assert.DeepEquals(t, cl3.Entries[1], cl2.Entries[3])
 }
+
+func TestSort(t *testing.T) {
+	var cl ChangeLog
+	cl.Add(*e(3, "doc3", "1-a"))
+	cl.Add(*e(1, "doc1", "1-a"))
+	cl.Add(*e(4, "doc4", "1-a"))
+	cl.Add(*e(2, "doc2", "1-a"))
+	cl.Add(*e(5, "doc5", "1-a"))
+	cl.Add(*e(9, "doc9", "1-a"))
+	cl.Add(*e(8, "doc8", "1-a"))
+
+	cl.Sort()
+
+	expectedSeqs := []uint64{1, 2, 3, 4, 5, 8, 9}
+	for i, entry := range cl.Entries {
+		assert.Equals(t, entry.Sequence, expectedSeqs[i])
+	}
+}

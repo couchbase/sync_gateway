@@ -2,6 +2,7 @@ package channels
 
 import (
 	"fmt"
+	"sort"
 )
 
 type LogEntry struct {
@@ -91,4 +92,21 @@ func (cp *ChangeLog) FilterAfter(after uint64) {
 	if after > cp.Since {
 		cp.Since = after
 	}
+}
+
+// Sorts the entries by increasing sequence.
+func (c *ChangeLog) Sort() {
+	sort.Sort(c)
+}
+
+func (c *ChangeLog) Len() int { // part of sort.Interface
+	return len(c.Entries)
+}
+
+func (c *ChangeLog) Less(i, j int) bool { // part of sort.Interface
+	return c.Entries[i].Sequence < c.Entries[j].Sequence
+}
+
+func (c *ChangeLog) Swap(i, j int) { // part of sort.Interface
+	c.Entries[i], c.Entries[j] = c.Entries[j], c.Entries[i]
 }
