@@ -1,0 +1,12 @@
+This is the Beta release of Couchbase Sync Gateway 1.0. Couchbase Sync Gateway is a ready-to-go, easy-to-scale sync layer that extends Couchbase Server to facilitate communication between Couchbase Server and your Couchbase Lite-backed apps. The 1.0 version features syncing, and basic admin features. The beta release is available to all community-edition customers. For more information about Couchbase Sync Gateway 1.0, visit Couchbase Sync Gateway 1.0.
+
+Features
+* Dynamic sync capabilities via Sync Function APIs
+** Apps can begin to automatically sync data from the cloud without any manual setup using Couchbase sync functions 
+* Easy Administration
+** In addition to dynamic sync, manage the Sync gateway via REST API when you need it
+* Seamless scaleout
+** Easily scale your Sync Gateway tier as your application needs grow
+
+Known Issues
+TBD

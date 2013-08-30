@@ -1,7 +1,0 @@
-Couchbase Sync Gateway 1.0-Beta is the first beta release for Couchbase Sync Gateway 1.0. This release includes initial features.
-
-Features
-TBD
-
-Known Issues
-TBD
