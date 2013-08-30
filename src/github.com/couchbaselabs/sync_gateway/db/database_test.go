@@ -313,11 +313,10 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	log, _ = db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 3)
+	assert.Equals(t, len(log.Entries), 2)
 	assert.Equals(t, int(log.Since), 0)
-	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 1})
-	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
-	assert.DeepEquals(t, log.Entries[2], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden})
+	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
+	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden})
 
 	// Verify the _changes feed:
 	changes, err := db.GetChanges(channels.SetOf("all"), ChangesOptions{Conflicts: true})
@@ -332,14 +331,6 @@ func TestConflicts(t *testing.T) {
 		Seq:     "all:3",
 		ID:      "doc",
 		Changes: []ChangeRev{{"rev": "2-a"}}})
-
-	changes, err = db.GetChanges(channels.SetOf("all"), ChangesOptions{Conflicts: false})
-	assertNoError(t, err, "Couldn't GetChanges")
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     "all:2",
-		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-b"}}})
 
 	// Delete 2-b; verify this makes 2-a current:
 	_, err = db.DeleteDoc("doc", "2-b")

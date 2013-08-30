@@ -107,7 +107,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 	rebuildLog := channelLog == nil && err == nil && (EnableStarChannelLog || channel != "*")
 	var log []*channels.LogEntry
 	if channelLog != nil {
-		channelLog.Sort()
 		log = channelLog.Entries
 	}
 
@@ -163,9 +162,13 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
-			hidden := (logEntry.Flags & channels.Hidden) != 0
-			if logEntry.RevID == "" || (hidden && !options.Conflicts) {
-				continue
+			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
+				//continue  // FIX: had to comment this out.
+				// This entry is shadowed by a conflicting one. We would like to skip it.
+				// The problem is that if this is the newest revision of this doc, then the
+				// doc will appear under this sequence # in the changes view, which means
+				// we won't emit the doc at all because we already stopped emitting entries
+				// from the view before this point.
 			}
 			change := ChangeEntry{
 				seqNo:   logEntry.Sequence,

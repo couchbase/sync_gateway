@@ -56,26 +56,6 @@ func TestAddOutOfOrder(t *testing.T) {
 	assert.DeepEquals(t, cl, mklog(19, e(20, "bar", "1-a"), e(10, "foo", "1-a"), e(30, "zog", "1-a")))
 }
 
-func TestReplace(t *testing.T) {
-	// Add three sequences in order:
-	var cl ChangeLog
-	cl.Add(*e(1, "foo", "1-a"))
-	cl.Add(*e(2, "bar", "1-a"))
-	cl.Add(*e(3, "zog", "1-a"))
-
-	// Replace 'foo'
-	cl.Update(*e(4, "foo", "2-b"), "1-a")
-	assert.DeepEquals(t, cl, mklog(0, e(1, "", ""), e(2, "bar", "1-a"), e(3, "zog", "1-a"), e(4, "foo", "2-b")))
-
-	// Replace 'zog'
-	cl.Update(*e(5, "zog", "2-b"), "1-a")
-	assert.DeepEquals(t, cl, mklog(0, e(1, "", ""), e(2, "bar", "1-a"), e(3, "", ""), e(4, "foo", "2-b"), e(5, "zog", "2-b")))
-
-	// Replace 'zog' again
-	cl.Update(*e(6, "zog", "3-c"), "2-b")
-	assert.DeepEquals(t, cl, mklog(0, e(1, "", ""), e(2, "bar", "1-a"), e(3, "", ""), e(4, "foo", "2-b"), e(5, "", ""), e(6, "zog", "3-c")))
-}
-
 func TestTruncate(t *testing.T) {
 	const maxLogLength = 50
 	var cl ChangeLog
@@ -122,10 +102,8 @@ func TestChangeLogEncoding(t *testing.T) {
 
 	cl2 = DecodeChangeLog(bytes.NewReader(moreData))
 	assert.Equals(t, cl2.Since, cl.Since)
-	assert.Equals(t, len(cl2.Entries), len(cl.Entries)+1)
+	assert.Equals(t, len(cl2.Entries), len(cl.Entries))
 	assert.DeepEquals(t, cl2.Entries[len(cl2.Entries)-1], &newEntry)
-	assert.Equals(t, cl2.Entries[0].DocID, "") // was replaced by newEntry
-	assert.Equals(t, cl2.Entries[0].RevID, "")
 
 	// Truncate cl2's encoded data:
 	var wTrunc bytes.Buffer
@@ -137,8 +115,8 @@ func TestChangeLogEncoding(t *testing.T) {
 	cl3 := DecodeChangeLog(bytes.NewReader(data3))
 	assert.Equals(t, cl3.Since, uint64(666))
 	assert.Equals(t, len(cl3.Entries), 2)
-	assert.DeepEquals(t, cl3.Entries[0], cl2.Entries[2])
-	assert.DeepEquals(t, cl3.Entries[1], cl2.Entries[3])
+	assert.DeepEquals(t, cl3.Entries[0], cl2.Entries[1])
+	assert.DeepEquals(t, cl3.Entries[1], cl2.Entries[2])
 }
 
 func TestSort(t *testing.T) {

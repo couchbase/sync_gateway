@@ -7,8 +7,8 @@ import (
 
 type LogEntry struct {
 	Sequence uint64 // Sequence number
-	DocID    string // Empty if this entry has been replaced
-	RevID    string // Empty if this entry has been replaced
+	DocID    string // Document ID
+	RevID    string // Revision ID
 	Flags    uint8  // Deleted/Removed/Hidden flags
 }
 
@@ -20,7 +20,6 @@ const (
 
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
 // The log is sorted by order revisions were added; this is mostly but not always by sequence.
-// Revisions replaced by children are not removed but their doc/rev IDs are changed to "".
 type ChangeLog struct {
 	Since   uint64      // Sequence this log is valid _after_, i.e. max sequence not in the log
 	Entries []*LogEntry // Entries in order they were added (not sequence order!)
@@ -35,28 +34,6 @@ func (cp *ChangeLog) Add(newEntry LogEntry) {
 		cp.Since = newEntry.Sequence - 1
 	}
 	cp.Entries = append(cp.Entries, &newEntry)
-}
-
-// Removes a specific doc/revision, if present. (It's actually marked as empty, not removed.)
-func (cp *ChangeLog) Remove(docID, revID string) bool {
-	if revID != "" {
-		entries := cp.Entries
-		for i, entry := range entries {
-			if entry.DocID == docID && entry.RevID == revID {
-				entry.DocID = ""
-				entry.RevID = ""
-				entries[i] = entry // write it back
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Inserts a new entry, removing the one for the parent revision (if any).
-func (cp *ChangeLog) Update(newEntry LogEntry, parentRevID string) {
-	cp.Add(newEntry)
-	cp.Remove(newEntry.DocID, parentRevID)
 }
 
 // Removes the oldest entries to limit the log's length to `maxLength`.

@@ -36,6 +36,7 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 		Entries: make([]*LogEntry, 0, 500),
 	}
 	parents := map[docAndRev]*LogEntry{}
+	cleanup := false
 	var buf [1]byte
 	for {
 		n, _ := r.Read(buf[0:1])
@@ -57,11 +58,26 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 				// Clear out the parent rev that was overwritten by this one
 				parent.DocID = ""
 				parent.RevID = ""
+				cleanup = true
 			}
 		}
 		parents[docAndRev{entry.DocID, entry.RevID}] = entry
 
 		ch.Entries = append(ch.Entries, entry)
+	}
+
+	// Now remove any overwritten entries:
+	if cleanup {
+		iDst := 0
+		for iSrc, entry := range ch.Entries {
+			if entry.DocID != "" { // only copy non-cleared entries
+				if iDst < iSrc {
+					ch.Entries[iDst] = entry
+				}
+				iDst++
+			}
+		}
+		ch.Entries = ch.Entries[0:iDst]
 	}
 	return &ch
 }
