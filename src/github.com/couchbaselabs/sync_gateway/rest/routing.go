@@ -74,6 +74,7 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
 			(*handler).handlePersonaPOST)).Methods("POST")
 	}
+
 	if sc.config.Facebook != nil {
 		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
 			(*handler).handleFacebookPOST)).Methods("POST")
