@@ -21,7 +21,7 @@ const (
 // The log is sorted by order revisions were added; this is mostly but not always by sequence.
 // Revisions replaced by children are not removed but their doc/rev IDs are changed to "".
 type ChangeLog struct {
-	Since   uint64      // Sequence this is valid after
+	Since   uint64      // Sequence this log is valid _after_, i.e. max sequence not in the log
 	Entries []*LogEntry // Entries in order they were added (not sequence order!)
 }
 
@@ -30,7 +30,7 @@ func (cp *ChangeLog) Add(newEntry LogEntry) {
 	if newEntry.Sequence == 0 || newEntry.DocID == "" || newEntry.RevID == "" {
 		panic(fmt.Sprintf("Invalid entry: %+v", newEntry))
 	}
-	if len(cp.Entries) == 0 || newEntry.Sequence <= cp.Since {
+	if len(cp.Entries) == 0 || newEntry.Sequence == cp.Since {
 		cp.Since = newEntry.Sequence - 1
 	}
 	cp.Entries = append(cp.Entries, &newEntry)

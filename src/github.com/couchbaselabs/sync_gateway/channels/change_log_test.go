@@ -46,14 +46,14 @@ func TestAddOutOfOrder(t *testing.T) {
 	var cl ChangeLog
 	cl.Add(*e(20, "bar", "1-a"))
 	cl.Add(*e(10, "foo", "1-a"))
-	assert.Equals(t, cl.Since, uint64(9))
+	assert.Equals(t, cl.Since, uint64(19))
 	assert.DeepEquals(t, cl.EntriesAfter(0), []*LogEntry{e(20, "bar", "1-a"), e(10, "foo", "1-a")})
 	assert.DeepEquals(t, cl.EntriesAfter(20), []*LogEntry{e(10, "foo", "1-a")})
 	assert.DeepEquals(t, cl.EntriesAfter(10), []*LogEntry{})
 	cl.Add(*e(30, "zog", "1-a"))
 	assert.DeepEquals(t, cl.EntriesAfter(20), []*LogEntry{e(10, "foo", "1-a"), e(30, "zog", "1-a")})
 	assert.DeepEquals(t, cl.EntriesAfter(10), []*LogEntry{e(30, "zog", "1-a")})
-	assert.DeepEquals(t, cl, mklog(9, e(20, "bar", "1-a"), e(10, "foo", "1-a"), e(30, "zog", "1-a")))
+	assert.DeepEquals(t, cl, mklog(19, e(20, "bar", "1-a"), e(10, "foo", "1-a"), e(30, "zog", "1-a")))
 }
 
 func TestReplace(t *testing.T) {

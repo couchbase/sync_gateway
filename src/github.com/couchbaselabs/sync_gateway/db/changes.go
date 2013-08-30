@@ -491,12 +491,14 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 		removedCount = 0
 
 		if len(currentValue) == 0 {
+			// If the log was empty, create a new one-element log and return:
 			channelLog := channels.ChangeLog{}
 			channelLog.Add(entry)
 			return encodeChannelLog(&channelLog), walrus.Raw, nil
 		}
 
 		if fullUpdate {
+			// When doing a full update,
 			fullUpdateAttempts++
 			var newValue bytes.Buffer
 			removedCount = channels.TruncateEncodedChangeLog(bytes.NewReader(currentValue),
@@ -507,6 +509,7 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 			}
 		}
 
+		// Append the encoded form of the new entry to the raw log bytes:
 		w := bytes.NewBuffer(make([]byte, 0, 50000))
 		entry.Encode(w, parentRevID)
 		currentValue = append(currentValue, w.Bytes()...)

@@ -73,20 +73,23 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength int, w io.Writer) int {
 	since := readSequence(r)
 	// Find the starting position of each entry:
 	entryPos := make([]int64, 0, 1000)
+	entrySeq := make([]uint64, 0, 1000)
 	for {
 		pos, _ := r.Seek(0, 1)
 		flags, err := r.ReadByte()
 		if err != nil {
 			break // eof
 		}
-		entryPos = append(entryPos, pos)
-		readSequence(r)
+		seq := readSequence(r)
 		skipString(r)
 		skipString(r)
 		skipString(r)
 		if flags > 7 {
 			panic(fmt.Sprintf("bad flags %x, entry %d, offset %d", flags, len(entryPos)-1, pos))
 		}
+
+		entryPos = append(entryPos, pos)
+		entrySeq = append(entrySeq, seq)
 	}
 
 	// How many entries to remove?
@@ -94,9 +97,12 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength int, w io.Writer) int {
 	if remove <= 0 {
 		return 0
 	}
-	// Update the log's Since to the sequence of the last entry being removed:
-	r.Seek(entryPos[remove-1]+1, 0)
-	since = readSequence(r)
+	// Update the log's Since to the max sequence being removed:
+	for i := 0; i < remove; i++ {
+		if entrySeq[i] > since {
+			since = entrySeq[i]
+		}
+	}
 
 	// Write the updated Since and the remaining entries:
 	writeSequence(since, w)
