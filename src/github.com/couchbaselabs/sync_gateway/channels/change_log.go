@@ -61,7 +61,12 @@ func (cp *ChangeLog) Update(newEntry LogEntry, parentRevID string) {
 // Removes the oldest entries to limit the log's length to `maxLength`.
 func (cp *ChangeLog) TruncateTo(maxLength int) int {
 	if remove := len(cp.Entries) - maxLength; remove > 0 {
-		cp.Since = cp.Entries[remove-1].Sequence
+		// Set Since to the max of the sequences being removed:
+		for _, entry := range cp.Entries[0:remove] {
+			if entry.Sequence > cp.Since {
+				cp.Since = entry.Sequence
+			}
+		}
 		cp.Entries = cp.Entries[remove:]
 		return remove
 	}
