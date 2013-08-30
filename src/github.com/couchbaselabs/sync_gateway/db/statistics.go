@@ -42,8 +42,7 @@ func (stats *Statistics) MaxCount() uint32 {
 
 func (stats *Statistics) Reset() {
 	stats.lock.Lock()
-	stats.currentCount = 0
-	stats.maxCount = 0
+	stats.maxCount = stats.currentCount
 	stats.totalCount = 0
 	stats.lock.Unlock()
 }

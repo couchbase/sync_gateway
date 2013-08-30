@@ -228,7 +228,6 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 		urlStr += "/"
 	}
 	urlStr += url.QueryEscape(dbName)
-	base.TEMP("Asking for config at %s", urlStr)
 	res, err := sc.HTTPClient.Get(urlStr)
 	if err != nil {
 		return nil, err
@@ -251,12 +250,21 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 //////// STATISTICS REPORT:
 
 func (sc *ServerContext) startStatsReporter() {
-	sc.statsTicker = time.NewTicker(kStatsReportInterval)
+	interval := kStatsReportInterval
+	if sc.config.StatsReportInterval != nil {
+		if *sc.config.StatsReportInterval <= 0 {
+			return
+		}
+		interval = time.Duration(*sc.config.StatsReportInterval) * time.Second
+	}
+	sc.statsTicker = time.NewTicker(interval)
 	go func() {
 		for _ = range sc.statsTicker.C {
 			sc.reportStats()
 		}
 	}()
+	base.Log("Will report server stats for %q every %v",
+		*sc.config.DeploymentID, interval)
 }
 
 func (sc *ServerContext) stopStatsReporter() {
@@ -271,8 +279,12 @@ func (sc *ServerContext) reportStats() {
 	if sc.config.DeploymentID == nil {
 		panic("Can't reportStats without DeploymentID")
 	}
+	stats := sc.Stats()
+	if stats == nil {
+		return // No activity
+	}
 	base.Log("Reporting server stats to %s ...", kStatsReportURL)
-	body, _ := json.Marshal(sc.Stats())
+	body, _ := json.Marshal(stats)
 	bodyReader := bytes.NewReader(body)
 	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
 	if err != nil {
@@ -284,15 +296,22 @@ func (sc *ServerContext) Stats() map[string]interface{} {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	var stats []map[string]interface{}
+	any := false
 	for _, dbc := range sc.databases_ {
-		stats = append(stats, map[string]interface{}{
-			"max_connections":   dbc.ChangesClientStats.MaxCount(),
-			"total_connections": dbc.ChangesClientStats.TotalCount(),
-		})
+		max := dbc.ChangesClientStats.MaxCount()
+		total := dbc.ChangesClientStats.TotalCount()
 		dbc.ChangesClientStats.Reset()
+		stats = append(stats, map[string]interface{}{
+			"max_connections":   max,
+			"total_connections": total,
+		})
+		any = any || total > 0
+	}
+	if !any {
+		return nil
 	}
 	return map[string]interface{}{
-		"deployment_id": sc.config.DeploymentID,
-		"databases":     stats,
+		"deploymentID": *sc.config.DeploymentID,
+		"databases":    stats,
 	}
 }

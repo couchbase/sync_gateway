@@ -29,15 +29,16 @@ var DefaultPool = "default"
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface      *string              // Interface to bind REST API to, default ":4984"
-	AdminInterface *string              // Interface to bind admin API to, default ":4985"
-	ConfigServer   *string              // URL of config server (for dynamic db discovery)
-	Persona        *PersonaConfig       // Configuration for Mozilla Persona validation
-	Facebook       *FacebookConfig      // Configuration for Facebook validation
-	Log            []string             // Log keywords to enable
-	Pretty         bool                 // Pretty-print JSON responses?
-	DeploymentID   *string              // Optional customer/deployment ID, used by stats reporting
-	Databases      map[string]*DbConfig // Pre-configured databases, mapped by name
+	Interface           *string              // Interface to bind REST API to, default ":4984"
+	AdminInterface      *string              // Interface to bind admin API to, default ":4985"
+	ConfigServer        *string              // URL of config server (for dynamic db discovery)
+	Persona             *PersonaConfig       // Configuration for Mozilla Persona validation
+	Facebook            *FacebookConfig      // Configuration for Facebook validation
+	Log                 []string             // Log keywords to enable
+	Pretty              bool                 // Pretty-print JSON responses?
+	DeploymentID        *string              // Optional customer/deployment ID for stats reporting
+	StatsReportInterval *float64             // Optional stats report interval (0 to disable)
+	Databases           map[string]*DbConfig // Pre-configured databases, mapped by name
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -201,7 +202,7 @@ func ParseCommandLine() *ServerConfig {
 		if configServer != nil {
 			config.ConfigServer = configServer
 		}
-		if deploymentID != nil {
+		if *deploymentID != "" {
 			config.DeploymentID = deploymentID
 		}
 		if *pretty {
