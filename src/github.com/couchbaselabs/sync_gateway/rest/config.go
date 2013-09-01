@@ -43,15 +43,16 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name     string                     // Database name in REST API (stored as key in JSON)
-	Server   *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username string                     // Username for authenticating to server
-	Password string                     // Password for authenticating to server
-	Bucket   *string                    // Bucket name on server; defaults to same as 'name'
-	Pool     *string                    // Couchbase pool name, default "default"
-	Sync     *string                    // Sync function defines which users can see which data
-	Users    map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
-	Roles    map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
+	name      string                     // Database name in REST API (stored as key in JSON)
+	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username  string                     // Username for authenticating to server
+	Password  string                     // Password for authenticating to server
+	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
+	Pool      *string                    // Couchbase pool name, default "default"
+	Sync      *string                    // Sync function defines which users can see which data
+	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
+	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
+	RevsLimit *uint32                    // Max depth a document's revision tree can grow to
 }
 
 type PersonaConfig struct {

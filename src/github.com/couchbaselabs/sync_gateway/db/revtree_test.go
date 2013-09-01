@@ -109,6 +109,45 @@ func TestRevTreeWinningRev(t *testing.T) {
 	assert.Equals(t, tempmap.winningRevision(), "3-drei")
 }
 
+func TestRevTreeDepths(t *testing.T) {
+	tempmap := testmap.copy()
+	tempmap.computeDepths()
+	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+
+	tempmap = branchymap.copy()
+	tempmap.computeDepths()
+	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	assert.Equals(t, tempmap["3-drei"].depth, uint32(1))
+	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+
+	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei"}
+	tempmap.computeDepths()
+	assert.Equals(t, tempmap["4-vier"].depth, uint32(1))
+	assert.Equals(t, tempmap["3-drei"].depth, uint32(2))
+	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+
+	// Prune:
+	assert.Equals(t, tempmap.pruneRevisions(1000), 0)
+	assert.Equals(t, tempmap.pruneRevisions(3), 0)
+	assert.Equals(t, tempmap.pruneRevisions(2), 1)
+	assert.Equals(t, len(tempmap), 4)
+	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
+	assert.Equals(t, tempmap["2-two"].Parent, "")
+
+	// Make sure leaves are never pruned:
+	assert.Equals(t, tempmap.pruneRevisions(1), 2)
+	assert.Equals(t, len(tempmap), 2)
+	assert.True(t, tempmap["3-three"] != nil)
+	assert.Equals(t, tempmap["3-three"].Parent, "")
+	assert.True(t, tempmap["4-vier"] != nil)
+	assert.Equals(t, tempmap["4-vier"].Parent, "")
+}
+
 //////// HELPERS:
 
 func assertFailed(t *testing.T, message string) {

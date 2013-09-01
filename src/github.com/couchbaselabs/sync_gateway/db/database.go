@@ -35,7 +35,10 @@ type DatabaseContext struct {
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
+	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
 }
+
+const DefaultRevsLimit = 1000
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -74,6 +77,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 		Name:      dbName,
 		Bucket:    bucket,
 		StartTime: time.Now(),
+		RevsLimit: DefaultRevsLimit,
 	}
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)

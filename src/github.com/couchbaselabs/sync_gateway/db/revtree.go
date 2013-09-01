@@ -12,6 +12,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -25,6 +26,7 @@ type RevInfo struct {
 	Deleted  bool
 	Body     []byte
 	Channels base.Set
+	depth    uint32
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
@@ -255,6 +257,61 @@ func (tree RevTree) copy() RevTree {
 		result[rev] = info
 	}
 	return result
+}
+
+//////// PRUNING THE TREE (REVS_LIMIT)
+
+// Initializes the depth field of every tree node, computed as the distance to the closest leaf.
+func (tree RevTree) computeDepths() (maxDepth uint32) {
+	// TODO: Should deleted leaves be penalized since they're not very useful?
+	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
+	for _, info := range tree {
+		info.depth = math.MaxUint32
+	}
+	// Walk from each leaf to its root, assigning ancestors consecutive depths,
+	// but stopping if we'd increase an already-visited ancestor's depth:
+	for _, revid := range tree.getLeaves() {
+		var depth uint32 = 1
+		for node := tree[revid]; node != nil; node = tree[node.Parent] {
+			if node.depth <= depth {
+				break // This hierarchy already has a shorter path to another leaf
+			}
+			node.depth = depth
+			if depth > maxDepth {
+				maxDepth = depth
+			}
+			depth++
+		}
+	}
+	return
+}
+
+// Removes older ancestor nodes from the tree so that no node's depth is greater than maxDepth.
+// Returns the number of nodes pruned.
+func (tree RevTree) pruneRevisions(maxDepth uint32) (pruned int) {
+	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
+		return
+	}
+
+	// Delete nodes whose depth is greater than maxDepth:
+	for revid, node := range tree {
+		if node.depth > maxDepth {
+			delete(tree, revid)
+			pruned++
+		}
+	}
+
+	// Finally, snip dangling Parent links:
+	if pruned > 0 {
+		for _, node := range tree {
+			if node.Parent != "" {
+				if _, found := tree[node.Parent]; !found {
+					node.Parent = ""
+				}
+			}
+		}
+	}
+	return
 }
 
 //////// HELPERS:

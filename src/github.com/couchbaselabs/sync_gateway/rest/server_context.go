@@ -155,6 +155,9 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 			return nil, err
 		}
 	}
+	if config.RevsLimit != nil && *config.RevsLimit > 0 {
+		dbcontext.RevsLimit = *config.RevsLimit
+	}
 
 	if dbcontext.ChannelMapper == nil {
 		base.Warn("Database %q sync function undefined; using default", dbName)

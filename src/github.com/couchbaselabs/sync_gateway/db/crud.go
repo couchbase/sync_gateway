@@ -426,6 +426,11 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 				docid, newRevID, prevCurrentRev)
 		}
 
+		// Prune old revision history to limit the number of revisions:
+		if pruned := doc.History.pruneRevisions(db.RevsLimit); pruned > 0 {
+			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
+		}
+
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
 		return
