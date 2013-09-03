@@ -3,7 +3,9 @@ package db
 import (
 	"bytes"
 	"math/rand"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/couchbaselabs/walrus"
 
@@ -110,7 +112,7 @@ type channelLogWriter struct {
 }
 
 type changeEntry struct {
-	entry       channels.LogEntry
+	channels.LogEntry
 	parentRevID string
 }
 
@@ -129,7 +131,8 @@ func newChannelLogWriter(bucket base.Bucket, channelName string) *channelLogWrit
 		// This is the goroutine the channelLogWriter runs:
 		for {
 			if changes := c.readChanges_(); changes != nil {
-				c.addToChangeLog_(changes)
+				c.addToChangeLog_(c.massageChanges(changes))
+				time.Sleep(50) // lowering rate helps to coalesce changes, limiting # of writes
 			} else {
 				break // client called close
 			}
@@ -141,7 +144,7 @@ func newChannelLogWriter(bucket base.Bucket, channelName string) *channelLogWrit
 
 // Queues a change to be written to the change-log.
 func (c *channelLogWriter) addChange(entry channels.LogEntry, parentRevID string) {
-	c.io <- &changeEntry{entry: entry, parentRevID: parentRevID}
+	c.io <- &changeEntry{LogEntry: entry, parentRevID: parentRevID}
 }
 
 // Stops the background goroutine of a channelLogWriter.
@@ -174,6 +177,18 @@ loop:
 	return entries
 }
 
+// Simplifies an array of changes before they're appended to the channel log.
+func (c *channelLogWriter) massageChanges(changes []*changeEntry) []*changeEntry {
+	sort.Sort(changeEntryList(changes))
+	return changes
+}
+
+type changeEntryList []*changeEntry
+
+func (cl changeEntryList) Len() int           { return len(cl) }
+func (cl changeEntryList) Less(i, j int) bool { return cl[i].Sequence < cl[j].Sequence }
+func (cl changeEntryList) Swap(i, j int)      { cl[i], cl[j] = cl[j], cl[i] }
+
 // Writes new changes to my channel log document.
 func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 	var fullUpdate bool
@@ -194,7 +209,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 			// If the log was empty, create a new log and return:
 			channelLog := channels.ChangeLog{}
 			for _, entry := range entries {
-				channelLog.Add(entry.entry)
+				channelLog.Add(entry.LogEntry)
 			}
 			return encodeChannelLog(&channelLog), walrus.Raw, nil
 		}
@@ -206,7 +221,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 				MaxChangeLogLength-1, MaxChangeLogLength/2, &newValue)
 			if removedCount > 0 {
 				for _, entry := range entries {
-					entry.entry.Encode(&newValue, entry.parentRevID)
+					entry.Encode(&newValue, entry.parentRevID)
 				}
 				return newValue.Bytes(), walrus.Raw, nil
 			}
@@ -215,7 +230,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 		// Append the encoded form of the new entries to the raw log bytes:
 		w := bytes.NewBuffer(make([]byte, 0, 50000))
 		for _, entry := range entries {
-			entry.entry.Encode(w, entry.parentRevID)
+			entry.Encode(w, entry.parentRevID)
 		}
 		currentValue = append(currentValue, w.Bytes()...)
 		return currentValue, walrus.Raw, nil
