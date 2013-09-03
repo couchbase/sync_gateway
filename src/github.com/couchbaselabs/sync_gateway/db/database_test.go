@@ -205,7 +205,11 @@ func TestAllDocs(t *testing.T) {
 	defer func() { MaxChangeLogLength = oldMaxLogLength }()
 
 	base.LogKeys["Changes"] = true
-	defer func() { base.LogKeys["Changes"] = false }()
+	base.LogKeys["Changes+"] = true
+	defer func() {
+		base.LogKeys["Changes"] = false
+		base.LogKeys["Changes+"] = false
+	}()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -244,6 +248,8 @@ func TestAllDocs(t *testing.T) {
 		}
 		assert.DeepEquals(t, entry, ids[j])
 	}
+
+	db.changesWriter.checkpoint()
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
@@ -287,7 +293,7 @@ func TestAllDocs(t *testing.T) {
 	}
 
 	// Trying to add the existing log should fail with no error
-	added, err := db.AddChangeLog("all", log)
+	added, err := db.changesWriter.addChangeLog("all", log)
 	assertNoError(t, err, "add channel log")
 	assert.False(t, added)
 
@@ -321,7 +327,10 @@ func TestConflicts(t *testing.T) {
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
 
-	log, _ := db.GetChangeLog("all", 0)
+	db.changesWriter.checkpoint()
+
+	log, err := db.GetChangeLog("all", 0)
+	assertNoError(t, err, "GetChangeLog")
 	assert.Equals(t, len(log.Entries), 1)
 	assert.Equals(t, int(log.Since), 0)
 
@@ -345,6 +354,8 @@ func TestConflicts(t *testing.T) {
 	gotBody, err = db.GetRev("doc", "2-a", false, nil)
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
 		"channels": []interface{}{"all", "2a"}})
+
+	db.changesWriter.checkpoint()
 
 	// Verify the change-log of the "all" channel:
 	log, _ = db.GetChangeLog("all", 0)

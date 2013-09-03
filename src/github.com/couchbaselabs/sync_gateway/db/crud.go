@@ -471,7 +471,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if newRevID != doc.CurrentRev {
 		newEntry.Flags |= channels.Hidden
 	}
-	db.AddToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
+	db.changesWriter.addToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
 
 	return newRevID, nil
 }

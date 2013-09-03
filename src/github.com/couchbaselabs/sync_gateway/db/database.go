@@ -33,6 +33,7 @@ type DatabaseContext struct {
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
+	changesWriter      *changesWriter          // Writes changes to the channel-log docs
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
@@ -79,6 +80,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 		StartTime: time.Now(),
 		RevsLimit: DefaultRevsLimit,
 	}
+	context.changesWriter = newChangesWriter(bucket)
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
@@ -92,6 +94,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 
 func (context *DatabaseContext) Close() {
 	context.tapListener.Stop()
+	context.changesWriter.checkpoint()
 	context.Bucket.Close()
 	context.Bucket = nil
 }
@@ -508,4 +511,14 @@ func (db *Database) invalUserOrRoleChannels(name string) {
 	} else {
 		db.invalUserChannels(name)
 	}
+}
+
+//////// SEQUENCE ALLOCATION:
+
+func (context *DatabaseContext) LastSequence() uint64 {
+	return context.sequences.lastSequence()
+}
+
+func (context *DatabaseContext) ReserveSequences(numToReserve uint64) error {
+	return context.sequences.reserveSequences(numToReserve)
 }

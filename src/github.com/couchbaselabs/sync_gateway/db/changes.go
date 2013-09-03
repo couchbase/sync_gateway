@@ -10,13 +10,10 @@
 package db
 
 import (
-	"bytes"
 	"encoding/json"
 	"math"
-	"math/rand"
 
 	"github.com/couchbaselabs/go-couchbase"
-	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -100,7 +97,7 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	since := options.Since[channel]
-	channelLog, err := db.GetChangeLog(channel, since)
+	channelLog, err := db.changesWriter.getChangeLog(channel, since)
 	if err != nil {
 		base.Warn("Error reading channel-log %q (using view instead) %v", channel, err)
 		channelLog = nil
@@ -162,7 +159,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// Save the missing channel log we just rebuilt:
 				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
 					channel, len(newLog.Entries))
-				if _, err := db.AddChangeLog(channel, &newLog); err != nil {
+				if _, err := db.changesWriter.addChangeLog(channel, &newLog); err != nil {
 					base.Warn("ChangesFeed: AddChangeLog failed, %v", err)
 				}
 			}
@@ -446,140 +443,6 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 	return changes, err
 }
 
-//////// SEQUENCE ALLOCATION:
-
-func (context *DatabaseContext) LastSequence() uint64 {
-	return context.sequences.lastSequence()
-}
-
-func (db *Database) ReserveSequences(numToReserve uint64) error {
-	return db.sequences.reserveSequences(numToReserve)
-}
-
-//////// CHANNEL LOG DOCUMENTS:
-
-// The "2" is a version tag. Update this if we change the format later.
-const kChannelLogDocType = "log2"
-const kChannelLogKeyPrefix = "_sync:" + kChannelLogDocType + ":"
-
-func channelLogDocID(channelName string) string {
-	return kChannelLogKeyPrefix + channelName
-}
-
-func decodeChannelLog(raw []byte) (*channels.ChangeLog, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	return channels.DecodeChangeLog(bytes.NewReader(raw)), nil
-}
-
-func encodeChannelLog(log *channels.ChangeLog) []byte {
-	if log == nil {
-		return nil
-	}
-	raw := bytes.NewBuffer(make([]byte, 0, 50000))
-	log.Encode(raw)
-	return raw.Bytes()
-}
-
-// Loads a channel's log from the database and returns it.
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
-	if raw, err := db.Bucket.GetRaw(channelLogDocID(channelName)); err == nil {
-		log, err := decodeChannelLog(raw)
-		if err == nil {
-			log.FilterAfter(afterSeq)
-		}
-		return log, err
-	} else {
-		if base.IsDocNotFoundError(err) {
-			err = nil
-		}
-		return nil, err
-	}
-}
-
-// Saves a channel log, _if_ there isn't already one in the database.
-func (db *Database) AddChangeLog(channelName string, log *channels.ChangeLog) (added bool, err error) {
-	return db.Bucket.AddRaw(channelLogDocID(channelName), 0, encodeChannelLog(log))
-}
-
-// Adds a new change to a channel log.
-func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, parentRevID string) error {
-	if channelName == "*" && !EnableStarChannelLog {
-		return nil
-	}
-	var fullUpdate bool
-	var removedCount int
-	fullUpdateAttempts := 0
-
-	logDocID := channelLogDocID(channelName)
-	err := db.Bucket.WriteUpdate(logDocID, 0, func(currentValue []byte) ([]byte, walrus.WriteOptions, error) {
-		// (Be careful: this block can be invoked multiple times if there are races!)
-		// Should I do a full update of the change log, removing older entries to limit its size?
-		// This has to be done occasionaly, but it's slower than simply appending to it. This
-		// test is a heuristic that seems to strike a good balance in practice:
-		fullUpdate = AlwaysCompactChangeLog ||
-			(len(currentValue) > 20000 && (rand.Intn(100) < len(currentValue)/5000))
-		removedCount = 0
-
-		if len(currentValue) == 0 {
-			// If the log was empty, create a new one-element log and return:
-			channelLog := channels.ChangeLog{}
-			channelLog.Add(entry)
-			return encodeChannelLog(&channelLog), walrus.Raw, nil
-		}
-
-		if fullUpdate {
-			fullUpdateAttempts++
-			var newValue bytes.Buffer
-			removedCount = channels.TruncateEncodedChangeLog(bytes.NewReader(currentValue),
-				MaxChangeLogLength-1, MaxChangeLogLength/2, &newValue)
-			if removedCount > 0 {
-				entry.Encode(&newValue, parentRevID)
-				return newValue.Bytes(), walrus.Raw, nil
-			}
-		}
-
-		// Append the encoded form of the new entry to the raw log bytes:
-		w := bytes.NewBuffer(make([]byte, 0, 50000))
-		entry.Encode(w, parentRevID)
-		currentValue = append(currentValue, w.Bytes()...)
-		return currentValue, walrus.Raw, nil
-	})
-
-	/*if fullUpdate {
-		base.Log("Removed %d entries from %q", removedCount, channelName)
-	} else if fullUpdateAttempts > 0 {
-		base.Log("Attempted to remove entries %d times but failed", fullUpdateAttempts)
-	}*/
-	return err
-}
-
-func (db *Database) AddToChangeLogs(changedChannels base.Set, channelMap ChannelMap, entry channels.LogEntry, parentRevID string) error {
-	var err error
-	base.LogTo("Changes", "Updating #%d %q/%q in channels %s", entry.Sequence, entry.DocID, entry.RevID, changedChannels)
-	for channel, removal := range channelMap {
-		if removal != nil && removal.Seq != entry.Sequence {
-			continue
-		}
-		// Set Removed flag appropriately for this channel:
-		if removal != nil {
-			entry.Flags |= channels.Removed
-		} else {
-			entry.Flags = entry.Flags &^ channels.Removed
-		}
-		if err1 := db.AddToChangeLog(channel, entry, parentRevID); err != nil {
-			err = err1
-		}
-	}
-
-	// Finally, add to the universal "*" channel.
-	if EnableStarChannelLog {
-		entry.Flags = entry.Flags &^ channels.Removed
-		if err1 := db.AddToChangeLog("*", entry, parentRevID); err != nil {
-			err = err1
-		}
-	}
-
-	return err
+	return db.changesWriter.getChangeLog(channelName, afterSeq)
 }
