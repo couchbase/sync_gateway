@@ -502,11 +502,10 @@ func (db *Database) AddToChangeLog(channelName string, entry channels.LogEntry, 
 		}
 
 		if fullUpdate {
-			// When doing a full update,
 			fullUpdateAttempts++
 			var newValue bytes.Buffer
 			removedCount = channels.TruncateEncodedChangeLog(bytes.NewReader(currentValue),
-				MaxChangeLogLength-1, &newValue)
+				MaxChangeLogLength-1, MaxChangeLogLength/2, &newValue)
 			if removedCount > 0 {
 				entry.Encode(&newValue, parentRevID)
 				return newValue.Bytes(), walrus.Raw, nil

@@ -91,7 +91,7 @@ func TestChangeLogEncoding(t *testing.T) {
 
 	// Append a new entry to the encoded bytes:
 	newEntry := LogEntry{
-		Sequence: 99,
+		Sequence: 667,
 		DocID:    "some document",
 		RevID:    "22-x",
 		Flags:    Removed,
@@ -107,10 +107,10 @@ func TestChangeLogEncoding(t *testing.T) {
 
 	// Truncate cl2's encoded data:
 	var wTrunc bytes.Buffer
-	removed := TruncateEncodedChangeLog(bytes.NewReader(moreData), 2, &wTrunc)
+	removed := TruncateEncodedChangeLog(bytes.NewReader(moreData), 2, 1, &wTrunc)
 	assert.Equals(t, removed, 2)
 	data3 := wTrunc.Bytes()
-	assert.DeepEquals(t, data3, []byte{0x9a, 0x5, 0x0, 0xc0, 0xc4, 0x7, 0x1, 0x61, 0xa, 0x35, 0x2d, 0x63, 0x61, 0x66, 0x65, 0x62, 0x61, 0x62, 0x65, 0x0, 0x2, 0x63, 0xd, 0x73, 0x6f, 0x6d, 0x65, 0x20, 0x64, 0x6f, 0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x4, 0x32, 0x32, 0x2d, 0x78, 0xc, 0x31, 0x2d, 0x61, 0x6a, 0x6b, 0x6c, 0x6a, 0x6b, 0x6a, 0x6b, 0x6c, 0x6a})
+	assert.DeepEquals(t, data3, []byte{0x9a, 0x5, 0x0, 0xc0, 0xc4, 0x7, 0x1, 0x61, 0xa, 0x35, 0x2d, 0x63, 0x61, 0x66, 0x65, 0x62, 0x61, 0x62, 0x65, 0x0, 0x2, 0x9b, 0x5, 0xd, 0x73, 0x6f, 0x6d, 0x65, 0x20, 0x64, 0x6f, 0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x4, 0x32, 0x32, 0x2d, 0x78, 0xc, 0x31, 0x2d, 0x61, 0x6a, 0x6b, 0x6c, 0x6a, 0x6b, 0x6a, 0x6b, 0x6c, 0x6a})
 
 	cl3 := DecodeChangeLog(bytes.NewReader(data3))
 	assert.Equals(t, cl3.Since, uint64(666))
@@ -134,5 +134,32 @@ func TestSort(t *testing.T) {
 	expectedSeqs := []uint64{1, 2, 3, 4, 5, 8, 9}
 	for i, entry := range cl.Entries {
 		assert.Equals(t, entry.Sequence, expectedSeqs[i])
+	}
+}
+
+func TestFindPivot(t *testing.T) {
+	type testCase struct {
+		seq      []uint64
+		minIndex int
+		pivot    int
+	}
+	testCases := []testCase{
+		{[]uint64{1, 2, 3, 4, 5}, 0, 0},
+		{[]uint64{1, 2, 3, 4, 5}, 1, 1},
+		{[]uint64{1, 2, 3, 4, 5}, 3, 3},
+		{[]uint64{1, 2, 3, 4, 5}, 4, 4},
+		{[]uint64{1, 3, 4, 2, 5}, 2, 3},
+		{[]uint64{1, 3, 4, 2, 5}, 1, 3},
+		{[]uint64{1, 3, 4, 2, 5}, 3, 3},
+		{[]uint64{1, 3, 4, 2, 5}, 4, 4},
+		{[]uint64{3, 4, 2, 5, 1}, 1, 4},
+		{[]uint64{3, 2, 4, 1, 5, 6, 8, 7, 9}, 2, 3},
+	}
+	for _, c := range testCases {
+		pivot, _ := findPivot(c.seq, c.minIndex)
+		if pivot != c.pivot {
+			t.Errorf("findPivot(%v, %d) -> %d; should be %d",
+				c.seq, c.minIndex, pivot, c.pivot)
+		}
 	}
 }

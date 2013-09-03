@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	// "log"
+	"math"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // Encodes a ChangeLog into a simple appendable data format.
@@ -85,9 +87,9 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 // Removes the oldest entries to limit the log's length to `maxLength`.
 // This is the same as ChangeLog.Truncate except it works directly on the encoded form, which is
 // much faster than decoding+truncating+encoding.
-func TruncateEncodedChangeLog(r *bytes.Reader, maxLength int, w io.Writer) int {
-	since := readSequence(r)
-	// Find the starting position of each entry:
+func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Writer) int {
+	originalSince := readSequence(r)
+	// Find the starting position and sequence of each entry:
 	entryPos := make([]int64, 0, 1000)
 	entrySeq := make([]uint64, 0, 1000)
 	for {
@@ -109,15 +111,20 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength int, w io.Writer) int {
 	}
 
 	// How many entries to remove?
+	// * Leave no more than maxLength entries
+	// * Every sequence value removed should be less than every sequence remaining.
+	// * The new 'since' value should be the maximum sequence removed.
 	remove := len(entryPos) - maxLength
 	if remove <= 0 {
 		return 0
 	}
-	// Update the log's Since to the max sequence being removed:
-	for i := 0; i < remove; i++ {
-		if entrySeq[i] > since {
-			since = entrySeq[i]
-		}
+	pivot, since := findPivot(entrySeq, remove-1)
+	remove = pivot + 1
+	if len(entryPos)-remove < minLength {
+		remove = 0
+		since = originalSince
+		base.Warn("TruncateEncodedChangeLog: Couldn't find a safe place to truncate")
+		//TODO: Possibly find a pivot earlier than desired?
 	}
 
 	// Write the updated Since and the remaining entries:
@@ -170,4 +177,31 @@ func skipString(r io.ReadSeeker) {
 	var length uint8
 	binary.Read(r, binary.BigEndian, &length)
 	r.Seek(int64(length), 1)
+}
+
+// Finds a 'pivot' index, at or after minIndex, such that all array values before and at the pivot
+// are less than all array values after it.
+func findPivot(values []uint64, minIndex int) (pivot int, maxBefore uint64) {
+	// First construct a table where minRight[i] is the minimum value in [i..n)
+	n := len(values)
+	minRight := make([]uint64, n)
+	var min uint64 = math.MaxUint64
+	for i := n - 1; i >= 0; i-- {
+		if values[i] < min {
+			min = values[i]
+		}
+		minRight[i] = min
+	}
+	// Now scan left-to-right tracking the running max and looking for a pivot:
+	maxBefore = 0
+	for pivot = 0; pivot < n-1; pivot++ {
+		if values[pivot] > maxBefore {
+			maxBefore = values[pivot]
+		}
+		if pivot >= minIndex && maxBefore < minRight[pivot+1] {
+			break
+		}
+	}
+	//log.Printf("PIVOT: %v @%d -> %d", values, minIndex, pivot)
+	return
 }
