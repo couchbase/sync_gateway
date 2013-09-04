@@ -65,21 +65,25 @@ func (sc *ServerContext) Close() {
 // Returns the DatabaseContext with the given name
 func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	sc.lock.RLock()
-	db := sc.databases_[name]
+	dbc := sc.databases_[name]
 	sc.lock.RUnlock()
-	if db != nil {
-		return db, nil
+	if dbc != nil {
+		return dbc, nil
+	} else if db.ValidateDatabaseName(name) != nil {
+		return nil, &base.HTTPError{http.StatusBadRequest, "invalid database name '" + name + "'"}
 	} else if sc.config.ConfigServer == nil {
 		return nil, &base.HTTPError{http.StatusNotFound, "no such database '" + name + "'"}
 	} else {
 		// Let's ask the config server if it knows this database:
+		base.Log("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
 		config, err := sc.getDbConfigFromServer(name)
-		if err == nil {
-			if db, err = sc.AddDatabaseFromConfig(config); err == nil {
-				return db, nil
-			}
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		if dbc, err = sc.AddDatabaseFromConfig(config); err != nil {
+			return nil, err
+		}
+		return dbc, nil
 	}
 }
 
@@ -233,7 +237,8 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	urlStr += url.QueryEscape(dbName)
 	res, err := sc.HTTPClient.Get(urlStr)
 	if err != nil {
-		return nil, err
+		return nil, &base.HTTPError{http.StatusBadGateway,
+			"Error contacting config server: " + err.Error()}
 	} else if res.StatusCode >= 300 {
 		return nil, &base.HTTPError{res.StatusCode, res.Status}
 	}
@@ -241,7 +246,8 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	var config DbConfig
 	j := json.NewDecoder(res.Body)
 	if err = j.Decode(&config); err != nil {
-		return nil, err
+		return nil, &base.HTTPError{http.StatusBadGateway,
+			"Bad response from config server: " + err.Error()}
 	}
 
 	if err = config.setup(dbName); err != nil {

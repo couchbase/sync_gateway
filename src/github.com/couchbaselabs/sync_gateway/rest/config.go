@@ -200,7 +200,7 @@ func ParseCommandLine() *ServerConfig {
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
 		}
-		if configServer != nil {
+		if *configServer != "" {
 			config.ConfigServer = configServer
 		}
 		if *deploymentID != "" {
