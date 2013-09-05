@@ -24,7 +24,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.59"
+const VersionString = "Couchbase Sync Gateway/0.79"
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
@@ -89,7 +89,7 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
 	h.writeJSONStatus(http.StatusCreated, db.Body{
 		"ok": true,
-		"instance_start_time":  h.instanceStartTime(),
+		"instance_start_time": h.instanceStartTime(),
 	})
 	return nil
 }
