@@ -10,9 +10,9 @@
 package db
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
 
@@ -81,37 +81,75 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	return body, nil
 }
 
-// Checks whether the current user is allowed to access the given doc ID.
-// If not, returns an error.
-func (db *Database) AuthorizeDoc(docid string) error {
+// Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
+func (db *Database) AuthorizeDocID(docid, revid string) error {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
 		return err
 	}
-	return AuthorizeAnyDocChannels(db.user, doc.Channels)
+	return db.authorizeDoc(doc, revid)
 }
 
-// Returns an HTTP 403 error if the User is not allowed to access any of the document's channels.
-// A nil User means access control is disabled, so the function will return nil.
-func AuthorizeAnyDocChannels(user auth.User, channels ChannelMap) error {
-	if user == nil {
+// Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
+func (db *Database) authorizeDoc(doc *document, revid string) error {
+	user := db.user
+	if doc == nil || user == nil {
+		return nil // A nil User means access control is disabled
+	}
+	if revid == "" {
+		revid = doc.CurrentRev
+	}
+	if rev := doc.History[revid]; rev != nil {
+		// Authenticate against specific revision:
+		return db.user.AuthorizeAnyChannel(rev.Channels)
+	} else {
+		// No such revision; let the caller proceed and return a 404
 		return nil
 	}
-	for channel, removed := range channels {
-		if removed == nil && user.CanSeeChannel(channel) {
-			return nil
-		}
-	}
-	if user.CanSeeChannel("*") {
-		return nil // Doc is not in any channels, but user has all-access
-	}
-	return user.UnauthError("You are not allowed to see this")
 }
 
-// Returns the body of a revision given a document struct
+// Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
+// This method adds the magic _id and _rev properties.
+func (db *Database) getRevision(doc *document, revid string) (Body, error) {
+	var body Body
+	if body = doc.getRevision(revid); body == nil {
+		// No inline body, so look for separate doc:
+		if !doc.History.contains(revid) {
+			return nil, &base.HTTPError{Status: 404, Message: "missing"}
+		} else if data, err := db.getOldRevisionJSON(doc.ID, revid); data == nil {
+			return nil, err
+		} else if err = json.Unmarshal(data, &body); err != nil {
+			return nil, err
+		}
+	}
+	body.FixJSONNumbers() // Make sure big ints won't get output in scientific notation
+	body["_id"] = doc.ID
+	body["_rev"] = revid
+	return body, nil
+}
+
+// Gets a revision of a document as raw JSON.
+// If it's obsolete it will be loaded from the database if possible.
+// Does not add _id or _rev properties.
+func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error) {
+	if body := doc.getRevisionJSON(revid); body != nil {
+		return body, nil
+	} else if !doc.History.contains(revid) {
+		return nil, &base.HTTPError{Status: 404, Message: "missing"}
+	} else {
+		return db.getOldRevisionJSON(doc.ID, revid)
+	}
+}
+
+// Returns the body of a revision given a document struct. Checks user access.
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
-	if err := AuthorizeAnyDocChannels(db.user, doc.Channels); err != nil {
-		// FIX: This only authorizes vs the current revision, not the one the client asked for!
+	if err := db.authorizeDoc(doc, revid); err != nil {
+		// As a special case, you don't need channel access to see a deletion revision,
+		// otherwise the client's replicator can't process the deletion (since deletions
+		// usually aren't on any channels at all!) But don't show the full body. (See #59)
+		if revid != "" && doc.History[revid] != nil && doc.History[revid].Deleted {
+			return Body{"_id": doc.ID, "_rev": revid, "_deleted": true}, nil
+		}
 		return nil, err
 	}
 	if revid == "" {
@@ -120,9 +158,10 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 			return nil, &base.HTTPError{Status: 404, Message: "deleted"}
 		}
 	}
-	body := doc.getRevision(revid)
-	if body == nil {
-		return nil, &base.HTTPError{Status: 404, Message: "missing"}
+	var body Body
+	var err error
+	if body, err = db.getRevision(doc, revid); err != nil {
+		return nil, err
 	}
 	if doc.History[revid].Deleted {
 		body["_deleted"] = true
@@ -138,11 +177,40 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 // Does NOT fill in _id, _rev, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if body := doc.getRevision(revid); body != nil {
+		if body, _ := db.getRevision(doc, revid); body != nil {
 			return body, nil
 		}
 	}
 	return nil, &base.HTTPError{404, "missing"}
+}
+
+// Moves a revision's ancestor's body out of the document object and into a separate db doc.
+func (db *Database) backupAncestorRevs(doc *document, revid string) error {
+	// Find an ancestor that still has JSON in the document:
+	var json []byte
+	for {
+		if revid = doc.History.getParent(revid); revid == "" {
+			return nil // No ancestors with JSON found
+		} else if json = doc.getRevisionJSON(revid); json != nil {
+			break
+		}
+	}
+
+	// Store the JSON as a separate doc in the bucket:
+	if err := db.setOldRevisionJSON(doc.ID, revid, json); err != nil {
+		// This isn't fatal since we haven't lost any information; just warn about it.
+		base.Warn("backupAncestorRevs failed: doc=%q rev=%q err=%v", doc.ID, revid, err)
+		return err
+	}
+
+	// Nil out the rev's body in the document struct:
+	if revid == doc.CurrentRev {
+		doc.body = nil
+	} else {
+		doc.History.setRevisionBody(revid, nil)
+	}
+	base.LogTo("CRUD+", "Backed up obsolete rev %q/%q", doc.ID, revid)
+	return nil
 }
 
 //////// UPDATING DOCUMENTS:
@@ -184,6 +252,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 		if err := db.storeAttachments(doc, body, generation, matchRev); err != nil {
 			return nil, err
 		}
+
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
@@ -214,6 +283,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			}
 		}
 		if currentRevIndex == 0 {
+			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
@@ -240,33 +310,42 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, callback func(*document) (Body, error)) (string, error) {
+	// As a special case, it's illegal to put a design document except in admin mode:
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return "", &base.HTTPError{Status: 403, Message: "Forbidden to update design doc"}
+	}
+
 	key := db.realDocID(docid)
 	if key == "" {
 		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
 	}
-	var newRevID string
-	var body Body
 
-	err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+	var newRevID, parentRevID string
+	var doc *document
+	var changedChannels base.Set
+	var changedPrincipals, changedRoleUsers []string
+	var docSequence uint64
+
+	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		doc, err := unmarshalDocument(docid, currentValue)
-		if err != nil {
-			return nil, err
+		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
+			return
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, err = callback(doc)
+		body, err := callback(doc)
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
+		parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
 		doc.CurrentRev = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
 
-		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
+		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
 			bodyJSON, _ := json.Marshal(doc.body)
 			doc.History.setRevisionBody(prevCurrentRev, bodyJSON)
@@ -282,36 +361,116 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 			doc.History.setRevisionBody(doc.CurrentRev, nil)
 		}
 
-		// Assign the document the next sequence number, for the _changes feed:
-		doc.Sequence, err = db.sequences.nextSequence()
-		if err != nil {
-			return nil, err
-		}
-
-		// Run the validation and sync functions
-		parentRevID := doc.History[newRevID].Parent
+		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
-		channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+		channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 		if err != nil {
-			return nil, err
+			return
 		}
-		db.updateDocChannels(doc, channels) //FIX: Incorrect if new rev is not current!
-		db.updateDocAccess(doc, access)
+		if len(channels) > 0 {
+			doc.History[newRevID].Channels = channels
+		}
 
-		// Tell Couchbase to store the document:
-		return json.Marshal(doc)
+		// Move the body of the replaced revision out of the document so it can be compacted later.
+		db.backupAncestorRevs(doc, newRevID)
+
+		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
+		// But be careful not to request a second sequence # on a retry if we don't need one.
+		if docSequence <= doc.Sequence {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
+				return
+			}
+		}
+		doc.Sequence = docSequence
+
+		if doc.CurrentRev != prevCurrentRev {
+			// Most of the time this update will change the doc's current rev. (The exception is
+			// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
+			// need to update the doc's top-level Channels and Access properties to correspond
+			// to the current rev's state.
+			if newRevID != doc.CurrentRev {
+				// In some cases an older revision might become the current one. If so, get its
+				// channels & access, for purposes of updating the doc:
+				var curBody Body
+				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
+					base.LogTo("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
+						docid, newRevID, doc.CurrentRev)
+					curParent := doc.History[doc.CurrentRev].Parent
+					channels, access, roles, err = db.getChannelsAndAccess(doc, curBody, curParent)
+					if err != nil {
+						return
+					}
+				} else {
+					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
+					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+						"on it (err=%v)", docid, doc.CurrentRev, err)
+					channels = nil
+					access = nil
+					roles = nil
+				}
+			}
+
+			// Update the document struct's channel assignment and user access.
+			// (This uses the new sequence # so has to be done after updating doc.Sequence)
+			changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
+			changedPrincipals = doc.Access.updateAccess(doc, access)
+			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
+			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
+				// If this update affects user/role access privileges, make sure the write blocks till
+				// the new value is indexable, otherwise when a User/Role updates (using a view) it
+				// might not incorporate the effects of this change.
+				writeOpts |= walrus.Indexable
+			}
+		} else {
+			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
+				docid, newRevID, prevCurrentRev)
+		}
+
+		// Prune old revision history to limit the number of revisions:
+		if pruned := doc.History.pruneRevisions(db.RevsLimit); pruned > 0 {
+			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
+		}
+
+		// Return the new raw document value for the bucket to store.
+		raw, err = json.Marshal(doc)
+		return
 	})
 
 	if err == couchbase.UpdateCancel {
 		return "", nil
+	} else if err == couchbase.ErrOverwritten {
+		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
+		base.LogTo("CRUD+", "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
+			docid, newRevID)
 	} else if err != nil {
 		return "", err
 	}
-	if newRevID != "" {
-		base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+
+	// Now that the document has successfully been stored, we can make other db changes:
+	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+
+	// Mark affected users/roles as needing to recompute their channel access:
+	for _, name := range changedPrincipals {
+		db.invalUserOrRoleChannels(name)
+	}
+	for _, name := range changedRoleUsers {
+		db.invalUserRoles(name)
 	}
 
-	db.NotifyRevision()
+	// Add the new revision to the change logs of all affected channels:
+	newEntry := channels.LogEntry{
+		Sequence: doc.Sequence,
+		DocID:    docid,
+		RevID:    newRevID,
+	}
+	if doc.History[newRevID].Deleted {
+		newEntry.Flags |= channels.Deleted
+	}
+	if newRevID != doc.CurrentRev {
+		newEntry.Flags |= channels.Hidden
+	}
+	db.AddToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
+
 	return newRevID, nil
 }
 
@@ -321,7 +480,7 @@ func (db *Database) Post(body Body) (string, string, error) {
 		return "", "", &base.HTTPError{Status: http.StatusNotFound,
 			Message: "No previous revision to replace"}
 	}
-	docid := createUUID()
+	docid := base.CreateUUID()
 	rev, err := db.Put(docid, body)
 	if err != nil {
 		docid = ""
@@ -339,24 +498,33 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result channels.Set, access channels.AccessMap, err error) {
-	base.LogTo("CRUD", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
+func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
+	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
+
+	// Get the parent revision, to pass to the sync function:
 	var oldJson string
 	if parentRevID != "" {
-		oldJson = string(doc.getRevisionJSON(parentRevID))
+		var oldJsonBytes []byte
+		oldJsonBytes, err = db.getRevisionJSON(doc, parentRevID)
+		if err != nil {
+			return
+		}
+		oldJson = string(oldJsonBytes)
 	}
 
 	if db.ChannelMapper != nil {
+		// Call the ChannelMapper:
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
 		if err == nil {
 			result = output.Channels
 			access = output.Access
+			roles = output.Roles
 			err = output.Rejection
 			if err != nil {
 				base.Log("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
-			} else if !validateAccessMap(access) {
+			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = &base.HTTPError{500, fmt.Sprintf("Error in JS sync function")}
 			}
 
@@ -385,47 +553,13 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 // Creates a userCtx object to be passed to the sync function
 func makeUserCtx(user auth.User) map[string]interface{} {
 	if user == nil {
-		return map[string]interface{}{
-			"name":     nil,
-			"roles":    []interface{}{},
-			"channels": []interface{}{},
-		}
+		return nil
 	}
 	return map[string]interface{}{
 		"name":     user.Name(),
 		"roles":    user.RoleNames(),
 		"channels": user.InheritedChannels(),
 	}
-}
-
-// Updates the Channels property of a document object with current & past channels
-func (db *Database) updateDocChannels(doc *document, newChannels channels.Set) (changed bool) {
-	channels := doc.Channels
-	if channels == nil {
-		channels = ChannelMap{}
-		doc.Channels = channels
-	} else {
-		// Mark every previous channel as unsubscribed:
-		curSequence := doc.Sequence
-		for channel, seq := range channels {
-			if seq == nil {
-				channels[channel] = &ChannelRemoval{curSequence, doc.CurrentRev}
-				changed = true
-			}
-		}
-	}
-
-	// Mark every current channel as subscribed:
-	for channel, _ := range newChannels {
-		if value, exists := channels[channel]; value != nil || !exists {
-			channels[channel] = nil
-			changed = true
-		}
-	}
-	if changed {
-		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
-	}
-	return changed
 }
 
 // Are the principal and role names in an AccessMap all valid?
@@ -435,45 +569,26 @@ func validateAccessMap(access channels.AccessMap) bool {
 			name = name[5:] // Roles are identified in access view by a "role:" prefix
 		}
 		if !auth.IsValidPrincipalName(name) {
-			base.Warn("Invalid user/role name %q in access() call", name)
+			base.Warn("Invalid principal name %q in access() or role() call", name)
 			return false
 		}
 	}
 	return true
 }
 
-func (db *Database) invalUserChannels(username string) {
-	authr := db.Authenticator()
-	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateChannels(user)
+func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
+	if !validateAccessMap(roleAccess) {
+		return false
 	}
-}
-
-// Updates the Access property of a document object
-func (db *Database) updateDocAccess(doc *document, newAccess channels.AccessMap) (changed bool) {
-	for name, access := range doc.Access {
-		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
-			if len(access) == 0 {
-				delete(doc.Access, name)
+	for _, roles := range roleAccess {
+		for rolename, _ := range roles {
+			if !auth.IsValidPrincipalName(rolename) {
+				base.Warn("Invalid role name %q in role() call", rolename)
+				return false
 			}
-			changed = true
-			db.invalUserChannels(name)
 		}
 	}
-	for name, access := range newAccess {
-		if _, existed := doc.Access[name]; !existed {
-			changed = true
-			if doc.Access == nil {
-				doc.Access = UserAccessMap{}
-			}
-			doc.Access[name] = access.AtSequence(doc.Sequence)
-			db.invalUserChannels(name)
-		}
-	}
-	if changed {
-		base.LogTo("Access", "Doc %q grants access: %v", doc.ID, doc.Access)
-	}
-	return
+	return true
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
@@ -499,6 +614,34 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 		channelSet.Add(row.Value)
 	}
 	return channelSet, nil
+}
+
+// Recomputes the set of roles a User has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, error) {
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
+	opts := map[string]interface{}{"stale": false, "key": user.Name()}
+	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
+		return nil, verr
+	}
+	// Boil the list of TimedSets down to a simple set of role names:
+	all := map[string]bool{}
+	for _, row := range vres.Rows {
+		for name, _ := range row.Value {
+			all[name] = true
+		}
+	}
+	// Then turn that set into an array to return:
+	values := make([]string, 0, len(all))
+	for name, _ := range all {
+		values = append(values, name)
+	}
+	return values, nil
 }
 
 //////// REVS_DIFF:
@@ -531,7 +674,7 @@ func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
 	doc, err := db.getDoc(docid)
 	if err != nil {
-		if !isMissingDocError(err) {
+		if !base.IsDocNotFoundError(err) {
 			base.Warn("RevDiff(%q) --> %T %v", docid, err, err)
 			// If something goes wrong getting the doc, treat it as though it's nonexistent.
 		}
@@ -571,22 +714,4 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 		}
 	}
 	return
-}
-
-//////// HELPER FUNCTIONS:
-
-// Returns a cryptographically-random 160-bit number encoded as a hex string.
-func createUUID() string {
-	bytes := make([]byte, 16)
-	n, err := rand.Read(bytes)
-	if n < 16 {
-		base.LogPanic("Failed to generate random ID: %s", err)
-	}
-	return fmt.Sprintf("%x", bytes)
-}
-
-// Returns true if the input error is an HTTP 404 status.
-func isMissingDocError(err error) bool {
-	httpstatus, _ := base.ErrorAsHTTPStatus(err)
-	return httpstatus == 404
 }

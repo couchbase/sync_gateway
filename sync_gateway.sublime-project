@@ -2,34 +2,55 @@
 	"folders":
 	[
 		{
+			"follow_symlinks": true,
 			"name": "sync_gateway",
 			"path": "src/github.com/couchbaselabs/sync_gateway"
 		},
 		{
-			"path": "vendor/src/github.com/couchbaselabs/go-couchbase",
-			"file_exclude_patterns": [".*"]
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "vendor/src/github.com/couchbaselabs/go-couchbase"
 		},
 		{
-			"path": "vendor/src/github.com/dustin/gomemcached",
-			"file_exclude_patterns": [".*"]
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "vendor/src/github.com/dustin/gomemcached"
 		},
 		{
-			"path": "vendor/src/github.com/couchbaselabs/walrus",
-			"file_exclude_patterns": [".*"]
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "vendor/src/github.com/couchbaselabs/walrus"
+		},
+		{
+			"follow_symlinks": true,
+			"path": "examples"
 		}
 	],
 	"settings":
 	{
-		"GoSublime": {
+		"GoSublime":
+		{
 			"env":
 			{
 				"GOPATH": "/Couchbase/sync_gateway:/Couchbase/sync_gateway/vendor"
 			}
 		},
-		"rulers":[100],
-		"tab_size":4,
-		"translate_tabs_to_spaces":false,
-		"trim_automatic_white_space":true,
-		"trim_trailing_white_space_on_save":true
+		"rulers":
+		[
+			100
+		],
+		"tab_size": 4,
+		"translate_tabs_to_spaces": false,
+		"trim_automatic_white_space": true,
+		"trim_trailing_white_space_on_save": true
 	}
 }

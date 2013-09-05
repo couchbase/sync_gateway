@@ -14,11 +14,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -30,75 +34,92 @@ import (
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
+// If set to true, diagnostic data will be dumped if there's a problem with MIME multipart data
+var DebugMultipart bool = false
+
+var lastSerialNum uint64 = 0
+
+func init() {
+	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
+}
+
 var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
 var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
 var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request"}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server   *serverContext
-	context  *context
-	rq       *http.Request
-	response http.ResponseWriter
-	db       *db.Database
-	user     auth.User
-	admin    bool
+	server       *ServerContext
+	rq           *http.Request
+	response     http.ResponseWriter
+	db           *db.Database
+	user         auth.User
+	privs        handlerPrivs
+	startTime    time.Time
+	serialNumber uint64
 }
+
+type handlerPrivs int
+
+const (
+	regularPrivs = iota // Handler requires authentication
+	publicPrivs         // Handler checks auth but doesn't require it
+	adminPrivs          // Handler ignores auth, always runs with root/admin privs
+)
 
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeAdminHandler(server *serverContext, method handlerMethod) http.Handler {
+func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := &handler{
-			server:   server,
-			rq:       rq,
-			response: r,
-			admin:    true,
-		}
+		h := newHandler(server, privs, r, rq)
 		err := h.invoke(method)
 		h.writeError(err)
 	})
 }
 
-// Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *serverContext, method handlerMethod) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := &handler{
-			server:   server,
-			rq:       rq,
-			response: r,
-			admin:    false,
-		}
-		err := h.invoke(method)
-		h.writeError(err)
-	})
+func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request) *handler {
+	h := &handler{
+		server:       server,
+		privs:        privs,
+		rq:           rq,
+		response:     r,
+		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
+	}
+	if base.LogKeys["HTTP+"] {
+		h.startTime = time.Now()
+	}
+	return h
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
-	base.LogTo("HTTP", "%s %s", h.rq.Method, h.rq.URL)
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
+	var dbContext *db.DatabaseContext
 	if dbname, ok := h.PathVars()["db"]; ok {
-		h.context = h.server.databases[dbname]
-		if h.context == nil {
-			return &base.HTTPError{http.StatusNotFound, "no such database"}
-		}
-	}
-
-	// Authenticate; admin handlers can ignore missing credentials
-	if err := h.checkAuth(); err != nil {
-		if !h.admin {
+		var err error
+		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
+			h.logRequestLine()
 			return err
 		}
 	}
 
-	// Now look up the database:
-	if h.context != nil {
+	// Authenticate, if not on admin port:
+	if h.privs != adminPrivs {
+		if err := h.checkAuth(dbContext); err != nil {
+			h.logRequestLine()
+			return err
+		}
+	}
+
+	h.logRequestLine()
+
+	// Now set the request's Database (i.e. context + user)
+	if dbContext != nil {
 		var err error
-		h.db, err = db.GetDatabase(h.context.dbcontext, h.user)
+		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
 		}
@@ -107,31 +128,65 @@ func (h *handler) invoke(method handlerMethod) error {
 	return method(h) // Call the actual handler code
 }
 
-func (h *handler) checkAuth() error {
+func (h *handler) logRequestLine() {
+	if !base.LogKeys["HTTP"] {
+		return
+	}
+	as := ""
+	if h.privs == adminPrivs {
+		as = "  (ADMIN)"
+	} else if h.user != nil && h.user.Name() != "" {
+		as = fmt.Sprintf("  (as %s)", h.user.Name())
+	}
+	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
+}
+
+func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	h.user = nil
-	if h.context == nil || h.context.auth == nil {
+	if context == nil {
 		return nil
 	}
 
-	// Check cookie first, then HTTP auth:
+	// Check cookie first:
 	var err error
-	h.user, err = h.context.auth.AuthenticateCookie(h.rq)
+	h.user, err = context.Authenticator().AuthenticateCookie(h.rq)
 	if err != nil {
 		return err
-	}
-	var userName, password string
-	if h.user == nil {
-		userName, password = h.getBasicAuth()
-		h.user = h.context.auth.AuthenticateUser(userName, password)
+	} else if h.user != nil {
+		base.LogTo("HTTP+", "#%03d: Authenticated as %q via cookie", h.serialNumber, h.user.Name())
+		return nil
 	}
 
-	if h.user == nil && !h.admin {
-		cookie, _ := h.rq.Cookie(auth.CookieName)
-		base.Log("Auth failed for username=%q, cookie=%q", userName, cookie)
-		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
-		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+	// If no cookie, check HTTP auth:
+	if userName, password := h.getBasicAuth(); userName != "" {
+		h.user = context.Authenticator().AuthenticateUser(userName, password)
+		if h.user == nil {
+			base.Log("HTTP auth failed for username=%q", userName)
+			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+			return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+		}
+		if h.user.Name() != "" {
+			base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
+		}
+		return nil
 	}
+
+	// No auth given -- check guest access
+	if h.user, err = context.Authenticator().GetUser(""); err != nil {
+		return err
+	}
+	if h.privs == regularPrivs && h.user.Disabled() {
+		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+		return &base.HTTPError{http.StatusUnauthorized, "Login required"}
+	}
+
 	return nil
+}
+
+func (h *handler) assertAdminOnly() {
+	if h.privs != adminPrivs {
+		panic("Admin-only handler called without admin privileges, on " + h.rq.RequestURI)
+	}
 }
 
 func (h *handler) PathVars() map[string]string {
@@ -159,7 +214,12 @@ func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) 
 // Parses a JSON request body, returning it as a Body map.
 func (h *handler) readJSON() (db.Body, error) {
 	var body db.Body
-	return body, db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &body)
+	return body, h.readJSONInto(&body)
+}
+
+// Parses a JSON request body into a custom structure.
+func (h *handler) readJSONInto(into interface{}) error {
+	return db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, into)
 }
 
 func (h *handler) readDocument() (db.Body, error) {
@@ -168,8 +228,22 @@ func (h *handler) readDocument() (db.Body, error) {
 	case "", "application/json":
 		return h.readJSON()
 	case "multipart/related":
-		reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
-		return db.ReadMultipartDocument(reader)
+		if DebugMultipart {
+			raw, err := ioutil.ReadAll(h.rq.Body)
+			if err != nil {
+				return nil, err
+			}
+			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
+			body, err := db.ReadMultipartDocument(reader)
+			if err != nil {
+				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
+				base.Warn("Error reading MIME data: copied to file GatewayPUT.mime")
+			}
+			return body, err
+		} else {
+			reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
+			return db.ReadMultipartDocument(reader)
+		}
 	}
 	return nil, &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
 }
@@ -193,6 +267,22 @@ func (h *handler) getBasicAuth() (username string, password string) {
 	return
 }
 
+// Registers a new user account based on the given verified email address.
+// Username will be the same as the verified email address. Password will be random.
+// The user will have access to no channels.
+func (h *handler) registerNewUser(email string) (auth.User, error) {
+	user, err := h.db.Authenticator().NewUser(email, base.GenerateRandomSecret(), base.Set{})
+	if err != nil {
+		return nil, err
+	}
+	user.SetEmail(email)
+	err = h.db.Authenticator().Save(user)
+	if err != nil {
+		return nil, err
+	}
+	return user, err
+}
+
 //////// RESPONSES:
 
 func (h *handler) setHeader(name string, value string) {
@@ -200,7 +290,11 @@ func (h *handler) setHeader(name string, value string) {
 }
 
 func (h *handler) logStatus(status int, message string) {
-	base.LogTo("HTTP+", "    --> %d %s", status, message)
+	if base.LogKeys["HTTP+"] {
+		duration := float64(time.Since(h.startTime)) / float64(time.Millisecond)
+		base.LogTo("HTTP+", "#%03d:     --> %d %s  (%.1f ms)",
+			h.serialNumber, status, message, duration)
+	}
 }
 
 // Writes an object to the response in JSON format.
@@ -326,7 +420,7 @@ func (h *handler) writeStatus(status int, message string) {
 
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	base.LogTo("HTTP", "    --> %d %s", status, message)
+	base.LogTo("HTTP", " #%03d:     --> %d %s", h.serialNumber, status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }

@@ -22,3 +22,6 @@
 [submodule "vendor/src/github.com/gorilla/context"]
 	path = vendor/src/github.com/gorilla/context
 	url = https://github.com/gorilla/context
+[submodule "vendor/src/github.com/tleyden/fakehttp"]
+	path = vendor/src/github.com/tleyden/fakehttp
+	url = https://github.com/tleyden/fakehttp.git

@@ -16,8 +16,6 @@ import (
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
-
-	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 func unjson(j string) Body {
@@ -35,19 +33,11 @@ func tojson(obj interface{}) string {
 }
 
 func TestAttachments(t *testing.T) {
-	context, err := NewDatabaseContext("db", gTestBucket)
+	context, err := NewDatabaseContext("db", testBucket())
 	assertNoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
-
-	db.Delete()
-	defer func() {
-		err = db.Delete()
-		status, _ := base.ErrorAsHTTPStatus(err)
-		if status != 200 && status != 404 {
-			assertNoError(t, err, "Couldn't delete database 'db'")
-		}
-	}()
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")

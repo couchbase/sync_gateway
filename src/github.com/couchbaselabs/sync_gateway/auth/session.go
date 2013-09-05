@@ -48,12 +48,16 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (User, error) {
 }
 
 func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*LoginSession, error) {
+	ttlSec := int(ttl.Seconds())
+	if ttlSec <= 0 {
+		return nil, &base.HTTPError{400, "Invalid session time-to-live"}
+	}
 	session := &LoginSession{
 		ID:         base.GenerateRandomSecret(),
 		Username:   username,
 		Expiration: time.Now().Add(ttl),
 	}
-	if err := auth.bucket.Set(docIDForSession(session.ID), int(ttl.Seconds()), session); err != nil {
+	if err := auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
 		return nil, err
 	}
 	return session, nil

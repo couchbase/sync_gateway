@@ -1,0 +1,15 @@
+{
+	"log": ["REST+"],
+	"databases": {
+		"db": {
+			"sync": `
+function(doc){
+	channel(doc.channels);
+}`,
+			"server": "http://localhost:8091",
+			"users": {
+				"GUEST": {"disabled": false, "admin_channels": ["*"] }
+			}
+		}
+	}
+}

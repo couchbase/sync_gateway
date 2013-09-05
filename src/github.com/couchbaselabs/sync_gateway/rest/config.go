@@ -15,53 +15,92 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
-	"regexp"
+	"runtime"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/channels"
-	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = ":4985"
-var DefaultServer = "http://localhost:8091"
+var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface      *string // Interface to bind REST API to, default ":4984"
-	AdminInterface *string // Interface to bind admin API to, default ":4985"
-	Persona        *PersonaConfig
-	Log            []string // Log keywords to enable
-	Pretty         bool     // Pretty-print JSON responses?
-	Databases      map[string]*DbConfig
+	Interface           *string              // Interface to bind REST API to, default ":4984"
+	AdminInterface      *string              // Interface to bind admin API to, default ":4985"
+	ConfigServer        *string              // URL of config server (for dynamic db discovery)
+	Persona             *PersonaConfig       // Configuration for Mozilla Persona validation
+	Facebook            *FacebookConfig      // Configuration for Facebook validation
+	Log                 []string             // Log keywords to enable
+	Pretty              bool                 // Pretty-print JSON responses?
+	DeploymentID        *string              // Optional customer/deployment ID for stats reporting
+	StatsReportInterval *float64             // Optional stats report interval (0 to disable)
+	Databases           map[string]*DbConfig // Pre-configured databases, mapped by name
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name   string                     // Database name in REST API (stored as key in JSON)
-	Server *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Bucket *string                    // Bucket name on server; defaults to same as 'name'
-	Pool   *string                    // Couchbase pool name, default "default"
-	Sync   *string                    // Sync function defines which users can see which data
-	Users  map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
-	Roles  map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
+	name      string                     // Database name in REST API (stored as key in JSON)
+	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username  string                     // Username for authenticating to server
+	Password  string                     // Password for authenticating to server
+	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
+	Pool      *string                    // Couchbase pool name, default "default"
+	Sync      *string                    // Sync function defines which users can see which data
+	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
+	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
+	RevsLimit *uint32                    // Max depth a document's revision tree can grow to
 }
 
 type PersonaConfig struct {
-	Origin string // Canonical server URL for Persona authentication
+	Origin   string // Canonical server URL for Persona authentication
+	Register bool   // If true, server will register new user accounts
 }
 
-// Shared context of HTTP handlers. It's important that this remain immutable, because the
-// handlers will access it from multiple goroutines.
-type serverContext struct {
-	config    *ServerConfig
-	databases map[string]*context
+type FacebookConfig struct {
+	Register bool // If true, server will register new user accounts
+}
+
+func (dbConfig *DbConfig) setup(name string) error {
+	dbConfig.name = name
+	if dbConfig.Bucket == nil {
+		dbConfig.Bucket = &dbConfig.name
+	}
+	if dbConfig.Server == nil {
+		dbConfig.Server = &DefaultServer
+	}
+	if dbConfig.Pool == nil {
+		dbConfig.Pool = &DefaultPool
+	}
+
+	url, err := url.Parse(*dbConfig.Server)
+	if err == nil && url.User != nil {
+		// Remove credentials from URL and put them into the DbConfig.Username and .Password:
+		if dbConfig.Username == "" {
+			dbConfig.Username = url.User.Username()
+		}
+		if dbConfig.Password == "" {
+			if password, exists := url.User.Password(); exists {
+				dbConfig.Password = password
+			}
+		}
+		url.User = nil
+		urlStr := url.String()
+		dbConfig.Server = &urlStr
+	}
+	return err
+}
+
+// Implementation of AuthHandler interface
+func (dbConfig *DbConfig) GetCredentials() (string, string) {
+	return dbConfig.Username, dbConfig.Password
 }
 
 // Reads a ServerConfig from a JSON file.
-func ReadConfig(path string) (*ServerConfig, error) {
+func ReadServerConfig(path string) (*ServerConfig, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -80,16 +119,7 @@ func ReadConfig(path string) (*ServerConfig, error) {
 
 	// Validation:
 	for name, dbConfig := range config.Databases {
-		dbConfig.name = name
-		if dbConfig.Bucket == nil {
-			dbConfig.Bucket = &dbConfig.name
-		}
-		if dbConfig.Server == nil {
-			dbConfig.Server = &DefaultServer
-		}
-		if dbConfig.Pool == nil {
-			dbConfig.Pool = &DefaultPool
-		}
+		dbConfig.setup(name)
 	}
 	return config, nil
 }
@@ -101,8 +131,17 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.AdminInterface == nil {
 		self.AdminInterface = other.AdminInterface
 	}
+	if self.ConfigServer == nil {
+		self.ConfigServer = other.ConfigServer
+	}
+	if self.DeploymentID == nil {
+		self.DeploymentID = other.DeploymentID
+	}
 	if self.Persona == nil {
 		self.Persona = other.Persona
+	}
+	if self.Facebook == nil {
+		self.Facebook = other.Facebook
 	}
 	for _, flag := range other.Log {
 		self.Log = append(self.Log, flag)
@@ -119,119 +158,13 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	return nil
 }
 
-func newServerContext(config *ServerConfig) *serverContext {
-	return &serverContext{
-		config:    config,
-		databases: map[string]*context{},
-	}
-}
-
-// Adds a database to the serverContext given its Bucket.
-func (sc *serverContext) addDatabase(bucket base.Bucket, dbName string, syncFun *string, nag bool) (*context, error) {
-	if dbName == "" {
-		dbName = bucket.GetName()
-	}
-
-	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
-		return nil, fmt.Errorf("Illegal database name: %s", dbName)
-	}
-
-	if sc.databases[dbName] != nil {
-		return nil, fmt.Errorf("Duplicate database name %q", dbName)
-	}
-
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
-	if err != nil {
-		return nil, err
-	}
-	if syncFun != nil {
-		if err := dbcontext.ApplySyncFun(*syncFun); err != nil {
-			return nil, err
-		}
-	}
-
-	if dbcontext.ChannelMapper == nil {
-		if nag {
-			base.Warn("Sync function undefined; using default")
-		}
-		// Always have a channel mapper object even if it does nothing:
-		dbcontext.ChannelMapper, _ = channels.NewDefaultChannelMapper()
-	}
-
-	c := &context{
-		dbcontext: dbcontext,
-		auth:      dbcontext.Authenticator(),
-	}
-
-	sc.databases[dbName] = c
-	return c, nil
-}
-
-// Adds a database to the serverContext given its configuration.
-func (sc *serverContext) addDatabaseFromConfig(config *DbConfig) error {
-	server := "http://localhost:8091"
-	pool := "default"
-	bucketName := config.name
-
-	if config.Server != nil {
-		server = *config.Server
-	}
-	if config.Pool != nil {
-		pool = *config.Pool
-	}
-	if config.Bucket != nil {
-		bucketName = *config.Bucket
-	}
-
-	// Connect to the bucket and add the database:
-	bucket, err := db.ConnectToBucket(server, pool, bucketName)
-	if err != nil {
-		return err
-	}
-	context, err := sc.addDatabase(bucket, config.name, config.Sync, true)
-	if err != nil {
-		return err
-	}
-
-	// Create default users & roles:
-	if err := sc.installPrincipals(context, config.Roles, "role"); err != nil {
-		return nil
-	}
-	return sc.installPrincipals(context, config.Users, "user")
-}
-
-func (sc *serverContext) installPrincipals(context *context, spec map[string]json.RawMessage, what string) error {
-	for name, data := range spec {
-		isUsers := (what == "user")
-		if name == "GUEST" && isUsers {
-			name = ""
-		}
-		newPrincipal, err := context.auth.UnmarshalPrincipal(data, name, 1, isUsers)
-		if err != nil {
-			return fmt.Errorf("Invalid config for %s %q: %v", what, name, err)
-		}
-		oldPrincipal, err := context.auth.GetPrincipal(newPrincipal.Name(), isUsers)
-		if oldPrincipal == nil || name == "" {
-			if err == nil {
-				err = context.auth.Save(newPrincipal)
-			}
-			if err != nil {
-				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
-			} else if name == "" {
-				base.Log("Reset guest user to config")
-			} else {
-				base.Log("Created %s %q", what, name)
-			}
-		}
-	}
-	return nil
-}
-
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() *ServerConfig {
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	configServer := flag.String("configServer", "", "URL of server that can return database configs")
+	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
 	poolName := flag.String("pool", DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
@@ -247,7 +180,7 @@ func ParseCommandLine() *ServerConfig {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
-			c, err := ReadConfig(filename)
+			c, err := ReadServerConfig(filename)
 			if err != nil {
 				base.LogFatal("Error reading config file %s: %v", filename, err)
 			}
@@ -267,15 +200,17 @@ func ParseCommandLine() *ServerConfig {
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
 		}
+		if *configServer != "" {
+			config.ConfigServer = configServer
+		}
+		if *deploymentID != "" {
+			config.DeploymentID = deploymentID
+		}
 		if *pretty {
 			config.Pretty = *pretty
 		}
 		if config.Log != nil {
 			base.ParseLogFlags(config.Log)
-		}
-
-		if len(config.Databases) == 0 {
-			base.LogFatal("No databases!")
 		}
 		if config.Interface == nil {
 			config.Interface = &DefaultInterface
@@ -295,6 +230,7 @@ func ParseCommandLine() *ServerConfig {
 			Pretty:         *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
+					name:   *dbName,
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,
@@ -318,20 +254,31 @@ func ParseCommandLine() *ServerConfig {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
-	sc := newServerContext(config)
+	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
+		cpus := runtime.NumCPU()
+		if cpus > 1 {
+			runtime.GOMAXPROCS(cpus)
+			base.Log("Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+		}
+	}
+
+	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
-		if err := sc.addDatabaseFromConfig(dbConfig); err != nil {
+		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
 		}
 	}
 
-	http.Handle("/", createHandler(sc))
-	base.Log("Starting auth server on %s", *config.AdminInterface)
-	StartAuthListener(*config.AdminInterface, sc)
+	base.Log("Starting admin server on %s", *config.AdminInterface)
+	go func() {
+		if err := http.ListenAndServe(*config.AdminInterface, CreateAdminHandler(sc)); err != nil {
+			base.LogFatal("HTTP server failed: %v", err)
+		}
+	}()
 
 	base.Log("Starting server on %s ...", *config.Interface)
-	if err := http.ListenAndServe(*config.Interface, nil); err != nil {
-		base.LogFatal("Server failed: ", err.Error())
+	if err := http.ListenAndServe(*config.Interface, CreatePublicHandler(sc)); err != nil {
+		base.LogFatal("HTTP server failed: %v", err)
 	}
 }
 

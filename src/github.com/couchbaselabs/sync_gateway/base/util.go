@@ -11,6 +11,7 @@ package base
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -24,6 +25,16 @@ func GenerateRandomSecret() string {
 		panic("RNG failed, can't create password")
 	}
 	return fmt.Sprintf("%x", randomBytes)
+}
+
+// Returns a cryptographically-random 160-bit number encoded as a hex string.
+func CreateUUID() string {
+	bytes := make([]byte, 16)
+	n, err := rand.Read(bytes)
+	if n < 16 {
+		LogPanic("Failed to generate random ID: %s", err)
+	}
+	return fmt.Sprintf("%x", bytes)
 }
 
 // This is a workaround for an incompatibility between Go's JSON marshaler and CouchDB.
@@ -78,4 +89,35 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 		bytes[len(bytes)-1] = '"'
 		return bytes
 	})
+}
+
+// Concatenates and merges multiple string arrays into one, discarding all duplicates (including
+// duplicates within a single array.) Ordering is preserved.
+func MergeStringArrays(arrays ...[]string) (merged []string) {
+	seen := make(map[string]bool)
+	for _, array := range arrays {
+		for _, str := range array {
+			if !seen[str] {
+				seen[str] = true
+				merged = append(merged, str)
+			}
+		}
+	}
+	return
+}
+
+func ToInt64(value interface{}) (int64, bool) {
+	switch value := value.(type) {
+	case int64:
+		return value, true
+	case float64:
+		return int64(value), true
+	case int:
+		return int64(value), true
+	case json.Number:
+		if n, err := value.Int64(); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
 }

@@ -13,6 +13,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
@@ -20,7 +24,7 @@ import (
 type TimedSet map[string]uint64
 
 // Creates a new TimedSet from a Set plus a sequence
-func (set Set) AtSequence(sequence uint64) TimedSet {
+func AtSequence(set base.Set, sequence uint64) TimedSet {
 	result := make(TimedSet, len(set))
 	for name, _ := range set {
 		result[name] = sequence
@@ -29,15 +33,15 @@ func (set Set) AtSequence(sequence uint64) TimedSet {
 }
 
 // Converts a TimedSet to a Set
-func (set TimedSet) AsSet() Set {
+func (set TimedSet) AsSet() base.Set {
 	if set == nil {
 		return nil
 	}
-	result := make(Set, len(set))
+	result := make([]string, 0, len(set))
 	for ch, _ := range set {
-		result[ch] = present{}
+		result = append(result, ch)
 	}
-	return result
+	return base.SetFromArray(result)
 }
 
 func (set TimedSet) Validate() error {
@@ -57,19 +61,6 @@ func (set TimedSet) AllChannels() []string {
 	return result
 }
 
-func (set TimedSet) String() string {
-	list := set.AllChannels()
-	sort.Strings(list)
-	result := "{"
-	for i, ch := range list {
-		if i > 0 {
-			result += ", "
-		}
-		result += fmt.Sprintf("%s@%d", ch, set[ch])
-	}
-	return result + "}"
-}
-
 func (set TimedSet) Copy() TimedSet {
 	result := make(TimedSet, len(set))
 	for name, sequence := range set {
@@ -85,7 +76,7 @@ func (set TimedSet) Contains(ch string) bool {
 }
 
 // Updates membership to match the given Set. Newly added members will have the given sequence.
-func (set TimedSet) UpdateAtSequence(other Set, sequence uint64) bool {
+func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 	changed := false
 	for name, _ := range set {
 		if !other.Contains(name) {
@@ -132,7 +123,7 @@ func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 		if err2 := json.Unmarshal(data, &altForm); err2 == nil {
 			set, err := SetFromArray(altForm, KeepStar)
 			if err == nil {
-				*setPtr = set.AtSequence(0)
+				*setPtr = AtSequence(set, 0)
 			}
 			return err
 		}
@@ -141,4 +132,50 @@ func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 	*setPtr = TimedSet(normalForm)
 	return nil
 
+}
+
+//////// STRING ENCODING:
+
+// This is a simple compact round-trippable string encoding. It's used for sequence IDs in the
+// public REST API.
+// Note: Making incompatible changes to the format of these strings will potentially invalidate
+// the saved checkpoint of every pull replication of every client in the world. This isn't fatal
+// but will cause those replications to start over from the beginning. Think first.
+
+// Encodes a TimedSet as a string (as sent in the public _changes feed.)
+// This string can later be turned back into a TimedSet by calling TimedSetFromString().
+func (set TimedSet) String() string {
+	var items []string
+	for channel, seqNo := range set {
+		if seqNo > 0 {
+			items = append(items, fmt.Sprintf("%s:%d", channel, seqNo))
+		}
+	}
+	sort.Strings(items) // not strictly necessary but makes the string reproducible
+	return strings.Join(items, ",")
+}
+
+// Parses a string as generated from TimedSet.String().
+// Returns nil on failure. An empty string successfully parses to an empty TimedSet.
+func TimedSetFromString(encoded string) TimedSet {
+	items := strings.Split(encoded, ",")
+	set := make(TimedSet, len(items))
+	if encoded != "" {
+		for _, item := range items {
+			components := strings.Split(item, ":")
+			if len(components) != 2 {
+				return nil
+			}
+			channel := components[0]
+			seqNo, err := strconv.ParseUint(components[1], 10, 64)
+			if err != nil || seqNo == 0 || !IsValidChannel(channel) {
+				return nil
+			}
+			if _, found := set[channel]; found {
+				return nil // duplicate channel
+			}
+			set[channel] = seqNo
+		}
+	}
+	return set
 }

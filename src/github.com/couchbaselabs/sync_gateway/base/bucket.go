@@ -10,25 +10,58 @@
 package base
 
 import (
+	"fmt"
 	"regexp"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
+	"github.com/dustin/gomemcached/client"
 )
 
 type Bucket walrus.Bucket
+type TapArguments walrus.TapArguments
+type TapFeed walrus.TapFeed
+type AuthHandler couchbase.AuthHandler
+
+// Full specification of how to connect to a bucket
+type BucketSpec struct {
+	Server, PoolName, BucketName string
+	Auth                         AuthHandler
+}
 
 // Implementation of walrus.Bucket that talks to a Couchbase server
 type couchbaseBucket struct {
 	*couchbase.Bucket
 }
 
+type couchbaseFeedImpl struct {
+	*couchbase.TapFeed
+	events <-chan walrus.TapEvent
+}
+
+func (feed *couchbaseFeedImpl) Events() <-chan walrus.TapEvent {
+	return feed.events
+}
+
 func (bucket couchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
+func (bucket couchbaseBucket) Write(k string, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
+	return bucket.Bucket.Write(k, exp, v, couchbase.WriteOptions(opt))
+}
+
 func (bucket couchbaseBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
+}
+
+func (bucket couchbaseBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) error {
+	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
+		updated, walrusOpt, err := callback(current)
+		opt = couchbase.WriteOptions(walrusOpt)
+		return
+	}
+	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
 func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
@@ -37,24 +70,69 @@ func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interfac
 }
 
 func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
-	panic("unimplemented") // temporary for 1.0a1c4; implemented in master branch
+	cbArgs := memcached.TapArguments{
+		Backfill: args.Backfill,
+		Dump:     args.Dump,
+		KeysOnly: args.KeysOnly,
+	}
+	cbFeed, err := bucket.Bucket.StartTapFeed(&cbArgs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a bridge from the Couchbase tap feed to a Walrus tap feed:
+	events := make(chan walrus.TapEvent)
+	impl := couchbaseFeedImpl{cbFeed, events}
+	go func() {
+		for cbEvent := range cbFeed.C {
+			events <- walrus.TapEvent{
+				Opcode: walrus.TapOpcode(cbEvent.Opcode),
+				Expiry: cbEvent.Expiry,
+				Flags:  cbEvent.Flags,
+				Key:    cbEvent.Key,
+				Value:  cbEvent.Value,
+			}
+		}
+	}()
+	return &impl, nil
+}
+
+func (bucket couchbaseBucket) Dump() {
+	Warn("Dump not implemented for couchbaseBucket")
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucket(couchbaseURL, poolName, bucketName string) (bucket Bucket, err error) {
-	cbbucket, err := couchbase.GetBucket(couchbaseURL, poolName, bucketName)
+func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
+	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
+	if err != nil {
+		return
+	}
+	poolName := spec.PoolName
+	if poolName == "" {
+		poolName = "default"
+	}
+	pool, err := client.GetPool(poolName)
+	if err != nil {
+		return
+	}
+	cbbucket, err := pool.GetBucket(spec.BucketName)
 	if err == nil {
 		bucket = couchbaseBucket{cbbucket}
 	}
 	return
 }
 
-func GetBucket(url, poolName, bucketName string) (bucket Bucket, err error) {
-	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, url); isWalrus {
-		Log("Opening Walrus database %s on <%s>", bucketName, url)
-		walrus.Logging = true
-		return walrus.GetBucket(url, poolName, bucketName)
+func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
+		Log("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
+		walrus.Logging = LogKeys["Walrus"]
+		return walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 	}
-	Log("Opening Couchbase database %s on <%s>", bucketName, url)
-	return GetCouchbaseBucket(url, poolName, bucketName)
+	suffix := ""
+	if spec.Auth != nil {
+		username, _ := spec.Auth.GetCredentials()
+		suffix = fmt.Sprintf(" as user %q", username)
+	}
+	Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+	return GetCouchbaseBucket(spec)
 }

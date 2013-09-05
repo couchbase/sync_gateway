@@ -16,11 +16,13 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/dchest/passwordhash"
+	"code.google.com/p/go.crypto/bcrypt"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
+
+const kBcryptCostFactor = bcrypt.DefaultCost
 
 // Actual implementation of User interface
 type userImpl struct {
@@ -33,11 +35,12 @@ type userImpl struct {
 // Marshalable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_        string                     `json:"email,omitempty"`
-	Disabled_     bool                       `json:"disabled,omitempty"`
-	PasswordHash_ *passwordhash.PasswordHash `json:"passwordhash,omitempty"`
-	Password_     *string                    `json:"password,omitempty"`
-	RoleNames_    []string                   `json:"roles,omitempty"`
+	Email_             string      `json:"email,omitempty"`
+	Disabled_          bool        `json:"disabled,omitempty"`
+	PasswordHash_      []byte      `json:"passwordhash_bcrypt,omitempty"`
+	OldPasswordHash_   interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	ExplicitRoleNames_ []string    `json:"admin_roles,omitempty"`
+	RoleNames_         []string    `json:"roles"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -57,7 +60,10 @@ func IsValidEmail(email string) bool {
 func (auth *Authenticator) defaultGuestUser() User {
 	user := &userImpl{
 		roleImpl: roleImpl{
-			ExplicitChannels_: ch.SetOf("*").AtSequence(1),
+			ExplicitChannels_: ch.AtSequence(ch.SetOf(), 1),
+		},
+		userImplBody: userImplBody{
+			Disabled_: true,
 		},
 		auth: auth,
 	}
@@ -66,8 +72,11 @@ func (auth *Authenticator) defaultGuestUser() User {
 }
 
 // Creates a new User object.
-func (auth *Authenticator) NewUser(username string, password string, channels ch.Set) (User, error) {
-	user := &userImpl{auth: auth}
+func (auth *Authenticator) NewUser(username string, password string, channels base.Set) (User, error) {
+	user := &userImpl{
+		auth:         auth,
+		userImplBody: userImplBody{RoleNames_: []string{}},
+	}
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
@@ -86,10 +95,6 @@ func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string, defaul
 	if user.Name_ == "" {
 		user.Name_ = defaultName
 	}
-	if user.Password_ != nil {
-		user.SetPassword(*user.Password_)
-		user.Password_ = nil
-	}
 	for channel, seq := range user.ExplicitChannels_ {
 		if seq == 0 {
 			user.ExplicitChannels_[channel] = defaultSequence
@@ -107,11 +112,13 @@ func (user *userImpl) validate() error {
 		return err
 	} else if user.Email_ != "" && !IsValidEmail(user.Email_) {
 		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
+	} else if user.OldPasswordHash_ != nil {
+		return &base.HTTPError{http.StatusBadRequest, "Obsolete password hash present"}
 	} else if (user.Name_ == "") != (user.PasswordHash_ == nil) {
 		// Real user must have a password; anon user must not have a password
 		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
 	}
-	for _, roleName := range user.RoleNames_ {
+	for _, roleName := range user.ExplicitRoleNames_ {
 		if !IsValidPrincipalName(roleName) {
 			return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid role name %q", roleName)}
 		}
@@ -119,8 +126,11 @@ func (user *userImpl) validate() error {
 	return nil
 }
 
+// Key prefix reserved for user documents in the bucket
+const UserKeyPrefix = "_sync:user:"
+
 func docIDForUser(username string) string {
-	return "_sync:user:" + username
+	return UserKeyPrefix + username
 }
 
 func (user *userImpl) docID() string {
@@ -156,21 +166,32 @@ func (user *userImpl) RoleNames() []string {
 	return user.RoleNames_
 }
 
-func (user *userImpl) SetRoleNames(names []string) {
+func (user *userImpl) setRoleNames(names []string) {
 	user.RoleNames_ = names
-	user.roles = nil // invalidate cache
+	user.roles = nil // invalidate in-memory cache list of Role objects
 }
 
-// Returns true if the given password is correct for this user.
+func (user *userImpl) ExplicitRoleNames() []string {
+	return user.ExplicitRoleNames_
+}
+
+func (user *userImpl) SetExplicitRoleNames(names []string) {
+	user.ExplicitRoleNames_ = names
+	user.setRoleNames(nil) // invalidate persistent cache of role names
+}
+
+// Returns true if the given password is correct for this user, and the account isn't disabled.
 func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
 		return false
-	}
-	if user.PasswordHash_ == nil {
+	} else if user.OldPasswordHash_ != nil {
+		base.Warn("User account %q still has pre-beta password hash; need to reset password", user.Name_)
+		return false // Password must be reset to use new (bcrypt) password hash
+	} else if user.PasswordHash_ == nil {
 		if password != "" {
 			return false
 		}
-	} else if !user.PasswordHash_.EqualToPassword(password) {
+	} else if bcrypt.CompareHashAndPassword(user.PasswordHash_, []byte(password)) != nil {
 		return false
 	}
 	return !user.Disabled_
@@ -181,7 +202,11 @@ func (user *userImpl) SetPassword(password string) {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {
-		user.PasswordHash_ = passwordhash.New(password)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), kBcryptCostFactor)
+		if err != nil {
+			panic(fmt.Sprintf("Error hashing password: %v", err))
+		}
+		user.PasswordHash_ = hash
 	}
 }
 
@@ -192,7 +217,7 @@ func (user *userImpl) GetRoles() []Role {
 		roles := make([]Role, 0, len(user.RoleNames_))
 		for _, name := range user.RoleNames_ {
 			role, err := user.auth.GetRole(name)
-			base.LogTo("Auth", "User %s role %q = %v", user.Name_, name, role)
+			//base.LogTo("Access", "User %s role %q = %v", user.Name_, name, role)
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {
@@ -226,8 +251,12 @@ func (user *userImpl) CanSeeChannelSince(channel string) uint64 {
 	return minSeq
 }
 
-func (user *userImpl) AuthorizeAllChannels(channels ch.Set) error {
+func (user *userImpl) AuthorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(user, channels)
+}
+
+func (user *userImpl) AuthorizeAnyChannel(channels base.Set) error {
+	return authorizeAnyChannel(user, channels)
 }
 
 func (user *userImpl) InheritedChannels() ch.TimedSet {
@@ -239,14 +268,14 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 }
 
 // If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
-func (user *userImpl) ExpandWildCardChannel(channels ch.Set) ch.Set {
+func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
 	if channels.Contains("*") {
 		channels = user.InheritedChannels().AsSet()
 	}
 	return channels
 }
 
-func (user *userImpl) FilterToAvailableChannels(channels ch.Set) ch.TimedSet {
+func (user *userImpl) FilterToAvailableChannels(channels base.Set) ch.TimedSet {
 	output := ch.TimedSet{}
 	for channel, _ := range channels {
 		if channel == "*" {

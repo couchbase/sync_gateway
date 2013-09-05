@@ -10,17 +10,11 @@
 package channels
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
-	"sort"
-	"strings"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
-
-// An immutable set of channel names, represented as a map.
-type Set map[string]present
-
-type present struct{}
 
 type StarMode int
 
@@ -45,24 +39,25 @@ func IsValidChannel(channel string) bool {
 }
 
 // Creates a new Set from an array of strings. Returns an error if any names are invalid.
-func SetFromArray(names []string, mode StarMode) (Set, error) {
-	result := make(Set, len(names))
+func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 	for _, name := range names {
 		if !IsValidChannel(name) {
 			return nil, fmt.Errorf("Illegal channel name %q", name)
-		} else if name == "*" {
-			if mode == RemoveStar {
-				continue
-			} else if mode == ExpandStar {
-				return Set{"*": present{}}, nil
-			}
 		}
-		result[name] = present{}
+	}
+	result := base.SetFromArray(names)
+	switch mode {
+	case RemoveStar:
+		result = result.Removing("*")
+	case ExpandStar:
+		if result.Contains("*") {
+			result = base.SetOf("*")
+		}
 	}
 	return result, nil
 }
 
-func (set Set) Validate() error {
+func ValidateChannelSet(set base.Set) error {
 	for name, _ := range set {
 		if !IsValidChannel(name) {
 			return fmt.Errorf("Illegal channel name %q", name)
@@ -74,110 +69,23 @@ func (set Set) Validate() error {
 // Creates a set from zero or more inline string arguments.
 // Channel names must be valid, else the function will panic, so this should only be called
 // with hardcoded known-valid strings.
-func SetOf(names ...string) Set {
+func SetOf(names ...string) base.Set {
 	set, err := SetFromArray(names, KeepStar)
 	if err != nil {
-		panic(fmt.Sprintf("SetOf failed: %v", err))
+		panic(fmt.Sprintf("channels.SetOf failed: %v", err))
 	}
 	return set
 }
 
-// Converts a Set to an array of strings (ordering is undefined).
-func (set Set) ToArray() []string {
-	result := make([]string, 0, len(set))
-	for name, _ := range set {
-		result = append(result, name)
-	}
-	return result
-}
-
-func (set Set) String() string {
-	list := set.ToArray()
-	sort.Strings(list)
-	return fmt.Sprintf("{%s}", strings.Join(list, ", "))
-}
-
-func (set Set) copy() Set {
-	result := make(Set, len(set))
-	for name, _ := range set {
-		result[name] = present{}
-	}
-	return result
-}
-
-// Returns true if the set includes the channel.
-func (set Set) Contains(ch string) bool {
-	_, exists := set[ch]
-	return exists
-}
-
-func (set Set) Equals(other Set) bool {
-	if len(other) != len(set) {
-		return false
-	}
-	for name, _ := range set {
-		if _, exists := other[name]; !exists {
-			return false
-		}
-	}
-	return true
-}
-
-// Returns the union of two sets.
-func (set Set) Union(other Set) Set {
-	if len(set) == 0 {
-		return other
-	} else if len(other) == 0 {
-		return set
-	}
-	result := set.copy()
-	for ch, _ := range other {
-		result[ch] = present{}
-	}
-	return result
-}
-
 // If the set contains "*", returns a set of only "*". Else returns the original set.
-func (set Set) ExpandingStar() Set {
+func ExpandingStar(set base.Set) base.Set {
 	if _, exists := set["*"]; exists {
-		return Set{"*": present{}}
+		return base.SetOf("*")
 	}
 	return set
 }
 
 // Returns a set with any "*" channel removed.
-func (set Set) IgnoringStar() Set {
-	if _, exists := set["*"]; exists {
-		set = set.copy()
-		delete(set, "*")
-	}
-	return set
-}
-
-// JSON encoding/decoding:
-
-func (set Set) MarshalJSON() ([]byte, error) {
-	if set == nil {
-		return []byte("null"), nil
-	}
-	list := set.ToArray()
-	sort.Strings(list) // sort the array so it's written in a consistent order; helps testability
-	return json.Marshal(list)
-}
-
-func (setPtr *Set) UnmarshalJSON(data []byte) error {
-	var names []string
-	if err := json.Unmarshal(data, &names); err != nil {
-		return err
-	}
-	if names == nil {
-		*setPtr = nil
-		return nil
-	}
-	set := Set{}
-	for _, name := range names {
-		set[name] = present{}
-	}
-	*setPtr = set
-	return nil
+func IgnoringStar(set base.Set) base.Set {
+	return set.Removing("*")
 }

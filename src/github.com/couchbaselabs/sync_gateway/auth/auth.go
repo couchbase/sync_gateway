@@ -24,10 +24,11 @@ type Authenticator struct {
 	channelComputer ChannelComputer
 }
 
-// Interface for deriving the set of channels a User/Role has access to.
+// Interface for deriving the set of channels and roles a User/Role has access to.
 // The instantiator of an Authenticator must provide an implementation.
 type ChannelComputer interface {
 	ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error)
+	ComputeRolesForUser(User) ([]string, error)
 }
 
 type userByEmailInfo struct {
@@ -100,16 +101,30 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if err := json.Unmarshal(currentValue, princ); err != nil {
 			return nil, err
 		}
-		if princ.Channels() != nil {
+		changed := false
+		if princ.Channels() == nil {
+			// Channel list has been invalidated by a doc update -- rebuild it:
+			if err := auth.rebuildChannels(princ); err != nil {
+				return nil, err
+			}
+			changed = true
+		}
+		if user, ok := princ.(User); ok {
+			if user.RoleNames() == nil {
+				if err := auth.rebuildRoles(user); err != nil {
+					return nil, err
+				}
+				changed = true
+			}
+		}
+
+		if changed {
+			// Save the updated doc:
+			return json.Marshal(princ)
+		} else {
 			// Principal is valid, so stop the update
 			return nil, couchbase.UpdateCancel
 		}
-		// Channel list has been invalidated by a doc update -- rebuild it:
-		if err := auth.rebuildChannels(princ); err != nil {
-			return nil, err
-		}
-		// Save the updated doc:
-		return json.Marshal(princ)
 	})
 
 	if err != nil && err != couchbase.UpdateCancel {
@@ -123,12 +138,32 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	if auth.channelComputer != nil {
 		set, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
+			base.Warn("channelComputer.ComputeChannelsForPrincipal failed on %s: %v", princ, err)
 			return err
 		}
 		channels.Add(set)
 	}
 	base.LogTo("Access", "Computed channels for %q: %s", princ.Name(), channels)
 	princ.setChannels(channels)
+	return nil
+}
+
+func (auth *Authenticator) rebuildRoles(user User) error {
+	var computedRoles []string
+	if auth.channelComputer != nil {
+		var err error
+		computedRoles, err = auth.channelComputer.ComputeRolesForUser(user)
+		if err != nil {
+			base.Warn("channelComputer.ComputeRolesForUser failed on user %s: %v", user.Name(), err)
+			return err
+		}
+	}
+	roles := base.MergeStringArrays(user.ExplicitRoleNames(), computedRoles)
+	if roles == nil {
+		roles = []string{} // it mustn't be nil; nil means it's unknown
+	}
+	base.LogTo("Access", "Computed roles for %q: %s", user.Name(), roles)
+	user.setRoleNames(roles)
 	return nil
 }
 
@@ -176,6 +211,18 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 		base.LogTo("Access", "Invalidate access of %q", p.Name())
 		p.setChannels(nil)
 		if err := auth.Save(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Invalidates the role list of a user by saving its Roles() property as nil.
+func (auth *Authenticator) InvalidateRoles(user User) error {
+	if user != nil && user.Channels() != nil {
+		base.LogTo("Access", "Invalidate roles of %q", user.Name())
+		user.setRoleNames(nil)
+		if err := auth.Save(user); err != nil {
 			return err
 		}
 	}

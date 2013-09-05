@@ -1,6 +1,6 @@
 # Couchbase Sync Gateway
 
-Gluing [Couchbase Lite][COUCHBASE_LITE] (and [TouchDB][TOUCHDB] / [CouchDB][COUCHDB]) to [Couchbase Server][COUCHBASE_SERVER]
+Gluing [Couchbase Lite][COUCHBASE_LITE] to [Couchbase Server][COUCHBASE_SERVER]
 
 The Sync Gateway manages HTTP-based data access for mobile clients. It handles access control and data routing, so that a single large Couchbase Server cluster can manage data for multiple users and complex applications.
 
@@ -20,8 +20,7 @@ This README was getting too long, so here it is broken out into chapters.
 * [State-Machine-Document-Pattern](https://github.com/couchbaselabs/sync_gateway/wiki/State-Machine-Document-Pattern)
 * [Scaling-Sync-Gateway](https://github.com/couchbaselabs/sync_gateway/wiki/Scaling-Sync-Gateway)
 * [Troubleshooting](https://github.com/couchbaselabs/sync_gateway/wiki/Troubleshooting)
-* [Contributing](https://github.com/couchbaselabs/sync_gateway/wiki/Contributing)
-* [Community-Resources](https://github.com/couchbaselabs/sync_gateway/wiki/Community-Resources)
+
 
 ### License
 

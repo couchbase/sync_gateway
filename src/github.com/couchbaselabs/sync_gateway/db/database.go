@@ -11,8 +11,11 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -22,16 +25,20 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
-var kDBNameMatch = regexp.MustCompile("[-%+()$_a-z0-9]+")
-
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name          string
-	Bucket        base.Bucket
-	sequences     *sequenceAllocator
-	ChannelMapper *channels.ChannelMapper
+	Name               string                  // Database name
+	Bucket             base.Bucket             // Storage
+	tapListener        changeListener          // Listens on server Tap feed
+	sequences          *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime          time.Time               // Timestamp when context was instantiated
+	ChangesClientStats Statistics              // Tracks stats of # of changes connections
+	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
 }
+
+const DefaultRevsLimit = 1000
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -40,43 +47,58 @@ type Database struct {
 	user auth.User
 }
 
-// Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(couchbaseURL, poolName, bucketName string) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(couchbaseURL, poolName, bucketName)
-	if err != nil {
-		return
+func ValidateDatabaseName(dbName string) error {
+	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
+	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
+		return &base.HTTPError{http.StatusBadRequest,
+			fmt.Sprintf("Illegal database name: %s", dbName)}
 	}
-	base.Log("Connected to <%s>, pool %s, bucket %s", couchbaseURL, poolName, bucketName)
-	err = installViews(bucket)
+	return nil
+}
+
+// Helper function to open a Couchbase connection and return a specific bucket.
+func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
+	bucket, err = base.GetBucket(spec)
+	if err != nil {
+		err = &base.HTTPError{http.StatusBadGateway,
+			fmt.Sprintf("Unable to connect to server: %s", err)}
+	} else {
+		err = installViews(bucket)
+	}
 	return
 }
 
+// Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
-	sequences, err := newSequenceAllocator(bucket)
+	if err := ValidateDatabaseName(dbName); err != nil {
+		return nil, err
+	}
+	context := &DatabaseContext{
+		Name:      dbName,
+		Bucket:    bucket,
+		StartTime: time.Now(),
+		RevsLimit: DefaultRevsLimit,
+	}
+	var err error
+	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
 		return nil, err
 	}
-	return &DatabaseContext{Name: dbName, Bucket: bucket, sequences: sequences}, nil
+	if err = context.tapListener.Start(bucket); err != nil {
+		return nil, err
+	}
+	return context, nil
+}
+
+func (context *DatabaseContext) Close() {
+	context.tapListener.Stop()
+	context.Bucket.Close()
+	context.Bucket = nil
 }
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	return auth.NewAuthenticator(context.Bucket, context)
-}
-
-// Sets the database context's channelMapper based on the JS code from config
-func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
-	var err error
-	if context.ChannelMapper != nil {
-		_, err = context.ChannelMapper.SetFunction(syncFun)
-	} else {
-		context.ChannelMapper, err = channels.NewChannelMapper(syncFun)
-	}
-	if err != nil {
-		base.Warn("Error setting sync function: %s", err)
-		return err
-	}
-	return nil
 }
 
 // Makes a Database object given its name and bucket.
@@ -125,14 +147,29 @@ func installViews(bucket base.Bucket) error {
 	allbits_map := `function (doc, meta) {
                       emit(meta.id, null); }`
 	// View for _all_docs
-	// Key is docid; value is revid
+	// Key is docid; value is [revid, sequence]
 	alldocs_map := `function (doc, meta) {
                      var sync = doc._sync;
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
                      if (sync.deleted)
                        return;
-                     emit(meta.id, sync.rev); }`
+                     emit(meta.id, [sync.rev, sync.sequence]); }`
+	// View for compaction -- finds all revision docs
+	// Key and value are ignored.
+	oldrevs_map := `function (doc, meta) {
+                     var sync = doc._sync;
+                     if (meta.id.substring(0,10) == "_sync:rev:")
+	                     emit("",null); }`
+	// All-principals view
+	// Key is name; value is true for user, false for role
+	principals_map := `function (doc, meta) {
+							 var prefix = meta.id.substring(0,11);
+							 var isUser = (prefix == %q);
+							 if (isUser || prefix == %q)
+			                     emit(meta.id.substring(%d), isUser); }`
+	principals_map = fmt.Sprintf(principals_map, auth.UserKeyPrefix, auth.RoleKeyPrefix,
+		len(auth.UserKeyPrefix))
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
 	// where flag is true for doc deletion, false for removed from channel, missing otherwise
@@ -154,12 +191,13 @@ func installViews(bucket base.Bucket) error {
 								if (!removed)
 									emit([name, sequence], value);
 								else
-									emit([name, removed.seq], [meta.id, removed.rev, false]);
+									emit([name, removed.seq],
+										 [meta.id, removed.rev, !!removed.del, true]);
 							}
 						}
 					}`
 	// Channel access view, used by ComputeChannelsForPrincipal()
-	// Key is username; value is dictionary channelName->firstSequence
+	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
@@ -174,25 +212,55 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
+	// Role access view, used by ComputeRolesForUser()
+	// Key is username; value is array of role names
+	roleAccess_map := `function (doc, meta) {
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                        return;
+	                    var sequence = sync.sequence;
+	                    if (sync.deleted || sequence === undefined)
+	                        return;
+	                    var access = sync.role_access;
+	                    if (access) {
+	                        for (var name in access) {
+	                            emit(name, access[name]);
+	                        }
+	                    }
+	               }`
 
 	ddoc := walrus.DesignDoc{
 		Views: walrus.ViewMap{
-			"all_bits": walrus.ViewDef{Map: allbits_map},
-			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
-			"channels": walrus.ViewDef{Map: channels_map},
-			"access":   walrus.ViewDef{Map: access_map},
+			"principals":  walrus.ViewDef{Map: principals_map},
+			"channels":    walrus.ViewDef{Map: channels_map},
+			"access":      walrus.ViewDef{Map: access_map},
+			"role_access": walrus.ViewDef{Map: roleAccess_map},
 		},
 	}
 	err := bucket.PutDDoc("sync_gateway", ddoc)
 	if err != nil {
 		base.Warn("Error installing Couchbase design doc: %v", err)
 	}
+
+	ddoc = walrus.DesignDoc{
+		Views: walrus.ViewMap{
+			"all_bits": walrus.ViewDef{Map: allbits_map},
+			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			"old_revs": walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
+		},
+	}
+	err = bucket.PutDDoc("sync_housekeeping", ddoc)
+	if err != nil {
+		base.Warn("Error installing Couchbase design doc: %v", err)
+	}
+
 	return err
 }
 
 type IDAndRev struct {
-	DocID string
-	RevID string
+	DocID    string
+	RevID    string
+	Sequence uint64
 }
 
 // Returns all document IDs as an array.
@@ -205,24 +273,57 @@ func (db *Database) AllDocIDs() ([]IDAndRev, error) {
 	rows := vres.Rows
 	result := make([]IDAndRev, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, IDAndRev{DocID: row.Key.(string), RevID: row.Value.(string)})
+		value := row.Value.([]interface{})
+		result = append(result, IDAndRev{
+			DocID:    row.Key.(string),
+			RevID:    value[0].(string),
+			Sequence: uint64(value[1].(float64)),
+		})
 	}
 	return result, nil
 }
 
+// Returns the IDs of all users and roles
+func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
+	vres, err := db.Bucket.View("sync_gateway", "principals", Body{"stale": false})
+	if err != nil {
+		return
+	}
+	users = []string{}
+	roles = []string{}
+	for _, row := range vres.Rows {
+		name := row.Key.(string)
+		if name != "" {
+			if row.Value.(bool) {
+				users = append(users, name)
+			} else {
+				roles = append(roles, name)
+			}
+		}
+	}
+	return
+}
+
 func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.Bucket.View("sync_gateway", "all_docs", opts)
+	vres, err := db.Bucket.View("sync_housekeeping", "all_docs", opts)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 	}
 	return vres, err
 }
 
-// Deletes a database (and all documents)
-func (db *Database) Delete() error {
+//////// HOUSEKEEPING:
+
+// Deletes all documents in the database
+func (db *Database) DeleteAllDocs(docType string) error {
 	opts := Body{"stale": false}
-	vres, err := db.Bucket.View("sync_gateway", "all_bits", opts)
+	if docType != "" {
+		opts["startkey"] = "_sync:" + docType + ":"
+		opts["endkey"] = "_sync:" + docType + "~"
+		opts["inclusive_end"] = false
+	}
+	vres, err := db.Bucket.View("sync_housekeeping", "all_bits", opts)
 	if err != nil {
 		base.Warn("all_bits view returned %v", err)
 		return err
@@ -239,19 +340,89 @@ func (db *Database) Delete() error {
 	return nil
 }
 
+// Deletes old revisions that have been moved to individual docs
+func (db *Database) Compact() (int, error) {
+	opts := Body{"stale": false, "reduce": false}
+	vres, err := db.Bucket.View("sync_housekeeping", "old_revs", opts)
+	if err != nil {
+		base.Warn("old_revs view returned %v", err)
+		return 0, err
+	}
+
+	//FIX: Is there a way to do this in one operation?
+	base.Log("Deleting %d old revs of %q ...", len(vres.Rows), db.Name)
+	count := 0
+	for _, row := range vres.Rows {
+		base.LogTo("CRUD", "\tDeleting %q", row.ID)
+		if err := db.Bucket.Delete(row.ID); err != nil {
+			base.Warn("Error deleting %q: %v", row.ID, err)
+		} else {
+			count++
+		}
+	}
+	return count, nil
+}
+
 // Deletes all orphaned CouchDB attachments not used by any revisions.
 func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, &base.HTTPError{http.StatusNotImplemented, "Vacuum is temporarily out of order"}
+}
+
+//////// SYNC FUNCTION:
+
+const kSyncDataKey = "_sync:syncdata"
+
+// Sets the database context's channelMapper based on the JS code from config
+func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
+	var err error
+	if syncFun == "" {
+		context.ChannelMapper = nil
+	} else if context.ChannelMapper != nil {
+		_, err = context.ChannelMapper.SetFunction(syncFun)
+	} else {
+		context.ChannelMapper = channels.NewChannelMapper(syncFun)
+	}
+	if err != nil {
+		base.Warn("Error setting sync function: %s", err)
+		return err
+	}
+
+	// Check whether the sync function is different from the previous one:
+	var syncData struct {
+		Sync string
+	}
+	err = context.Bucket.Get(kSyncDataKey, &syncData)
+	syncDataMissing := base.IsDocNotFoundError(err)
+	if err != nil && !syncDataMissing {
+		return err
+	} else if syncFun == syncData.Sync {
+		return nil
+	}
+
+	if !syncDataMissing {
+		// It's changed, so re-run it on all docs:
+		db := &Database{context, nil}
+		if err = db.UpdateAllDocChannels(); err != nil {
+			return err
+		}
+	}
+
+	// Finally save the new function source:
+	syncData.Sync = syncFun
+	return context.Bucket.Set(kSyncDataKey, 0, syncData)
 }
 
 // Re-runs the channelMapper on every document in the database.
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels() error {
 	base.Log("Recomputing document channels...")
-	vres, err := db.Bucket.View("sync_gateway", "all_docs", Body{"stale": false, "reduce": false})
+
+	vres, err := db.Bucket.View("sync_housekeeping", "all_docs",
+		Body{"stale": false, "reduce": false})
 	if err != nil {
 		return err
 	}
+	base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
 	for _, row := range vres.Rows {
 		docid := row.Key.(string)
 		key := db.realDocID(docid)
@@ -269,20 +440,72 @@ func (db *Database) UpdateAllDocChannels() error {
 				return nil, err
 			}
 			parentRevID := doc.History[doc.CurrentRev].Parent
-			channels, access, err := db.getChannelsAndAccess(doc, body, parentRevID)
+			channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
 			if err != nil {
 				// Probably the validator rejected the doc
+				base.Warn("Error calling sync() on doc %q: %v", docid, err)
 				access = nil
 				channels = nil
 			}
-			db.updateDocAccess(doc, access)
-			db.updateDocChannels(doc, channels)
-			base.Log("\tSaving updated channels and access grants of %q", docid)
-			return json.Marshal(doc)
+			changed := len(doc.Access.updateAccess(doc, access)) +
+				len(doc.RoleAccess.updateAccess(doc, roles)) +
+				len(doc.updateChannels(channels))
+			if changed > 0 {
+				base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+				return json.Marshal(doc)
+			} else {
+				return nil, couchbase.UpdateCancel
+			}
 		})
 		if err != nil && err != couchbase.UpdateCancel {
 			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
+
+	// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
+	if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
+		return err
+	}
+
+	// Now invalidate channel cache of all users/roles:
+	base.Log("Invalidating channel caches of users/roles...")
+	users, roles, _ := db.AllPrincipalIDs()
+	for _, name := range users {
+		db.invalUserChannels(name)
+	}
+	for _, name := range roles {
+		db.invalRoleChannels(name)
+	}
+
+	base.Log("Finished updating to new sync function")
 	return nil
+}
+
+func (db *Database) invalUserRoles(username string) {
+	authr := db.Authenticator()
+	if user, _ := authr.GetUser(username); user != nil {
+		authr.InvalidateRoles(user)
+	}
+}
+
+func (db *Database) invalUserChannels(username string) {
+	authr := db.Authenticator()
+	if user, _ := authr.GetUser(username); user != nil {
+		authr.InvalidateChannels(user)
+	}
+}
+
+func (db *Database) invalRoleChannels(rolename string) {
+	authr := db.Authenticator()
+	if role, _ := authr.GetRole(rolename); role != nil {
+		authr.InvalidateChannels(role)
+	}
+}
+
+func (db *Database) invalUserOrRoleChannels(name string) {
+	if strings.HasPrefix(name, "role:") {
+		db.invalRoleChannels(name[5:])
+	} else {
+		db.invalUserChannels(name)
+	}
 }

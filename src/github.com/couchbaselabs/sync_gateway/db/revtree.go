@@ -12,7 +12,8 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	
+	"math"
+
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
@@ -20,31 +21,35 @@ type RevKey string
 
 // Information about a single revision.
 type RevInfo struct {
-	ID      string
-	Parent  string
-	Deleted bool
-	Body    []byte
+	ID       string
+	Parent   string
+	Deleted  bool
+	Body     []byte
+	Channels base.Set
+	depth    uint32
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
-type RevTree map[string]RevInfo
+type RevTree map[string]*RevInfo
 
 // The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs    []string `json:"revs"`              // The revision IDs
-	Parents []int    `json:"parents"`           // Index of parent of each revision (-1 if root)
-	Deleted []int    `json:"deleted,omitempty"` // Indexes of revisions that are deletions
-	Bodies  []string `json:"bodies,omitempty"`  // JSON of each revision
+	Revs     []string   `json:"revs"`              // The revision IDs
+	Parents  []int      `json:"parents"`           // Index of parent of each revision (-1 if root)
+	Deleted  []int      `json:"deleted,omitempty"` // Indexes of revisions that are deletions
+	Bodies   []string   `json:"bodies,omitempty"`  // JSON of each revision
+	Channels []base.Set `json:"channels"`
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
 	n := len(tree)
 	rep := revTreeList{
-		Revs:    make([]string, n),
-		Parents: make([]int, n),
-		Bodies:  make([]string, n),
+		Revs:     make([]string, n),
+		Parents:  make([]int, n),
+		Bodies:   make([]string, n),
+		Channels: make([]base.Set, n),
 	}
 	revIndexes := map[string]int{"": -1}
 
@@ -53,6 +58,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
 		rep.Bodies[i] = string(info.Body)
+		rep.Channels[i] = info.Channels
 		if info.Deleted {
 			if rep.Deleted == nil {
 				rep.Deleted = make([]int, 0, 1)
@@ -85,11 +91,14 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		if rep.Bodies != nil && len(rep.Bodies[i]) > 0 {
 			info.Body = []byte(rep.Bodies[i])
 		}
+		if rep.Channels != nil {
+			info.Channels = rep.Channels[i]
+		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
 		}
-		tree[revid] = info
+		tree[revid] = &info
 	}
 	if rep.Deleted != nil {
 		for _, i := range rep.Deleted {
@@ -113,7 +122,7 @@ func (tree RevTree) getInfo(revid string) *RevInfo {
 	if !exists {
 		panic("can't find rev")
 	}
-	return &info
+	return info
 }
 
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
@@ -204,7 +213,7 @@ func (tree RevTree) addRevision(info RevInfo) {
 	if parent != "" && !tree.contains(parent) {
 		panic(fmt.Sprintf("parent id %q is missing", parent))
 	}
-	tree[revid] = info
+	tree[revid] = &info
 }
 
 func (tree RevTree) getRevisionBody(revid string) ([]byte, bool) {
@@ -227,21 +236,16 @@ func (tree RevTree) setRevisionBody(revid string, body []byte) {
 		panic(fmt.Sprintf("rev id %q not found", revid))
 	}
 	info.Body = body
-	tree[revid] = info // yes, this is necessary, because info is a _copy_
 }
 
 func (tree RevTree) getParsedRevisionBody(revid string) Body {
 	bodyJSON, found := tree.getRevisionBody(revid)
-	if !found {
+	if !found || len(bodyJSON) == 0 {
 		return nil
 	}
 	var body Body
-	if bodyJSON == nil {
-		body = Body{}
-	} else {
-		if err := json.Unmarshal(bodyJSON, &body); err != nil {
-			panic(fmt.Sprintf("Unexpected error parsing body of rev %q", revid))
-		}
+	if err := json.Unmarshal(bodyJSON, &body); err != nil {
+		panic(fmt.Sprintf("Unexpected error parsing body of rev %q", revid))
 	}
 	return body
 }
@@ -253,6 +257,61 @@ func (tree RevTree) copy() RevTree {
 		result[rev] = info
 	}
 	return result
+}
+
+//////// PRUNING THE TREE (REVS_LIMIT)
+
+// Initializes the depth field of every tree node, computed as the distance to the closest leaf.
+func (tree RevTree) computeDepths() (maxDepth uint32) {
+	// TODO: Should deleted leaves be penalized since they're not very useful?
+	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
+	for _, info := range tree {
+		info.depth = math.MaxUint32
+	}
+	// Walk from each leaf to its root, assigning ancestors consecutive depths,
+	// but stopping if we'd increase an already-visited ancestor's depth:
+	for _, revid := range tree.getLeaves() {
+		var depth uint32 = 1
+		for node := tree[revid]; node != nil; node = tree[node.Parent] {
+			if node.depth <= depth {
+				break // This hierarchy already has a shorter path to another leaf
+			}
+			node.depth = depth
+			if depth > maxDepth {
+				maxDepth = depth
+			}
+			depth++
+		}
+	}
+	return
+}
+
+// Removes older ancestor nodes from the tree so that no node's depth is greater than maxDepth.
+// Returns the number of nodes pruned.
+func (tree RevTree) pruneRevisions(maxDepth uint32) (pruned int) {
+	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
+		return
+	}
+
+	// Delete nodes whose depth is greater than maxDepth:
+	for revid, node := range tree {
+		if node.depth > maxDepth {
+			delete(tree, revid)
+			pruned++
+		}
+	}
+
+	// Finally, snip dangling Parent links:
+	if pruned > 0 {
+		for _, node := range tree {
+			if node.Parent != "" {
+				if _, found := tree[node.Parent]; !found {
+					node.Parent = ""
+				}
+			}
+		}
+	}
+	return
 }
 
 //////// HELPERS:

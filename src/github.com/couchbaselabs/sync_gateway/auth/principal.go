@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
 )
 
@@ -35,7 +36,10 @@ type Principal interface {
 	CanSeeChannelSince(channel string) uint64
 
 	// Returns an error if the Principal does not have access to all the channels in the set.
-	AuthorizeAllChannels(channels ch.Set) error
+	AuthorizeAllChannels(channels base.Set) error
+
+	// Returns an error if the Principal does not have access to any of the channels in the set.
+	AuthorizeAnyChannel(channels base.Set) error
 
 	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
 	// the guest user, else 403.
@@ -74,20 +78,25 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string)
 
-	// The set of Roles the user belongs to.
+	// The set of Roles the user belongs to (including ones given to it by)
 	RoleNames() []string
 
-	// Changes the set of Roles the user belongs to.
-	SetRoleNames([]string)
+	// The roles the user was explicitly granted access to thru the admin API.
+	ExplicitRoleNames() []string
+
+	// Sets the explicit roles the user belongs to.
+	SetExplicitRoleNames([]string)
 
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
 
 	// If the input set contains the wildcard "*" channel, returns the user's InheritedChannels;
 	// else returns the input channel list unaltered.
-	ExpandWildCardChannel(channels ch.Set) ch.Set
+	ExpandWildCardChannel(channels base.Set) base.Set
 
 	// Returns a TimedSet containing only the channels from the input set that the user has access
 	// to, annotated with the sequence number at which access was granted.
-	FilterToAvailableChannels(channels ch.Set) ch.TimedSet
+	FilterToAvailableChannels(channels base.Set) ch.TimedSet
+
+	setRoleNames([]string)
 }

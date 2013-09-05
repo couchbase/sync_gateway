@@ -20,6 +20,29 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+func (db *Database) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
+	data, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
+	if base.IsDocNotFoundError(err) {
+		base.LogTo("CRUD+", "No old revision %q / %q", docid, revid)
+		err = nil
+	}
+	if data != nil {
+		base.LogTo("CRUD+", "Got old revision %q / %q --> %d bytes", docid, revid, len(data))
+	}
+	return data, err
+}
+
+func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
+	base.LogTo("CRUD+", "Saving old revision %q / %q (%d bytes)", docid, revid, len(body))
+	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 0, body)
+}
+
+//////// UTILITY FUNCTIONS:
+
+func oldRevisionKey(docid string, revid string) string {
+	return fmt.Sprintf("_sync:rev:%s:%d:%s", docid, len(revid), revid)
+}
+
 // Version of FixJSONNumbers (see base/util.go) that operates on a Body
 func (body Body) FixJSONNumbers() {
 	for k, v := range body {

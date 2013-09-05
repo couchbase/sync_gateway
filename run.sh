@@ -1,6 +1,5 @@
 #!/bin/sh -e
-# This script runs unit tests in all the subpackages.
+# This script runs the gateway, with the supplied arguments.
 
-export GOPATH="`pwd`:`pwd`/vendor"
-
-go run src/github.com/couchbaselabs/sync_gateway/main.go "$@"
+ulimit -n 5000
+./go.sh run src/github.com/couchbaselabs/sync_gateway/main.go "$@"

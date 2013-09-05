@@ -43,9 +43,10 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		case gomemcached.KEY_EEXISTS:
 			return http.StatusConflict, "Conflict"
 		case gomemcached.E2BIG:
-			return http.StatusRequestEntityTooLarge, "Too Large"
+			return http.StatusRequestEntityTooLarge, "Too Large: " + string(err.Body)
 		default:
-			return http.StatusBadGateway, fmt.Sprintf("MC status %s", err.Status.String())
+			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
+				string(err.Body), err.Status.String())
 		}
 	case walrus.MissingError:
 		return http.StatusNotFound, "missing"
@@ -75,18 +76,20 @@ func CouchHTTPErrorName(status int) string {
 		return "file_exists"
 	case 415:
 		return "bad_content_type"
-	default:
-		return fmt.Sprintf("%d", status)
 	}
+	return fmt.Sprintf("%d", status)
 }
 
-// Returns true if an error is a Couchbase doc-not-found error
+// Returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
 	switch err := err.(type) {
 	case *gomemcached.MCResponse:
 		return err.Status == gomemcached.KEY_ENOENT
 	case walrus.MissingError:
 		return true
+	case *HTTPError:
+		return err.Status == http.StatusNotFound
+	default:
+		return false
 	}
-	return false
 }
