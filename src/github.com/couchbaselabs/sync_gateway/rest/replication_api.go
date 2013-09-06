@@ -42,6 +42,9 @@ func (h *handler) handleChanges() error {
 	options.Conflicts = (h.getQuery("style") == "all_docs")
 	options.IncludeDocs = (h.getBoolQuery("include_docs"))
 
+	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
+
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
 	userChannels := channels.SetOf("*")

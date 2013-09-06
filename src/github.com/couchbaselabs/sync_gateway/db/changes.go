@@ -41,6 +41,7 @@ type ChangesOptions struct {
 	Conflicts   bool
 	IncludeDocs bool
 	Wait        bool
+	Terminator  chan bool // Caller can close this channel to terminate the feed
 }
 
 // A changes entry; Database.getChanges returns an array of these.
@@ -131,7 +132,14 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 					// TODO: Close the view-based feed somehow
 					break
 				}
-				feed <- change
+
+				select {
+				case <-options.Terminator:
+					base.LogTo("Changes+", "Aborting changesFeed (reading from view)")
+					return
+				case feed <- change:
+				}
+
 				if rebuildLog {
 					// If there wasn't any channel log, build up a new one from the view:
 					entry := channels.LogEntry{
@@ -182,7 +190,13 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				doc, _ := db.getDoc(logEntry.DocID)
 				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, false)
 			}
-			feed <- &change
+
+			select {
+			case <-options.Terminator:
+				base.LogTo("Changes+", "Aborting changesFeed")
+				return
+			case feed <- &change:
+			}
 
 			if options.Limit > 0 {
 				options.Limit--
@@ -262,7 +276,13 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 					doc, _ := unmarshalDocument(docID, row.Doc.Json)
 					db.addDocToChangeEntry(doc, entry, options.IncludeDocs, options.Conflicts)
 				}
-				feed <- entry
+
+				select {
+				case <-options.Terminator:
+					base.LogTo("Changes+", "Aborting changesFeedFromVie")
+					return
+				case feed <- entry:
+				}
 			}
 
 			// Step to the next page of results:
@@ -376,7 +396,12 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				// Send the entry, and repeat the loop:
-				output <- minEntry
+				select {
+				case <-options.Terminator:
+					base.LogTo("Changes+", "Aborting MultiChangesFeed")
+					return
+				case output <- minEntry:
+				}
 				sentSomething = true
 
 				// Stop when we hit the limit (if any):
@@ -408,6 +433,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 // Synchronous convenience function that returns all changes as a simple array.
 func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
+	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
+
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {
