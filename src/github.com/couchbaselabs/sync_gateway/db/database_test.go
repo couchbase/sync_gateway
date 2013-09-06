@@ -222,6 +222,8 @@ func TestAllDocs(t *testing.T) {
 
 	// Now check the changes feed:
 	var options ChangesOptions
+	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
 	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 100)
@@ -319,7 +321,12 @@ func TestConflicts(t *testing.T) {
 	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden})
 
 	// Verify the _changes feed:
-	changes, err := db.GetChanges(channels.SetOf("all"), ChangesOptions{Conflicts: true})
+	options := ChangesOptions{
+		Conflicts:  true,
+		Terminator: make(chan bool),
+	}
+	defer close(options.Terminator)
+	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 2)
 	// (CouchDB would merge these into one entry, but the gateway doesn't.)

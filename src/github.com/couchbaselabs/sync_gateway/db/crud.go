@@ -558,7 +558,7 @@ func makeUserCtx(user auth.User) map[string]interface{} {
 	return map[string]interface{}{
 		"name":     user.Name(),
 		"roles":    user.RoleNames(),
-		"channels": user.InheritedChannels(),
+		"channels": user.InheritedChannels().AllChannels(),
 	}
 }
 
