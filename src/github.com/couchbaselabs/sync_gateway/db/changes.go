@@ -127,7 +127,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 		if viewFeed != nil {
 			newLog := channels.ChangeLog{Since: since}
 			for change := range viewFeed {
-				if !rebuildLog && change.seqNo > channelLog.Since {
+				if channelLog != nil && change.seqNo > channelLog.Since {
 					// TODO: Close the view-based feed somehow
 					break
 				}
