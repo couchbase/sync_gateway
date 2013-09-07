@@ -3,10 +3,12 @@ This is the Beta release of Couchbase Sync Gateway 1.0. Couchbase Sync Gateway i
 Features
 * Dynamic sync capabilities via Sync Function APIs
 ** Apps can begin to automatically sync data from the cloud without any manual setup using Couchbase sync functions 
+
 * Easy Administration
 ** In addition to dynamic sync, manage the Sync gateway via REST API when you need it
+
 * Seamless scaleout
 ** Easily scale your Sync Gateway tier as your application needs grow
 
-Known Issues
-TBD
+Known Issues in 1.0
+We are currently working on performance-tuning, and are aware of issues when Sync Gateway is scaled. If you run into a performance issue, let us know!

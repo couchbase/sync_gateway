@@ -143,25 +143,27 @@ func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error)
 
 // Returns the body of a revision given a document struct. Checks user access.
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
+	var body Body
 	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
 		if revid != "" && doc.History[revid] != nil && doc.History[revid].Deleted {
-			return Body{"_id": doc.ID, "_rev": revid, "_deleted": true}, nil
+			body = Body{"_id": doc.ID, "_rev": revid}
+		} else {
+			return nil, err
 		}
-		return nil, err
-	}
-	if revid == "" {
-		revid = doc.CurrentRev
-		if doc.History[revid].Deleted == true {
-			return nil, &base.HTTPError{Status: 404, Message: "deleted"}
+	} else {
+		if revid == "" {
+			revid = doc.CurrentRev
+			if doc.History[revid].Deleted == true {
+				return nil, &base.HTTPError{Status: 404, Message: "deleted"}
+			}
 		}
-	}
-	var body Body
-	var err error
-	if body, err = db.getRevision(doc, revid); err != nil {
-		return nil, err
+		var err error
+		if body, err = db.getRevision(doc, revid); err != nil {
+			return nil, err
+		}
 	}
 	if doc.History[revid].Deleted {
 		body["_deleted"] = true

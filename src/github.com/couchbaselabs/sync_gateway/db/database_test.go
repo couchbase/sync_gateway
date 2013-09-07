@@ -158,6 +158,39 @@ func TestDatabase(t *testing.T) {
 	assert.Equals(t, revsDeleted, 2)
 }
 
+func TestGetDeleted(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	body := Body{"key1": 1234}
+	rev1id, err := db.Put("doc1", body)
+	assertNoError(t, err, "Put")
+
+	rev2id, err := db.DeleteDoc("doc1", rev1id)
+	assertNoError(t, err, "DeleteDoc")
+
+	// Get the deleted doc with its history; equivalent to GET with ?revs=true
+	body, err = db.GetRev("doc1", rev2id, true, nil)
+	assertNoError(t, err, "GetRev")
+	expectedResult := Body{
+		"_id":        "doc1",
+		"_rev":       rev2id,
+		"_deleted":   true,
+		"_revisions": Body{"start": 2, "ids": []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
+	}
+	assert.DeepEquals(t, body, expectedResult)
+
+	// Try again but with a user who doesn't have access to this revision (see #179)
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	db.user, err = authenticator.GetUser("")
+	assertNoError(t, err, "GetUser")
+	db.user.SetExplicitChannels(nil)
+
+	body, err = db.GetRev("doc1", rev2id, true, nil)
+	assertNoError(t, err, "GetRev")
+	assert.DeepEquals(t, body, expectedResult)
+}
+
 func TestAllDocs(t *testing.T) {
 	AlwaysCompactChangeLog = true // Makes examining the change log deterministic
 	defer func() { AlwaysCompactChangeLog = false }()
