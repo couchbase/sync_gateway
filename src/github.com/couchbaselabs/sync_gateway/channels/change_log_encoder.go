@@ -118,12 +118,13 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Wr
 	if remove <= 0 {
 		return 0
 	}
-	pivot, since := findPivot(entrySeq, remove-1)
-	remove = pivot + 1
-	if len(entryPos)-remove < minLength {
+	pivot, since := findPivot(entrySeq, remove-1, len(entryPos)-minLength-1)
+	if pivot >= 0 {
+		remove = pivot + 1
+	} else {
 		remove = 0
 		since = originalSince
-		base.Warn("TruncateEncodedChangeLog: Couldn't find a safe place to truncate")
+		base.Warn("TruncateEncodedChangeLog: Couldn't find a safe place to truncate; minLength=%d, maxLength=%d, entrySeq = %v", minLength, maxLength, entrySeq)
 		//TODO: Possibly find a pivot earlier than desired?
 	}
 
@@ -179,9 +180,8 @@ func skipString(r io.ReadSeeker) {
 	r.Seek(int64(length), 1)
 }
 
-// Finds a 'pivot' index, at or after minIndex, such that all array values before and at the pivot
-// are less than all array values after it.
-func findPivot(values []uint64, minIndex int) (pivot int, maxBefore uint64) {
+// Finds a 'pivot' index, such that all array values before and at the pivot are less than all array values after it. The pivot index will be in the range [minIndex..maxIndex], or -1 for none.
+func findPivot(values []uint64, minIndex int, maxIndex int) (pivot int, maxBefore uint64) {
 	// First construct a table where minRight[i] is the minimum value in [i..n)
 	n := len(values)
 	minRight := make([]uint64, n)
@@ -193,12 +193,16 @@ func findPivot(values []uint64, minIndex int) (pivot int, maxBefore uint64) {
 		minRight[i] = min
 	}
 	// Now scan left-to-right tracking the running max and looking for a pivot:
+	pivot = -1
 	maxBefore = 0
-	for pivot = 0; pivot < n-1; pivot++ {
-		if values[pivot] > maxBefore {
-			maxBefore = values[pivot]
+	for i := 0; i < n-1; i++ {
+		if values[i] > maxBefore {
+			maxBefore = values[i]
 		}
-		if pivot >= minIndex && maxBefore < minRight[pivot+1] {
+		if maxBefore < minRight[i+1] {
+			pivot = i
+		}
+		if i >= maxIndex {
 			break
 		}
 	}
