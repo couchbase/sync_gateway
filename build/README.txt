@@ -1,14 +1,13 @@
 Couchbase Sync Gateway Community Edition 1.0-Beta
 
-This is a self-contained installation of Couchbase Sync Gateway. You start Sync Gateway by running sync_gateway with the -url option. The argument for the -url option is the HTTP URL of the Couchbase server to which you want Sync Gateway to connect. If you do not include any additional command-line options, the default values are used. For -url, this is "walrus", a simple, in-memory database.
+This is a self-contained installation of Couchbase Sync Gateway. You start Sync Gateway by running sync_gateway with the -url option. The argument for the -url option is the HTTP URL of the Couchbase server to which you want Sync Gateway to connect. If you do not include any additional command-line options, the default values are used.
 
-The following command starts Sync Gateway on port 4984, connects to the default bucket named sync_gateway in the Couchbase Serving running on localhost, and starts the admin server on port 4985.
+The following command starts Sync Gateway on port 4984, connects to a limited in-memory database called "walrus" that lives on Sync Gateway, and starts the admin server on port 4985.
 
-$ ./sync_gateway -url http://localhost:8091
+$ ./sync_gateway -url walrus
 
-More information about the available command-line options are as follows:
-  
-  Usage of ./sync_gateway:
+Command-line options:
+
   -adminInterface=":4985": Address to bind admin interface to
   -bucket="sync_gateway": Name of bucket
   -dbname="": Name of CouchDB database (defaults to name of bucket)
@@ -20,7 +19,7 @@ More information about the available command-line options are as follows:
   -url="walrus:": Address of Couchbase server
   -verbose=false: Log more info about requests
 
-You can stop Sync Gateway by typing Control-C. There is no specific shutdown procedure and it is safe to stop it at any time.
+You can stop Sync Gateway with Control-C. There is no specific shutdown procedure and it is safe to stop it at any time.
 
-This application may be run from any location on any writeable volume.
-You may choose to move it to /Applications, but this is not required. However, do not move the application while it's running.
+This application can be run from any location on any writeable volume.
+You can choose to move it to your Application directory, but this is not required. However, do not move the application while it's running.
