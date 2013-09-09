@@ -23,7 +23,7 @@ import (
 )
 
 var DefaultInterface = ":4984"
-var DefaultAdminInterface = ":4985"
+var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
