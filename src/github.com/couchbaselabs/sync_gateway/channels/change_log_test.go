@@ -141,26 +141,25 @@ func TestFindPivot(t *testing.T) {
 	type testCase struct {
 		seq      []uint64
 		minIndex int
-		maxIndex int
 		pivot    int
 	}
 	testCases := []testCase{
-		{[]uint64{1, 2, 3, 4, 5}, 0, 4, 3},
-		{[]uint64{1, 2, 3, 4, 5}, 1, 3, 3},
-		{[]uint64{1, 2, 3, 4, 5}, 3, 4, 3},
-		{[]uint64{1, 2, 3, 4, 5}, 4, 4, 4},
-		{[]uint64{1, 3, 4, 2, 5}, 2, 4, 3},
-		{[]uint64{1, 3, 4, 2, 5}, 1, 4, 3},
-		{[]uint64{1, 3, 4, 2, 5}, 3, 4, 3},
-		{[]uint64{1, 3, 4, 2, 5}, 4, 4, 4},
-		{[]uint64{3, 4, 2, 5, 1}, 1, 4, 4},
-		{[]uint64{3, 2, 4, 1, 5, 6, 8, 7, 9}, 2, 4, 3},
+		{[]uint64{1, 2, 3, 4, 5}, 0, 0},
+		{[]uint64{1, 2, 3, 4, 5}, 1, 1},
+		{[]uint64{1, 2, 3, 4, 5}, 3, 3},
+		{[]uint64{1, 2, 3, 4, 5}, 4, 4},
+		{[]uint64{1, 3, 4, 2, 5}, 2, 3},
+		{[]uint64{1, 3, 4, 2, 5}, 1, 3},
+		{[]uint64{1, 3, 4, 2, 5}, 3, 3},
+		{[]uint64{1, 3, 4, 2, 5}, 4, 4},
+		{[]uint64{3, 4, 2, 5, 1}, 1, 4},
+		{[]uint64{3, 2, 4, 1, 5, 6, 8, 7, 9}, 2, 3},
 	}
 	for _, c := range testCases {
-		pivot, _ := findPivot(c.seq, c.minIndex, c.maxIndex)
+		pivot, _ := findPivot(c.seq, c.minIndex)
 		if pivot != c.pivot {
-			t.Errorf("findPivot(%v, %d, %d) -> %d; should be %d",
-				c.seq, c.minIndex, c.maxIndex, pivot, c.pivot)
+			t.Errorf("findPivot(%v, %d) -> %d; should be %d",
+				c.seq, c.minIndex, pivot, c.pivot)
 		}
 	}
 }
