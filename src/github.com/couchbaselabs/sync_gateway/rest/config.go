@@ -30,6 +30,8 @@ var DefaultPool = "default"
 // JSON object that defines the server configuration.
 type ServerConfig struct {
 	Interface           *string              // Interface to bind REST API to, default ":4984"
+	SSLCert             *string              // Path to SSL cert file, or nil
+	SSLKey              *string              // Path to SSL private key file, or nil
 	AdminInterface      *string              // Interface to bind admin API to, default ":4985"
 	ConfigServer        *string              // URL of config server (for dynamic db discovery)
 	Persona             *PersonaConfig       // Configuration for Mozilla Persona validation
@@ -250,6 +252,18 @@ func ParseCommandLine() *ServerConfig {
 	return config
 }
 
+func serve(addr string, certFile *string, keyFile *string, handler http.Handler) {
+	var err error
+	if certFile == nil {
+		err = http.ListenAndServe(addr, handler)
+	} else {
+		err = http.ListenAndServeTLS(addr, *certFile, *keyFile, handler)
+	}
+	if err != nil {
+		base.LogFatal("Failed to start HTTP server on %s: %v", addr, err)
+	}
+}
+
 // Starts and runs the server given its configuration. (This function never returns.)
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
@@ -270,16 +284,9 @@ func RunServer(config *ServerConfig) {
 	}
 
 	base.Log("Starting admin server on %s", *config.AdminInterface)
-	go func() {
-		if err := http.ListenAndServe(*config.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.LogFatal("HTTP server failed: %v", err)
-		}
-	}()
-
+	go serve(*config.AdminInterface, config.SSLCert, config.SSLKey, CreateAdminHandler(sc))
 	base.Log("Starting server on %s ...", *config.Interface)
-	if err := http.ListenAndServe(*config.Interface, CreatePublicHandler(sc)); err != nil {
-		base.LogFatal("HTTP server failed: %v", err)
-	}
+	serve(*config.Interface, config.SSLCert, config.SSLKey, CreatePublicHandler(sc))
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.
