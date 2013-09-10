@@ -45,16 +45,28 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name      string                     // Database name in REST API (stored as key in JSON)
-	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username  string                     // Username for authenticating to server
-	Password  string                     // Password for authenticating to server
-	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
-	Pool      *string                    // Couchbase pool name, default "default"
-	Sync      *string                    // Sync function defines which users can see which data
-	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
-	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
-	RevsLimit *uint32                    // Max depth a document's revision tree can grow to
+	name      string                      // Database name in REST API (stored as key in JSON)
+	Server    *string                     // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username  string                      // Username for authenticating to server
+	Password  string                      // Password for authenticating to server
+	Bucket    *string                     // Bucket name on server; defaults to same as 'name'
+	Pool      *string                     // Couchbase pool name, default "default"
+	Sync      *string                     // Sync function defines which users can see which data
+	Users     map[string]*PrincipalConfig // Initial user accounts
+	Roles     map[string]*PrincipalConfig // Initial roles
+	RevsLimit *uint32                     // Max depth a document's revision tree can grow to
+}
+
+// JSON object that defines a User/Role within a DbConfig. (Also used in admin REST API.)
+type PrincipalConfig struct {
+	Name              *string  `json:"name,omitempty"`
+	ExplicitChannels  base.Set `json:"admin_channels,omitempty"`
+	Channels          base.Set `json:"all_channels"`
+	Email             string   `json:"email,omitempty"`
+	Disabled          bool     `json:"disabled,omitempty"`
+	Password          *string  `json:"password,omitempty"`
+	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
+	RoleNames         []string `json:"roles,omitempty"`
 }
 
 type PersonaConfig struct {

@@ -196,29 +196,19 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]json.RawMessage, what string) error {
-	for name, data := range spec {
-		isUsers := (what == "user")
-		if name == "GUEST" && isUsers {
-			name = ""
-		}
-		authenticator := context.Authenticator()
-		newPrincipal, err := authenticator.UnmarshalPrincipal(data, name, 1, isUsers)
+func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*PrincipalConfig, what string) error {
+	for name, princ := range spec {
+		princ.Name = &name
+		_, err := updatePrincipal(context, *princ, (what == "user"), (name == "GUEST"))
 		if err != nil {
-			return fmt.Errorf("Invalid config for %s %q: %v", what, name, err)
-		}
-		oldPrincipal, err := authenticator.GetPrincipal(newPrincipal.Name(), isUsers)
-		if oldPrincipal == nil || name == "" {
-			if err == nil {
-				err = authenticator.Save(newPrincipal)
-			}
-			if err != nil {
+			// A conflict error just means updatePrincipal didn't overwrite an existing user.
+			if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
 				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
-			} else if name == "" {
-				base.Log("    Reset guest user to config")
-			} else {
-				base.Log("    Created %s %q", what, name)
 			}
+		} else if name == "GUEST" {
+			base.Log("    Reset guest user to config")
+		} else {
+			base.Log("    Created %s %q", what, name)
 		}
 	}
 	return nil

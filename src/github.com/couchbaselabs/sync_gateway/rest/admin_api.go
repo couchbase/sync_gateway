@@ -19,6 +19,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"
+	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 //////// DATABASE MAINTENANCE:
@@ -65,21 +66,9 @@ func externalUserName(name string) string {
 	return name
 }
 
-// Public serialization of User/Role as used in the admin REST API.
-type PrincipalJSON struct {
-	Name              *string  `json:"name,omitempty"`
-	ExplicitChannels  base.Set `json:"admin_channels,omitempty"`
-	Channels          base.Set `json:"all_channels"`
-	Email             string   `json:"email,omitempty"`
-	Disabled          bool     `json:"disabled,omitempty"`
-	Password          *string  `json:"password,omitempty"`
-	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
-	RoleNames         []string `json:"roles,omitempty"`
-}
-
 func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	name := externalUserName(princ.Name())
-	info := PrincipalJSON{
+	info := PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 		Channels:         princ.Channels().AsSet(),
@@ -93,58 +82,37 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	return json.Marshal(info)
 }
 
-// Handles PUT and POST for a user or a role.
-func (h *handler) updatePrincipal(name string, isUser bool) error {
-	h.assertAdminOnly()
-	// Unmarshal the request body into a PrincipalJSON struct:
-	body, _ := ioutil.ReadAll(h.rq.Body)
-	var newInfo PrincipalJSON
-	var err error
-	if err = json.Unmarshal(body, &newInfo); err != nil {
-		return err
-	}
-
+// Updates or creates a principal from a PrincipalConfig structure.
+func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
+	// Get the existing principal, or if this is a POST make sure there isn't one:
 	var princ auth.Principal
 	var user auth.User
-	if h.rq.Method == "POST" {
-		// On POST, take the name from the "name" property in the request body:
-		if newInfo.Name == nil {
-			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
-		}
-		name = *newInfo.Name
-	} else {
-		// ON PUT, verify the name matches, if given:
-		if newInfo.Name != nil && *newInfo.Name != name {
-			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
-		}
-	}
-
-	// Get the existing principal, or if this is a POST make sure there isn't one:
+	authenticator := dbc.Authenticator()
 	if isUser {
-		user, err = h.db.Authenticator().GetUser(internalUserName(name))
+		user, err = authenticator.GetUser(internalUserName(*newInfo.Name))
 		princ = user
 	} else {
-		princ, err = h.db.Authenticator().GetRole(name)
+		princ, err = authenticator.GetRole(*newInfo.Name)
 	}
 	if err != nil {
-		return err
+		return
 	}
 
-	status := http.StatusOK
-	if princ == nil {
+	replaced = (princ != nil)
+	if !replaced {
 		// If user/role didn't exist already, instantiate a new one:
-		status = http.StatusCreated
 		if isUser {
-			user, err = h.db.Authenticator().NewUser(internalUserName(name), "", nil)
+			user, err = authenticator.NewUser(internalUserName(*newInfo.Name), "", nil)
 			princ = user
 		} else {
-			princ, err = h.db.Authenticator().NewRole(name, nil)
+			princ, err = authenticator.NewRole(*newInfo.Name, nil)
 		}
 		if err != nil {
-			return err
+			return
 		}
-	} else if h.rq.Method == "POST" {
-		return &base.HTTPError{http.StatusConflict, "Already exists"}
+	} else if !allowReplace {
+		err = &base.HTTPError{http.StatusConflict, "Already exists"}
+		return
 	}
 
 	// Now update the Principal object from the properties in the request, first the channels:
@@ -152,7 +120,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if updatedChannels == nil {
 		updatedChannels = ch.TimedSet{}
 	}
-	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, h.db.LastSequence()+1)
+	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, dbc.LastSequence()+1)
 	princ.SetExplicitChannels(updatedChannels)
 
 	// Then the roles:
@@ -166,8 +134,42 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	// And finally save the Principal:
-	if err = h.db.Authenticator().Save(princ); err != nil {
+	err = authenticator.Save(princ)
+	return
+}
+
+// Handles PUT and POST for a user or a role.
+func (h *handler) updatePrincipal(name string, isUser bool) error {
+	h.assertAdminOnly()
+	// Unmarshal the request body into a PrincipalConfig struct:
+	body, _ := ioutil.ReadAll(h.rq.Body)
+	var newInfo PrincipalConfig
+	var err error
+	if err = json.Unmarshal(body, &newInfo); err != nil {
 		return err
+	}
+
+	if h.rq.Method == "POST" {
+		// On POST, take the name from the "name" property in the request body:
+		if newInfo.Name == nil {
+			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
+		}
+	} else {
+		// ON PUT, verify the name matches, if given:
+		if newInfo.Name == nil {
+			newInfo.Name = &name
+		} else if *newInfo.Name != name {
+			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
+		}
+	}
+
+	replaced, err := updatePrincipal(h.db.DatabaseContext, newInfo, isUser, h.rq.Method != "POST")
+	if err != nil {
+		return err
+	}
+	status := http.StatusOK
+	if !replaced {
+		status = http.StatusCreated
 	}
 	h.response.WriteHeader(status)
 	return nil
