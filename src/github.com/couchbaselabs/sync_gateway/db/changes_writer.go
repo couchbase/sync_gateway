@@ -205,20 +205,22 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 			(len(currentValue) > 20000 && (rand.Intn(100) < len(currentValue)/5000))
 		removedCount = 0
 
-		if len(currentValue) == 0 {
+		numToKeep := MaxChangeLogLength - len(entries)
+		if len(currentValue) == 0 || numToKeep <= 0 {
 			// If the log was empty, create a new log and return:
+			if numToKeep < 0 {
+				entries = entries[-numToKeep:]
+			}
 			channelLog := channels.ChangeLog{}
 			for _, entry := range entries {
 				channelLog.Add(entry.LogEntry)
 			}
 			return encodeChannelLog(&channelLog), walrus.Raw, nil
-		}
-
-		if fullUpdate {
+		} else if fullUpdate {
 			fullUpdateAttempts++
 			var newValue bytes.Buffer
 			removedCount = channels.TruncateEncodedChangeLog(bytes.NewReader(currentValue),
-				MaxChangeLogLength-1, MaxChangeLogLength/2, &newValue)
+				numToKeep, numToKeep/2, &newValue)
 			if removedCount > 0 {
 				for _, entry := range entries {
 					entry.Encode(&newValue, entry.parentRevID)

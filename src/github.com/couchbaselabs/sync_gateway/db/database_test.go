@@ -201,8 +201,10 @@ func TestAllDocs(t *testing.T) {
 	// Lower the log capacity to 50 to ensure the test will overflow, causing logs to be truncated,
 	// so the changes feed will have to backfill from its view.
 	oldMaxLogLength := MaxChangeLogLength
+	oldAlwaysCompact := AlwaysCompactChangeLog
 	MaxChangeLogLength = 50
-	defer func() { MaxChangeLogLength = oldMaxLogLength }()
+	AlwaysCompactChangeLog = true
+	defer func() { MaxChangeLogLength = oldMaxLogLength; AlwaysCompactChangeLog = oldAlwaysCompact }()
 
 	base.LogKeys["Changes"] = true
 	base.LogKeys["Changes+"] = true

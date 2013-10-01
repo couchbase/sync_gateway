@@ -47,8 +47,8 @@ func (bucket couchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
-func (bucket couchbaseBucket) Write(k string, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
-	return bucket.Bucket.Write(k, exp, v, couchbase.WriteOptions(opt))
+func (bucket couchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
+	return bucket.Bucket.Write(k, flags, exp, v, couchbase.WriteOptions(opt))
 }
 
 func (bucket couchbaseBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
