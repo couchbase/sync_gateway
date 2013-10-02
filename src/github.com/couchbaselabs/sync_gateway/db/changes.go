@@ -238,7 +238,10 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 			}
 			opts["limit"] = limit
 
-			changeWaiter := db.tapListener.NewWaiter()
+			var waiter *changeWaiter
+			if options.Wait {
+				waiter = db.tapListener.NewWaiterWithChannels(base.SetOf(channel), nil)
+			}
 			var vres ViewResult
 			var err error
 			for len(vres.Rows) == 0 {
@@ -249,7 +252,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 					return
 				}
 				if len(vres.Rows) == 0 {
-					if !options.Wait || !changeWaiter.Wait() {
+					if waiter == nil || !waiter.Wait() {
 						return
 					}
 				}
@@ -276,7 +279,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 
 				select {
 				case <-options.Terminator:
-					base.LogTo("Changes+", "Aborting changesFeedFromVie")
+					base.LogTo("Changes+", "Aborting changesFeedFromView")
 					return
 				case feed <- entry:
 				}
@@ -306,9 +309,11 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
 
-	waitMode := options.Wait
-	options.Wait = false
-
+	var changeWaiter *changeWaiter
+	if options.Wait {
+		options.Wait = false
+		changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
+	}
 	if options.Since == nil {
 		options.Since = channels.TimedSet{}
 	}
@@ -316,7 +321,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	output := make(chan *ChangeEntry, kChangesViewPageSize)
 	go func() {
 		defer close(output)
-		changeWaiter := db.tapListener.NewWaiter()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -411,7 +415,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again
-			if sentSomething || !waitMode || !changeWaiter.Wait() {
+			if sentSomething || changeWaiter == nil || !changeWaiter.Wait() {
 				break
 			}
 

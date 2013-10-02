@@ -14,9 +14,10 @@ import (
 // changes.
 type changeListener struct {
 	bucket      base.Bucket
-	tapFeed     base.TapFeed // Observes changes to bucket
-	tapNotifier *sync.Cond   // Posts notifications when documents are updated
-	counter     uint64
+	tapFeed     base.TapFeed      // Observes changes to bucket
+	tapNotifier *sync.Cond        // Posts notifications when documents are updated
+	counter     uint64            // Event counter; increments on every doc update
+	keyCounts   map[string]uint64 // Latest count at which each doc key was updated
 }
 
 // Starts a changeListener on a given Bucket.
@@ -29,6 +30,7 @@ func (listener *changeListener) Start(bucket base.Bucket) error {
 
 	listener.tapFeed = tapFeed
 	listener.counter = 1
+	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 
 	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
@@ -60,8 +62,10 @@ func (listener *changeListener) notify(key string) {
 	listener.tapNotifier.L.Lock()
 	if key == "" {
 		listener.counter = 0
+		listener.keyCounts = map[string]uint64{}
 	} else {
 		listener.counter++
+		listener.keyCounts[key] = listener.counter
 	}
 	base.LogTo("Changes+", "Notifying that %q changed (key=%q) count=%d",
 		listener.bucket.GetName(), key, listener.counter)
@@ -70,41 +74,72 @@ func (listener *changeListener) notify(key string) {
 }
 
 // Waits until the counter exceeds the given value. Returns the new counter.
-func (listener *changeListener) Wait(counter uint64) uint64 {
+func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
-		listener.bucket.GetName(), listener.counter)
-	for listener.counter == counter {
+		listener.bucket.GetName(), counter)
+	for {
+		curCounter := listener._currentCount(keys)
+		if curCounter != counter {
+			return curCounter
+		}
 		listener.tapNotifier.Wait()
 	}
-	return listener.counter
 }
 
-// Returns the current value of the counter.
-func (listener *changeListener) CurrentCount() uint64 {
+// Returns the max value of the counter for all the given keys
+func (listener *changeListener) CurrentCount(keys []string) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	return listener.counter
+	return listener._currentCount(keys)
 }
+
+func (listener *changeListener) _currentCount(keys []string) uint64 {
+	var max uint64 = 0
+	for _, key := range keys {
+		if count := listener.keyCounts[key]; count > max {
+			max = count
+		}
+	}
+	return max
+}
+
+//////// CHANGE WAITER
 
 // Helper for waiting on a changeListener. Every call to wait() will wait for the
 // listener's counter to increment from the value at the last call.
 type changeWaiter struct {
 	listener    *changeListener
+	keys        []string
 	lastCounter uint64
 }
 
-// Creates a new changeWaiter.
-func (listener *changeListener) NewWaiter() changeWaiter {
-	return changeWaiter{
+// Creates a new changeWaiter that will wait for changes for the given document keys.
+func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
+	return &changeWaiter{
 		listener:    listener,
-		lastCounter: listener.CurrentCount(),
+		keys:        keys,
+		lastCounter: listener.CurrentCount(keys),
 	}
+}
+
+func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *changeWaiter {
+	waitKeys := make([]string, 0, 5)
+	for channel, _ := range chans {
+		waitKeys = append(waitKeys, channelLogDocID(channel))
+	}
+	if user != nil {
+		waitKeys = append(waitKeys, auth.UserKeyPrefix+user.Name())
+		for _, role := range user.RoleNames() {
+			waitKeys = append(waitKeys, auth.RoleKeyPrefix+role)
+		}
+	}
+	return listener.NewWaiter(waitKeys)
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
 func (waiter *changeWaiter) Wait() bool {
-	waiter.lastCounter = waiter.listener.Wait(waiter.lastCounter)
+	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter)
 	return waiter.lastCounter > 0
 }
