@@ -492,7 +492,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	err = rt.ServerContext().Database("db").ApplySyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	err = rt.ServerContext().Database("db").ApplySyncFun(`function(doc) {access("alice", "beta");channel("beta");}`, false)
 	assert.Equals(t, err, nil)
 	changes.Results = nil
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))

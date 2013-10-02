@@ -503,6 +503,33 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assertHTTPError(t, err, 403)
 }
 
+func TestImport(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Add docs to the underlying bucket:
+	for i := 1; i <= 20; i++ {
+		db.Bucket.Add(fmt.Sprintf("alreadyHere%d", i), 0, Body{"key1": i, "key2": "hi"})
+	}
+
+	// Make sure they aren't visible thru the gateway:
+	doc, err := db.getDoc("alreadyHere1")
+	assert.Equals(t, doc, (*document)(nil))
+	assert.Equals(t, err.(*base.HTTPError).Status, 404)
+
+	// Import them:
+	err = db.ApplySyncFun("", true)
+	assertNoError(t, err, "ApplySyncFun")
+
+	// Now they're visible:
+	doc, err = db.getDoc("alreadyHere1")
+	base.Log("doc = %+v", doc)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "can't get doc")
+}
+
+//////// BENCHMARKS
+
 func BenchmarkDatabase(b *testing.B) {
 	base.LogLevel = 2
 	for i := 0; i < b.N; i++ {

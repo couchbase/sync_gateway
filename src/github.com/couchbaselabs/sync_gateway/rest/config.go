@@ -45,16 +45,17 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name      string                      // Database name in REST API (stored as key in JSON)
-	Server    *string                     // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username  string                      // Username for authenticating to server
-	Password  string                      // Password for authenticating to server
-	Bucket    *string                     // Bucket name on server; defaults to same as 'name'
-	Pool      *string                     // Couchbase pool name, default "default"
-	Sync      *string                     // Sync function defines which users can see which data
-	Users     map[string]*PrincipalConfig // Initial user accounts
-	Roles     map[string]*PrincipalConfig // Initial roles
-	RevsLimit *uint32                     // Max depth a document's revision tree can grow to
+	name       string                      // Database name in REST API (stored as key in JSON)
+	Server     *string                     // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username   string                      // Username for authenticating to server
+	Password   string                      // Password for authenticating to server
+	Bucket     *string                     // Bucket name on server; defaults to same as 'name'
+	Pool       *string                     // Couchbase pool name, default "default"
+	Sync       *string                     // Sync function defines which users can see which data
+	Users      map[string]*PrincipalConfig // Initial user accounts
+	Roles      map[string]*PrincipalConfig // Initial roles
+	RevsLimit  *uint32                     // Max depth a document's revision tree can grow to
+	ImportDocs bool                        // If true, existing docs in bucket will be initialized
 }
 
 // JSON object that defines a User/Role within a DbConfig. (Also used in admin REST API.)

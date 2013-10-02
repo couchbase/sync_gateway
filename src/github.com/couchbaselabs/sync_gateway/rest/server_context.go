@@ -155,7 +155,7 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		return nil, err
 	}
 	if config.Sync != nil {
-		if err := dbcontext.ApplySyncFun(*config.Sync); err != nil {
+		if err := dbcontext.ApplySyncFun(*config.Sync,config.ImportDocs); err != nil {
 			return nil, err
 		}
 	}

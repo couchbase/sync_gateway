@@ -44,6 +44,8 @@ func (db *Database) getDoc(docid string) (*document, error) {
 	err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
+	} else if !doc.hasValidSyncData() {
+		return nil, &base.HTTPError{Status: 404, Message: "Not imported"}
 	}
 	return doc, nil
 }
@@ -217,6 +219,19 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) error {
 
 //////// UPDATING DOCUMENTS:
 
+// Initializes the gateway-specific "_sync_" metadata of a new document.
+// Used when importing an existing Couchbase doc that hasn't been seen by the gateway before.
+func (db *Database) initializeSyncData(doc *document) (err error) {
+	body := doc.body
+	doc.CurrentRev = createRevID(1, "", body)
+	body["_rev"] = doc.CurrentRev
+	doc.Deleted = false
+	doc.History = make(RevTree)
+	doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false})
+	doc.Sequence, err = db.sequences.nextSequence()
+	return
+}
+
 // Updates or creates a document.
 // The new body's "_rev" property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (string, error) {
@@ -332,6 +347,8 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
+		} else if !doc.hasValidSyncData() {
+			err = &base.HTTPError{409, "Not imported"}
 		}
 
 		// Invoke the callback to update the document and return a new revision body:

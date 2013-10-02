@@ -158,6 +158,12 @@ func installViews(bucket base.Bucket) error {
                      if (sync.deleted)
                        return;
                      emit(meta.id, [sync.rev, sync.sequence]); }`
+	// View for importing unknown docs
+	// Key is [existing?, docid] where 'existing?' is false for unknown docs
+	import_map := `function (doc, meta) {
+                     if(meta.id.substring(0,6) != "_sync:") {
+                       var exists = (doc["_sync"] !== undefined);
+                       emit([exists, meta.id], null); } }`
 	// View for compaction -- finds all revision docs
 	// Key and value are ignored.
 	oldrevs_map := `function (doc, meta) {
@@ -249,6 +255,7 @@ func installViews(bucket base.Bucket) error {
 		Views: walrus.ViewMap{
 			"all_bits": walrus.ViewDef{Map: allbits_map},
 			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			"import":   walrus.ViewDef{Map: import_map, Reduce: "_count"},
 			"old_revs": walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
 		},
 	}
@@ -333,7 +340,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	base.Log("Deleting %d documents of %q ...", len(vres.Rows), db.Name)
+	base.Log("Deleting %d %q documents of %q ...", len(vres.Rows), docType, db.Name)
 	for _, row := range vres.Rows {
 		base.LogTo("CRUD", "\tDeleting %q", row.ID)
 		if err := db.Bucket.Delete(row.ID); err != nil {
@@ -375,8 +382,12 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 
 const kSyncDataKey = "_sync:syncdata"
 
-// Sets the database context's channelMapper based on the JS code from config
-func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
+// Sets the database context's sync function based on the JS code from config.
+// If the function is different from the prior one, all documents are run through it again to
+// update their channel assignments and the access privileges they assign to users and roles.
+// If importExistingDocs is true, documents in the bucket that are not known to Sync Gateway will
+// be imported (have _sync data added) and run through the sync function.
+func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs bool) error {
 	var err error
 	if syncFun == "" {
 		context.ChannelMapper = nil
@@ -399,36 +410,53 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string) error {
 	if err != nil && !syncDataMissing {
 		return err
 	} else if syncFun == syncData.Sync {
-		return nil
-	}
-
-	if !syncDataMissing {
-		// It's changed, so re-run it on all docs:
-		db := &Database{context, nil}
-		if err = db.UpdateAllDocChannels(); err != nil {
-			return err
+		// Sync function hasn't changed. But if importing, scan imported docs anyway:
+		if importExistingDocs {
+			db := &Database{context, nil}
+			return db.UpdateAllDocChannels(false, importExistingDocs)
 		}
-	}
+		return nil
+	} else {
+		if !syncDataMissing {
+			// It's changed, so re-run it on all docs:
+			db := &Database{context, nil}
+			if err = db.UpdateAllDocChannels(true, importExistingDocs); err != nil {
+				return err
+			}
+		}
 
-	// Finally save the new function source:
-	syncData.Sync = syncFun
-	return context.Bucket.Set(kSyncDataKey, 0, syncData)
+		// Finally save the new function source:
+		syncData.Sync = syncFun
+		return context.Bucket.Set(kSyncDataKey, 0, syncData)
+	}
 }
 
-// Re-runs the channelMapper on every document in the database.
+// Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
+// and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript channelmap function changes.
-func (db *Database) UpdateAllDocChannels() error {
+func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) error {
+	if !doCurrentDocs && !doImportDocs {
+		return nil
+	}
 	base.Log("Recomputing document channels...")
-
-	vres, err := db.Bucket.View("sync_housekeeping", "all_docs",
-		Body{"stale": false, "reduce": false})
+	options := Body{"stale": false, "reduce": false}
+	if !doCurrentDocs {
+		options["endkey"] = []interface{}{true}
+		options["endkey_inclusive"] = false
+	} else if !doImportDocs {
+		options["startkey"] = []interface{}{true}
+	}
+	vres, err := db.Bucket.View("sync_housekeeping", "import", options)
 	if err != nil {
 		return err
 	}
+
 	base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
 	for _, row := range vres.Rows {
-		docid := row.Key.(string)
+		rowKey := row.Key.([]interface{})
+		docid := rowKey[1].(string)
 		key := db.realDocID(docid)
+		//base.Log("\tupdating %q", docid)
 		err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if currentValue == nil {
@@ -438,6 +466,24 @@ func (db *Database) UpdateAllDocChannels() error {
 			if err != nil {
 				return nil, err
 			}
+
+			imported := false
+			if !doc.hasValidSyncData() {
+				// This is a document not known to the sync gateway. Ignore or import it:
+				if !doImportDocs {
+					return nil, couchbase.UpdateCancel
+				}
+				imported = true
+				if err = db.initializeSyncData(doc); err != nil {
+					return nil, err
+				}
+				base.Log("\tImporting document %q --> rev %q", docid, doc.CurrentRev)
+			} else {
+				if !doCurrentDocs {
+					return nil, couchbase.UpdateCancel
+				}
+			}
+
 			body, err := db.getRevFromDoc(doc, "", false)
 			if err != nil {
 				return nil, err
@@ -453,7 +499,7 @@ func (db *Database) UpdateAllDocChannels() error {
 			changed := len(doc.Access.updateAccess(doc, access)) +
 				len(doc.RoleAccess.updateAccess(doc, roles)) +
 				len(doc.updateChannels(channels))
-			if changed > 0 {
+			if changed > 0 || imported {
 				base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
 				return json.Marshal(doc)
 			} else {
