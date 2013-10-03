@@ -48,6 +48,9 @@ type Database struct {
 	user auth.User
 }
 
+// All special/internal documents the gateway creates have this prefix in their keys.
+const kSyncKeyPrefix = "_sync:"
+
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
 	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
@@ -70,7 +73,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -86,9 +89,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket) (*DatabaseContext, er
 	if err != nil {
 		return nil, err
 	}
-	if err = context.tapListener.Start(bucket); err != nil {
+	if err = context.tapListener.Start(bucket, autoImport); err != nil {
 		return nil, err
 	}
+	go context.runAssimilator()
 	return context, nil
 }
 
@@ -360,7 +364,7 @@ func (db *Database) Compact() (int, error) {
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	base.Log("Deleting %d old revs of %q ...", len(vres.Rows), db.Name)
+	base.Log("Compacting away %d old revs of %q ...", len(vres.Rows), db.Name)
 	count := 0
 	for _, row := range vres.Rows {
 		base.LogTo("CRUD", "\tDeleting %q", row.ID)
@@ -435,10 +439,13 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs 
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript channelmap function changes.
 func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) error {
-	if !doCurrentDocs && !doImportDocs {
+	if doCurrentDocs {
+		base.Log("Recomputing document channels...")
+	} else if doImportDocs {
+		base.Log("Importing documents...")
+	} else {
 		return nil
 	}
-	base.Log("Recomputing document channels...")
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
 		options["endkey"] = []interface{}{true}
@@ -451,7 +458,8 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		return err
 	}
 
-	base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
+	//base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
+	changeCount := 0
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
 		docid := rowKey[1].(string)
@@ -477,11 +485,12 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				if err = db.initializeSyncData(doc); err != nil {
 					return nil, err
 				}
-				base.Log("\tImporting document %q --> rev %q", docid, doc.CurrentRev)
+				base.LogTo("CRUD", "\tImporting document %q --> rev %q", docid, doc.CurrentRev)
 			} else {
 				if !doCurrentDocs {
 					return nil, couchbase.UpdateCancel
 				}
+				base.LogTo("CRUD", "\tRe-syncing document %q", docid)
 			}
 
 			body, err := db.getRevFromDoc(doc, "", false)
@@ -506,27 +515,30 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				return nil, couchbase.UpdateCancel
 			}
 		})
-		if err != nil && err != couchbase.UpdateCancel {
+		if err == nil {
+			changeCount++
+		} else if err != couchbase.UpdateCancel {
 			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
 
-	// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
-	if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
-		return err
-	}
+	if changeCount > 0 {
+		base.Log("%d docs changed; invalidating channel logs...")
+		// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
+		if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
+			return err
+		}
 
-	// Now invalidate channel cache of all users/roles:
-	base.Log("Invalidating channel caches of users/roles...")
-	users, roles, _ := db.AllPrincipalIDs()
-	for _, name := range users {
-		db.invalUserChannels(name)
+		// Now invalidate channel cache of all users/roles:
+		base.Log("Invalidating channel caches of users/roles...")
+		users, roles, _ := db.AllPrincipalIDs()
+		for _, name := range users {
+			db.invalUserChannels(name)
+		}
+		for _, name := range roles {
+			db.invalRoleChannels(name)
+		}
 	}
-	for _, name := range roles {
-		db.invalRoleChannels(name)
-	}
-
-	base.Log("Finished updating to new sync function")
 	return nil
 }
 

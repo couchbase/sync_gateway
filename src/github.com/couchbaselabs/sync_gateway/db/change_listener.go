@@ -14,14 +14,15 @@ import (
 // changes.
 type changeListener struct {
 	bucket      base.Bucket
-	tapFeed     base.TapFeed      // Observes changes to bucket
-	tapNotifier *sync.Cond        // Posts notifications when documents are updated
-	counter     uint64            // Event counter; increments on every doc update
-	keyCounts   map[string]uint64 // Latest count at which each doc key was updated
+	tapFeed     base.TapFeed         // Observes changes to bucket
+	tapNotifier *sync.Cond           // Posts notifications when documents are updated
+	counter     uint64               // Event counter; increments on every doc update
+	keyCounts   map[string]uint64    // Latest count at which each doc key was updated
+	DocChannel  chan walrus.TapEvent // Passthru channel for doc mutations
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error {
 	listener.bucket = bucket
 	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
 	if err != nil {
@@ -32,10 +33,16 @@ func (listener *changeListener) Start(bucket base.Bucket) error {
 	listener.counter = 1
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
+	if trackDocs {
+		listener.DocChannel = make(chan walrus.TapEvent, 100)
+	}
 
 	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
 	go func() {
 		defer listener.notify("")
+		if listener.DocChannel != nil {
+			defer close(listener.DocChannel)
+		}
 		for event := range tapFeed.Events() {
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
@@ -43,6 +50,8 @@ func (listener *changeListener) Start(bucket base.Bucket) error {
 					strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					listener.notify(key)
+				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
+					listener.DocChannel <- event
 				}
 			}
 		}

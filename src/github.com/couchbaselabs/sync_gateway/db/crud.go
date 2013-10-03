@@ -244,8 +244,8 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	generation++
 	deleted, _ := body["_deleted"].(bool)
 
-	return db.updateDoc(docid, func(doc *document) (Body, error) {
-		// Be careful: this block can be invoked multiple times if there are races!
+	return db.updateDoc(docid, false, func(doc *document) (Body, error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
 			matchRev = doc.CurrentRev
@@ -287,8 +287,8 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return &base.HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
 	}
 	deleted, _ := body["_deleted"].(bool)
-	_, err := db.updateDoc(docid, func(doc *document) (Body, error) {
-		// Be careful: this block can be invoked multiple times if there are races!
+	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
 		parent := ""
@@ -326,7 +326,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, callback func(*document) (Body, error)) (string, error) {
+func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
 	// As a special case, it's illegal to put a design document except in admin mode:
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return "", &base.HTTPError{Status: 403, Message: "Forbidden to update design doc"}
@@ -347,8 +347,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
-		} else if !doc.hasValidSyncData() {
+		} else if !allowImport && currentValue != nil && !doc.hasValidSyncData() {
 			err = &base.HTTPError{409, "Not imported"}
+			return
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
@@ -466,7 +467,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	for _, name := range changedPrincipals {

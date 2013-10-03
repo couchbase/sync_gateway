@@ -55,7 +55,7 @@ type DbConfig struct {
 	Users      map[string]*PrincipalConfig // Initial user accounts
 	Roles      map[string]*PrincipalConfig // Initial roles
 	RevsLimit  *uint32                     // Max depth a document's revision tree can grow to
-	ImportDocs bool                        // If true, existing docs in bucket will be initialized
+	ImportDocs interface{}                 // false, true, or "continuous"
 }
 
 // JSON object that defines a User/Role within a DbConfig. (Also used in admin REST API.)

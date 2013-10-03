@@ -137,6 +137,18 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		return nil, err
 	}
 
+	var importDocs, autoImport bool
+	switch config.ImportDocs {
+	case nil, false:
+	case true:
+		importDocs = true
+	case "continuous":
+		importDocs = true
+		autoImport = true
+	default:
+		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
+	}
+
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
 		Server:     server,
@@ -150,15 +162,19 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	if err != nil {
 		return nil, err
 	}
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport)
 	if err != nil {
 		return nil, err
 	}
+
+	syncFn := ""
 	if config.Sync != nil {
-		if err := dbcontext.ApplySyncFun(*config.Sync,config.ImportDocs); err != nil {
-			return nil, err
-		}
+		syncFn = *config.Sync
 	}
+	if err := dbcontext.ApplySyncFun(syncFn, importDocs); err != nil {
+		return nil, err
+	}
+
 	if config.RevsLimit != nil && *config.RevsLimit > 0 {
 		dbcontext.RevsLimit = *config.RevsLimit
 	}
