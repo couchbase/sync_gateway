@@ -63,14 +63,14 @@ func (c *changesWriter) checkpoint() {
 	c.logWriters = map[string]*channelLogWriter{}
 }
 
-// Adds a change to a single channel-log
+// Adds a change to a single channel-log (asynchronously)
 func (c *changesWriter) addToChangeLog(channelName string, entry channels.LogEntry, parentRevID string) {
 	c.logWriterForChannel(channelName).addChange(entry, parentRevID)
 }
 
-// Saves a channel log, _if_ there isn't already one in the database.
-func (c *changesWriter) addChangeLog(channelName string, log *channels.ChangeLog) (added bool, err error) {
-	return c.bucket.AddRaw(channelLogDocID(channelName), 0, encodeChannelLog(log))
+// Saves a channel log (asynchronously), _if_ there isn't already one in the database.
+func (c *changesWriter) addChangeLog(channelName string, log *channels.ChangeLog) {
+	c.logWriterForChannel(channelName).addChannelLog(log)
 }
 
 // Loads a channel's log from the database and returns it.
@@ -112,12 +112,13 @@ type channelLogWriter struct {
 }
 
 type changeEntry struct {
-	channels.LogEntry
-	parentRevID string
+	logEntry       *channels.LogEntry
+	parentRevID    string
+	replacementLog *channels.ChangeLog
 }
 
 // Max number of pending writes
-const kChannelLogWriterQueueLength = 100
+const kChannelLogWriterQueueLength = 1000
 
 // Creates a channelLogWriter for a particular channel.
 func newChannelLogWriter(bucket base.Bucket, channelName string) *channelLogWriter {
@@ -144,7 +145,12 @@ func newChannelLogWriter(bucket base.Bucket, channelName string) *channelLogWrit
 
 // Queues a change to be written to the change-log.
 func (c *channelLogWriter) addChange(entry channels.LogEntry, parentRevID string) {
-	c.io <- &changeEntry{LogEntry: entry, parentRevID: parentRevID}
+	c.io <- &changeEntry{logEntry: &entry, parentRevID: parentRevID}
+}
+
+// Queues an entire new channel log to be written
+func (c *channelLogWriter) addChannelLog(log *channels.ChangeLog) {
+	c.io <- &changeEntry{replacementLog: log}
 }
 
 // Stops the background goroutine of a channelLogWriter.
@@ -153,23 +159,42 @@ func (c *channelLogWriter) stop() {
 	<-c.awake // block until goroutine finishes
 }
 
+func (c *channelLogWriter) readChange_() *changeEntry {
+	for {
+		entry, ok := <-c.io
+		if !ok {
+			return nil
+		} else if entry.replacementLog != nil {
+			// Request to create the channel log if it doesn't exist:
+			c.addChangeLog_(entry.replacementLog)
+		} else {
+			return entry
+		}
+	}
+}
+
 // Reads all available changes from io and returns them as an array, or nil if io is closed.
 func (c *channelLogWriter) readChanges_() []*changeEntry {
 	// Read first:
-	entry, ok := <-c.io
-	if !ok {
+	entry := c.readChange_()
+	if entry == nil {
 		return nil
 	}
 	// Try to read more as long as they're available:
 	entries := []*changeEntry{entry}
 loop:
 	for len(entries) < kChannelLogWriterQueueLength {
+		var ok bool
 		select {
 		case entry, ok = <-c.io:
 			if !ok {
 				break loop
+			} else if entry.replacementLog != nil {
+				// Request to create the channel log if it doesn't exist:
+				c.addChangeLog_(entry.replacementLog)
+			} else {
+				entries = append(entries, entry)
 			}
-			entries = append(entries, entry)
 		default:
 			break loop
 		}
@@ -183,11 +208,26 @@ func (c *channelLogWriter) massageChanges(changes []*changeEntry) []*changeEntry
 	return changes
 }
 
+// Saves a channel log, _if_ there isn't already one in the database.
+func (c *channelLogWriter) addChangeLog_(log *channels.ChangeLog) (added bool, err error) {
+	added, err = c.bucket.AddRaw(channelLogDocID(c.channelName), 0, encodeChannelLog(log))
+	if added {
+		base.LogTo("Changes", "Added missing channel-log %q with %d entries",
+			c.channelName, log.Len())
+	} else {
+		base.LogTo("Changes", "Didn't add channel-log %q with %d entries (err=%v)",
+			c.channelName, log.Len())
+	}
+	return
+}
+
 type changeEntryList []*changeEntry
 
-func (cl changeEntryList) Len() int           { return len(cl) }
-func (cl changeEntryList) Less(i, j int) bool { return cl[i].Sequence < cl[j].Sequence }
-func (cl changeEntryList) Swap(i, j int)      { cl[i], cl[j] = cl[j], cl[i] }
+func (cl changeEntryList) Len() int { return len(cl) }
+func (cl changeEntryList) Less(i, j int) bool {
+	return cl[i].logEntry.Sequence < cl[j].logEntry.Sequence
+}
+func (cl changeEntryList) Swap(i, j int) { cl[i], cl[j] = cl[j], cl[i] }
 
 // Writes new changes to my channel log document.
 func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
@@ -213,7 +253,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 			}
 			channelLog := channels.ChangeLog{}
 			for _, entry := range entries {
-				channelLog.Add(entry.LogEntry)
+				channelLog.Add(*entry.logEntry)
 			}
 			return encodeChannelLog(&channelLog), walrus.Raw, nil
 		} else if fullUpdate {
@@ -223,7 +263,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 				numToKeep, numToKeep/2, &newValue)
 			if removedCount > 0 {
 				for _, entry := range entries {
-					entry.Encode(&newValue, entry.parentRevID)
+					entry.logEntry.Encode(&newValue, entry.parentRevID)
 				}
 				return newValue.Bytes(), walrus.Raw, nil
 			}
@@ -232,7 +272,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
 		// Append the encoded form of the new entries to the raw log bytes:
 		w := bytes.NewBuffer(make([]byte, 0, 50000))
 		for _, entry := range entries {
-			entry.Encode(w, entry.parentRevID)
+			entry.logEntry.Encode(w, entry.parentRevID)
 		}
 		currentValue = append(currentValue, w.Bytes()...)
 		return currentValue, walrus.Raw, nil

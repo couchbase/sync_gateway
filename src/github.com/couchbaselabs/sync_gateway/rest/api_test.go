@@ -407,8 +407,7 @@ func TestAccessControl(t *testing.T) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
-	//base.LogKeys["Access"] = true
-	//base.LogKeys["CRUD"] = true
+	//base.ParseLogFlags([]string{"Changes+", "CRUD"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -468,10 +467,18 @@ func TestChannelAccessChanges(t *testing.T) {
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
 
+	// Look at alice's _changes feed:
+	changes.Results = nil
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
+	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "d1")
+
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes.Results = nil
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	log.Printf("//////// _changes for zegpold looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	assert.Equals(t, changes.Results[0].ID, "a1")
@@ -506,7 +513,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check accumulated statistics:
 	db := rt.ServerContext().Database("db")
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(4))
+	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
 	db.ChangesClientStats.Reset()
 	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))

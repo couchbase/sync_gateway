@@ -294,11 +294,6 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.Doc["serialnumber"], int64(10*i))
 	}
 
-	// Trying to add the existing log should fail with no error
-	added, err := db.changesWriter.addChangeLog("all", log)
-	assertNoError(t, err, "add channel log")
-	assert.False(t, added)
-
 	// Delete the channel log to test if it can be rebuilt:
 	assertNoError(t, db.Bucket.Delete(channelLogDocID("all")), "delete channel log")
 
