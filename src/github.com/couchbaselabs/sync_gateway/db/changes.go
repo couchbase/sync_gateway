@@ -159,9 +159,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// Save the missing channel log we just rebuilt:
 				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
 					channel, len(newLog.Entries))
-				if _, err := db.changesWriter.addChangeLog(channel, &newLog); err != nil {
-					base.Warn("ChangesFeed: AddChangeLog failed, %v", err)
-				}
+				db.changesWriter.addChangeLog(channel, &newLog)
 			}
 		}
 
