@@ -69,6 +69,9 @@ func (h *handler) handleAllDocs() error {
 			// Fetch the document body:
 			body, err := h.db.GetRev(id.DocID, id.RevID, includeRevs, nil)
 			if err == nil {
+				if body["_removed"] != nil {
+					continue
+				}
 				id.RevID = body["_rev"].(string)
 				if includeDocs {
 					row.Doc = body

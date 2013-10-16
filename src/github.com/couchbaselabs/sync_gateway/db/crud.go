@@ -150,10 +150,15 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
-		if revid != "" && doc.History[revid] != nil && doc.History[revid].Deleted {
-			body = Body{"_id": doc.ID, "_rev": revid}
-		} else {
+		// Update: this applies to non-deletions too, since the client may have lost access to
+		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
+		// incorporate that tombsone and for that it needs to see the _revisions property.
+		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
 			return nil, err
+		}
+		body = Body{"_id": doc.ID, "_rev": revid}
+		if !doc.History[revid].Deleted {
+			body["_removed"] = true
 		}
 	} else {
 		if revid == "" {
