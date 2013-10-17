@@ -21,6 +21,15 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
+// Minimum value of _changes?heartbeat property
+const kMinHeartbeatMS = 25 * 1000
+
+// Default value of _changes?timeout property
+const kDefaultTimeoutMS = 5 * 60 * 1000
+
+// Maximum value of _changes?timeout property
+const kMaxTimeoutMS = 15 * 60 * 1000
+
 func (h *handler) handleRevsDiff() error {
 	var input db.RevsDiffInput
 	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &input)
@@ -36,6 +45,7 @@ func (h *handler) handleRevsDiff() error {
 
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
+	// http://docs.couchdb.org/en/latest/api/database/changes.html
 	var options db.ChangesOptions
 	options.Since = channels.TimedSetFromString(h.getQuery("since"))
 	options.Limit = int(h.getIntQuery("limit", 0))
@@ -81,28 +91,54 @@ func (h *handler) handleChanges() error {
 }
 
 func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptions) error {
-	var lastSeqID string
+	lastSeqID := h.getQuery("since")
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
 	if err == nil {
 		h.setHeader("Content-Type", "text/plain; charset=utf-8")
 		h.writeln([]byte("{\"results\":["))
 		if feed != nil {
-			for entry := range feed {
-				str, _ := json.Marshal(entry)
-				var buf []byte
-				if first {
-					first = false
-					buf = str
-				} else {
-					buf = []byte{','}
-					buf = append(buf, str...)
+			var heartbeat, timeout <-chan time.Time
+			if options.Wait {
+				// Set up heartbeat/timeout
+				if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
+					ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+					defer ticker.Stop()
+					heartbeat = ticker.C
+				} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
+					timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+					defer timer.Stop()
+					timeout = timer.C
 				}
-				if err = h.writeln(buf); err != nil {
-					err = nil
-					break
+			}
+
+		loop:
+			for {
+				select {
+				case entry, ok := <-feed:
+					if !ok {
+						break loop
+					}
+					str, _ := json.Marshal(entry)
+					var buf []byte
+					if first {
+						first = false
+						buf = str
+					} else {
+						buf = []byte{','}
+						buf = append(buf, str...)
+					}
+					if err = h.writeln(buf); err != nil {
+						err = nil
+						break loop
+					}
+					lastSeqID = entry.Seq
+				case <-heartbeat:
+					err = h.writeln([]byte{})
+				case <-timeout:
+					break loop
 				}
-				lastSeqID = entry.Seq
+
 			}
 		}
 		s := fmt.Sprintf("],\n\"last_seq\":%q}", lastSeqID)
@@ -112,14 +148,15 @@ func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptio
 }
 
 func (h *handler) handleContinuousChanges(inChannels base.Set, options db.ChangesOptions) error {
+	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
 	var heartbeat <-chan time.Time
-	if ms := h.getIntQuery("heartbeat", 0); ms > 0 {
+	if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
 		ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
 		defer ticker.Stop()
 		heartbeat = ticker.C
-	} else if ms := h.getIntQuery("timeout", 60000); ms > 0 {
+	} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
 		timeoutInterval = time.Duration(ms) * time.Millisecond
 		defer func() {
 			if timer != nil {
@@ -148,6 +185,7 @@ loop:
 		}
 
 		if timeoutInterval > 0 && timer == nil {
+			// Timeout resets after every change is sent
 			timer = time.NewTimer(timeoutInterval)
 			timeout = timer.C
 		}

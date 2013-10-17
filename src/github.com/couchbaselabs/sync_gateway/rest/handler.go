@@ -201,14 +201,28 @@ func (h *handler) getBoolQuery(query string) bool {
 	return h.getQuery(query) == "true"
 }
 
-// Returns the integer value of a URL query, defaulting to 0 if missing or unparseable
+// Returns the integer value of a URL query, defaulting to 0 if unparseable
 func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
-	value = defaultValue
+	return h.getRestrictedIntQuery(query, defaultValue, 0, 0)
+}
+
+// Returns the integer value of a URL query, restricted to a min and max value,
+// but returning 0 if missing or unparseable
+func (h *handler) getRestrictedIntQuery(query string, defaultValue, minValue, maxValue uint64) uint64 {
+	value := defaultValue
 	q := h.getQuery(query)
 	if q != "" {
-		value, _ = strconv.ParseUint(q, 10, 64)
+		var err error
+		value, err = strconv.ParseUint(q, 10, 64)
+		if err != nil {
+			value = 0
+		} else if value < minValue {
+			value = minValue
+		} else if value > maxValue && maxValue > 0 {
+			value = maxValue
+		}
 	}
-	return
+	return value
 }
 
 // Parses a JSON request body, returning it as a Body map.
