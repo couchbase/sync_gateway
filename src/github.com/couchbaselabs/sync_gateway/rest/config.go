@@ -27,20 +27,25 @@ var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
+const DefaultMaxConnections = 16
+const DefaultMaxOverflowConnections = 0
+
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface           *string              // Interface to bind REST API to, default ":4984"
-	SSLCert             *string              // Path to SSL cert file, or nil
-	SSLKey              *string              // Path to SSL private key file, or nil
-	AdminInterface      *string              // Interface to bind admin API to, default ":4985"
-	ConfigServer        *string              // URL of config server (for dynamic db discovery)
-	Persona             *PersonaConfig       // Configuration for Mozilla Persona validation
-	Facebook            *FacebookConfig      // Configuration for Facebook validation
-	Log                 []string             // Log keywords to enable
-	Pretty              bool                 // Pretty-print JSON responses?
-	DeploymentID        *string              // Optional customer/deployment ID for stats reporting
-	StatsReportInterval *float64             // Optional stats report interval (0 to disable)
-	Databases           map[string]*DbConfig // Pre-configured databases, mapped by name
+	Interface              *string              // Interface to bind REST API to, default ":4984"
+	SSLCert                *string              // Path to SSL cert file, or nil
+	SSLKey                 *string              // Path to SSL private key file, or nil
+	AdminInterface         *string              // Interface to bind admin API to, default ":4985"
+	ConfigServer           *string              // URL of config server (for dynamic db discovery)
+	Persona                *PersonaConfig       // Configuration for Mozilla Persona validation
+	Facebook               *FacebookConfig      // Configuration for Facebook validation
+	Log                    []string             // Log keywords to enable
+	Pretty                 bool                 // Pretty-print JSON responses?
+	DeploymentID           *string              // Optional customer/deployment ID for stats reporting
+	StatsReportInterval    *float64             // Optional stats report interval (0 to disable)
+	MaxConnections         *int                 // Max # of sockets to open to a Couchbase Server node
+	MaxOverflowConnections *int                 // Max # of overflow sockets to open
+	Databases              map[string]*DbConfig // Pre-configured databases, mapped by name
 }
 
 // JSON object that defines a database configuration within the ServerConfig.

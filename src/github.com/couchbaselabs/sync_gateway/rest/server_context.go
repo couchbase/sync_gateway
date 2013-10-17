@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbaselabs/go-couchbase"
+
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
@@ -45,6 +47,17 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		databases_: map[string]*db.DatabaseContext{},
 		HTTPClient: http.DefaultClient,
 	}
+
+	// Initialize the go-couchbase library's global configuration variables:
+	couchbase.PoolSize = DefaultMaxConnections
+	couchbase.PoolOverflow = DefaultMaxOverflowConnections
+	if config.MaxConnections != nil {
+		couchbase.PoolSize = *config.MaxConnections
+	}
+	if config.MaxOverflowConnections != nil {
+		couchbase.PoolOverflow = *config.MaxOverflowConnections
+	}
+
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
 	}
