@@ -94,57 +94,62 @@ func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptio
 	lastSeqID := h.getQuery("since")
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
-	if err == nil {
-		h.setHeader("Content-Type", "text/plain; charset=utf-8")
-		h.writeln([]byte("{\"results\":["))
-		if feed != nil {
-			var heartbeat, timeout <-chan time.Time
-			if options.Wait {
-				// Set up heartbeat/timeout
-				if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
-					ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
-					defer ticker.Stop()
-					heartbeat = ticker.C
-				} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
-					timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
-					defer timer.Stop()
-					timeout = timer.C
-				}
-			}
+	if err != nil {
+		return err
+	}
 
-		loop:
-			for {
-				select {
-				case entry, ok := <-feed:
-					if !ok {
-						break loop
-					}
-					str, _ := json.Marshal(entry)
-					var buf []byte
-					if first {
-						first = false
-						buf = str
-					} else {
-						buf = []byte{','}
-						buf = append(buf, str...)
-					}
-					if err = h.writeln(buf); err != nil {
-						err = nil
-						break loop
-					}
-					lastSeqID = entry.Seq
-				case <-heartbeat:
-					err = h.writeln([]byte{})
-				case <-timeout:
-					break loop
-				}
-
+	h.setHeader("Content-Type", "text/plain; charset=utf-8")
+	h.writeln([]byte("{\"results\":["))
+	message := "OK"
+	if feed != nil {
+		var heartbeat, timeout <-chan time.Time
+		if options.Wait {
+			// Set up heartbeat/timeout
+			if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
+				ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+				defer ticker.Stop()
+				heartbeat = ticker.C
+			} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
+				timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+				defer timer.Stop()
+				timeout = timer.C
 			}
 		}
-		s := fmt.Sprintf("],\n\"last_seq\":%q}", lastSeqID)
-		h.writeln([]byte(s))
+
+	loop:
+		for {
+			select {
+			case entry, ok := <-feed:
+				if !ok {
+					break loop // end of feed
+				}
+				str, _ := json.Marshal(entry)
+				var buf []byte
+				if first {
+					first = false
+					buf = str
+				} else {
+					buf = []byte{','}
+					buf = append(buf, str...)
+				}
+				err = h.writeln(buf)
+				lastSeqID = entry.Seq
+			case <-heartbeat:
+				err = h.writeln([]byte{})
+			case <-timeout:
+				message = "OK (timeout)"
+				break loop
+			}
+			if err != nil {
+				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
+				return nil // error is probably because the client closed the connection
+			}
+		}
 	}
-	return err
+	s := fmt.Sprintf("],\n\"last_seq\":%q}", lastSeqID)
+	h.writeln([]byte(s))
+	h.logStatus(http.StatusOK, message)
+	return nil
 }
 
 func (h *handler) handleContinuousChanges(inChannels base.Set, options db.ChangesOptions) error {
@@ -220,8 +225,10 @@ loop:
 		}
 
 		if err != nil {
+			h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
 			return nil // error is probably because the client closed the connection
 		}
 	}
+	h.logStatus(http.StatusOK, "OK")
 	return nil
 }
