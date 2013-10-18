@@ -50,12 +50,12 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 	// Initialize the go-couchbase library's global configuration variables:
 	couchbase.PoolSize = DefaultMaxConnections
-	couchbase.PoolOverflow = couchbase.PoolSize + DefaultMaxOverflowConnections
+	couchbase.PoolOverflow = DefaultMaxOverflowConnections
 	if config.MaxConnections != nil {
 		couchbase.PoolSize = *config.MaxConnections
 	}
 	if config.MaxOverflowConnections != nil {
-		couchbase.PoolOverflow = couchbase.PoolSize + *config.MaxOverflowConnections
+		couchbase.PoolOverflow = *config.MaxOverflowConnections
 	}
 
 	if config.DeploymentID != nil {
