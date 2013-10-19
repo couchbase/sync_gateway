@@ -27,25 +27,31 @@ var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
-const DefaultMaxConnections = 16
-const DefaultMaxOverflowConnections = 0
+const DefaultMaxCouchbaseConnections = 16
+const DefaultMaxCouchbaseOverflowConnections = 0
+
+const DefaultMaxIncomingConnections = 1000
+
+// Maximum number of simultaneous incoming HTTP connections to the REST interface.
+const kMaxHTTPConnections = 1000
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface              *string              // Interface to bind REST API to, default ":4984"
-	SSLCert                *string              // Path to SSL cert file, or nil
-	SSLKey                 *string              // Path to SSL private key file, or nil
-	AdminInterface         *string              // Interface to bind admin API to, default ":4985"
-	ConfigServer           *string              // URL of config server (for dynamic db discovery)
-	Persona                *PersonaConfig       // Configuration for Mozilla Persona validation
-	Facebook               *FacebookConfig      // Configuration for Facebook validation
-	Log                    []string             // Log keywords to enable
-	Pretty                 bool                 // Pretty-print JSON responses?
-	DeploymentID           *string              // Optional customer/deployment ID for stats reporting
-	StatsReportInterval    *float64             // Optional stats report interval (0 to disable)
-	MaxConnections         *int                 // Max # of sockets to open to a Couchbase Server node
-	MaxOverflowConnections *int                 // Max # of overflow sockets to open
-	Databases              map[string]*DbConfig // Pre-configured databases, mapped by name
+	Interface               *string         // Interface to bind REST API to, default ":4984"
+	SSLCert                 *string         // Path to SSL cert file, or nil
+	SSLKey                  *string         // Path to SSL private key file, or nil
+	AdminInterface          *string         // Interface to bind admin API to, default ":4985"
+	ConfigServer            *string         // URL of config server (for dynamic db discovery)
+	Persona                 *PersonaConfig  // Configuration for Mozilla Persona validation
+	Facebook                *FacebookConfig // Configuration for Facebook validation
+	Log                     []string        // Log keywords to enable
+	Pretty                  bool            // Pretty-print JSON responses?
+	DeploymentID            *string         // Optional customer/deployment ID for stats reporting
+	StatsReportInterval     *float64        // Optional stats report interval (0 to disable)
+	MaxCouchbaseConnections *int            // Max # of sockets to open to a Couchbase Server node
+	MaxCouchbaseOverflow    *int            // Max # of overflow sockets to open
+	MaxIncomingConnections  *int            // Max # of incoming HTTP connections to accept
+	Databases               DbConfigMap     // Pre-configured databases, mapped by name
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -62,6 +68,8 @@ type DbConfig struct {
 	RevsLimit  *uint32                     // Max depth a document's revision tree can grow to
 	ImportDocs interface{}                 // false, true, or "continuous"
 }
+
+type DbConfigMap map[string]*DbConfig
 
 // JSON object that defines a User/Role within a DbConfig. (Also used in admin REST API.)
 type PrincipalConfig struct {
@@ -270,13 +278,12 @@ func ParseCommandLine() *ServerConfig {
 	return config
 }
 
-func serve(addr string, certFile *string, keyFile *string, handler http.Handler) {
-	var err error
-	if certFile == nil {
-		err = http.ListenAndServe(addr, handler)
-	} else {
-		err = http.ListenAndServeTLS(addr, *certFile, *keyFile, handler)
+func (config *ServerConfig) serve(addr string, handler http.Handler) {
+	maxConns := DefaultMaxIncomingConnections
+	if config.MaxIncomingConnections != nil {
+		maxConns = *config.MaxIncomingConnections
 	}
+	err := base.ListenAndServeHTTP(addr, maxConns, config.SSLCert, config.SSLKey, handler)
 	if err != nil {
 		base.LogFatal("Failed to start HTTP server on %s: %v", addr, err)
 	}
@@ -302,9 +309,9 @@ func RunServer(config *ServerConfig) {
 	}
 
 	base.Log("Starting admin server on %s", *config.AdminInterface)
-	go serve(*config.AdminInterface, config.SSLCert, config.SSLKey, CreateAdminHandler(sc))
+	go config.serve(*config.AdminInterface, CreateAdminHandler(sc))
 	base.Log("Starting server on %s ...", *config.Interface)
-	serve(*config.Interface, config.SSLCert, config.SSLKey, CreatePublicHandler(sc))
+	config.serve(*config.Interface, CreatePublicHandler(sc))
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.
