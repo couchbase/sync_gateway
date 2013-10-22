@@ -1,0 +1,171 @@
+%define _topdir %(echo $HOME)/rpmbuild
+
+# Spec file for building @@PRODUCT_BASE@@ software (batteries included)
+# on RedHat Enterprise Linux
+#
+# For questions please contact support@couchbase.com
+#
+# Copyright (c) 2011, Couchbase, Inc.
+# All rights reserved.
+#
+Name:           @@PRODUCT@@
+Version:        @@VERSION@@
+Release:        @@RELEASE@@
+Summary:        @@PRODUCT_BASE_CAP@@ Sync Gateway
+Group:          Applications/Internet
+License:        Apache
+URL:            http://www.couchbase.com
+Source0:        http://downloads.couchbase.com/@@PRODUCT@@_%{version}.tar.gz
+BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
+Prefix:         @@PREFIX@@
+
+# Redefine the default os_install_post to just brp-compress and not brp-strip
+%define __os_install_post /usr/lib/rpm/brp-compress
+%define __strip /bin/true
+
+# to disable checking for build-id, as workaround to centos-6 64-bit
+# rpm-package error due to missing build-id (see CBD-1061)
+%define debug_package %{nil}
+
+%description
+Gluing Couchbase Lite to Couchbsae Server
+The Couchbase Sync Gateway manages HTTP-based data access for mobile clients.
+It handles access control and data routing, so that a single large Couchbase Server
+cluster can manage data for multiple users and complex applications
+
+%prep
+
+%setup -q -n @@PRODUCT_BASE@@
+
+%build
+
+%check
+
+%install
+
+export DONT_STRIP=1
+
+rm -rf %{buildroot}
+mkdir -p %{buildroot}@@PREFIX@@
+gtar cf - * | (cd %{buildroot}@@PREFIX@@ ; gtar xf -)
+
+%clean
+
+rm -rf %{buildroot}
+
+%pre
+
+if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
+  RPM_INSTALL_PREFIX0=@@PREFIX@@
+fi
+
+getent group @@PRODUCT_BASE@@ >/dev/null || \
+   groupadd -r @@PRODUCT_BASE@@ || exit 1
+getent passwd @@PRODUCT_BASE@@ >/dev/null || \
+   useradd -r -g @@PRODUCT_BASE@@ -d $RPM_INSTALL_PREFIX0 -s /bin/sh \
+           -c "@@PRODUCT_BASE@@ system user" @@PRODUCT_BASE@@ || exit 1
+
+if [ -d @@PREFIX@@ ]
+then
+  find @@PREFIX@@ -maxdepth 1 -type l | xargs rm -f || true
+fi
+
+exit 0
+
+%post
+
+if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
+  RPM_INSTALL_PREFIX0=@@PREFIX@@
+fi
+
+ln -f -s $RPM_INSTALL_PREFIX0 @@PREFIX@@
+
+if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
+then
+  cat <<EOF
+ERROR: The machine architecture does not match this build
+of the software.  For example, installing a 32-bit build
+on a 64-bit machine, or vice-versa.  Please uninstall and
+install a build with a matching architecture.
+
+EOF
+  exit 1
+fi
+
+exit 0
+
+%preun
+
+if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
+  RPM_INSTALL_PREFIX0=@@PREFIX@@
+fi
+
+find $RPM_INSTALL_PREFIX0 -name '*.pyc' | xargs rm -f || true
+
+rm -f $RPM_INSTALL_PREFIX0/bin/*
+
+exit 0
+
+%posttrans
+
+if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
+  RPM_INSTALL_PREFIX0=@@PREFIX@@
+fi
+
+cat <<EOF
+
+You have successfully installed @@PRODUCT_BASE_CAP@@ Sync Gateway.
+
+You can start Couchbase Sync Gateway by using the following command:
+
+@@PREFIX@@/bin/sync_gateway
+
+That's it! This command starts Sync Gateway on port 4984, connects to a limited in-memory database
+ that lives on Sync Gateway called "walrus", and starts the admin server on port 4985. 
+
+The command-line options are:
+
+  -adminInterface=":4985": Address to bind admin interface to
+  -bucket="sync_gateway": Name of bucket
+  -dbname="": Name of CouchDB database (defaults to name of bucket)
+  -interface=":4984": Address to bind to
+  -log="": Log keywords, comma separated
+  -personaOrigin="": Base URL that clients use to connect to the server
+  -pool="default": Name of pool
+  -pretty=false: Pretty-print JSON responses
+  -url="walrus:": Address of Couchbase server
+  -verbose=false: Log more info about requests
+
+EOF
+
+cat <<EOF
+
+By using this software you agree to the End User License Agreement.
+See $RPM_INSTALL_PREFIX0/LICENSE.txt.
+
+EOF
+
+exit 0
+
+%files
+%defattr(-,bin,bin,-)
+
+# Directory structure
+#
+%dir %attr (0755, @@PRODUCT_BASE@@, @@PRODUCT_BASE@@) @@PREFIX@@
+
+%dir %attr (0755, bin, bin) @@PREFIX@@/bin
+
+# Files
+#
+
+%attr (0755, bin, bin) @@PREFIX@@/bin/*
+%attr (0644, bin, bin) @@PREFIX@@/LICENSE.txt
+%attr (0644, bin, bin) @@PREFIX@@/manifest.txt
+%attr (0644, bin, bin) @@PREFIX@@/manifest.xml
+%attr (0644, bin, bin) @@PREFIX@@/VERSION.txt
+%attr (0644, bin, bin) @@PREFIX@@/README.txt
+
+%changelog
+* Wed Sep 4 2013 Bin Cui <bin.cui@gmail.com> - 1.0-1
+- Initial
