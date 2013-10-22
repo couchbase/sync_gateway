@@ -39,7 +39,7 @@ end
 sh %{cp -R #{PREFIXD} #{STAGE_DIR}/opt}
 
 Dir.chdir STAGE_DIR do
-  sh %{dch -b -v #{PRODUCT_VERSION} "Released debian package for version #{PRODUCT_VERSION}"}
+  #sh %{dch -b -v #{PRODUCT_VERSION} "Released debian package for version #{PRODUCT_VERSION}"}
   sh %{dpkg-buildpackage -b}
 end
 
