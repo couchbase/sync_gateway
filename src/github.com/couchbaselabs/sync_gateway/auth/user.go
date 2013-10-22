@@ -191,7 +191,7 @@ func (user *userImpl) Authenticate(password string) bool {
 		if password != "" {
 			return false
 		}
-	} else if bcrypt.CompareHashAndPassword(user.PasswordHash_, []byte(password)) != nil {
+	} else if !compareHashAndPassword(user.PasswordHash_, []byte(password)) {
 		return false
 	}
 	return !user.Disabled_
