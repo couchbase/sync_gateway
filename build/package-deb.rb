@@ -36,7 +36,7 @@ Dir.glob("*.tmpl").each do |x|
     sh %{chmod a+x #{target}}
 end
 
-sh %{cp -R #{PREFIX} #{STAGE_DIR}/opt}
+sh %{cp -R #{PREFIXD} #{STAGE_DIR}/opt}
 
 Dir.chdir STAGE_DIR do
   sh %{dch -b -v #{PRODUCT_VERSION} "Released debian package for version #{PRODUCT_VERSION}"}
