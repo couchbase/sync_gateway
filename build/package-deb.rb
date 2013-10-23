@@ -29,7 +29,7 @@ end
 
 FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
-[["#{PRODUCT_KIND}", "#{STAGE_DIR}/debian"]].each do |src_dst|
+[["#{STARTDIR}", "#{STAGE_DIR}/debian"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
         Dir.glob("*.tmpl").each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
