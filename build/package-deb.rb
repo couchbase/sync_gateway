@@ -25,7 +25,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}/etc"
 
 sh %{cd #{STAGE_DIR} && dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
 
-FileUtils.copy_entry #{PREFIXD}, #{STAGE_DIR}/opt/#{PRODUCT}
+FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
 [["#{PRODUCT_KIND}", "#{STAGE_DIR}/debian"]].each do |src_dst|
 [["#{STARTDIR}", "#{STAGE_DIR}/debian"]].each do |src_dst|
