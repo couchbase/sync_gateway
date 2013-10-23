@@ -14,7 +14,7 @@ PREFIXD         = ARGV[1] || "./opt-couchbase-sync-gateway"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
 RELEASE         = PRODUCT_VERSION.split('-')[0]
 
-PLATFORM=`uname -s`.chomp +"-"+  `uname -m`.chomp
+PLATFORM=`uname -s`.chomp + "-" +  `uname -m`.chomp
 
 PKGNAME="#{PRODUCT}_#{PRODUCT_VERSION}"
 product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
