@@ -23,8 +23,9 @@ FileUtils.rm_rf   "#{STAGE_DIR}"
 FileUtils.mkdir_p "#{STAGE_DIR}/opt"
 FileUtils.mkdir_p "#{STAGE_DIR}/etc"
 
-sh %{cd #{STAGE_DIR} && dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
-
+Dir.chdir #{STAGE_DIR} do
+  sh %{dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
+end
 FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
 [["#{PRODUCT_KIND}", "#{STAGE_DIR}/debian"]].each do |src_dst|
@@ -46,7 +47,7 @@ end
 
 
 Dir.chdir #{STAGE_DIR} do
-  #sh %{dch -b -v #{PRODUCT_VERSION} "Released debian package for version #{PRODUCT_VERSION}"}
+  sh %{dch -b -v #{PRODUCT_VERSION} "Released debian package for version #{PRODUCT_VERSION}"}
   sh %{dpkg-buildpackage -B -uc}
 end
 
