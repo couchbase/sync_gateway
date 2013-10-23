@@ -23,14 +23,13 @@ FileUtils.rm_rf   "#{STAGE_DIR}"
 FileUtils.mkdir_p "#{STAGE_DIR}/opt"
 FileUtils.mkdir_p "#{STAGE_DIR}/etc"
 
-Dir.chdir "#{STAGE_DIR}" do
+Dir.chdir STAGE_DIR do
   sh %{dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
 end
 
 FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
 [["#{PRODUCT_KIND}", "#{STAGE_DIR}/debian"]].each do |src_dst|
-[["#{STARTDIR}", "#{STAGE_DIR}/debian"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
         Dir.glob("*.tmpl").each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
@@ -47,7 +46,7 @@ FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 end
 
 
-Dir.chdir "#{STAGE_DIR}" do
+Dir.chdir STAGE_DIR do
   sh %{dch -b -v #{PRODUCT_VERSION} "Released debian package for version #{PRODUCT_VERSION}"}
   sh %{dpkg-buildpackage -B -uc}
 end
