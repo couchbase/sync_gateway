@@ -12,9 +12,9 @@ DEBEMAIL        = "build@couchbase.com"
 PREFIX          = ARGV[0] || "/opt/couchbase"
 PREFIXD         = ARGV[1] || "./opt-couchbase-sync-gateway"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
-REPO_SHA        = ARGV[3] || "master"
-
 RELEASE         = PRODUCT_VERSION.split('-')[0]
+
+PLATFORM=`uname -s`.chomp +"-"+  `uname -m`.chomp
 
 PKGNAME="#{PRODUCT}_#{PRODUCT_VERSION}"
 product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
@@ -36,7 +36,7 @@ FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
         Dir.glob("*.tmpl").each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
             sh %{sed -e s,@@VERSION@@,#{PRODUCT_VERSION},g #{x}         |
-                 sed -e s,@@REPO_SHA@@,#{REPO_SHA},g                    |
+                 sed -e s,@@PLATFORM@@,#{PLATFORM},g                    |
                  sed -e s,@@RELEASE@@,#{RELEASE},g                      |
                  sed -e s,@@PREFIX@@,#{PREFIX},g                        |
                  sed -e s,@@PRODUCT@@,#{PRODUCT},g                      |
