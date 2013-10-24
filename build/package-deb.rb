@@ -9,7 +9,7 @@ PRODUCT_BASE    = "couchbase"
 PRODUCT_KIND    = "sync-gateway"
 DEBEMAIL        = "build@couchbase.com"
 
-PREFIX          = ARGV[0] || "/opt/couchbase"
+PREFIX          = ARGV[0] || "/opt/couchbase-sync-gateway"
 PREFIXD         = ARGV[1] || "./opt/couchbase-sync-gateway"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
 RELEASE         = PRODUCT_VERSION.split('-')[0]
@@ -49,7 +49,7 @@ end
 end
 FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
-sh %{cp -R #{PREFIX} #{STAGE_DIR}/opt}
+sh %{cp -R #{PREFIXD} #{STAGE_DIR}/opt}
 
 Dir.chdir STAGE_DIR do
   sh %{dch -b -v "#{PRODUCT_VERSION}" "Released debian package for version #{PRODUCT_VERSION}"}
