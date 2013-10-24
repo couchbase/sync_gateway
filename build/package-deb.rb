@@ -10,7 +10,7 @@ PRODUCT_KIND    = "sync-gateway"
 DEBEMAIL        = "build@couchbase.com"
 
 PREFIX          = ARGV[0] || "/opt/couchbase"
-PREFIXD         = ARGV[1] || "./opt-couchbase-sync-gateway"
+PREFIXD         = ARGV[1] || "./opt/couchbase-sync-gateway"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
 RELEASE         = PRODUCT_VERSION.split('-')[0]
 
@@ -29,7 +29,7 @@ Dir.chdir STAGE_DIR do
   sh %{dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
 end
 
-FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
+#FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
 [["#{STARTDIR}", "#{STAGE_DIR}/debian"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
@@ -48,6 +48,8 @@ FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
     end
 end
 FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}"
+
+sh %{cp -R #{PREFIX} #{STAGE_DIR}/opt}
 
 Dir.chdir STAGE_DIR do
   sh %{dch -b -v "#{PRODUCT_VERSION}" "Released debian package for version #{PRODUCT_VERSION}"}
