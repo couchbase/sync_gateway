@@ -53,6 +53,6 @@ FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}/ma
 
 Dir.chdir STAGE_DIR do
   sh %{dch -b -v "#{PRODUCT_VERSION}" "Released debian package for version #{PRODUCT_VERSION}"}
-  sh %{dpkg-buildpackage -B -uc}
+  sh %{dpkg-buildpackage -b -uc}
 end
 
