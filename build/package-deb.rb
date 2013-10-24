@@ -47,9 +47,9 @@ end
         end 
     end
 end
-FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}/manifest.txt"
-
 sh %{cp -R #{PREFIXD} #{STAGE_DIR}/opt}
+
+FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}/manifest.txt"
 
 Dir.chdir STAGE_DIR do
   sh %{dch -b -v "#{PRODUCT_VERSION}" "Released debian package for version #{PRODUCT_VERSION}"}
