@@ -47,7 +47,7 @@ end
         end 
     end
 end
-FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}"
+FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}/manifest.txt"
 
 sh %{cp -R #{PREFIXD} #{STAGE_DIR}/opt}
 
