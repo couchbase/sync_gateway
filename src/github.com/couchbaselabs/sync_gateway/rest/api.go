@@ -24,7 +24,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.79"
+const VersionString = "Couchbase Sync Gateway/0.81"
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
