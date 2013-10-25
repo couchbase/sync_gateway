@@ -9,27 +9,30 @@ PRODUCT_BASE    = "couchbase"
 PRODUCT_KIND    = "sync-gateway"
 DEBEMAIL        = "build@couchbase.com"
 
-PREFIX          = ARGV[0] || "/opt/couchbase-sync-gateway"
-PREFIXD         = ARGV[1] || "./opt/couchbase-sync-gateway"
+PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
+PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
-RELEASE         = PRODUCT_VERSION.split('-')[0]
+PLATFORM        = ARGV[3] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 
-PLATFORM=`uname -s`.chomp + "-" +  `uname -m`.chomp
+RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
+BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
 
-PKGNAME="#{PRODUCT}_#{PRODUCT_VERSION}"
+sh %{echo "PLATFORM is #{PLATFORM}"}
+
+PKGNAME="#{PRODUCT}_#{RELEASE}"
 product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
 
 STARTDIR  = Dir.getwd()
-STAGE_DIR = "#{STARTDIR}/build/deb/#{PKGNAME}"
+STAGE_DIR = "#{STARTDIR}/build/deb/#{PKGNAME}-#{BLDNUM}"
 FileUtils.rm_rf   "#{STAGE_DIR}"
-FileUtils.mkdir_p "#{STAGE_DIR}/opt"
+FileUtils.mkdir_p "#{STAGE_DIR}"
+FileUtils.mkdir_p "#{STAGE_DIR}/debian"
 FileUtils.mkdir_p "#{STAGE_DIR}/etc"
+FileUtils.mkdir_p "#{STAGE_DIR}/opt"
 
 Dir.chdir STAGE_DIR do
-  sh %{dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
+# sh %{dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
 end
-
-#FileUtils.copy_entry "#{PREFIXD}", "#{STAGE_DIR}/opt/#{PRODUCT}"
 
 [["#{STARTDIR}", "#{STAGE_DIR}/debian"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
@@ -47,9 +50,9 @@ end
         end 
     end
 end
-sh %{cp -R #{PREFIXD} #{STAGE_DIR}/opt}
+sh %{cp -R "#{PREFIXD}" "#{STAGE_DIR}/opt"}
 
-FileUtils.mv "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}/manifest.txt"
+FileUtils.mv  "#{STAGE_DIR}/debian/manifest.txt", "#{STAGE_DIR}/opt/#{PRODUCT}/manifest.txt"
 
 Dir.chdir STAGE_DIR do
   sh %{dch -b -v "#{PRODUCT_VERSION}" "Released debian package for version #{PRODUCT_VERSION}"}
