@@ -3,7 +3,6 @@
 require 'rubygems'
 require 'fileutils'
 require 'rake'
-require 'util'
 
 PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
@@ -16,6 +15,7 @@ PLATFORM        = ARGV[3] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
+PRODUCT_VERSION = ${RELEASE}.${BLDNUM}             #       1.0.1234
 
 sh %{echo "PLATFORM is #{PLATFORM}"}
 
@@ -23,7 +23,7 @@ PKGNAME="#{PRODUCT}_#{RELEASE}"
 product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
 
 STARTDIR  = Dir.getwd()
-STAGE_DIR = "#{STARTDIR}/build/rpm/#{PKGNAME}-#{BLDNUM}"
+STAGE_DIR = "#{STARTDIR}/build/rpm/#{PKGNAME}.#{BLDNUM}"
 FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/SOURCES"
 FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/BUILD"
 FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/i386"
@@ -45,15 +45,8 @@ FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/x86_64"
   end
 end
 
-sh %{tar --directory #{File.dirname(PREFIXD)} -czf package-#{PRODUCT_BASE}.tar.gz #{File.basename(PREFIXD)}}
-
-FileUtils.cp "package-#{PRODUCT_BASE}.tar.gz", "#{STAGE_DIR}/rpmbuild/SOURCES/#{PRODUCT}_#{PRODUCT_VERSION}.tar.gz"
-
-Fir.chdir("#{STAGE_DIR}")
-
-sh %{rpmbuild -bb #{PRODUCT_KIND}/rpm.spec}
-
-FileUtils.rm_f "rpm.spec"
-FileUtils.rm_f "~/rpmbuild/SOURCES/#{PRODUCT}_#{PRODUCT_VERSION}.tar.gz"
-
+Dir.chdir("#{STAGE_DIR}") do
+    sh %{tar --directory #{File.dirname(PREFIXD)} -czf "rpmbuild/SOURCES/#{PRODUCT}_#{PRODUCT_VERSION}.tar.gz" #{File.basename(PREFIXD)}}
+    sh %{rpmbuild -bb rpm.spec}
+end
 
