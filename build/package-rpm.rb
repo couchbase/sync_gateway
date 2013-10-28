@@ -15,7 +15,7 @@ PLATFORM        = ARGV[3] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
-PRODUCT_VERSION = ${RELEASE}.${BLDNUM}             #       1.0.1234
+PRODUCT_VERSION = "#{RELEASE}.#{BLDNUM}"           #       1.0.1234
 
 sh %{echo "PLATFORM is #{PLATFORM}"}
 
