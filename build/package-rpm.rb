@@ -55,7 +55,7 @@ end
 FileUtils.mv  "#{STAGE_DIR}/manifest.xml", "#{PREFIXD}/manifest.xml"
 
 Dir.chdir("#{START_DIR}") do
-    sh %{tar --directory #{File.dirname(PREFIXD)} -czf "#{STAGE_DIR}/rpmbuild/SOURCES/#{PRODUCT}_#{RELEASE}.#{BLDNUM}.tar.gz" #{File.basename(PREFIXD)}}
+    sh %{tar --directory #{File.dirname(PREFIXD)} -czf "#{STAGE_DIR}/rpmbuild/SOURCES/#{PRODUCT}_#{BLDNUM}.tar.gz" #{File.basename(PREFIXD)}}
 end
 Dir.chdir("#{STAGE_DIR}") do
     sh %{rpmbuild -bb rpm.spec}
