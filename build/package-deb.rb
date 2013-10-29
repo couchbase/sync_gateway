@@ -64,4 +64,4 @@ Dir.chdir STAGE_DIR do
   sh %{dpkg-buildpackage -b -uc}
 end
 
-FileUtils.cp "#{STARTDIR}/build/deb/#{PRODUCT}_${PRODUCT_VERSION}_${ARCH}.deb", "#{PREFIXD}"
+FileUtils.cp "#{STARTDIR}/build/deb/#{PRODUCT}_#{PRODUCT_VERSION}_#{ARCH}.deb", "#{PREFIXD}"
