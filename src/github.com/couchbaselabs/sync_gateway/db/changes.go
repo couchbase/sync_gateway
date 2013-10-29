@@ -19,18 +19,6 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
-// The maximum number of entries that will be kept in a ChangeLog. If the length would overflow
-// this limit, the earliest/oldest entries are removed to make room.
-var MaxChangeLogLength = 500
-
-// If this is set to true, every update of a channel log will compact it to MaxChangeLogLength.
-var AlwaysCompactChangeLog = false
-
-// Enable keeping a channel-log for the "*" channel. *ALL* revisions are written to this channel,
-// which could be expensive in a busy environment. The only time this channel is needed is if
-// someone has access to "*" (e.g. admin-party) and tracks its changes feed.
-var EnableStarChannelLog = true
-
 // Options for Database.getChanges
 type ChangesOptions struct {
 	Since       channels.TimedSet // maps channel -> last sequence # seen on it
@@ -447,4 +435,9 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
 	return db.changesWriter.getChangeLog(channelName, afterSeq)
+}
+
+// This is only used for unit tests
+func (context *DatabaseContext) CheckpointChangeLogs() {
+	context.changesWriter.checkpoint()
 }

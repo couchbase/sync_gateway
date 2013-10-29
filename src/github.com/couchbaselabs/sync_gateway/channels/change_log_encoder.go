@@ -87,8 +87,8 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 // Removes the oldest entries to limit the log's length to `maxLength`.
 // This is the same as ChangeLog.Truncate except it works directly on the encoded form, which is
 // much faster than decoding+truncating+encoding.
-func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Writer) int {
-	originalSince := readSequence(r)
+func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Writer) (removed int, newLength int) {
+	since := readSequence(r)
 	// Find the starting position and sequence of each entry:
 	entryPos := make([]int64, 0, 1000)
 	entrySeq := make([]uint64, 0, 1000)
@@ -114,24 +114,27 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Wr
 	// * Leave no more than maxLength entries
 	// * Every sequence value removed should be less than every sequence remaining.
 	// * The new 'since' value should be the maximum sequence removed.
-	remove := len(entryPos) - maxLength
-	if remove <= 0 {
-		return 0
-	}
-	pivot, since := findPivot(entrySeq, remove-1)
-	remove = pivot + 1
-	if len(entryPos)-remove < minLength {
-		remove = 0
-		since = originalSince
-		base.Warn("TruncateEncodedChangeLog: Couldn't find a safe place to truncate")
-		//TODO: Possibly find a pivot earlier than desired?
+	oldLength := len(entryPos)
+	removed = oldLength - maxLength
+	if removed <= 0 {
+		removed = 0
+	} else {
+		pivot, newSince := findPivot(entrySeq, removed-1)
+		removed = pivot + 1
+		if oldLength-removed >= minLength {
+			since = newSince
+		} else {
+			removed = 0
+			base.Warn("TruncateEncodedChangeLog: Couldn't find a safe place to truncate")
+			//TODO: Possibly find a pivot earlier than desired?
+		}
 	}
 
 	// Write the updated Since and the remaining entries:
 	writeSequence(since, w)
-	r.Seek(entryPos[remove], 0)
+	r.Seek(entryPos[removed], 0)
 	io.Copy(w, r)
-	return remove
+	return removed, oldLength - removed
 }
 
 //////// UTILITY FUNCTIONS:

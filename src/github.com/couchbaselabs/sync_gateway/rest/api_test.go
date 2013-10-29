@@ -444,6 +444,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -469,6 +470,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Look at alice's _changes feed:
 	changes.Results = nil
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -568,6 +570,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -594,6 +597,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -630,6 +634,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -644,6 +649,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assertStatus(t, rt.send(request("DELETE", "/db/alpha?rev="+rev1, "")), 200)
 
 	// Get the updates from the _changes feed:
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil

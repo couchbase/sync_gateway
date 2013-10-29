@@ -84,7 +84,7 @@ func CouchHTTPErrorName(status int) string {
 func IsDocNotFoundError(err error) bool {
 	switch err := err.(type) {
 	case *gomemcached.MCResponse:
-		return err.Status == gomemcached.KEY_ENOENT
+		return err.Status == gomemcached.KEY_ENOENT || err.Status == gomemcached.NOT_STORED
 	case walrus.MissingError:
 		return true
 	case *HTTPError:

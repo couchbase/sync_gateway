@@ -13,6 +13,18 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
+// The maximum number of entries that will be kept in a ChangeLog. If the length would overflow
+// this limit, the earliest/oldest entries are removed to make room.
+var MaxChangeLogLength = 1000
+
+// If this is set to true, every update of a channel log will compact it to MaxChangeLogLength.
+var AlwaysCompactChangeLog = false
+
+// Enable keeping a channel-log for the "*" channel. *ALL* revisions are written to this channel,
+// which could be expensive in a busy environment. The only time this channel is needed is if
+// someone has access to "*" (e.g. admin-party) and tracks its changes feed.
+var EnableStarChannelLog = true
+
 //////// CHANGES WRITER
 
 // Coordinates writing changes to channel-log documents. A singleton owned by a DatabaseContext.
@@ -77,6 +89,7 @@ func (c *changesWriter) addChangeLog(channelName string, log *channels.ChangeLog
 func (c *changesWriter) getChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
 	if raw, err := c.bucket.GetRaw(channelLogDocID(channelName)); err == nil {
 		log, err := decodeChannelLog(raw)
+		base.LogTo("ChannelLog", "Read %q -- %d entries, %d bytes", channelName, len(log.Entries), len(raw))
 		if err == nil {
 			log.FilterAfter(afterSeq)
 		}
@@ -133,7 +146,7 @@ func newChannelLogWriter(bucket base.Bucket, channelName string) *channelLogWrit
 		for {
 			if changes := c.readChanges_(); changes != nil {
 				c.addToChangeLog_(c.massageChanges(changes))
-				time.Sleep(50) // lowering rate helps to coalesce changes, limiting # of writes
+				time.Sleep(50 * time.Millisecond) // lowering rate helps to coalesce changes, limiting # of writes
 			} else {
 				break // client called close
 			}
@@ -212,10 +225,10 @@ func (c *channelLogWriter) massageChanges(changes []*changeEntry) []*changeEntry
 func (c *channelLogWriter) addChangeLog_(log *channels.ChangeLog) (added bool, err error) {
 	added, err = c.bucket.AddRaw(channelLogDocID(c.channelName), 0, encodeChannelLog(log))
 	if added {
-		base.LogTo("Changes", "Added missing channel-log %q with %d entries",
+		base.LogTo("ChannelLog", "Added missing channel-log %q with %d entries",
 			c.channelName, log.Len())
 	} else {
-		base.LogTo("Changes", "Didn't add channel-log %q with %d entries (err=%v)",
+		base.LogTo("ChannelLog", "Didn't add channel-log %q with %d entries (err=%v)",
 			c.channelName, log.Len())
 	}
 	return
@@ -230,62 +243,72 @@ func (cl changeEntryList) Less(i, j int) bool {
 func (cl changeEntryList) Swap(i, j int) { cl[i], cl[j] = cl[j], cl[i] }
 
 // Writes new changes to my channel log document.
-func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) error {
-	var fullUpdate bool
-	var removedCount int
-	fullUpdateAttempts := 0
-
+func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
+	var err error
 	logDocID := channelLogDocID(c.channelName)
-	err := c.bucket.WriteUpdate(logDocID, 0, func(currentValue []byte) ([]byte, walrus.WriteOptions, error) {
-		// (Be careful: this block can be invoked multiple times if there are races!)
-		// Should I do a full update of the change log, removing older entries to limit its size?
-		// This has to be done occasionaly, but it's slower than simply appending to it. This
-		// test is a heuristic that seems to strike a good balance in practice:
-		fullUpdate = AlwaysCompactChangeLog ||
-			(len(currentValue) > 20000 && (rand.Intn(100) < len(currentValue)/5000))
-		removedCount = 0
 
-		numToKeep := MaxChangeLogLength - len(entries)
-		if len(currentValue) == 0 || numToKeep <= 0 {
-			// If the log was empty, create a new log and return:
-			if numToKeep < 0 {
-				entries = entries[-numToKeep:]
-			}
-			channelLog := channels.ChangeLog{}
-			for _, entry := range entries {
-				channelLog.Add(*entry.logEntry)
-			}
-			return encodeChannelLog(&channelLog), walrus.Raw, nil
-		} else if fullUpdate {
-			fullUpdateAttempts++
-			var newValue bytes.Buffer
-			removedCount = channels.TruncateEncodedChangeLog(bytes.NewReader(currentValue),
-				numToKeep, numToKeep/2, &newValue)
-			if removedCount > 0 {
-				for _, entry := range entries {
-					entry.logEntry.Encode(&newValue, entry.parentRevID)
-				}
-				return newValue.Bytes(), walrus.Raw, nil
-			}
-		}
-
-		// Append the encoded form of the new entries to the raw log bytes:
-		w := bytes.NewBuffer(make([]byte, 0, 50000))
+	// A fraction of the time we will do a full update and clean stuff out.
+	fullUpdate := AlwaysCompactChangeLog || len(entries) > MaxChangeLogLength/2 || rand.Intn(MaxChangeLogLength/len(entries)) == 0
+	if !fullUpdate {
+		// Non-full update; just append the new entries:
+		w := bytes.NewBuffer(make([]byte, 0, 100*len(entries)))
 		for _, entry := range entries {
 			entry.logEntry.Encode(w, entry.parentRevID)
 		}
-		currentValue = append(currentValue, w.Bytes()...)
-		return currentValue, walrus.Raw, nil
-	})
+		data := w.Bytes()
+		err = c.bucket.Append(logDocID, data)
+		if err == nil {
+			base.LogTo("ChannelLog", "Appended %d sequence(s) to %q", len(entries), c.channelName)
+		} else if base.IsDocNotFoundError(err) {
+			// Append failed due to doc not existing, so fall back to full update
+			err = nil
+			fullUpdate = true
+		} else {
+			base.Warn("Error appending to %q -- %v", len(entries), c.channelName, err)
+		}
+	}
 
-	base.LogTo("Changes", "Wrote %d sequence(s) to channel log %q", len(entries), c.channelName)
-
-	/*if fullUpdate {
-		base.Log("Removed %d entries from %q", removedCount, c.channelName)
-	} else if fullUpdateAttempts > 0 {
-		base.Log("Attempted to remove entries %d times but failed", fullUpdateAttempts)
-	}*/
-	return err
+	if fullUpdate {
+		// Full update: do a CAS-based read+write:
+		fullUpdateAttempts := 0
+		var oldChangeLogCount, newChangeLogCount int
+		err = c.bucket.WriteUpdate(logDocID, 0, func(currentValue []byte) ([]byte, walrus.WriteOptions, error) {
+			fullUpdateAttempts++
+			numToKeep := MaxChangeLogLength - len(entries)
+			if len(currentValue) == 0 || numToKeep <= 0 {
+				// If the log was missing or empty, create a new log:
+				entriesToWrite := entries
+				if numToKeep < 0 {
+					entriesToWrite = entries[-numToKeep:]
+				}
+				channelLog := channels.ChangeLog{}
+				for _, entry := range entriesToWrite {
+					channelLog.Add(*entry.logEntry)
+				}
+				newChangeLogCount = len(entriesToWrite)
+				oldChangeLogCount = newChangeLogCount
+				return encodeChannelLog(&channelLog), walrus.Raw, nil
+			} else {
+				// Append to an already existing change log:
+				var newValue bytes.Buffer
+				var nRemoved int
+				nRemoved, newChangeLogCount = channels.TruncateEncodedChangeLog(
+					bytes.NewReader(currentValue), numToKeep, numToKeep/2, &newValue)
+				for _, entry := range entries {
+					entry.logEntry.Encode(&newValue, entry.parentRevID)
+				}
+				oldChangeLogCount = nRemoved + newChangeLogCount
+				newChangeLogCount += len(entries)
+				return newValue.Bytes(), walrus.Raw, nil
+			}
+		})
+		if err == nil {
+			base.LogTo("ChannelLog", "Wrote %d sequences (was %d now %d) to %q in %d attempts",
+				len(entries), oldChangeLogCount, newChangeLogCount, c.channelName, fullUpdateAttempts)
+		} else {
+			base.Warn("Error writing %d sequence(s) to %q -- %v", len(entries), c.channelName, err)
+		}
+	}
 }
 
 //////// SUBROUTINES:
