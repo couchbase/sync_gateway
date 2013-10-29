@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # 
-####    ./${PKGR} ${PREFIX} ${PREFIXP} ${REVISION} ${GITSPEC} ${PLATFORM}
+####    ./${PKGR} ${PREFIX} ${PREFIXP} ${REVISION} ${GITSPEC} ${PLATFORM} ${ARCH}
 
 require 'rubygems'
 require 'fileutils'
