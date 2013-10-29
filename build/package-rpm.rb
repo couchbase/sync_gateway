@@ -15,7 +15,7 @@ PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
 REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
-ARCH            =                                      `uname -m`.chomp
+ARCH            = ARGV[5] ||                           `uname -m`.chomp
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
@@ -31,8 +31,6 @@ FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/BUILDROOT"
 FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/i386"
 FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/x86_64"
 
-# MANIFEST_DIR="#{STAGE_DIR}/rpmbuild/BUILDROOT/#{PRODUCT}-#{BLDNUM}-#{RELEASE}.#{ARCH}/opt/#{PRODUCT}"
-# FileUtils.mkdir_p "#{MANIFEST_DIR}
 
 [["#{START_DIR}", "#{STAGE_DIR}"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do

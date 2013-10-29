@@ -16,7 +16,7 @@ PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
 REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
-ARCH            =                                      `uname -m`.chomp
+ARCH            = ARGV[5] ||                           `uname -m`.chomp
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
