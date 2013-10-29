@@ -36,7 +36,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/x86_64"
 
 [["#{START_DIR}", "#{STAGE_DIR}"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
-        ["rpm.spec.tmpl", "manifest.xml.tmpl"].each do |x|
+        ["rpm.spec.tmpl", "manifest.txt.tmpl", "manifest.xml.tmpl"].each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
             sh %{sed -e s,@@VERSION@@,#{BLDNUM},g                    #{x} |
                  sed -e s,@@PLATFORM@@,#{PLATFORM},g                      |
@@ -51,7 +51,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/x86_64"
         end
     end
 end
-# FileUtils.mv  "#{STAGE_DIR}/manifest.xml", "#{MANIFEST_DIR}/manifest.xml"
+FileUtils.mv  "#{STAGE_DIR}/manifest.txt", "#{PREFIXD}/manifest.txt"
 FileUtils.mv  "#{STAGE_DIR}/manifest.xml", "#{PREFIXD}/manifest.xml"
 
 Dir.chdir("#{START_DIR}") do
