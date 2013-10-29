@@ -1,4 +1,6 @@
 #!/usr/bin/env ruby
+# 
+####    ./${PKGR} ${PREFIX} ${PREFIXP} ${REVISION} ${GITSPEC} ${PLATFORM} ${ARCH}
 
 require 'rubygems'
 require 'fileutils'
@@ -12,7 +14,9 @@ DEBEMAIL        = "build@couchbase.com"
 PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
 PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
 PRODUCT_VERSION = ARGV[2] || "1.0-1234"
-PLATFORM        = ARGV[3] || `uname -s`.chomp + "-" +  `uname -m`.chomp
+REPO_SHA        = ARGV[3] || "master"
+PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
+ARCH            = ARGV[5] ||                           `uname -m`.chomp
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
@@ -38,13 +42,14 @@ end
     Dir.chdir(src_dst[0]) do
         Dir.glob("*.tmpl").each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
-            sh %{sed -e s,@@VERSION@@,#{PRODUCT_VERSION},g #{x}         |
-                 sed -e s,@@PLATFORM@@,#{PLATFORM},g                    |
-                 sed -e s,@@RELEASE@@,#{RELEASE},g                      |
-                 sed -e s,@@PREFIX@@,#{PREFIX},g                        |
-                 sed -e s,@@PRODUCT@@,#{PRODUCT},g                      |
-                 sed -e s,@@PRODUCT_BASE@@,#{PRODUCT_BASE},g            |
-                 sed -e s,@@PRODUCT_BASE_CAP@@,#{product_base_cap},g    |
+            sh %{sed -e s,@@VERSION@@,#{PRODUCT_VERSION},g           #{x} |
+                 sed -e s,@@PLATFORM@@,#{PLATFORM},g                      |
+                 sed -e s,@@RELEASE@@,#{RELEASE},g                        |
+                 sed -e s,@@PREFIX@@,#{PREFIX},g                          |
+                 sed -e s,@@REPO_SHA@@,#{REPO_SHA},g                      |
+                 sed -e s,@@PRODUCT@@,#{PRODUCT},g                        |
+                 sed -e s,@@PRODUCT_BASE@@,#{PRODUCT_BASE},g              |
+                 sed -e s,@@PRODUCT_BASE_CAP@@,#{product_base_cap},g      |
                  sed -e s,@@PRODUCT_KIND@@,#{PRODUCT_KIND},g > #{target}}
             sh %{chmod a+x #{target}}
         end 
@@ -59,3 +64,4 @@ Dir.chdir STAGE_DIR do
   sh %{dpkg-buildpackage -b -uc}
 end
 
+FileUtils.cp "#{STARTDIR}/build/deb/#{PRODUCT}_#{PRODUCT_VERSION}_#{ARCH}.deb", "#{PREFIXD}"
