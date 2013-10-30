@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"mime/multipart"
@@ -225,6 +226,11 @@ func (h *handler) getRestrictedIntQuery(query string, defaultValue, minValue, ma
 	return value
 }
 
+func (h *handler) userAgentIs(agent string) bool {
+	userAgent := h.rq.Header.Get("User-Agent")
+	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
+}
+
 // Parses a JSON request body, returning it as a Body map.
 func (h *handler) readJSON() (db.Body, error) {
 	var body db.Body
@@ -362,15 +368,25 @@ func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	if !h.requestAccepts("multipart/") {
 		return &base.HTTPError{Status: http.StatusNotAcceptable}
 	}
+
+	// Get the output stream. Due to a CouchDB bug, if we're sending to it we need to buffer the
+	// output in memory so we can trim the final bytes.
+	var output io.Writer
 	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
+	if h.userAgentIs("CouchDB") {
+		output = &buffer
+	} else {
+		output = h.response
+	}
+
+	writer := multipart.NewWriter(output)
 	h.setHeader("Content-Type",
 		fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
 
 	err := callback(writer)
 	writer.Close()
 
-	if err == nil {
+	if err == nil && output == &buffer {
 		// Trim trailing newline; CouchDB is allergic to it:
 		_, err = h.response.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
 	}

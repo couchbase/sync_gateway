@@ -187,37 +187,39 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer) 
 // Adds a new part to the given multipart writer, containing the given revision.
 // The revision will be written as a nested multipart body if it has attachments.
 func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, writer *multipart.Writer) error {
-	// OPT: Find a way to do this w/o having to buffer the MIME body in memory!
-	var content []byte
-	var contentType string
-	if hasInlineAttachments(revBody) {
-		// Write as multipart, including attachments:
-		var buffer bytes.Buffer
-		docWriter := multipart.NewWriter(&buffer)
-		contentType = fmt.Sprintf("multipart/related; boundary=%q",
-			docWriter.Boundary())
-		db.WriteMultipartDocument(revBody, docWriter)
-		docWriter.Close()
-		content = bytes.TrimRight(buffer.Bytes(), "\r\n")
-	} else {
-		// Write as JSON:
-		contentType = "application/json"
-		if isError {
-			contentType += `; error="true"`
-		}
-		content, _ = json.Marshal(revBody)
-	}
-
 	partHeaders := textproto.MIMEHeader{}
-	partHeaders.Set("Content-Type", contentType)
 	docID, _ := revBody["_id"].(string)
 	revID, _ := revBody["_rev"].(string)
 	if len(docID) > 0 {
 		partHeaders.Set("X-Doc-ID", docID)
 		partHeaders.Set("X-Rev-ID", revID)
 	}
-	part, _ := writer.CreatePart(partHeaders)
-	part.Write(content)
+
+	if hasInlineAttachments(revBody) {
+		// Write as multipart, including attachments:
+		// OPT: Find a way to do this w/o having to buffer the MIME body in memory!
+		var buffer bytes.Buffer
+		docWriter := multipart.NewWriter(&buffer)
+		contentType := fmt.Sprintf("multipart/related; boundary=%q",
+			docWriter.Boundary())
+		partHeaders.Set("Content-Type", contentType)
+		db.WriteMultipartDocument(revBody, docWriter)
+		docWriter.Close()
+		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
+
+		part, _ := writer.CreatePart(partHeaders)
+		part.Write(content)
+	} else {
+		// Write as JSON:
+		contentType := "application/json"
+		if isError {
+			contentType += `; error="true"`
+		}
+		partHeaders.Set("Content-Type", contentType)
+		part, _ := writer.CreatePart(partHeaders)
+		json.NewEncoder(part).Encode(revBody)
+	}
+
 	return nil
 }
 
