@@ -160,10 +160,15 @@ func (h *handler) handleHeapProfiling() error {
 	return nil
 }
 
+type stats struct {
+	MemStats interface{}
+}
+
 // ADMIN API to expose runtime and other stats
 func (h *handler) handleStats() error {
-	stats := new(runtime.MemStats)
-	runtime.ReadMemStats(stats)
-	h.writeJSON(stats);
+	memStats := new(runtime.MemStats)
+	runtime.ReadMemStats(memStats)
+
+	h.writeJSON(stats{MemStats: memStats});
 	return nil
 }
