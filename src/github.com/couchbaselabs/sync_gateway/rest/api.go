@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 
@@ -156,5 +157,13 @@ func (h *handler) handleHeapProfiling() error {
 	}
 	pprof.WriteHeapProfile(f)
 	f.Close()
+	return nil
+}
+
+// ADMIN API to expose runtime and other stats
+func (h *handler) handleStats() error {
+	stats := new(runtime.MemStats)
+	runtime.ReadMemStats(stats)
+	h.writeJSON(stats);
 	return nil
 }
