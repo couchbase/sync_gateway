@@ -108,7 +108,7 @@ func (h *handler) handleDesign() error {
 }
 
 // ADMIN API to turn Go CPU profiling on/off
-func (h *handler) handleProfiling() error {
+func (h *handler) handleCPUProfiling() error {
 	var params struct {
 		File string `json:"file"`
 	}
@@ -133,5 +133,28 @@ func (h *handler) handleProfiling() error {
 		base.Log("...ending profile.")
 		pprof.StopCPUProfile()
 	}
+	return nil
+}
+
+// ADMIN API to dump Go heap profile
+func (h *handler) handleHeapProfiling() error {
+	var params struct {
+		File string `json:"file"`
+	}
+	body, err := ioutil.ReadAll(h.rq.Body)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(body, &params); err != nil {
+		return err
+	}
+
+	base.Log("Dumping heap profile to %s ...", params.File)
+	f, err := os.Create(params.File)
+	if err != nil {
+		return err
+	}
+	pprof.WriteHeapProfile(f)
+	f.Close()
 	return nil
 }

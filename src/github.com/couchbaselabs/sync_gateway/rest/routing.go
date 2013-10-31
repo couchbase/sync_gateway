@@ -115,7 +115,9 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
 
 	r.Handle("/_profile",
-		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, (*handler).handleCPUProfiling)).Methods("POST")
+	r.Handle("/_heap",
+		makeHandler(sc, adminPrivs, (*handler).handleHeapProfiling)).Methods("POST")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
