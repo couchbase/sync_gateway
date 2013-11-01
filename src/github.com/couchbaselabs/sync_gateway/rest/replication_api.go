@@ -130,7 +130,6 @@ func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptio
 				}
 				encoder := json.NewEncoder(h.response)
 				encoder.Encode(entry)
-				err = h.writeln(nil)
 				lastSeqID = entry.Seq
 			case <-heartbeat:
 				err = h.writeln(nil)

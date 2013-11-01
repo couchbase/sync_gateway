@@ -96,8 +96,8 @@ func (c *changesWriter) getChangeLog(channelName string, afterSeq uint64) (*chan
 	}
 
 	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq)
-	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries after #%d",
-		channelName, len(raw), len(log.Entries), afterSeq)
+	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",
+		channelName, len(raw), len(log.Entries), log.Since, afterSeq)
 	return log, nil
 }
 

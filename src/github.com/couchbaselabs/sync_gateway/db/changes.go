@@ -63,7 +63,7 @@ type ViewResult struct {
 }
 
 // Number of rows to query from the changes view at one time
-const kChangesViewPageSize = 200
+const kChangesViewPageSize = 1000
 
 func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, includeDocs, includeConflicts bool) {
 	if doc != nil {
@@ -98,8 +98,12 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 	var viewFeed <-chan *ChangeEntry
 	if channelLog == nil || channelLog.Since > since {
+		var upToSeq uint64
+		if channelLog != nil {
+			upToSeq = channelLog.Since
+		}
 		// Channel log may not go back far enough, so also fetch view-based change feed:
-		viewFeed, err = db.changesFeedFromView(channel, options)
+		viewFeed, err = db.changesFeedFromView(channel, options, upToSeq)
 		if err != nil {
 			return nil, err
 		}
@@ -194,10 +198,13 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 // Returns a list of all the changes made on a channel, reading from a view instead of the
 // channel log. This will include all historical changes, but may omit very recent ones.
-func (db *Database) changesFeedFromView(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeedFromView(channel string, options ChangesOptions, upToSeq uint64) (<-chan *ChangeEntry, error) {
 	base.LogTo("Changes", "Getting 'changes' view for channel %q %#v", channel, options)
 	since := options.Since[channel]
-	endkey := []interface{}{channel, map[string]interface{}{}}
+	endkey := []interface{}{channel, upToSeq}
+	if upToSeq == 0 {
+		endkey[1] = map[string]interface{}{} // infinity
+	}
 	totalLimit := options.Limit
 	usingDocs := options.Conflicts || options.IncludeDocs
 	opts := Body{"stale": false, "update_seq": true,
@@ -231,6 +238,7 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions) 
 			var vres ViewResult
 			var err error
 			for len(vres.Rows) == 0 {
+				base.LogTo("Changes+", "Querying 'changes' for channel %q %#v", channel, opts)
 				vres = ViewResult{}
 				err = db.Bucket.ViewCustom("sync_gateway", "channels", opts, &vres)
 				if err != nil {
