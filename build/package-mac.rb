@@ -1,37 +1,36 @@
 #!/usr/bin/env ruby
+# 
+####    ./${PKGR} ${PREFIX} ${PREFIXP} ${REVISION} ${GITSPEC} ${PLATFORM}    ${ARCH}
+#                                                   master     macosx-x84_64  x86_64
 
 require 'rubygems'
 require 'fileutils'
 require 'rake'
-require 'util'
 
-PREFIX       = ARGV[0] || "/opt/couchbase"
-PRODUCT      = ARGV[1] || "couchbase-sync-gateway"
-PRODUCT_BASE = ARGV[2] || "couchbase"
-PRODUCT_KIND = ARGV[3] || "sync-gateway"
+PRODUCT         = "couchbase-sync-gateway"
+PRODUCT_BASE    = "couchbase"
+PRODUCT_KIND    = "sync-gateway"
 
-if ENV["PRODUCT_VERSION"] != nil
-   PRODUCT_GIT            = ENV["PRODUCT_VERSION"]
-else
-    PRODUCT_GIT            = `#{bin('git')} describe`.chomp
+PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
+PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
+PRODUCT_VERSION = ARGV[2] || "1.0-1234"
+REPO_SHA        = ARGV[3] || "master"
+PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
+ARCH            = ARGV[5] ||                           `uname -m`.chomp
+
+RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
+BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
+
+PKGNAME="#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{PLATFORM}"
+
+START_DIR  = Dir.getwd()
+STAGE_DIR = "#{START_DIR}/build/maczip/#{PKGNAME}"
+FileUtils.mkdir_p "#{STAGE_DIR}"
+
+
+Dir.chdir("#{START_DIR}") do
+    sh %{tar --directory #{File.dirname(PREFIXD)} -czf "#{PKGNAME}.tar.gz"   #{File.basename(PREFIXD)}}
+    FileUtils.cp                                       "#{PKGNAME}.tar.gz", "#{PREFIXD}/#{PKGNAME}.tar.gz"
 end
-PRODUCT_VERSION        = PRODUCT_GIT + '-' + os() + "." + `uname -m`.chomp
-PRODUCT_VERSION_PREFIX = PRODUCT_VERSION.split('-')[0]
-
-product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
-
-ver = PRODUCT_VERSION_PREFIX
-ver = "1.0~" + ver unless ver.match(/^[0-9]/) # Packager wants a number prefix.
-
-REL = PRODUCT_GIT.split('-')[1] || 1
-
-scan_check(PREFIX)
-
-FileUtils.mkdir_p "#{ENV['HOME']}/macbuild/BUILD"
-
-sh %{tar --directory #{File.dirname(PREFIX)} -czf package-#{PRODUCT_BASE}.tar.gz #{File.basename(PREFIX)}}
-
-FileUtils.cp "package-#{PRODUCT_BASE}.tar.gz", "#{ENV['HOME']}/macbuild/BUILD/#{PRODUCT}_#{ver}.tar.gz"
-
 
 
