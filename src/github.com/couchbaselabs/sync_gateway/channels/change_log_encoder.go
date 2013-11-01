@@ -182,12 +182,16 @@ func writeString(s string, w io.Writer) {
 	}
 }
 
-func readString(r io.Reader) string {
+func readLength(r io.Reader) uint8 {
 	var lengthBuf [1]byte
 	if _, err := r.Read(lengthBuf[0:1]); err != nil {
 		panic("readString length failed")
 	}
-	length := lengthBuf[0]
+	return lengthBuf[0]
+}
+
+func readString(r io.Reader) string {
+	length := readLength(r)
 	data := make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
 		panic("readString bytes failed")
@@ -196,8 +200,7 @@ func readString(r io.Reader) string {
 }
 
 func skipString(r io.ReadSeeker) {
-	var length uint8
-	binary.Read(r, binary.BigEndian, &length)
+	length := readLength(r)
 	r.Seek(int64(length), 1)
 }
 
