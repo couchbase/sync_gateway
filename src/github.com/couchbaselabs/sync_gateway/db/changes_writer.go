@@ -87,19 +87,18 @@ func (c *changesWriter) addChangeLog(channelName string, log *channels.ChangeLog
 
 // Loads a channel's log from the database and returns it.
 func (c *changesWriter) getChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
-	if raw, err := c.bucket.GetRaw(channelLogDocID(channelName)); err == nil {
-		log, err := decodeChannelLog(raw)
-		base.LogTo("ChannelLog", "Read %q -- %d entries, %d bytes", channelName, len(log.Entries), len(raw))
-		if err == nil {
-			log.FilterAfter(afterSeq)
-		}
-		return log, err
-	} else {
+	raw, err := c.bucket.GetRaw(channelLogDocID(channelName))
+	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil
 		}
 		return nil, err
 	}
+
+	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq)
+	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries after #%d",
+		channelName, len(raw), len(log.Entries), afterSeq)
+	return log, nil
 }
 
 // Internal: returns a channelLogWriter that writes to the given channel.
@@ -319,13 +318,6 @@ const kChannelLogKeyPrefix = "_sync:" + kChannelLogDocType + ":"
 
 func channelLogDocID(channelName string) string {
 	return kChannelLogKeyPrefix + channelName
-}
-
-func decodeChannelLog(raw []byte) (*channels.ChangeLog, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	return channels.DecodeChangeLog(bytes.NewReader(raw)), nil
 }
 
 func encodeChannelLog(log *channels.ChangeLog) []byte {

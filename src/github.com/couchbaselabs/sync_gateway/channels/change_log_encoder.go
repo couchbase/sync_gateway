@@ -28,7 +28,7 @@ func (entry *LogEntry) Encode(w io.Writer, parent string) {
 }
 
 // Decodes an encoded ChangeLog.
-func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
+func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 	type docAndRev struct {
 		docID, revID string
 	}
@@ -39,6 +39,7 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 	}
 	parents := map[docAndRev]*LogEntry{}
 	cleanup := false
+	skipping := (afterSeq > 0)
 	var buf [1]byte
 	for {
 		n, _ := r.Read(buf[0:1])
@@ -48,9 +49,22 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 		if buf[0] > 7 {
 			panic("bad flags")
 		}
+		seq := readSequence(r)
+		if skipping {
+			if seq >= afterSeq {
+				skipping = false
+			}
+			if seq <= afterSeq {
+				skipString(r)
+				skipString(r)
+				skipString(r)
+				continue // ignore this sequence
+			}
+		}
+
 		entry := &LogEntry{
 			Flags:    buf[0],
-			Sequence: readSequence(r),
+			Sequence: seq,
 			DocID:    readString(r),
 			RevID:    readString(r),
 		}
@@ -80,6 +94,10 @@ func DecodeChangeLog(r *bytes.Reader) *ChangeLog {
 			}
 		}
 		ch.Entries = ch.Entries[0:iDst]
+	}
+
+	if afterSeq > ch.Since {
+		ch.Since = afterSeq
 	}
 	return &ch
 }
@@ -165,15 +183,16 @@ func writeString(s string, w io.Writer) {
 }
 
 func readString(r io.Reader) string {
-	var length uint8
-	if err := binary.Read(r, binary.BigEndian, &length); err != nil {
+	var lengthBuf [1]byte
+	if _, err := r.Read(lengthBuf[0:1]); err != nil {
 		panic("readString length failed")
 	}
-	var data [256]byte
-	if _, err := io.ReadFull(r, data[0:length]); err != nil {
+	length := lengthBuf[0]
+	data := make([]byte, length)
+	if _, err := io.ReadFull(r, data); err != nil {
 		panic("readString bytes failed")
 	}
-	return string(data[0:length])
+	return string(data)
 }
 
 func skipString(r io.ReadSeeker) {
