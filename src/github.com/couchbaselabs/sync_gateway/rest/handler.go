@@ -356,12 +356,12 @@ func (h *handler) writeJSON(value interface{}) {
 }
 
 func (h *handler) addJSON(value interface{}) {
-	jsonOut, err := json.Marshal(value)
+	encoder := json.NewEncoder(h.response)
+	err := encoder.Encode(value)
 	if err != nil {
 		base.Warn("Couldn't serialize JSON for %v", value)
 		panic("JSON serialization failed")
 	}
-	h.response.Write(jsonOut)
 }
 
 func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
@@ -394,7 +394,10 @@ func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 }
 
 func (h *handler) writeln(line []byte) error {
-	_, err := h.response.Write(line)
+	var err error
+	if len(line) > 0 {
+		_, err = h.response.Write(line)
+	}
 	if err == nil {
 		_, err = h.response.Write([]byte("\r\n"))
 	}

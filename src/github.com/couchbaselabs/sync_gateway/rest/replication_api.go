@@ -123,19 +123,17 @@ func (h *handler) handleSimpleChanges(channels base.Set, options db.ChangesOptio
 				if !ok {
 					break loop // end of feed
 				}
-				str, _ := json.Marshal(entry)
-				var buf []byte
 				if first {
 					first = false
-					buf = str
 				} else {
-					buf = []byte{','}
-					buf = append(buf, str...)
+					h.response.Write([]byte(","))
 				}
-				err = h.writeln(buf)
+				encoder := json.NewEncoder(h.response)
+				encoder.Encode(entry)
+				err = h.writeln(nil)
 				lastSeqID = entry.Seq
 			case <-heartbeat:
-				err = h.writeln([]byte{})
+				err = h.writeln(nil)
 			case <-timeout:
 				message = "OK (timeout)"
 				break loop
