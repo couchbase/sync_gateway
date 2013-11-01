@@ -213,12 +213,6 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions, 
 
 	feed := make(chan *ChangeEntry, kChangesViewPageSize)
 
-	lastSeq := db.LastSequence()
-	if since >= lastSeq && !options.Wait {
-		close(feed)
-		return feed, nil
-	}
-
 	// Generate the output in a new goroutine, writing to 'feed':
 	go func() {
 		defer close(feed)
@@ -329,13 +323,19 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
+			// Populate the parallel arrays of channels and names:
+			latestSequence := db.LastSequence()
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
 			for name, _ := range channelsSince {
-				feed, err := db.changesFeed(name, options)
-				if err != nil {
-					base.Warn("Error reading changes feed %q: %v", name, err)
-					return
+				var feed <-chan *ChangeEntry
+				if latestSequence > options.Since[name] {
+					var err error
+					feed, err = db.changesFeed(name, options)
+					if err != nil {
+						base.Warn("Error reading changes feed %q: %v", name, err)
+						return
+					}
 				}
 				feeds = append(feeds, feed)
 				names = append(names, name)
