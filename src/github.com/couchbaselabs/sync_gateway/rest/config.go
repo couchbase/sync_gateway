@@ -22,6 +22,9 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+// Register profiling handlers (see Go docs)
+import _ "net/http/pprof"
+
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
@@ -41,6 +44,7 @@ type ServerConfig struct {
 	SSLCert                 *string         // Path to SSL cert file, or nil
 	SSLKey                  *string         // Path to SSL private key file, or nil
 	AdminInterface          *string         // Interface to bind admin API to, default ":4985"
+	ProfileInterface        *string         // Interface to bind Go profile API to (no default)
 	ConfigServer            *string         // URL of config server (for dynamic db discovery)
 	Persona                 *PersonaConfig  // Configuration for Mozilla Persona validation
 	Facebook                *FacebookConfig // Configuration for Facebook validation
@@ -159,6 +163,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.AdminInterface == nil {
 		self.AdminInterface = other.AdminInterface
 	}
+	if self.ProfileInterface == nil {
+		self.ProfileInterface = other.ProfileInterface
+	}
 	if self.ConfigServer == nil {
 		self.ConfigServer = other.ConfigServer
 	}
@@ -191,6 +198,7 @@ func ParseCommandLine() *ServerConfig {
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
 	configServer := flag.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
@@ -228,6 +236,9 @@ func ParseCommandLine() *ServerConfig {
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
 		}
+		if *profAddr != "" {
+			config.ProfileInterface = profAddr
+		}
 		if *configServer != "" {
 			config.ConfigServer = configServer
 		}
@@ -253,9 +264,10 @@ func ParseCommandLine() *ServerConfig {
 			*dbName = *bucketName
 		}
 		config = &ServerConfig{
-			Interface:      addr,
-			AdminInterface: authAddr,
-			Pretty:         *pretty,
+			Interface:        addr,
+			AdminInterface:   authAddr,
+			ProfileInterface: profAddr,
+			Pretty:           *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
 					name:   *dbName,
@@ -306,6 +318,14 @@ func RunServer(config *ServerConfig) {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
 		}
+	}
+
+	if config.ProfileInterface != nil {
+		//runtime.MemProfileRate = 10 * 1024
+		base.Log("Starting profile server on %s", *config.ProfileInterface)
+		go func() {
+			http.ListenAndServe(*config.ProfileInterface, nil)
+		}()
 	}
 
 	base.Log("Starting admin server on %s", *config.AdminInterface)
