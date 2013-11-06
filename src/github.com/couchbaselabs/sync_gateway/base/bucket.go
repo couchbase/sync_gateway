@@ -15,8 +15,15 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
+	"github.com/dustin/gomemcached"
 	"github.com/dustin/gomemcached/client"
 )
+
+func init() {
+	// Increase max memcached request size to 10M bytes, to support large docs (attachments!)
+	// arriving in a tap feed. (see issue #210.)
+	gomemcached.MaxBodyLen = int(10.0e6)
+}
 
 type Bucket walrus.Bucket
 type TapArguments walrus.TapArguments
