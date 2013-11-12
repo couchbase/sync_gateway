@@ -132,6 +132,11 @@ func (h *handler) handlePutDoc() error {
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
+		if oldRev := h.getQuery("rev"); oldRev != "" {
+			body["_rev"] = oldRev
+		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+			body["_rev"] = ifMatch
+		}
 		newRev, err = h.db.Put(docid, body)
 		if err != nil {
 			return err
@@ -173,6 +178,9 @@ func (h *handler) handlePostDoc() error {
 func (h *handler) handleDeleteDoc() error {
 	docid := h.PathVars()["docid"]
 	revid := h.getQuery("rev")
+	if revid == "" {
+		revid = h.rq.Header.Get("If-Match")
+	}
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
 		h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
