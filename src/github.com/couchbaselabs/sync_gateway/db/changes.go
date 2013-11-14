@@ -412,8 +412,14 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 			}
 
-			// If nothing found, and in wait mode: wait for the db to change, then run again
-			if sentSomething || changeWaiter == nil || !changeWaiter.Wait() {
+			if sentSomething || changeWaiter == nil {
+				break
+			}
+
+			// If nothing found, and in wait mode: wait for the db to change, then run again.
+			// First notify the reader that we're waiting by sending a nil.
+			output <- nil
+			if !changeWaiter.Wait() {
 				break
 			}
 

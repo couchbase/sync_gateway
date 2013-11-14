@@ -398,32 +398,11 @@ func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	return err
 }
 
-func (h *handler) writeln(line []byte) error {
-	var err error
-	if len(line) > 0 {
-		_, err = h.response.Write(line)
+func (h *handler) flush() {
+	switch r := h.response.(type) {
+	case http.Flusher:
+		r.Flush()
 	}
-	if err == nil {
-		_, err = h.response.Write([]byte("\r\n"))
-	}
-	if err == nil {
-		switch r := h.response.(type) {
-		case http.Flusher:
-			r.Flush()
-		}
-	}
-	return err
-}
-
-func (h *handler) write(line []byte) error {
-	_, err := h.response.Write(line)
-	if err == nil {
-		switch r := h.response.(type) {
-		case http.Flusher:
-			r.Flush()
-		}
-	}
-	return err
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and
