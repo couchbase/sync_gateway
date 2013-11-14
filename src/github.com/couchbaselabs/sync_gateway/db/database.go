@@ -573,7 +573,7 @@ func (db *Database) invalUserOrRoleChannels(name string) {
 
 //////// SEQUENCE ALLOCATION:
 
-func (context *DatabaseContext) LastSequence() uint64 {
+func (context *DatabaseContext) LastSequence() (uint64, error) {
 	return context.sequences.lastSequence()
 }
 

@@ -27,9 +27,12 @@ func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 	return s, s.reserveSequences(0) // just reads latest sequence from bucket
 }
 
-func (s *sequenceAllocator) lastSequence() uint64 {
-	last, _ := s.bucket.Incr("_sync:seq", 0, 0, 0)
-	return last
+func (s *sequenceAllocator) lastSequence() (uint64, error) {
+	last, err := s.bucket.Incr("_sync:seq", 0, 0, 0)
+	if err != nil {
+		base.Warn("Error from Incr in lastSequence(): %v", err)
+	}
+	return last, err
 }
 
 func (s *sequenceAllocator) nextSequence() (uint64, error) {
@@ -45,8 +48,9 @@ func (s *sequenceAllocator) nextSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
-	max, err := s.bucket.Incr("_sync:seq", numToReserve, 0, 0)
+	max, err := s.bucket.Incr("_sync:seq", numToReserve, numToReserve, 0)
 	if err != nil {
+		base.Warn("Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err
 	}
 	s.max = max

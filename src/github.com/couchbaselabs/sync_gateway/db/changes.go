@@ -324,7 +324,11 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
 			// Populate the parallel arrays of channels and names:
-			latestSequence := db.LastSequence()
+			latestSequence, err := db.LastSequence()
+			if err != nil {
+				base.Warn("MultiChangesFeed got error from LastSequence: %v", err)
+				return
+			}
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
 			for name, _ := range channelsSince {
@@ -333,7 +337,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					var err error
 					feed, err = db.changesFeed(name, options)
 					if err != nil {
-						base.Warn("Error reading changes feed %q: %v", name, err)
+						base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 						return
 					}
 				}

@@ -120,7 +120,11 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 	if updatedChannels == nil {
 		updatedChannels = ch.TimedSet{}
 	}
-	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, dbc.LastSequence()+1)
+	lastSeq, err := dbc.LastSequence()
+	if err != nil {
+		return
+	}
+	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, lastSeq+1)
 	princ.SetExplicitChannels(updatedChannels)
 
 	// Then the roles:
