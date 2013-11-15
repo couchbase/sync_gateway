@@ -87,7 +87,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 	since := options.Since[channel]
 	channelLog, err := db.changesWriter.getChangeLog(channel, since)
 	if err != nil {
-		base.Warn("Error reading channel-log %q (using view instead) %v", channel, err)
+		base.Warn("Error reading channel-log %q (using view instead): %v", channel, err)
 		channelLog = nil
 	}
 	rebuildLog := channelLog == nil && err == nil && (EnableStarChannelLog || channel != "*")

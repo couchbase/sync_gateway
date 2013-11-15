@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"bytes"
 	"math/rand"
 	"sort"
@@ -96,6 +97,9 @@ func (c *changesWriter) getChangeLog(channelName string, afterSeq uint64) (*chan
 	}
 
 	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq)
+	if log == nil {
+		return nil, fmt.Errorf("Corrupt log")
+	}
 	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",
 		channelName, len(raw), len(log.Entries), log.Since, afterSeq)
 	return log, nil
@@ -275,7 +279,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 			fullUpdateAttempts++
 			numToKeep := MaxChangeLogLength - len(entries)
 			if len(currentValue) == 0 || numToKeep <= 0 {
-				// If the log was missing or empty, create a new log:
+				// If log was missing or empty, or will be entirely overwritten, create a new one:
 				entriesToWrite := entries
 				if numToKeep < 0 {
 					entriesToWrite = entries[-numToKeep:]

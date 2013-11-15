@@ -20,7 +20,10 @@ func (ch *ChangeLog) Encode(w io.Writer) {
 
 // Encodes a LogEntry in a format that can be appended to an encoded ChangeLog.
 func (entry *LogEntry) Encode(w io.Writer, parent string) {
-	binary.Write(w, binary.BigEndian, entry.Flags)
+	entry.assertValid()
+	var flagBuf [1]byte
+	flagBuf[0] = entry.Flags
+	w.Write(flagBuf[0:1])
 	writeSequence(entry.Sequence, w)
 	writeString(entry.DocID, w)
 	writeString(entry.RevID, w)
@@ -40,14 +43,17 @@ func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 	parents := map[docAndRev]*LogEntry{}
 	cleanup := false
 	skipping := (afterSeq > 0)
-	var buf [1]byte
+	var flagBuf [1]byte
 	for {
-		n, _ := r.Read(buf[0:1])
+		n, _ := r.Read(flagBuf[0:1])
 		if n == 0 {
 			break // eof
 		}
-		if buf[0] > 7 {
-			panic("bad flags")
+		if flagBuf[0] > kMaxFlag {
+			pos, _ := r.Seek(0, 1)
+			base.Warn("DecodeChangeLog: bad flags 0x%x, entry %d, offset %d",
+				flagBuf[0], len(ch.Entries), pos-1)
+			return nil
 		}
 		seq := readSequence(r)
 		if skipping {
@@ -63,11 +69,12 @@ func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 		}
 
 		entry := &LogEntry{
-			Flags:    buf[0],
+			Flags:    flagBuf[0],
 			Sequence: seq,
 			DocID:    readString(r),
 			RevID:    readString(r),
 		}
+		entry.assertValid()
 
 		if parentID := readString(r); parentID != "" {
 			if parent := parents[docAndRev{entry.DocID, parentID}]; parent != nil {
@@ -121,7 +128,8 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Wr
 		skipString(r)
 		skipString(r)
 		if flags > 7 {
-			panic(fmt.Sprintf("bad flags %x, entry %d, offset %d", flags, len(entryPos)-1, pos))
+			panic(fmt.Sprintf("TruncateEncodedChangeLog: bad flags 0x%x, entry %d, offset %d",
+				flags, len(entryPos), pos))
 		}
 
 		entryPos = append(entryPos, pos)
