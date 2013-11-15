@@ -98,6 +98,8 @@ func (c *changesWriter) getChangeLog(channelName string, afterSeq uint64) (*chan
 
 	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq)
 	if log == nil {
+		// Log is corrupt, so delete it; caller will regenerate it.
+		c.bucket.Delete(channelLogDocID(channelName))
 		return nil, fmt.Errorf("Corrupt log")
 	}
 	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",

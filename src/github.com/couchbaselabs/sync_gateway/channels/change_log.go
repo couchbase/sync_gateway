@@ -28,8 +28,12 @@ type ChangeLog struct {
 	Entries []*LogEntry // Entries in order they were added (not sequence order!)
 }
 
+func (entry *LogEntry) checkValid() bool {
+	return entry.Sequence > 0 && entry.DocID != "" && entry.RevID != "" && entry.Flags <= kMaxFlag
+}
+
 func (entry *LogEntry) assertValid() {
-	if entry.Sequence == 0 || entry.DocID == "" || entry.RevID == "" || entry.Flags > kMaxFlag {
+	if !entry.checkValid() {
 		panic(fmt.Sprintf("Invalid entry: %+v", entry))
 	}
 }

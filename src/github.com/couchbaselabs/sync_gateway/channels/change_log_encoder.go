@@ -74,7 +74,9 @@ func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 			DocID:    readString(r),
 			RevID:    readString(r),
 		}
-		entry.assertValid()
+		if !entry.checkValid() {
+			return nil
+		}
 
 		if parentID := readString(r); parentID != "" {
 			if parent := parents[docAndRev{entry.DocID, parentID}]; parent != nil {
