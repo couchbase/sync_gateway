@@ -21,9 +21,7 @@ func (ch *ChangeLog) Encode(w io.Writer) {
 // Encodes a LogEntry in a format that can be appended to an encoded ChangeLog.
 func (entry *LogEntry) Encode(w io.Writer, parent string) {
 	entry.assertValid()
-	var flagBuf [1]byte
-	flagBuf[0] = entry.Flags
-	w.Write(flagBuf[0:1])
+	writeUInt8(entry.Flags, w)
 	writeSequence(entry.Sequence, w)
 	writeString(entry.DocID, w)
 	writeString(entry.RevID, w)
@@ -31,7 +29,17 @@ func (entry *LogEntry) Encode(w io.Writer, parent string) {
 }
 
 // Decodes an encoded ChangeLog.
-func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
+func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) (log *ChangeLog) {
+	defer func() {
+		if panicMsg := recover(); panicMsg != nil {
+			// decodeChangeLog panicked.
+			base.Warn("Panic from DecodeChangeLog: %v", panicMsg)
+		}
+	}()
+	return decodeChangeLog(r, afterSeq)
+}
+
+func decodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 	type docAndRev struct {
 		docID, revID string
 	}
@@ -45,9 +53,12 @@ func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 	skipping := (afterSeq > 0)
 	var flagBuf [1]byte
 	for {
-		n, _ := r.Read(flagBuf[0:1])
+		n, err := r.Read(flagBuf[0:1])
 		if n == 0 {
-			break // eof
+			if err == io.EOF {
+				break
+			}
+			panic("Error reading flags")
 		}
 		if flagBuf[0] > kMaxFlag {
 			pos, _ := r.Seek(0, 1)
@@ -120,16 +131,22 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Wr
 	entryPos := make([]int64, 0, 1000)
 	entrySeq := make([]uint64, 0, 1000)
 	for {
-		pos, _ := r.Seek(0, 1)
+		pos, err := r.Seek(0, 1)
+		if err != nil {
+			panic("Seek??")
+		}
 		flags, err := r.ReadByte()
 		if err != nil {
-			break // eof
+			if err == io.EOF {
+				break // eof
+			}
+			panic("ReadByte failed")
 		}
 		seq := readSequence(r)
 		skipString(r)
 		skipString(r)
 		skipString(r)
-		if flags > 7 {
+		if flags > kMaxFlag {
 			panic(fmt.Sprintf("TruncateEncodedChangeLog: bad flags 0x%x, entry %d, offset %d",
 				flags, len(entryPos), pos))
 		}
@@ -160,21 +177,46 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Wr
 
 	// Write the updated Since and the remaining entries:
 	writeSequence(since, w)
-	r.Seek(entryPos[removed], 0)
-	io.Copy(w, r)
+	if _, err := r.Seek(entryPos[removed], 0); err != nil {
+		panic("Seek back???")
+	}
+	if _, err := io.Copy(w, r); err != nil {
+		panic("Copy???")
+	}
 	return removed, oldLength - removed
 }
 
 //////// UTILITY FUNCTIONS:
 
+func writeUInt8(u uint8, w io.Writer) {
+	var buf [1]byte
+	buf[0] = u
+	if _, err := w.Write(buf[0:1]); err != nil {
+		panic("writeUInt8 failed")
+	}
+}
+
+func readUInt8(r io.Reader) uint8 {
+	var buf [1]byte
+	if _, err := io.ReadFull(r, buf[0:1]); err != nil {
+		panic("readUInt8 failed")
+	}
+	return buf[0]
+}
+
 func writeSequence(seq uint64, w io.Writer) {
 	var buf [16]byte
 	len := binary.PutUvarint(buf[0:16], seq)
-	w.Write(buf[0:len])
+	if _, err := w.Write(buf[0:len]); err != nil {
+		panic("writeSequence failed")
+	}
 }
 
 func readSequence(r io.ByteReader) uint64 {
-	seq, _ := binary.ReadUvarint(r)
+	seq, err := binary.ReadUvarint(r)
+	if err != nil {
+		panic("readSequence failed")
+	}
 	return seq
 }
 
@@ -184,34 +226,26 @@ func writeString(s string, w io.Writer) {
 	if length > 255 {
 		panic("Doc/rev ID too long to encode: " + s)
 	}
-	if err := binary.Write(w, binary.BigEndian, uint8(length)); err != nil {
-		panic("Write failed")
-	}
+	writeUInt8(uint8(length), w)
 	if _, err := w.Write(b); err != nil {
 		panic("writeString failed")
 	}
 }
 
-func readLength(r io.Reader) uint8 {
-	var lengthBuf [1]byte
-	if _, err := r.Read(lengthBuf[0:1]); err != nil {
-		panic("readString length failed")
-	}
-	return lengthBuf[0]
-}
-
 func readString(r io.Reader) string {
-	length := readLength(r)
+	length := readUInt8(r)
 	data := make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
-		panic("readString bytes failed")
+		panic("readString failed")
 	}
 	return string(data)
 }
 
 func skipString(r io.ReadSeeker) {
-	length := readLength(r)
-	r.Seek(int64(length), 1)
+	length := readUInt8(r)
+	if _, err := r.Seek(int64(length), 1); err != nil {
+		panic("skipString failed")
+	}
 }
 
 // Finds a 'pivot' index, at or after minIndex, such that all array values before and at the pivot
