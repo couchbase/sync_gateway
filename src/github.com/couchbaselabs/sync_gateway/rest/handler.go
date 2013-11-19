@@ -19,6 +19,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -99,7 +100,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbname, ok := h.PathVars()["db"]; ok {
+	if dbname := h.PathVar("db"); dbname != "" {
 		var err error
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
@@ -190,8 +191,12 @@ func (h *handler) assertAdminOnly() {
 	}
 }
 
-func (h *handler) PathVars() map[string]string {
-	return mux.Vars(h.rq)
+func (h *handler) PathVar(name string) string {
+	v := mux.Vars(h.rq)[name]
+	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
+	// (see function fixQuotedSlashes). So we have to unescape them now.
+	v,_ = url.QueryUnescape(v)
+	return v
 }
 
 func (h *handler) getQuery(query string) string {

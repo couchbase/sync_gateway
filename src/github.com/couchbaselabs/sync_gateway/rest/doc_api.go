@@ -20,7 +20,7 @@ import (
 
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
 	includeRevs := h.getBoolQuery("revs")
 	openRevs := h.getQuery("open_revs")
@@ -90,8 +90,8 @@ func (h *handler) handleGetDoc() error {
 
 // HTTP handler for a GET of a specific doc attachment
 func (h *handler) handleGetAttachment() error {
-	docid := h.PathVars()["docid"]
-	attachmentName := h.PathVars()["attach"]
+	docid := h.PathVar("docid")
+	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
 	body, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
@@ -123,7 +123,7 @@ func (h *handler) handleGetAttachment() error {
 
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	body, err := h.readDocument()
 	if err != nil {
 		return err
@@ -176,7 +176,7 @@ func (h *handler) handlePostDoc() error {
 
 // HTTP handler for a DELETE of a document
 func (h *handler) handleDeleteDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
 	if revid == "" {
 		revid = h.rq.Header.Get("If-Match")
@@ -192,7 +192,7 @@ func (h *handler) handleDeleteDoc() error {
 
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	value, err := h.db.GetSpecial("local", docid)
 	if err != nil {
 		return err
@@ -208,7 +208,7 @@ func (h *handler) handleGetLocalDoc() error {
 
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	body, err := h.readJSON()
 	if err == nil {
 		body.FixJSONNumbers()
@@ -223,6 +223,6 @@ func (h *handler) handlePutLocalDoc() error {
 
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	return h.db.DeleteSpecial("local", docid, h.getQuery("rev"))
 }

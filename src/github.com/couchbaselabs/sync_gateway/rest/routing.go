@@ -145,6 +145,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 // for URLs that don't match a route.
 func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
+		fixQuotedSlashes(rq)
 		var match mux.RouteMatch
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
@@ -170,6 +171,16 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			}
 		}
 	})
+}
+
+func fixQuotedSlashes(rq *http.Request) {
+	uri := rq.RequestURI
+	if strings.Contains(uri, "%2f") || strings.Contains(uri, "%2F") {
+		if stop := strings.IndexAny(uri, "?#"); stop >= 0 {
+			uri = uri[0:stop]
+		}
+		rq.URL.Path = uri
+	}
 }
 
 func wouldMatch(router *mux.Router, rq *http.Request, method string) bool {

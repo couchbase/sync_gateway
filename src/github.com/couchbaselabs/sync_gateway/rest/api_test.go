@@ -125,6 +125,8 @@ func (rt *restTester) sendAdminRequest(method, resource string, body string) *te
 
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
+	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	fixQuotedSlashes(request)
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
@@ -190,6 +192,14 @@ func TestDocLifecycle(t *testing.T) {
 	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
 	response := rt.sendRequest("DELETE", "/db/doc?rev="+revid, "")
+	assertStatus(t, response, 200)
+}
+
+func TestFunkyDocIDs(t *testing.T) {
+	var rt restTester
+	rt.createDoc(t, "AC%2FDC")
+
+	response := rt.sendRequest("GET", "/db/AC%2FDC", "")
 	assertStatus(t, response, 200)
 }
 

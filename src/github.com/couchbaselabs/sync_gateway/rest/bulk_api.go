@@ -101,7 +101,7 @@ func (h *handler) handleAllDocs() error {
 
 // HTTP handler for _dump
 func (h *handler) handleDump() error {
-	viewName := h.PathVars()["view"]
+	viewName := h.PathVar("view")
 	base.LogTo("HTTP", "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
 	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
@@ -130,7 +130,7 @@ func (h *handler) handleDump() error {
 
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
-	channelName := h.PathVars()["channel"]
+	channelName := h.PathVar("channel")
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
 	chanLog, err := h.db.GetChangeLog(channelName, 0)

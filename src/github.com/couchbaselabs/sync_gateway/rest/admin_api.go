@@ -27,7 +27,7 @@ import (
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
-	dbName := h.PathVars()["newdb"]
+	dbName := h.PathVar("newdb")
 	var config *DbConfig
 	if err := h.readJSONInto(&config); err != nil {
 		return err
