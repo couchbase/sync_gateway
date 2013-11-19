@@ -30,7 +30,6 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	r.StrictSlash(true)
 	// Global operations:
 	r.Handle("/", makeHandler(sc, privs, (*handler).handleRoot)).Methods("GET", "HEAD")
-	r.Handle("/_all_dbs", makeHandler(sc, privs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 
 	// Operations on databases:
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
@@ -121,6 +120,13 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
 
+	dbr.Handle("/_vacuum",
+		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
+	dbr.Handle("/_dump/{view}",
+		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
+	dbr.Handle("/_dumpchannel/{channel}",
+		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
+
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
@@ -128,14 +134,10 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle("/{db:"+dbRegex+"}/",
 		makeHandler(sc, adminPrivs, (*handler).handleDeleteDB)).Methods("DELETE")
 
+	r.Handle("/_all_dbs",
+		makeHandler(sc, adminPrivs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
-	dbr.Handle("/_vacuum",
-		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
-	dbr.Handle("/_dump/{view}",
-		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
-	dbr.Handle("/_dumpchannel/{channel}",
-		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
 
 	return wrapRouter(sc, adminPrivs, r)
 }
