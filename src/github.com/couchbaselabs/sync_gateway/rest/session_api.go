@@ -115,6 +115,7 @@ func (h *handler) createUserSession() error {
 		Name string `json:"name"`
 		TTL  int    `json:"ttl"`
 	}
+	params.TTL = int(kDefaultSessionTTL / time.Second)
 	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
