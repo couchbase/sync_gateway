@@ -72,7 +72,7 @@ func (h *handler) handleSessionPOST() error {
 
 func (h *handler) makeSession(user auth.User) error {
 	if user == nil {
-		return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+		return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 	}
 	h.user = user
 	auth := h.db.Authenticator()
@@ -96,7 +96,7 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 	if user == nil {
 		// The email address is authentic but we have no user account for it.
 		if !createUserIfNeeded {
-			return &base.HTTPError{http.StatusUnauthorized, "No such user"}
+			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
 		}
 		// Create a User with the given email address as username and a random password.
 		user, err = h.registerNewUser(email)
@@ -122,7 +122,7 @@ func (h *handler) createUserSession() error {
 	}
 	ttl := time.Duration(params.TTL) * time.Second
 	if params.Name == "" || ttl < 1.0 {
-		return &base.HTTPError{http.StatusBadRequest, "Invalid name or ttl"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid name or ttl")
 	}
 	session, err := h.db.Authenticator().CreateSession(params.Name, ttl)
 	if err != nil {

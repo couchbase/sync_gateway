@@ -38,14 +38,14 @@ func (h *handler) handleCreateDB() error {
 	if _, err := h.server.AddDatabaseFromConfig(config); err != nil {
 		return err
 	}
-	return &base.HTTPError{http.StatusCreated, "created"}
+	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
 	if !h.server.RemoveDatabase(h.db.Name) {
-		return &base.HTTPError{http.StatusNotFound, "missing"}
+		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
 	return nil
 }
@@ -111,7 +111,7 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 			return
 		}
 	} else if !allowReplace {
-		err = &base.HTTPError{http.StatusConflict, "Already exists"}
+		err = base.HTTPErrorf(http.StatusConflict, "Already exists")
 		return
 	}
 
@@ -156,14 +156,14 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if h.rq.Method == "POST" {
 		// On POST, take the name from the "name" property in the request body:
 		if newInfo.Name == nil {
-			return &base.HTTPError{http.StatusBadRequest, "Missing name property"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing name property")
 		}
 	} else {
 		// ON PUT, verify the name matches, if given:
 		if newInfo.Name == nil {
 			newInfo.Name = &name
 		} else if *newInfo.Name != name {
-			return &base.HTTPError{http.StatusBadRequest, "Name mismatch (can't change name)"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Name mismatch (can't change name)")
 		}
 	}
 

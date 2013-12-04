@@ -121,7 +121,7 @@ func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet) {
 // Checks whether this role object contains valid data; if not, returns an error.
 func (role *roleImpl) validate() error {
 	if !IsValidPrincipalName(role.Name_) {
-		return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid name %q", role.Name_)}
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid name %q", role.Name_)
 	}
 	return role.ExplicitChannels_.Validate()
 }
@@ -130,9 +130,9 @@ func (role *roleImpl) validate() error {
 
 func (role *roleImpl) UnauthError(message string) error {
 	if role.Name_ == "" {
-		return &base.HTTPError{http.StatusUnauthorized, "login required: " + message}
+		return base.HTTPErrorf(http.StatusUnauthorized, "login required: " + message)
 	}
-	return &base.HTTPError{http.StatusForbidden, message}
+	return base.HTTPErrorf(http.StatusForbidden, message)
 }
 
 // Returns true if the Role is allowed to access the channel.

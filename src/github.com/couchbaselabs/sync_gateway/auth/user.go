@@ -111,16 +111,16 @@ func (user *userImpl) validate() error {
 	if err := (&user.roleImpl).validate(); err != nil {
 		return err
 	} else if user.Email_ != "" && !IsValidEmail(user.Email_) {
-		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid email address")
 	} else if user.OldPasswordHash_ != nil {
-		return &base.HTTPError{http.StatusBadRequest, "Obsolete password hash present"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Obsolete password hash present")
 	} else if (user.Name_ == "") != (user.PasswordHash_ == nil) {
 		// Real user must have a password; anon user must not have a password
-		return &base.HTTPError{http.StatusBadRequest, "Invalid password"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid password")
 	}
 	for _, roleName := range user.ExplicitRoleNames_ {
 		if !IsValidPrincipalName(roleName) {
-			return &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Invalid role name %q", roleName)}
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid role name %q", roleName)
 		}
 	}
 	return nil
@@ -156,7 +156,7 @@ func (user *userImpl) Email() string {
 
 func (user *userImpl) SetEmail(email string) error {
 	if email != "" && !IsValidEmail(email) {
-		return &base.HTTPError{http.StatusBadRequest, "Invalid email address"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid email address")
 	}
 	user.Email_ = email
 	return nil

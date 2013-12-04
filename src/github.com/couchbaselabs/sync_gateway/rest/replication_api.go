@@ -61,11 +61,11 @@ func (h *handler) handleChanges() error {
 	filter := h.getQuery("filter")
 	if filter != "" {
 		if filter != "sync_gateway/bychannel" {
-			return &base.HTTPError{http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 		}
 		channelsParam := h.getQuery("channels")
 		if channelsParam == "" {
-			return &base.HTTPError{http.StatusBadRequest, "Missing 'channels' filter parameter"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
 		}
 		var err error
 		userChannels, err = channels.SetFromArray(strings.Split(channelsParam, ","),
@@ -74,7 +74,7 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		if len(userChannels) == 0 {
-			return &base.HTTPError{http.StatusBadRequest, "Empty channel list"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 		}
 	}
 

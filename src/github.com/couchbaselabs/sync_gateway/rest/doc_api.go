@@ -32,7 +32,7 @@ func (h *handler) handleGetDoc() error {
 		if atts != "" {
 			err := json.Unmarshal([]byte(atts), &attachmentsSince)
 			if err != nil {
-				return &base.HTTPError{http.StatusBadRequest, "bad atts_since"}
+				return base.HTTPErrorf(http.StatusBadRequest, "bad atts_since")
 			}
 		} else {
 			attachmentsSince = []string{}
@@ -62,7 +62,7 @@ func (h *handler) handleGetDoc() error {
 
 	} else if openRevs == "all" {
 		// open_revs=all:
-		return &base.HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
+		return base.HTTPErrorf(http.StatusNotImplemented, "open_revs=all unimplemented") // TODO
 
 	} else {
 		// open_revs=["id1", "id2", ...]
@@ -70,7 +70,7 @@ func (h *handler) handleGetDoc() error {
 		var revids []string
 		err := json.Unmarshal([]byte(openRevs), &revids)
 		if err != nil {
-			return &base.HTTPError{http.StatusBadRequest, "bad open_revs"}
+			return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
 		}
 
 		err = h.writeMultipart(func(writer *multipart.Writer) error {
@@ -102,7 +102,7 @@ func (h *handler) handleGetAttachment() error {
 	}
 	meta, ok := db.BodyAttachments(body)[attachmentName].(map[string]interface{})
 	if !ok {
-		return &base.HTTPError{http.StatusNotFound, "missing " + attachmentName}
+		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
 	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
@@ -146,7 +146,7 @@ func (h *handler) handlePutDoc() error {
 		// Replicator-style PUT with new_edits=false:
 		revisions := db.ParseRevisions(body)
 		if revisions == nil {
-			return &base.HTTPError{http.StatusBadRequest, "Bad _revisions"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
 		err = h.db.PutExistingRev(docid, body, revisions)
 		if err != nil {

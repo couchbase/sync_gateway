@@ -83,9 +83,9 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	if dbc != nil {
 		return dbc, nil
 	} else if db.ValidateDatabaseName(name) != nil {
-		return nil, &base.HTTPError{http.StatusBadRequest, "invalid database name '" + name + "'"}
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	} else if sc.config.ConfigServer == nil {
-		return nil, &base.HTTPError{http.StatusNotFound, "no such database '" + name + "'"}
+		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	} else {
 		// Let's ask the config server if it knows this database:
 		base.Log("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
@@ -117,8 +117,8 @@ func (sc *ServerContext) registerDatabase(dbcontext *db.DatabaseContext) error {
 
 	name := dbcontext.Name
 	if sc.databases_[name] != nil {
-		return &base.HTTPError{http.StatusPreconditionFailed, // what CouchDB returns
-			fmt.Sprintf("Duplicate database name %q", name)}
+		return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+			"Duplicate database name %q", name)
 	}
 	sc.databases_[name] = dbcontext
 	return nil
@@ -246,7 +246,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 // Fetch a configuration for a database from the ConfigServer
 func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {
 	if sc.config.ConfigServer == nil {
-		return nil, &base.HTTPError{http.StatusNotFound, "not_found"}
+		return nil, base.HTTPErrorf(http.StatusNotFound, "not_found")
 	}
 
 	urlStr := *sc.config.ConfigServer
@@ -256,17 +256,17 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	urlStr += url.QueryEscape(dbName)
 	res, err := sc.HTTPClient.Get(urlStr)
 	if err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway,
-			"Error contacting config server: " + err.Error()}
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
+			"Error contacting config server: %v", err)
 	} else if res.StatusCode >= 300 {
-		return nil, &base.HTTPError{res.StatusCode, res.Status}
+		return nil, base.HTTPErrorf(res.StatusCode, res.Status)
 	}
 
 	var config DbConfig
 	j := json.NewDecoder(res.Body)
 	if err = j.Decode(&config); err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway,
-			"Bad response from config server: " + err.Error()}
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
+			"Bad response from config server: %v", err)
 	}
 
 	if err = config.setup(dbName); err != nil {

@@ -35,7 +35,7 @@ func init() {
 }
 
 func illegalChannelError(name string) error {
-	return &base.HTTPError{400, fmt.Sprintf("Illegal channel name %q", name)}
+	return base.HTTPErrorf(400, "Illegal channel name %q", name)
 }
 
 func IsValidChannel(channel string) bool {

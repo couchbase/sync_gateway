@@ -54,8 +54,8 @@ const kSyncKeyPrefix = "_sync:"
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
 	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
-		return &base.HTTPError{http.StatusBadRequest,
-			fmt.Sprintf("Illegal database name: %s", dbName)}
+		return base.HTTPErrorf(http.StatusBadRequest,
+			"Illegal database name: %s", dbName)
 	}
 	return nil
 }
@@ -64,8 +64,8 @@ func ValidateDatabaseName(dbName string) error {
 func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 	bucket, err = base.GetBucket(spec)
 	if err != nil {
-		err = &base.HTTPError{http.StatusBadGateway,
-			fmt.Sprintf("Unable to connect to server: %s", err)}
+		err = base.HTTPErrorf(http.StatusBadGateway,
+			"Unable to connect to server: %s", err)
 	} else {
 		err = installViews(bucket)
 	}
@@ -379,7 +379,7 @@ func (db *Database) Compact() (int, error) {
 
 // Deletes all orphaned CouchDB attachments not used by any revisions.
 func VacuumAttachments(bucket base.Bucket) (int, error) {
-	return 0, &base.HTTPError{http.StatusNotImplemented, "Vacuum is temporarily out of order"}
+	return 0, base.HTTPErrorf(http.StatusNotImplemented, "Vacuum is temporarily out of order")
 }
 
 //////// SYNC FUNCTION:

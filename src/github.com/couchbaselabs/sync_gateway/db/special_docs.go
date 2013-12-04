@@ -20,7 +20,7 @@ import (
 func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 	key := db.realSpecialDocID(doctype, docid)
 	if key == "" {
-		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	body := Body{}
@@ -35,14 +35,13 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 func (db *Database) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
 	key := db.realSpecialDocID(doctype, docid)
 	if key == "" {
-		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	var revid string
 	err := db.Bucket.Update(key, 0, func(value []byte) ([]byte, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
-				return nil, &base.HTTPError{Status: http.StatusNotFound,
-					Message: "No previous revision to replace"}
+				return nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 			}
 		} else {
 			prevBody := Body{}
@@ -50,7 +49,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 				return nil, err
 			}
 			if matchRev != prevBody["_rev"] {
-				return nil, &base.HTTPError{Status: http.StatusConflict, Message: "Document update conflict"}
+				return nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
 			}
 		}
 

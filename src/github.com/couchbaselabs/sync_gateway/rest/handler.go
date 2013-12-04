@@ -45,9 +45,9 @@ func init() {
 	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
 }
 
-var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
-var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
-var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request"}
+var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
+var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
+var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -165,7 +165,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		if h.user == nil {
 			base.Log("HTTP auth failed for username=%q", userName)
 			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
-			return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
 		if h.user.Name() != "" {
 			base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
@@ -179,7 +179,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
-		return &base.HTTPError{http.StatusUnauthorized, "Login required"}
+		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
 
 	return nil
@@ -195,7 +195,7 @@ func (h *handler) PathVar(name string) string {
 	v := mux.Vars(h.rq)[name]
 	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
 	// (see function fixQuotedSlashes). So we have to unescape them now.
-	v,_ = url.QueryUnescape(v)
+	v, _ = url.QueryUnescape(v)
 	return v
 }
 
@@ -270,7 +270,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			return db.ReadMultipartDocument(reader)
 		}
 	}
-	return nil, &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
+	return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 }
 
 func (h *handler) requestAccepts(mimetype string) bool {
@@ -371,7 +371,7 @@ func (h *handler) addJSON(value interface{}) {
 
 func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	if !h.requestAccepts("multipart/") {
-		return &base.HTTPError{Status: http.StatusNotAcceptable}
+		return base.HTTPErrorf(http.StatusNotAcceptable, "Response is multipart")
 	}
 
 	// Get the output stream. Due to a CouchDB bug, if we're sending to it we need to buffer the

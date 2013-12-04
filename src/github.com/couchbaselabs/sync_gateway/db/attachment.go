@@ -72,12 +72,12 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 				}
 				parentAttachments, exists = parent["_attachments"].(map[string]interface{})
 				if !exists {
-					return &base.HTTPError{400, "Unknown attachment " + name}
+					return base.HTTPErrorf(400, "Unknown attachment %s", name)
 				}
 			}
 			parentAttachment := parentAttachments[name]
 			if parentAttachment == nil {
-				return &base.HTTPError{400, "Unknown attachment " + name}
+				return base.HTTPErrorf(400, "Unknown attachment %s", name)
 			}
 			atts[name] = parentAttachment
 		}
@@ -128,16 +128,16 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) error {
 	contentType := headers.Get("Content-Type")
 	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 	}
 	body, err := ioutil.ReadAll(input)
 	if err != nil {
-		return &base.HTTPError{http.StatusBadRequest, ""}
+		return base.HTTPErrorf(http.StatusBadRequest, "")
 	}
 	err = json.Unmarshal(body, into)
 	if err != nil {
 		base.Warn("Couldn't parse JSON:\n%s", body)
-		return &base.HTTPError{http.StatusBadRequest, "Bad JSON"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 	return nil
 }
@@ -263,9 +263,9 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
-				err = &base.HTTPError{http.StatusBadRequest,
-					fmt.Sprintf("Too few MIME parts: expected %d attachments, got %d",
-						len(followingAttachments), i)}
+				err = base.HTTPErrorf(http.StatusBadRequest,
+					"Too few MIME parts: expected %d attachments, got %d",
+					len(followingAttachments), i)
 			}
 			return nil, err
 		}
@@ -281,8 +281,8 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		if meta == nil {
 			name, meta = findFollowingAttachment(md5DigestKey(data))
 			if meta == nil {
-				return nil, &base.HTTPError{http.StatusBadRequest,
-					fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
+				return nil, base.HTTPErrorf(http.StatusBadRequest,
+					"MIME part #%d doesn't match any attachment", i+2)
 			}
 		}
 
@@ -292,7 +292,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 		if ok {
 			if length != int64(len(data)) {
-				return nil, &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
+				return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)
 			}
 		}
 
@@ -305,8 +305,8 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// Make sure there are no unused MIME parts:
 	if _, err = reader.NextPart(); err != io.EOF {
 		if err == nil {
-			err = &base.HTTPError{http.StatusBadRequest,
-				fmt.Sprintf("Too many MIME parts (expected %d)", len(followingAttachments)+1)}
+			err = base.HTTPErrorf(http.StatusBadRequest,
+				"Too many MIME parts (expected %d)", len(followingAttachments)+1)
 		}
 		return nil, err
 	}
@@ -353,5 +353,5 @@ func decodeAttachment(att interface{}) ([]byte, error) {
 	case []byte:
 		return att, nil
 	}
-	return nil, &base.HTTPError{400, "invalid attachment data"}
+	return nil, base.HTTPErrorf(400, "invalid attachment data")
 }

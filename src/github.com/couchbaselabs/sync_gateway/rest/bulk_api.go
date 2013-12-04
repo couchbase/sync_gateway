@@ -44,7 +44,7 @@ func (h *handler) handleAllDocs() error {
 				}
 			}
 			if !ok {
-				err = &base.HTTPError{http.StatusBadRequest, "Bad/missing keys"}
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
 	}
@@ -137,7 +137,7 @@ func (h *handler) handleDumpChannel() error {
 	if err != nil {
 		return err
 	} else if chanLog == nil {
-		return &base.HTTPError{http.StatusNotFound, "no such channel"}
+		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
 	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
@@ -187,7 +187,7 @@ func (h *handler) handleBulkGet() error {
 				revid, revok = doc["rev"].(string)
 			}
 			if docid == "" || !revok {
-				return &base.HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
+				return base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID")
 			}
 
 			var attsSince []string = nil
@@ -204,7 +204,7 @@ func (h *handler) handleBulkGet() error {
 						}
 					}
 					if !ok {
-						return &base.HTTPError{http.StatusBadRequest, "Invalid atts_since"}
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
 					}
 				} else {
 					attsSince = []string{}
@@ -258,7 +258,7 @@ func (h *handler) handleBulkDocs() error {
 		} else {
 			revisions := db.ParseRevisions(doc)
 			if revisions == nil {
-				err = &base.HTTPError{http.StatusBadRequest, "Bad _revisions"}
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
 				err = h.db.PutExistingRev(docid, doc, revisions)
