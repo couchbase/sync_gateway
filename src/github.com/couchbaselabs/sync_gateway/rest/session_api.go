@@ -119,11 +119,19 @@ func (h *handler) createUserSession() error {
 	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
+	} else if params.Name == "" || params.Name == "GUEST" || !auth.IsValidPrincipalName(params.Name) {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing user name")
+	} else if user, err := h.db.Authenticator().GetUser(params.Name); user == nil {
+		if err == nil {
+			err = base.HTTPErrorf(http.StatusNotFound, "No such user %q", params.Name)
+		}
+		return err
 	}
 	ttl := time.Duration(params.TTL) * time.Second
-	if params.Name == "" || ttl < 1.0 {
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid name or ttl")
+	if ttl < 1.0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
+
 	session, err := h.db.Authenticator().CreateSession(params.Name, ttl)
 	if err != nil {
 		return err
