@@ -71,13 +71,15 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	info := PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
-		Channels:         princ.Channels().AsSet(),
 	}
 	if user, ok := princ.(auth.User); ok {
+		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
 		info.ExplicitRoleNames = user.ExplicitRoleNames()
 		info.RoleNames = user.RoleNames()
+	} else {
+		info.Channels = princ.Channels().AsSet()
 	}
 	return json.Marshal(info)
 }
