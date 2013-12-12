@@ -34,6 +34,10 @@ func init() {
 	}
 }
 
+func illegalChannelError(name string) error {
+	return base.HTTPErrorf(400, "Illegal channel name %q", name)
+}
+
 func IsValidChannel(channel string) bool {
 	return kValidChannelRegexp.MatchString(channel)
 }
@@ -42,7 +46,7 @@ func IsValidChannel(channel string) bool {
 func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 	for _, name := range names {
 		if !IsValidChannel(name) {
-			return nil, fmt.Errorf("Illegal channel name %q", name)
+			return nil, illegalChannelError(name)
 		}
 	}
 	result := base.SetFromArray(names)
@@ -60,7 +64,7 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 func ValidateChannelSet(set base.Set) error {
 	for name, _ := range set {
 		if !IsValidChannel(name) {
-			return fmt.Errorf("Illegal channel name %q", name)
+			return illegalChannelError(name)
 		}
 	}
 	return nil

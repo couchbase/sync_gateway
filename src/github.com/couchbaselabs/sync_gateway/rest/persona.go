@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -44,19 +43,19 @@ func VerifyPersona(assertion string, audience string) (*PersonaResponse, error) 
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		return nil, &base.HTTPError{http.StatusBadGateway,
-			fmt.Sprintf("Persona verification server status %d", res.Status)}
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
+			"Persona verification server status %d", res.StatusCode)
 	}
 	responseBody, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Persona verifier"}
+		return nil, base.HTTPErrorf(http.StatusBadGateway, "Invalid response from Persona verifier")
 	}
 	var response PersonaResponse
 	if err = json.Unmarshal(responseBody, &response); err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Persona verifier"}
+		return nil, base.HTTPErrorf(http.StatusBadGateway, "Invalid response from Persona verifier")
 	}
 	if response.Status != "okay" {
-		return nil, &base.HTTPError{http.StatusUnauthorized, response.Reason}
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, response.Reason)
 	}
 	return &response, nil
 }
@@ -79,7 +78,7 @@ func (h *handler) handlePersonaPOST() error {
 	origin := h.server.config.Persona.Origin
 	if origin == "" {
 		base.Warn("Can't accept Persona logins: Server URL not configured")
-		return &base.HTTPError{http.StatusInternalServerError, "Server url not configured"}
+		return base.HTTPErrorf(http.StatusInternalServerError, "Server url not configured")
 	}
 
 	// OK, now verify it:

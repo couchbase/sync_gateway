@@ -12,10 +12,13 @@ type LogEntry struct {
 	Flags    uint8  // Deleted/Removed/Hidden flags
 }
 
+// Bits in LogEntry.Flags
 const (
 	Deleted = 1 << iota
 	Removed
 	Hidden
+
+	kMaxFlag = (1 << iota) - 1
 )
 
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
@@ -25,11 +28,19 @@ type ChangeLog struct {
 	Entries []*LogEntry // Entries in order they were added (not sequence order!)
 }
 
+func (entry *LogEntry) checkValid() bool {
+	return entry.Sequence > 0 && entry.DocID != "" && entry.RevID != "" && entry.Flags <= kMaxFlag
+}
+
+func (entry *LogEntry) assertValid() {
+	if !entry.checkValid() {
+		panic(fmt.Sprintf("Invalid entry: %+v", entry))
+	}
+}
+
 // Adds a new entry, always at the end of the log.
 func (cp *ChangeLog) Add(newEntry LogEntry) {
-	if newEntry.Sequence == 0 || newEntry.DocID == "" || newEntry.RevID == "" {
-		panic(fmt.Sprintf("Invalid entry: %+v", newEntry))
-	}
+	newEntry.assertValid()
 	if len(cp.Entries) == 0 || newEntry.Sequence == cp.Since {
 		cp.Since = newEntry.Sequence - 1
 	}

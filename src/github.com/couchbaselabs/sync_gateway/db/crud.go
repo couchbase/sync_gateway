@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
@@ -38,12 +37,14 @@ func (db *Database) realDocID(docid string) string {
 func (db *Database) getDoc(docid string) (*document, error) {
 	key := db.realDocID(docid)
 	if key == "" {
-		return nil, &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	doc := newDocument(docid)
 	err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
+	} else if !doc.hasValidSyncData() {
+		return nil, base.HTTPErrorf(404, "Not imported")
 	}
 	return doc, nil
 }
@@ -115,7 +116,7 @@ func (db *Database) getRevision(doc *document, revid string) (Body, error) {
 	if body = doc.getRevision(revid); body == nil {
 		// No inline body, so look for separate doc:
 		if !doc.History.contains(revid) {
-			return nil, &base.HTTPError{Status: 404, Message: "missing"}
+			return nil, base.HTTPErrorf(404, "missing")
 		} else if data, err := db.getOldRevisionJSON(doc.ID, revid); data == nil {
 			return nil, err
 		} else if err = json.Unmarshal(data, &body); err != nil {
@@ -135,7 +136,7 @@ func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error)
 	if body := doc.getRevisionJSON(revid); body != nil {
 		return body, nil
 	} else if !doc.History.contains(revid) {
-		return nil, &base.HTTPError{Status: 404, Message: "missing"}
+		return nil, base.HTTPErrorf(404, "missing")
 	} else {
 		return db.getOldRevisionJSON(doc.ID, revid)
 	}
@@ -148,16 +149,21 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
-		if revid != "" && doc.History[revid] != nil && doc.History[revid].Deleted {
-			body = Body{"_id": doc.ID, "_rev": revid}
-		} else {
+		// Update: this applies to non-deletions too, since the client may have lost access to
+		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
+		// incorporate that tombsone and for that it needs to see the _revisions property.
+		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
 			return nil, err
+		}
+		body = Body{"_id": doc.ID, "_rev": revid}
+		if !doc.History[revid].Deleted {
+			body["_removed"] = true
 		}
 	} else {
 		if revid == "" {
 			revid = doc.CurrentRev
 			if doc.History[revid].Deleted == true {
-				return nil, &base.HTTPError{Status: 404, Message: "deleted"}
+				return nil, base.HTTPErrorf(404, "deleted")
 			}
 		}
 		var err error
@@ -183,7 +189,7 @@ func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 			return body, nil
 		}
 	}
-	return nil, &base.HTTPError{404, "missing"}
+	return nil, base.HTTPErrorf(404, "missing")
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
@@ -217,6 +223,19 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) error {
 
 //////// UPDATING DOCUMENTS:
 
+// Initializes the gateway-specific "_sync_" metadata of a new document.
+// Used when importing an existing Couchbase doc that hasn't been seen by the gateway before.
+func (db *Database) initializeSyncData(doc *document) (err error) {
+	body := doc.body
+	doc.CurrentRev = createRevID(1, "", body)
+	body["_rev"] = doc.CurrentRev
+	doc.Deleted = false
+	doc.History = make(RevTree)
+	doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false})
+	doc.Sequence, err = db.sequences.nextSequence()
+	return
+}
+
 // Updates or creates a document.
 // The new body's "_rev" property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (string, error) {
@@ -224,13 +243,13 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	matchRev, _ := body["_rev"].(string)
 	generation, _ := parseRevID(matchRev)
 	if generation < 0 {
-		return "", &base.HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
+		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
 	deleted, _ := body["_deleted"].(bool)
 
-	return db.updateDoc(docid, func(doc *document) (Body, error) {
-		// Be careful: this block can be invoked multiple times if there are races!
+	return db.updateDoc(docid, false, func(doc *document) (Body, error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
 			matchRev = doc.CurrentRev
@@ -238,15 +257,13 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
 				if !doc.History[matchRev].Deleted {
-					return nil, &base.HTTPError{Status: http.StatusConflict,
-						Message: "Document exists"}
+					return nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
 				generation, _ = parseRevID(matchRev)
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) {
-			return nil, &base.HTTPError{Status: http.StatusConflict,
-				Message: "Document revision conflict"}
+			return nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
@@ -269,11 +286,11 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	newRev := docHistory[0]
 	generation, _ := parseRevID(newRev)
 	if generation < 0 {
-		return &base.HTTPError{Status: http.StatusBadRequest, Message: "Invalid revision ID"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	deleted, _ := body["_deleted"].(bool)
-	_, err := db.updateDoc(docid, func(doc *document) (Body, error) {
-		// Be careful: this block can be invoked multiple times if there are races!
+	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
 		parent := ""
@@ -311,15 +328,15 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, callback func(*document) (Body, error)) (string, error) {
+func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
 	// As a special case, it's illegal to put a design document except in admin mode:
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
-		return "", &base.HTTPError{Status: 403, Message: "Forbidden to update design doc"}
+		return "", base.HTTPErrorf(403, "Forbidden to update design doc")
 	}
 
 	key := db.realDocID(docid)
 	if key == "" {
-		return "", &base.HTTPError{Status: 400, Message: "Invalid doc ID"}
+		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	var newRevID, parentRevID string
@@ -331,6 +348,9 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
+			return
+		} else if !allowImport && currentValue != nil && !doc.hasValidSyncData() {
+			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
 
@@ -449,7 +469,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.LogTo("CRUD", "\tAdded doc %q / %q", docid, newRevID)
+	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	for _, name := range changedPrincipals {
@@ -471,7 +491,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 	if newRevID != doc.CurrentRev {
 		newEntry.Flags |= channels.Hidden
 	}
-	db.AddToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
+	db.changesWriter.addToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
 
 	return newRevID, nil
 }
@@ -479,8 +499,7 @@ func (db *Database) updateDoc(docid string, callback func(*document) (Body, erro
 // Creates a new document, assigning it a random doc ID.
 func (db *Database) Post(body Body) (string, string, error) {
 	if body["_rev"] != nil {
-		return "", "", &base.HTTPError{Status: http.StatusNotFound,
-			Message: "No previous revision to replace"}
+		return "", "", base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 	}
 	docid := base.CreateUUID()
 	rev, err := db.Put(docid, body)
@@ -527,12 +546,12 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 			if err != nil {
 				base.Log("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
-				err = &base.HTTPError{500, fmt.Sprintf("Error in JS sync function")}
+				err = base.HTTPErrorf(500, "Error in JS sync function")
 			}
 
 		} else {
 			base.Warn("Sync fn exception: %+v; doc = %s", err, body)
-			err = &base.HTTPError{500, "Exception in JS sync function"}
+			err = base.HTTPErrorf(500, "Exception in JS sync function")
 		}
 
 	} else {

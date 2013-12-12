@@ -10,12 +10,9 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"mime/multipart"
 	"net/http"
-	"net/textproto"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -23,7 +20,7 @@ import (
 
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
 	includeRevs := h.getBoolQuery("revs")
 	openRevs := h.getQuery("open_revs")
@@ -35,7 +32,7 @@ func (h *handler) handleGetDoc() error {
 		if atts != "" {
 			err := json.Unmarshal([]byte(atts), &attachmentsSince)
 			if err != nil {
-				return &base.HTTPError{http.StatusBadRequest, "bad atts_since"}
+				return base.HTTPErrorf(http.StatusBadRequest, "bad atts_since")
 			}
 		} else {
 			attachmentsSince = []string{}
@@ -64,43 +61,25 @@ func (h *handler) handleGetDoc() error {
 		}
 
 	} else if openRevs == "all" {
-		return &base.HTTPError{http.StatusNotImplemented, "open_revs=all unimplemented"} // TODO
+		// open_revs=all:
+		return base.HTTPErrorf(http.StatusNotImplemented, "open_revs=all unimplemented") // TODO
 
 	} else {
+		// open_revs=["id1", "id2", ...]
 		attachmentsSince = []string{}
 		var revids []string
 		err := json.Unmarshal([]byte(openRevs), &revids)
 		if err != nil {
-			return &base.HTTPError{http.StatusBadRequest, "bad open_revs"}
+			return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
 		}
 
 		err = h.writeMultipart(func(writer *multipart.Writer) error {
 			for _, revid := range revids {
-				var content []byte
-				var contentType string
 				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
-				if err == nil && len(db.BodyAttachments(revBody)) > 0 {
-					// Write as multipart, including attachments:
-					var buffer bytes.Buffer
-					docWriter := multipart.NewWriter(&buffer)
-					contentType = fmt.Sprintf("multipart/related; boundary=%q",
-						docWriter.Boundary())
-					h.db.WriteMultipartDocument(revBody, docWriter)
-					docWriter.Close()
-					content = bytes.TrimRight(buffer.Bytes(), "\r\n")
-				} else {
-					// Write as JSON:
-					contentType = "application/json"
-					if err != nil {
-						revBody = db.Body{"missing": revid} //TODO: More specific error
-						contentType += `; error="true"`
-					}
-					content, _ = json.Marshal(revBody)
+				if err != nil {
+					revBody = db.Body{"missing": revid} //TODO: More specific error
 				}
-				partHeaders := textproto.MIMEHeader{}
-				partHeaders.Set("Content-Type", contentType)
-				part, _ := writer.CreatePart(partHeaders)
-				part.Write(content)
+				h.db.WriteRevisionAsPart(revBody, err != nil, writer)
 			}
 			return nil
 		})
@@ -111,8 +90,8 @@ func (h *handler) handleGetDoc() error {
 
 // HTTP handler for a GET of a specific doc attachment
 func (h *handler) handleGetAttachment() error {
-	docid := h.PathVars()["docid"]
-	attachmentName := h.PathVars()["attach"]
+	docid := h.PathVar("docid")
+	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
 	body, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
@@ -123,7 +102,7 @@ func (h *handler) handleGetAttachment() error {
 	}
 	meta, ok := db.BodyAttachments(body)[attachmentName].(map[string]interface{})
 	if !ok {
-		return &base.HTTPError{http.StatusNotFound, "missing " + attachmentName}
+		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
 	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
@@ -144,7 +123,7 @@ func (h *handler) handleGetAttachment() error {
 
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	body, err := h.readDocument()
 	if err != nil {
 		return err
@@ -153,6 +132,11 @@ func (h *handler) handlePutDoc() error {
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
+		if oldRev := h.getQuery("rev"); oldRev != "" {
+			body["_rev"] = oldRev
+		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+			body["_rev"] = ifMatch
+		}
 		newRev, err = h.db.Put(docid, body)
 		if err != nil {
 			return err
@@ -162,7 +146,7 @@ func (h *handler) handlePutDoc() error {
 		// Replicator-style PUT with new_edits=false:
 		revisions := db.ParseRevisions(body)
 		if revisions == nil {
-			return &base.HTTPError{http.StatusBadRequest, "Bad _revisions"}
+			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
 		err = h.db.PutExistingRev(docid, body, revisions)
 		if err != nil {
@@ -192,8 +176,11 @@ func (h *handler) handlePostDoc() error {
 
 // HTTP handler for a DELETE of a document
 func (h *handler) handleDeleteDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
+	if revid == "" {
+		revid = h.rq.Header.Get("If-Match")
+	}
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
 		h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
@@ -205,7 +192,7 @@ func (h *handler) handleDeleteDoc() error {
 
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	value, err := h.db.GetSpecial("local", docid)
 	if err != nil {
 		return err
@@ -221,7 +208,7 @@ func (h *handler) handleGetLocalDoc() error {
 
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	body, err := h.readJSON()
 	if err == nil {
 		body.FixJSONNumbers()
@@ -236,6 +223,6 @@ func (h *handler) handlePutLocalDoc() error {
 
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
-	docid := h.PathVars()["docid"]
+	docid := h.PathVar("docid")
 	return h.db.DeleteSpecial("local", docid, h.getQuery("rev"))
 }

@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 	"net/http"
@@ -59,8 +58,8 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode >= 300 {
-		return nil, &base.HTTPError{http.StatusUnauthorized,
-			fmt.Sprintf("Facebook verification server status %d", res.Status)}
+		return nil, base.HTTPErrorf(http.StatusUnauthorized,
+			"Facebook verification server status %d", res.StatusCode)
 	}
 
 	decoder := json.NewDecoder(res.Body)
@@ -68,7 +67,7 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 	var response FacebookResponse
 	err = decoder.Decode(&response)
 	if err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway, "Invalid response from Facebook verifier"}
+		return nil, base.HTTPErrorf(http.StatusBadGateway, "Invalid response from Facebook verifier")
 	}
 
 	return &response, nil

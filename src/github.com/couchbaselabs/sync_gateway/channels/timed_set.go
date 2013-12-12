@@ -47,7 +47,7 @@ func (set TimedSet) AsSet() base.Set {
 func (set TimedSet) Validate() error {
 	for name, _ := range set {
 		if !IsValidChannel(name) {
-			return fmt.Errorf("Illegal channel name %q", name)
+			return illegalChannelError(name)
 		}
 	}
 	return nil

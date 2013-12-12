@@ -10,6 +10,7 @@
 package db
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"encoding/base64"
@@ -25,6 +26,8 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+// Attachments shorter than this will be left in the JSON as base64 rather than being a separate
+// MIME part.
 const kMaxInlineAttachmentSize = 200
 
 // Key for retrieving an attachment from Couchbase.
@@ -69,12 +72,12 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 				}
 				parentAttachments, exists = parent["_attachments"].(map[string]interface{})
 				if !exists {
-					return &base.HTTPError{400, "Unknown attachment " + name}
+					return base.HTTPErrorf(400, "Unknown attachment %s", name)
 				}
 			}
 			parentAttachment := parentAttachments[name]
 			if parentAttachment == nil {
-				return &base.HTTPError{400, "Unknown attachment " + name}
+				return base.HTTPErrorf(400, "Unknown attachment %s", name)
 			}
 			atts[name] = parentAttachment
 		}
@@ -125,16 +128,16 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) error {
 	contentType := headers.Get("Content-Type")
 	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 	}
 	body, err := ioutil.ReadAll(input)
 	if err != nil {
-		return &base.HTTPError{http.StatusBadRequest, ""}
+		return base.HTTPErrorf(http.StatusBadRequest, "")
 	}
 	err = json.Unmarshal(body, into)
 	if err != nil {
 		base.Warn("Couldn't parse JSON:\n%s", body)
-		return &base.HTTPError{http.StatusBadRequest, "Bad JSON"}
+		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 	return nil
 }
@@ -181,6 +184,45 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer) 
 	}
 }
 
+// Adds a new part to the given multipart writer, containing the given revision.
+// The revision will be written as a nested multipart body if it has attachments.
+func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, writer *multipart.Writer) error {
+	partHeaders := textproto.MIMEHeader{}
+	docID, _ := revBody["_id"].(string)
+	revID, _ := revBody["_rev"].(string)
+	if len(docID) > 0 {
+		partHeaders.Set("X-Doc-ID", docID)
+		partHeaders.Set("X-Rev-ID", revID)
+	}
+
+	if hasInlineAttachments(revBody) {
+		// Write as multipart, including attachments:
+		// OPT: Find a way to do this w/o having to buffer the MIME body in memory!
+		var buffer bytes.Buffer
+		docWriter := multipart.NewWriter(&buffer)
+		contentType := fmt.Sprintf("multipart/related; boundary=%q",
+			docWriter.Boundary())
+		partHeaders.Set("Content-Type", contentType)
+		db.WriteMultipartDocument(revBody, docWriter)
+		docWriter.Close()
+		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
+
+		part, _ := writer.CreatePart(partHeaders)
+		part.Write(content)
+	} else {
+		// Write as JSON:
+		contentType := "application/json"
+		if isError {
+			contentType += `; error="true"`
+		}
+		partHeaders.Set("Content-Type", contentType)
+		part, _ := writer.CreatePart(partHeaders)
+		json.NewEncoder(part).Encode(revBody)
+	}
+
+	return nil
+}
+
 func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// First read the main JSON document body:
 	mainPart, err := reader.NextPart()
@@ -221,9 +263,9 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
-				err = &base.HTTPError{http.StatusBadRequest,
-					fmt.Sprintf("Too few MIME parts: expected %d attachments, got %d",
-						len(followingAttachments), i)}
+				err = base.HTTPErrorf(http.StatusBadRequest,
+					"Too few MIME parts: expected %d attachments, got %d",
+					len(followingAttachments), i)
 			}
 			return nil, err
 		}
@@ -239,8 +281,8 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		if meta == nil {
 			name, meta = findFollowingAttachment(md5DigestKey(data))
 			if meta == nil {
-				return nil, &base.HTTPError{http.StatusBadRequest,
-					fmt.Sprintf("MIME part #%d doesn't match any attachment", i+2)}
+				return nil, base.HTTPErrorf(http.StatusBadRequest,
+					"MIME part #%d doesn't match any attachment", i+2)
 			}
 		}
 
@@ -250,7 +292,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 		if ok {
 			if length != int64(len(data)) {
-				return nil, &base.HTTPError{http.StatusBadRequest, fmt.Sprintf("Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)}
+				return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)
 			}
 		}
 
@@ -263,8 +305,8 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// Make sure there are no unused MIME parts:
 	if _, err = reader.NextPart(); err != io.EOF {
 		if err == nil {
-			err = &base.HTTPError{http.StatusBadRequest,
-				fmt.Sprintf("Too many MIME parts (expected %d)", len(followingAttachments)+1)}
+			err = base.HTTPErrorf(http.StatusBadRequest,
+				"Too many MIME parts (expected %d)", len(followingAttachments)+1)
 		}
 		return nil, err
 	}
@@ -291,6 +333,15 @@ func BodyAttachments(body Body) map[string]interface{} {
 	return atts
 }
 
+func hasInlineAttachments(body Body) bool {
+	for _, value := range BodyAttachments(body) {
+		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func attachmentKeyToString(key AttachmentKey) string {
 	return "_sync:att:" + string(key)
 }
@@ -302,5 +353,5 @@ func decodeAttachment(att interface{}) ([]byte, error) {
 	case []byte:
 		return att, nil
 	}
-	return nil, &base.HTTPError{400, "invalid attachment data"}
+	return nil, base.HTTPErrorf(400, "invalid attachment data")
 }

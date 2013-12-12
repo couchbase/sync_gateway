@@ -62,6 +62,10 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	return doc, nil
 }
 
+func (doc *document) hasValidSyncData() bool {
+	return doc.CurrentRev != "" && doc.Sequence > 0
+}
+
 // Fetches the body of a revision as a map, or nil if it's not available.
 func (doc *document) getRevision(revid string) Body {
 	var body Body

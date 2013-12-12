@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/couchbaselabs/go.assert"
 
@@ -102,9 +103,35 @@ func TestUserPasswords(t *testing.T) {
 	assert.True(t, user.Authenticate("letmein"))
 	assert.False(t, user.Authenticate("password"))
 	assert.False(t, user.Authenticate(""))
-	user, _ = auth.NewUser("", "", nil)
-	assert.True(t, user.Authenticate(""))
-	assert.False(t, user.Authenticate("123456"))
+
+	guest, _ := auth.NewUser("", "", nil)
+	assert.True(t, guest.Authenticate(""))
+	assert.False(t, guest.Authenticate("123456"))
+
+	// Create a second user with the same password
+	user2, _ := auth.NewUser("me", "letmein", nil)
+	assert.True(t, user2.Authenticate("letmein"))
+	assert.False(t, user2.Authenticate("password"))
+	assert.True(t, user.Authenticate("letmein"))
+	assert.False(t, user.Authenticate("password"))
+}
+
+// Test that multiple authentications of the same user/password are fast.
+// This is an important check because the underlying bcrypt algorithm used to verify passwords
+// is _extremely_ slow (~100ms!) so we use a cache to speed it up (see password_hash.go).
+func TestAuthenticationSpeed(t *testing.T) {
+	auth := NewAuthenticator(gTestBucket, nil)
+	user, _ := auth.NewUser("me", "goIsKewl", nil)
+	assert.True(t, user.Authenticate("goIsKewl"))
+
+	start := time.Now()
+	for i := 0; i < 1000; i++ {
+		assert.True(t, user.Authenticate("goIsKewl"))
+	}
+	durationPerAuth := time.Since(start) / 1000
+	if durationPerAuth > time.Millisecond {
+		t.Errorf("user.Authenticate is too slow: %v", durationPerAuth)
+	}
 }
 
 func TestSerializeUser(t *testing.T) {

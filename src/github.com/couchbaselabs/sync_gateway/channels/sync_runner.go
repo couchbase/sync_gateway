@@ -125,7 +125,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 				if len(call.ArgumentList) > 1 {
 					message = call.Argument(1).String()
 				}
-				runner.output.Rejection = &base.HTTPError{int(status), message}
+				runner.output.Rejection = base.HTTPErrorf(int(status), message)
 			}
 		}
 		return otto.UndefinedValue()

@@ -22,37 +22,69 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+// Register profiling handlers (see Go docs)
+import _ "net/http/pprof"
+
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
+const DefaultMaxCouchbaseConnections = 16
+const DefaultMaxCouchbaseOverflowConnections = 0
+
+const DefaultMaxIncomingConnections = 1000
+
+// Maximum number of simultaneous incoming HTTP connections to the REST interface.
+const kMaxHTTPConnections = 1000
+
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface           *string              // Interface to bind REST API to, default ":4984"
-	AdminInterface      *string              // Interface to bind admin API to, default ":4985"
-	ConfigServer        *string              // URL of config server (for dynamic db discovery)
-	Persona             *PersonaConfig       // Configuration for Mozilla Persona validation
-	Facebook            *FacebookConfig      // Configuration for Facebook validation
-	Log                 []string             // Log keywords to enable
-	Pretty              bool                 // Pretty-print JSON responses?
-	DeploymentID        *string              // Optional customer/deployment ID for stats reporting
-	StatsReportInterval *float64             // Optional stats report interval (0 to disable)
-	Databases           map[string]*DbConfig // Pre-configured databases, mapped by name
+	Interface               *string         // Interface to bind REST API to, default ":4984"
+	SSLCert                 *string         // Path to SSL cert file, or nil
+	SSLKey                  *string         // Path to SSL private key file, or nil
+	AdminInterface          *string         // Interface to bind admin API to, default ":4985"
+	ProfileInterface        *string         // Interface to bind Go profile API to (no default)
+	ConfigServer            *string         // URL of config server (for dynamic db discovery)
+	Persona                 *PersonaConfig  // Configuration for Mozilla Persona validation
+	Facebook                *FacebookConfig // Configuration for Facebook validation
+	Log                     []string        // Log keywords to enable
+	Pretty                  bool            // Pretty-print JSON responses?
+	DeploymentID            *string         // Optional customer/deployment ID for stats reporting
+	StatsReportInterval     *float64        // Optional stats report interval (0 to disable)
+	MaxCouchbaseConnections *int            // Max # of sockets to open to a Couchbase Server node
+	MaxCouchbaseOverflow    *int            // Max # of overflow sockets to open
+	MaxIncomingConnections  *int            // Max # of incoming HTTP connections to accept
+	Databases               DbConfigMap     // Pre-configured databases, mapped by name
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name      string                     // Database name in REST API (stored as key in JSON)
-	Server    *string                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username  string                     // Username for authenticating to server
-	Password  string                     // Password for authenticating to server
-	Bucket    *string                    // Bucket name on server; defaults to same as 'name'
-	Pool      *string                    // Couchbase pool name, default "default"
-	Sync      *string                    // Sync function defines which users can see which data
-	Users     map[string]json.RawMessage // Initial user accounts (values same schema as admin REST API)
-	Roles     map[string]json.RawMessage // Initial roles (values same schema as admin REST API)
-	RevsLimit *uint32                    // Max depth a document's revision tree can grow to
+	name       string                      // Database name in REST API (stored as key in JSON)
+	Server     *string                     // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username   string                      // Username for authenticating to server
+	Password   string                      // Password for authenticating to server
+	Bucket     *string                     // Bucket name on server; defaults to same as 'name'
+	Pool       *string                     // Couchbase pool name, default "default"
+	Sync       *string                     // Sync function defines which users can see which data
+	Users      map[string]*PrincipalConfig // Initial user accounts
+	Roles      map[string]*PrincipalConfig // Initial roles
+	RevsLimit  *uint32                     // Max depth a document's revision tree can grow to
+	ImportDocs interface{}                 // false, true, or "continuous"
+}
+
+type DbConfigMap map[string]*DbConfig
+
+// JSON object that defines a User/Role within a DbConfig. (Also used in admin REST API.)
+type PrincipalConfig struct {
+	Name              *string  `json:"name,omitempty"`
+	ExplicitChannels  base.Set `json:"admin_channels,omitempty"`
+	Channels          base.Set `json:"all_channels"`
+	Email             string   `json:"email,omitempty"`
+	Disabled          bool     `json:"disabled,omitempty"`
+	Password          *string  `json:"password,omitempty"`
+	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
+	RoleNames         []string `json:"roles,omitempty"`
 }
 
 type PersonaConfig struct {
@@ -131,6 +163,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.AdminInterface == nil {
 		self.AdminInterface = other.AdminInterface
 	}
+	if self.ProfileInterface == nil {
+		self.ProfileInterface = other.ProfileInterface
+	}
 	if self.ConfigServer == nil {
 		self.ConfigServer = other.ConfigServer
 	}
@@ -163,6 +198,7 @@ func ParseCommandLine() *ServerConfig {
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
 	configServer := flag.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
@@ -200,6 +236,9 @@ func ParseCommandLine() *ServerConfig {
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
 		}
+		if *profAddr != "" {
+			config.ProfileInterface = profAddr
+		}
 		if *configServer != "" {
 			config.ConfigServer = configServer
 		}
@@ -225,9 +264,10 @@ func ParseCommandLine() *ServerConfig {
 			*dbName = *bucketName
 		}
 		config = &ServerConfig{
-			Interface:      addr,
-			AdminInterface: authAddr,
-			Pretty:         *pretty,
+			Interface:        addr,
+			AdminInterface:   authAddr,
+			ProfileInterface: profAddr,
+			Pretty:           *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
 					name:   *dbName,
@@ -250,6 +290,17 @@ func ParseCommandLine() *ServerConfig {
 	return config
 }
 
+func (config *ServerConfig) serve(addr string, handler http.Handler) {
+	maxConns := DefaultMaxIncomingConnections
+	if config.MaxIncomingConnections != nil {
+		maxConns = *config.MaxIncomingConnections
+	}
+	err := base.ListenAndServeHTTP(addr, maxConns, config.SSLCert, config.SSLKey, handler)
+	if err != nil {
+		base.LogFatal("Failed to start HTTP server on %s: %v", addr, err)
+	}
+}
+
 // Starts and runs the server given its configuration. (This function never returns.)
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
@@ -269,17 +320,18 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	base.Log("Starting admin server on %s", *config.AdminInterface)
-	go func() {
-		if err := http.ListenAndServe(*config.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.LogFatal("HTTP server failed: %v", err)
-		}
-	}()
-
-	base.Log("Starting server on %s ...", *config.Interface)
-	if err := http.ListenAndServe(*config.Interface, CreatePublicHandler(sc)); err != nil {
-		base.LogFatal("HTTP server failed: %v", err)
+	if config.ProfileInterface != nil {
+		//runtime.MemProfileRate = 10 * 1024
+		base.Log("Starting profile server on %s", *config.ProfileInterface)
+		go func() {
+			http.ListenAndServe(*config.ProfileInterface, nil)
+		}()
 	}
+
+	base.Log("Starting admin server on %s", *config.AdminInterface)
+	go config.serve(*config.AdminInterface, CreateAdminHandler(sc))
+	base.Log("Starting server on %s ...", *config.Interface)
+	config.serve(*config.Interface, CreatePublicHandler(sc))
 }
 
 // Main entry point for a simple server; you can have your main() function just call this.

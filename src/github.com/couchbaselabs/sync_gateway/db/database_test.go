@@ -42,7 +42,7 @@ func testBucket() base.Bucket {
 }
 
 func setupTestDB(t *testing.T) *Database {
-	context, err := NewDatabaseContext("db", testBucket())
+	context, err := NewDatabaseContext("db", testBucket(), false)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -201,11 +201,17 @@ func TestAllDocs(t *testing.T) {
 	// Lower the log capacity to 50 to ensure the test will overflow, causing logs to be truncated,
 	// so the changes feed will have to backfill from its view.
 	oldMaxLogLength := MaxChangeLogLength
+	oldAlwaysCompact := AlwaysCompactChangeLog
 	MaxChangeLogLength = 50
-	defer func() { MaxChangeLogLength = oldMaxLogLength }()
+	AlwaysCompactChangeLog = true
+	defer func() { MaxChangeLogLength = oldMaxLogLength; AlwaysCompactChangeLog = oldAlwaysCompact }()
 
 	base.LogKeys["Changes"] = true
-	defer func() { base.LogKeys["Changes"] = false }()
+	base.LogKeys["Changes+"] = true
+	defer func() {
+		base.LogKeys["Changes"] = false
+		base.LogKeys["Changes+"] = false
+	}()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -244,6 +250,8 @@ func TestAllDocs(t *testing.T) {
 		}
 		assert.DeepEquals(t, entry, ids[j])
 	}
+
+	db.changesWriter.checkpoint()
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
@@ -286,11 +294,6 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.Doc["serialnumber"], int64(10*i))
 	}
 
-	// Trying to add the existing log should fail with no error
-	added, err := db.AddChangeLog("all", log)
-	assertNoError(t, err, "add channel log")
-	assert.False(t, added)
-
 	// Delete the channel log to test if it can be rebuilt:
 	assertNoError(t, db.Bucket.Delete(channelLogDocID("all")), "delete channel log")
 
@@ -321,7 +324,10 @@ func TestConflicts(t *testing.T) {
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
 
-	log, _ := db.GetChangeLog("all", 0)
+	db.changesWriter.checkpoint()
+
+	log, err := db.GetChangeLog("all", 0)
+	assertNoError(t, err, "GetChangeLog")
 	assert.Equals(t, len(log.Entries), 1)
 	assert.Equals(t, int(log.Since), 0)
 
@@ -345,6 +351,8 @@ func TestConflicts(t *testing.T) {
 	gotBody, err = db.GetRev("doc", "2-a", false, nil)
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
 		"channels": []interface{}{"all", "2a"}})
+
+	db.changesWriter.checkpoint()
 
 	// Verify the change-log of the "all" channel:
 	log, _ = db.GetChangeLog("all", 0)
@@ -490,13 +498,40 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assertHTTPError(t, err, 403)
 }
 
+func TestImport(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Add docs to the underlying bucket:
+	for i := 1; i <= 20; i++ {
+		db.Bucket.Add(fmt.Sprintf("alreadyHere%d", i), 0, Body{"key1": i, "key2": "hi"})
+	}
+
+	// Make sure they aren't visible thru the gateway:
+	doc, err := db.getDoc("alreadyHere1")
+	assert.Equals(t, doc, (*document)(nil))
+	assert.Equals(t, err.(*base.HTTPError).Status, 404)
+
+	// Import them:
+	err = db.ApplySyncFun("", true)
+	assertNoError(t, err, "ApplySyncFun")
+
+	// Now they're visible:
+	doc, err = db.getDoc("alreadyHere1")
+	base.Log("doc = %+v", doc)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "can't get doc")
+}
+
+//////// BENCHMARKS
+
 func BenchmarkDatabase(b *testing.B) {
 	base.LogLevel = 2
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
 			BucketName: fmt.Sprintf("b-%d", i)})
-		context, _ := NewDatabaseContext("db", bucket)
+		context, _ := NewDatabaseContext("db", bucket, false)
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

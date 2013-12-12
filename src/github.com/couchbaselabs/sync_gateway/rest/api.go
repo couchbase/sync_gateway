@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 
@@ -24,7 +25,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.79"
+const VersionString = "Couchbase Sync Gateway/0.9"
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
@@ -70,7 +71,10 @@ func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
-	lastSeq := h.db.LastSequence()
+	lastSeq, err := h.db.LastSequence()
+	if err != nil {
+		return err
+	}
 	response := db.Body{
 		"db_name":              h.db.Name,
 		"doc_count":            h.db.DocCount(),
@@ -108,7 +112,7 @@ func (h *handler) handleDesign() error {
 }
 
 // ADMIN API to turn Go CPU profiling on/off
-func (h *handler) handleProfiling() error {
+func (h *handler) handleCPUProfiling() error {
 	var params struct {
 		File string `json:"file"`
 	}
@@ -133,5 +137,41 @@ func (h *handler) handleProfiling() error {
 		base.Log("...ending profile.")
 		pprof.StopCPUProfile()
 	}
+	return nil
+}
+
+// ADMIN API to dump Go heap profile
+func (h *handler) handleHeapProfiling() error {
+	var params struct {
+		File string `json:"file"`
+	}
+	body, err := ioutil.ReadAll(h.rq.Body)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(body, &params); err != nil {
+		return err
+	}
+
+	base.Log("Dumping heap profile to %s ...", params.File)
+	f, err := os.Create(params.File)
+	if err != nil {
+		return err
+	}
+	pprof.WriteHeapProfile(f)
+	f.Close()
+	return nil
+}
+
+type stats struct {
+	MemStats runtime.MemStats
+}
+
+// ADMIN API to expose runtime and other stats
+func (h *handler) handleStats() error {
+	st := stats{}
+	runtime.ReadMemStats(&st.MemStats)
+
+	h.writeJSON(st)
 	return nil
 }

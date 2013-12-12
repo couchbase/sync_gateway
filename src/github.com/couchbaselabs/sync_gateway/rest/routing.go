@@ -30,7 +30,6 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	r.StrictSlash(true)
 	// Global operations:
 	r.Handle("/", makeHandler(sc, privs, (*handler).handleRoot)).Methods("GET", "HEAD")
-	r.Handle("/_all_dbs", makeHandler(sc, privs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 
 	// Operations on databases:
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
@@ -41,7 +40,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.StrictSlash(true)
 	dbr.Handle("/_all_docs", makeHandler(sc, privs, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("GET", "HEAD")
+	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("POST")
 	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/sync_gateway", makeHandler(sc, privs, (*handler).handleDesign)).Methods("GET", "HEAD")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
@@ -115,7 +114,18 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
 
 	r.Handle("/_profile",
-		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, (*handler).handleCPUProfiling)).Methods("POST")
+	r.Handle("/_heap",
+		makeHandler(sc, adminPrivs, (*handler).handleHeapProfiling)).Methods("POST")
+	r.Handle("/_stats",
+		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
+
+	dbr.Handle("/_vacuum",
+		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
+	dbr.Handle("/_dump/{view}",
+		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
+	dbr.Handle("/_dumpchannel/{channel}",
+		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
@@ -124,14 +134,10 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle("/{db:"+dbRegex+"}/",
 		makeHandler(sc, adminPrivs, (*handler).handleDeleteDB)).Methods("DELETE")
 
+	r.Handle("/_all_dbs",
+		makeHandler(sc, adminPrivs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
-	dbr.Handle("/_vacuum",
-		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
-	dbr.Handle("/_dump/{view}",
-		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
-	dbr.Handle("/_dumpchannel/{channel}",
-		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
 
 	return wrapRouter(sc, adminPrivs, r)
 }
@@ -141,6 +147,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 // for URLs that don't match a route.
 func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
+		fixQuotedSlashes(rq)
 		var match mux.RouteMatch
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
@@ -166,6 +173,16 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			}
 		}
 	})
+}
+
+func fixQuotedSlashes(rq *http.Request) {
+	uri := rq.RequestURI
+	if strings.Contains(uri, "%2f") || strings.Contains(uri, "%2F") {
+		if stop := strings.IndexAny(uri, "?#"); stop >= 0 {
+			uri = uri[0:stop]
+		}
+		rq.URL.Path = uri
+	}
 }
 
 func wouldMatch(router *mux.Router, rq *http.Request, method string) bool {

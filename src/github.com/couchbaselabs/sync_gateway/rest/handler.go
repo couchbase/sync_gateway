@@ -14,10 +14,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -43,9 +45,9 @@ func init() {
 	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
 }
 
-var kNotFoundError = &base.HTTPError{http.StatusNotFound, "missing"}
-var kBadMethodError = &base.HTTPError{http.StatusMethodNotAllowed, "Method Not Allowed"}
-var kBadRequestError = &base.HTTPError{http.StatusMethodNotAllowed, "Bad Request"}
+var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
+var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
+var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -98,7 +100,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbname, ok := h.PathVars()["db"]; ok {
+	if dbname := h.PathVar("db"); dbname != "" {
 		var err error
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
@@ -163,7 +165,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		if h.user == nil {
 			base.Log("HTTP auth failed for username=%q", userName)
 			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
-			return &base.HTTPError{http.StatusUnauthorized, "Invalid login"}
+			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
 		if h.user.Name() != "" {
 			base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
@@ -177,7 +179,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
-		return &base.HTTPError{http.StatusUnauthorized, "Login required"}
+		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
 
 	return nil
@@ -189,8 +191,12 @@ func (h *handler) assertAdminOnly() {
 	}
 }
 
-func (h *handler) PathVars() map[string]string {
-	return mux.Vars(h.rq)
+func (h *handler) PathVar(name string) string {
+	v := mux.Vars(h.rq)[name]
+	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
+	// (see function fixQuotedSlashes). So we have to unescape them now.
+	v, _ = url.QueryUnescape(v)
+	return v
 }
 
 func (h *handler) getQuery(query string) string {
@@ -201,14 +207,33 @@ func (h *handler) getBoolQuery(query string) bool {
 	return h.getQuery(query) == "true"
 }
 
-// Returns the integer value of a URL query, defaulting to 0 if missing or unparseable
+// Returns the integer value of a URL query, defaulting to 0 if unparseable
 func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
-	value = defaultValue
+	return h.getRestrictedIntQuery(query, defaultValue, 0, 0)
+}
+
+// Returns the integer value of a URL query, restricted to a min and max value,
+// but returning 0 if missing or unparseable
+func (h *handler) getRestrictedIntQuery(query string, defaultValue, minValue, maxValue uint64) uint64 {
+	value := defaultValue
 	q := h.getQuery(query)
 	if q != "" {
-		value, _ = strconv.ParseUint(q, 10, 64)
+		var err error
+		value, err = strconv.ParseUint(q, 10, 64)
+		if err != nil {
+			value = 0
+		} else if value < minValue {
+			value = minValue
+		} else if value > maxValue && maxValue > 0 {
+			value = maxValue
+		}
 	}
-	return
+	return value
+}
+
+func (h *handler) userAgentIs(agent string) bool {
+	userAgent := h.rq.Header.Get("User-Agent")
+	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
 }
 
 // Parses a JSON request body, returning it as a Body map.
@@ -245,7 +270,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			return db.ReadMultipartDocument(reader)
 		}
 	}
-	return nil, &base.HTTPError{http.StatusUnsupportedMediaType, "Invalid content type " + contentType}
+	return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 }
 
 func (h *handler) requestAccepts(mimetype string) bool {
@@ -336,27 +361,37 @@ func (h *handler) writeJSON(value interface{}) {
 }
 
 func (h *handler) addJSON(value interface{}) {
-	jsonOut, err := json.Marshal(value)
+	encoder := json.NewEncoder(h.response)
+	err := encoder.Encode(value)
 	if err != nil {
 		base.Warn("Couldn't serialize JSON for %v", value)
 		panic("JSON serialization failed")
 	}
-	h.response.Write(jsonOut)
 }
 
 func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	if !h.requestAccepts("multipart/") {
-		return &base.HTTPError{Status: http.StatusNotAcceptable}
+		return base.HTTPErrorf(http.StatusNotAcceptable, "Response is multipart")
 	}
+
+	// Get the output stream. Due to a CouchDB bug, if we're sending to it we need to buffer the
+	// output in memory so we can trim the final bytes.
+	var output io.Writer
 	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
+	if h.userAgentIs("CouchDB") {
+		output = &buffer
+	} else {
+		output = h.response
+	}
+
+	writer := multipart.NewWriter(output)
 	h.setHeader("Content-Type",
 		fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
 
 	err := callback(writer)
 	writer.Close()
 
-	if err == nil {
+	if err == nil && output == &buffer {
 		// Trim trailing newline; CouchDB is allergic to it:
 		_, err = h.response.Write(bytes.TrimRight(buffer.Bytes(), "\r\n"))
 	}
@@ -364,7 +399,10 @@ func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 }
 
 func (h *handler) writeln(line []byte) error {
-	_, err := h.response.Write(line)
+	var err error
+	if len(line) > 0 {
+		_, err = h.response.Write(line)
+	}
 	if err == nil {
 		_, err = h.response.Write([]byte("\r\n"))
 	}

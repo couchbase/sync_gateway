@@ -125,6 +125,8 @@ func (rt *restTester) sendAdminRequest(method, resource string, body string) *te
 
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
+	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	fixQuotedSlashes(request)
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
@@ -190,6 +192,14 @@ func TestDocLifecycle(t *testing.T) {
 	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
 	response := rt.sendRequest("DELETE", "/db/doc?rev="+revid, "")
+	assertStatus(t, response, 200)
+}
+
+func TestFunkyDocIDs(t *testing.T) {
+	var rt restTester
+	rt.createDoc(t, "AC%2FDC")
+
+	response := rt.sendRequest("GET", "/db/AC%2FDC", "")
 	assertStatus(t, response, 200)
 }
 
@@ -407,8 +417,7 @@ func TestAccessControl(t *testing.T) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
-	//base.LogKeys["Access"] = true
-	//base.LogKeys["CRUD"] = true
+	//base.ParseLogFlags([]string{"Changes+", "CRUD"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -445,6 +454,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -468,10 +478,19 @@ func TestChannelAccessChanges(t *testing.T) {
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
 
+	// Look at alice's _changes feed:
+	changes.Results = nil
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
+	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "d1")
+
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes.Results = nil
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	log.Printf("//////// _changes for zegpold looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	assert.Equals(t, changes.Results[0].ID, "a1")
@@ -492,7 +511,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	err = rt.ServerContext().Database("db").ApplySyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	err = rt.ServerContext().Database("db").ApplySyncFun(`function(doc) {access("alice", "beta");channel("beta");}`, false)
 	assert.Equals(t, err, nil)
 	changes.Results = nil
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
@@ -506,7 +525,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check accumulated statistics:
 	db := rt.ServerContext().Database("db")
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(4))
+	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
 	db.ChangesClientStats.Reset()
 	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
@@ -561,6 +580,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -587,6 +607,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -623,6 +644,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -637,6 +659,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assertStatus(t, rt.send(request("DELETE", "/db/alpha?rev="+rev1, "")), 200)
 
 	// Get the updates from the _changes feed:
+	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil

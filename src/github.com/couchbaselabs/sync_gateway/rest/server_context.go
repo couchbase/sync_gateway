@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbaselabs/go-couchbase"
+
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
@@ -45,6 +47,17 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		databases_: map[string]*db.DatabaseContext{},
 		HTTPClient: http.DefaultClient,
 	}
+
+	// Initialize the go-couchbase library's global configuration variables:
+	couchbase.PoolSize = DefaultMaxCouchbaseConnections
+	couchbase.PoolOverflow = DefaultMaxCouchbaseOverflowConnections
+	if config.MaxCouchbaseConnections != nil {
+		couchbase.PoolSize = *config.MaxCouchbaseConnections
+	}
+	if config.MaxCouchbaseOverflow != nil {
+		couchbase.PoolOverflow = *config.MaxCouchbaseOverflow
+	}
+
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
 	}
@@ -70,9 +83,9 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	if dbc != nil {
 		return dbc, nil
 	} else if db.ValidateDatabaseName(name) != nil {
-		return nil, &base.HTTPError{http.StatusBadRequest, "invalid database name '" + name + "'"}
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	} else if sc.config.ConfigServer == nil {
-		return nil, &base.HTTPError{http.StatusNotFound, "no such database '" + name + "'"}
+		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	} else {
 		// Let's ask the config server if it knows this database:
 		base.Log("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
@@ -104,8 +117,8 @@ func (sc *ServerContext) registerDatabase(dbcontext *db.DatabaseContext) error {
 
 	name := dbcontext.Name
 	if sc.databases_[name] != nil {
-		return &base.HTTPError{http.StatusPreconditionFailed, // what CouchDB returns
-			fmt.Sprintf("Duplicate database name %q", name)}
+		return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+			"Duplicate database name %q", name)
 	}
 	sc.databases_[name] = dbcontext
 	return nil
@@ -137,6 +150,18 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		return nil, err
 	}
 
+	var importDocs, autoImport bool
+	switch config.ImportDocs {
+	case nil, false:
+	case true:
+		importDocs = true
+	case "continuous":
+		importDocs = true
+		autoImport = true
+	default:
+		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
+	}
+
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
 		Server:     server,
@@ -150,15 +175,19 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	if err != nil {
 		return nil, err
 	}
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport)
 	if err != nil {
 		return nil, err
 	}
+
+	syncFn := ""
 	if config.Sync != nil {
-		if err := dbcontext.ApplySyncFun(*config.Sync); err != nil {
-			return nil, err
-		}
+		syncFn = *config.Sync
 	}
+	if err := dbcontext.ApplySyncFun(syncFn, importDocs); err != nil {
+		return nil, err
+	}
+
 	if config.RevsLimit != nil && *config.RevsLimit > 0 {
 		dbcontext.RevsLimit = *config.RevsLimit
 	}
@@ -196,29 +225,19 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]json.RawMessage, what string) error {
-	for name, data := range spec {
-		isUsers := (what == "user")
-		if name == "GUEST" && isUsers {
-			name = ""
-		}
-		authenticator := context.Authenticator()
-		newPrincipal, err := authenticator.UnmarshalPrincipal(data, name, 1, isUsers)
+func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*PrincipalConfig, what string) error {
+	for name, princ := range spec {
+		princ.Name = &name
+		_, err := updatePrincipal(context, *princ, (what == "user"), (name == "GUEST"))
 		if err != nil {
-			return fmt.Errorf("Invalid config for %s %q: %v", what, name, err)
-		}
-		oldPrincipal, err := authenticator.GetPrincipal(newPrincipal.Name(), isUsers)
-		if oldPrincipal == nil || name == "" {
-			if err == nil {
-				err = authenticator.Save(newPrincipal)
-			}
-			if err != nil {
+			// A conflict error just means updatePrincipal didn't overwrite an existing user.
+			if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
 				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
-			} else if name == "" {
-				base.Log("    Reset guest user to config")
-			} else {
-				base.Log("    Created %s %q", what, name)
 			}
+		} else if name == "GUEST" {
+			base.Log("    Reset guest user to config")
+		} else {
+			base.Log("    Created %s %q", what, name)
 		}
 	}
 	return nil
@@ -227,7 +246,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 // Fetch a configuration for a database from the ConfigServer
 func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {
 	if sc.config.ConfigServer == nil {
-		return nil, &base.HTTPError{http.StatusNotFound, "not_found"}
+		return nil, base.HTTPErrorf(http.StatusNotFound, "not_found")
 	}
 
 	urlStr := *sc.config.ConfigServer
@@ -237,17 +256,17 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	urlStr += url.QueryEscape(dbName)
 	res, err := sc.HTTPClient.Get(urlStr)
 	if err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway,
-			"Error contacting config server: " + err.Error()}
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
+			"Error contacting config server: %v", err)
 	} else if res.StatusCode >= 300 {
-		return nil, &base.HTTPError{res.StatusCode, res.Status}
+		return nil, base.HTTPErrorf(res.StatusCode, res.Status)
 	}
 
 	var config DbConfig
 	j := json.NewDecoder(res.Body)
 	if err = j.Decode(&config); err != nil {
-		return nil, &base.HTTPError{http.StatusBadGateway,
-			"Bad response from config server: " + err.Error()}
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
+			"Bad response from config server: %v", err)
 	}
 
 	if err = config.setup(dbName); err != nil {

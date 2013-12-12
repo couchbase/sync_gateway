@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -43,7 +44,7 @@ func (h *handler) handleAllDocs() error {
 				}
 			}
 			if !ok {
-				err = &base.HTTPError{http.StatusBadRequest, "Bad/missing keys"}
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
 	}
@@ -69,6 +70,9 @@ func (h *handler) handleAllDocs() error {
 			// Fetch the document body:
 			body, err := h.db.GetRev(id.DocID, id.RevID, includeRevs, nil)
 			if err == nil {
+				if body["_removed"] != nil {
+					continue
+				}
 				id.RevID = body["_rev"].(string)
 				if includeDocs {
 					row.Doc = body
@@ -97,7 +101,7 @@ func (h *handler) handleAllDocs() error {
 
 // HTTP handler for _dump
 func (h *handler) handleDump() error {
-	viewName := h.PathVars()["view"]
+	viewName := h.PathVar("view")
 	base.LogTo("HTTP", "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
 	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
@@ -126,14 +130,14 @@ func (h *handler) handleDump() error {
 
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
-	channelName := h.PathVars()["channel"]
+	channelName := h.PathVar("channel")
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
 	chanLog, err := h.db.GetChangeLog(channelName, 0)
 	if err != nil {
 		return err
 	} else if chanLog == nil {
-		return &base.HTTPError{http.StatusNotFound, "no such channel"}
+		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
 	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
@@ -156,6 +160,15 @@ func (h *handler) handleDumpChannel() error {
 }
 
 // HTTP handler for a POST to _bulk_get
+// Request looks like POST /db/_bulk_get?revs=___&attachments=___
+// where the boolean ?revs parameter adds a revision history to each doc
+// and the boolean ?attachments parameter includes attachment bodies.
+// The body of the request is JSON and looks like:
+// {
+//   "docs": [
+//		{"id": "docid", "rev": "revid", "atts_since": [12,...]}, ...
+// 	 ]
+// }
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
@@ -164,60 +177,56 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
-	h.setHeader("Content-Type", "application/json")
-	h.response.Write([]byte(`[`))
+	err = h.writeMultipart(func(writer *multipart.Writer) error {
+		for _, item := range body["docs"].([]interface{}) {
+			doc := item.(map[string]interface{})
+			docid, _ := doc["id"].(string)
+			revid := ""
+			revok := true
+			if doc["rev"] != nil {
+				revid, revok = doc["rev"].(string)
+			}
+			if docid == "" || !revok {
+				return base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID")
+			}
 
-	for i, item := range body["docs"].([]interface{}) {
-		doc := item.(map[string]interface{})
-		docid, _ := doc["id"].(string)
-		revid := ""
-		revok := true
-		if doc["rev"] != nil {
-			revid, revok = doc["rev"].(string)
-		}
-		if docid == "" || !revok {
-			return &base.HTTPError{http.StatusBadRequest, "Invalid doc/rev ID"}
-		}
-
-		var attsSince []string = nil
-		if includeAttachments {
-			if doc["atts_since"] != nil {
-				raw, ok := doc["atts_since"].([]interface{})
-				if ok {
-					attsSince = make([]string, len(raw))
-					for i := 0; i < len(raw); i++ {
-						attsSince[i], ok = raw[i].(string)
-						if !ok {
-							break
+			var attsSince []string = nil
+			if includeAttachments {
+				if doc["atts_since"] != nil {
+					raw, ok := doc["atts_since"].([]interface{})
+					if ok {
+						attsSince = make([]string, len(raw))
+						for i := 0; i < len(raw); i++ {
+							attsSince[i], ok = raw[i].(string)
+							if !ok {
+								break
+							}
 						}
 					}
+					if !ok {
+						return base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
+					}
+				} else {
+					attsSince = []string{}
 				}
-				if !ok {
-					return &base.HTTPError{http.StatusBadRequest, "Invalid atts_since"}
+			}
+
+			body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
+			if err != nil {
+				status, reason := base.ErrorAsHTTPStatus(err)
+				errStr := base.CouchHTTPErrorName(status)
+				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
+				if revid != "" {
+					body["rev"] = revid
 				}
-			} else {
-				attsSince = []string{}
 			}
-		}
 
-		body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
-		if err != nil {
-			status, reason := base.ErrorAsHTTPStatus(err)
-			errStr := base.CouchHTTPErrorName(status)
-			body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
-			if revid != "" {
-				body["rev"] = revid
-			}
+			h.db.WriteRevisionAsPart(body, err != nil, writer)
 		}
+		return nil
+	})
 
-		if i > 0 {
-			h.response.Write([]byte(",\n"))
-		}
-		h.addJSON(body)
-	}
-
-	h.response.Write([]byte(`]`))
-	return nil
+	return err
 }
 
 // HTTP handler for a POST to _bulk_docs
@@ -249,7 +258,7 @@ func (h *handler) handleBulkDocs() error {
 		} else {
 			revisions := db.ParseRevisions(doc)
 			if revisions == nil {
-				err = &base.HTTPError{http.StatusBadRequest, "Bad _revisions"}
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
 				err = h.db.PutExistingRev(docid, doc, revisions)
