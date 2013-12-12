@@ -82,6 +82,22 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	return body, nil
 }
 
+// Returns the body of a revision of a document, as well as the document's current channels.
+func (db *Database) GetRevAndChannels(docid, revid string, listRevisions bool) (body Body, channels ChannelMap, access UserAccessMap, roleAccess UserAccessMap, err error) {
+	doc, err := db.getDoc(docid)
+	if doc == nil {
+		return
+	}
+	body, err = db.getRevFromDoc(doc, revid, listRevisions)
+	if err != nil {
+		return
+	}
+	channels = doc.Channels
+	access = doc.Access
+	roleAccess = doc.RoleAccess
+	return
+}
+
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
 func (db *Database) AuthorizeDocID(docid, revid string) error {
 	doc, err := db.getDoc(docid)

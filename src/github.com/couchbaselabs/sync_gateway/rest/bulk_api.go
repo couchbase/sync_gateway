@@ -24,6 +24,8 @@ import (
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
+	includeChannels := h.getBoolQuery("channels") && h.user == nil
+	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
 	includeSeqs := h.getBoolQuery("update_seq")
 	var ids []db.IDAndRev
@@ -52,12 +54,17 @@ func (h *handler) handleAllDocs() error {
 		return err
 	}
 
+	type viewRowValue struct {
+		Rev      string              `json:"rev"`
+		Channels base.Set            `json:"channels,omitempty"` // for admins only
+		Access   map[string]base.Set `json:"access,omitempty"`   // for admins only
+	}
 	type viewRow struct {
-		ID        string            `json:"id"`
-		Key       string            `json:"key"`
-		Value     map[string]string `json:"value"`
-		Doc       db.Body           `json:"doc,omitempty"`
-		UpdateSeq uint64            `json:"update_seq,omitempty"`
+		ID        string       `json:"id"`
+		Key       string       `json:"key"`
+		Value     viewRowValue `json:"value"`
+		Doc       db.Body      `json:"doc,omitempty"`
+		UpdateSeq uint64       `json:"update_seq,omitempty"`
 	}
 	h.setHeader("Content-Type", "application/json")
 	h.response.Write([]byte(`{"rows":[` + "\n"))
@@ -66,19 +73,30 @@ func (h *handler) handleAllDocs() error {
 	totalRows := 0
 	for _, id := range ids {
 		row := viewRow{ID: id.DocID, Key: id.DocID}
-		if includeDocs || id.RevID == "" {
-			// Fetch the document body:
-			body, err := h.db.GetRev(id.DocID, id.RevID, includeRevs, nil)
-			if err == nil {
-				if body["_removed"] != nil {
-					continue
-				}
-				id.RevID = body["_rev"].(string)
-				if includeDocs {
-					row.Doc = body
-				}
-			} else {
+		if includeDocs || id.RevID == "" || includeChannels || includeAccess {
+			// Fetch the document body and other metadata that lives with it:
+			body, channels, access, roleAccess, err := h.db.GetRevAndChannels(id.DocID, id.RevID, includeRevs)
+			if err != nil || body["_removed"] != nil {
 				continue
+			}
+			id.RevID = body["_rev"].(string)
+			if includeDocs {
+				row.Doc = body
+			}
+			if includeChannels && channels != nil {
+				row.Value.Channels = base.Set{}
+				for channelName, _ := range channels {
+					row.Value.Channels[channelName] = struct{}{}
+				}
+			}
+			if includeAccess && (access != nil || roleAccess != nil) {
+				row.Value.Access = map[string]base.Set{}
+				for userName, channels := range access {
+					row.Value.Access[userName] = channels.AsSet()
+				}
+				for roleName, channels := range roleAccess {
+					row.Value.Access["role:"+roleName] = channels.AsSet()
+				}
 			}
 		} else if err := h.db.AuthorizeDocID(id.DocID, id.RevID); err != nil {
 			continue
@@ -86,7 +104,7 @@ func (h *handler) handleAllDocs() error {
 		if includeSeqs {
 			row.UpdateSeq = id.Sequence
 		}
-		row.Value = map[string]string{"rev": id.RevID}
+		row.Value.Rev = id.RevID
 
 		if totalRows > 0 {
 			h.response.Write([]byte(",\n"))
