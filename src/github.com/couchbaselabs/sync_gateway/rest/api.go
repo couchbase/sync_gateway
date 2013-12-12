@@ -112,7 +112,8 @@ func (h *handler) handleDesign() error {
 }
 
 // ADMIN API to turn Go CPU profiling on/off
-func (h *handler) handleCPUProfiling() error {
+func (h *handler) handleProfiling() error {
+	profileName := h.PathVar("name")
 	var params struct {
 		File string `json:"file"`
 	}
@@ -127,15 +128,29 @@ func (h *handler) handleCPUProfiling() error {
 	}
 
 	if params.File != "" {
-		base.Log("Profiling to %s ...", params.File)
 		f, err := os.Create(params.File)
 		if err != nil {
 			return err
 		}
-		pprof.StartCPUProfile(f)
+		if profileName != "" {
+			defer f.Close()
+			if profile := pprof.Lookup(profileName); profile != nil {
+				profile.WriteTo(f, 0)
+				base.Log("Wrote %s profile to %s", profileName, params.File)
+			} else {
+				return base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
+			}
+		} else {
+			base.Log("Starting CPU profile to %s ...", params.File)
+			pprof.StartCPUProfile(f)
+		}
 	} else {
-		base.Log("...ending profile.")
-		pprof.StopCPUProfile()
+		if profileName != "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
+		} else {
+			base.Log("...ending CPU profile.")
+			pprof.StopCPUProfile()
+		}
 	}
 	return nil
 }
