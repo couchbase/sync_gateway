@@ -30,10 +30,12 @@ func (h *handler) handleAllDocs() error {
 	includeSeqs := h.getBoolQuery("update_seq")
 	var ids []db.IDAndRev
 	var err error
+	var docCount int
 
 	// Get the doc IDs:
 	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
 		ids, err = h.db.AllDocIDs()
+		docCount = len(ids)
 	} else {
 		input, err := h.readJSON()
 		if err == nil {
@@ -49,6 +51,7 @@ func (h *handler) handleAllDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
+		docCount = h.db.DocCount()
 	}
 	if err != nil {
 		return err
@@ -113,7 +116,9 @@ func (h *handler) handleAllDocs() error {
 		h.addJSON(row)
 	}
 
-	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d}`, totalRows)))
+	lastSeq, _ := h.db.LastSequence()
+	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
+		docCount, lastSeq)))
 	return nil
 }
 

@@ -82,7 +82,8 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	return body, nil
 }
 
-// Returns the body of a revision of a document, as well as the document's current channels.
+// Returns the body of a revision of a document, as well as the document's current channels
+// and the user/roles it grants channel access to.
 func (db *Database) GetRevAndChannels(docid, revid string, listRevisions bool) (body Body, channels ChannelMap, access UserAccessMap, roleAccess UserAccessMap, err error) {
 	doc, err := db.getDoc(docid)
 	if doc == nil {
