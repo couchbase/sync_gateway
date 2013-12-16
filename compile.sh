@@ -16,10 +16,10 @@ GOOS=windows GOARCH=amd64 go build -v github.com/couchbaselabs/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway.exe ]]
   then
     mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
-    echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway"
+    echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway.exe"
   else
     FAILS=$((FAILS+1))
-    echo "######################### FAIL! no such file: ${DEST_DIR}/sync_gateway"
+    echo "######################### FAIL! no such file: ${DEST_DIR}/sync_gateway.exe"
 fi
 
 echo .....................windows-386
@@ -29,10 +29,10 @@ GOOS=windows GOARCH=386   go build -v github.com/couchbaselabs/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway.exe ]]
   then
     mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
-    echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway"
+    echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway.exe"
   else
     FAILS=$((FAILS+1))
-    echo "######################### FAIL! no such file: ${DEST_DIR}/sync_gateway"
+    echo "######################### FAIL! no such file: ${DEST_DIR}/sync_gateway.exe"
 fi
 
 echo .....................linux-386
