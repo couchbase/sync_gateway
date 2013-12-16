@@ -74,3 +74,4 @@ if [[ -e ${WORKSPACE}/sync_gateway ]]
     echo "######################### FAIL! no such file: ${DEST_DIR}/sync_gateway"
 fi
 
+exit ${FAILS}
