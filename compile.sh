@@ -15,7 +15,7 @@ mkdir -p ${DEST_DIR}
 GOOS=windows GOARCH=amd64 go build -v github.com/couchbaselabs/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway ]]
   then
-    mv   ${WORKSPACE}/sync_gateway      ${DEST_DIR}
+    mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
     echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway"
   else
     FAILS=$((FAILS+1))
@@ -28,7 +28,7 @@ mkdir -p ${DEST_DIR}
 GOOS=windows GOARCH=386   go build -v github.com/couchbaselabs/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway ]]
   then
-    mv   ${WORKSPACE}/sync_gateway      ${DEST_DIR}
+    mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
     echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway"
   else
     FAILS=$((FAILS+1))
