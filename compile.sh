@@ -13,7 +13,7 @@ echo .....................windows-amd64
 DEST_DIR=${WORKSPACE}/bin/windows-amd64
 mkdir -p ${DEST_DIR}
 GOOS=windows GOARCH=amd64 go build -v github.com/couchbaselabs/sync_gateway
-if [[ -e ${WORKSPACE}/sync_gateway ]]
+if [[ -e ${WORKSPACE}/sync_gateway.exe ]]
   then
     mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
     echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway"
@@ -26,7 +26,7 @@ echo .....................windows-386
 DEST_DIR=${WORKSPACE}/bin/windows-386
 mkdir -p ${DEST_DIR}
 GOOS=windows GOARCH=386   go build -v github.com/couchbaselabs/sync_gateway
-if [[ -e ${WORKSPACE}/sync_gateway ]]
+if [[ -e ${WORKSPACE}/sync_gateway.exe ]]
   then
     mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
     echo "..........................Success! Output is: ${DEST_DIR}/sync_gateway"
