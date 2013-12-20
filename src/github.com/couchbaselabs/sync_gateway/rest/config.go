@@ -305,6 +305,8 @@ func (config *ServerConfig) serve(addr string, handler http.Handler) {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
+	base.Log("==== %s ====", VersionString)
+
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {
