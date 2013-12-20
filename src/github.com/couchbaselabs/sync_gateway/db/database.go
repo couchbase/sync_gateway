@@ -92,6 +92,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 	if err = context.tapListener.Start(bucket, autoImport); err != nil {
 		return nil, err
 	}
+	go func() {
+		// Send channel-log changes to the changesWriter:
+		for tapEvent := range context.tapListener.ChannelChannel {
+			channelName := string(tapEvent.Key)[len(kChannelLogKeyPrefix):]
+			context.changesWriter.channelLogUpdated(channelName, tapEvent.Value)
+		}
+	}()
 	go context.runAssimilator()
 	return context, nil
 }

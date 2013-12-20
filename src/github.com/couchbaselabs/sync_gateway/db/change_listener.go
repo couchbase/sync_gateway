@@ -13,12 +13,13 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	bucket      base.Bucket
-	tapFeed     base.TapFeed         // Observes changes to bucket
-	tapNotifier *sync.Cond           // Posts notifications when documents are updated
-	counter     uint64               // Event counter; increments on every doc update
-	keyCounts   map[string]uint64    // Latest count at which each doc key was updated
-	DocChannel  chan walrus.TapEvent // Passthru channel for doc mutations
+	bucket         base.Bucket
+	tapFeed        base.TapFeed         // Observes changes to bucket
+	tapNotifier    *sync.Cond           // Posts notifications when documents are updated
+	counter        uint64               // Event counter; increments on every doc update
+	keyCounts      map[string]uint64    // Latest count at which each doc key was updated
+	DocChannel     chan walrus.TapEvent // Passthru channel for doc mutations
+	ChannelChannel chan walrus.TapEvent // Passthru channel for channel-log mutations
 }
 
 // Starts a changeListener on a given Bucket.
@@ -33,21 +34,27 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 	listener.counter = 1
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
+	listener.ChannelChannel = make(chan walrus.TapEvent, 100)
 	if trackDocs {
 		listener.DocChannel = make(chan walrus.TapEvent, 100)
 	}
 
 	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
 	go func() {
-		defer listener.notify("")
-		if listener.DocChannel != nil {
-			defer close(listener.DocChannel)
-		}
+		defer func() {
+			listener.notify("")
+			close(listener.ChannelChannel)
+			if listener.DocChannel != nil {
+				close(listener.DocChannel)
+			}
+		}()
 		for event := range tapFeed.Events() {
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
-				if strings.HasPrefix(key, kChannelLogKeyPrefix) ||
-					strings.HasPrefix(key, auth.UserKeyPrefix) ||
+				if strings.HasPrefix(key, kChannelLogKeyPrefix) {
+					listener.ChannelChannel <- event
+					listener.notify(key)
+				} else if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					listener.notify(key)
 				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {

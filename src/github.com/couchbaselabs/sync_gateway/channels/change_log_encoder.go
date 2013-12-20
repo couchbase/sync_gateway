@@ -29,17 +29,17 @@ func (entry *LogEntry) Encode(w io.Writer, parent string) {
 }
 
 // Decodes an encoded ChangeLog.
-func DecodeChangeLog(r *bytes.Reader, afterSeq uint64) (log *ChangeLog) {
+func DecodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) (log *ChangeLog) {
 	defer func() {
 		if panicMsg := recover(); panicMsg != nil {
 			// decodeChangeLog panicked.
 			base.Warn("Panic from DecodeChangeLog: %v", panicMsg)
 		}
 	}()
-	return decodeChangeLog(r, afterSeq)
+	return decodeChangeLog(r, afterSeq, oldLog)
 }
 
-func decodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
+func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *ChangeLog {
 	type docAndRev struct {
 		docID, revID string
 	}
@@ -48,7 +48,17 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 		Since:   readSequence(r),
 		Entries: make([]*LogEntry, 0, 500),
 	}
-	parents := map[docAndRev]*LogEntry{}
+	parents := map[docAndRev]int{}
+
+	if oldLog != nil {
+		// If a pre-existing log is given, copy its entries so we'll append to them:
+		ch.Entries = append(ch.Entries, oldLog.Entries...)
+		for i, entry := range ch.Entries {
+			parents[docAndRev{entry.DocID, entry.RevID}] = i
+		}
+		afterSeq = oldLog.LastSequence()
+	}
+
 	cleanup := false
 	skipping := (afterSeq > 0)
 	var flagBuf [1]byte
@@ -90,15 +100,13 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64) *ChangeLog {
 		}
 
 		if parentID := readString(r); parentID != "" {
-			if parent := parents[docAndRev{entry.DocID, parentID}]; parent != nil {
+			if parentIndex, found := parents[docAndRev{entry.DocID, parentID}]; found {
 				// Clear out the parent rev that was overwritten by this one
-				parent.DocID = ""
-				parent.RevID = ""
+				ch.Entries[parentIndex] = &LogEntry{}
 				cleanup = true
 			}
 		}
-		parents[docAndRev{entry.DocID, entry.RevID}] = entry
-
+		parents[docAndRev{entry.DocID, entry.RevID}] = len(ch.Entries)
 		ch.Entries = append(ch.Entries, entry)
 	}
 

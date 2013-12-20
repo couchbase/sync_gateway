@@ -38,6 +38,13 @@ func (entry *LogEntry) assertValid() {
 	}
 }
 
+func (cp *ChangeLog) LastSequence() uint64 {
+	if n := len(cp.Entries); n > 0 {
+		return cp.Entries[n-1].Sequence
+	}
+	return cp.Since
+}
+
 // Adds a new entry, always at the end of the log.
 func (cp *ChangeLog) Add(newEntry LogEntry) {
 	newEntry.assertValid()
@@ -45,6 +52,16 @@ func (cp *ChangeLog) Add(newEntry LogEntry) {
 		cp.Since = newEntry.Sequence - 1
 	}
 	cp.Entries = append(cp.Entries, &newEntry)
+}
+
+func (cp *ChangeLog) AddEntries(entries []*LogEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	if len(cp.Entries) == 0 {
+		cp.Since = entries[0].Sequence - 1
+	}
+	cp.Entries = append(cp.Entries, entries...)
 }
 
 // Removes the oldest entries to limit the log's length to `maxLength`.
@@ -56,7 +73,10 @@ func (cp *ChangeLog) TruncateTo(maxLength int) int {
 				cp.Since = entry.Sequence
 			}
 		}
-		cp.Entries = cp.Entries[remove:]
+		// Copy entries into a new array to avoid leaving the entire old array in memory:
+		newEntries := make([]*LogEntry, maxLength)
+		copy(newEntries, cp.Entries[remove:])
+		cp.Entries = newEntries
 		return remove
 	}
 	return 0
@@ -66,12 +86,15 @@ func (cp *ChangeLog) TruncateTo(maxLength int) int {
 // (They're not guaranteed to have higher sequence numbers; sequences may be added out of order.)
 func (cp *ChangeLog) EntriesAfter(after uint64) []*LogEntry {
 	entries := cp.Entries
+	if after == cp.Since {
+		return entries
+	}
 	for i, entry := range entries {
 		if entry.Sequence == after {
 			return entries[i+1:]
 		}
 	}
-	return entries
+	return nil
 }
 
 // Filters the log to only the entries added after the one with sequence number 'after.

@@ -1,8 +1,8 @@
 package db
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"math/rand"
 	"sort"
 	"sync"
@@ -17,6 +17,9 @@ import (
 // The maximum number of entries that will be kept in a ChangeLog. If the length would overflow
 // this limit, the earliest/oldest entries are removed to make room.
 var MaxChangeLogLength = 1000
+
+// Number of recent change-log items to cache in memory
+var CachedChangeLogLength = 50
 
 // If this is set to true, every update of a channel log will compact it to MaxChangeLogLength.
 var AlwaysCompactChangeLog = false
@@ -88,23 +91,12 @@ func (c *changesWriter) addChangeLog(channelName string, log *channels.ChangeLog
 
 // Loads a channel's log from the database and returns it.
 func (c *changesWriter) getChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
-	raw, err := c.bucket.GetRaw(channelLogDocID(channelName))
-	if err != nil {
-		if base.IsDocNotFoundError(err) {
-			err = nil
-		}
-		return nil, err
-	}
+	return c.logWriterForChannel(channelName).getChangeLog(afterSeq)
+}
 
-	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq)
-	if log == nil {
-		// Log is corrupt, so delete it; caller will regenerate it.
-		c.bucket.Delete(channelLogDocID(channelName))
-		return nil, fmt.Errorf("Corrupt log")
-	}
-	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",
-		channelName, len(raw), len(log.Entries), log.Since, afterSeq)
-	return log, nil
+// Called upon a tap notification of a channel-log document update.
+func (c *changesWriter) channelLogUpdated(channelName string, rawLog []byte) {
+	c.existingLogWriterForChannel(channelName).channelLogUpdated(rawLog)
 }
 
 // Internal: returns a channelLogWriter that writes to the given channel.
@@ -119,6 +111,14 @@ func (c *changesWriter) logWriterForChannel(channelName string) *channelLogWrite
 	return logWriter
 }
 
+// Internal: returns a channelLogWriter that writes to the given channel.
+func (c *changesWriter) existingLogWriterForChannel(channelName string) *channelLogWriter {
+	c.lock.Lock()
+	logWriter := c.logWriters[channelName]
+	c.lock.Unlock()
+	return logWriter
+}
+
 //////// CHANNEL LOG WRITER
 
 // Writes changes to a single channel log.
@@ -127,6 +127,8 @@ type channelLogWriter struct {
 	channelName string
 	io          chan *changeEntry
 	awake       chan bool
+	cachedLog   channels.ChangeLog
+	cacheMutex  sync.Mutex
 }
 
 type changeEntry struct {
@@ -308,12 +310,63 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 			}
 		})
 		if err == nil {
+			c.invalidateCachedChangeLog()
 			base.LogTo("ChannelLog", "Wrote %d sequences (was %d now %d) to %q in %d attempts",
 				len(entries), oldChangeLogCount, newChangeLogCount, c.channelName, fullUpdateAttempts)
 		} else {
 			base.Warn("Error writing %d sequence(s) to %q -- %v", len(entries), c.channelName, err)
 		}
 	}
+}
+
+// Called when the tap feed receives an updated channel-log document.
+func (c *channelLogWriter) channelLogUpdated(rawLog []byte) {
+	if c == nil {
+		return
+	}
+	lastCachedSequence := c.cachedLog.LastSequence()
+	log := channels.DecodeChangeLog(bytes.NewReader(rawLog), lastCachedSequence, &c.cachedLog)
+	if log == nil {
+		return
+	}
+	log.TruncateTo(CachedChangeLogLength)
+
+	c.cacheMutex.Lock()
+	c.cachedLog = *log
+	c.cacheMutex.Unlock()
+}
+
+// Loads a channel's log from the database and returns it.
+func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, error) {
+	// Read from cache if available:
+	if entries := c.cachedLog.EntriesAfter(afterSeq); entries != nil {
+		base.LogTo("Changes", "Using cached entries for afterSeq=%d (returning %d)", afterSeq, len(entries))
+		return &channels.ChangeLog{Since: afterSeq, Entries: entries}, nil
+	}
+
+	raw, err := c.bucket.GetRaw(channelLogDocID(c.channelName))
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			err = nil
+		}
+		return nil, err
+	}
+
+	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq, nil)
+	if log == nil {
+		// Log is corrupt, so delete it; caller will regenerate it.
+		c.bucket.Delete(channelLogDocID(c.channelName))
+		return nil, fmt.Errorf("Corrupt log")
+	}
+	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",
+		c.channelName, len(raw), len(log.Entries), log.Since, afterSeq)
+	return log, nil
+}
+
+func (c *channelLogWriter) invalidateCachedChangeLog() {
+	c.cacheMutex.Lock()
+	c.cachedLog = channels.ChangeLog{}
+	c.cacheMutex.Unlock()
 }
 
 //////// SUBROUTINES:
