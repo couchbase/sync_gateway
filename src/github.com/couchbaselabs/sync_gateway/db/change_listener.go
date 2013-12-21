@@ -13,13 +13,13 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	bucket         base.Bucket
-	tapFeed        base.TapFeed         // Observes changes to bucket
-	tapNotifier    *sync.Cond           // Posts notifications when documents are updated
-	counter        uint64               // Event counter; increments on every doc update
-	keyCounts      map[string]uint64    // Latest count at which each doc key was updated
-	DocChannel     chan walrus.TapEvent // Passthru channel for doc mutations
-	ChannelChannel chan walrus.TapEvent // Passthru channel for channel-log mutations
+	bucket           base.Bucket
+	tapFeed          base.TapFeed         // Observes changes to bucket
+	tapNotifier      *sync.Cond           // Posts notifications when documents are updated
+	counter          uint64               // Event counter; increments on every doc update
+	keyCounts        map[string]uint64    // Latest count at which each doc key was updated
+	DocChannel       chan walrus.TapEvent // Passthru channel for doc mutations
+	OnChannelChanged func(channelName string, channelLog []byte)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -34,7 +34,6 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 	listener.counter = 1
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
-	listener.ChannelChannel = make(chan walrus.TapEvent, 100)
 	if trackDocs {
 		listener.DocChannel = make(chan walrus.TapEvent, 100)
 	}
@@ -43,7 +42,6 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 	go func() {
 		defer func() {
 			listener.notify("")
-			close(listener.ChannelChannel)
 			if listener.DocChannel != nil {
 				close(listener.DocChannel)
 			}
@@ -52,7 +50,13 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
 				if strings.HasPrefix(key, kChannelLogKeyPrefix) {
-					listener.ChannelChannel <- event
+					if listener.OnChannelChanged != nil {
+						channelName := string(event.Key)[len(kChannelLogKeyPrefix):]
+						// Notify the client synchronously via a fn call, instead of by writing
+						// to a channel, to ensure that the client can cache the updated channel
+						// log before any subsequent document change is processed.
+						listener.OnChannelChanged(channelName, event.Value)
+					}
 					listener.notify(key)
 				} else if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {

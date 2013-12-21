@@ -35,7 +35,7 @@ var EnableStarChannelLog = true
 type changesWriter struct {
 	bucket     base.Bucket
 	logWriters map[string]*channelLogWriter
-	lock       sync.Mutex
+	lock       sync.RWMutex
 }
 
 // Creates a new changesWriter
@@ -71,8 +71,8 @@ func (c *changesWriter) addToChangeLogs(changedChannels base.Set, channelMap Cha
 
 // Blocks until all pending channel-log updates are complete.
 func (c *changesWriter) checkpoint() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	for _, logWriter := range c.logWriters {
 		logWriter.stop()
 	}
@@ -113,9 +113,9 @@ func (c *changesWriter) logWriterForChannel(channelName string) *channelLogWrite
 
 // Internal: returns a channelLogWriter that writes to the given channel.
 func (c *changesWriter) existingLogWriterForChannel(channelName string) *channelLogWriter {
-	c.lock.Lock()
+	c.lock.RLock()
 	logWriter := c.logWriters[channelName]
-	c.lock.Unlock()
+	c.lock.RUnlock()
 	return logWriter
 }
 
