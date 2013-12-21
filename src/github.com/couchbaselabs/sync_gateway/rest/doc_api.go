@@ -11,6 +11,7 @@ package rest
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 
@@ -118,6 +119,56 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Encoding", encoding)
 	}
 	h.response.Write(data)
+	return nil
+}
+
+// HTTP handler for a PUT of an attachment
+func (h *handler) handlePutAttachment() error {
+	docid := h.PathVar("docid")
+	attachmentName := h.PathVar("attach")
+	attachmentContentType := h.rq.Header.Get("Content-Type")
+	if attachmentContentType == "" {
+		attachmentContentType = "application/octet-stream"
+	}
+	revid := h.getQuery("rev")
+	attachmentData, err := ioutil.ReadAll(h.rq.Body)
+	if err != nil {
+		return err
+	}
+
+	body, err := h.db.GetRev(docid, revid, false, nil)
+	if err != nil && base.IsDocNotFoundError(err) {
+		// couchdb creates empty body on attachment PUT
+		// for non-existant doc id
+		body = db.Body{}
+	} else if err != nil {
+		return err
+	} else if body != nil {
+		body["_rev"] = revid
+	}
+
+	// find attachment (if it existed)
+	attachments := db.BodyAttachments(body)
+	if attachments == nil {
+		attachments = make(map[string]interface{})
+	}
+
+	// create new attachment
+	attachment := make(map[string]interface{})
+	attachment["data"] = attachmentData
+	attachment["content_type"] = attachmentContentType
+
+	//attach it
+	attachments[attachmentName] = attachment
+	body["_attachments"] = attachments
+
+	newRev, err := h.db.Put(docid, body)
+	if err != nil {
+		return err
+	}
+	h.setHeader("Etag", newRev)
+
+	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
 

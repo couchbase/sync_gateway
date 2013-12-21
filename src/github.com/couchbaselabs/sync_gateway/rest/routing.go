@@ -56,6 +56,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleDeleteDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handlePutAttachment)).Methods("PUT")
 
 	return r, dbr
 }

@@ -106,6 +106,14 @@ func (rt *restTester) sendRequest(method, resource string, body string) *testRes
 	return rt.send(request(method, resource, body))
 }
 
+func (rt *restTester) sendRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+	req := request(method, resource, body)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return rt.send(req)
+}
+
 func (rt *restTester) send(request *http.Request) *testResponse {
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
@@ -201,6 +209,127 @@ func TestFunkyDocIDs(t *testing.T) {
 
 	response := rt.sendRequest("GET", "/db/AC%2FDC", "")
 	assertStatus(t, response, 200)
+}
+
+func TestManualAttachment(t *testing.T) {
+	var rt restTester
+
+	doc1revId := rt.createDoc(t, "doc1")
+
+	// attach to existing document
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+	response := rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterAttachment != doc1revId)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// try to overwrite that attachment
+	attachmentBody = "updated content"
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterUpdateAttachment := body["rev"].(string)
+	if revIdAfterUpdateAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// add another attachment to the document
+	// also no explicit Content-Type header on this one
+	// should default to application/octet-stream
+	attachmentBody = "separate content"
+	response = rt.sendRequest("PUT", "/db/doc1/attach2?rev="+revIdAfterUpdateAttachment, attachmentBody)
+	assertStatus(t, response, 201)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterSecondAttachment := body["rev"].(string)
+	if revIdAfterSecondAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterSecondAttachment != revIdAfterUpdateAttachment)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attach2", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
+
+	// now check the attachments index on the document
+	response = rt.sendRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, 200)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	bodyAttachments, ok := body["_attachments"].(map[string]interface{})
+	if !ok {
+		t.Errorf("Attachments must be map")
+	} else {
+		assert.Equals(t, len(bodyAttachments), 2)
+	}
+	// make sure original document property has remained
+	prop, ok := body["prop"]
+	if !ok || !prop.(bool) {
+		t.Errorf("property prop is now missing or modified")
+	}
+}
+
+// PUT attachment on non-existant docid should create empty doc
+func TestManualAttachmentNewDoc(t *testing.T) {
+	var rt restTester
+
+	// attach to existing document
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "text/plain"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+	response := rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/notexistyet/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// now check the document
+	body = db.Body{}
+	response = rt.sendRequest("GET", "/db/notexistyet", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	// body should only have 3 top-level entries _id, _rev, _attachments
+	assert.True(t, len(body) == 3)
 }
 
 func TestBulkDocs(t *testing.T) {
