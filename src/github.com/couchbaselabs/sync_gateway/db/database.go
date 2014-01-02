@@ -37,6 +37,7 @@ type DatabaseContext struct {
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
+	Config         	   interface{} // Hold onto reference to config for info requests
 }
 
 const DefaultRevsLimit = 1000
