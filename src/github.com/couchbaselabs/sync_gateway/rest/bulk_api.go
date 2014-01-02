@@ -151,6 +151,41 @@ func (h *handler) handleDump() error {
 	return nil
 }
 
+// HTTP handler for _view
+func (h *handler) handleView() error {
+	viewName := h.PathVar("view")
+	base.LogTo("HTTP", "JSON view %q", viewName)
+	opts := db.Body{ // for now we always return the full result set
+		// "stale": h.getBoolQuery("stale"),
+		"reduce": false,
+		// "startkey" : h.getQuery("startkey"),
+		// "endkey" : h.getQuery("endkey"),
+		// "group_level" : h.getIntQuery("group_level", 1),
+	}
+	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
+	if err != nil {
+		return err
+	}
+	h.setHeader("Content-Type", `application/json; charset="UTF-8"`)
+	h.response.Write([]byte(`{"rows":[`))
+	first := true
+	for _, row := range result.Rows {
+		if (first) {
+			first = false
+		} else {
+			h.response.Write([]byte(",\n"))
+		}
+		key, _ := json.Marshal(row.Key)
+		value, _ := json.Marshal(row.Value)
+		id, _ := json.Marshal(row.ID)
+		h.response.Write([]byte(fmt.Sprintf("{\"key\":%s, \"value\":%s , \"id\":%s}",
+			string(key), string(value), string(id))))
+	}
+	h.response.Write([]byte("]}\n"))
+	return nil
+}
+
+
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
