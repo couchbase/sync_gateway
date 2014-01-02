@@ -57,28 +57,27 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
 
+
+	// Session/login URLs are per-database (unlike in CouchDB)
+	// These have public privileges so that they can be called without being logged in already
+	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
+	if sc.config.Persona != nil {
+		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
+			(*handler).handlePersonaPOST)).Methods("POST")
+	}
+	if sc.config.Facebook != nil {
+		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
+			(*handler).handleFacebookPOST)).Methods("POST")
+	}
+
 	return r, dbr
 }
 
 // Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, regularPrivs)
-
-	// Session/login URLs are per-database (unlike in CouchDB)
-	// These have public privileges so that they can be called without being logged in already
-	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
-	if sc.config.Persona != nil {
-		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
-			(*handler).handlePersonaPOST)).Methods("POST")
-	}
-
-	if sc.config.Facebook != nil {
-		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
-			(*handler).handleFacebookPOST)).Methods("POST")
-	}
-
 	return wrapRouter(sc, regularPrivs, r)
 }
 
