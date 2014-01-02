@@ -87,6 +87,13 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, adminPrivs)
 
+	// todo the path should be securely pinned to bin/utils or something
+	r.PathPrefix("/_utils/assets").Handler(http.StripPrefix("/_utils/assets",
+			http.FileServer(http.Dir("./utils/assets")))).Methods("GET", "HEAD")
+	r.PathPrefix("/_utils").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./utils/index.html")
+	})
+
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
 

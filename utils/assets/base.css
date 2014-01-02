@@ -1,0 +1,287 @@
+/* global tags */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #fff;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;;
+  font-size: 15px;
+  margin: 0;
+  padding: 0;
+}
+
+code {
+  background-color: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-family: "Bitstream Vera Sans Mono", Consolas, Courier, monospace;
+  font-size: 12px;
+  margin: 0 2px;
+  padding: 0px 5px;
+}
+
+h1, h2, h3, h4 {
+  font-weight: bold;
+  margin: 0 0 15px;
+  padding: 0;
+}
+
+h1 {
+  border-bottom: 1px solid #ddd;
+  font-size: 2.5em;
+  font-weight: bold;
+  margin: 0 0 15px;
+  padding: 0;
+}
+
+h2 {
+  border-bottom: 1px solid #eee;
+  font-size: 2em;
+}
+
+h3 {
+  font-size: 1.5em;
+}
+
+h4 {
+  font-size: 1.2em;
+}
+
+p, ul {
+  margin: 15px 0;
+}
+
+ul {
+  padding-left: 0;
+  list-style-type: none;
+}
+
+ul.defaults {
+  padding-left: 1em;
+  list-style-type: circle;
+}
+
+a {
+  color: #4183c4;
+  /*color: #94651a;*/
+  text-decoration: none;
+}
+
+a.active {
+  font-weight: bold;
+}
+
+a:hover {
+  /*color: #94651a;*/
+  text-decoration: underline;
+}
+
+.clear {
+  clear:both;
+}
+
+/* layout */
+
+#main, #container, #sidebar {
+  margin:0;
+  padding:0;
+}
+
+#main {
+/*  width: 85%;
+  float: left;*/
+}
+
+.content {
+  margin: 1em;
+}
+
+.logo img {
+  padding-top: 0.2em;
+  margin:0 0.2em;
+  height: .8em;
+}
+
+.NavBar {
+  font-size: 2em;
+  border-bottom: 1px solid #ddd;
+  position: fixed;
+  top:0;
+  left: 0;
+  width: 100%;
+  /*height:2em;*/
+  padding: 0.2em 0.5em;
+  background: rgba(255, 255, 255, 0.8);
+}
+.NavBar.preview {
+  background: rgba(255, 217, 119, 0.8);
+  /*background: #fff0b7;*/
+}
+
+
+.PreviewToggle {
+  float: right;
+  font-size: 50%;
+  padding: 0.2em
+}
+
+.NavBarWrap {
+  height: 3em;
+}
+
+/* layout */
+.SyncFunEditor {
+  /*background: #efe;*/
+  width: 100%
+}
+
+
+.SyncPreview {
+  /*background: #bbb;*/
+  padding:1em;
+  float:left;
+  width: 50%;
+  min-width: 40em;
+}
+
+.SyncPreview .docs {
+  width: 33%;
+  float: left;
+  padding:1em;
+}
+
+.JSONDoc {
+  width: 60%;
+  padding: 0.1em 0.25em;
+  float:left;
+  overflow: scroll;
+  max-height: 24em;
+}
+
+.JSONDoc pre {
+  background: #f3f3f8;
+  padding: 0.1em 0.25em;
+}
+
+.DocSyncPreview {
+  /*clear:left;*/
+  padding: 0.1em 0.25em;
+}
+
+.DocSyncPreview .channels, .DocSyncPreview .access {
+  width: 50%;
+  float:left;
+}
+
+.channelDocs {
+  float:left;
+  width: 30%;
+  padding: 0.1em 0.25em;
+}
+
+.ChannelAccessList {
+  padding: 0.1em 0.25em;
+  margin: 0.25em;
+  float: left;
+}
+
+
+.ChannelGrid>ul {
+  white-space:nowrap;
+  overflow-x:scroll;
+}
+
+.ChannelGrid>ul>li {
+  white-space:normal;
+  background: #eee;
+  width: 16em;
+  margin: .25em;
+  padding:.25em;
+  display: inline-flex;
+}
+
+.UserChannels li, .ChannelChanges li {
+  background: #ddedfd;
+  margin:.25em;
+  padding:.25em;
+}
+
+li.isAccess {
+  background: #fdf5cc;
+}
+
+li.hiddenAccess {
+  background: #fcccc1;
+}
+
+.UsersForDatabase, .RecentChannels, .ListDocs {
+  width: 16em;
+  float: left;
+  background: #f2f7f7;
+  margin:.25em;
+  padding:.25em;
+}
+
+.UsersForDatabase li, .RecentChannels li, .ListDocs li {
+  margin:0.1em .25em;
+  padding:0.1em .25em;
+}
+
+.UserInfo {
+  /*background: #efd;*/
+  float: left;
+  margin:0 1em;
+  /*width: 60%;*/
+}
+
+.UserChannels {
+  float: left;
+  width: 24em;
+  padding:0.1em .25em;
+}
+
+.UserDoc {
+  float: left;
+  width: 24em;
+  padding:0.1em .25em;
+}
+
+.DocsInChannel {
+  margin: 1em;
+}
+
+
+.watched {
+  font-weight: bold;
+  /*color: #012345;*/
+  color: #2463b7;
+}
+
+.SyncFunEditor {
+  /*padding:0.1em .25em;*/
+}
+
+.SyncFunctionCode {
+  float: left;
+  width:50%;
+  min-width: 40em;
+  padding:1em;
+  /*background: #ebebeb;*/
+}
+
+.SyncFunctionCodeButtons {
+  float:right;
+  padding: 0.25em;
+}
+
+.SyncFunctionCodeEditor {
+  border:1px solid #aaa;
+}
+
+.SyncFunEditor textarea {
+  font-size: 1em;
+  width: 100%; height: 20em;
+  padding: 0.25em;
+  background: #fefefe;
+}
