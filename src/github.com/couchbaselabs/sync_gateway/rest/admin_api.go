@@ -41,6 +41,25 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+// Get admin database info
+func (h *handler) handleAdminInfo() error {
+	if h.rq.Method == "HEAD" {
+		return nil
+	}
+	lastSeq, err := h.db.LastSequence()
+	if err != nil {
+		return err
+	}
+	response := db.Body{
+		"db_name":              h.db.Name,
+		"doc_count":            h.db.DocCount(),
+		"update_seq":           lastSeq,
+		"config" : 				h.db.DatabaseContext.Config,
+	}
+	h.writeJSON(response)
+	return nil
+}
+
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()

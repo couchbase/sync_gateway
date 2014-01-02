@@ -60,17 +60,17 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name       string                      // Database name in REST API (stored as key in JSON)
-	Server     *string                     // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username   string                      // Username for authenticating to server
-	Password   string                      // Password for authenticating to server
-	Bucket     *string                     // Bucket name on server; defaults to same as 'name'
-	Pool       *string                     // Couchbase pool name, default "default"
-	Sync       *string                     // Sync function defines which users can see which data
-	Users      map[string]*PrincipalConfig // Initial user accounts
-	Roles      map[string]*PrincipalConfig // Initial roles
-	RevsLimit  *uint32                     // Max depth a document's revision tree can grow to
-	ImportDocs interface{}                 // false, true, or "continuous"
+	name       string `json:"name"` // Database name in REST API (stored as key in JSON)
+	Server     *string `json:"server"`                    // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username   string  `json:"username"`    // Username for authenticating to server
+	Password   string  `json:"password"`   // Password for authenticating to server
+	Bucket     *string  `json:"bucket"`                    // Bucket name on server; defaults to same as 'name'
+	Pool       *string   `json:"pool"`                   // Couchbase pool name, default "default"
+	Sync       *string   `json:"sync"`                   // Sync function defines which users can see which data
+	Users      map[string]*PrincipalConfig `json:"users"` // Initial user accounts
+	Roles      map[string]*PrincipalConfig `json:"roles"` // Initial roles
+	RevsLimit  *uint32     `json:"revs_limit"`                 // Max depth a document's revision tree can grow to
+	ImportDocs interface{}    `json:"import_docs"`     // false, true, or "continuous"
 }
 
 type DbConfigMap map[string]*DbConfig

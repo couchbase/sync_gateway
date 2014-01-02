@@ -125,6 +125,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
 
+	dbr.Handle("/_info",
+		makeHandler(sc, adminPrivs, (*handler).handleAdminInfo)).Methods("GET")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_dump/{view}",

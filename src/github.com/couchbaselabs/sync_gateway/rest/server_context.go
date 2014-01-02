@@ -180,6 +180,8 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		return nil, err
 	}
 
+	dbcontext.Config = config
+
 	syncFn := ""
 	if config.Sync != nil {
 		syncFn = *config.Sync
