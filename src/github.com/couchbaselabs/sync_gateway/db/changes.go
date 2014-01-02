@@ -174,7 +174,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 			if logEntry.Flags&channels.Removed != 0 {
 				change.Removed = channels.SetOf(channel)
 			} else if options.IncludeDocs || options.Conflicts {
-				doc, _ := db.getDoc(logEntry.DocID)
+				doc, _ := db.GetDoc(logEntry.DocID)
 				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, false)
 			}
 

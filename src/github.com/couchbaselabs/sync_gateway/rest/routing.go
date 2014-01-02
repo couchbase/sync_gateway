@@ -91,6 +91,9 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
 
+	dbr.Handle("/_raw/{docid:"+docRegex+"}",
+		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
+
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, (*handler).getUsers)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/",

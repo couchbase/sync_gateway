@@ -50,6 +50,19 @@ func (h *handler) handleDeleteDB() error {
 	return nil
 }
 
+// raw document access for admin api
+
+func (h *handler) handleGetRawDoc() error {
+	h.assertAdminOnly()
+	docid := h.PathVar("docid")
+	doc, err := h.db.GetDoc(docid)
+	h.writeJSON(doc)
+	return err
+}
+
+
+
+
 //////// USERS & ROLES:
 
 func internalUserName(name string) string {

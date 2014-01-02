@@ -34,7 +34,7 @@ func (db *Database) realDocID(docid string) string {
 	return docid
 }
 
-func (db *Database) getDoc(docid string) (*document, error) {
+func (db *Database) GetDoc(docid string) (*document, error) {
 	key := db.realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -56,7 +56,7 @@ func (db *Database) Get(docid string) (Body, error) {
 
 // Returns the body of a revision of a document.
 func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
-	doc, err := db.getDoc(docid)
+	doc, err := db.GetDoc(docid)
 	if doc == nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
 func (db *Database) GetRevAndChannels(docid, revid string, listRevisions bool) (body Body, channels ChannelMap, access UserAccessMap, roleAccess UserAccessMap, err error) {
-	doc, err := db.getDoc(docid)
+	doc, err := db.GetDoc(docid)
 	if doc == nil {
 		return
 	}
@@ -101,7 +101,7 @@ func (db *Database) GetRevAndChannels(docid, revid string, listRevisions bool) (
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
 func (db *Database) AuthorizeDocID(docid, revid string) error {
-	doc, err := db.getDoc(docid)
+	doc, err := db.GetDoc(docid)
 	if doc == nil {
 		return err
 	}
@@ -710,7 +710,7 @@ func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error
 
 // Given a document ID and a set of revision IDs, looks up which ones are not known.
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
-	doc, err := db.getDoc(docid)
+	doc, err := db.GetDoc(docid)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.Warn("RevDiff(%q) --> %T %v", docid, err, err)
