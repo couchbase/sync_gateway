@@ -54,7 +54,7 @@ func (h *handler) handleAdminInfo() error {
 		"db_name":    h.db.Name,
 		"doc_count":  h.db.DocCount(),
 		"update_seq": lastSeq,
-		"config":     h.db.DatabaseContext.Config,
+		"config":     h.server.config,
 	}
 	h.writeJSON(response)
 	return nil
