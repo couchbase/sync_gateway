@@ -42,21 +42,8 @@ func (h *handler) handleCreateDB() error {
 }
 
 // Get admin database info
-func (h *handler) handleAdminInfo() error {
-	if h.rq.Method == "HEAD" {
-		return nil
-	}
-	lastSeq, err := h.db.LastSequence()
-	if err != nil {
-		return err
-	}
-	response := db.Body{
-		"db_name":    h.db.Name,
-		"doc_count":  h.db.DocCount(),
-		"update_seq": lastSeq,
-		"config":     h.server.config,
-	}
-	h.writeJSON(response)
+func (h *handler) handleGetDbConfig() error {
+	h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	return nil
 }
 
