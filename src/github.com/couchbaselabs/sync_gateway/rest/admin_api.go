@@ -51,10 +51,10 @@ func (h *handler) handleAdminInfo() error {
 		return err
 	}
 	response := db.Body{
-		"db_name":              h.db.Name,
-		"doc_count":            h.db.DocCount(),
-		"update_seq":           lastSeq,
-		"config" : 				h.db.DatabaseContext.Config,
+		"db_name":    h.db.Name,
+		"doc_count":  h.db.DocCount(),
+		"update_seq": lastSeq,
+		"config":     h.db.DatabaseContext.Config,
 	}
 	h.writeJSON(response)
 	return nil
@@ -78,9 +78,6 @@ func (h *handler) handleGetRawDoc() error {
 	h.writeJSON(doc)
 	return err
 }
-
-
-
 
 //////// USERS & ROLES:
 

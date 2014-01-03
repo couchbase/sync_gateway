@@ -170,7 +170,7 @@ func (h *handler) handleView() error {
 	h.response.Write([]byte(`{"rows":[`))
 	first := true
 	for _, row := range result.Rows {
-		if (first) {
+		if first {
 			first = false
 		} else {
 			h.response.Write([]byte(",\n"))
@@ -184,7 +184,6 @@ func (h *handler) handleView() error {
 	h.response.Write([]byte("]}\n"))
 	return nil
 }
-
 
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
