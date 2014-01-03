@@ -35,6 +35,10 @@ type syncData struct {
 	Channels   ChannelMap    `json:"channels,omitempty"`
 	Access     UserAccessMap `json:"access,omitempty"`
 	RoleAccess UserAccessMap `json:"role_access,omitempty"`
+
+	// Fields used by bucket-shadowing:
+	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
+	UpstreamRev string  `json:"upstream_rev,omitempty"` // Rev ID remote doc was saved as
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.

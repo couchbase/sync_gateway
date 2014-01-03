@@ -37,6 +37,7 @@ type DatabaseContext struct {
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
+	Shadower           *Shadower               // Tracks an external Couchbase bucket
 }
 
 const DefaultRevsLimit = 1000
@@ -98,6 +99,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 
 func (context *DatabaseContext) Close() {
 	context.tapListener.Stop()
+	context.Shadower.Stop()
 	context.changesWriter.checkpoint()
 	context.Bucket.Close()
 	context.Bucket = nil
