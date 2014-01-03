@@ -62,7 +62,9 @@ func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
 	doc, err := h.db.GetDoc(docid)
-	h.writeJSON(doc)
+	if doc != nil {
+		h.writeJSON(doc)
+	}
 	return err
 }
 
