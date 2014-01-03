@@ -25,3 +25,6 @@
 [submodule "vendor/src/github.com/tleyden/fakehttp"]
 	path = vendor/src/github.com/tleyden/fakehttp
 	url = https://github.com/tleyden/fakehttp.git
+[submodule "utils"]
+	path = utils
+	url = https://github.com/couchbaselabs/sync_gateway_admin_ui.git
