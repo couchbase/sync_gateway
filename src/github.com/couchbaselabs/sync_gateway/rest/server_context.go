@@ -47,6 +47,9 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		databases_: map[string]*db.DatabaseContext{},
 		HTTPClient: http.DefaultClient,
 	}
+	if config.Databases == nil {
+		config.Databases = DbConfigMap{}
+	}
 
 	// Initialize the go-couchbase library's global configuration variables:
 	couchbase.PoolSize = DefaultMaxCouchbaseConnections
@@ -98,6 +101,19 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		}
 		return dbc, nil
 	}
+}
+
+func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
+	sc.lock.RLock()
+	config := sc.config.Databases[name]
+	sc.lock.RUnlock()
+	return config
+}
+
+func (sc *ServerContext) setDatabaseConfig(name string, config *DbConfig) {
+	sc.lock.Lock()
+	sc.config.Databases[name] = config
+	sc.lock.Unlock()
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
@@ -208,6 +224,7 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		dbcontext.Close()
 		return nil, err
 	}
+	sc.setDatabaseConfig(config.name, config)
 	return dbcontext, nil
 }
 
