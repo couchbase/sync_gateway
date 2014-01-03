@@ -57,7 +57,6 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
 
-
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
@@ -86,6 +85,13 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 // Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, adminPrivs)
+
+	// todo the path should be securely pinned to bin/utils or something
+	r.PathPrefix("/_utils/assets").Handler(http.StripPrefix("/_utils/assets",
+		http.FileServer(http.Dir("./utils/assets")))).Methods("GET", "HEAD")
+	r.PathPrefix("/_utils").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./utils/index.html")
+	})
 
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
