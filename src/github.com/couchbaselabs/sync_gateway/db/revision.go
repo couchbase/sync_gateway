@@ -20,11 +20,13 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+// Looks up the raw JSON data of a revision that's been archived to a separate doc.
+// If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (db *Database) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
 	data, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
 		base.LogTo("CRUD+", "No old revision %q / %q", docid, revid)
-		err = nil
+		err = base.HTTPErrorf(404, "missing")
 	}
 	if data != nil {
 		base.LogTo("CRUD+", "Got old revision %q / %q --> %d bytes", docid, revid, len(data))

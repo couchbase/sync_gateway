@@ -545,6 +545,9 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID s
 		var oldJsonBytes []byte
 		oldJsonBytes, err = db.getRevisionJSON(doc, parentRevID)
 		if err != nil {
+			if base.IsDocNotFoundError(err) {
+				err = nil
+			}
 			return
 		}
 		oldJson = string(oldJsonBytes)
