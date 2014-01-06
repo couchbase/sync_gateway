@@ -154,14 +154,46 @@ func (h *handler) handleDump() error {
 // HTTP handler for _view
 func (h *handler) handleView() error {
 	viewName := h.PathVar("view")
-	base.LogTo("HTTP", "JSON view %q", viewName)
-	opts := db.Body{ // for now we always return the full result set
-		// "stale": h.getBoolQuery("stale"),
-		"reduce": false,
-		// "startkey" : h.getQuery("startkey"),
-		// "endkey" : h.getQuery("endkey"),
-		// "group_level" : h.getIntQuery("group_level", 1),
+	opts := db.Body{}
+	qStale := h.getQuery("stale")
+	if "" != qStale {
+		opts["stale"] = qStale == "true"
 	}
+	qReduce := h.getQuery("reduce")
+	if "" != qReduce {
+		opts["reduce"] = qReduce == "true"
+	}
+	qStartkey := h.getQuery("startkey")
+	if "" != qStartkey {
+		var sKey interface{}
+		errS := json.Unmarshal([]byte(qStartkey), &sKey)
+		if errS != nil {
+			return errS
+		}
+		opts["startkey"] = sKey
+	}
+	qEndkey := h.getQuery("endkey")
+	if "" != qEndkey {
+		var eKey interface{}
+		errE := json.Unmarshal([]byte(qEndkey), &eKey)
+		if errE != nil {
+			return errE
+		}
+		opts["endkey"] = eKey
+	}
+	qGroupLevel := h.getQuery("group_level")
+	if "" != qGroupLevel {
+		opts["group_level"] = int(h.getIntQuery("group_level", 1))
+	}
+	qGroup := h.getQuery("group")
+	if "" != qGroup {
+		opts["group"] = qGroup == "true"
+	}
+	qLimit := h.getQuery("limit")
+	if "" != qLimit {
+		opts["limit"] = int(h.getIntQuery("limit", 1))
+	}
+	base.LogTo("HTTP", "JSON view %q opts %q", viewName, opts)
 	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
 	if err != nil {
 		return err
