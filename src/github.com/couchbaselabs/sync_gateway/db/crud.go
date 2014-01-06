@@ -393,11 +393,16 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Store the new revision body into the doc:
 		doc.setRevision(newRevID, body)
 
-		if doc.CurrentRev != newRevID && doc.CurrentRev != prevCurrentRev {
-			// If the new revision is not current, transfer the current revision's
-			// body to the top level doc.body:
-			doc.body = doc.History.getParsedRevisionBody(doc.CurrentRev)
-			doc.History.setRevisionBody(doc.CurrentRev, nil)
+		if doc.CurrentRev == newRevID {
+			doc.NewestRev = ""
+		} else {
+			doc.NewestRev = newRevID
+			if doc.CurrentRev != prevCurrentRev {
+				// If the new revision is not current, transfer the current revision's
+				// body to the top level doc.body:
+				doc.body = doc.History.getParsedRevisionBody(doc.CurrentRev)
+				doc.History.setRevisionBody(doc.CurrentRev, nil)
+			}
 		}
 
 		// Run the sync function, to validate the update and compute its channels/access:

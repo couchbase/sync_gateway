@@ -37,6 +37,7 @@ type DatabaseContext struct {
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
+	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 }
 
@@ -79,10 +80,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		return nil, err
 	}
 	context := &DatabaseContext{
-		Name:      dbName,
-		Bucket:    bucket,
-		StartTime: time.Now(),
-		RevsLimit: DefaultRevsLimit,
+		Name:       dbName,
+		Bucket:     bucket,
+		StartTime:  time.Now(),
+		RevsLimit:  DefaultRevsLimit,
+		autoImport: autoImport,
 	}
 	context.changesWriter = newChangesWriter(bucket)
 	var err error
@@ -90,10 +92,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 	if err != nil {
 		return nil, err
 	}
-	if err = context.tapListener.Start(bucket, autoImport); err != nil {
+	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
 	}
-	go context.runAssimilator()
+	go context.watchDocChanges()
 	return context, nil
 }
 

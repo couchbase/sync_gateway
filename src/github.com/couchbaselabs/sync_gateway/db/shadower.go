@@ -82,6 +82,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
 			return nil, couchbase.UpdateCancel // we already have this doc revision
 		}
+		base.LogTo("Shadow+", "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", key, cas, doc.UpstreamRev, doc.UpstreamCAS)
 		// Make the prior pulled revision (if any) the parent:
 		parentRev := doc.UpstreamRev
 		generation, _ := parseRevID(parentRev)
@@ -89,9 +90,14 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		doc.UpstreamRev = newRev
 		doc.UpstreamCAS = &cas
 		body["_rev"] = newRev
-
-		doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
-		base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
+		if doc.History[newRev] == nil {
+			doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
+			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
+		} else {
+			// We already have this rev; but don't cancel, because we do need to update the
+			// doc's UpstreamRev/UpstreamCAS fields.
+			base.LogTo("Shadow+", "Not pulling %q, CAS=%x (echo of rev %q)", key, cas, newRev)
+		}
 		return body, nil
 	})
 	if err == couchbase.UpdateCancel {
@@ -102,9 +108,18 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 
 // Saves a new local revision to the external bucket.
 func (s *Shadower) PushRevision(doc *document) {
+	if doc.newestRevID() == doc.UpstreamRev {
+		return // This revision was pulled from the external bucket, so don't push it back!
+	}
+
+	base.LogTo("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
 	bytes := doc.getRevisionJSON(doc.CurrentRev)
-	err := s.bucket.Set(doc.ID, 0, bytes)
+	if bytes == nil {
+		base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
+		return
+	}
+	err := s.bucket.SetRaw(doc.ID, 0, bytes)
 	if err != nil {
-		base.Warn("Error pushing rev to external bucket: %v", err)
+		base.Warn("Error pushing rev of %q to external bucket: %v", doc.ID, err)
 	}
 }

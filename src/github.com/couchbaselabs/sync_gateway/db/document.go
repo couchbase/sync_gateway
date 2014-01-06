@@ -29,6 +29,7 @@ type UserAccessMap map[string]channels.TimedSet
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
 	CurrentRev string        `json:"rev"`
+	NewestRev  string        `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
 	Deleted    bool          `json:"deleted,omitempty"`
 	Sequence   uint64        `json:"sequence"`
 	History    RevTree       `json:"history"`
@@ -68,6 +69,13 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 
 func (doc *document) hasValidSyncData() bool {
 	return doc.CurrentRev != "" && doc.Sequence > 0
+}
+
+func (doc *document) newestRevID() string {
+	if doc.NewestRev != "" {
+		return doc.NewestRev
+	}
+	return doc.CurrentRev
 }
 
 // Fetches the body of a revision as a map, or nil if it's not available.
