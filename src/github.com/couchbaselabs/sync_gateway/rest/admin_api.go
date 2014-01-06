@@ -41,6 +41,12 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+// Get admin database info
+func (h *handler) handleGetDbConfig() error {
+	h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+	return nil
+}
+
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
@@ -48,6 +54,18 @@ func (h *handler) handleDeleteDB() error {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
 	return nil
+}
+
+// raw document access for admin api
+
+func (h *handler) handleGetRawDoc() error {
+	h.assertAdminOnly()
+	docid := h.PathVar("docid")
+	doc, err := h.db.GetDoc(docid)
+	if doc != nil {
+		h.writeJSON(doc)
+	}
+	return err
 }
 
 //////// USERS & ROLES:

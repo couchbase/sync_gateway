@@ -388,7 +388,7 @@ func TestConflicts(t *testing.T) {
 		"channels": []interface{}{"all", "2a"}})
 
 	// Verify channel assignments are correct for channels defined by 2-a:
-	doc, _ := db.getDoc("doc")
+	doc, _ := db.GetDoc("doc")
 	chan2a, found := doc.Channels["2a"]
 	assert.True(t, found)
 	assert.True(t, chan2a == nil)             // currently in 2a
@@ -508,7 +508,7 @@ func TestImport(t *testing.T) {
 	}
 
 	// Make sure they aren't visible thru the gateway:
-	doc, err := db.getDoc("alreadyHere1")
+	doc, err := db.GetDoc("alreadyHere1")
 	assert.Equals(t, doc, (*document)(nil))
 	assert.Equals(t, err.(*base.HTTPError).Status, 404)
 
@@ -517,7 +517,7 @@ func TestImport(t *testing.T) {
 	assertNoError(t, err, "ApplySyncFun")
 
 	// Now they're visible:
-	doc, err = db.getDoc("alreadyHere1")
+	doc, err = db.GetDoc("alreadyHere1")
 	base.Log("doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")

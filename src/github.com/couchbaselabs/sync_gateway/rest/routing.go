@@ -57,28 +57,26 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
 
+	// Session/login URLs are per-database (unlike in CouchDB)
+	// These have public privileges so that they can be called without being logged in already
+	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
+	if sc.config.Persona != nil {
+		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
+			(*handler).handlePersonaPOST)).Methods("POST")
+	}
+	if sc.config.Facebook != nil {
+		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
+			(*handler).handleFacebookPOST)).Methods("POST")
+	}
+
 	return r, dbr
 }
 
 // Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, regularPrivs)
-
-	// Session/login URLs are per-database (unlike in CouchDB)
-	// These have public privileges so that they can be called without being logged in already
-	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
-	if sc.config.Persona != nil {
-		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
-			(*handler).handlePersonaPOST)).Methods("POST")
-	}
-
-	if sc.config.Facebook != nil {
-		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
-			(*handler).handleFacebookPOST)).Methods("POST")
-	}
-
 	return wrapRouter(sc, regularPrivs, r)
 }
 
@@ -88,8 +86,18 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, adminPrivs)
 
+	// todo the path should be securely pinned to bin/utils or something
+	r.PathPrefix("/_utils/assets").Handler(http.StripPrefix("/_utils/assets",
+		http.FileServer(http.Dir("./utils/assets")))).Methods("GET", "HEAD")
+	r.PathPrefix("/_utils").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./utils/index.html")
+	})
+
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
+
+	dbr.Handle("/_raw/{docid:"+docRegex+"}",
+		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, (*handler).getUsers)).Methods("GET", "HEAD")
@@ -122,10 +130,14 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
 
+	dbr.Handle("/_config",
+		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
+	dbr.Handle("/_view/{view}",
+		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
 
