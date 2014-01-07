@@ -113,12 +113,12 @@ func (s *Shadower) PushRevision(doc *document) {
 	}
 
 	base.LogTo("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
-	bytes := doc.getRevisionJSON(doc.CurrentRev)
-	if bytes == nil {
+	body := doc.getRevision(doc.CurrentRev)
+	if body == nil {
 		base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
 		return
 	}
-	err := s.bucket.SetRaw(doc.ID, 0, bytes)
+	err := s.bucket.Set(doc.ID, 0, body)
 	if err != nil {
 		base.Warn("Error pushing rev of %q to external bucket: %v", doc.ID, err)
 	}

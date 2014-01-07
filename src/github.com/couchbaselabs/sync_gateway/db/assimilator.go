@@ -12,6 +12,7 @@ func (c *DatabaseContext) watchDocChanges() {
 	if c.tapListener.DocChannel == nil {
 		return
 	}
+	base.LogTo("Shadow", "Watching doc changes...")
 	for event := range c.tapListener.DocChannel {
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {
