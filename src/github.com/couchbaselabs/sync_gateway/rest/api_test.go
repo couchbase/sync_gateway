@@ -216,13 +216,27 @@ func TestManualAttachment(t *testing.T) {
 
 	doc1revId := rt.createDoc(t, "doc1")
 
-	// attach to existing document
+	// attach to existing document without rev (should fail)
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
-	response := rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
+	response := rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+
+	// attach to existing document with wrong rev (should fail)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev=1-xyz", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+
+	// attach to existing document with wrong rev using If-Match header (should fail)
+	reqHeaders["If-Match"] = "1-dnf"
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+	delete(reqHeaders, "If-Match")
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
@@ -252,6 +266,21 @@ func TestManualAttachment(t *testing.T) {
 	}
 	assert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
 
+	// try to overwrite that attachment again, this time using If-Match header
+	attachmentBody = "updated content again"
+	reqHeaders["If-Match"] = revIdAfterUpdateAttachment
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterUpdateAttachmentAgain := body["rev"].(string)
+	if revIdAfterUpdateAttachmentAgain == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterUpdateAttachmentAgain != revIdAfterUpdateAttachment)
+	delete(reqHeaders, "If-Match")
+
 	// retrieve attachment
 	response = rt.sendRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
@@ -262,7 +291,7 @@ func TestManualAttachment(t *testing.T) {
 	// also no explicit Content-Type header on this one
 	// should default to application/octet-stream
 	attachmentBody = "separate content"
-	response = rt.sendRequest("PUT", "/db/doc1/attach2?rev="+revIdAfterUpdateAttachment, attachmentBody)
+	response = rt.sendRequest("PUT", "/db/doc1/attach2?rev="+revIdAfterUpdateAttachmentAgain, attachmentBody)
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	json.Unmarshal(response.Body.Bytes(), &body)
@@ -301,13 +330,23 @@ func TestManualAttachment(t *testing.T) {
 func TestManualAttachmentNewDoc(t *testing.T) {
 	var rt restTester
 
-	// attach to existing document
+	// attach to new document using bogus rev (should fail)
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "text/plain"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
-	response := rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	response := rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1?rev=1-abc", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+
+	// attach to new document using bogus rev using If-Match header (should fail)
+	reqHeaders["If-Match"] = "1-xyz"
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+	delete(reqHeaders, "If-Match")
+
+	// attach to new document without any rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)

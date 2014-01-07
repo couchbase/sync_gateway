@@ -131,6 +131,9 @@ func (h *handler) handlePutAttachment() error {
 		attachmentContentType = "application/octet-stream"
 	}
 	revid := h.getQuery("rev")
+	if revid == "" {
+		revid = h.rq.Header.Get("If-Match")
+	}
 	attachmentData, err := ioutil.ReadAll(h.rq.Body)
 	if err != nil {
 		return err
@@ -141,6 +144,7 @@ func (h *handler) handlePutAttachment() error {
 		// couchdb creates empty body on attachment PUT
 		// for non-existant doc id
 		body = db.Body{}
+		body["_rev"] = revid
 	} else if err != nil {
 		return err
 	} else if body != nil {
