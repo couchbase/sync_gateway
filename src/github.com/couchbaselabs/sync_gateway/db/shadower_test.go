@@ -20,6 +20,19 @@ func makeExternalBucket() base.Bucket {
 	return bucket
 }
 
+// Evaluates a condition every 100ms until it becomes true. If 3sec elapse, fails an assertion
+func waitFor(t *testing.T, condition func() bool) bool {
+	var start = time.Now()
+	for !condition() {
+		if time.Since(start) >= 3*time.Second {
+			assertFailed(t, "Timeout!")
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return true
+}
+
 func TestShadowerPull(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
@@ -35,22 +48,27 @@ func TestShadowerPull(t *testing.T) {
 
 	base.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 *document
-	var start = time.Now()
-	for {
+	waitFor(t, func() bool {
 		seq, _ := db.LastSequence()
-		if seq >= 2 {
-			break
-		}
-		if time.Since(start) >= 3*time.Second {
-			assertFailed(t, "Timeout!")
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return seq >= 2
+	})
 	doc1, _ = db.GetDoc("key1")
 	doc2, _ = db.GetDoc("key2")
 	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
 	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
+
+	base.Log("Deleting remote doc")
+	bucket.Delete("key1")
+
+	waitFor(t, func() bool {
+		seq, _ := db.LastSequence()
+		return seq >= 3
+	})
+
+	doc1, _ = db.GetDoc("key1")
+	assert.True(t, doc1.Deleted)
+	_, err = db.Get("key1")
+	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
 }
 
 func TestShadowerPush(t *testing.T) {
@@ -65,25 +83,25 @@ func TestShadowerPush(t *testing.T) {
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket)
 	assertNoError(t, err, "NewShadower")
 
-	time.Sleep(1 * time.Millisecond) //TEMP
-	_, err = db.Put("key1", Body{"aaa": "bbb"})
+	key1rev1, err := db.Put("key1", Body{"aaa": "bbb"})
 	assertNoError(t, err, "Put")
 	_, err = db.Put("key2", Body{"ccc": "ddd"})
 	assertNoError(t, err, "Put")
 
 	base.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 Body
-	var start = time.Now()
-	for {
-		if bucket.Get("key1", &doc1) == nil && bucket.Get("key2", &doc2) == nil {
-			break
-		}
-		if time.Since(start) >= 3*time.Second {
-			assertFailed(t, "Timeout!")
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	waitFor(t, func() bool {
+		return bucket.Get("key1", &doc1) == nil && bucket.Get("key2", &doc2) == nil
+	})
 	assert.DeepEquals(t, doc1, Body{"aaa": "bbb"})
 	assert.DeepEquals(t, doc2, Body{"ccc": "ddd"})
+
+	base.Log("Deleting local doc")
+	db.DeleteDoc("key1", key1rev1)
+
+	waitFor(t, func() bool {
+		err = bucket.Get("key1", &doc1)
+		return err != nil
+	})
+	assert.True(t, base.IsDocNotFoundError(err))
 }

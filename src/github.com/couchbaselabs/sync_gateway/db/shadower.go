@@ -72,8 +72,12 @@ func (s *Shadower) readTapFeed() {
 // Gets an external document and applies it as a new revision to the managed document.
 func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas uint64, flags uint32) error {
 	var body Body
-	if err := json.Unmarshal(value, &body); err != nil {
-		return err
+	if isDeletion {
+		body = Body{"_deleted": true}
+	} else {
+		if err := json.Unmarshal(value, &body); err != nil {
+			return err
+		}
 	}
 
 	db, _ := CreateDatabase(s.context)
@@ -112,13 +116,19 @@ func (s *Shadower) PushRevision(doc *document) {
 		return // This revision was pulled from the external bucket, so don't push it back!
 	}
 
-	base.LogTo("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
-	body := doc.getRevision(doc.CurrentRev)
-	if body == nil {
-		base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
-		return
+	var err error
+	if doc.Deleted {
+		base.LogTo("Shadow", "Pushing %q, rev %q [deletion]", doc.ID, doc.CurrentRev)
+		err = s.bucket.Delete(doc.ID)
+	} else {
+		base.LogTo("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
+		body := doc.getRevision(doc.CurrentRev)
+		if body == nil {
+			base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
+			return
+		}
+		err = s.bucket.Set(doc.ID, 0, body)
 	}
-	err := s.bucket.Set(doc.ID, 0, body)
 	if err != nil {
 		base.Warn("Error pushing rev of %q to external bucket: %v", doc.ID, err)
 	}
