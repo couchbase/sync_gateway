@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -37,10 +38,6 @@ func (s *Shadower) Stop() {
 	}
 }
 
-func (s *Shadower) CurrentCheckpoint() uint64 {
-	return 0 // TODO: Current tap protocol doesn't provide any value we can return here :(
-}
-
 // Main loop that pulls changes from the external bucket. (Runs in its own goroutine.)
 func (s *Shadower) readTapFeed() {
 	vbucketsFilling := 0
@@ -53,12 +50,15 @@ func (s *Shadower) readTapFeed() {
 			vbucketsFilling++
 			//base.LogTo("Shadow", "Reading history of external bucket")
 		case walrus.TapMutation, walrus.TapDeletion:
-			if event.Expiry == 0 {
-				isDeletion := event.Opcode == walrus.TapDeletion
-				err := s.pullDocument(string(event.Key), event.Value, isDeletion, event.Sequence, event.Flags)
-				if err != nil {
-					base.Warn("Error applying change from external bucket: %v", err)
-				}
+			key := string(event.Key)
+			// Ignore ephemeral documents or ones whose ID would conflict with our metadata
+			if event.Expiry > 0 || strings.HasPrefix(key, kSyncKeyPrefix) {
+				break
+			}
+			isDeletion := event.Opcode == walrus.TapDeletion
+			err := s.pullDocument(key, event.Value, isDeletion, event.Sequence, event.Flags)
+			if err != nil {
+				base.Warn("Error applying change from external bucket: %v", err)
 			}
 		case walrus.TapEndBackfill:
 			if vbucketsFilling--; vbucketsFilling == 0 {
