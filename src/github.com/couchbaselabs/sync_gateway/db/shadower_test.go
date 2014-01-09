@@ -2,6 +2,7 @@ package db
 
 import (
 	"log"
+	"regexp"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ func TestShadowerPull(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	shadower, err := NewShadower(db.DatabaseContext, bucket)
+	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
@@ -80,7 +81,7 @@ func TestShadowerPush(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	var err error
-	db.Shadower, err = NewShadower(db.DatabaseContext, bucket)
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
 	assertNoError(t, err, "NewShadower")
 
 	key1rev1, err := db.Put("key1", Body{"aaa": "bbb"})
@@ -104,4 +105,32 @@ func TestShadowerPush(t *testing.T) {
 		return err != nil
 	})
 	assert.True(t, base.IsDocNotFoundError(err))
+}
+
+func TestShadowerPattern(t *testing.T) {
+	bucket := makeExternalBucket()
+	defer bucket.Close()
+	bucket.Set("key1", 0, Body{"foo": 1})
+	bucket.Set("ignorekey", 0, Body{"bar": -1})
+	bucket.Set("key2", 0, Body{"bar": -1})
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	pattern, _ := regexp.Compile(`key\d+`)
+	shadower, err := NewShadower(db.DatabaseContext, bucket, pattern)
+	assertNoError(t, err, "NewShadower")
+	defer shadower.Stop()
+
+	base.Log("Waiting for shadower to catch up...")
+	waitFor(t, func() bool {
+		seq, _ := db.LastSequence()
+		return seq >= 1
+	})
+	doc1, _ := db.GetDoc("key1")
+	docI, _ := db.GetDoc("ignorekey")
+	doc2, _ := db.GetDoc("key2")
+	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
+	assert.True(t, docI == nil)
+	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
 }

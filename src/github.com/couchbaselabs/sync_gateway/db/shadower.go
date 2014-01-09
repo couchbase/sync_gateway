@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -15,18 +16,19 @@ import (
 // Accepts local change notifications and makes equivalent changes to the external bucket.
 // See: https://github.com/couchbase/sync_gateway/wiki/Bucket-Shadowing
 type Shadower struct {
-	context *DatabaseContext // Database
-	bucket  base.Bucket      // External bucket we sync with
-	tapFeed base.TapFeed     // Observes changes to bucket
+	context      *DatabaseContext // Database
+	bucket       base.Bucket      // External bucket we sync with
+	tapFeed      base.TapFeed     // Observes changes to bucket
+	docIDPattern *regexp.Regexp    // Optional regex that key/doc IDs must match
 }
 
 // Creates a new Shadower.
-func NewShadower(context *DatabaseContext, bucket base.Bucket) (*Shadower, error) {
+func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp) (*Shadower, error) {
 	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: 0})
 	if err != nil {
 		return nil, err
 	}
-	s := &Shadower{context: context, bucket: bucket, tapFeed: tapFeed}
+	s := &Shadower{context: context, bucket: bucket, tapFeed: tapFeed, docIDPattern: docIDPattern}
 	go s.readTapFeed()
 	return s, nil
 }
@@ -36,6 +38,16 @@ func (s *Shadower) Stop() {
 	if s != nil && s.tapFeed != nil {
 		s.tapFeed.Close()
 	}
+}
+
+func (s *Shadower) docIDMatches(docID string) bool {
+	if s.docIDPattern != nil {
+		match := s.docIDPattern.FindStringIndex(docID)
+		if match == nil || match[0] != 0 || match[1] != len(docID) {
+			return false
+		}
+	}
+	return !strings.HasPrefix(docID, kSyncKeyPrefix)
 }
 
 // Main loop that pulls changes from the external bucket. (Runs in its own goroutine.)
@@ -52,7 +64,7 @@ func (s *Shadower) readTapFeed() {
 		case walrus.TapMutation, walrus.TapDeletion:
 			key := string(event.Key)
 			// Ignore ephemeral documents or ones whose ID would conflict with our metadata
-			if event.Expiry > 0 || strings.HasPrefix(key, kSyncKeyPrefix) {
+			if event.Expiry > 0 || !s.docIDMatches(key) {
 				break
 			}
 			isDeletion := event.Opcode == walrus.TapDeletion
@@ -112,7 +124,9 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 
 // Saves a new local revision to the external bucket.
 func (s *Shadower) PushRevision(doc *document) {
-	if doc.newestRevID() == doc.UpstreamRev {
+	if !s.docIDMatches(doc.ID) {
+		return
+	} else if doc.newestRevID() == doc.UpstreamRev {
 		return // This revision was pulled from the external bucket, so don't push it back!
 	}
 
