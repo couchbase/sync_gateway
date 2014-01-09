@@ -130,6 +130,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleHeapProfiling)).Methods("POST")
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
+	r.Handle(kDebugURLPathPrefix,
+		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
 
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
