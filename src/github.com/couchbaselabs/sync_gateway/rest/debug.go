@@ -26,7 +26,7 @@ func init() {
 	couchbase.ConnPoolCallback = recordConnPoolStat
 
 	expCb := expvar.NewMap("cb")
-	expHistos := &expvar.Map{}
+	expHistos = &expvar.Map{}
 	expHistos.Init()
 	expCb.Set("pools", expHistos)
 }
