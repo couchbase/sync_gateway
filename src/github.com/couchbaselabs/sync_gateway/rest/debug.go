@@ -16,30 +16,38 @@ import (
 const kDebugURLPathPrefix = "/_expvar"
 
 var (
-	histos   = map[string]metrics.Histogram{}
-	histosMu = sync.Mutex{}
+	poolhistos = map[string]metrics.Histogram{}
+	opshistos  = map[string]metrics.Histogram{}
+	histosMu   = sync.Mutex{}
 
-	expHistos *expvar.Map
+	expPoolHistos *expvar.Map
+	expOpsHistos  *expvar.Map
 )
 
 func init() {
 	couchbase.ConnPoolCallback = recordConnPoolStat
+	couchbase.ClientOpCallback = recordCBClientStat
 
 	expCb := expvar.NewMap("cb")
-	expHistos = &expvar.Map{}
-	expHistos.Init()
-	expCb.Set("pools", expHistos)
+	expPoolHistos = &expvar.Map{}
+	expPoolHistos.Init()
+	expCb.Set("pools", expPoolHistos)
+
+	expOpsHistos = &expvar.Map{}
+	expOpsHistos.Init()
+	expCb.Set("ops", expOpsHistos)
+
 }
 
 func connPoolHisto(name string) metrics.Histogram {
 	histosMu.Lock()
 	defer histosMu.Unlock()
-	rv, ok := histos[name]
+	rv, ok := poolhistos[name]
 	if !ok {
 		rv = metrics.NewBiasedHistogram()
-		histos[name] = rv
+		poolhistos[name] = rv
 
-		expHistos.Set(name, &metrics.HistogramExport{rv,
+		expPoolHistos.Set(name, &metrics.HistogramExport{rv,
 			[]float64{0.25, 0.5, 0.75, 0.90, 0.99},
 			[]string{"p25", "p50", "p75", "p90", "p99"}})
 	}
@@ -49,6 +57,27 @@ func connPoolHisto(name string) metrics.Histogram {
 func recordConnPoolStat(host string, source string, start time.Time, err error) {
 	duration := time.Since(start)
 	histo := connPoolHisto(host)
+	histo.Update(int64(duration))
+}
+
+func clientCBHisto(name string) metrics.Histogram {
+	histosMu.Lock()
+	defer histosMu.Unlock()
+	rv, ok := opshistos[name]
+	if !ok {
+		rv = metrics.NewBiasedHistogram()
+		opshistos[name] = rv
+
+		expOpsHistos.Set(name, &metrics.HistogramExport{rv,
+			[]float64{0.25, 0.5, 0.75, 0.90, 0.99},
+			[]string{"p25", "p50", "p75", "p90", "p99"}})
+	}
+	return rv
+}
+
+func recordCBClientStat(opname, k string, start time.Time, err error) {
+	duration := time.Since(start)
+	histo := clientCBHisto(opname)
 	histo.Update(int64(duration))
 }
 
