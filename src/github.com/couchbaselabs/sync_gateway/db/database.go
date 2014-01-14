@@ -445,10 +445,11 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs 
 func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) error {
 	if doCurrentDocs {
 		base.Log("Recomputing document channels...")
-	} else if doImportDocs {
+	}
+	if doImportDocs {
 		base.Log("Importing documents...")
-	} else {
-		return nil
+	} else if !doCurrentDocs {
+		return nil // no-op if neither option is set
 	}
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
