@@ -207,8 +207,11 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, writer *mult
 		docWriter.Close()
 		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
 
-		part, _ := writer.CreatePart(partHeaders)
-		part.Write(content)
+		part, err := writer.CreatePart(partHeaders)
+		if err == nil {
+			_, err = part.Write(content)
+		}
+		return err
 	} else {
 		// Write as JSON:
 		contentType := "application/json"
@@ -216,11 +219,12 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, writer *mult
 			contentType += `; error="true"`
 		}
 		partHeaders.Set("Content-Type", contentType)
-		part, _ := writer.CreatePart(partHeaders)
-		json.NewEncoder(part).Encode(revBody)
+		part, err := writer.CreatePart(partHeaders)
+		if err == nil {
+			err = json.NewEncoder(part).Encode(revBody)
+		}
+		return err
 	}
-
-	return nil
 }
 
 func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
