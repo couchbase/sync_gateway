@@ -47,9 +47,10 @@ func connPoolHisto(name string) metrics.Histogram {
 		rv = metrics.NewBiasedHistogram()
 		poolhistos[name] = rv
 
-		expPoolHistos.Set(name, &metrics.HistogramExport{rv,
-			[]float64{0.25, 0.5, 0.75, 0.90, 0.99},
-			[]string{"p25", "p50", "p75", "p90", "p99"}})
+		expPoolHistos.Set(name, &metrics.HistogramExport{
+			Histogram:       rv,
+			Percentiles:     []float64{0.25, 0.5, 0.75, 0.90, 0.99},
+			PercentileNames: []string{"p25", "p50", "p75", "p90", "p99"}})
 	}
 	return rv
 }
@@ -68,9 +69,10 @@ func clientCBHisto(name string) metrics.Histogram {
 		rv = metrics.NewBiasedHistogram()
 		opshistos[name] = rv
 
-		expOpsHistos.Set(name, &metrics.HistogramExport{rv,
-			[]float64{0.25, 0.5, 0.75, 0.90, 0.99},
-			[]string{"p25", "p50", "p75", "p90", "p99"}})
+		expOpsHistos.Set(name, &metrics.HistogramExport{
+			Histogram:       rv,
+			Percentiles:     []float64{0.25, 0.5, 0.75, 0.90, 0.99},
+			PercentileNames: []string{"p25", "p50", "p75", "p90", "p99"}})
 	}
 	return rv
 }
