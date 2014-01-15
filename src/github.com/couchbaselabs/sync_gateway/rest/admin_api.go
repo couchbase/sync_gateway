@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -166,7 +165,7 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
-	body, _ := ioutil.ReadAll(h.rq.Body)
+	body, _ := h.readBody()
 	var newInfo PrincipalConfig
 	var err error
 	if err = json.Unmarshal(body, &newInfo); err != nil {
@@ -190,12 +189,11 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	replaced, err := updatePrincipal(h.db.DatabaseContext, newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
+	} else if replaced {
+		h.writeStatus(http.StatusOK, "OK")
+	} else {
+		h.writeStatus(http.StatusCreated, "Created")
 	}
-	status := http.StatusOK
-	if !replaced {
-		status = http.StatusCreated
-	}
-	h.response.WriteHeader(status)
 	return nil
 }
 

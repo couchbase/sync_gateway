@@ -8,7 +8,7 @@ cd src/github.com/couchbaselabs/sync_gateway
 # to vet to tell it just what you want, but he invocation is a lot
 # more awkward, so I'm just going to grep away the things we don't care
 # about so we can see the things we do.
-go vet ./... 2>&1 | grep -v "literal uses untagged fields" | grep -v "unreachable code" || true
+go vet ./...
 
 # First build everything so the tests don't complain about out-of-date packages
 go test -i ./...

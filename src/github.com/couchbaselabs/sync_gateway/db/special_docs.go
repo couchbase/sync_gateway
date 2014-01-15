@@ -66,7 +66,6 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 			// Deleting:
 			return nil, nil
 		}
-		panic("unreachable")
 	})
 
 	return revid, err

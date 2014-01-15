@@ -34,7 +34,7 @@ const kMaxTimeoutMS = 15 * 60 * 1000
 
 func (h *handler) handleRevsDiff() error {
 	var input db.RevsDiffInput
-	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &input)
+	err := h.readJSONInto(&input)
 	if err != nil {
 		return err
 	}
@@ -275,6 +275,10 @@ loop:
 }
 
 func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.ChangesOptions) error {
+	// Setting a non-default content type will keep the client HTTP framework from trying to sniff
+	// a real content-type from the response text, which can delay or prevent the client app from
+	// receiving the response.
+	h.setHeader("Content-Type", "application/octet-stream")
 	return h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 		var err error
 		if changes != nil {

@@ -96,11 +96,12 @@ func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 	go func() {
 		for cbEvent := range cbFeed.C {
 			events <- walrus.TapEvent{
-				Opcode: walrus.TapOpcode(cbEvent.Opcode),
-				Expiry: cbEvent.Expiry,
-				Flags:  cbEvent.Flags,
-				Key:    cbEvent.Key,
-				Value:  cbEvent.Value,
+				Opcode:   walrus.TapOpcode(cbEvent.Opcode),
+				Expiry:   cbEvent.Expiry,
+				Flags:    cbEvent.Flags,
+				Key:      cbEvent.Key,
+				Value:    cbEvent.Value,
+				Sequence: cbEvent.Cas,
 			}
 		}
 	}()

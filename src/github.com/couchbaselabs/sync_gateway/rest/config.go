@@ -60,17 +60,18 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name       string                      `json:"name"`        // Database name in REST API (stored as key in JSON)
-	Server     *string                     `json:"server"`      // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username   string                      `json:"username"`    // Username for authenticating to server
-	Password   string                      `json:"password"`    // Password for authenticating to server
-	Bucket     *string                     `json:"bucket"`      // Bucket name on server; defaults to same as 'name'
-	Pool       *string                     `json:"pool"`        // Couchbase pool name, default "default"
-	Sync       *string                     `json:"sync"`        // Sync function defines which users can see which data
-	Users      map[string]*PrincipalConfig `json:"users"`       // Initial user accounts
-	Roles      map[string]*PrincipalConfig `json:"roles"`       // Initial roles
-	RevsLimit  *uint32                     `json:"revs_limit"`  // Max depth a document's revision tree can grow to
-	ImportDocs interface{}                 `json:"import_docs"` // false, true, or "continuous"
+	name       string                      `json:"name"`                  // Database name in REST API (stored as key in JSON)
+	Server     *string                     `json:"server"`                // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username   string                      `json:"username,omitempty"`    // Username for authenticating to server
+	Password   string                      `json:"password,omitempty"`    // Password for authenticating to server
+	Bucket     *string                     `json:"bucket"`                // Bucket name on server; defaults to same as 'name'
+	Pool       *string                     `json:"pool"`                  // Couchbase pool name, default "default"
+	Sync       *string                     `json:"sync"`                  // Sync function defines which users can see which data
+	Users      map[string]*PrincipalConfig `json:"users,omitempty"`       // Initial user accounts
+	Roles      map[string]*PrincipalConfig `json:"roles,omitempty"`       // Initial roles
+	RevsLimit  *uint32                     `json:"revs_limit,omitempty"`  // Max depth a document's revision tree can grow to
+	ImportDocs interface{}                 `json:"import_docs,omitempty"` // false, true, or "continuous"
+	Shadow     *ShadowConfig               `json:"shadow,omitempty"`      // External bucket to shadow
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -94,6 +95,15 @@ type PersonaConfig struct {
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
+}
+
+type ShadowConfig struct {
+	Server       string  `json:"server"`                 // Couchbase server URL
+	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name, default "default"
+	Bucket       string  `json:"bucket"`                 // Bucket name
+	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
+	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
+	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -126,9 +136,14 @@ func (dbConfig *DbConfig) setup(name string) error {
 	return err
 }
 
-// Implementation of AuthHandler interface
+// Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string) {
 	return dbConfig.Username, dbConfig.Password
+}
+
+// Implementation of AuthHandler interface for ShadowConfig
+func (shadowConfig *ShadowConfig) GetCredentials() (string, string) {
+	return shadowConfig.Username, shadowConfig.Password
 }
 
 // Reads a ServerConfig from a JSON file.

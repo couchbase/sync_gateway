@@ -37,6 +37,8 @@ type DatabaseContext struct {
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
+	autoImport         bool                    // Add sync data to new untracked docs?
+	Shadower           *Shadower               // Tracks an external Couchbase bucket
 }
 
 const DefaultRevsLimit = 1000
@@ -78,10 +80,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		return nil, err
 	}
 	context := &DatabaseContext{
-		Name:      dbName,
-		Bucket:    bucket,
-		StartTime: time.Now(),
-		RevsLimit: DefaultRevsLimit,
+		Name:       dbName,
+		Bucket:     bucket,
+		StartTime:  time.Now(),
+		RevsLimit:  DefaultRevsLimit,
+		autoImport: autoImport,
 	}
 	context.changesWriter = newChangesWriter(bucket)
 	var err error
@@ -92,16 +95,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 
 	context.tapListener.OnChannelChanged = context.changesWriter.channelLogUpdated
 
-	if err = context.tapListener.Start(bucket, autoImport); err != nil {
+	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
 	}
-
-	go context.runAssimilator()
+	go context.watchDocChanges()
 	return context, nil
 }
 
 func (context *DatabaseContext) Close() {
 	context.tapListener.Stop()
+	context.Shadower.Stop()
 	context.changesWriter.checkpoint()
 	context.Bucket.Close()
 	context.Bucket = nil
@@ -445,10 +448,11 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs 
 func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) error {
 	if doCurrentDocs {
 		base.Log("Recomputing document channels...")
-	} else if doImportDocs {
+	}
+	if doImportDocs {
 		base.Log("Importing documents...")
-	} else {
-		return nil
+	} else if !doCurrentDocs {
+		return nil // no-op if neither option is set
 	}
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {

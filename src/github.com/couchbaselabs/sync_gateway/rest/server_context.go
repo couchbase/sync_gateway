@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -219,6 +220,14 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		return nil, err
 	}
 
+	// Install bucket-shadower if any:
+	if shadow := config.Shadow; shadow != nil {
+		if err := sc.startShadowing(dbcontext, shadow); err != nil {
+			base.Warn("Database %q: unable to connect to external bucket for shadowing: %v",
+				dbName, err)
+		}
+	}
+
 	// Register it so HTTP handlers can find it:
 	if err := sc.registerDatabase(dbcontext); err != nil {
 		dbcontext.Close()
@@ -226,6 +235,43 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	}
 	sc.setDatabaseConfig(config.name, config)
 	return dbcontext, nil
+}
+
+func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *ShadowConfig) error {
+	var pattern *regexp.Regexp
+	if shadow.Doc_id_regex != nil {
+		var err error
+		pattern, err = regexp.Compile(*shadow.Doc_id_regex)
+		if err != nil {
+			base.Warn("Invalid shadow doc_id_regex: %s", *shadow.Doc_id_regex)
+			return err
+		}
+	}
+
+	spec := base.BucketSpec{
+		Server:     shadow.Server,
+		PoolName:   "default",
+		BucketName: shadow.Bucket,
+	}
+	if shadow.Pool != nil {
+		spec.PoolName = *shadow.Pool
+	}
+	if shadow.Username != "" {
+		spec.Auth = shadow
+	}
+
+	bucket, err := db.ConnectToBucket(spec)
+	if err != nil {
+		return err
+	}
+	shadower, err := db.NewShadower(dbcontext, bucket, pattern)
+	if err != nil {
+		bucket.Close()
+		return err
+	}
+	dbcontext.Shadower = shadower
+	base.Log("Database %q shadowing remote bucket %q, pool %q, server <%s>", dbcontext.Name, spec.BucketName, spec.PoolName, spec.Server)
+	return nil
 }
 
 func (sc *ServerContext) RemoveDatabase(dbName string) bool {

@@ -11,6 +11,7 @@ package rest
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -54,6 +55,7 @@ type handler struct {
 	server       *ServerContext
 	rq           *http.Request
 	response     http.ResponseWriter
+	requestBody  io.ReadCloser
 	db           *db.Database
 	user         auth.User
 	privs        handlerPrivs
@@ -96,12 +98,28 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
+	var err error
+	if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+		h.response = encoded
+		defer encoded.Close()
+	}
+
+	switch h.rq.Header.Get("Content-Encoding") {
+	case "":
+		h.requestBody = h.rq.Body
+	case "gzip":
+		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
+			return err
+		}
+	default:
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
+	}
+
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
 	if dbname := h.PathVar("db"); dbname != "" {
-		var err error
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
 			return err
@@ -110,7 +128,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
-		if err := h.checkAuth(dbContext); err != nil {
+		if err = h.checkAuth(dbContext); err != nil {
 			h.logRequestLine()
 			return err
 		}
@@ -120,7 +138,6 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		var err error
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
@@ -236,6 +253,11 @@ func (h *handler) userAgentIs(agent string) bool {
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
 }
 
+// Returns the request body as a raw byte array.
+func (h *handler) readBody() ([]byte, error) {
+	return ioutil.ReadAll(h.requestBody)
+}
+
 // Parses a JSON request body, returning it as a Body map.
 func (h *handler) readJSON() (db.Body, error) {
 	var body db.Body
@@ -244,9 +266,10 @@ func (h *handler) readJSON() (db.Body, error) {
 
 // Parses a JSON request body into a custom structure.
 func (h *handler) readJSONInto(into interface{}) error {
-	return db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, into)
+	return db.ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
+// Reads & parses the request body, handling either JSON or multipart.
 func (h *handler) readDocument() (db.Body, error) {
 	contentType, attrs, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 	switch contentType {
@@ -254,7 +277,7 @@ func (h *handler) readDocument() (db.Body, error) {
 		return h.readJSON()
 	case "multipart/related":
 		if DebugMultipart {
-			raw, err := ioutil.ReadAll(h.rq.Body)
+			raw, err := h.readBody()
 			if err != nil {
 				return nil, err
 			}
@@ -266,11 +289,12 @@ func (h *handler) readDocument() (db.Body, error) {
 			}
 			return body, err
 		} else {
-			reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
+			reader := multipart.NewReader(h.requestBody, attrs["boundary"])
 			return db.ReadMultipartDocument(reader)
 		}
+	default:
+		return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 	}
-	return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 }
 
 func (h *handler) requestAccepts(mimetype string) bool {

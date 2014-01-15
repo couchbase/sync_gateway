@@ -56,6 +56,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleDeleteDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handlePutAttachment)).Methods("PUT")
 
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
@@ -129,6 +130,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleHeapProfiling)).Methods("POST")
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
+	r.Handle(kDebugURLPathPrefix,
+		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
 
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
