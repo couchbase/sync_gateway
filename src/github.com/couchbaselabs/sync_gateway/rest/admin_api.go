@@ -190,12 +190,11 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	replaced, err := updatePrincipal(h.db.DatabaseContext, newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
+	} else if replaced {
+		h.writeStatus(http.StatusOK, "OK")
+	} else {
+		h.writeStatus(http.StatusCreated, "Created")
 	}
-	status := http.StatusOK
-	if !replaced {
-		status = http.StatusCreated
-	}
-	h.response.WriteHeader(status)
 	return nil
 }
 

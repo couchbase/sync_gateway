@@ -96,6 +96,11 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
+	if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+		h.response = encoded
+		defer encoded.Close()
+	}
+
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
