@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 
@@ -134,7 +133,7 @@ func (h *handler) handlePutAttachment() error {
 	if revid == "" {
 		revid = h.rq.Header.Get("If-Match")
 	}
-	attachmentData, err := ioutil.ReadAll(h.rq.Body)
+	attachmentData, err := h.readBody()
 	if err != nil {
 		return err
 	}

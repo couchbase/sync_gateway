@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"runtime"
@@ -117,7 +116,7 @@ func (h *handler) handleProfiling() error {
 	var params struct {
 		File string `json:"file"`
 	}
-	body, err := ioutil.ReadAll(h.rq.Body)
+	body, err := h.readBody()
 	if err != nil {
 		return err
 	}
@@ -160,7 +159,7 @@ func (h *handler) handleHeapProfiling() error {
 	var params struct {
 		File string `json:"file"`
 	}
-	body, err := ioutil.ReadAll(h.rq.Body)
+	body, err := h.readBody()
 	if err != nil {
 		return err
 	}

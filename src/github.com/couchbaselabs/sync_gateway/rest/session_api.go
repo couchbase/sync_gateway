@@ -55,7 +55,7 @@ func (h *handler) handleSessionPOST() error {
 		Name     string `json:"name"`
 		Password string `json:"password"`
 	}
-	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
+	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
 	}

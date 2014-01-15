@@ -34,7 +34,7 @@ const kMaxTimeoutMS = 15 * 60 * 1000
 
 func (h *handler) handleRevsDiff() error {
 	var input db.RevsDiffInput
-	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &input)
+	err := h.readJSONInto(&input)
 	if err != nil {
 		return err
 	}

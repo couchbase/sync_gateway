@@ -16,7 +16,6 @@ import (
 	"net/url"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/db"
 )
 
 // Response from a Persona assertion verification.
@@ -70,7 +69,7 @@ func (h *handler) handlePersonaPOST() error {
 	var params struct {
 		Assertion string `json:"assertion"`
 	}
-	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
+	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
 	}
