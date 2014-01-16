@@ -321,12 +321,14 @@ func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 	revisions, ok := body["_revisions"].(map[string]interface{})
 	if !ok {
-		base.Warn("Unable to parse _revisions: %v", body["_revisions"])
 		return nil
 	}
-	start := int(revisions["start"].(float64))
-	ids := revisions["ids"].([]interface{})
-	if start < len(ids) {
+	var start int
+	if startf, ok := revisions["start"].(float64); ok {
+		start = int(startf)
+	}
+	ids, ok := revisions["ids"].([]interface{})
+	if !ok || len(ids) == 0 || start < len(ids) {
 		return nil
 	}
 	result := make([]string, 0, len(ids))
