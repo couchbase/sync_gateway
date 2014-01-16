@@ -1,17 +1,14 @@
 package rest
 
 import (
-	"encoding/json"
 	"expvar"
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
-	"github.com/dustin/gomemcached"
-	"github.com/dustin/gomemcached/client"
+	_ "github.com/dustin/gomemcached/debug"
 	"github.com/samuel/go-metrics/metrics"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -28,45 +25,6 @@ var (
 	expOpsHistos  *expvar.Map
 )
 
-type mcops [257]uint64
-
-func (m *mcops) String() string {
-	j := map[string]uint64{}
-	total := uint64(0)
-	for i, v := range *m {
-		if v > 0 {
-			k := "error"
-			if i < 256 {
-				k = gomemcached.CommandCode(i).String()
-			}
-			j[k] = v
-			total += v
-		}
-	}
-	j["total"] = total
-	b, err := json.Marshal(j)
-	if err != nil {
-		panic(err) // shouldn't be possible
-	}
-	return string(b)
-}
-
-func (m *mcops) countReq(req *gomemcached.MCRequest, n int, err error) {
-	i := 256
-	if req != nil {
-		i = int(req.Opcode)
-	}
-	atomic.AddUint64(&m[i], uint64(n))
-}
-
-func (m *mcops) countRes(res *gomemcached.MCResponse, n int, err error) {
-	i := 256
-	if res != nil {
-		i = int(res.Opcode)
-	}
-	atomic.AddUint64(&m[i], uint64(n))
-}
-
 func init() {
 	couchbase.ConnPoolCallback = recordConnPoolStat
 	couchbase.ClientOpCallback = recordCBClientStat
@@ -79,21 +37,6 @@ func init() {
 	expOpsHistos = &expvar.Map{}
 	expOpsHistos.Init()
 	expCb.Set("ops", expOpsHistos)
-
-	// Lower-level memcached stats
-
-	mcSent := &mcops{}
-	mcRecvd := &mcops{}
-	tapRecvd := &mcops{}
-
-	memcached.TransmitHook = mcSent.countReq
-	memcached.ReceiveHook = mcRecvd.countRes
-	memcached.TapRecvHook = tapRecvd.countReq
-
-	mcStats := expvar.NewMap("mc")
-	mcStats.Set("xmit", mcSent)
-	mcStats.Set("recv", mcRecvd)
-	mcStats.Set("tap", tapRecvd)
 }
 
 func connPoolHisto(name string) metrics.Histogram {
