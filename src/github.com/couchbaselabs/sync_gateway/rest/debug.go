@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
+	_ "github.com/dustin/gomemcached/debug"
 	"github.com/samuel/go-metrics/metrics"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -36,7 +37,6 @@ func init() {
 	expOpsHistos = &expvar.Map{}
 	expOpsHistos.Init()
 	expCb.Set("ops", expOpsHistos)
-
 }
 
 func connPoolHisto(name string) metrics.Histogram {
