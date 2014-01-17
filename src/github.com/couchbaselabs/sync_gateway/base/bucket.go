@@ -137,13 +137,19 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Log("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		walrus.Logging = LogKeys["Walrus"]
-		return walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+	} else {
+		suffix := ""
+		if spec.Auth != nil {
+			username, _ := spec.Auth.GetCredentials()
+			suffix = fmt.Sprintf(" as user %q", username)
+		}
+		Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+		bucket, err = GetCouchbaseBucket(spec)
 	}
-	suffix := ""
-	if spec.Auth != nil {
-		username, _ := spec.Auth.GetCredentials()
-		suffix = fmt.Sprintf(" as user %q", username)
+
+	if LogKeys["Bucket"] {
+		bucket = &LoggingBucket{bucket: bucket}
 	}
-	Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
-	return GetCouchbaseBucket(spec)
+	return
 }
