@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -52,8 +53,9 @@ func (h *handler) handleGetDoc() error {
 
 		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
+			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart(func(writer *multipart.Writer) error {
-				h.db.WriteMultipartDocument(value, writer)
+				h.db.WriteMultipartDocument(value, writer, canCompress)
 				return nil
 			})
 		} else {
@@ -79,7 +81,7 @@ func (h *handler) handleGetDoc() error {
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				}
-				h.db.WriteRevisionAsPart(revBody, err != nil, writer)
+				h.db.WriteRevisionAsPart(revBody, err != nil, false, writer)
 			}
 			return nil
 		})

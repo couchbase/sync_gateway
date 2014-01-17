@@ -111,6 +111,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
 			return err
 		}
+		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}

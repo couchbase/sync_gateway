@@ -15,6 +15,7 @@ import (
 	"html"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -220,9 +221,10 @@ func (h *handler) handleView() error {
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
+	since := h.getIntQuery("since", 0)
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
-	chanLog, err := h.db.GetChangeLog(channelName, 0)
+	chanLog, err := h.db.GetChangeLog(channelName, since)
 	if err != nil {
 		return err
 	} else if chanLog == nil {
@@ -261,6 +263,7 @@ func (h *handler) handleDumpChannel() error {
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
+	canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 	body, err := h.readJSON()
 	if err != nil {
 		return err
@@ -310,7 +313,7 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			h.db.WriteRevisionAsPart(body, err != nil, writer)
+			h.db.WriteRevisionAsPart(body, err != nil, canCompress, writer)
 		}
 		return nil
 	})

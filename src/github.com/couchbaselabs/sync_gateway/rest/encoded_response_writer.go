@@ -46,8 +46,9 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 		w.Header().Set("Content-Type", respType)
 	}
 	if strings.HasPrefix(respType, "application/json") || strings.HasPrefix(respType, "text/") {
-		if w.Header().Get("Content-Type") == "" {
-			w.ResponseWriter.Header().Set("Content-Encoding", "gzip")
+		if w.Header().Get("Content-Encoding") == "" {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Del("Content-Length") // length is unknown due to compression
 			w.gz = gzip.NewWriter(w.ResponseWriter)
 		}
 	}
@@ -69,5 +70,6 @@ func (w *EncodedResponseWriter) Flush() {
 func (w *EncodedResponseWriter) Close() {
 	if w.gz != nil {
 		w.gz.Close()
+		w.gz = nil
 	}
 }

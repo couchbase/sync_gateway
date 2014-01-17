@@ -148,6 +148,32 @@ func TestRevTreeDepths(t *testing.T) {
 	assert.Equals(t, tempmap["4-vier"].Parent, "")
 }
 
+func TestParseRevisions(t *testing.T) {
+	type testCase struct {
+		json string
+		ids  []string
+	}
+	cases := []testCase{
+		{`{"_revisions": {"start": 5, "ids": ["huey", "dewey", "louie"]}}`,
+			[]string{"5-huey", "4-dewey", "3-louie"}},
+		{`{"_revisions": {"start": 3, "ids": ["huey"]}}`,
+			[]string{"3-huey"}},
+		{`{"_revisions": {"start": 2, "ids": ["huey", "dewey", "louie"]}}`, nil},
+		{`{"_revisions": {"ids": ["huey", "dewey", "louie"]}}`, nil},
+		{`{"_revisions": {"ids": "bogus"}}`, nil},
+		{`{"_revisions": {"start": 2}}`, nil},
+		{`{"_revisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
+		{`{"_revisions": 3.14159}`, nil},
+		{`{"_Xrevisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
+	}
+	for _, c := range cases {
+		var body Body
+		assertNoError(t, json.Unmarshal([]byte(c.json), &body), "base JSON in test case")
+		ids := ParseRevisions(body)
+		assert.DeepEquals(t, ids, c.ids)
+	}
+}
+
 //////// HELPERS:
 
 func assertFailed(t *testing.T, message string) {
