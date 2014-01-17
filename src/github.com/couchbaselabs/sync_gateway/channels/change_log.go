@@ -105,6 +105,13 @@ func (cp *ChangeLog) FilterAfter(after uint64) {
 	}
 }
 
+func (cp *ChangeLog) Dump() {
+	fmt.Printf("Since: %d\n", cp.Since)
+	for _, e := range cp.Entries {
+		fmt.Printf("    %5d %q %q %b\n", e.Sequence, e.DocID, e.RevID, e.Flags)
+	}
+}
+
 // Sorts the entries by increasing sequence.
 func (c *ChangeLog) Sort() {
 	sort.Sort(c)

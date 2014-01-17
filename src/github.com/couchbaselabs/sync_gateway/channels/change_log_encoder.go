@@ -53,6 +53,7 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *Chang
 	if oldLog != nil {
 		// If a pre-existing log is given, copy its entries so we'll append to them:
 		ch.Entries = append(ch.Entries, oldLog.Entries...)
+		ch.Since = oldLog.Since
 		for i, entry := range ch.Entries {
 			parents[docAndRev{entry.DocID, entry.RevID}] = i
 		}
@@ -124,7 +125,7 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *Chang
 		ch.Entries = ch.Entries[0:iDst]
 	}
 
-	if afterSeq > ch.Since {
+	if oldLog == nil && afterSeq > ch.Since {
 		ch.Since = afterSeq
 	}
 	return &ch
