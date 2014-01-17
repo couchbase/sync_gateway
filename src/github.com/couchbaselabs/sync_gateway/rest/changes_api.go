@@ -107,7 +107,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		return err
 	}
 
-	h.setHeader("Content-Type", "text/plain; charset=utf-8")
+	h.setHeader("Content-Type", "application/json")
 	h.response.Write([]byte("{\"results\":[\r\n"))
 	if options.Wait {
 		h.flush()

@@ -221,9 +221,10 @@ func (h *handler) handleView() error {
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
+	since := h.getIntQuery("since", 0)
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
-	chanLog, err := h.db.GetChangeLog(channelName, 0)
+	chanLog, err := h.db.GetChangeLog(channelName, since)
 	if err != nil {
 		return err
 	} else if chanLog == nil {

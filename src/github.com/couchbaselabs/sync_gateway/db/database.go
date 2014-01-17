@@ -528,7 +528,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	}
 
 	if changeCount > 0 {
-		base.Log("%d docs changed; invalidating channel logs...")
+		base.Log("%d docs changed; invalidating channel logs...", changeCount)
 		// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
 		if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
 			return err
