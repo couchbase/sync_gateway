@@ -39,9 +39,12 @@ type DatabaseContext struct {
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
 	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
+	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
 }
 
 const DefaultRevsLimit = 1000
+
+const RevisionCacheCapacity = 100
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -80,11 +83,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		return nil, err
 	}
 	context := &DatabaseContext{
-		Name:       dbName,
-		Bucket:     bucket,
-		StartTime:  time.Now(),
-		RevsLimit:  DefaultRevsLimit,
-		autoImport: autoImport,
+		Name:          dbName,
+		Bucket:        bucket,
+		StartTime:     time.Now(),
+		RevsLimit:     DefaultRevsLimit,
+		autoImport:    autoImport,
+		revisionCache: NewRevisionCache(RevisionCacheCapacity),
 	}
 	context.changesWriter = newChangesWriter(bucket)
 	var err error

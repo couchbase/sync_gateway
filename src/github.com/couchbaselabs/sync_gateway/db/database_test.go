@@ -92,7 +92,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Retrieve rev 1...")
 	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
 	assertNoError(t, err, "Couldn't get document with rev 1")
-	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": int64(1234), "_id": "doc1", "_rev": rev1id})
+	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234, "_id": "doc1", "_rev": rev1id})
 
 	log.Printf("Retrieve rev 2...")
 	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
@@ -206,12 +206,14 @@ func TestAllDocs(t *testing.T) {
 	AlwaysCompactChangeLog = true
 	defer func() { MaxChangeLogLength = oldMaxLogLength; AlwaysCompactChangeLog = oldAlwaysCompact }()
 
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
-	defer func() {
-		base.LogKeys["Changes"] = false
-		base.LogKeys["Changes+"] = false
-	}()
+	/*
+		base.LogKeys["Changes"] = true
+		base.LogKeys["Changes+"] = true
+		defer func() {
+			base.LogKeys["Changes"] = false
+			base.LogKeys["Changes+"] = false
+		}()
+	*/
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -346,11 +348,11 @@ func TestConflicts(t *testing.T) {
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev("doc", "1-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": int64(1),
-		"channels": []interface{}{"all", "1"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": 1,
+		"channels": []string{"all", "1"}})
 	gotBody, err = db.GetRev("doc", "2-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
-		"channels": []interface{}{"all", "2a"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
+		"channels": []string{"all", "2a"}})
 
 	db.changesWriter.checkpoint()
 

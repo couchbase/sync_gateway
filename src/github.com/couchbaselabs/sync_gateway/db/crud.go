@@ -56,18 +56,27 @@ func (db *Database) Get(docid string) (Body, error) {
 
 // Returns the body of a revision of a document.
 func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
-	doc, err := db.GetDoc(docid)
-	if doc == nil {
-		return nil, err
-	}
-	body, err := db.getRevFromDoc(doc, revid, listRevisions)
-	if err != nil {
-		return nil, err
+	var err error
+	var doc *document
+	body := db.revisionCache.Get(docid, revid, listRevisions)
+	if body == nil {
+		if doc, err = db.GetDoc(docid); doc == nil {
+			return nil, err
+		}
+		if body, err = db.getRevFromDoc(doc, revid, listRevisions); err != nil {
+			return nil, err
+		}
+		db.revisionCache.Put(body, nil)
 	}
 
-	if attachmentsSince != nil {
+	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
 		minRevpos := 1
 		if len(attachmentsSince) > 0 {
+			if doc == nil { // if rev was in the cache, we don't have the entire doc yet
+				if doc, err = db.GetDoc(docid); doc == nil {
+					return nil, err
+				}
+			}
 			ancestor := doc.History.findAncestorFromSet(body["_rev"].(string), attachmentsSince)
 			if ancestor != "" {
 				minRevpos, _ = parseRevID(ancestor)
@@ -358,6 +367,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	var newRevID, parentRevID string
 	var doc *document
+	var body Body
 	var changedChannels base.Set
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
@@ -372,7 +382,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, err := callback(doc)
+		body, err = callback(doc)
 		if err != nil {
 			return
 		}
@@ -489,6 +499,10 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	} else if err != nil {
 		return "", err
 	}
+
+	// Store the new revision in the cache
+	history := doc.History.getHistory(newRevID)
+	db.revisionCache.Put(body, encodeRevisions(history))
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)

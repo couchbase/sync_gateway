@@ -20,6 +20,14 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+func (body Body) ShallowCopy() Body {
+	copied := make(Body, len(body))
+	for key, value := range body {
+		copied[key] = value
+	}
+	return copied
+}
+
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (db *Database) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
