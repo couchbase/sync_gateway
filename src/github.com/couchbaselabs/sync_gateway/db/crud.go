@@ -54,30 +54,58 @@ func (db *Database) Get(docid string) (Body, error) {
 	return db.GetRev(docid, "", false, nil)
 }
 
-// Returns the body of a revision of a document.
+// Returns the body of a revision of a document. Uses the revision cache.
 func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
+	// Get the revision body and history from the revision cache:
 	var err error
 	var doc *document
-	body := db.revisionCache.Get(docid, revid, listRevisions)
-	if body == nil {
+	body, revisions, channels := db.revisionCache.Get(docid, revid)
+	if body != nil {
+		if db.user != nil {
+			if err = db.user.AuthorizeAnyChannel(channels); err != nil {
+				// On access failure, return (only) the doc history and deletion/removal
+				// status instead of returning an error. For justification see the comment in
+				// the getRevFromDoc method, below
+				deleted, _ := body["_deleted"].(bool)
+				redactedBody := Body{"_id": docid, "_rev": revid}
+				if deleted {
+					redactedBody["_deleted"] = true
+				} else {
+					redactedBody["_removed"] = true
+				}
+				if listRevisions {
+					redactedBody["_revisions"] = revisions
+				}
+				return redactedBody, nil
+			}
+		}
+	} else {
+		// If not in the cache, read the rev body+history from the database:
 		if doc, err = db.GetDoc(docid); doc == nil {
 			return nil, err
 		}
-		if body, err = db.getRevFromDoc(doc, revid, listRevisions); err != nil {
+		if body, err = db.getRevFromDoc(doc, revid, false); err != nil {
 			return nil, err
 		}
-		db.revisionCache.Put(body, nil)
+		revid = body["_rev"].(string)
+		revisions = encodeRevisions(doc.History.getHistory(revid))
+		revChannels := doc.History[revid].Channels
+		db.revisionCache.Put(body, revisions, revChannels)
+	}
+
+	if listRevisions {
+		body["_revisions"] = revisions
 	}
 
 	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
 		minRevpos := 1
 		if len(attachmentsSince) > 0 {
-			if doc == nil { // if rev was in the cache, we don't have the entire doc yet
+			if doc == nil { // if rev was in the cache, we don't have the document struct yet
 				if doc, err = db.GetDoc(docid); doc == nil {
 					return nil, err
 				}
 			}
-			ancestor := doc.History.findAncestorFromSet(body["_rev"].(string), attachmentsSince)
+			ancestor := doc.History.findAncestorFromSet(revid, attachmentsSince)
 			if ancestor != "" {
 				minRevpos, _ = parseRevID(ancestor)
 				minRevpos++
@@ -502,7 +530,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	// Store the new revision in the cache
 	history := doc.History.getHistory(newRevID)
-	db.revisionCache.Put(body, encodeRevisions(history))
+	if doc.History[newRevID].Deleted {
+		body["_deleted"] = true
+	}
+	revChannels := doc.History[newRevID].Channels
+	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
