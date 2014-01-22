@@ -177,11 +177,13 @@ func TruncateEncodedChangeLog(r *bytes.Reader, maxLength, minLength int, w io.Wr
 
 	// Write the updated Since and the remaining entries:
 	writeSequence(since, w)
-	if _, err := r.Seek(entryPos[removed], 0); err != nil {
-		panic("Seek back???")
-	}
-	if _, err := io.Copy(w, r); err != nil {
-		panic("Copy???")
+	if removed < oldLength {
+		if _, err := r.Seek(entryPos[removed], 0); err != nil {
+			panic("Seek back???")
+		}
+		if _, err := io.Copy(w, r); err != nil {
+			panic("Copy???")
+		}
 	}
 	return removed, oldLength - removed
 }
