@@ -76,7 +76,11 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 			}
 		}
 		if includeDocs {
-			entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
+			var err error
+			entry.Doc, err = db.getRevFromDoc(doc, revID, false)
+			if err != nil {
+				base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
+			}
 		}
 	}
 }
