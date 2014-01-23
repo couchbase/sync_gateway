@@ -52,7 +52,7 @@ type ViewRow struct {
 	ID    string
 	Key   interface{}
 	Value interface{}
-	Doc   *ViewDoc
+	Doc   json.RawMessage
 }
 
 // Unmarshaled JSON structure for "changes" view results
@@ -266,8 +266,11 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions, 
 				if len(value) >= 4 && value[3].(bool) {
 					entry.Removed = channels.SetOf(channel)
 				} else if usingDocs {
-					doc, _ := unmarshalDocument(docID, row.Doc.Json)
-					db.addDocToChangeEntry(doc, entry, options.IncludeDocs, options.Conflicts)
+					if doc, err := unmarshalDocument(docID, row.Doc); err == nil && len(row.Doc) > 0 {
+						db.addDocToChangeEntry(doc, entry, options.IncludeDocs, options.Conflicts)
+					} else {
+						base.Warn("Changes feed: View row has bad doc: %#v", row)
+					}
 				}
 
 				select {
