@@ -59,10 +59,10 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 			w.Header().Del("Content-Length") // length is unknown due to compression
 
 			// Get a gzip writer from the cache, or create a new one if it's empty:
-			var ok bool
-			if w.gz, ok = <-zipperCache; ok {
+			select {
+			case w.gz = <-zipperCache:
 				w.gz.Reset(w.ResponseWriter)
-			} else {
+			default:
 				w.gz = gzip.NewWriter(w.ResponseWriter)
 			}
 		}
