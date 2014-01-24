@@ -55,6 +55,7 @@ type ServerConfig struct {
 	MaxCouchbaseConnections *int            // Max # of sockets to open to a Couchbase Server node
 	MaxCouchbaseOverflow    *int            // Max # of overflow sockets to open
 	MaxIncomingConnections  *int            // Max # of incoming HTTP connections to accept
+	CompressResponses       *bool           // If false, disables compression of HTTP responses
 	Databases               DbConfigMap     // Pre-configured databases, mapped by name
 }
 

@@ -99,9 +99,11 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
 	var err error
-	if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
-		h.response = encoded
-		defer encoded.Close()
+	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
+		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+			h.response = encoded
+			defer encoded.Close()
+		}
 	}
 
 	switch h.rq.Header.Get("Content-Encoding") {
