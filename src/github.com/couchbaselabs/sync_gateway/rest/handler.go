@@ -347,6 +347,13 @@ func (h *handler) logStatus(status int, message string) {
 	}
 }
 
+func (h *handler) disableResponseCompression() {
+	switch r := h.response.(type) {
+	case *EncodedResponseWriter:
+		r.disableCompression()
+	}
+}
+
 // Writes an object to the response in JSON format.
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
@@ -369,6 +376,9 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 	}
 	h.setHeader("Content-Type", "application/json")
 	if h.rq.Method != "HEAD" {
+		if len(jsonOut) < 1000 {
+			h.disableResponseCompression()
+		}
 		h.setHeader("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
 		if status > 0 {
 			h.response.WriteHeader(status)
@@ -460,6 +470,7 @@ func (h *handler) writeStatus(status int, message string) {
 		}
 	}
 
+	h.disableResponseCompression()
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	base.LogTo("HTTP", " #%03d:     --> %d %s", h.serialNumber, status, message)

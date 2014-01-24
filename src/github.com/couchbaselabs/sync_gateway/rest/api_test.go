@@ -485,16 +485,26 @@ func TestLocalDocs(t *testing.T) {
 }
 
 func TestResponseEncoding(t *testing.T) {
+	// Make a doc longer than 1k so the HTTP response will be compressed:
+	str := "DORKY "
+	for i := 0; i < 10; i++ {
+		str = str + str
+	}
+	docJSON := fmt.Sprintf(`{"long": %q}`, str)
+
 	var rt restTester
-	response := rt.sendRequestWithHeaders("GET", "/", "",
+	response := rt.sendRequest("PUT", "/db/_local/loc1", docJSON)
+	assertStatus(t, response, 201)
+	response = rt.sendRequestWithHeaders("GET", "/db/_local/loc1", "",
 		map[string]string{"Accept-Encoding": "foo, gzip, bar"})
+	assertStatus(t, response, 200)
 	assert.DeepEquals(t, response.HeaderMap["Content-Encoding"], []string{"gzip"})
 	unzip, err := gzip.NewReader(response.Body)
 	assert.Equals(t, err, nil)
 	unjson := json.NewDecoder(unzip)
 	var body db.Body
 	assert.Equals(t, unjson.Decode(&body), nil)
-	assert.Equals(t, body["couchdb"], "welcome")
+	assert.Equals(t, body["long"], str)
 }
 
 func TestLogin(t *testing.T) {

@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -144,8 +143,6 @@ func (h *handler) createUserSession() error {
 	response.SessionID = session.ID
 	response.Expires = session.Expiration
 	response.CookieName = auth.CookieName
-	bytes, _ := json.Marshal(response)
-	h.response.Header().Set("Content-Type", "application/json")
-	h.response.Write(bytes)
+	h.writeJSON(response)
 	return nil
 }
