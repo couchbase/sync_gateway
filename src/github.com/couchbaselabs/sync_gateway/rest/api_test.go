@@ -11,6 +11,7 @@ package rest
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -481,6 +482,19 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 404)
 	response = rt.sendRequest("DELETE", "/db/_local/loc1", "")
 	assertStatus(t, response, 404)
+}
+
+func TestResponseEncoding(t *testing.T) {
+	var rt restTester
+	response := rt.sendRequestWithHeaders("GET", "/", "",
+		map[string]string{"Accept-Encoding": "foo, gzip, bar"})
+	assert.DeepEquals(t, response.HeaderMap["Content-Encoding"], []string{"gzip"})
+	unzip, err := gzip.NewReader(response.Body)
+	assert.Equals(t, err, nil)
+	unjson := json.NewDecoder(unzip)
+	var body db.Body
+	assert.Equals(t, unjson.Decode(&body), nil)
+	assert.Equals(t, body["couchdb"], "welcome")
 }
 
 func TestLogin(t *testing.T) {
