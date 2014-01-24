@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+const kZipperCacheCapacity = 20
+
+var zipperCache chan *gzip.Writer
+
+func init() {
+	zipperCache = make(chan *gzip.Writer, kZipperCacheCapacity)
+}
+
 // An implementation of http.ResponseWriter that wraps another instance and transparently applies
 // GZip compression when appropriate.
 type EncodedResponseWriter struct {
@@ -49,7 +57,14 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 		if w.Header().Get("Content-Encoding") == "" {
 			w.Header().Set("Content-Encoding", "gzip")
 			w.Header().Del("Content-Length") // length is unknown due to compression
-			w.gz = gzip.NewWriter(w.ResponseWriter)
+
+			// Get a gzip writer from the cache, or create a new one if it's empty:
+			var ok bool
+			if w.gz, ok = <-zipperCache; ok {
+				w.gz.Reset(w.ResponseWriter)
+			} else {
+				w.gz = gzip.NewWriter(w.ResponseWriter)
+			}
 		}
 	}
 	w.sniffDone = true
@@ -70,6 +85,13 @@ func (w *EncodedResponseWriter) Flush() {
 func (w *EncodedResponseWriter) Close() {
 	if w.gz != nil {
 		w.gz.Close()
+
+		// Return the gzip writer to the cache, or discard it if the cache is full:
+		select {
+		case zipperCache <- w.gz:
+		default:
+		}
+
 		w.gz = nil
 	}
 }
