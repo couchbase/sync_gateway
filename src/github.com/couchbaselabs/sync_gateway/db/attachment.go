@@ -43,8 +43,14 @@ type AttachmentKey string
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
 	var parentAttachments map[string]interface{}
 	atts := BodyAttachments(body)
+	if atts == nil && body["_attachments"] != nil {
+		return base.HTTPErrorf(400, "Invalid _attachments")
+	}
 	for name, value := range atts {
-		meta := value.(map[string]interface{})
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return base.HTTPErrorf(400, "Invalid _attachments")
+		}
 		data, exists := meta["data"]
 		if exists {
 			// Attachment contains data, so store it in the db:
