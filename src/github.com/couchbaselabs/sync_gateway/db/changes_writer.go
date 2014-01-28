@@ -313,7 +313,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 		})
 		if err == nil {
 			dbExpvars.Add("channelLogRewrites", 1)
-			dbExpvars.Add("channelLogRewriteAttempts", int64(fullUpdateAttempts))
+			dbExpvars.Add("channelLogRewriteCollisions", int64(fullUpdateAttempts-1))
 			c.invalidateCachedChangeLog()
 			base.LogTo("ChannelLog", "Wrote %d sequences (was %d now %d) to %q in %d attempts",
 				len(entries), oldChangeLogCount, newChangeLogCount, c.channelName, fullUpdateAttempts)
