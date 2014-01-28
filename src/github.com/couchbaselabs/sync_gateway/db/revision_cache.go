@@ -2,6 +2,7 @@ package db
 
 import (
 	"container/list"
+	"expvar"
 	"sync"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -21,6 +22,8 @@ type revCacheValue struct {
 	history  Body     // Rev history encoded like a "_revisions" property
 	channels base.Set // Set of channels that have access
 }
+
+var revCacheExpVar = expvar.NewMap("revisionCache")
 
 // Creates a revision cache with the given capacity.
 func NewRevisionCache(capacity int) *RevisionCache {
@@ -46,9 +49,11 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set) {
 	rc.lock.Unlock()
 
 	if elem == nil {
+		revCacheExpVar.Add("misses", 1)
 		return nil, nil, nil
 	}
 
+	revCacheExpVar.Add("hits", 1)
 	value := elem.Value.(revCacheValue)
 	return value.body.ShallowCopy(), value.history, value.channels
 }
@@ -70,6 +75,7 @@ func (rc *RevisionCache) Put(body Body, history Body, channels base.Set) {
 		for len(rc.cache) > rc.capacity {
 			rc.purgeOldest_()
 		}
+		revCacheExpVar.Add("adds", 1)
 	}
 }
 
