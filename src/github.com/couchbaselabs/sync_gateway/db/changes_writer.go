@@ -252,6 +252,7 @@ func (cl changeEntryList) Swap(i, j int) { cl[i], cl[j] = cl[j], cl[i] }
 // Writes new changes to my channel log document.
 func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 	var err error
+	dbExpvars.Add("channelLogAdds", 1)
 	logDocID := channelLogDocID(c.channelName)
 
 	// A fraction of the time we will do a full update and clean stuff out.
@@ -266,6 +267,7 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 		err = c.bucket.Append(logDocID, data)
 		if err == nil {
 			base.LogTo("ChannelLog", "Appended %d sequence(s) to %q", len(entries), c.channelName)
+			dbExpvars.Add("channelLogAppends", 1)
 		} else if base.IsDocNotFoundError(err) {
 			// Append failed due to doc not existing, so fall back to full update
 			err = nil
@@ -310,6 +312,8 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 			}
 		})
 		if err == nil {
+			dbExpvars.Add("channelLogRewrites", 1)
+			dbExpvars.Add("channelLogRewriteAttempts", int64(fullUpdateAttempts))
 			c.invalidateCachedChangeLog()
 			base.LogTo("ChannelLog", "Wrote %d sequences (was %d now %d) to %q in %d attempts",
 				len(entries), oldChangeLogCount, newChangeLogCount, c.channelName, fullUpdateAttempts)
@@ -341,9 +345,11 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 	// Read from cache if available:
 	if entries := c.cachedLog.EntriesAfter(afterSeq); entries != nil {
 		base.LogTo("Changes", "Using cached entries for afterSeq=%d (returning %d)", afterSeq, len(entries))
+		dbExpvars.Add("channelLogCacheHits", 1)
 		return &channels.ChangeLog{Since: afterSeq, Entries: entries}, nil
 	}
 
+	dbExpvars.Add("channelLogCacheMisses", 1)
 	raw, err := c.bucket.GetRaw(channelLogDocID(c.channelName))
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
@@ -366,6 +372,7 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 func (c *channelLogWriter) invalidateCachedChangeLog() {
 	c.cacheMutex.Lock()
 	c.cachedLog = channels.ChangeLog{}
+	dbExpvars.Add("channelLogInvalidates", 1)
 	c.cacheMutex.Unlock()
 }
 

@@ -39,6 +39,7 @@ func (db *Database) GetDoc(docid string) (*document, error) {
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
+	dbExpvars.Add("document_gets", 1)
 	doc := newDocument(docid)
 	err := db.Bucket.Get(key, doc)
 	if err != nil {
@@ -527,6 +528,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	} else if err != nil {
 		return "", err
 	}
+
+	dbExpvars.Add("revs_added", 1)
 
 	// Store the new revision in the cache
 	history := doc.History.getHistory(newRevID)

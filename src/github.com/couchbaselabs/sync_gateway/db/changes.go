@@ -88,6 +88,7 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 // Returns a list of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	dbExpvars.Add("channelChangesFeeds", 1)
 	since := options.Since[channel]
 	channelLog, err := db.changesWriter.getChangeLog(channel, since)
 	if err != nil {
@@ -204,6 +205,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 // Returns a list of all the changes made on a channel, reading from a view instead of the
 // channel log. This will include all historical changes, but may omit very recent ones.
 func (db *Database) changesFeedFromView(channel string, options ChangesOptions, upToSeq uint64) (<-chan *ChangeEntry, error) {
+	dbExpvars.Add("channelChangesViewQueries", 1)
 	base.LogTo("Changes", "Getting 'changes' view for channel %q %#v", channel, options)
 	since := options.Since[channel]
 	endkey := []interface{}{channel, upToSeq}

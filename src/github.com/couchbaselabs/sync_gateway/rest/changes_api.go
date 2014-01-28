@@ -49,6 +49,10 @@ func (h *handler) handleRevsDiff() error {
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	// http://docs.couchdb.org/en/latest/api/database/changes.html
+	restExpvars.Add("changesFeeds_total", 1)
+	restExpvars.Add("changesFeeds_active", 1)
+	defer restExpvars.Add("changesFeeds_active", -1)
+
 	var options db.ChangesOptions
 	options.Since = channels.TimedSetFromString(h.getQuery("since"))
 	options.Limit = int(h.getIntQuery("limit", 0))

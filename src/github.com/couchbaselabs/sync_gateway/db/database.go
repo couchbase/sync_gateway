@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -55,6 +56,8 @@ type Database struct {
 
 // All special/internal documents the gateway creates have this prefix in their keys.
 const kSyncKeyPrefix = "_sync:"
+
+var dbExpvars = expvar.NewMap("syncGateway_db")
 
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing

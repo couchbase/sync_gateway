@@ -33,10 +33,8 @@ var DefaultPool = "default"
 const DefaultMaxCouchbaseConnections = 16
 const DefaultMaxCouchbaseOverflowConnections = 0
 
+// Default value of ServerConfig.MaxIncomingConnections
 const DefaultMaxIncomingConnections = 1000
-
-// Maximum number of simultaneous incoming HTTP connections to the REST interface.
-const kMaxHTTPConnections = 1000
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
