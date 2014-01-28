@@ -271,6 +271,10 @@ func (h *handler) handleBulkGet() error {
 
 	err = h.writeMultipart(func(writer *multipart.Writer) error {
 		for _, item := range body["docs"].([]interface{}) {
+			var body db.Body
+			var attsSince []string
+			var err error
+
 			doc := item.(map[string]interface{})
 			docid, _ := doc["id"].(string)
 			revid := ""
@@ -279,32 +283,35 @@ func (h *handler) handleBulkGet() error {
 				revid, revok = doc["rev"].(string)
 			}
 			if docid == "" || !revok {
-				return base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID")
-			}
-
-			var attsSince []string = nil
-			if includeAttachments {
-				if doc["atts_since"] != nil {
-					raw, ok := doc["atts_since"].([]interface{})
-					if ok {
-						attsSince = make([]string, len(raw))
-						for i := 0; i < len(raw); i++ {
-							attsSince[i], ok = raw[i].(string)
-							if !ok {
-								break
+				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
+			} else {
+				if includeAttachments {
+					if doc["atts_since"] != nil {
+						raw, ok := doc["atts_since"].([]interface{})
+						if ok {
+							attsSince = make([]string, len(raw))
+							for i := 0; i < len(raw); i++ {
+								attsSince[i], ok = raw[i].(string)
+								if !ok {
+									break
+								}
 							}
 						}
+						if !ok {
+							err = base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
+						}
+					} else {
+						attsSince = []string{}
 					}
-					if !ok {
-						return base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
-					}
-				} else {
-					attsSince = []string{}
 				}
 			}
 
-			body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
+			if err == nil {
+				body, err = h.db.GetRev(docid, revid, includeRevs, attsSince)
+			}
+
 			if err != nil {
+				// Report error in the response for this doc:
 				status, reason := base.ErrorAsHTTPStatus(err)
 				errStr := base.CouchHTTPErrorName(status)
 				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
