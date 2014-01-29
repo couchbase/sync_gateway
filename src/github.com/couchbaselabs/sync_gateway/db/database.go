@@ -520,6 +520,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				access = nil
 				channels = nil
 			}
+			doc.History[doc.CurrentRev].Channels = channels
 			changed := len(doc.Access.updateAccess(doc, access)) +
 				len(doc.RoleAccess.updateAccess(doc, roles)) +
 				len(doc.updateChannels(channels))
