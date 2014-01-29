@@ -314,7 +314,6 @@ func (c *channelLogWriter) addToChangeLog_(entries []*changeEntry) {
 		if err == nil {
 			dbExpvars.Add("channelLogRewrites", 1)
 			dbExpvars.Add("channelLogRewriteCollisions", int64(fullUpdateAttempts-1))
-			c.invalidateCachedChangeLog()
 			base.LogTo("ChannelLog", "Wrote %d sequences (was %d now %d) to %q in %d attempts",
 				len(entries), oldChangeLogCount, newChangeLogCount, c.channelName, fullUpdateAttempts)
 		} else {
@@ -342,8 +341,12 @@ func (c *channelLogWriter) channelLogUpdated(rawLog []byte) {
 
 // Loads a channel's log from the database and returns it.
 func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, error) {
+	c.cacheMutex.Lock()
+	cachedLog := c.cachedLog
+	c.cacheMutex.Unlock()
+
 	// Read from cache if available:
-	if entries := c.cachedLog.EntriesAfter(afterSeq); entries != nil {
+	if entries := cachedLog.EntriesAfter(afterSeq); entries != nil {
 		base.LogTo("Changes", "Using cached entries for afterSeq=%d (returning %d)", afterSeq, len(entries))
 		dbExpvars.Add("channelLogCacheHits", 1)
 		return &channels.ChangeLog{Since: afterSeq, Entries: entries}, nil
@@ -367,13 +370,6 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",
 		c.channelName, len(raw), len(log.Entries), log.Since, afterSeq)
 	return log, nil
-}
-
-func (c *channelLogWriter) invalidateCachedChangeLog() {
-	c.cacheMutex.Lock()
-	c.cachedLog = channels.ChangeLog{}
-	dbExpvars.Add("channelLogInvalidates", 1)
-	c.cacheMutex.Unlock()
 }
 
 //////// SUBROUTINES:
