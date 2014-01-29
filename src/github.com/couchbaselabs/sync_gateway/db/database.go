@@ -45,7 +45,7 @@ type DatabaseContext struct {
 
 const DefaultRevsLimit = 1000
 
-const RevisionCacheCapacity = 100
+const RevisionCacheCapacity = 500
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
