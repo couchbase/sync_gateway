@@ -451,7 +451,8 @@ func TestRevsDiff(t *testing.T) {
 	// Now call _revs_diff:
 	input = `{"rd1": ["13-def", "12-abc", "11-eleven"],
               "rd2": ["34-def", "31-one"],
-              "rd9": ["1-a", "2-b", "3-c"]
+              "rd9": ["1-a", "2-b", "3-c"],
+              "_design/ddoc": ["1-woo"]
              }`
 	response = rt.sendRequest("POST", "/db/_revs_diff", input)
 	assertStatus(t, response, 200)

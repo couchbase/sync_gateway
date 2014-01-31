@@ -812,6 +812,9 @@ func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error
 
 // Given a document ID and a set of revision IDs, looks up which ones are not known.
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return // Users can't upload design docs, so ignore them
+	}
 	doc, err := db.GetDoc(docid)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
