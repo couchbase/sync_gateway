@@ -479,12 +479,11 @@ func TestAccessFunction(t *testing.T) {
 }
 
 func TestDocIDs(t *testing.T) {
-	var db *Database
-	assert.Equals(t, db.realDocID(""), "")
-	assert.Equals(t, db.realDocID("_"), "")
-	assert.Equals(t, db.realDocID("_foo"), "")
-	assert.Equals(t, db.realDocID("foo"), "foo")
-	assert.Equals(t, db.realDocID("_design/foo"), "_design/foo")
+	assert.Equals(t, realDocID(""), "")
+	assert.Equals(t, realDocID("_"), "")
+	assert.Equals(t, realDocID("_foo"), "")
+	assert.Equals(t, realDocID("foo"), "foo")
+	assert.Equals(t, realDocID("_design/foo"), "_design/foo")
 }
 
 func TestUpdateDesignDoc(t *testing.T) {

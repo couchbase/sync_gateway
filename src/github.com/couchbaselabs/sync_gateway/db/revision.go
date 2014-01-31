@@ -30,7 +30,7 @@ func (body Body) ShallowCopy() Body {
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (db *Database) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
+func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
 	data, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
 		base.LogTo("CRUD+", "No old revision %q / %q", docid, revid)

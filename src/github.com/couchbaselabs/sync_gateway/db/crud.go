@@ -24,7 +24,7 @@ import (
 
 //////// READING DOCUMENTS:
 
-func (db *Database) realDocID(docid string) string {
+func realDocID(docid string) string {
 	if len(docid) > 250 {
 		return "" // Invalid doc IDs
 	}
@@ -34,8 +34,9 @@ func (db *Database) realDocID(docid string) string {
 	return docid
 }
 
-func (db *Database) GetDoc(docid string) (*document, error) {
-	key := db.realDocID(docid)
+// Lowest-level method that reads a document from the bucket.
+func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
+	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
@@ -50,54 +51,98 @@ func (db *Database) GetDoc(docid string) (*document, error) {
 	return doc, nil
 }
 
+// This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
+// Its job is to load a revision from the bucket when there's a cache miss.
+func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
+	var doc *document
+	if doc, err = context.GetDoc(id.DocID); doc == nil {
+		return
+	}
+
+	if body, err = context.getRevision(doc, id.RevID); err != nil {
+		return
+	}
+	if doc.History[id.RevID].Deleted {
+		body["_deleted"] = true
+	}
+	history = encodeRevisions(doc.History.getHistory(id.RevID))
+	channels = doc.History[id.RevID].Channels
+	return
+}
+
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
 	return db.GetRev(docid, "", false, nil)
 }
 
 // Returns the body of a revision of a document. Uses the revision cache.
+// revid may be "", meaning the current revision.
 func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
-	// Get the revision body and history from the revision cache:
-	var err error
 	var doc *document
-	body, revisions, channels := db.revisionCache.Get(docid, revid)
-	if body != nil {
-		if db.user != nil {
-			if err = db.user.AuthorizeAnyChannel(channels); err != nil {
-				// On access failure, return (only) the doc history and deletion/removal
-				// status instead of returning an error. For justification see the comment in
-				// the getRevFromDoc method, below
-				deleted, _ := body["_deleted"].(bool)
-				redactedBody := Body{"_id": docid, "_rev": revid}
-				if deleted {
-					redactedBody["_deleted"] = true
-				} else {
-					redactedBody["_removed"] = true
-				}
-				if listRevisions {
-					redactedBody["_revisions"] = revisions
-				}
-				return redactedBody, nil
+	var body Body
+	var revisions Body
+	var channels base.Set
+	var err error
+	revIDGiven := (revid != "")
+	if revIDGiven {
+		// Get a specific revision body and history from the revision cache
+		// (which will load them if necessary, by calling revCacheLoader, above)
+		body, revisions, channels, err = db.revisionCache.Get(docid, revid)
+		if body == nil {
+			if err == nil {
+				err = base.HTTPErrorf(404, "missing")
 			}
+			return nil, err
 		}
 	} else {
-		// If not in the cache, read the rev body+history from the database:
+		// No rev ID given, so load doc and get its current revision:
 		if doc, err = db.GetDoc(docid); doc == nil {
 			return nil, err
 		}
-		if body, err = db.getRevFromDoc(doc, revid, false); err != nil {
+		revid = doc.CurrentRev
+		if body, err = db.getRevision(doc, revid); err != nil {
 			return nil, err
 		}
-		revid = body["_rev"].(string)
+		if doc.Deleted {
+			body["_deleted"] = true
+		}
 		revisions = encodeRevisions(doc.History.getHistory(revid))
-		revChannels := doc.History[revid].Channels
-		db.revisionCache.Put(body, revisions, revChannels)
+		channels = doc.History[revid].Channels
 	}
 
+	// Authorize the access:
+	if db.user != nil {
+		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
+			if !revIDGiven {
+				return nil, base.HTTPErrorf(403, "forbidden")
+			}
+			// On access failure, return (only) the doc history and deletion/removal
+			// status instead of returning an error. For justification see the comment in
+			// the getRevFromDoc method, below
+			deleted, _ := body["_deleted"].(bool)
+			redactedBody := Body{"_id": docid, "_rev": revid}
+			if deleted {
+				redactedBody["_deleted"] = true
+			} else {
+				redactedBody["_removed"] = true
+			}
+			if listRevisions {
+				redactedBody["_revisions"] = revisions
+			}
+			return redactedBody, nil
+		}
+	}
+
+	if !revIDGiven && body["_deleted"] != nil {
+		return nil, base.HTTPErrorf(404, "deleted")
+	}
+
+	// Add revision metadata:
 	if listRevisions {
 		body["_revisions"] = revisions
 	}
 
+	// Add attachment bodies:
 	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
 		minRevpos := 1
 		if len(attachmentsSince) > 0 {
@@ -166,7 +211,7 @@ func (db *Database) authorizeDoc(doc *document, revid string) error {
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // This method adds the magic _id and _rev properties.
-func (db *Database) getRevision(doc *document, revid string) (Body, error) {
+func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error) {
 	var body Body
 	if body = doc.getRevision(revid); body == nil {
 		// No inline body, so look for separate doc:
@@ -389,7 +434,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		return "", base.HTTPErrorf(403, "Forbidden to update design doc")
 	}
 
-	key := db.realDocID(docid)
+	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}

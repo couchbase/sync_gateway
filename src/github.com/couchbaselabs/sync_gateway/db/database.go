@@ -91,8 +91,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		StartTime:     time.Now(),
 		RevsLimit:     DefaultRevsLimit,
 		autoImport:    autoImport,
-		revisionCache: NewRevisionCache(RevisionCacheCapacity),
 	}
+	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
 	context.changesWriter = newChangesWriter(bucket)
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)
@@ -478,7 +478,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
 		docid := rowKey[1].(string)
-		key := db.realDocID(docid)
+		key := realDocID(docid)
 		//base.Log("\tupdating %q", docid)
 		err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
