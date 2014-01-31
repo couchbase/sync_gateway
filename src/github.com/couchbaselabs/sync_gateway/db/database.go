@@ -45,7 +45,8 @@ type DatabaseContext struct {
 
 const DefaultRevsLimit = 1000
 
-const RevisionCacheCapacity = 500
+// Number of recently-accessed doc revisions to cache in RAM
+const RevisionCacheCapacity = 5000
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -86,11 +87,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		return nil, err
 	}
 	context := &DatabaseContext{
-		Name:          dbName,
-		Bucket:        bucket,
-		StartTime:     time.Now(),
-		RevsLimit:     DefaultRevsLimit,
-		autoImport:    autoImport,
+		Name:       dbName,
+		Bucket:     bucket,
+		StartTime:  time.Now(),
+		RevsLimit:  DefaultRevsLimit,
+		autoImport: autoImport,
 	}
 	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
 	context.changesWriter = newChangesWriter(bucket)

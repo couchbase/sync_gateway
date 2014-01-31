@@ -19,7 +19,7 @@ import (
 var MaxChangeLogLength = 1000
 
 // Number of recent change-log items to cache in memory
-var CachedChangeLogLength = 50
+var CachedChangeLogLength = 500
 
 // If this is set to true, every update of a channel log will compact it to MaxChangeLogLength.
 var AlwaysCompactChangeLog = false
