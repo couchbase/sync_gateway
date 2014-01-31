@@ -226,6 +226,10 @@ func (h *handler) PathVar(name string) string {
 	return v
 }
 
+func (h *handler) SetPathVar(name string, value string) {
+	mux.Vars(h.rq)[name] = url.QueryEscape(value)
+}
+
 func (h *handler) getQuery(query string) string {
 	return h.rq.URL.Query().Get(query)
 }

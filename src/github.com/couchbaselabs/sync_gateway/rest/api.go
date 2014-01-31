@@ -98,16 +98,36 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 }
 
 func (h *handler) handleDesign() error {
-	// we serve this content here so that CouchDB 1.2 has something to
-	// hash into the replication-id, to correspond to our filter.
-	filter := "ok"
-	if h.db.DatabaseContext.ChannelMapper != nil {
-		hash := sha1.New()
-		io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
-		filter = fmt.Sprint(hash.Sum(nil))
+	designDocID := h.PathVar("docid")
+	if designDocID == "sync_gateway" {
+		// we serve this content here so that CouchDB 1.2 has something to
+		// hash into the replication-id, to correspond to our filter.
+		filter := "ok"
+		if h.db.DatabaseContext.ChannelMapper != nil {
+			hash := sha1.New()
+			io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
+			filter = fmt.Sprint(hash.Sum(nil))
+		}
+		h.writeJSON(db.Body{"filters": db.Body{"bychannel": filter}})
+		return nil
+	} else {
+		h.SetPathVar("docid", "_design/"+designDocID)
+		return h.handleGetDoc()
 	}
-	h.writeJSON(db.Body{"filters": db.Body{"bychannel": filter}})
-	return nil
+}
+
+func (h *handler) handlePutDesign() error {
+	designDocID := h.PathVar("docid")
+	if designDocID == "sync_gateway" {
+		return base.HTTPErrorf(http.StatusForbidden, "forbidden")
+	} else {
+		h.SetPathVar("docid", "_design/"+designDocID)
+		if h.rq.Method == "DELETE" {
+			return h.handleDeleteDoc()
+		} else {
+			return h.handlePutDoc()
+		}
+	}
 }
 
 // ADMIN API to turn Go CPU profiling on/off
