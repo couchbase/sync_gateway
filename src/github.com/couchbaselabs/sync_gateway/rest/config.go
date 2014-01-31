@@ -42,6 +42,7 @@ type ServerConfig struct {
 	SSLCert                 *string         // Path to SSL cert file, or nil
 	SSLKey                  *string         // Path to SSL private key file, or nil
 	AdminInterface          *string         // Interface to bind admin API to, default ":4985"
+	AdminUI                 *string         // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface        *string         // Interface to bind Go profile API to (no default)
 	ConfigServer            *string         // URL of config server (for dynamic db discovery)
 	Persona                 *PersonaConfig  // Configuration for Mozilla Persona validation
