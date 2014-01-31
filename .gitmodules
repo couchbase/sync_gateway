@@ -31,3 +31,6 @@
 [submodule "vendor/src/github.com/samuel/go-metrics"]
 	path = vendor/src/github.com/samuel/go-metrics
 	url = https://github.com/samuel/go-metrics
+[submodule "vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui"]
+	path = vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui
+	url = https://github.com/couchbaselabs/sync_gateway_admin_ui.git
