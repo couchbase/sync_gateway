@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )
 
@@ -87,11 +88,12 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, adminPrivs)
 
-	// todo the path should be securely pinned to bin/utils or something
-	r.PathPrefix("/_utils/assets").Handler(http.StripPrefix("/_utils/assets",
-		http.FileServer(http.Dir("./utils/assets")))).Methods("GET", "HEAD")
-	r.PathPrefix("/_utils").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./utils/index.html")
+	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sc.config.AdminUI != nil {
+			http.ServeFile(w, r, *sc.config.AdminUI)
+		} else {
+			w.Write(sync_gateway_admin_ui.Admin_bundle_html())
+		}
 	})
 
 	dbr.Handle("/_session",
