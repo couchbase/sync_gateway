@@ -210,7 +210,7 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	}
 
 	if dbcontext.ChannelMapper == nil {
-		base.Warn("Database %q sync function undefined; using default", dbName)
+		base.Log("Using default sync function 'channel(doc.channels)' for database %q", dbName)
 	}
 
 	// Create default users & roles:
