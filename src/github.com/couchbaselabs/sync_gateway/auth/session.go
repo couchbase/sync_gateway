@@ -74,6 +74,19 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie
 	}
 }
 
+func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie {
+	cookie, _ := rq.Cookie(CookieName)
+	if cookie == nil {
+		return nil
+	}
+	auth.bucket.Delete(docIDForSession(cookie.Value))
+
+	newCookie := *cookie
+	newCookie.Value = ""
+	newCookie.Expires = time.Now()
+	return &newCookie
+}
+
 func docIDForSession(sessionID string) string {
 	return "session:" + sessionID
 }

@@ -69,6 +69,16 @@ func (h *handler) handleSessionPOST() error {
 	return h.makeSession(user)
 }
 
+// DELETE /_session logs out the current session
+func (h *handler) handleSessionDELETE() error {
+	cookie := h.db.Authenticator().DeleteSessionForCookie(h.rq)
+	if cookie == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "no session")
+	}
+	http.SetCookie(h.response, cookie)
+	return nil
+}
+
 func (h *handler) makeSession(user auth.User) error {
 	if user == nil {
 		return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")

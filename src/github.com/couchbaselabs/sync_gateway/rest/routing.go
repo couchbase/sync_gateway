@@ -80,6 +80,8 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, regularPrivs)
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
+	dbr.Handle("/_session", makeHandler(sc, regularPrivs,
+		(*handler).handleSessionDELETE)).Methods("DELETE")
 	return wrapRouter(sc, regularPrivs, r)
 }
 
