@@ -156,6 +156,18 @@ func (tree RevTree) getLeaves() []string {
 	return leaves
 }
 
+func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
+	isParent := map[string]bool{}
+	for _, info := range tree {
+		isParent[info.Parent] = true
+	}
+	for revid, info := range tree {
+		if !isParent[revid] {
+			callback(info)
+		}
+	}
+}
+
 func (tree RevTree) isLeaf(revid string) bool {
 	if !tree.contains(revid) {
 		return false

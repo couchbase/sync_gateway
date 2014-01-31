@@ -493,21 +493,26 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				base.LogTo("CRUD", "\tRe-syncing document %q", docid)
 			}
 
-			body, err := db.getRevFromDoc(doc, "", false)
-			if err != nil {
-				return nil, err
-			}
-			parentRevID := doc.History[doc.CurrentRev].Parent
-			channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
-			if err != nil {
-				// Probably the validator rejected the doc
-				base.Warn("Error calling sync() on doc %q: %v", docid, err)
-				access = nil
-				channels = nil
-			}
-			changed := len(doc.Access.updateAccess(doc, access)) +
-				len(doc.RoleAccess.updateAccess(doc, roles)) +
-				len(doc.updateChannels(channels))
+			// Run the sync fn over each current/leaf revision, in case there are conflicts:
+			changed := 0
+			doc.History.forEachLeaf(func(rev *RevInfo) {
+				body, _ := db.getRevFromDoc(doc, rev.ID, false)
+				channels, access, roles, err := db.getChannelsAndAccess(doc, body, rev.Parent)
+				if err != nil {
+					// Probably the validator rejected the doc
+					base.Warn("Error calling sync() on doc %q: %v", docid, err)
+					access = nil
+					channels = nil
+				}
+				rev.Channels = channels
+
+				if rev.ID == doc.CurrentRev {
+					changed = len(doc.Access.updateAccess(doc, access)) +
+						len(doc.RoleAccess.updateAccess(doc, roles)) +
+						len(doc.updateChannels(channels))
+				}
+			})
+
 			if changed > 0 || imported {
 				base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
 				return json.Marshal(doc)

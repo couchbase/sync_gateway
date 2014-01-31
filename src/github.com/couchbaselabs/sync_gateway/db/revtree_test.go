@@ -76,6 +76,15 @@ func TestRevTreeGetLeaves(t *testing.T) {
 	assert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
 }
 
+func TestRevTreeForEachLeaf(t *testing.T) {
+	var leaves []string
+	branchymap.forEachLeaf(func(rev *RevInfo) {
+		leaves = append(leaves, rev.ID)
+	})
+	sort.Strings(leaves)
+	assert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
+}
+
 func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.DeepEquals(t, tempmap, testmap)
