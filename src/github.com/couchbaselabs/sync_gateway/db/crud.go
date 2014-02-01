@@ -786,32 +786,8 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, e
 
 //////// REVS_DIFF:
 
-type RevsDiffInput map[string][]string
-
-// Given a set of documents and revisions, looks up which ones are not known.
-// The input is a map from doc ID to array of revision IDs.
-// The output is a map from doc ID to a map with "missing" and "possible_ancestors" arrays of rev IDs.
-func (db *Database) RevsDiff(input RevsDiffInput) (map[string]interface{}, error) {
-	// http://wiki.apache.org/couchdb/HttpPostRevsDiff
-	output := make(map[string]interface{})
-	for docid, revs := range input {
-		missing, possible, err := db.RevDiff(docid, revs)
-		if err != nil {
-			return nil, err
-		}
-		if missing != nil {
-			docOutput := map[string]interface{}{"missing": missing}
-			if possible != nil {
-				docOutput["possible_ancestors"] = possible
-			}
-			output[docid] = docOutput
-		}
-	}
-	return output, nil
-}
-
 // Given a document ID and a set of revision IDs, looks up which ones are not known.
-func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string, err error) {
+func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
 	}
@@ -822,7 +798,6 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 			// If something goes wrong getting the doc, treat it as though it's nonexistent.
 		}
 		missing = revids
-		err = nil
 		return
 	}
 	revmap := doc.History

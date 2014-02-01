@@ -114,24 +114,21 @@ func TestDatabase(t *testing.T) {
 
 	// Test RevDiff:
 	log.Printf("Check RevDiff...")
-	missing, possible, err := db.RevDiff("doc1",
+	missing, possible := db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"2-488724414d0ed6b398d6d2aeb228d797"})
-	assertNoError(t, err, "RevDiff failed")
 	assert.True(t, missing == nil)
 	assert.True(t, possible == nil)
 
-	missing, possible, err = db.RevDiff("doc1",
+	missing, possible = db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
-	assertNoError(t, err, "RevDiff failed")
 	assert.DeepEquals(t, missing, []string{"3-foo"})
 	assert.DeepEquals(t, possible, []string{"2-488724414d0ed6b398d6d2aeb228d797"})
 
-	missing, possible, err = db.RevDiff("nosuchdoc",
+	missing, possible = db.RevDiff("nosuchdoc",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
-	assertNoError(t, err, "RevDiff failed")
 	assert.DeepEquals(t, missing, []string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 		"3-foo"})
 	assert.True(t, possible == nil)

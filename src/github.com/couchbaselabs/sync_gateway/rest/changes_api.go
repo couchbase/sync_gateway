@@ -33,16 +33,31 @@ const kDefaultTimeoutMS = 5 * 60 * 1000
 const kMaxTimeoutMS = 15 * 60 * 1000
 
 func (h *handler) handleRevsDiff() error {
-	var input db.RevsDiffInput
+	var input map[string][]string
 	err := h.readJSONInto(&input)
 	if err != nil {
 		return err
 	}
-	output, err := h.db.RevsDiff(input)
-	if err == nil {
-		h.writeJSON(output)
+
+	h.response.Write([]byte("{"))
+	first := true
+	for docid, revs := range input {
+		missing, possible := h.db.RevDiff(docid, revs)
+		if missing != nil {
+			docOutput := map[string]interface{}{"missing": missing}
+			if possible != nil {
+				docOutput["possible_ancestors"] = possible
+			}
+			if !first {
+				h.response.Write([]byte(",\n"))
+			}
+			first = false
+			h.response.Write([]byte(fmt.Sprintf("%q:", docid)))
+			h.addJSON(docOutput)
+		}
 	}
-	return err
+	h.response.Write([]byte("}"))
+	return nil
 }
 
 // Top-level handler for _changes feed requests.
