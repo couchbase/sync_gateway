@@ -14,9 +14,10 @@ type LogEntry struct {
 
 // Bits in LogEntry.Flags
 const (
-	Deleted = 1 << iota
-	Removed
-	Hidden
+	Deleted  = 1 << iota // This rev is a deletion
+	Removed              // Doc was removed from this channel
+	Hidden               // This rev is not the default (hidden by a conflict)
+	Conflict             // Document is in conflict at this time
 
 	kMaxFlag = (1 << iota) - 1
 )

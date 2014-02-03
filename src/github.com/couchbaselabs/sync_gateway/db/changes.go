@@ -177,11 +177,12 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				Deleted: (logEntry.Flags & channels.Deleted) != 0,
 				Changes: []ChangeRev{{"rev": logEntry.RevID}},
 			}
+			conflict := options.Conflicts && (logEntry.Flags&channels.Conflict) != 0
 			if logEntry.Flags&channels.Removed != 0 {
 				change.Removed = channels.SetOf(channel)
-			} else if options.IncludeDocs {
+			} else if options.IncludeDocs || conflict {
 				doc, _ := db.GetDoc(logEntry.DocID)
-				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, false)
+				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, conflict)
 			}
 
 			select {

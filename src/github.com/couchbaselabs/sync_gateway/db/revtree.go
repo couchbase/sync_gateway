@@ -182,19 +182,22 @@ func (tree RevTree) isLeaf(revid string) bool {
 
 // Finds the "winning" revision, the one that should be treated as the default.
 // This is the leaf revision whose (!deleted, generation, hash) tuple compares the highest.
-func (tree RevTree) winningRevision() string {
-	winner := ""
+func (tree RevTree) winningRevision() (winner string, inConflict bool) {
 	winnerExists := false
-	for _, revid := range tree.getLeaves() {
-		info := tree[revid]
+	leafCount := 0
+	tree.forEachLeaf(func(info *RevInfo) {
 		exists := !info.Deleted
+		if exists {
+			leafCount++
+		}
 		if (exists && !winnerExists) ||
-			((exists == winnerExists) && compareRevIDs(revid, winner) > 0) {
-			winner = revid
+			((exists == winnerExists) && compareRevIDs(info.ID, winner) > 0) {
+			winner = info.ID
 			winnerExists = exists
 		}
-	}
-	return winner
+	})
+	inConflict = (leafCount > 1)
+	return
 }
 
 // Given a revision and a set of possible ancestors, finds the one that is the most recent

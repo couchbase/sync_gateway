@@ -445,6 +445,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var changedChannels base.Set
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
+	var inConflict = false
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -465,7 +466,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		newRevID = body["_rev"].(string)
 		parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
-		doc.CurrentRev = doc.History.winningRevision()
+		doc.CurrentRev, inConflict = doc.History.winningRevision()
 		doc.Deleted = doc.History[doc.CurrentRev].Deleted
 
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
@@ -606,6 +607,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	}
 	if newRevID != doc.CurrentRev {
 		newEntry.Flags |= channels.Hidden
+	}
+	if inConflict {
+		newEntry.Flags |= channels.Conflict
 	}
 	db.changesWriter.addToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
 

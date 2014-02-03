@@ -358,7 +358,7 @@ func TestConflicts(t *testing.T) {
 	assert.Equals(t, len(log.Entries), 2)
 	assert.Equals(t, int(log.Since), 0)
 	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
-	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden})
+	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden | channels.Conflict})
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
@@ -377,7 +377,7 @@ func TestConflicts(t *testing.T) {
 	assert.DeepEquals(t, changes[1], &ChangeEntry{
 		Seq:     "all:3",
 		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-a"}}})
+		Changes: []ChangeRev{{"rev": "2-a"}, {"rev": "2-b"}}})
 
 	// Delete 2-b; verify this makes 2-a current:
 	_, err = db.DeleteDoc("doc", "2-b")
