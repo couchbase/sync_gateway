@@ -60,7 +60,7 @@ func (h *handler) handleRevsDiff() error {
 	return nil
 }
 
-// Top-level handler for _changes feed requests.
+// Top-level handler for _changes feed requests. Accepts GET or POST requests.
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	// http://docs.couchdb.org/en/latest/api/database/changes.html
@@ -68,11 +68,44 @@ func (h *handler) handleChanges() error {
 	restExpvars.Add("changesFeeds_active", 1)
 	defer restExpvars.Add("changesFeeds_active", -1)
 
+	var feed string
 	var options db.ChangesOptions
-	options.Since = channels.TimedSetFromString(h.getQuery("since"))
-	options.Limit = int(h.getIntQuery("limit", 0))
-	options.Conflicts = (h.getQuery("style") == "all_docs")
-	options.IncludeDocs = (h.getBoolQuery("include_docs"))
+	var filter string
+	var channelsArray []string
+	if h.rq.Method == "GET" {
+		// GET request has parameters in URL:
+		feed = h.getQuery("feed")
+		options.Since = channels.TimedSetFromString(h.getQuery("since"))
+		options.Limit = int(h.getIntQuery("limit", 0))
+		options.Conflicts = (h.getQuery("style") == "all_docs")
+		options.IncludeDocs = (h.getBoolQuery("include_docs"))
+		filter = h.getQuery("filter")
+		channelsParam := h.getQuery("channels")
+		if channelsParam != "" {
+			channelsArray = strings.Split(channelsParam, ",")
+		}
+	} else {
+		// POST request has parameters in JSON body:
+		var input struct {
+			Feed        string   `json:"feed"`
+			Since       string   `json:"since"`
+			Limit       int      `json:"limit"`
+			Style       string   `json:"style"`
+			IncludeDocs bool     `json:"include_docs"`
+			Filter      string   `json:"filter"`
+			Channels    []string `json:"channels"`
+		}
+		if err := h.readJSONInto(&input); err != nil {
+			return err
+		}
+		feed = input.Feed
+		options.Since = channels.TimedSetFromString(input.Since)
+		options.Limit = input.Limit
+		options.Conflicts = (input.Style == "all_docs")
+		options.IncludeDocs = input.IncludeDocs
+		filter = input.Filter
+		channelsArray = input.Channels
+	}
 
 	options.Terminator = make(chan bool)
 	defer close(options.Terminator)
@@ -80,18 +113,15 @@ func (h *handler) handleChanges() error {
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
 	userChannels := channels.SetOf("*")
-	filter := h.getQuery("filter")
 	if filter != "" {
 		if filter != "sync_gateway/bychannel" {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 		}
-		channelsParam := h.getQuery("channels")
-		if channelsParam == "" {
+		if channelsArray == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
 		}
 		var err error
-		userChannels, err = channels.SetFromArray(strings.Split(channelsParam, ","),
-			channels.ExpandStar)
+		userChannels, err = channels.SetFromArray(channelsArray, channels.ExpandStar)
 		if err != nil {
 			return err
 		}
@@ -103,7 +133,7 @@ func (h *handler) handleChanges() error {
 	h.db.ChangesClientStats.Increment()
 	defer h.db.ChangesClientStats.Decrement()
 
-	switch h.getQuery("feed") {
+	switch feed {
 	case "normal", "":
 		return h.sendSimpleChanges(userChannels, options)
 	case "longpoll":

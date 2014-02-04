@@ -42,7 +42,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/_all_docs", makeHandler(sc, privs, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, (*handler).handleBulkDocs)).Methods("POST")
 	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("POST")
-	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD")
+	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_design/{docid}", makeHandler(sc, privs, (*handler).handleDesign)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/{docid}", makeHandler(sc, privs, (*handler).handlePutDesign)).Methods("PUT", "DELETE")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
