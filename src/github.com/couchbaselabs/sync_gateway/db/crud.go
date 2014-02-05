@@ -133,8 +133,10 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 		}
 	}
 
-	if !revIDGiven && body["_deleted"] != nil {
-		return nil, base.HTTPErrorf(404, "deleted")
+	if !revIDGiven {
+		if deleted, _ := body["_deleted"].(bool); deleted {
+			return nil, base.HTTPErrorf(404, "deleted")
+		}
 	}
 
 	// Add revision metadata:
