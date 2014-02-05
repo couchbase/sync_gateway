@@ -24,13 +24,16 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.93"
+const ServerName = "Couchbase Sync Gateway"
+const VersionNumberString = "0.93"
+const VersionString = ServerName + "/" + VersionNumberString
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
 	response := map[string]interface{}{
-		"couchdb": "welcome",
+		"couchdb": "Welcome",
 		"version": VersionString,
+		"vendor":  db.Body{"name": ServerName, "version": VersionNumberString},
 	}
 	if h.privs == adminPrivs {
 		response["ADMIN"] = true
