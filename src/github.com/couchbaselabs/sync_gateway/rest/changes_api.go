@@ -86,29 +86,15 @@ func (h *handler) handleChanges() error {
 		}
 	} else {
 		// POST request has parameters in JSON body:
-		var input struct {
-			Feed        string   `json:"feed"`
-			Since       string   `json:"since"`
-			Limit       int      `json:"limit"`
-			Style       string   `json:"style"`
-			IncludeDocs bool     `json:"include_docs"`
-			Filter      string   `json:"filter"`
-			Channels    []string `json:"channels"`
-		}
-		if err := h.readJSONInto(&input); err != nil {
+		body, err := h.readBody()
+		if err != nil {
 			return err
 		}
-		feed = input.Feed
-		options.Since = channels.TimedSetFromString(input.Since)
-		options.Limit = input.Limit
-		options.Conflicts = (input.Style == "all_docs")
-		options.IncludeDocs = input.IncludeDocs
-		filter = input.Filter
-		channelsArray = input.Channels
+		feed, options, filter, channelsArray, err = readChangesOptionsFromJSON(body)
+		if err != nil {
+			return err
+		}
 	}
-
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
@@ -132,6 +118,9 @@ func (h *handler) handleChanges() error {
 
 	h.db.ChangesClientStats.Increment()
 	defer h.db.ChangesClientStats.Decrement()
+
+	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
 
 	switch feed {
 	case "normal", "":
@@ -350,7 +339,24 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 
 func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options db.ChangesOptions) error {
 	handler := func(conn *websocket.Conn) {
-		h.logStatus(101, "Upgrading to WebSocket protocol")
+		h.logStatus(101, "Upgraded to WebSocket protocol")
+
+		// Read changes-feed options from an initial incoming WebSocket message in JSON format:
+		if msg, err := readWebSocketMessage(conn); err != nil {
+			conn.Close()
+			return
+		} else {
+			var channelNames []string
+			_, options, _, channelNames, err = readChangesOptionsFromJSON(msg)
+			if err != nil {
+				conn.Close()
+				return
+			}
+			if channelNames != nil {
+				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
+			}
+		}
+
 		caughtUp := false
 		h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 			var data []byte
@@ -373,4 +379,44 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 	}
 	server.ServeHTTP(h.response, h.rq)
 	return nil
+}
+
+func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
+	var input struct {
+		Feed        string   `json:"feed"`
+		Since       string   `json:"since"`
+		Limit       int      `json:"limit"`
+		Style       string   `json:"style"`
+		IncludeDocs bool     `json:"include_docs"`
+		Filter      string   `json:"filter"`
+		Channels    []string `json:"channels"`
+	}
+	if err = json.Unmarshal(jsonData, &input); err != nil {
+		return
+	}
+	feed = input.Feed
+	options.Since = channels.TimedSetFromString(input.Since)
+	options.Limit = input.Limit
+	options.Conflicts = (input.Style == "all_docs")
+	options.IncludeDocs = input.IncludeDocs
+	filter = input.Filter
+	channelsArray = input.Channels
+	return
+}
+
+// Helper function to read a complete message from a WebSocket (because the API makes it hard)
+func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
+	var message []byte
+	buf := make([]byte, 100)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			return nil, err
+		}
+		message = append(message, buf[0:n]...)
+		if n < len(buf) {
+			break
+		}
+	}
+	return message, nil
 }
