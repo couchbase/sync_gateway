@@ -169,8 +169,9 @@ func TestRoot(t *testing.T) {
 	var rt restTester
 	response := rt.sendRequest("GET", "/", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, response.Body.String(),
-		"{\"couchdb\":\"welcome\",\"version\":\""+VersionString+"\"}")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["couchdb"], "Welcome")
 
 	response = rt.sendRequest("HEAD", "/", "")
 	assertStatus(t, response, 200)
