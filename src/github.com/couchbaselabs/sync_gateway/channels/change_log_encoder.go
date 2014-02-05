@@ -61,7 +61,7 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *Chang
 	}
 
 	cleanup := false
-	skipping := (afterSeq > 0)
+	skipping := afterSeq > ch.Since
 	var flagBuf [1]byte
 	for {
 		n, err := r.Read(flagBuf[0:1])
@@ -79,15 +79,13 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *Chang
 		}
 		seq := readSequence(r)
 		if skipping {
-			if seq >= afterSeq {
+			if seq == afterSeq {
 				skipping = false
 			}
-			if seq <= afterSeq {
-				skipString(r)
-				skipString(r)
-				skipString(r)
-				continue // ignore this sequence
-			}
+			skipString(r)
+			skipString(r)
+			skipString(r)
+			continue // ignore this sequence
 		}
 
 		entry := &LogEntry{

@@ -89,8 +89,8 @@ func TestChangeLogEncoding(t *testing.T) {
 		assert.DeepEquals(t, entry, cl.Entries[i])
 	}
 
-	cl2 = DecodeChangeLog(bytes.NewReader(data), 100, nil)
-	assert.Equals(t, cl2.Since, uint64(100))
+	cl2 = DecodeChangeLog(bytes.NewReader(data), 20, nil)
+	assert.Equals(t, cl2.Since, uint64(20))
 	assert.Equals(t, len(cl2.Entries), 2)
 	for i, entry := range cl2.Entries {
 		assert.DeepEquals(t, entry, cl.Entries[i+1])
