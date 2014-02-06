@@ -69,11 +69,11 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 	if doc != nil {
 		revID := entry.Changes[0]["rev"]
 		if includeConflicts {
-			for _, leafID := range doc.History.getLeaves() {
-				if leafID != revID {
-					entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+			doc.History.forEachLeaf(func(leaf *RevInfo) {
+				if leaf.ID != revID && !leaf.Deleted {
+					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
 				}
-			}
+			})
 		}
 		if includeDocs {
 			var err error
