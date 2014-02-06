@@ -346,13 +346,16 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 	c.cacheMutex.RUnlock()
 
 	// Read from cache if available:
-	if entries := cachedLog.EntriesAfter(afterSeq); entries != nil {
+	entries := cachedLog.EntriesAfter(afterSeq)
+	if entries == nil && afterSeq > cachedLog.Since {
+		entries = cachedLog.Entries
+	}
+	if entries != nil {
 		base.LogTo("Changes", "Using cached entries for afterSeq=%d (returning %d)", afterSeq, len(entries))
 		dbExpvars.Add("channelLogCacheHits", 1)
 		return &channels.ChangeLog{Since: afterSeq, Entries: entries}, nil
 	}
 
-	dbExpvars.Add("channelLogCacheMisses", 1)
 	raw, err := c.bucket.GetRaw(channelLogDocID(c.channelName))
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
@@ -361,6 +364,7 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 		return nil, err
 	}
 
+	dbExpvars.Add("channelLogCacheMisses", 1)
 	log := channels.DecodeChangeLog(bytes.NewReader(raw), afterSeq, nil)
 	if log == nil {
 		// Log is corrupt, so delete it; caller will regenerate it.
