@@ -225,7 +225,8 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 		}()
 	}
 
-	options.Wait = true // we want the feed channel to wait for changes
+	options.Wait = true       // we want the feed channel to wait for changes
+	options.Continuous = true // and to keep sending changes indefinitely
 	var lastSeqID string
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time

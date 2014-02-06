@@ -26,6 +26,7 @@ type ChangesOptions struct {
 	Conflicts   bool
 	IncludeDocs bool
 	Wait        bool
+	Continuous  bool
 	Terminator  chan bool // Caller can close this channel to terminate the feed
 }
 
@@ -397,6 +398,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				// Send the entry, and repeat the loop:
+				base.LogTo("Changes+", "MultiChangesFeed sending %+v", minEntry)
 				select {
 				case <-options.Terminator:
 					base.LogTo("Changes+", "Aborting MultiChangesFeed")
@@ -414,12 +416,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 			}
 
-			if sentSomething || changeWaiter == nil {
+			if !options.Continuous && (sentSomething || changeWaiter == nil) {
 				break
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
+			base.LogTo("Changes+", "MultiChangesFeed waiting...")
 			output <- nil
 			if !changeWaiter.Wait() {
 				break
