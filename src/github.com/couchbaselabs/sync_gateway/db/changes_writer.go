@@ -128,7 +128,7 @@ type channelLogWriter struct {
 	io          chan *changeEntry
 	awake       chan bool
 	cachedLog   channels.ChangeLog
-	cacheMutex  sync.Mutex
+	cacheMutex  sync.RWMutex
 }
 
 type changeEntry struct {
@@ -327,23 +327,23 @@ func (c *channelLogWriter) channelLogUpdated(rawLog []byte) {
 	if c == nil {
 		return
 	}
+	c.cacheMutex.Lock()
+	defer c.cacheMutex.Unlock()
+
 	lastCachedSequence := c.cachedLog.LastSequence()
 	log := channels.DecodeChangeLog(bytes.NewReader(rawLog), lastCachedSequence, &c.cachedLog)
 	if log == nil {
 		return
 	}
 	log.TruncateTo(CachedChangeLogLength)
-
-	c.cacheMutex.Lock()
 	c.cachedLog = *log
-	c.cacheMutex.Unlock()
 }
 
 // Loads a channel's log from the database and returns it.
 func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, error) {
-	c.cacheMutex.Lock()
+	c.cacheMutex.RLock()
 	cachedLog := c.cachedLog
-	c.cacheMutex.Unlock()
+	c.cacheMutex.RUnlock()
 
 	// Read from cache if available:
 	if entries := cachedLog.EntriesAfter(afterSeq); entries != nil {
