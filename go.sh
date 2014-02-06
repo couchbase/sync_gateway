@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/bash
 
 # This script runs the given Go subcommand with GOPATH set up correctly for sync_gateway.
 
