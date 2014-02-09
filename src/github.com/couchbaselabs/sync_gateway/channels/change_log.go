@@ -3,6 +3,8 @@ package channels
 import (
 	"fmt"
 	"sort"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 type LogEntry struct {
@@ -106,10 +108,24 @@ func (cp *ChangeLog) FilterAfter(after uint64) {
 	}
 }
 
+// Removes any empty (no DocID) entries that result from revisions that have been replaced
+func (cp *ChangeLog) RemoveEmptyEntries() {
+	iDst := 0
+	for iSrc, entry := range cp.Entries {
+		if entry.DocID != "" {
+			if iDst < iSrc {
+				cp.Entries[iDst] = entry
+			}
+			iDst++
+		}
+	}
+	cp.Entries = cp.Entries[0:iDst]
+}
+
 func (cp *ChangeLog) Dump() {
-	fmt.Printf("Since: %d\n", cp.Since)
+	base.Log("Since: %d\n", cp.Since)
 	for _, e := range cp.Entries {
-		fmt.Printf("    %5d %q %q %b\n", e.Sequence, e.DocID, e.RevID, e.Flags)
+		base.Log("    %5d %q %q %b\n", e.Sequence, e.DocID, e.RevID, e.Flags)
 	}
 }
 

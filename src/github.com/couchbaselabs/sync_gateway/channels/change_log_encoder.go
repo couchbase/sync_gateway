@@ -60,7 +60,6 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *Chang
 		afterSeq = oldLog.LastSequence()
 	}
 
-	cleanup := false
 	skipping := afterSeq > ch.Since
 	var flagBuf [1]byte
 	for {
@@ -101,26 +100,11 @@ func decodeChangeLog(r *bytes.Reader, afterSeq uint64, oldLog *ChangeLog) *Chang
 		if parentID := readString(r); parentID != "" {
 			if parentIndex, found := parents[docAndRev{entry.DocID, parentID}]; found {
 				// Clear out the parent rev that was overwritten by this one
-				ch.Entries[parentIndex] = &LogEntry{}
-				cleanup = true
+				ch.Entries[parentIndex] = &LogEntry{Sequence: ch.Entries[parentIndex].Sequence}
 			}
 		}
 		parents[docAndRev{entry.DocID, entry.RevID}] = len(ch.Entries)
 		ch.Entries = append(ch.Entries, entry)
-	}
-
-	// Now remove any overwritten entries:
-	if cleanup {
-		iDst := 0
-		for iSrc, entry := range ch.Entries {
-			if entry.DocID != "" { // only copy non-cleared entries
-				if iDst < iSrc {
-					ch.Entries[iDst] = entry
-				}
-				iDst++
-			}
-		}
-		ch.Entries = ch.Entries[0:iDst]
 	}
 
 	if oldLog == nil && afterSeq > ch.Since {

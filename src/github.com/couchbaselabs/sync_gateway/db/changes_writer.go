@@ -351,9 +351,12 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 		entries = cachedLog.Entries
 	}
 	if entries != nil {
-		base.LogTo("Changes", "Using cached entries for afterSeq=%d (returning %d)", afterSeq, len(entries))
+		log := &channels.ChangeLog{Since: afterSeq, Entries: entries}
+		log.RemoveEmptyEntries()
+		base.LogTo("Changes", "Using cached entries for afterSeq=%d (returning %d)",
+			afterSeq, len(log.Entries))
 		dbExpvars.Add("channelLogCacheHits", 1)
-		return &channels.ChangeLog{Since: afterSeq, Entries: entries}, nil
+		return log, nil
 	}
 
 	raw, err := c.bucket.GetRaw(channelLogDocID(c.channelName))
@@ -371,6 +374,7 @@ func (c *channelLogWriter) getChangeLog(afterSeq uint64) (*channels.ChangeLog, e
 		c.bucket.Delete(channelLogDocID(c.channelName))
 		return nil, fmt.Errorf("Corrupt log")
 	}
+	log.RemoveEmptyEntries()
 	base.LogTo("ChannelLog", "Read %q -- %d bytes, %d entries (since=%d) after #%d",
 		c.channelName, len(raw), len(log.Entries), log.Since, afterSeq)
 	return log, nil
