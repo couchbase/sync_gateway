@@ -355,7 +355,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	log, _ = db.GetChangeLog("all", 0)
-	log.RemoveEmptyEntries()
+	log = log.CopyRemovingEmptyEntries()
 	assert.Equals(t, len(log.Entries), 2)
 	assert.Equals(t, int(log.Since), 0)
 	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})

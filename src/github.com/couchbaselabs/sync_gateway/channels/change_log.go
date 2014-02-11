@@ -108,18 +108,25 @@ func (cp *ChangeLog) FilterAfter(after uint64) {
 	}
 }
 
-// Removes any empty (no DocID) entries that result from revisions that have been replaced
-func (cp *ChangeLog) RemoveEmptyEntries() {
-	iDst := 0
-	for iSrc, entry := range cp.Entries {
-		if entry.DocID != "" {
-			if iDst < iSrc {
-				cp.Entries[iDst] = entry
-			}
-			iDst++
+func (cp *ChangeLog) HasEmptyEntries() bool {
+	for _, entry := range cp.Entries {
+		if entry.DocID == "" {
+			return true
 		}
 	}
-	cp.Entries = cp.Entries[0:iDst]
+	return false
+}
+
+// Returns a copy without empty (no DocID) entries that resulted from revisions that have
+// been replaced. Result does not share a slice with the original cp.
+func (cp *ChangeLog) CopyRemovingEmptyEntries() *ChangeLog {
+	dst := make([]*LogEntry, 0, len(cp.Entries))
+	for _, entry := range cp.Entries {
+		if entry.DocID != "" {
+			dst = append(dst, entry)
+		}
+	}
+	return &ChangeLog{cp.Since, dst}
 }
 
 func (cp *ChangeLog) Dump() {
