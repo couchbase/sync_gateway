@@ -101,7 +101,7 @@ type FacebookConfig struct {
 type CORSConfig struct {
 	Origin []string  // List of allowed origins, use ["*"] to allow access from everywhere
 	Headers []string // List of allowed headers
-	MaxAge string    // Maximum age of the CORS Options request
+	MaxAge int       // Maximum age of the CORS Options request
 }
 
 type ShadowConfig struct {

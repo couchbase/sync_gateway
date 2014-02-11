@@ -12,6 +12,7 @@ package rest
 import (
 	"net/http"
 	"strings"
+	"strconv"
 
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
@@ -198,7 +199,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
 				if sc.config.CORS != nil {
-					response.Header().Add("Access-Control-Max-Age", sc.config.CORS.MaxAge)
+					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.CORS.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
 				if rq.Method != "OPTIONS" {
