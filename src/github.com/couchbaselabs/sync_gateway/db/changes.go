@@ -73,6 +73,7 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 			doc.History.forEachLeaf(func(leaf *RevInfo) {
 				if leaf.ID != revID && !leaf.Deleted {
 					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
+					entry.Deleted = false
 				}
 			})
 		}
