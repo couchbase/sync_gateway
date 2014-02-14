@@ -2,6 +2,7 @@ package db
 
 import (
 	"container/heap"
+	"fmt"
 	"github.com/couchbaselabs/sync_gateway/channels"
 	"sort"
 	"sync"
@@ -20,11 +21,12 @@ var EnableStarChannelLog = true
 
 // Manages a cache of the recent change history of all channels.
 type changeCache struct {
-	nextSequence uint64
-	channelLogs  map[string]LogEntries
-	pendingLogs  LogEntries
 	logsDisabled bool
-	logsLock     sync.RWMutex
+	nextSequence uint64
+	pendingLogs  LogEntries
+	channelLogs  map[string]LogEntries
+	onChange     func(base.Set)
+	lock         sync.RWMutex // Coordinates access to channelLogs
 }
 
 // A basic LogEntry annotated with its channels and arrival time
@@ -37,41 +39,75 @@ type LogEntry struct {
 // A heap of LogEntry structs, ordered by priority.
 type LogEntries []*LogEntry
 
+//////// HOUSEKEEPING:
+
 // Initializes a new changeCache.
-func (c *changeCache) Init() {
+func (c *changeCache) Init(onChange func(base.Set)) {
+	c.onChange = onChange
 	c.channelLogs = make(map[string]LogEntries, 10)
 	heap.Init(&c.pendingLogs)
 
-	// Start a timer to periodically prune the cache:
+	// Start a background task to periodically prune the cache:
 	go func() {
-		for _ = range time.NewTicker(15 * time.Second).C {
-			c.PruneCache()
+		for {
+			time.Sleep(MaxChannelLogCacheAge / 4)
+			if !c.PruneCache() {
+				break
+			}
 		}
 	}()
 }
 
+func (c *changeCache) Stop() {
+	c.lock.Lock()
+	c.channelLogs = nil
+	c.pendingLogs = nil
+	c.logsDisabled = true
+	c.lock.Unlock()
+}
+
 // Forgets all cached changes for all channels.
 func (c *changeCache) ClearLogs() {
-	c.logsLock.Lock()
+	c.lock.Lock()
 	c.nextSequence = 0
 	c.channelLogs = make(map[string]LogEntries, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
-	c.logsLock.Unlock()
+	c.lock.Unlock()
 }
 
 // If set to false, DocChanged() becomes a no-op.
 func (c *changeCache) EnableChannelLogs(enable bool) {
+	c.lock.Lock()
 	c.logsDisabled = !enable
+	c.lock.Unlock()
 }
 
-func (c *changeCache) DocChanged(docID string, docJSON []byte) base.Set {
-	if c.logsDisabled {
-		return nil
+// TESTING ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequence(sequence uint64) {
+	var i int
+	for i = 0; i < 20; i++ {
+		c.lock.Lock()
+		nextSequence := c.nextSequence
+		c.lock.Unlock()
+		if nextSequence >= sequence+1 {
+			base.Log("waitForSequence(%d) took %d ms", sequence, i*100)
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
+	panic(fmt.Sprintf("changeCache: Sequence %d never showed up!", sequence))
+}
+
+//////// ADDING CHANGES:
+
+// Given a newly changed document (received from the tap feed), adds change entries to channels.
+// The JSON must be the raw document from the bucket, with the metadata and all.
+func (c *changeCache) DocChanged(docID string, docJSON []byte) {
+	// ** This method does not directly access any state of c, so it doesn't lock.
 	doc, err := unmarshalDocument(docID, docJSON)
 	if err != nil || !doc.hasValidSyncData() {
-		return nil
+		return
 	}
 	var flags uint8 = 0
 	if doc.Deleted {
@@ -94,6 +130,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) base.Set {
 		}
 	}
 	if len(inChannels) == 0 && EnableStarChannelLog {
+		// If the doc isn't in any channels, put it in the "*" channel so it'll be recorded
 		inChannels = append(inChannels, "*")
 	}
 
@@ -109,42 +146,51 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) base.Set {
 	}
 	base.LogTo("Cache", "Received #%d (%q / %q)", change.Sequence, change.DocID, change.RevID)
 
-	var changedChannels base.Set
+	changedChannels := c.processEntry(change)
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
+	}
+}
 
+func (c *changeCache) processEntry(change *LogEntry) base.Set {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.logsDisabled {
+		return nil
+	}
+
+	var changedChannels base.Set
 	if change.Sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		c.addToCache(change)
+		c._addToCache(change)
 		changedChannels = change.ChannelNames
 		// Also add any pending sequences that are now contiguous:
 		for len(c.pendingLogs) > 0 && c.pendingLogs[0].Sequence == c.nextSequence {
 			oldEntry := heap.Pop(&c.pendingLogs).(*LogEntry)
-			c.addToCache(oldEntry)
+			c._addToCache(oldEntry)
 			changedChannels = changedChannels.Union(oldEntry.ChannelNames)
 		}
 	} else if change.Sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
-		base.TEMP("Gap in sequences! Putting #%d on ice", change.Sequence)
+		base.Log("changeCache: Gap in sequences! Putting #%d on ice", change.Sequence)
 		heap.Push(&c.pendingLogs, change)
 	} else {
 		// Out-of-order sequence received!
-		base.Warn("Received out-of-order change (seq %d, expecting %d) doc %q / %q", doc.Sequence, c.nextSequence, docID, doc.CurrentRev)
-		panic("OUT OF ORDER") //TEMP
-		c.addToCache(change)
+		base.Warn("Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
+		c._addToCache(change)
 		changedChannels = change.ChannelNames
 	}
-
 	return changedChannels
 }
 
 // Adds an entry to the cache.
-func (c *changeCache) addToCache(change *LogEntry) {
-	c.logsLock.Lock()
-	defer c.logsLock.Unlock()
+func (c *changeCache) _addToCache(change *LogEntry) {
 	for channelName, _ := range change.ChannelNames {
-		c._pruneCache(channelName)
 		log := c.channelLogs[channelName]
 		log.addChange(change)
 		c.channelLogs[channelName] = log
+		c._pruneCache(channelName)
 		base.LogTo("Cache", "Cached #%d (%q / %q) to channel %q", change.Sequence, change.DocID, change.RevID, channelName)
 	}
 	c.nextSequence = change.Sequence + 1
@@ -165,12 +211,17 @@ func (logp *LogEntries) addChange(change *LogEntry) {
 }
 
 // Removes entries older than MaxChannelLogCacheAge from the cache.
-func (c *changeCache) PruneCache() {
-	c.logsLock.Lock()
-	defer c.logsLock.Unlock()
+// Returns false if the changeCache has been closed.
+func (c *changeCache) PruneCache() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.channelLogs == nil {
+		return false
+	}
 	for channelName, _ := range c.channelLogs {
 		c._pruneCache(channelName)
 	}
+	return true
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
@@ -178,7 +229,7 @@ func (c *changeCache) _pruneCache(channelName string) {
 	pruned := 0
 	log := c.channelLogs[channelName]
 	for len(log) > MinChannelLogCacheLength && time.Since(log[0].Received) > MaxChannelLogCacheAge {
-		log = log[1:] //FIX: The backing array will keep growing
+		log = log[1:]
 		pruned++
 	}
 	if pruned > 0 {
@@ -187,32 +238,38 @@ func (c *changeCache) _pruneCache(channelName string) {
 	}
 }
 
+//////// CHANGE ACCESS:
+
 // Returns all of the cached entries for sequences greater than 'since' in the given channels.
 // Entries are returned in increasing-sequence order.
 func (c *changeCache) GetChangesSince(channels base.Set, since uint64) []*LogEntry {
-	c.logsLock.RLock()
-	defer c.logsLock.RUnlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	if channels.Contains("*") {
+		channels = c._allChannels()
+	}
 
 	haveSequence := make(map[uint64]bool, 50)
-	result := make(LogEntries, 50)
+	entries := make(LogEntries, 50)
 	for channelName, _ := range channels {
 		log := c.channelLogs[channelName]
 		for i := len(log) - 1; i >= 0 && log[i].Sequence > since; i-- {
 			if entry := log[i]; !haveSequence[entry.Sequence] {
 				haveSequence[entry.Sequence] = true
-				result = append(result, entry)
+				entries = append(entries, entry)
 			}
 		}
 	}
-	sort.Sort(result)
-	return result
+	sort.Sort(entries)
+	return entries
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
 func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64) *channels.ChangeLog {
-	c.logsLock.RLock()
-	defer c.logsLock.RUnlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 
 	// Find the first entry in the log to return:
 	log := c.channelLogs[channelName]
@@ -225,9 +282,9 @@ func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64)
 	start++
 
 	// Now copy the entries:
-	entries := make([]*channels.LogEntry, 0, len(log)-start)
+	entries := make([]*channels.LogEntry, len(log)-start)
 	for j := start; j < len(log); j++ {
-		entries = append(entries, &log[j].LogEntry)
+		entries[j-start] = &log[j].LogEntry
 	}
 	result := channels.ChangeLog{Entries: entries}
 	if len(entries) > 0 {
@@ -236,6 +293,16 @@ func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64)
 	base.LogTo("Cache", "getCachedChangesInChannelSince(%q, %d) --> %d changes from #%d",
 		channelName, since, len(entries), result.Since+1)
 	return &result
+}
+
+func (c *changeCache) _allChannels() base.Set {
+	array := make([]string, len(c.channelLogs))
+	i := 0
+	for name, _ := range c.channelLogs {
+		array[i] = name
+		i++
+	}
+	return base.SetFromArray(array)
 }
 
 //////// LOGENTRIES (SORTABLE / HEAP INTERFACES)

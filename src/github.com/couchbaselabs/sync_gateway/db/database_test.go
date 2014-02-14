@@ -247,10 +247,11 @@ func TestAllDocs(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
+	db.changeCache.waitForSequence(101)
 	log := db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 51)
-	assert.Equals(t, int(log.Entries[0].Sequence), 51)
-	assert.Equals(t, log.Since, uint64(50))
+	assert.Equals(t, len(log.Entries), 50)
+	assert.Equals(t, int(log.Entries[0].Sequence), 52)
+	assert.Equals(t, log.Since, uint64(51))
 
 	// Now check the changes feed:
 	var options ChangesOptions

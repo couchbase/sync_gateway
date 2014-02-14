@@ -100,11 +100,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		return nil, err
 	}
 
-	context.changeCache.Init()
-	context.tapListener.OnDocChanged = func(docID string, docJSON []byte) {
-		changedChannels := context.changeCache.DocChanged(docID, docJSON)
+	context.changeCache.Init(func(changedChannels base.Set) {
 		context.tapListener.Notify(changedChannels)
-	}
+	})
+	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
 	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
@@ -115,6 +114,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 
 func (context *DatabaseContext) Close() {
 	context.tapListener.Stop()
+	context.changeCache.Stop()
 	context.Shadower.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil
