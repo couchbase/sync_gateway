@@ -224,10 +224,8 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
-	chanLog, err := h.db.GetChangeLog(channelName, since)
-	if err != nil {
-		return err
-	} else if chanLog == nil {
+	chanLog := h.db.GetChangeLog(channelName, since)
+	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))

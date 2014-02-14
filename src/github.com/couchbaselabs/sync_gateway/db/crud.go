@@ -598,23 +598,6 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		db.invalUserRoles(name)
 	}
 
-	// Add the new revision to the change logs of all affected channels:
-	newEntry := channels.LogEntry{
-		Sequence: doc.Sequence,
-		DocID:    docid,
-		RevID:    newRevID,
-	}
-	if doc.History[newRevID].Deleted {
-		newEntry.Flags |= channels.Deleted
-	}
-	if newRevID != doc.CurrentRev {
-		newEntry.Flags |= channels.Hidden
-	}
-	if inConflict {
-		newEntry.Flags |= channels.Conflict
-	}
-	db.changesWriter.addToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
-
 	return newRevID, nil
 }
 

@@ -91,18 +91,14 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	since := options.Since[channel]
-	channelLog, err := db.changesWriter.getChangeLog(channel, since)
-	if err != nil {
-		base.Warn("Error reading channel-log %q (using view instead): %v", channel, err)
-		channelLog = nil
-	}
-	rebuildLog := channelLog == nil && err == nil && (EnableStarChannelLog || channel != "*")
+	channelLog := db.changeCache.GetChangesInChannelSince(channel, since)
 	var log []*channels.LogEntry
 	if channelLog != nil {
 		log = channelLog.Entries
 	}
 
 	var viewFeed <-chan *ChangeEntry
+	var err error
 	if channelLog == nil || channelLog.Since > since {
 		var upToSeq uint64
 		if channelLog != nil {
@@ -121,7 +117,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 		// First, if we need to backfill from the view, write its early entries to the channel:
 		if viewFeed != nil {
-			newLog := channels.ChangeLog{Since: since}
 			for change := range viewFeed {
 				if channelLog != nil && change.seqNo > channelLog.Since {
 					// Caught up to where the log starts, so stop reading the view
@@ -135,30 +130,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 					return
 				case feed <- change:
 				}
-
-				if rebuildLog {
-					// If there wasn't any channel log, build up a new one from the view:
-					entry := channels.LogEntry{
-						Sequence: change.seqNo,
-						DocID:    change.ID,
-						RevID:    change.Changes[0]["rev"],
-					}
-					if change.Deleted {
-						entry.Flags |= channels.Deleted
-					}
-					if change.Removed != nil {
-						entry.Flags |= channels.Removed
-					}
-					newLog.Add(entry)
-					newLog.TruncateTo(MaxChangeLogLength)
-				}
-			}
-
-			if rebuildLog {
-				// Save the missing channel log we just rebuilt:
-				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
-					channel, len(newLog.Entries))
-				db.changesWriter.addChangeLog(channel, &newLog)
 			}
 		}
 
@@ -456,11 +427,6 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 	return changes, err
 }
 
-func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
-	return db.changesWriter.getChangeLog(channelName, afterSeq)
-}
-
-// This is only used for unit tests
-func (context *DatabaseContext) CheckpointChangeLogs() {
-	context.changesWriter.checkpoint()
+func (db *Database) GetChangeLog(channelName string, afterSeq uint64) *channels.ChangeLog {
+	return db.changeCache.GetChangesInChannelSince(channelName, afterSeq)
 }

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/couchbaselabs/go.assert"
 
@@ -189,19 +190,13 @@ func TestGetDeleted(t *testing.T) {
 }
 
 func TestAllDocs(t *testing.T) {
-	AlwaysCompactChangeLog = true // Makes examining the change log deterministic
-	defer func() { AlwaysCompactChangeLog = false }()
-
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	// Lower the log capacity to 50 to ensure the test will overflow, causing logs to be truncated,
-	// so the changes feed will have to backfill from its view.
-	oldMaxLogLength := MaxChangeLogLength
-	oldAlwaysCompact := AlwaysCompactChangeLog
-	MaxChangeLogLength = 50
-	AlwaysCompactChangeLog = true
-	defer func() { MaxChangeLogLength = oldMaxLogLength; AlwaysCompactChangeLog = oldAlwaysCompact }()
+	// Lower the log expiration time to zero so no more than 50 items will be kept.
+	oldMaxChannelLogCacheAge := MaxChannelLogCacheAge
+	MaxChannelLogCacheAge = 0
+	defer func() { MaxChannelLogCacheAge = oldMaxChannelLogCacheAge }()
 
 	/*
 		base.LogKeys["Changes"] = true
@@ -250,15 +245,12 @@ func TestAllDocs(t *testing.T) {
 		assert.DeepEquals(t, entry, ids[j])
 	}
 
-	db.changesWriter.checkpoint()
-
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	log, err := db.GetChangeLog("all", 0)
-	assertNoError(t, err, "GetChangeLog")
-	assert.Equals(t, log.Since, uint64(51))
-	assert.Equals(t, len(log.Entries), 50)
-	assert.Equals(t, int(log.Entries[0].Sequence), 52)
+	log := db.GetChangeLog("all", 0)
+	assert.Equals(t, len(log.Entries), 51)
+	assert.Equals(t, int(log.Entries[0].Sequence), 51)
+	assert.Equals(t, log.Since, uint64(50))
 
 	// Now check the changes feed:
 	var options ChangesOptions
@@ -292,26 +284,10 @@ func TestAllDocs(t *testing.T) {
 		assert.DeepEquals(t, change.Removed, base.Set(nil))
 		assert.Equals(t, change.Doc["serialnumber"], int64(10*i))
 	}
-
-	// Delete the channel log to test if it can be rebuilt:
-	assertNoError(t, db.Bucket.Delete(channelLogDocID("all")), "delete channel log")
-
-	// Get the changes feed; result should still be correct:
-	changes, err = db.GetChanges(channels.SetOf("all"), options)
-	assertNoError(t, err, "Couldn't GetChanges")
-	assert.Equals(t, len(changes), 100)
-
-	// Verify it was rebuilt
-	log, err = db.GetChangeLog("all", 0)
-	assertNoError(t, err, "GetChangeLog")
-	assert.Equals(t, len(log.Entries), 50)
-	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 }
 
 func TestConflicts(t *testing.T) {
-	AlwaysCompactChangeLog = true // Makes examining the change log deterministic
-	defer func() { AlwaysCompactChangeLog = false }()
-
+	base.LogKeys["Cache"] = true //TEMP
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -323,10 +299,9 @@ func TestConflicts(t *testing.T) {
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
 
-	db.changesWriter.checkpoint()
+	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
 
-	log, err := db.GetChangeLog("all", 0)
-	assertNoError(t, err, "GetChangeLog")
+	log := db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log.Entries), 1)
 	assert.Equals(t, int(log.Since), 0)
 
@@ -337,6 +312,8 @@ func TestConflicts(t *testing.T) {
 	body["n"] = 3
 	body["channels"] = []string{"all", "2a"}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
+
+	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
@@ -351,15 +328,10 @@ func TestConflicts(t *testing.T) {
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
 		"channels": []string{"all", "2a"}})
 
-	db.changesWriter.checkpoint()
-
 	// Verify the change-log of the "all" channel:
-	log, _ = db.GetChangeLog("all", 0)
-	log = log.CopyRemovingEmptyEntries()
-	assert.Equals(t, len(log.Entries), 2)
-	assert.Equals(t, int(log.Since), 0)
-	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
-	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden | channels.Conflict})
+	log = db.GetChangeLog("all", 0)
+	assert.Equals(t, len(log.Entries), 1)
+	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-b", Flags: channels.Hidden | channels.Conflict})
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
@@ -369,16 +341,11 @@ func TestConflicts(t *testing.T) {
 	defer close(options.Terminator)
 	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
-	assert.Equals(t, len(changes), 2)
-	// (CouchDB would merge these into one entry, but the gateway doesn't.)
+	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     "all:2",
-		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-b"}}})
-	assert.DeepEquals(t, changes[1], &ChangeEntry{
 		Seq:     "all:3",
 		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-a"}, {"rev": "2-b"}}})
+		Changes: []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}}})
 
 	// Delete 2-b; verify this makes 2-a current:
 	_, err = db.DeleteDoc("doc", "2-b")

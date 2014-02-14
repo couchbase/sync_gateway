@@ -34,13 +34,13 @@ type DatabaseContext struct {
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
-	changesWriter      *changesWriter          // Writes changes to the channel-log docs
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
 	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
+	changeCache        changeCache
 }
 
 const DefaultRevsLimit = 1000
@@ -94,14 +94,17 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		autoImport: autoImport,
 	}
 	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
-	context.changesWriter = newChangesWriter(bucket)
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
 		return nil, err
 	}
 
-	context.tapListener.OnChannelChanged = context.changesWriter.channelLogUpdated
+	context.changeCache.Init()
+	context.tapListener.OnDocChanged = func(docID string, docJSON []byte) {
+		changedChannels := context.changeCache.DocChanged(docID, docJSON)
+		context.tapListener.Notify(changedChannels)
+	}
 
 	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
@@ -113,7 +116,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 func (context *DatabaseContext) Close() {
 	context.tapListener.Stop()
 	context.Shadower.Stop()
-	context.changesWriter.checkpoint()
 	context.Bucket.Close()
 	context.Bucket = nil
 }
@@ -474,6 +476,12 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		return err
 	}
 
+	// We are about to alter documents without updating their sequence numbers, which would
+	// really confuse the changeCache, so turn it off until we're done:
+	db.changeCache.EnableChannelLogs(false)
+	defer db.changeCache.EnableChannelLogs(true)
+	db.changeCache.ClearLogs()
+
 	//base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
 	changeCount := 0
 	for _, row := range vres.Rows {
@@ -544,12 +552,6 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	}
 
 	if changeCount > 0 {
-		base.Log("%d docs changed; invalidating channel logs...", changeCount)
-		// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
-		if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
-			return err
-		}
-
 		// Now invalidate channel cache of all users/roles:
 		base.Log("Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()
