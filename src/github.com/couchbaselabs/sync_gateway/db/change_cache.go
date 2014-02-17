@@ -11,11 +11,12 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
-var MinChannelLogCacheLength = 50            // Keep at least this many in cache
-var MaxChannelLogCacheAge = 60 * time.Second // Expire cache entries received longer ago than this
+var MinChannelLogCacheLength = 50                  // Keep at least this many in cache
+var MaxChannelLogCacheAge = 60 * time.Second       // Expire cache entries received longer ago than this
+var MaxChannelLogPendingCount = 1000               // Max number of waiting sequences
+var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a missing sequence
 
-// Enable keeping a channel-log for the "*" channel. *ALL* revisions are written to this channel,
-// which could be expensive in a busy environment. The only time this channel is needed is if
+// Enable keeping a channel-log for the "*" channel. The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
 
@@ -50,8 +51,8 @@ func (c *changeCache) Init(onChange func(base.Set)) {
 	// Start a background task to periodically prune the cache:
 	go func() {
 		for {
-			time.Sleep(MaxChannelLogCacheAge / 4)
-			if !c.PruneCache() {
+			time.Sleep(MaxChannelLogPendingWaitTime / 2)
+			if !c.Prune() {
 				break
 			}
 		}
@@ -128,6 +129,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 	}
 }
 
+// Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -141,15 +143,15 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change)
 		// Also add any pending sequences that are now contiguous:
-		for len(c.pendingLogs) > 0 && c.pendingLogs[0].Sequence == c.nextSequence {
-			oldEntry := heap.Pop(&c.pendingLogs).(*LogEntry)
-			moreChannels := c._addToCache(oldEntry)
-			changedChannels = changedChannels.Union(moreChannels)
-		}
+		changedChannels = changedChannels.Union(c._addPendingLogs())
 	} else if change.Sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
-		base.Log("changeCache: Gap in sequences! Putting #%d on ice", change.Sequence)
 		heap.Push(&c.pendingLogs, change)
+		base.LogTo("Cache", "Deferring #%d (gap of %d sequences; %d now deferred)",
+			change.Sequence, c.pendingLogs[0].Sequence-c.nextSequence, len(c.pendingLogs))
+		if len(c.pendingLogs) > MaxChannelLogPendingCount {
+			changedChannels = c._addPendingLogs()
+		}
 	} else {
 		// Out-of-order sequence received!
 		base.Warn("Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
@@ -158,53 +160,85 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	return changedChannels
 }
 
-// Adds an entry to the cache.
+// Adds an entry to the appropriate channels' caches, returning the affected channels.
 func (c *changeCache) _addToCache(change *LogEntry) base.Set {
-	addedTo := make([]string, 2)
+	addedTo := make([]string, 0, 2)
 	ch := change.channels
 	change.channels = nil // not needed anymore, so free some memory
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
-			log := c.channelLogs[channelName]
-			if removal == nil {
-				log.addChange(change)
-			} else {
-				removalChange := *change
-				removalChange.Flags |= channels.Removed
-				log.addChange(&removalChange)
-			}
-			c.channelLogs[channelName] = log
-			c._pruneCache(channelName)
+			c._addToChannelCache(change, removal != nil, channelName)
 			addedTo = append(addedTo, channelName)
-			base.LogTo("Cache", "Cached #%d (%q / %q) to channel %q", change.Sequence, change.DocID, change.RevID, channelName)
 		}
 	}
-	c.nextSequence = change.Sequence + 1
+	if EnableStarChannelLog {
+		if len(addedTo) == 0 {
+			// If change isn't in any channel, add to "*" to ensure it gets recorded
+			c._addToChannelCache(change, false, "*")
+		}
+		addedTo = append(addedTo, "*")
+	}
+	if change.Sequence >= c.nextSequence {
+		c.nextSequence = change.Sequence + 1
+	}
 	return base.SetFromArray(addedTo)
 }
 
-// Adds an entry to an array of LogEntries. Any existing entry with the same DocID is removed.
-func (logp *LogEntries) addChange(change *LogEntry) {
-	log := *logp
-	end := len(log) - 1
-	for i := end; i >= 0; i-- {
-		if log[i].DocID == change.DocID {
-			copy(log[i:], log[i+1:])
-			log[end] = change
-			return
-		}
+// Low-level method to add a LogEntry to a single channel's cache.
+func (c *changeCache) _addToChannelCache(change *LogEntry, isRemoval bool, channelName string) {
+	log := c.channelLogs[channelName]
+	if !isRemoval {
+		log.addChange(change)
+	} else {
+		removalChange := *change
+		removalChange.Flags |= channels.Removed
+		log.addChange(&removalChange)
 	}
-	*logp = append(log, change)
+	c.channelLogs[channelName] = log
+	c._pruneCache(channelName)
+	base.LogTo("Cache", "Cached #%d (%q / %q) to channel %q", change.Sequence, change.DocID, change.RevID, channelName)
 }
 
+// Add the first change(s) from pendingLogs if they're the next sequence or have been waiting too
+// long, or if there are simply too many pending entries.
+// Returns the channels that changed.
+func (c *changeCache) _addPendingLogs() base.Set {
+	var changedChannels base.Set
+	for len(c.pendingLogs) > 0 {
+		change := c.pendingLogs[0]
+		isNext := change.Sequence == c.nextSequence
+		if isNext || len(c.pendingLogs) > MaxChannelLogPendingCount || time.Since(c.pendingLogs[0].received) >= MaxChannelLogPendingWaitTime {
+			if !isNext {
+				base.Warn("changeCache: Giving up, accepting #%d even though #%d is missing",
+					change.Sequence, c.nextSequence)
+			}
+			heap.Pop(&c.pendingLogs)
+			changedChannels = changedChannels.Union(c._addToCache(change))
+		} else {
+			break
+		}
+	}
+	return changedChannels
+}
+
+//////// CLEANUP:
+
+// Cleanup function, invoked periodically.
+// Inserts pending entries that have been waiting too long.
 // Removes entries older than MaxChannelLogCacheAge from the cache.
 // Returns false if the changeCache has been closed.
-func (c *changeCache) PruneCache() bool {
+func (c *changeCache) Prune() bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.channelLogs == nil {
 		return false
 	}
+
+	changedChannels := c._addPendingLogs()
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
+	}
+
 	for channelName, _ := range c.channelLogs {
 		c._pruneCache(channelName)
 	}
@@ -239,7 +273,7 @@ func (c *changeCache) GetChangesSince(channels base.Set, since uint64) []*LogEnt
 	}
 
 	haveSequence := make(map[uint64]bool, 50)
-	entries := make(LogEntries, 50)
+	entries := make(LogEntries, 0, 50)
 	for channelName, _ := range channels {
 		log := c.channelLogs[channelName]
 		for i := len(log) - 1; i >= 0 && log[i].Sequence > since; i-- {
@@ -250,6 +284,12 @@ func (c *changeCache) GetChangesSince(channels base.Set, since uint64) []*LogEnt
 		}
 	}
 	sort.Sort(entries)
+	var first uint64
+	if len(entries) > 0 {
+		first = entries[0].Sequence
+	}
+	base.LogTo("Cache", "getChangesSince(%q, %d) --> %d changes from #%d",
+		channels.ToArray(), since, len(entries), first)
 	return entries
 }
 
@@ -275,12 +315,9 @@ func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64)
 	start++
 
 	// Now copy the entries:
-	if start == len(log) {
-		return nil
-	}
 	entries := make([]*LogEntry, len(log)-start)
 	copy(entries[:], log[start:])
-	base.LogTo("Cache", "getCachedChangesInChannelSince(%q, %d) --> %d changes from #%d",
+	base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> %d changes from #%d",
 		channelName, since, len(entries), entries[0])
 	return entries
 }
@@ -311,4 +348,18 @@ func (h *LogEntries) Pop() interface{} {
 	x := old[n-1]
 	*h = old[0 : n-1]
 	return x
+}
+
+// Adds an entry to an array of LogEntries. Any existing entry with the same DocID is removed.
+func (logp *LogEntries) addChange(change *LogEntry) {
+	log := *logp
+	end := len(log) - 1
+	for i := end; i >= 0; i-- {
+		if log[i].DocID == change.DocID {
+			copy(log[i:], log[i+1:])
+			log[end] = change
+			return
+		}
+	}
+	*logp = append(log, change)
 }
