@@ -30,7 +30,7 @@ type UserAccessMap map[string]channels.TimedSet
 type syncData struct {
 	CurrentRev string        `json:"rev"`
 	NewestRev  string        `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Deleted    bool          `json:"deleted,omitempty"`
+	Flags      uint8         `json:"flags,omitempty"`
 	Sequence   uint64        `json:"sequence"`
 	History    RevTree       `json:"history"`
 	Channels   ChannelMap    `json:"channels,omitempty"`
@@ -69,6 +69,18 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 
 func (doc *document) hasValidSyncData() bool {
 	return doc.CurrentRev != "" && doc.Sequence > 0
+}
+
+func (doc *document) hasFlag(flag uint8) bool {
+	return doc.Flags&flag != 0
+}
+
+func (doc *document) setFlag(flag uint8, state bool) {
+	if state {
+		doc.Flags |= flag
+	} else {
+		doc.Flags &^= flag
+	}
 }
 
 func (doc *document) newestRevID() string {
@@ -135,7 +147,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 				oldChannels[channel] = &ChannelRemoval{
 					Seq:     curSequence,
 					RevID:   doc.CurrentRev,
-					Deleted: doc.Deleted}
+					Deleted: doc.hasFlag(channels.Deleted)}
 				changed = append(changed, channel)
 			}
 		}

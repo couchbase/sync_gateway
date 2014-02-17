@@ -32,8 +32,8 @@ type changeCache struct {
 // A basic LogEntry annotated with its channels and arrival time
 type LogEntry struct {
 	channels.LogEntry
-	Received     time.Time
-	ChannelNames base.Set
+	received time.Time
+	channels ChannelMap
 }
 
 // A heap of LogEntry structs, ordered by priority.
@@ -109,40 +109,16 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 	if err != nil || !doc.hasValidSyncData() {
 		return
 	}
-	var flags uint8 = 0
-	if doc.Deleted {
-		flags |= channels.Deleted
-	}
-	if doc.NewestRev != "" {
-		flags |= channels.Hidden
-	}
-	if _, inConflict := doc.History.winningRevision(); inConflict { //TEMP: Save flag in doc instead
-		flags |= channels.Conflict
-	}
-
-	inChannels := make([]string, 0, len(doc.Channels))
-	for channelName, removal := range doc.Channels {
-		if removal == nil || removal.Seq == doc.Sequence {
-			inChannels = append(inChannels, channelName)
-			if removal != nil {
-				flags |= channels.Removed
-			}
-		}
-	}
-	if len(inChannels) == 0 && EnableStarChannelLog {
-		// If the doc isn't in any channels, put it in the "*" channel so it'll be recorded
-		inChannels = append(inChannels, "*")
-	}
 
 	change := &LogEntry{
 		LogEntry: channels.LogEntry{
 			Sequence: doc.Sequence,
 			DocID:    docID,
 			RevID:    doc.CurrentRev,
-			Flags:    flags,
+			Flags:    doc.Flags,
 		},
-		Received:     time.Now(),
-		ChannelNames: base.SetFromArray(inChannels),
+		received: time.Now(),
+		channels: doc.Channels,
 	}
 	base.LogTo("Cache", "Received #%d (%q / %q)", change.Sequence, change.DocID, change.RevID)
 
@@ -163,13 +139,12 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	var changedChannels base.Set
 	if change.Sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		c._addToCache(change)
-		changedChannels = change.ChannelNames
+		changedChannels = c._addToCache(change)
 		// Also add any pending sequences that are now contiguous:
 		for len(c.pendingLogs) > 0 && c.pendingLogs[0].Sequence == c.nextSequence {
 			oldEntry := heap.Pop(&c.pendingLogs).(*LogEntry)
-			c._addToCache(oldEntry)
-			changedChannels = changedChannels.Union(oldEntry.ChannelNames)
+			moreChannels := c._addToCache(oldEntry)
+			changedChannels = changedChannels.Union(moreChannels)
 		}
 	} else if change.Sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
@@ -178,22 +153,34 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else {
 		// Out-of-order sequence received!
 		base.Warn("Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
-		c._addToCache(change)
-		changedChannels = change.ChannelNames
+		changedChannels = c._addToCache(change)
 	}
 	return changedChannels
 }
 
 // Adds an entry to the cache.
-func (c *changeCache) _addToCache(change *LogEntry) {
-	for channelName, _ := range change.ChannelNames {
-		log := c.channelLogs[channelName]
-		log.addChange(change)
-		c.channelLogs[channelName] = log
-		c._pruneCache(channelName)
-		base.LogTo("Cache", "Cached #%d (%q / %q) to channel %q", change.Sequence, change.DocID, change.RevID, channelName)
+func (c *changeCache) _addToCache(change *LogEntry) base.Set {
+	addedTo := make([]string, 2)
+	ch := change.channels
+	change.channels = nil // not needed anymore, so free some memory
+	for channelName, removal := range ch {
+		if removal == nil || removal.Seq == change.Sequence {
+			log := c.channelLogs[channelName]
+			if removal == nil {
+				log.addChange(change)
+			} else {
+				removalChange := *change
+				removalChange.Flags |= channels.Removed
+				log.addChange(&removalChange)
+			}
+			c.channelLogs[channelName] = log
+			c._pruneCache(channelName)
+			addedTo = append(addedTo, channelName)
+			base.LogTo("Cache", "Cached #%d (%q / %q) to channel %q", change.Sequence, change.DocID, change.RevID, channelName)
+		}
 	}
 	c.nextSequence = change.Sequence + 1
+	return base.SetFromArray(addedTo)
 }
 
 // Adds an entry to an array of LogEntries. Any existing entry with the same DocID is removed.
@@ -228,7 +215,7 @@ func (c *changeCache) PruneCache() bool {
 func (c *changeCache) _pruneCache(channelName string) {
 	pruned := 0
 	log := c.channelLogs[channelName]
-	for len(log) > MinChannelLogCacheLength && time.Since(log[0].Received) > MaxChannelLogCacheAge {
+	for len(log) > MinChannelLogCacheLength && time.Since(log[0].received) > MaxChannelLogCacheAge {
 		log = log[1:]
 		pruned++
 	}
@@ -247,6 +234,7 @@ func (c *changeCache) GetChangesSince(channels base.Set, since uint64) []*LogEnt
 	defer c.lock.RUnlock()
 
 	if channels.Contains("*") {
+		// To get global changes, need to union together all channels
 		channels = c._allChannels()
 	}
 
@@ -267,7 +255,12 @@ func (c *changeCache) GetChangesSince(channels base.Set, since uint64) []*LogEnt
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64) *channels.ChangeLog {
+func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64) []*LogEntry {
+	if channelName == "*" {
+		// To get global changes, need to union together all channels
+		return c.GetChangesSince(base.SetOf("*"), since)
+	}
+
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -282,17 +275,14 @@ func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64)
 	start++
 
 	// Now copy the entries:
-	entries := make([]*channels.LogEntry, len(log)-start)
-	for j := start; j < len(log); j++ {
-		entries[j-start] = &log[j].LogEntry
+	if start == len(log) {
+		return nil
 	}
-	result := channels.ChangeLog{Entries: entries}
-	if len(entries) > 0 {
-		result.Since = entries[0].Sequence - 1
-	}
+	entries := make([]*LogEntry, len(log)-start)
+	copy(entries[:], log[start:])
 	base.LogTo("Cache", "getCachedChangesInChannelSince(%q, %d) --> %d changes from #%d",
-		channelName, since, len(entries), result.Since+1)
-	return &result
+		channelName, since, len(entries), entries[0])
+	return entries
 }
 
 func (c *changeCache) _allChannels() base.Set {

@@ -249,9 +249,8 @@ func TestAllDocs(t *testing.T) {
 	// There are 101 sequences overall, so the 1st one it has should be #52.
 	db.changeCache.waitForSequence(101)
 	log := db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 50)
-	assert.Equals(t, int(log.Entries[0].Sequence), 52)
-	assert.Equals(t, log.Since, uint64(51))
+	assert.Equals(t, len(log), 50)
+	assert.Equals(t, int(log[0].Sequence), 52)
 
 	// Now check the changes feed:
 	var options ChangesOptions
@@ -303,8 +302,7 @@ func TestConflicts(t *testing.T) {
 	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
 
 	log := db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 1)
-	assert.Equals(t, int(log.Since), 0)
+	assert.Equals(t, len(log), 1)
 
 	// Create two conflicting changes:
 	body["n"] = 2
@@ -331,8 +329,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	log = db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 1)
-	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-b", Flags: channels.Hidden | channels.Conflict})
+	assert.Equals(t, len(log), 1)
+	assert.DeepEquals(t, log[0].LogEntry, channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-b", Flags: channels.Hidden | channels.Conflict})
 
 	// Verify the _changes feed:
 	options := ChangesOptions{

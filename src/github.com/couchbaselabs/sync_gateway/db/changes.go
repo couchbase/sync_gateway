@@ -91,19 +91,23 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	since := options.Since[channel]
-	channelLog := db.changeCache.GetChangesInChannelSince(channel, since)
-	var log []*channels.LogEntry
-	if channelLog != nil {
-		log = channelLog.Entries
+	log := db.changeCache.GetChangesInChannelSince(channel, since)
+
+	if log != nil && len(log) == 0 {
+		// There are no entries newer than 'since'. Return an empty feed:
+		feed := make(chan *ChangeEntry)
+		close(feed)
+		return feed, nil
 	}
 
 	var viewFeed <-chan *ChangeEntry
 	var err error
-	if channelLog == nil || channelLog.Since > since {
-		var upToSeq uint64
-		if channelLog != nil {
-			upToSeq = channelLog.Since
-		}
+
+	var upToSeq uint64
+	if log != nil {
+		upToSeq = log[0].Sequence - 1
+	}
+	if log == nil || upToSeq > since {
 		// Channel log may not go back far enough, so also fetch view-based change feed:
 		viewFeed, err = db.changesFeedFromView(channel, options, upToSeq)
 		if err != nil {
@@ -118,7 +122,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 		// First, if we need to backfill from the view, write its early entries to the channel:
 		if viewFeed != nil {
 			for change := range viewFeed {
-				if channelLog != nil && change.seqNo > channelLog.Since {
+				if log != nil && change.seqNo > upToSeq {
 					// Caught up to where the log starts, so stop reading the view
 					// TODO: Close the view-based feed somehow
 					break
@@ -427,6 +431,6 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 	return changes, err
 }
 
-func (db *Database) GetChangeLog(channelName string, afterSeq uint64) *channels.ChangeLog {
+func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
 	return db.changeCache.GetChangesInChannelSince(channelName, afterSeq)
 }

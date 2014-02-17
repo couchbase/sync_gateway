@@ -9,6 +9,7 @@ import (
 	"github.com/couchbaselabs/go.assert"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -67,7 +68,7 @@ func TestShadowerPull(t *testing.T) {
 	})
 
 	doc1, _ = db.GetDoc("key1")
-	assert.True(t, doc1.Deleted)
+	assert.True(t, doc1.hasFlag(channels.Deleted))
 	_, err = db.Get("key1")
 	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
 }
