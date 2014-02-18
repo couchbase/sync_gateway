@@ -368,8 +368,13 @@ func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64)
 	// Now copy the entries:
 	entries := make([]*LogEntry, len(log)-start)
 	copy(entries[:], log[start:])
+
+	var first uint64
+	if len(entries) > 0 {
+		first = entries[0].Sequence
+	}
 	base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> %d changes from #%d",
-		channelName, since, len(entries), entries[0])
+		channelName, since, len(entries), first)
 	return entries
 }
 

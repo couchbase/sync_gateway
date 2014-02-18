@@ -44,7 +44,7 @@ func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer) *Auth
 }
 
 func docIDForUserEmail(email string) string {
-	return "useremail:" + email
+	return "_sync:useremail:" + email
 }
 
 func (auth *Authenticator) UnmarshalPrincipal(data []byte, defaultName string, defaultSeq uint64, isUser bool) (Principal, error) {

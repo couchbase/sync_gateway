@@ -71,7 +71,7 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 		if err := json.Unmarshal(data, doc); err != nil {
 			return nil, err
 		}
-		if doc.Deleted_OLD {
+		if doc != nil && doc.Deleted_OLD {
 			doc.Deleted_OLD = false
 			doc.Flags |= channels.Deleted // Backward compatibility with old Deleted property
 		}
@@ -84,12 +84,12 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
 	var root documentRoot
 	if needHistory {
-		root.SyncData.History = make(RevTree)
+		root.SyncData = &syncData{History: make(RevTree)}
 	}
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
 	}
-	if root.SyncData.Deleted_OLD {
+	if root.SyncData != nil && root.SyncData.Deleted_OLD {
 		root.SyncData.Deleted_OLD = false
 		root.SyncData.Flags |= channels.Deleted // Backward compatibility with old Deleted property
 	}
@@ -97,7 +97,7 @@ func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 }
 
 func (doc *syncData) hasValidSyncData() bool {
-	return doc.CurrentRev != "" && doc.Sequence > 0
+	return doc != nil && doc.CurrentRev != "" && doc.Sequence > 0
 }
 
 func (doc *document) hasFlag(flag uint8) bool {

@@ -194,9 +194,9 @@ func TestAllDocs(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	// Lower the log expiration time to zero so no more than 50 items will be kept.
-	oldMaxChannelLogCacheAge := MaxChannelLogCacheAge
-	MaxChannelLogCacheAge = 0
-	defer func() { MaxChannelLogCacheAge = oldMaxChannelLogCacheAge }()
+	oldMaxChannelLogCacheAge := ChannelLogCacheAge
+	ChannelLogCacheAge = 0
+	defer func() { ChannelLogCacheAge = oldMaxChannelLogCacheAge }()
 
 	/*
 		base.LogKeys["Changes"] = true
@@ -287,11 +287,11 @@ func TestAllDocs(t *testing.T) {
 }
 
 func TestConflicts(t *testing.T) {
-	base.LogKeys["Cache"] = true //TEMP
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	//base.LogKeys["Cache"] = true
 	// base.LogKeys["CRUD"] = true
 	// base.LogKeys["Changes"] = true
 
