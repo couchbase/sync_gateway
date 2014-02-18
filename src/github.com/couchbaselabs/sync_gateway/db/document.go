@@ -43,7 +43,11 @@ type syncData struct {
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
 	UpstreamRev string  `json:"upstream_rev,omitempty"` // Rev ID remote doc was saved as
 
-	TimeSaved time.Time // Timestamp of save. Only used for performance metrics.
+	// Only used for performance metrics:
+	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
+
+	// Backward compatibility (the "deleted" field was, um, deleted in commit 4194f81, 2/17/14)
+	Deleted_OLD bool `json:"deleted,omitempty"`
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -67,11 +71,16 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 		if err := json.Unmarshal(data, doc); err != nil {
 			return nil, err
 		}
+		if doc.Deleted_OLD {
+			doc.Deleted_OLD = false
+			doc.Flags |= channels.Deleted // Backward compatibility with old Deleted property
+		}
 	}
 	return doc, nil
 }
 
 // Unmarshals just a document's sync metadata from JSON data.
+// (This is somewhat faster, if all you need is the sync data without the doc body.)
 func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
 	var root documentRoot
 	if needHistory {
@@ -79,6 +88,10 @@ func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 	}
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
+	}
+	if root.SyncData.Deleted_OLD {
+		root.SyncData.Deleted_OLD = false
+		root.SyncData.Flags |= channels.Deleted // Backward compatibility with old Deleted property
 	}
 	return root.SyncData, nil
 }

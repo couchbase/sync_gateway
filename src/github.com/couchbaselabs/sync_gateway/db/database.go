@@ -179,7 +179,7 @@ func installViews(bucket base.Bucket) error {
                      var sync = doc._sync;
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
-                     if (sync.flags & 1)
+                     if ((sync.flags & 1) || sync.deleted)
                        return;
                      emit(meta.id, [sync.rev, sync.sequence]); }`
 	// View for importing unknown docs
@@ -214,7 +214,7 @@ func installViews(bucket base.Bucket) error {
 	                    if (sequence === undefined)
 	                        return;
 	                    var value = [meta.id, sync.rev];
-	                    if (sync.flags & 1)
+	                    if ((sync.flags & 1) || sync.deleted)
 	                        value.push(true);
 						emit(["*", sequence], value);
 						var channels = sync.channels;
@@ -236,7 +236,7 @@ func installViews(bucket base.Bucket) error {
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var sequence = sync.sequence;
-	                    if (sync.flags & 1 || sequence === undefined)
+	                    if ((sync.flags & 1) || sync.deleted || sequence === undefined)
 	                        return;
 	                    var access = sync.access;
 	                    if (access) {
@@ -252,7 +252,7 @@ func installViews(bucket base.Bucket) error {
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var sequence = sync.sequence;
-	                    if (sync.flags & 1 || sequence === undefined)
+	                    if ((sync.flags & 1) || sync.deleted || sequence === undefined)
 	                        return;
 	                    var access = sync.role_access;
 	                    if (access) {
