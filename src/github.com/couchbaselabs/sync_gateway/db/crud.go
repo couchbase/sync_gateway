@@ -447,6 +447,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var changedChannels base.Set
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
+	var unusedSequences []uint64
 	var inConflict = false
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
@@ -512,7 +513,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// But be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
 			if docSequence > 0 {
-				base.Warn("Wasted sequence #%d", docSequence)
+				// Oops: we're on our second iteration thanks to a conflict, but the sequence
+				// we previously allocated is unusable now. We have to allocate a new sequence
+				// instead, but we add the unused one(s) to the document so when the changeCache
+				// reads the doc it won't freak out over the break in the sequence numbering.
+				base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
+				unusedSequences = append(unusedSequences, docSequence)
 			}
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return
@@ -520,6 +526,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			// base.TEMP("Allocated seq #%d for (%q / %q)", docSequence, docid, newRevID)
 		}
 		doc.Sequence = docSequence
+		doc.UnusedSequences = unusedSequences
 
 		if doc.CurrentRev != prevCurrentRev {
 			// Most of the time this update will change the doc's current rev. (The exception is
@@ -571,6 +578,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
+		base.LogTo("Cache", "SAVING #%d", doc.Sequence) //TEMP?
 		return
 	})
 

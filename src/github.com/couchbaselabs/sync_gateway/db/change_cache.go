@@ -12,7 +12,7 @@ import (
 )
 
 var MinChannelLogCacheLength = 50                  // Keep at least this many in cache
-var MaxChannelLogCacheAge = 60 * time.Second       // Expire cache entries received longer ago than this
+var MaxChannelLogCacheAge = 60 * time.Second       // Expire cache entries older than this
 var MaxChannelLogPendingCount = 1000               // Max number of waiting sequences
 var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a missing sequence
 
@@ -43,10 +43,12 @@ type LogEntries []*LogEntry
 //////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
-func (c *changeCache) Init(onChange func(base.Set)) {
+func (c *changeCache) Init(lastSequence uint64, onChange func(base.Set)) {
+	c.nextSequence = lastSequence + 1
 	c.onChange = onChange
 	c.channelLogs = make(map[string]LogEntries, 10)
 	heap.Init(&c.pendingLogs)
+	base.LogTo("Cache", "Initialized changeCache with nextSequence=#%d", c.nextSequence)
 
 	// Start a background task to periodically prune the cache:
 	go func() {
@@ -106,11 +108,26 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 	// ** This method does not directly access any state of c, so it doesn't lock.
-	doc, err := unmarshalDocument(docID, docJSON)
+	// First unmarshal the doc (just its metadata, to save time/memory):
+	doc, err := unmarshalDocumentSyncData(docJSON, false)
 	if err != nil || !doc.hasValidSyncData() {
+		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 		return
 	}
 
+	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
+	for _, seq := range doc.UnusedSequences {
+		base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+		change := &LogEntry{
+			LogEntry: channels.LogEntry{
+				Sequence: seq,
+			},
+			received: time.Now(),
+		}
+		c.processEntry(change)
+	}
+
+	// Now add the entry for the new doc revision:
 	change := &LogEntry{
 		LogEntry: channels.LogEntry{
 			Sequence: doc.Sequence,
@@ -147,14 +164,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if change.Sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
-		base.LogTo("Cache", "Deferring #%d (gap of %d sequences; %d now deferred)",
+		base.LogTo("Cache", "  Deferring #%d (gap of %d sequences; %d now deferred)",
 			change.Sequence, c.pendingLogs[0].Sequence-c.nextSequence, len(c.pendingLogs))
 		if len(c.pendingLogs) > MaxChannelLogPendingCount {
 			changedChannels = c._addPendingLogs()
 		}
 	} else {
 		// Out-of-order sequence received!
-		base.Warn("Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
+		base.Warn("  Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
 		changedChannels = c._addToCache(change)
 	}
 	return changedChannels
@@ -162,6 +179,12 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.
 func (c *changeCache) _addToCache(change *LogEntry) base.Set {
+	if change.Sequence >= c.nextSequence {
+		c.nextSequence = change.Sequence + 1
+	}
+	if change.DocID == "" {
+		return nil // this was a placeholder for an unused sequence
+	}
 	addedTo := make([]string, 0, 2)
 	ch := change.channels
 	change.channels = nil // not needed anymore, so free some memory
@@ -178,9 +201,6 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		}
 		addedTo = append(addedTo, "*")
 	}
-	if change.Sequence >= c.nextSequence {
-		c.nextSequence = change.Sequence + 1
-	}
 	return base.SetFromArray(addedTo)
 }
 
@@ -196,7 +216,7 @@ func (c *changeCache) _addToChannelCache(change *LogEntry, isRemoval bool, chann
 	}
 	c.channelLogs[channelName] = log
 	c._pruneCache(channelName)
-	base.LogTo("Cache", "Cached #%d (%q / %q) to channel %q", change.Sequence, change.DocID, change.RevID, channelName)
+	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, channelName)
 }
 
 // Add the first change(s) from pendingLogs if they're the next sequence or have been waiting too

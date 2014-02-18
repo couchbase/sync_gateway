@@ -28,14 +28,15 @@ type UserAccessMap map[string]channels.TimedSet
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
-	CurrentRev string        `json:"rev"`
-	NewestRev  string        `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags      uint8         `json:"flags,omitempty"`
-	Sequence   uint64        `json:"sequence"`
-	History    RevTree       `json:"history"`
-	Channels   ChannelMap    `json:"channels,omitempty"`
-	Access     UserAccessMap `json:"access,omitempty"`
-	RoleAccess UserAccessMap `json:"role_access,omitempty"`
+	CurrentRev      string        `json:"rev"`
+	NewestRev       string        `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags           uint8         `json:"flags,omitempty"`
+	Sequence        uint64        `json:"sequence"`
+	UnusedSequences []uint64      `json:"unused_sequences,omitempty"`
+	History         RevTree       `json:"history"`
+	Channels        ChannelMap    `json:"channels,omitempty"`
+	Access          UserAccessMap `json:"access,omitempty"`
+	RoleAccess      UserAccessMap `json:"role_access,omitempty"`
 
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
@@ -67,7 +68,19 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	return doc, nil
 }
 
-func (doc *document) hasValidSyncData() bool {
+// Unmarshals just a document's sync metadata from JSON data.
+func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
+	var root documentRoot
+	if needHistory {
+		root.SyncData.History = make(RevTree)
+	}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil, err
+	}
+	return root.SyncData, nil
+}
+
+func (doc *syncData) hasValidSyncData() bool {
 	return doc.CurrentRev != "" && doc.Sequence > 0
 }
 
