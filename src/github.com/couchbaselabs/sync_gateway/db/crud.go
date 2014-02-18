@@ -14,6 +14,7 @@ import (
 	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -575,6 +576,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		if pruned := doc.History.pruneRevisions(db.RevsLimit); pruned > 0 {
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
+
+		doc.TimeSaved = time.Now()
 
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)

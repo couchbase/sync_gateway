@@ -2,6 +2,7 @@ package db
 
 import (
 	"container/heap"
+	"expvar"
 	"fmt"
 	"github.com/couchbaselabs/sync_gateway/channels"
 	"sort"
@@ -11,8 +12,8 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
-var MinChannelLogCacheLength = 50                  // Keep at least this many in cache
-var MaxChannelLogCacheAge = 60 * time.Second       // Expire cache entries older than this
+var ChannelLogCacheLength = 50                     // Keep at least this many entries in cache
+var ChannelLogCacheAge = 60 * time.Second          // Keep entries at least this long
 var MaxChannelLogPendingCount = 1000               // Max number of waiting sequences
 var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a missing sequence
 
@@ -20,29 +21,39 @@ var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a 
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
 
+var changeCacheExpvars *expvar.Map
+
+func init() {
+	changeCacheExpvars = expvar.NewMap("syncGateway_changeCache")
+	changeCacheExpvars.Set("maxPending", new(base.IntMax))
+}
+
 // Manages a cache of the recent change history of all channels.
 type changeCache struct {
-	logsDisabled bool
-	nextSequence uint64
-	pendingLogs  LogEntries
-	channelLogs  map[string]LogEntries
-	onChange     func(base.Set)
-	lock         sync.RWMutex // Coordinates access to channelLogs
+	logsDisabled bool                  // If true, ignore incoming tap changes
+	nextSequence uint64                // Next consecutive sequence number to add
+	pendingLogs  LogEntries            // Out-of-sequence entries waiting to be cached
+	channelLogs  map[string]LogEntries // The cache itself!
+	onChange     func(base.Set)        // Client callback that notifies of channel changes
+	lock         sync.RWMutex          // Coordinates access to channelLogs
 }
 
 // A basic LogEntry annotated with its channels and arrival time
 type LogEntry struct {
-	channels.LogEntry
-	received time.Time
-	channels ChannelMap
+	channels.LogEntry            // The sequence, doc/rev ID
+	received          time.Time  // Time received from tap feed
+	timeSaved         time.Time  // Time doc revision was saved
+	channels          ChannelMap // Channels this entry is in
 }
 
-// A heap of LogEntry structs, ordered by priority.
+// A priority-queue of LogEntries, kept ordered by increasing sequence #.
 type LogEntries []*LogEntry
 
 //////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
+// lastSequence is the last known database sequence assigned.
+// onChange is an optional function that will be called to notify of channel changes.
 func (c *changeCache) Init(lastSequence uint64, onChange func(base.Set)) {
 	c.nextSequence = lastSequence + 1
 	c.onChange = onChange
@@ -50,17 +61,15 @@ func (c *changeCache) Init(lastSequence uint64, onChange func(base.Set)) {
 	heap.Init(&c.pendingLogs)
 	base.LogTo("Cache", "Initialized changeCache with nextSequence=#%d", c.nextSequence)
 
-	// Start a background task to periodically prune the cache:
+	// Start a background task for periodic housekeeping:
 	go func() {
-		for {
+		for c.CleanUp() {
 			time.Sleep(MaxChannelLogPendingWaitTime / 2)
-			if !c.Prune() {
-				break
-			}
 		}
 	}()
 }
 
+// Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 	c.lock.Lock()
 	c.channelLogs = nil
@@ -86,7 +95,7 @@ func (c *changeCache) EnableChannelLogs(enable bool) {
 	c.lock.Unlock()
 }
 
-// TESTING ONLY: Blocks until the given sequence has been received.
+// FOR TESTS ONLY: Blocks until the given sequence has been received.
 func (c *changeCache) waitForSequence(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
@@ -107,43 +116,52 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(docID string, docJSON []byte) {
+	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
-	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, err := unmarshalDocumentSyncData(docJSON, false)
-	if err != nil || !doc.hasValidSyncData() {
-		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
-		return
-	}
+	go func() {
+		// First unmarshal the doc (just its metadata, to save time/memory):
+		doc, err := unmarshalDocumentSyncData(docJSON, false)
+		if err != nil || !doc.hasValidSyncData() {
+			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+			return
+		}
 
-	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
-	for _, seq := range doc.UnusedSequences {
-		base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+		// Record a histogram of the Tap feed's lag:
+		tapLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
+		lagMs := int(tapLag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("tapLag-%04dms", lagMs), 1)
+
+		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
+		for _, seq := range doc.UnusedSequences {
+			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+			change := &LogEntry{
+				LogEntry: channels.LogEntry{
+					Sequence: seq,
+				},
+				received: time.Now(),
+			}
+			c.processEntry(change)
+		}
+
+		// Now add the entry for the new doc revision:
 		change := &LogEntry{
 			LogEntry: channels.LogEntry{
-				Sequence: seq,
+				Sequence: doc.Sequence,
+				DocID:    docID,
+				RevID:    doc.CurrentRev,
+				Flags:    doc.Flags,
 			},
-			received: time.Now(),
+			received:  time.Now(),
+			timeSaved: doc.TimeSaved,
+			channels:  doc.Channels,
 		}
-		c.processEntry(change)
-	}
+		base.LogTo("Cache", "Received #%d (%q / %q)", change.Sequence, change.DocID, change.RevID)
 
-	// Now add the entry for the new doc revision:
-	change := &LogEntry{
-		LogEntry: channels.LogEntry{
-			Sequence: doc.Sequence,
-			DocID:    docID,
-			RevID:    doc.CurrentRev,
-			Flags:    doc.Flags,
-		},
-		received: time.Now(),
-		channels: doc.Channels,
-	}
-	base.LogTo("Cache", "Received #%d (%q / %q)", change.Sequence, change.DocID, change.RevID)
-
-	changedChannels := c.processEntry(change)
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
-	}
+		changedChannels := c.processEntry(change)
+		if c.onChange != nil && len(changedChannels) > 0 {
+			c.onChange(changedChannels)
+		}
+	}()
 }
 
 // Handles a newly-arrived LogEntry.
@@ -164,9 +182,12 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if change.Sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
+		numPending := len(c.pendingLogs)
 		base.LogTo("Cache", "  Deferring #%d (gap of %d sequences; %d now deferred)",
-			change.Sequence, c.pendingLogs[0].Sequence-c.nextSequence, len(c.pendingLogs))
-		if len(c.pendingLogs) > MaxChannelLogPendingCount {
+			change.Sequence, c.pendingLogs[0].Sequence-c.nextSequence, numPending)
+		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
+		if numPending > MaxChannelLogPendingCount {
+			// Too many pending; add the oldest one:
 			changedChannels = c._addPendingLogs()
 		}
 	} else {
@@ -185,7 +206,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.DocID == "" {
 		return nil // this was a placeholder for an unused sequence
 	}
-	addedTo := make([]string, 0, 2)
+	addedTo := make([]string, 0, 4)
 	ch := change.channels
 	change.channels = nil // not needed anymore, so free some memory
 	for channelName, removal := range ch {
@@ -194,6 +215,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 			addedTo = append(addedTo, channelName)
 		}
 	}
+
 	if EnableStarChannelLog {
 		if len(addedTo) == 0 {
 			// If change isn't in any channel, add to "*" to ensure it gets recorded
@@ -201,6 +223,12 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		}
 		addedTo = append(addedTo, "*")
 	}
+
+	// Record a histogram of the overall lag from the time the doc was saved:
+	lag := time.Since(change.timeSaved)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-%04dms", lagMs), 1)
+
 	return base.SetFromArray(addedTo)
 }
 
@@ -231,6 +259,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 			if !isNext {
 				base.Warn("changeCache: Giving up, accepting #%d even though #%d is missing",
 					change.Sequence, c.nextSequence)
+				changeCacheExpvars.Add("outOfOrder", 1)
 			}
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Union(c._addToCache(change))
@@ -247,18 +276,20 @@ func (c *changeCache) _addPendingLogs() base.Set {
 // Inserts pending entries that have been waiting too long.
 // Removes entries older than MaxChannelLogCacheAge from the cache.
 // Returns false if the changeCache has been closed.
-func (c *changeCache) Prune() bool {
+func (c *changeCache) CleanUp() bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.channelLogs == nil {
 		return false
 	}
 
+	// If entries have been pending too long, add them to the cache:
 	changedChannels := c._addPendingLogs()
 	if c.onChange != nil && len(changedChannels) > 0 {
 		c.onChange(changedChannels)
 	}
 
+	// Remove old cache entries:
 	for channelName, _ := range c.channelLogs {
 		c._pruneCache(channelName)
 	}
@@ -269,7 +300,7 @@ func (c *changeCache) Prune() bool {
 func (c *changeCache) _pruneCache(channelName string) {
 	pruned := 0
 	log := c.channelLogs[channelName]
-	for len(log) > MinChannelLogCacheLength && time.Since(log[0].received) > MaxChannelLogCacheAge {
+	for len(log) > ChannelLogCacheLength && time.Since(log[0].received) > ChannelLogCacheAge {
 		log = log[1:]
 		pruned++
 	}

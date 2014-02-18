@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -41,6 +42,8 @@ type syncData struct {
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
 	UpstreamRev string  `json:"upstream_rev,omitempty"` // Rev ID remote doc was saved as
+
+	TimeSaved time.Time // Timestamp of save. Only used for performance metrics.
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
