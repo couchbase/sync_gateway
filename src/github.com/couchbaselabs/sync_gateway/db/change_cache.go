@@ -4,12 +4,12 @@ import (
 	"container/heap"
 	"expvar"
 	"fmt"
-	"github.com/couchbaselabs/sync_gateway/channels"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 var ChannelLogCacheLength = 50                     // Keep at least this many entries in cache
@@ -30,12 +30,14 @@ func init() {
 
 // Manages a cache of the recent change history of all channels.
 type changeCache struct {
-	logsDisabled bool                  // If true, ignore incoming tap changes
-	nextSequence uint64                // Next consecutive sequence number to add
-	pendingLogs  LogEntries            // Out-of-sequence entries waiting to be cached
-	channelLogs  map[string]LogEntries // The cache itself!
-	onChange     func(base.Set)        // Client callback that notifies of channel changes
-	lock         sync.RWMutex          // Coordinates access to channelLogs
+	context         *DatabaseContext
+	logsDisabled    bool                  // If true, ignore incoming tap changes
+	nextSequence    uint64                // Next consecutive sequence number to add
+	initialSequence uint64                // DB's current sequence at startup time
+	pendingLogs     LogEntries            // Out-of-sequence entries waiting to be cached
+	channelLogs     map[string]LogEntries // The cache itself!
+	onChange        func(base.Set)        // Client callback that notifies of channel changes
+	lock            sync.RWMutex          // Coordinates access to channelLogs
 }
 
 // A basic LogEntry annotated with its channels and arrival time
@@ -54,7 +56,9 @@ type LogEntries []*LogEntry
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(lastSequence uint64, onChange func(base.Set)) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set)) {
+	c.context = context
+	c.initialSequence = lastSequence
 	c.nextSequence = lastSequence + 1
 	c.onChange = onChange
 	c.channelLogs = make(map[string]LogEntries, 10)
@@ -126,10 +130,14 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			return
 		}
 
+		if doc.Sequence <= c.initialSequence {
+			return // Tap is sending us an old value from before I started up; ignore it
+		}
+
 		// Record a histogram of the Tap feed's lag:
 		tapLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
 		lagMs := int(tapLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("tapLag-%04dms", lagMs), 1)
+		changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
 
 		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 		for _, seq := range doc.UnusedSequences {
@@ -155,7 +163,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			timeSaved: doc.TimeSaved,
 			channels:  doc.Channels,
 		}
-		base.LogTo("Cache", "Received #%d (%q / %q)", change.Sequence, change.DocID, change.RevID)
+		base.LogTo("Cache", "Received #%d after %3dms (vb=%03d, %q / %q)", change.Sequence, int(tapLag/time.Millisecond), c.context.Bucket.VBHash(docID), change.DocID, change.RevID)
 
 		changedChannels := c.processEntry(change)
 		if c.onChange != nil && len(changedChannels) > 0 {
@@ -183,14 +191,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
-		base.LogTo("Cache", "  Deferring #%d (gap of %d sequences; %d now deferred)",
-			change.Sequence, c.pendingLogs[0].Sequence-c.nextSequence, numPending)
+		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
+			change.Sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1)
 		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
 		if numPending > MaxChannelLogPendingCount {
 			// Too many pending; add the oldest one:
 			changedChannels = c._addPendingLogs()
 		}
-	} else {
+	} else if change.Sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		base.Warn("  Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
 		changedChannels = c._addToCache(change)
@@ -227,7 +235,11 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	// Record a histogram of the overall lag from the time the doc was saved:
 	lag := time.Since(change.timeSaved)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-%04dms", lagMs), 1)
+	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
+	// ...and from the time the doc was received from Tap:
+	lag = time.Since(change.received)
+	lagMs = int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
 
 	return base.SetFromArray(addedTo)
 }

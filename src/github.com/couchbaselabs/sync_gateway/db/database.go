@@ -103,7 +103,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 	if err != nil {
 		return nil, err
 	}
-	context.changeCache.Init(lastSeq, func(changedChannels base.Set) {
+	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
 		context.tapListener.Notify(changedChannels)
 	})
 	context.tapListener.OnDocChanged = context.changeCache.DocChanged

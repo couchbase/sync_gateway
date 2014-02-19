@@ -85,3 +85,7 @@ func (b *LoggingBucket) Dump() {
 	LogTo("Bucket", "Dump()")
 	b.bucket.Dump()
 }
+func (b *LoggingBucket) VBHash(docID string) uint32 {
+	LogTo("Bucket", "VBHash()")
+	return b.bucket.VBHash(docID)
+}
