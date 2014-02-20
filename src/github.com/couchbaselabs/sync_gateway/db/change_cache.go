@@ -322,7 +322,7 @@ func (c *changeCache) _pruneCache(channelName string) {
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *changeCache) GetCachedChangesInChannelSince(channelName string, since uint64, options ChangesOptions) (validSince uint64, result []*LogEntry) {
+func (c *changeCache) GetCachedChangesInChannel(channelName string, options ChangesOptions) (validSince uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -330,11 +330,11 @@ func (c *changeCache) GetCachedChangesInChannelSince(channelName string, since u
 	log := c.channelLogs[channelName]
 	if len(log) == 0 {
 		base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> unknown channel",
-			channelName, since)
+			channelName, options.Since)
 		return
 	}
 	var start int
-	for start = len(log) - 1; start >= 0 && log[start].Sequence > since; start-- {
+	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since; start-- {
 	}
 	start++
 
@@ -351,7 +351,7 @@ func (c *changeCache) GetCachedChangesInChannelSince(channelName string, since u
 	result = make([]*LogEntry, n)
 	copy(result[0:], log[start:])
 	base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> %d changes valid after #%d",
-		channelName, since, n, validSince)
+		channelName, options.Since, n, validSince)
 	return
 }
 
@@ -368,16 +368,16 @@ func (c *changeCache) _allChannels() base.Set {
 // Top-level method to get all the changes in a channel since the sequence 'since'.
 // If the cache doesn't go back far enough, the view will be queried.
 // View query results may be fed back into the cache if there's room.
-func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64, options ChangesOptions) ([]*LogEntry, error) {
-	cacheValidSince, resultFromCache := c.GetCachedChangesInChannelSince(channelName, since, options)
+func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+	cacheValidSince, resultFromCache := c.GetCachedChangesInChannel(channelName, options)
 
 	// Did the cache fulfill the entire request?
-	if resultFromCache != nil && cacheValidSince <= since {
+	if resultFromCache != nil && cacheValidSince <= options.Since {
 		return resultFromCache, nil
 	}
 
 	// No, need to backfill from view:
-	resultFromView, err := c.context.getChangesFromView(channelName, since+1, cacheValidSince, options)
+	resultFromView, err := c.context.getChangesInChannelFromView(channelName, cacheValidSince, options)
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +398,7 @@ func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64,
 			base.LogTo("Cache", "  Added %d entries from view to cache of %q", numPrepended, channelName)
 		}
 
-		if since == 0 && len(log) < ChannelLogCacheLength {
+		if options.Since == 0 && len(log) < ChannelLogCacheLength {
 			// If the view query goes back to the dawn of time, record a fake zero sequence in
 			// the cache so any future requests won't need to hit the view again:
 			fake := LogEntry{

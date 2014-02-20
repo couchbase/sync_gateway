@@ -11,41 +11,28 @@ import (
 )
 
 // Unmarshaled JSON structure for "changes" view results
-type ViewResult struct {
+type channelsViewResult struct {
 	TotalRows int `json:"total_rows"`
-	Rows      []ViewRow
+	Rows      []channelsViewRow
 	Errors    []couchbase.ViewError
 }
 
-// One "changes" row in a ViewResult
-type ViewRow struct {
+// One "changes" row in a channelsViewResult
+type channelsViewRow struct {
 	ID    string
 	Key   []interface{} // Actually [channelName, sequence]
 	Value []interface{} // Actually [docID, revID, deleted?, removed?]
 	Doc   json.RawMessage
 }
 
-// Queries the 'channels' view to get a range of sequences as LogEntries.
-func (dbc *DatabaseContext) getChangesFromView(channelName string, startSeq, endSeq uint64, options ChangesOptions) (LogEntries, error) {
-	// Set up range & other options:
-	endKey := []interface{}{channelName, endSeq}
-	if endSeq == 0 {
-		endKey[1] = map[string]interface{}{} // infinity
-	}
-	opts := Body{
-		"stale":        false,
-		"startkey":     []interface{}{channelName, startSeq},
-		"endkey":       endKey,
-		"include_docs": options.Conflicts || options.IncludeDocs,
-	}
-	if options.Limit > 0 {
-		opts["limit"] = options.Limit
-	}
-
+// Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
+func (dbc *DatabaseContext) getChangesInChannelFromView(
+	channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
 	// Query the view:
-	base.LogTo("Cache", "Querying 'changes' for channel %q: %#v", channelName, opts)
-	vres := ViewResult{}
-	err := dbc.Bucket.ViewCustom("sync_gateway", "channels", opts, &vres)
+	optMap := changesViewOptions(channelName, endSeq, options)
+	base.LogTo("Cache", "Querying 'channels' view for %q: %#v", channelName, optMap)
+	vres := channelsViewResult{}
+	err := dbc.Bucket.ViewCustom("sync_gateway", "channels", optMap, &vres)
 	if err != nil {
 		base.Log("Error from 'channels' view: %v", err)
 		return nil, err
@@ -82,4 +69,21 @@ func (dbc *DatabaseContext) getChangesFromView(channelName string, startSeq, end
 		base.LogTo("Cache", "  Got no rows from view for %q", channelName)
 	}
 	return entries, nil
+}
+
+func changesViewOptions(channelName string, endSeq uint64, options ChangesOptions) Body {
+	endKey := []interface{}{channelName, endSeq}
+	if endSeq == 0 {
+		endKey[1] = map[string]interface{}{} // infinity
+	}
+	optMap := Body{
+		"stale":        false,
+		"startkey":     []interface{}{channelName, options.Since + 1},
+		"endkey":       endKey,
+		"include_docs": options.Conflicts || options.IncludeDocs,
+	}
+	if options.Limit > 0 {
+		optMap["limit"] = options.Limit
+	}
+	return optMap
 }

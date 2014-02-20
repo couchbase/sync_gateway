@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"strconv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -75,7 +76,7 @@ func (h *handler) handleChanges() error {
 	if h.rq.Method == "GET" {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
-		options.Since = channels.TimedSetFromString(h.getQuery("since"))
+		options.Since = sequenceFromString(h.getQuery("since"))
 		options.Limit = int(h.getIntQuery("limit", 0))
 		options.Conflicts = (h.getQuery("style") == "all_docs")
 		options.IncludeDocs = (h.getBoolQuery("include_docs"))
@@ -138,7 +139,7 @@ func (h *handler) handleChanges() error {
 }
 
 func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) error {
-	lastSeqID := h.getQuery("since")
+	lastSeq := options.Since
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
 	if err != nil {
@@ -181,7 +182,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 						h.response.Write([]byte(","))
 					}
 					encoder.Encode(entry)
-					lastSeqID = entry.Seq
+					lastSeq = entry.Seq
 				}
 
 			case <-heartbeat:
@@ -197,7 +198,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			}
 		}
 	}
-	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeqID)
+	s := fmt.Sprintf("],\n\"last_seq\":%d}\n", lastSeq)
 	h.response.Write([]byte(s))
 	h.logStatus(http.StatusOK, message)
 	return nil
@@ -227,7 +228,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 
 	options.Wait = true       // we want the feed channel to wait for changes
 	options.Continuous = true // and to keep sending changes indefinitely
-	var lastSeqID string
+	var lastSeq uint64
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
 	var err error
@@ -236,8 +237,8 @@ loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			if lastSeqID != "" { // start after end of last feed
-				options.Since = channels.TimedSetFromString(lastSeqID)
+			if lastSeq > 0 { // start after end of last feed
+				options.Since = lastSeq
 			}
 			feed, err = h.db.MultiChangesFeed(inChannels, options)
 			if err != nil || feed == nil {
@@ -285,7 +286,7 @@ loop:
 					err = send(nil)
 				}
 
-				lastSeqID = entries[len(entries)-1].Seq
+				lastSeq = entries[len(entries)-1].Seq
 				if options.Limit > 0 {
 					if len(entries) >= options.Limit {
 						break loop
@@ -385,7 +386,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
 	var input struct {
 		Feed        string   `json:"feed"`
-		Since       string   `json:"since"`
+		Since       uint64   `json:"since"`
 		Limit       int      `json:"limit"`
 		Style       string   `json:"style"`
 		IncludeDocs bool     `json:"include_docs"`
@@ -396,7 +397,7 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		return
 	}
 	feed = input.Feed
-	options.Since = channels.TimedSetFromString(input.Since)
+	options.Since = input.Since
 	options.Limit = input.Limit
 	options.Conflicts = (input.Style == "all_docs")
 	options.IncludeDocs = input.IncludeDocs
@@ -420,4 +421,13 @@ func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
 		}
 	}
 	return message, nil
+}
+
+
+func sequenceFromString(str string) uint64 {
+	seq, err := strconv.ParseUint(str, 10, 64)
+	if err != nil {
+		seq = 0
+	}
+	return seq
 }

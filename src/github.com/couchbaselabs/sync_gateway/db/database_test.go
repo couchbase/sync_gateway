@@ -264,7 +264,7 @@ func TestAllDocs(t *testing.T) {
 		if i >= 23 {
 			seq++
 		}
-		assert.Equals(t, change.Seq, fmt.Sprintf("all:%d", seq))
+		assert.Equals(t, change.Seq, uint64(seq))
 		assert.Equals(t, change.Deleted, i == 99)
 		var removed base.Set
 		if i == 99 {
@@ -278,7 +278,7 @@ func TestAllDocs(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 10)
 	for i, change := range changes {
-		assert.Equals(t, change.Seq, fmt.Sprintf("KFJC:%d", 10*i+1))
+		assert.Equals(t, change.Seq, uint64(10*i+1))
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, base.Set(nil))
@@ -342,7 +342,7 @@ func TestConflicts(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     "all:3",
+		Seq:     3,
 		ID:      "doc",
 		Changes: []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}}})
 
