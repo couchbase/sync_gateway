@@ -213,22 +213,29 @@ func installViews(bucket base.Bucket) error {
 						var sequence = sync.sequence;
 	                    if (sequence === undefined)
 	                        return;
-	                    var value = [meta.id, sync.rev];
-	                    if ((sync.flags & 1) || sync.deleted)
-	                        value.push(true);
-						emit(["*", sequence], value);
+	                    var value = {rev:sync.rev};
+	                    if (sync.flags) {
+	                    	value.flags = sync.flags
+	                    } else if (sync.deleted) {
+	                    	value.flags = %d // channels.Deleted
+	                    }
+	                    if (%v) // EnableStarChannelLog
+							emit(["*", sequence], value);
 						var channels = sync.channels;
 						if (channels) {
 							for (var name in channels) {
 								removed = channels[name];
 								if (!removed)
 									emit([name, sequence], value);
-								else
-									emit([name, removed.seq],
-										 [meta.id, removed.rev, !!removed.del, true]);
+								else {
+									var flags = removed.del ? %d : %d; // channels.Removed/Deleted
+									emit([name, removed.seq], {rev:removed.rev, flags: flags});
+								}
 							}
 						}
 					}`
+	channels_map = fmt.Sprintf(channels_map, channels.Deleted, EnableStarChannelLog,
+		channels.Removed|channels.Deleted, channels.Removed)
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {

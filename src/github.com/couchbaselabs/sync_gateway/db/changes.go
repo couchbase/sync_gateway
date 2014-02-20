@@ -17,58 +17,65 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
-// Options for Database.getChanges
+// Options for changes-feeds
 type ChangesOptions struct {
-	Since       uint64 // sequence # to start _after_
-	Limit       int
-	Conflicts   bool
-	IncludeDocs bool
-	Wait        bool
-	Continuous  bool
+	Since       uint64    // sequence # to start _after_
+	Limit       int       // Max number of changes to return, if nonzero
+	Conflicts   bool      // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs bool      // Include doc body of each change?
+	Wait        bool      // Wait for results, instead of immediately returning empty result?
+	Continuous  bool      // Run continuously until terminated?
 	Terminator  chan bool // Caller can close this channel to terminate the feed
 }
 
-// A changes entry; Database.getChanges returns an array of these.
+// A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq     uint64      `json:"seq"`
-	ID      string      `json:"id"`
-	Deleted bool        `json:"deleted,omitempty"`
-	Removed base.Set    `json:"removed,omitempty"`
-	Doc     Body        `json:"doc,omitempty"`
-	Changes []ChangeRev `json:"changes"`
+	Seq      uint64      `json:"seq"`
+	ID       string      `json:"id"`
+	Deleted  bool        `json:"deleted,omitempty"`
+	Removed  base.Set    `json:"removed,omitempty"`
+	Doc      Body        `json:"doc,omitempty"`
+	Changes  []ChangeRev `json:"changes"`
+	conflict bool
 }
 
-type ChangeRev map[string]string
+type ChangeRev map[string]string // Key is always "rev", value is rev ID
 
 type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
-// Number of rows to query from the changes view at one time
-const kChangesViewPageSize = 1000
+// Adds a document body and/or its conflicts to a ChangeEntry
+func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
+	includeConflicts := options.Conflicts && entry.conflict
+	if !options.IncludeDocs && !includeConflicts {
+		return
+	}
+	doc, err := db.GetDoc(entry.ID)
+	if err != nil {
+		base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
+		return
+	}
 
-func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, includeDocs, includeConflicts bool) {
-	if doc != nil {
-		revID := entry.Changes[0]["rev"]
-		if includeConflicts {
-			doc.History.forEachLeaf(func(leaf *RevInfo) {
-				if leaf.ID != revID && !leaf.Deleted {
-					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
-				}
-			})
-		}
-		if includeDocs {
-			var err error
-			entry.Doc, err = db.getRevFromDoc(doc, revID, false)
-			if err != nil {
-				base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
+	revID := entry.Changes[0]["rev"]
+	if includeConflicts {
+		doc.History.forEachLeaf(func(leaf *RevInfo) {
+			if leaf.ID != revID && !leaf.Deleted {
+				entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
 			}
+		})
+	}
+	if options.IncludeDocs {
+		var err error
+		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
+		if err != nil {
+			base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
 		}
 	}
 }
 
-// Returns a list of all the changes made on a channel.
+// Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
@@ -84,7 +91,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 		return feed, nil
 	}
 
-	feed := make(chan *ChangeEntry, 5)
+	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
 		// Now write each log entry to the 'feed' channel in turn:
@@ -98,17 +105,14 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// from the view before this point.
 			}
 			change := ChangeEntry{
-				Seq:     logEntry.Sequence,
-				ID:      logEntry.DocID,
-				Deleted: (logEntry.Flags & channels.Deleted) != 0,
-				Changes: []ChangeRev{{"rev": logEntry.RevID}},
+				Seq:      logEntry.Sequence,
+				ID:       logEntry.DocID,
+				Deleted:  (logEntry.Flags & channels.Deleted) != 0,
+				Changes:  []ChangeRev{{"rev": logEntry.RevID}},
+				conflict: (logEntry.Flags & channels.Conflict) != 0,
 			}
-			conflict := options.Conflicts && (logEntry.Flags&channels.Conflict) != 0
 			if logEntry.Flags&channels.Removed != 0 {
 				change.Removed = channels.SetOf(channel)
-			} else if options.IncludeDocs || conflict {
-				doc, _ := db.GetDoc(logEntry.DocID)
-				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, conflict)
 			}
 
 			select {
@@ -116,13 +120,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				base.LogTo("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
-			}
-
-			if options.Limit > 0 {
-				options.Limit--
-				if options.Limit == 0 {
-					break
-				}
 			}
 		}
 	}()
@@ -142,7 +139,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
 	}
 
-	output := make(chan *ChangeEntry, kChangesViewPageSize)
+	output := make(chan *ChangeEntry, 50)
 	go func() {
 		defer close(output)
 
@@ -219,6 +216,11 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 							}
 						}
 					}
+				}
+
+				// Add the doc body or the conflicting rev IDs, if those options are set:
+				if options.IncludeDocs || options.Conflicts {
+					db.addDocToChangeEntry(minEntry, options)
 				}
 
 				// Send the entry, and repeat the loop:

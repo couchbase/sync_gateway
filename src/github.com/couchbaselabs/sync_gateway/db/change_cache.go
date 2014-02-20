@@ -13,7 +13,7 @@ import (
 
 var ChannelLogCacheLength = 50                     // Keep at least this many entries in cache
 var ChannelLogCacheAge = 60 * time.Second          // Keep entries at least this long
-var MaxChannelLogPendingCount = 1000               // Max number of waiting sequences
+var MaxChannelLogPendingCount = 10000              // Max number of waiting sequences
 var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a missing sequence
 
 // Enable keeping a channel-log for the "*" channel. The only time this channel is needed is if
@@ -388,16 +388,18 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 		//** Now acquire the lock
 		c.lock.RLock()
 		defer c.lock.RUnlock()
-		if len(resultFromView) < roomInCache {
-			roomInCache = len(resultFromView)
-		}
-		toCache := resultFromView[len(resultFromView)-roomInCache:]
 		log := c.channelLogs[channelName]
-		numPrepended := log.prependChanges(toCache)
-		if numPrepended > 0 {
-			base.LogTo("Cache", "  Added %d entries from view to cache of %q", numPrepended, channelName)
+		numFromView := len(resultFromView)
+		if numFromView > 0 {
+			if numFromView < roomInCache {
+				roomInCache = numFromView
+			}
+			toCache := resultFromView[numFromView-roomInCache:]
+			numPrepended := log.prependChanges(toCache)
+			if numPrepended > 0 {
+				base.LogTo("Cache", "  Added %d entries from view to cache of %q", numPrepended, channelName)
+			}
 		}
-
 		if options.Since == 0 && len(log) < ChannelLogCacheLength {
 			// If the view query goes back to the dawn of time, record a fake zero sequence in
 			// the cache so any future requests won't need to hit the view again:
@@ -449,7 +451,8 @@ func (logp *LogEntries) appendChange(change *LogEntry) {
 	end := len(log) - 1
 	if end >= 0 {
 		if change.Sequence <= log[end].Sequence {
-			panic("LogEntries.appendChange: out-of-order sequence")
+			base.Warn("LogEntries.appendChange: out-of-order sequence #%d (last is #%d)",
+				change.Sequence, log[end].Sequence)
 		}
 		for i := end; i >= 0; i-- {
 			if log[i].DocID == change.DocID {
