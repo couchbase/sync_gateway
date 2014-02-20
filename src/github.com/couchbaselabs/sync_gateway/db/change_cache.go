@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"expvar"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -163,7 +162,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			timeSaved: doc.TimeSaved,
 			channels:  doc.Channels,
 		}
-		base.LogTo("Cache", "Received #%d after %3dms (vb=%03d, %q / %q)", change.Sequence, int(tapLag/time.Millisecond), c.context.Bucket.VBHash(docID), change.DocID, change.RevID)
+		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
 		changedChannels := c.processEntry(change)
 		if c.onChange != nil && len(changedChannels) > 0 {
@@ -225,10 +224,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}
 
 	if EnableStarChannelLog {
-		if len(addedTo) == 0 {
-			// If change isn't in any channel, add to "*" to ensure it gets recorded
-			c._addToChannelCache(change, false, "*")
-		}
+		c._addToChannelCache(change, false, "*")
 		addedTo = append(addedTo, "*")
 	}
 
@@ -248,11 +244,11 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 func (c *changeCache) _addToChannelCache(change *LogEntry, isRemoval bool, channelName string) {
 	log := c.channelLogs[channelName]
 	if !isRemoval {
-		log.addChange(change)
+		log.appendChange(change)
 	} else {
 		removalChange := *change
 		removalChange.Flags |= channels.Removed
-		log.addChange(&removalChange)
+		log.appendChange(&removalChange)
 	}
 	c.channelLogs[channelName] = log
 	c._pruneCache(channelName)
@@ -324,70 +320,39 @@ func (c *changeCache) _pruneCache(channelName string) {
 
 //////// CHANGE ACCESS:
 
-// Returns all of the cached entries for sequences greater than 'since' in the given channels.
-// Entries are returned in increasing-sequence order.
-func (c *changeCache) GetChangesSince(channels base.Set, since uint64) []*LogEntry {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	if channels.Contains("*") {
-		// To get global changes, need to union together all channels
-		channels = c._allChannels()
-	}
-
-	haveSequence := make(map[uint64]bool, 50)
-	entries := make(LogEntries, 0, 50)
-	for channelName, _ := range channels {
-		log := c.channelLogs[channelName]
-		for i := len(log) - 1; i >= 0 && log[i].Sequence > since; i-- {
-			if entry := log[i]; !haveSequence[entry.Sequence] {
-				haveSequence[entry.Sequence] = true
-				entries = append(entries, entry)
-			}
-		}
-	}
-	sort.Sort(entries)
-	var first uint64
-	if len(entries) > 0 {
-		first = entries[0].Sequence
-	}
-	base.LogTo("Cache", "getChangesSince(%q, %d) --> %d changes from #%d",
-		channels.ToArray(), since, len(entries), first)
-	return entries
-}
-
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64) []*LogEntry {
-	if channelName == "*" {
-		// To get global changes, need to union together all channels
-		return c.GetChangesSince(base.SetOf("*"), since)
-	}
-
+func (c *changeCache) GetCachedChangesInChannelSince(channelName string, since uint64, options ChangesOptions) (validSince uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
 	// Find the first entry in the log to return:
 	log := c.channelLogs[channelName]
-	if log == nil {
-		return nil
+	if len(log) == 0 {
+		base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> unknown channel",
+			channelName, since)
+		return
 	}
 	var start int
 	for start = len(log) - 1; start >= 0 && log[start].Sequence > since; start-- {
 	}
 	start++
 
-	// Now copy the entries:
-	entries := make([]*LogEntry, len(log)-start)
-	copy(entries[:], log[start:])
-
-	var first uint64
-	if len(entries) > 0 {
-		first = entries[0].Sequence
+	if start > 0 {
+		validSince = log[start-1].Sequence
+	} else {
+		validSince = log[0].Sequence - 1
 	}
-	base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> %d changes from #%d",
-		channelName, since, len(entries), first)
-	return entries
+
+	n := len(log) - start
+	if options.Limit > 0 && n < options.Limit {
+		n = options.Limit
+	}
+	result = make([]*LogEntry, n)
+	copy(result[0:], log[start:])
+	base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> %d changes valid after #%d",
+		channelName, since, n, validSince)
+	return
 }
 
 func (c *changeCache) _allChannels() base.Set {
@@ -398,6 +363,65 @@ func (c *changeCache) _allChannels() base.Set {
 		i++
 	}
 	return base.SetFromArray(array)
+}
+
+// Top-level method to get all the changes in a channel since the sequence 'since'.
+// If the cache doesn't go back far enough, the view will be queried.
+// View query results may be fed back into the cache if there's room.
+func (c *changeCache) GetChangesInChannelSince(channelName string, since uint64, options ChangesOptions) ([]*LogEntry, error) {
+	cacheValidSince, resultFromCache := c.GetCachedChangesInChannelSince(channelName, since, options)
+
+	// Did the cache fulfill the entire request?
+	if resultFromCache != nil && cacheValidSince <= since {
+		return resultFromCache, nil
+	}
+
+	// No, need to backfill from view:
+	resultFromView, err := c.context.getChangesFromView(channelName, since+1, cacheValidSince, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache some of the view results, if there's room in the cache:
+	roomInCache := ChannelLogCacheLength - len(resultFromCache)
+	if roomInCache > 0 {
+		//** Now acquire the lock
+		c.lock.RLock()
+		defer c.lock.RUnlock()
+		if len(resultFromView) < roomInCache {
+			roomInCache = len(resultFromView)
+		}
+		toCache := resultFromView[len(resultFromView)-roomInCache:]
+		log := c.channelLogs[channelName]
+		numPrepended := log.prependChanges(toCache)
+		if numPrepended > 0 {
+			base.LogTo("Cache", "  Added %d entries from view to cache of %q", numPrepended, channelName)
+		}
+
+		if since == 0 && len(log) < ChannelLogCacheLength {
+			// If the view query goes back to the dawn of time, record a fake zero sequence in
+			// the cache so any future requests won't need to hit the view again:
+			fake := LogEntry{
+				LogEntry: channels.LogEntry{
+					Sequence: 0,
+				},
+				received: time.Now(),
+			}
+			log.prependChanges([]*LogEntry{&fake})
+		}
+		c.channelLogs[channelName] = log
+	}
+
+	// Concatenate the view & cache results:
+	result := resultFromView
+	if options.Limit == 0 || len(result) < options.Limit {
+		n := len(resultFromCache)
+		if options.Limit > 0 {
+			n = options.Limit - len(result)
+		}
+		result = append(result, resultFromCache[0:n]...)
+	}
+	return result, nil
 }
 
 //////// LOGENTRIES (SORTABLE / HEAP INTERFACES)
@@ -418,16 +442,43 @@ func (h *LogEntries) Pop() interface{} {
 	return x
 }
 
-// Adds an entry to an array of LogEntries. Any existing entry with the same DocID is removed.
-func (logp *LogEntries) addChange(change *LogEntry) {
+// Adds an entry to the end of an array of LogEntries.
+// Any existing entry with the same DocID is removed.
+func (logp *LogEntries) appendChange(change *LogEntry) {
 	log := *logp
 	end := len(log) - 1
-	for i := end; i >= 0; i-- {
-		if log[i].DocID == change.DocID {
-			copy(log[i:], log[i+1:])
-			log[end] = change
-			return
+	if end >= 0 {
+		if change.Sequence <= log[end].Sequence {
+			panic("LogEntries.appendChange: out-of-order sequence")
+		}
+		for i := end; i >= 0; i-- {
+			if log[i].DocID == change.DocID {
+				copy(log[i:], log[i+1:])
+				log[end] = change
+				return
+			}
 		}
 	}
 	*logp = append(log, change)
+}
+
+// Prepends an array of entries to this one, skipping ones that I already have
+func (logp *LogEntries) prependChanges(changes LogEntries) int {
+	log := *logp
+	if len(log) == 0 {
+		*logp = make(LogEntries, len(changes))
+		copy(*logp, changes)
+		return len(changes)
+	}
+	firstSeq := log[0].Sequence
+	for i := len(changes) - 1; i >= 0; i-- {
+		if changes[i].Sequence < firstSeq {
+			newLog := make(LogEntries, 0, i+len(log))
+			newLog = append(newLog, changes[0:i+1]...)
+			newLog = append(newLog, log...)
+			*logp = newLog
+			return i + 1
+		}
+	}
+	return 0
 }

@@ -13,8 +13,6 @@ import (
 	"encoding/json"
 	"math"
 
-	"github.com/couchbaselabs/go-couchbase"
-
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
@@ -48,21 +46,6 @@ type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
-// One "changes" row in a ViewResult
-type ViewRow struct {
-	ID    string
-	Key   interface{}
-	Value interface{}
-	Doc   json.RawMessage
-}
-
-// Unmarshaled JSON structure for "changes" view results
-type ViewResult struct {
-	TotalRows int `json:"total_rows"`
-	Rows      []ViewRow
-	Errors    []couchbase.ViewError
-}
-
 // Number of rows to query from the changes view at one time
 const kChangesViewPageSize = 1000
 
@@ -91,52 +74,19 @@ func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, inclu
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	since := options.Since[channel]
-	log := db.changeCache.GetChangesInChannelSince(channel, since)
+	log, err := db.changeCache.GetChangesInChannelSince(channel, since,options)
+	if err != nil {return nil, err}
 
-	if log != nil && len(log) == 0 {
+	if len(log) == 0 {
 		// There are no entries newer than 'since'. Return an empty feed:
 		feed := make(chan *ChangeEntry)
 		close(feed)
 		return feed, nil
 	}
 
-	var viewFeed <-chan *ChangeEntry
-	var err error
-
-	var upToSeq uint64
-	if log != nil {
-		upToSeq = log[0].Sequence - 1
-	}
-	if log == nil || upToSeq > since {
-		// Channel log may not go back far enough, so also fetch view-based change feed:
-		viewFeed, err = db.changesFeedFromView(channel, options, upToSeq)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	feed := make(chan *ChangeEntry, 5)
 	go func() {
 		defer close(feed)
-
-		// First, if we need to backfill from the view, write its early entries to the channel:
-		if viewFeed != nil {
-			for change := range viewFeed {
-				if log != nil && change.seqNo > upToSeq {
-					// Caught up to where the log starts, so stop reading the view
-					// TODO: Close the view-based feed somehow
-					break
-				}
-
-				select {
-				case <-options.Terminator:
-					base.LogTo("Changes+", "Aborting changesFeed (reading from view)")
-					return
-				case feed <- change:
-				}
-			}
-		}
-
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
 			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
@@ -231,9 +181,9 @@ func (db *Database) changesFeedFromView(channel string, options ChangesOptions, 
 			}
 
 			for _, row := range vres.Rows {
-				key := row.Key.([]interface{})
+				key := row.Key
 				since = uint64(key[1].(float64))
-				value := row.Value.([]interface{})
+				value := row.Value
 				docID := value[0].(string)
 				revID := value[1].(string)
 				entry := &ChangeEntry{
@@ -432,5 +382,6 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 }
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
-	return db.changeCache.GetChangesInChannelSince(channelName, afterSeq)
+	_,log := db.changeCache.GetCachedChangesInChannelSince(channelName, afterSeq, ChangesOptions{})
+	return log
 }
