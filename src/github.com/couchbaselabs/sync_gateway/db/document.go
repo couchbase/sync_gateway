@@ -17,27 +17,20 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
-type ChannelRemoval struct {
-	Seq     uint64 `json:"seq"`
-	RevID   string `json:"rev"`
-	Deleted bool   `json:"del,omitempty"`
-}
-type ChannelMap map[string]*ChannelRemoval
-
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
-	CurrentRev      string        `json:"rev"`
-	NewestRev       string        `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags           uint8         `json:"flags,omitempty"`
-	Sequence        uint64        `json:"sequence"`
-	UnusedSequences []uint64      `json:"unused_sequences,omitempty"`
-	History         RevTree       `json:"history"`
-	Channels        ChannelMap    `json:"channels,omitempty"`
-	Access          UserAccessMap `json:"access,omitempty"`
-	RoleAccess      UserAccessMap `json:"role_access,omitempty"`
+	CurrentRev      string              `json:"rev"`
+	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags           uint8               `json:"flags,omitempty"`
+	Sequence        uint64              `json:"sequence"`
+	UnusedSequences []uint64            `json:"unused_sequences,omitempty"`
+	History         RevTree             `json:"history"`
+	Channels        channels.ChannelMap `json:"channels,omitempty"`
+	Access          UserAccessMap       `json:"access,omitempty"`
+	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
 
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
@@ -166,14 +159,14 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
-		oldChannels = ChannelMap{}
+		oldChannels = channels.ChannelMap{}
 		doc.Channels = oldChannels
 	} else {
 		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
 		for channel, removal := range oldChannels {
 			if removal == nil && !newChannels.Contains(channel) {
-				oldChannels[channel] = &ChannelRemoval{
+				oldChannels[channel] = &channels.ChannelRemoval{
 					Seq:     curSequence,
 					RevID:   doc.CurrentRev,
 					Deleted: doc.hasFlag(channels.Deleted)}

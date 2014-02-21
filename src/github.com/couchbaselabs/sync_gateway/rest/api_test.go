@@ -32,6 +32,7 @@ import (
 )
 
 func init() {
+	base.LogNoColor()
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
@@ -628,7 +629,7 @@ func TestAccessControl(t *testing.T) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
-	//base.ParseLogFlags([]string{"Changes+", "CRUD"})
+	// base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -670,7 +671,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, since, "gamma:8")
+	assert.Equals(t, since, uint64(8))
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
@@ -707,7 +708,8 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%d", since),
+		"", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -787,21 +789,21 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Check the _changes feed:
 	var changes struct {
 		Results  []db.ChangeEntry
-		Last_Seq string
+		Last_Seq interface{}
 	}
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	since := changes.Last_Seq
-	assert.Equals(t, since, "alpha:3,gamma:2")
+	assert.Equals(t, since, float64(3))
 
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since = changes.Last_Seq
-	assert.Equals(t, since, "beta:4")
+	assert.Equals(t, since, float64(4))
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
@@ -819,24 +821,27 @@ func TestRoleAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
-	assert.Equals(t, changes.Last_Seq, "beta:4,gamma:2")
+	assert.Equals(t, changes.Last_Seq, float64(4))
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, changes.Results[1].ID, "b1")
 
-	// Changes feed with since=beta:4 would ordinarily be empty, but zegpold got access to channel
+	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
+	base.LogKeys["Changes"] = true
+	base.LogKeys["Cache"] = true
+	response = rt.send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "g1")
+	base.LogKeys["Cache"] = false
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {
 	// See https://github.com/couchbase/couchbase-lite-ios/issues/59
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Cache"] = true //TEMP
+	// base.LogKeys["Changes"] = true
+	// base.LogKeys["Cache"] = true
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -849,6 +854,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	response := rt.send(request("PUT", "/db/alpha", `{"channel":"zero"}`))
 
 	// Check the _changes feed:
+	rt.ServerContext().Database("db").WaitForPendingChanges()
 	var changes struct {
 		Results []db.ChangeEntry
 	}
@@ -857,7 +863,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, since, "zero:1")
+	assert.Equals(t, since, uint64(1))
 
 	assert.Equals(t, changes.Results[0].ID, "alpha")
 	rev1 := changes.Results[0].Changes[0]["rev"]
@@ -867,7 +873,8 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 	// Get the updates from the _changes feed:
 	time.Sleep(100 * time.Millisecond)
-	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "alice"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%d", since),
+		"", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)

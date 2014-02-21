@@ -27,6 +27,7 @@ import (
 const kTestURL = "walrus:"
 
 func init() {
+	base.LogNoColor()
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["CRUD+"] = true
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
@@ -190,6 +191,8 @@ func TestGetDeleted(t *testing.T) {
 }
 
 func TestAllDocs(t *testing.T) {
+	base.LogKeys["Cache"] = true   //TEMP
+	base.LogKeys["Changes"] = true //TEMP
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
@@ -330,7 +333,10 @@ func TestConflicts(t *testing.T) {
 	// Verify the change-log of the "all" channel:
 	log = db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log), 1)
-	assert.DeepEquals(t, log[0].LogEntry, channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-b", Flags: channels.Hidden | channels.Conflict})
+	assert.Equals(t, log[0].Sequence, uint64(3))
+	assert.Equals(t, log[0].DocID, "doc")
+	assert.Equals(t, log[0].RevID, "2-b")
+	assert.Equals(t, log[0].Flags, uint8(channels.Hidden|channels.Conflict))
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
@@ -342,9 +348,10 @@ func TestConflicts(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     3,
-		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}}})
+		Seq:      3,
+		ID:       "doc",
+		Changes:  []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
+		conflict: true})
 
 	// Delete 2-b; verify this makes 2-a current:
 	_, err = db.DeleteDoc("doc", "2-b")

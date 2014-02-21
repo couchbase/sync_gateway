@@ -152,17 +152,17 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			if db.user != nil {
 				channelsSince = db.user.FilterToAvailableChannels(chans)
 			} else {
-				channelsSince = channels.AtSequence(chans, 1)
+				channelsSince = channels.AtSequence(chans, 0)
 			}
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
-			for name, minSeq := range channelsSince {
+			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
-				if chanOpts.Since < minSeq-1 {
-					chanOpts.Since = minSeq - 1 // Start at 1st seq user has access to
+				if seqAddedAt > options.Since {
+					chanOpts.Since = 0 // Newly added channel so send all of it to user
 				}
 				feed, err := db.changesFeed(name, chanOpts)
 				if err != nil {
@@ -286,4 +286,13 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 	options := ChangesOptions{Since: afterSeq}
 	_, log := db.changeCache.GetCachedChangesInChannel(channelName, options)
 	return log
+}
+
+// Wait until the change-cache has caught up with the latest writes to the database.
+func (context *DatabaseContext) WaitForPendingChanges() (err error) {
+	lastSequence, err := context.LastSequence()
+	if err == nil {
+		context.changeCache.waitForSequence(lastSequence)
+	}
+	return
 }

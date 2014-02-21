@@ -10,10 +10,10 @@
 package rest
 
 import (
-	"strconv"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -422,7 +422,6 @@ func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
 	}
 	return message, nil
 }
-
 
 func sequenceFromString(str string) uint64 {
 	seq, err := strconv.ParseUint(str, 10, 64)

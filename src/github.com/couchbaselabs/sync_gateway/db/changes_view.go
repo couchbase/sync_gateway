@@ -6,7 +6,6 @@ import (
 	"github.com/couchbaselabs/go-couchbase"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -46,13 +45,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	entries := make(LogEntries, 0, len(vres.Rows))
 	for _, row := range vres.Rows {
 		entry := &LogEntry{
-			LogEntry: channels.LogEntry{
-				Sequence: uint64(row.Key[1].(float64)),
-				DocID:    row.ID,
-				RevID:    row.Value.Rev,
-				Flags:    row.Value.Flags,
-			},
-			received: time.Now(),
+			Sequence:     uint64(row.Key[1].(float64)),
+			DocID:        row.ID,
+			RevID:        row.Value.Rev,
+			Flags:        row.Value.Flags,
+			TimeReceived: time.Now(),
 		}
 		// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
 		entries = append(entries, entry)

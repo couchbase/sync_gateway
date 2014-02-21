@@ -33,23 +33,19 @@ type changeCache struct {
 	logsDisabled    bool                  // If true, ignore incoming tap changes
 	nextSequence    uint64                // Next consecutive sequence number to add
 	initialSequence uint64                // DB's current sequence at startup time
-	pendingLogs     LogEntries            // Out-of-sequence entries waiting to be cached
 	receivedSeqs    map[uint64]struct{}   // Set of all sequences received
+	pendingLogs     LogPriorityQueue      // Out-of-sequence entries waiting to be cached
 	channelLogs     map[string]LogEntries // The cache itself!
 	onChange        func(base.Set)        // Client callback that notifies of channel changes
 	lock            sync.RWMutex          // Coordinates access to channelLogs
 }
 
-// A basic LogEntry annotated with its channels and arrival time
-type LogEntry struct {
-	channels.LogEntry            // The sequence, doc/rev ID
-	received          time.Time  // Time received from tap feed
-	timeSaved         time.Time  // Time doc revision was saved
-	channels          ChannelMap // Channels this entry is in
-}
+type LogEntry channels.LogEntry
+
+type LogEntries []*LogEntry
 
 // A priority-queue of LogEntries, kept ordered by increasing sequence #.
-type LogEntries []*LogEntry
+type LogPriorityQueue []*LogEntry
 
 //////// HOUSEKEEPING:
 
@@ -86,7 +82,6 @@ func (c *changeCache) Stop() {
 // Forgets all cached changes for all channels.
 func (c *changeCache) ClearLogs() {
 	c.lock.Lock()
-	c.nextSequence = 0
 	c.channelLogs = make(map[string]LogEntries, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
@@ -144,25 +139,21 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 		for _, seq := range doc.UnusedSequences {
 			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
 			change := &LogEntry{
-				LogEntry: channels.LogEntry{
-					Sequence: seq,
-				},
-				received: time.Now(),
+				Sequence:     seq,
+				TimeReceived: time.Now(),
 			}
 			c.processEntry(change)
 		}
 
 		// Now add the entry for the new doc revision:
 		change := &LogEntry{
-			LogEntry: channels.LogEntry{
-				Sequence: doc.Sequence,
-				DocID:    docID,
-				RevID:    doc.CurrentRev,
-				Flags:    doc.Flags,
-			},
-			received:  time.Now(),
-			timeSaved: doc.TimeSaved,
-			channels:  doc.Channels,
+			Sequence:     doc.Sequence,
+			DocID:        docID,
+			RevID:        doc.CurrentRev,
+			Flags:        doc.Flags,
+			TimeReceived: time.Now(),
+			TimeSaved:    doc.TimeSaved,
+			Channels:     doc.Channels,
 		}
 		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
@@ -225,8 +216,8 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		return nil // this was a placeholder for an unused sequence
 	}
 	addedTo := make([]string, 0, 4)
-	ch := change.channels
-	change.channels = nil // not needed anymore, so free some memory
+	ch := change.Channels
+	change.Channels = nil // not needed anymore, so free some memory
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
 			c._addToChannelCache(change, removal != nil, channelName)
@@ -240,11 +231,11 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}
 
 	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.timeSaved)
+	lag := time.Since(change.TimeSaved)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
 	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.received)
+	lag = time.Since(change.TimeReceived)
 	lagMs = int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
 
@@ -274,7 +265,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
-		if isNext || len(c.pendingLogs) > MaxChannelLogPendingCount || time.Since(c.pendingLogs[0].received) >= MaxChannelLogPendingWaitTime {
+		if isNext || len(c.pendingLogs) > MaxChannelLogPendingCount || time.Since(c.pendingLogs[0].TimeReceived) >= MaxChannelLogPendingWaitTime {
 			if !isNext {
 				base.Warn("changeCache: Giving up, accepting #%d even though #%d is missing",
 					change.Sequence, c.nextSequence)
@@ -319,7 +310,7 @@ func (c *changeCache) CleanUp() bool {
 func (c *changeCache) _pruneCache(channelName string) {
 	pruned := 0
 	log := c.channelLogs[channelName]
-	for len(log) > ChannelLogCacheLength && time.Since(log[0].received) > ChannelLogCacheAge {
+	for len(log) > ChannelLogCacheLength && time.Since(log[0].TimeReceived) > ChannelLogCacheAge {
 		log = log[1:]
 		pruned++
 	}
@@ -330,6 +321,13 @@ func (c *changeCache) _pruneCache(channelName string) {
 }
 
 //////// CHANGE ACCESS:
+
+// Returns the sequence number the cache is up-to-date with.
+func (c *changeCache) LastSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence - 1
+}
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
@@ -361,7 +359,7 @@ func (c *changeCache) GetCachedChangesInChannel(channelName string, options Chan
 	}
 	result = make([]*LogEntry, n)
 	copy(result[0:], log[start:])
-	base.LogTo("Cache", "getChangesInChannelSince(%q, %d) --> %d changes valid after #%d",
+	base.LogTo("Cache", "GetCachedChangesInChannel(%q, %d) --> %d changes valid after #%d",
 		channelName, options.Since, n, validSince)
 	return
 }
@@ -388,27 +386,26 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 	}
 
 	// No, need to backfill from view:
+	endSeq := cacheValidSince
+	if endSeq == 0 || endSeq >= c.nextSequence {
+		// It's unlikely-but-possible that the view will include sequences that haven't been
+		// received over Tap yet; if so, suppress those:
+		endSeq = c.nextSequence - 1
+	}
 	resultFromView, err := c.context.getChangesInChannelFromView(channelName, cacheValidSince, options)
 	if err != nil {
 		return nil, err
 	}
 
 	//** Now acquire the lock
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	// It's unlikely-but-possible that the view query will include sequences that haven't been
-	// received over Tap yet; if so, trim those, because they'll confuse the ordering.
-	numFromView := len(resultFromView)
-	for numFromView > 0 && resultFromView[numFromView-1].Sequence >= c.nextSequence {
-		numFromView--
-		resultFromView = resultFromView[0:numFromView]
-	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	// Cache some of the view results, if there's room in the cache:
 	roomInCache := ChannelLogCacheLength - len(resultFromCache)
 	if roomInCache > 0 {
 		log := c.channelLogs[channelName]
+		numFromView := len(resultFromView)
 		if numFromView > 0 {
 			if numFromView < roomInCache {
 				roomInCache = numFromView
@@ -423,10 +420,8 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 			// If the view query goes back to the dawn of time, record a fake zero sequence in
 			// the cache so any future requests won't need to hit the view again:
 			fake := LogEntry{
-				LogEntry: channels.LogEntry{
-					Sequence: 0,
-				},
-				received: time.Now(),
+				Sequence:     0,
+				TimeReceived: time.Now(),
 			}
 			log.prependChanges([]*LogEntry{&fake})
 		}
@@ -442,20 +437,21 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
+	base.LogTo("Cache", "GetChangesInChannel(%q) --> %d rows", channelName, len(result))
 	return result, nil
 }
 
-//////// LOGENTRIES (SORTABLE / HEAP INTERFACES)
+//////// LOG PRIORITY QUEUE
 
-func (h LogEntries) Len() int           { return len(h) }
-func (h LogEntries) Less(i, j int) bool { return h[i].Sequence < h[j].Sequence }
-func (h LogEntries) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h LogPriorityQueue) Len() int           { return len(h) }
+func (h LogPriorityQueue) Less(i, j int) bool { return h[i].Sequence < h[j].Sequence }
+func (h LogPriorityQueue) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
-func (h *LogEntries) Push(x interface{}) {
+func (h *LogPriorityQueue) Push(x interface{}) {
 	*h = append(*h, x.(*LogEntry))
 }
 
-func (h *LogEntries) Pop() interface{} {
+func (h *LogPriorityQueue) Pop() interface{} {
 	old := *h
 	n := len(old)
 	x := old[n-1]
