@@ -25,7 +25,7 @@ REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 ARCH            = ARGV[5] ||                           `uname -m`.chomp
 
-PLATFORM=`echo $PLATFORM | sed "s/Darwin/macosx/"`
+PLATFORM["Darwin"] = "macosx"
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
