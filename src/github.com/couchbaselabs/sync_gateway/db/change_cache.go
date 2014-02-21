@@ -34,6 +34,7 @@ type changeCache struct {
 	nextSequence    uint64                // Next consecutive sequence number to add
 	initialSequence uint64                // DB's current sequence at startup time
 	pendingLogs     LogEntries            // Out-of-sequence entries waiting to be cached
+	receivedSeqs    map[uint64]struct{}   // Set of all sequences received
 	channelLogs     map[string]LogEntries // The cache itself!
 	onChange        func(base.Set)        // Client callback that notifies of channel changes
 	lock            sync.RWMutex          // Coordinates access to channelLogs
@@ -61,6 +62,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 	c.nextSequence = lastSequence + 1
 	c.onChange = onChange
 	c.channelLogs = make(map[string]LogEntries, 10)
+	c.receivedSeqs = make(map[uint64]struct{})
 	heap.Init(&c.pendingLogs)
 	base.LogTo("Cache", "Initialized changeCache with nextSequence=#%d", c.nextSequence)
 
@@ -180,26 +182,35 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		return nil
 	}
 
+	sequence := change.Sequence
+	nextSequence := c.nextSequence
+	if _, found := c.receivedSeqs[sequence]; found {
+		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+		return nil
+	}
+	c.receivedSeqs[sequence] = struct{}{}
+	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
+
 	var changedChannels base.Set
-	if change.Sequence == c.nextSequence || c.nextSequence == 0 {
+	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
-	} else if change.Sequence > c.nextSequence {
+	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
-			change.Sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1)
+			sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
 		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
 		if numPending > MaxChannelLogPendingCount {
 			// Too many pending; add the oldest one:
 			changedChannels = c._addPendingLogs()
 		}
-	} else if change.Sequence > c.initialSequence {
+	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
-		base.Warn("  Received out-of-order change (seq %d, expecting %d) doc %q / %q", change.Sequence, c.nextSequence, change.DocID, change.RevID)
+		base.Warn("  Received out-of-order change (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		changedChannels = c._addToCache(change)
 	}
 	return changedChannels
