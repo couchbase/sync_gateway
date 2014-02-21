@@ -21,6 +21,7 @@ RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
 
 PKGNAME="#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{PLATFORM}"
+product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
 
 print "\nDEBUG:  0: PREFIX          = ", PREFIX
 print "\nDEBUG:  1: PREFIXD         = ", PREFIXD
