@@ -25,19 +25,19 @@ REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 ARCH            = ARGV[5] ||                           `uname -m`.chomp
 
-PLATFORM["Darwin"] = "macosx"
+platform = PLATFORM.gsub("Darwin", "macosx")
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
 
-PKGNAME="#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{PLATFORM}"
+PKGNAME="#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{platform}"
 product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
 
 print "\nDEBUG:  0: PREFIX          = ", PREFIX
 print "\nDEBUG:  1: PREFIXD         = ", PREFIXD
 print "\nDEBUG:  2: PRODUCT_VERSION = ", PRODUCT_VERSION
 print "\nDEBUG:  3: REPO_SHA        = ", REPO_SHA
-print "\nDEBUG:  4: PLATFORM        = ", PLATFORM
+print "\nDEBUG:  4: platform        = ", platform
 print "\nDEBUG:  5: ARCH            = ", ARCH
 print "\n"
 print "\nDEBUG:  RELEASE  = ", RELEASE
@@ -56,7 +56,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}"
         ["manifest.txt.tmpl", "manifest.xml.tmpl"].each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
             sh %{sed -e s,@@VERSION@@,#{BLDNUM},g                    #{x} |
-                 sed -e s,@@PLATFORM@@,#{PLATFORM},g                      |
+                 sed -e s,@@PLATFORM@@,#{platform},g                      |
                  sed -e s,@@RELEASE@@,#{RELEASE},g                        |
                  sed -e s,@@REPO_SHA@@,#{REPO_SHA},g                      |
                  sed -e s,@@PREFIX@@,#{PREFIX},g                          |
