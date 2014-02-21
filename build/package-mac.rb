@@ -1,7 +1,15 @@
 #!/usr/bin/env ruby
 # 
-####    ./${PKGR} ${PREFIX} ${PREFIXP} ${REVISION} ${GITSPEC} ${PLATFORM}    ${ARCH}
-#                                                   master     macosx-x84_64  x86_64
+#  called by:    build/scripts/jenkins/mobile/build_sync_gateway.sh
+#  with params: 
+#                PREFIX          e.g.,  opt/couchbase-sync-gateway
+#                PREFIXD                ./opt/couchbase-sync-gateway
+#                PRODUCT_VERSION        1.0-22
+#                REPO_SHA               da9f8142c2fffdffdf7e7f9e5765591e847081a3
+#                GITSPEC                stable
+#                PLATFORM               Darwin-x86_64
+#                ARCH                   x86_64
+#                
 require 'rubygems'
 require 'fileutils'
 require 'rake'
@@ -16,6 +24,8 @@ PRODUCT_VERSION = ARGV[2] || "1.0-1234"
 REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 ARCH            = ARGV[5] ||                           `uname -m`.chomp
+
+PLATFORM=`echo $PLATFORM | sed "s/Darwin/macosx/"`
 
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
