@@ -382,14 +382,22 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 		return nil, err
 	}
 
+	//** Now acquire the lock
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	// It's unlikely-but-possible that the view query will include sequences that haven't been
+	// received over Tap yet; if so, trim those, because they'll confuse the ordering.
+	numFromView := len(resultFromView)
+	for numFromView > 0 && resultFromView[numFromView-1].Sequence >= c.nextSequence {
+		numFromView--
+		resultFromView = resultFromView[0:numFromView]
+	}
+
 	// Cache some of the view results, if there's room in the cache:
 	roomInCache := ChannelLogCacheLength - len(resultFromCache)
 	if roomInCache > 0 {
-		//** Now acquire the lock
-		c.lock.RLock()
-		defer c.lock.RUnlock()
 		log := c.channelLogs[channelName]
-		numFromView := len(resultFromView)
 		if numFromView > 0 {
 			if numFromView < roomInCache {
 				roomInCache = numFromView
