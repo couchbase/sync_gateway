@@ -22,18 +22,18 @@ BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
 
 PKGNAME="#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{PLATFORM}"
 
-print "DEBUG:  0: PREFIX          = ${PREFIX}"
-print "DEBUG:  1: PREFIXD         = ${PREFIXD}"
-print "DEBUG:  2: PRODUCT_VERSION = ${PRODUCT_VERSION}"
-print "DEBUG:  3: REPO_SHA        = ${REPO_SHA}"
-print "DEBUG:  4: PLATFORM        = ${PLATFORM}"
-print "DEBUG:  5: ARCH            = ${ARCH}"
-print " "
-print "DEBUG:  RELEASE            = ${RELEASE}"
-print "DEBUG:  BLDNUM             = ${BLDNUM}"
-print " "
-print "DEBUG:  PKGNAME = ${PKGNAME}"
-print " "
+print "\nDEBUG:  0: PREFIX          = ", PREFIX
+print "\nDEBUG:  1: PREFIXD         = ", PREFIXD
+print "\nDEBUG:  2: PRODUCT_VERSION = ", PRODUCT_VERSION
+print "\nDEBUG:  3: REPO_SHA        = ", REPO_SHA
+print "\nDEBUG:  4: PLATFORM        = ", PLATFORM
+print "\nDEBUG:  5: ARCH            = ", ARCH
+print "\n"
+print "\nDEBUG:  RELEASE  = ", RELEASE
+print "\nDEBUG:  BLDNUM   = ", BLDNUM
+print "\n"
+print "\nDEBUG:  PKGNAME  = ", PKGNAME
+print "\n"
 
 START_DIR  = Dir.getwd()
 STAGE_DIR = "#{START_DIR}/build/maczip/#{PKGNAME}"
