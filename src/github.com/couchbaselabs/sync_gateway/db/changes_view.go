@@ -28,16 +28,17 @@ type channelsViewRow struct {
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseContext) getChangesInChannelFromView(
 	channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
+	start := time.Now()
 	// Query the view:
 	optMap := changesViewOptions(channelName, endSeq, options)
-	base.LogTo("Cache", "Querying 'channels' view for %q: %#v", channelName, optMap)
+	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since+1, endSeq, options.Limit)
 	vres := channelsViewResult{}
 	err := dbc.Bucket.ViewCustom("sync_gateway", "channels", optMap, &vres)
 	if err != nil {
 		base.Log("Error from 'channels' view: %v", err)
 		return nil, err
 	} else if len(vres.Rows) == 0 {
-		base.LogTo("Cache", "  Got no rows from view for %q", channelName)
+		base.LogTo("Cache", "    Got no rows from view for %q", channelName)
 		return nil, nil
 	}
 
@@ -55,8 +56,12 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 		entries = append(entries, entry)
 	}
 
-	base.LogTo("Cache", "  Got %d rows from view for %q: #%d ... #%d",
+	base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
 		len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		base.Log("changes_view: Query took %v to return %d rows, options = %#v",
+			elapsed, len(entries), optMap)
+	}
 	return entries, nil
 }
 

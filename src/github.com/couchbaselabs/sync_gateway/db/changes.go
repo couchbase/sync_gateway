@@ -284,7 +284,7 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
 	options := ChangesOptions{Since: afterSeq}
-	_, log := db.changeCache.GetCachedChangesInChannel(channelName, options)
+	_, log := db.changeCache.getChannelCache(channelName).getCachedChanges(options)
 	return log
 }
 
