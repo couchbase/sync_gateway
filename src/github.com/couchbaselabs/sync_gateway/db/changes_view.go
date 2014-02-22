@@ -62,6 +62,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 		base.Log("changes_view: Query took %v to return %d rows, options = %#v",
 			elapsed, len(entries), optMap)
 	}
+	changeCacheExpvars.Add("view_queries", 1)
 	return entries, nil
 }
 
