@@ -296,7 +296,7 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
-		cache = &channelCache{channelName: channelName, context: c.context}
+		cache = newChannelCache(c.context, channelName)
 		c.channelCaches[channelName] = cache
 	}
 	return cache

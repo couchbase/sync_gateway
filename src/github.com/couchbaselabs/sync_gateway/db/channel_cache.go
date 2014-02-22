@@ -12,12 +12,19 @@ var ChannelCacheMinLength = 50         // Keep at least this many entries in cac
 var ChannelCacheMaxLength = 500        // Don't put more than this many entries in cache
 var ChannelCacheAge = 60 * time.Second // Keep entries at least this long
 
+const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
+
 type channelCache struct {
-	channelName string
-	context     *DatabaseContext
-	logs        LogEntries
-	lock        sync.RWMutex
-	viewLock    sync.Mutex
+	channelName string           // The channel name, duh
+	context     *DatabaseContext // Database connection (used for view queries)
+	logs        LogEntries       // Log entries in sequence order
+	firstSeq    uint64           // First sequence that logs is valid for
+	lock        sync.RWMutex     // Controls access to logs, firstSeq
+	viewLock    sync.Mutex       // Ensures only one view query is made at a time
+}
+
+func newChannelCache(context *DatabaseContext, channelName string) *channelCache {
+	return &channelCache{context: context, channelName: channelName, firstSeq: NoSeq}
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
@@ -26,11 +33,11 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	defer c.lock.Unlock()
 
 	if !isRemoval {
-		c.logs.appendChange(change)
+		c._appendChange(change)
 	} else {
 		removalChange := *change
 		removalChange.Flags |= channels.Removed
-		c.logs.appendChange(&removalChange)
+		c._appendChange(&removalChange)
 	}
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
@@ -40,6 +47,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 func (c *channelCache) _pruneCache() {
 	pruned := 0
 	for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
+		c.firstSeq = c.logs[0].Sequence + 1
 		c.logs = c.logs[1:]
 		pruned++
 	}
@@ -54,13 +62,6 @@ func (c *channelCache) pruneCache() {
 	c.lock.Unlock()
 }
 
-func (c *channelCache) _firstSequence() uint64 {
-	if len(c.logs) == 0 {
-		return 0
-	}
-	return c.logs[0].Sequence
-}
-
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
 func (c *channelCache) getCachedChanges(options ChangesOptions) (validSince uint64, result []*LogEntry) {
@@ -73,6 +74,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validSince uin
 	// Find the first entry in the log to return:
 	log := c.logs
 	if len(log) == 0 {
+		validSince = c.firstSeq - 1
 		return // Return nil if nothing is cached
 	}
 	var start int
@@ -83,7 +85,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validSince uin
 	if start > 0 {
 		validSince = log[start-1].Sequence
 	} else {
-		validSince = log[0].Sequence - 1
+		validSince = c.firstSeq - 1
 	}
 
 	n := len(log) - start
@@ -109,7 +111,7 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 		base.LogTo("Cache", "getCachedChanges(%q, %d) --> nothing cached",
 			c.channelName, options.Since)
 	}
-	if resultFromCache != nil && cacheValidSince <= options.Since {
+	if cacheValidSince <= options.Since {
 		return resultFromCache, nil
 	}
 
@@ -125,13 +127,13 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 		base.LogTo("Cache", "2nd getCachedChanges(%q, %d) got %d more, valid since #%d!",
 			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidSince)
 	}
-	if resultFromCache != nil && cacheValidSince <= options.Since {
+	if cacheValidSince <= options.Since {
 		return resultFromCache, nil
 	}
 
 	// Now query the view:
 	endSeq := cacheValidSince
-	if endSeq == 0 || endSeq > maxSequence {
+	if endSeq > maxSequence {
 		endSeq = maxSequence
 	}
 	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, endSeq, options)
@@ -152,20 +154,14 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 				roomInCache = numFromView
 			}
 			toCache := resultFromView[numFromView-roomInCache:]
-			numPrepended := c.logs.prependChanges(toCache)
+			numPrepended := c._prependChanges(toCache)
 			if numPrepended > 0 {
 				base.LogTo("Cache", "  Added %d entries from view to cache of %q", numPrepended, c.channelName)
 			}
 		}
-		if options.Since == 0 && len(c.logs) < ChannelCacheMaxLength {
-			// If the view query goes back to the dawn of time, record a fake zero sequence in
-			// the cache so any future requests won't need to hit the view again:
-			fake := LogEntry{
-				Sequence:     0,
-				TimeReceived: time.Now(),
-			}
-			c.logs.prependChanges([]*LogEntry{&fake})
-		}
+	}
+	if options.Since+1 < c.firstSeq {
+		c.firstSeq = options.Since + 1
 	}
 
 	// Concatenate the view & cache results:
@@ -183,10 +179,16 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 
 //////// LOGENTRIES:
 
+func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
+	if change.Sequence < c.firstSeq {
+		c.firstSeq = change.Sequence
+	}
+}
+
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
-func (logp *LogEntries) appendChange(change *LogEntry) {
-	log := *logp
+func (c *channelCache) _appendChange(change *LogEntry) {
+	log := c.logs
 	end := len(log) - 1
 	if end >= 0 {
 		if change.Sequence <= log[end].Sequence {
@@ -200,16 +202,23 @@ func (logp *LogEntries) appendChange(change *LogEntry) {
 				return
 			}
 		}
+	} else {
+		c._adjustFirstSeq(change)
 	}
-	*logp = append(log, change)
+	c.logs = append(log, change)
 }
 
-// Prepends an array of entries to this one, skipping ones that I already have
-func (logp *LogEntries) prependChanges(changes LogEntries) int {
-	log := *logp
+// Prepends an array of entries to this one, skipping ones that I already have.
+// Returns the number of entries actually prepended.
+func (c *channelCache) _prependChanges(changes LogEntries) int {
+	if len(changes) == 0 {
+		return 0
+	}
+	log := c.logs
 	if len(log) == 0 {
-		*logp = make(LogEntries, len(changes))
-		copy(*logp, changes)
+		c.logs = make(LogEntries, len(changes))
+		copy(c.logs, changes)
+		c._adjustFirstSeq(changes[0])
 		return len(changes)
 	}
 	firstSeq := log[0].Sequence
@@ -218,7 +227,8 @@ func (logp *LogEntries) prependChanges(changes LogEntries) int {
 			newLog := make(LogEntries, 0, i+len(log))
 			newLog = append(newLog, changes[0:i+1]...)
 			newLog = append(newLog, log...)
-			*logp = newLog
+			c.logs = newLog
+			c._adjustFirstSeq(newLog[0])
 			return i + 1
 		}
 	}
