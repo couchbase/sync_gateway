@@ -18,13 +18,13 @@ type channelCache struct {
 	channelName string           // The channel name, duh
 	context     *DatabaseContext // Database connection (used for view queries)
 	logs        LogEntries       // Log entries in sequence order
-	firstSeq    uint64           // First sequence that logs is valid for
-	lock        sync.RWMutex     // Controls access to logs, firstSeq
+	validFrom   uint64           // First sequence that logs is valid for
+	lock        sync.RWMutex     // Controls access to logs, validFrom
 	viewLock    sync.Mutex       // Ensures only one view query is made at a time
 }
 
-func newChannelCache(context *DatabaseContext, channelName string) *channelCache {
-	return &channelCache{context: context, channelName: channelName, firstSeq: NoSeq}
+func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
+	return &channelCache{context: context, channelName: channelName, validFrom: validFrom}
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
@@ -47,7 +47,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 func (c *channelCache) _pruneCache() {
 	pruned := 0
 	for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
-		c.firstSeq = c.logs[0].Sequence + 1
+		c.validFrom = c.logs[0].Sequence + 1
 		c.logs = c.logs[1:]
 		pruned++
 	}
@@ -64,17 +64,17 @@ func (c *channelCache) pruneCache() {
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *channelCache) getCachedChanges(options ChangesOptions) (validSince uint64, result []*LogEntry) {
+func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c._getCachedChanges(options)
 }
 
-func (c *channelCache) _getCachedChanges(options ChangesOptions) (validSince uint64, result []*LogEntry) {
+func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
 	if len(log) == 0 {
-		validSince = c.firstSeq - 1
+		validFrom = c.validFrom
 		return // Return nil if nothing is cached
 	}
 	var start int
@@ -83,9 +83,9 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validSince uin
 	start++
 
 	if start > 0 {
-		validSince = log[start-1].Sequence
+		validFrom = log[start-1].Sequence + 1
 	} else {
-		validSince = c.firstSeq - 1
+		validFrom = c.validFrom
 	}
 
 	n := len(log) - start
@@ -100,18 +100,21 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validSince uin
 // Top-level method to get all the changes in a channel since the sequence 'since'.
 // If the cache doesn't go back far enough, the view will be queried.
 // View query results may be fed back into the cache if there's room.
-func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([]*LogEntry, error) {
+// initialSequence is used only if the cache is empty: it gives the max sequence to which the
+// view should be queried, because we don't want the view query to outrun the chanceCache's
+// nextSequence.
+func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// Use the cache, and return if it fulfilled the entire request:
-	cacheValidSince, resultFromCache := c.getCachedChanges(options)
+	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 || resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %d) --> %d changes valid after #%d",
-			c.channelName, options.Since, numFromCache, cacheValidSince)
+		base.LogTo("Cache", "getCachedChanges(%q, %d) --> %d changes valid from #%d",
+			c.channelName, options.Since, numFromCache, cacheValidFrom)
 	} else if resultFromCache == nil {
 		base.LogTo("Cache", "getCachedChanges(%q, %d) --> nothing cached",
 			c.channelName, options.Since)
 	}
-	if cacheValidSince <= options.Since {
+	if cacheValidFrom <= options.Since+1 {
 		return resultFromCache, nil
 	}
 
@@ -122,21 +125,18 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
-	cacheValidSince, resultFromCache = c._getCachedChanges(options)
+	cacheValidFrom, resultFromCache = c._getCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.LogTo("Cache", "2nd getCachedChanges(%q, %d) got %d more, valid since #%d!",
-			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidSince)
+		base.LogTo("Cache", "2nd getCachedChanges(%q, %d) got %d more, valid from #%d!",
+			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
-	if cacheValidSince <= options.Since {
+	if cacheValidFrom <= options.Since+1 {
 		return resultFromCache, nil
 	}
 
 	// Now query the view:
-	endSeq := cacheValidSince
-	if endSeq > maxSequence {
-		endSeq = maxSequence
-	}
-	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, endSeq, options)
+	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom-1,
+		options)
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +160,8 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 			}
 		}
 	}
-	if options.Since+1 < c.firstSeq {
-		c.firstSeq = options.Since + 1
+	if options.Since < c.validFrom {
+		c.validFrom = options.Since
 	}
 
 	// Concatenate the view & cache results:
@@ -180,8 +180,8 @@ func (c *channelCache) GetChanges(options ChangesOptions, maxSequence uint64) ([
 //////// LOGENTRIES:
 
 func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
-	if change.Sequence < c.firstSeq {
-		c.firstSeq = change.Sequence
+	if change.Sequence < c.validFrom {
+		c.validFrom = change.Sequence
 	}
 }
 
@@ -221,9 +221,9 @@ func (c *channelCache) _prependChanges(changes LogEntries) int {
 		c._adjustFirstSeq(changes[0])
 		return len(changes)
 	}
-	firstSeq := log[0].Sequence
+	firstSequence := log[0].Sequence
 	for i := len(changes) - 1; i >= 0; i-- {
-		if changes[i].Sequence < firstSeq {
+		if changes[i].Sequence < firstSequence {
 			newLog := make(LogEntries, 0, i+len(log))
 			newLog = append(newLog, changes[0:i+1]...)
 			newLog = append(newLog, log...)

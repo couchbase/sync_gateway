@@ -80,6 +80,7 @@ func (c *changeCache) Stop() {
 // Forgets all cached changes for all channels.
 func (c *changeCache) ClearLogs() {
 	c.lock.Lock()
+	c.initialSequence, _ = c.context.LastSequence()
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
@@ -296,7 +297,7 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
-		cache = newChannelCache(c.context, channelName)
+		cache = newChannelCache(c.context, channelName, c.initialSequence+1)
 		c.channelCaches[channelName] = cache
 	}
 	return cache
@@ -305,7 +306,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 //////// CHANGE ACCESS:
 
 func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error) {
-	return c.getChannelCache(channelName).GetChanges(options, c.nextSequence)
+	return c.getChannelCache(channelName).GetChanges(options)
 }
 
 // Returns the sequence number the cache is up-to-date with.
