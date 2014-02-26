@@ -127,6 +127,10 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_role/{name}",
 		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
 
+	r.Handle("/_logging",
+		makeHandler(sc, adminPrivs, (*handler).handleGetLogging)).Methods("GET")
+	r.Handle("/_logging",
+		makeHandler(sc, adminPrivs, (*handler).handleSetLogging)).Methods("PUT", "POST")
 	r.Handle("/_profile/{name}",
 		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_profile",

@@ -299,7 +299,9 @@ func ParseCommandLine() *ServerConfig {
 	}
 
 	base.LogKeys["HTTP"] = true
-	base.LogKeys["HTTP+"] = *verbose
+	if *verbose {
+		base.LogKeys["HTTP+"] = true
+	}
 	base.ParseLogFlag(*logKeys)
 
 	return config

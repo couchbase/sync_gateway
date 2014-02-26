@@ -67,6 +67,30 @@ func (h *handler) handleGetRawDoc() error {
 	return err
 }
 
+func (h *handler) handleGetLogging() error {
+	h.writeJSON(base.GetLogKeys())
+	return nil
+}
+
+func (h *handler) handleSetLogging() error {
+	body, err := h.readBody()
+	if err != nil {
+		return nil
+	}
+	if h.getQuery("level") != "" {
+		base.SetLogLevel(int(h.getRestrictedIntQuery("level", uint64(base.LogLevel()), 1, 3)))
+		if len(body) == 0 {
+			return nil // empty body is OK if request is just setting the log level
+		}
+	}
+	var keys map[string]bool
+	if err := json.Unmarshal(body, &keys); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values")
+	}
+	base.UpdateLogKeys(keys, h.rq.Method == "PUT")
+	return nil
+}
+
 //////// USERS & ROLES:
 
 func internalUserName(name string) string {
