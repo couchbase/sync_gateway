@@ -79,13 +79,13 @@ func (h *handler) handleGetDB() error {
 	}
 	response := db.Body{
 		"db_name":              h.db.Name,
-		"doc_count":            h.db.DocCount(),
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
 		"instance_start_time":  h.instanceStartTime(),
 		"compact_running":      false, // TODO: Implement this
 		"purge_seq":            0,     // TODO: Should track this value
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
+		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)
 	return nil
