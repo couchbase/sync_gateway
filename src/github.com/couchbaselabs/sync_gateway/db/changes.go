@@ -458,6 +458,7 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 }
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
+	db.changesWriter.checkpoint()
 	return db.changesWriter.getChangeLog(channelName, afterSeq)
 }
 
