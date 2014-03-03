@@ -59,14 +59,14 @@ func (b *LoggingBucket) Write(k string, flags int, exp int, v interface{}, opt w
 	defer func() { LogTo("Bucket", "Write(%q, 0x%x, %d, ..., 0x%x) [%v]", k, flags, exp, opt, time.Since(start)) }()
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
-func (b *LoggingBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
+func (b *LoggingBucket) Update(k string, exp int, callback walrus.UpdateFunc) (err error) {
 	start := time.Now()
-	defer func() { LogTo("Bucket", "Update(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
+	defer func() { LogTo("Bucket", "Update(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LoggingBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) error {
+func (b *LoggingBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) (err error) {
 	start := time.Now()
-	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
+	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LoggingBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {

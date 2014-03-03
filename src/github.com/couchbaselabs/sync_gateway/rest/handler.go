@@ -55,15 +55,17 @@ var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server       *ServerContext
-	rq           *http.Request
-	response     http.ResponseWriter
-	requestBody  io.ReadCloser
-	db           *db.Database
-	user         auth.User
-	privs        handlerPrivs
-	startTime    time.Time
-	serialNumber uint64
+	server        *ServerContext
+	rq            *http.Request
+	response      http.ResponseWriter
+	status        int
+	statusMessage string
+	requestBody   io.ReadCloser
+	db            *db.Database
+	user          auth.User
+	privs         handlerPrivs
+	startTime     time.Time
+	serialNumber  uint64
 }
 
 type handlerPrivs int
@@ -82,21 +84,20 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		h := newHandler(server, privs, r, rq)
 		err := h.invoke(method)
 		h.writeError(err)
+		h.logDuration()
 	})
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request) *handler {
-	h := &handler{
+	return &handler{
 		server:       server,
 		privs:        privs,
 		rq:           rq,
 		response:     r,
+		status:       http.StatusOK,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
+		startTime:    time.Now(),
 	}
-	if base.LogKeys["HTTP+"] {
-		h.startTime = time.Now()
-	}
-	return h
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
@@ -168,6 +169,20 @@ func (h *handler) logRequestLine() {
 		as = fmt.Sprintf("  (as %s)", h.user.Name())
 	}
 	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
+}
+
+func (h *handler) logDuration() {
+	duration := time.Since(h.startTime)
+	bin := int(duration/(100*time.Millisecond)) * 100
+	restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
+
+	logKey := "HTTP+"
+	if h.status >= 300 {
+		logKey = "HTTP"
+	}
+	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
+		h.serialNumber, h.status, h.statusMessage,
+		float64(duration)/float64(time.Millisecond))
 }
 
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
@@ -353,11 +368,8 @@ func (h *handler) setHeader(name string, value string) {
 }
 
 func (h *handler) logStatus(status int, message string) {
-	if base.LogKeys["HTTP+"] {
-		duration := float64(time.Since(h.startTime)) / float64(time.Millisecond)
-		base.LogTo("HTTP+", "#%03d:     --> %d %s  (%.1f ms)",
-			h.serialNumber, status, message, duration)
-	}
+	h.status = status
+	h.statusMessage = message
 }
 
 func (h *handler) disableResponseCompression() {
@@ -486,7 +498,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.disableResponseCompression()
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	base.LogTo("HTTP", " #%03d:     --> %d %s", h.serialNumber, status, message)
+	h.logStatus(status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
