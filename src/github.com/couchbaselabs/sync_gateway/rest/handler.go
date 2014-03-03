@@ -55,17 +55,18 @@ var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server        *ServerContext
-	rq            *http.Request
-	response      http.ResponseWriter
-	status        int
-	statusMessage string
-	requestBody   io.ReadCloser
-	db            *db.Database
-	user          auth.User
-	privs         handlerPrivs
-	startTime     time.Time
-	serialNumber  uint64
+	server         *ServerContext
+	rq             *http.Request
+	response       http.ResponseWriter
+	status         int
+	statusMessage  string
+	requestBody    io.ReadCloser
+	db             *db.Database
+	user           auth.User
+	privs          handlerPrivs
+	startTime      time.Time
+	serialNumber   uint64
+	loggedDuration bool
 }
 
 type handlerPrivs int
@@ -84,7 +85,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		h := newHandler(server, privs, r, rq)
 		err := h.invoke(method)
 		h.writeError(err)
-		h.logDuration()
+		h.logDuration(true)
 	})
 }
 
@@ -171,10 +172,18 @@ func (h *handler) logRequestLine() {
 	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
 }
 
-func (h *handler) logDuration() {
-	duration := time.Since(h.startTime)
-	bin := int(duration/(100*time.Millisecond)) * 100
-	restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
+func (h *handler) logDuration(realTime bool) {
+	if h.loggedDuration {
+		return
+	}
+	h.loggedDuration = true
+
+	var duration time.Duration
+	if realTime {
+		duration := time.Since(h.startTime)
+		bin := int(duration/(100*time.Millisecond)) * 100
+		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
+	}
 
 	logKey := "HTTP+"
 	if h.status >= 300 {
@@ -183,6 +192,12 @@ func (h *handler) logDuration() {
 	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
 		h.serialNumber, h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond))
+}
+
+// Used for indefinitely-long handlers like _changes that we don't want to track duration of
+func (h *handler) logStatus(status int, message string) {
+	h.setStatus(status, message)
+	h.logDuration(false) // don't track actual time
 }
 
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
@@ -367,7 +382,7 @@ func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)
 }
 
-func (h *handler) logStatus(status int, message string) {
+func (h *handler) setStatus(status int, message string) {
 	h.status = status
 	h.statusMessage = message
 }
@@ -407,12 +422,12 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		h.setHeader("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
 		if status > 0 {
 			h.response.WriteHeader(status)
-			h.logStatus(status, "")
+			h.setStatus(status, "")
 		}
 		h.response.Write(jsonOut)
 	} else if status > 0 {
 		h.response.WriteHeader(status)
-		h.logStatus(status, "")
+		h.setStatus(status, "")
 	}
 }
 
@@ -478,7 +493,7 @@ func (h *handler) writeError(err error) {
 func (h *handler) writeStatus(status int, message string) {
 	if status < 300 {
 		h.response.WriteHeader(status)
-		h.logStatus(status, message)
+		h.setStatus(status, message)
 		return
 	}
 	// Got an error:
@@ -498,7 +513,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.disableResponseCompression()
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	h.logStatus(status, message)
+	h.setStatus(status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
