@@ -191,8 +191,8 @@ func TestGetDeleted(t *testing.T) {
 }
 
 func TestAllDocs(t *testing.T) {
-	base.LogKeys["Cache"] = true   //TEMP
-	base.LogKeys["Changes"] = true //TEMP
+	// base.LogKeys["Cache"] = true
+	// base.LogKeys["Changes"] = true
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
@@ -498,7 +498,7 @@ func TestImport(t *testing.T) {
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.LogLevel = 2
+	base.SetLogLevel(2) // disables logging
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,

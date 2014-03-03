@@ -133,15 +133,17 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
 
-	var changeWaiter *changeWaiter
-	if options.Wait {
-		options.Wait = false
-		changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
-	}
-
 	output := make(chan *ChangeEntry, 50)
 	go func() {
 		defer close(output)
+
+		var changeWaiter *changeWaiter
+		var userChangeCount uint64
+		if options.Wait {
+			options.Wait = false
+			changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
+			userChangeCount = changeWaiter.CurrentUserCount()
+		}
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -256,9 +258,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
-			if err := db.ReloadUser(); err != nil {
-				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
-				return
+			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
+				base.LogTo("Changes+", "MultiChangesFeed reloading user %q", db.user.Name())
+				userChangeCount = newCount
+				if err := db.ReloadUser(); err != nil {
+					base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+					return
+				}
 			}
 		}
 		base.LogTo("Changes", "MultiChangesFeed done")

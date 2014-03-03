@@ -138,6 +138,7 @@ func (listener *changeListener) _currentCount(keys []string) uint64 {
 type changeWaiter struct {
 	listener    *changeListener
 	keys        []string
+	userKeys    []string
 	lastCounter uint64
 }
 
@@ -155,17 +156,30 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 	for channel, _ := range chans {
 		waitKeys = append(waitKeys, channel)
 	}
+	var userKeys []string
 	if user != nil {
-		waitKeys = append(waitKeys, auth.UserKeyPrefix+user.Name())
+		userKeys = []string{auth.UserKeyPrefix + user.Name()}
 		for _, role := range user.RoleNames() {
-			waitKeys = append(waitKeys, auth.RoleKeyPrefix+role)
+			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
 		}
+		waitKeys = append(waitKeys, userKeys...)
 	}
-	return listener.NewWaiter(waitKeys)
+	waiter := listener.NewWaiter(waitKeys)
+	waiter.userKeys = userKeys
+	return waiter
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
 func (waiter *changeWaiter) Wait() bool {
 	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter)
 	return waiter.lastCounter > 0
+}
+
+// Returns the current counter value for the waiter's user (and roles).
+// If this value changes, it means the user or roles have been updated.
+func (waiter *changeWaiter) CurrentUserCount() uint64 {
+	if waiter.userKeys == nil {
+		return 0
+	}
+	return waiter.listener.CurrentCount(waiter.userKeys)
 }
