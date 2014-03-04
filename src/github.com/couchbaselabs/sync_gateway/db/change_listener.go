@@ -159,7 +159,7 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 	var userKeys []string
 	if user != nil {
 		userKeys = []string{auth.UserKeyPrefix + user.Name()}
-		for _, role := range user.RoleNames() {
+		for role, _ := range user.RoleNames() {
 			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
 		}
 		waitKeys = append(waitKeys, userKeys...)

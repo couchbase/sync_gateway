@@ -78,8 +78,8 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string)
 
-	// The set of Roles the user belongs to (including ones given to it by)
-	RoleNames() []string
+	// The set of Roles the user belongs to (including ones given to it by the sync function)
+	RoleNames() ch.TimedSet
 
 	// The roles the user was explicitly granted access to thru the admin API.
 	ExplicitRoleNames() []string
@@ -98,5 +98,5 @@ type User interface {
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
 
-	setRoleNames([]string)
+	setRolesSince(ch.TimedSet)
 }

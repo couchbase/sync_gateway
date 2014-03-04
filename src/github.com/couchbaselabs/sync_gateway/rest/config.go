@@ -34,7 +34,7 @@ const DefaultMaxCouchbaseConnections = 16
 const DefaultMaxCouchbaseOverflowConnections = 0
 
 // Default value of ServerConfig.MaxIncomingConnections
-const DefaultMaxIncomingConnections = 1000
+const DefaultMaxIncomingConnections = 0
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {

@@ -765,7 +765,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 
 // Recomputes the set of roles a User has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, error) {
+func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
 	var vres struct {
 		Rows []struct {
 			Value channels.TimedSet
@@ -776,19 +776,16 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, e
 	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
 		return nil, verr
 	}
-	// Boil the list of TimedSets down to a simple set of role names:
-	all := map[string]bool{}
+	// Merge the TimedSets from the view result:
+	var result channels.TimedSet
 	for _, row := range vres.Rows {
-		for name, _ := range row.Value {
-			all[name] = true
+		if result == nil {
+			result = row.Value
+		} else {
+			result.Add(row.Value)
 		}
 	}
-	// Then turn that set into an array to return:
-	values := make([]string, 0, len(all))
-	for name, _ := range all {
-		values = append(values, name)
-	}
-	return values, nil
+	return result, nil
 }
 
 //////// REVS_DIFF:

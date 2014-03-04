@@ -746,6 +746,7 @@ func TestChannelAccessChanges(t *testing.T) {
 func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["Access"] = true
 	base.LogKeys["CRUD"] = true
+	base.LogKeys["Changes+"] = true
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -781,10 +782,10 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Check user access:
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1, "gamma": 0x1})
-	assert.DeepEquals(t, alice.RoleNames(), []string{"bogus", "hipster"})
+	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": 0x1, "hipster": 0x1})
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1})
-	assert.DeepEquals(t, zegpold.RoleNames(), []string{})
+	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
 	var changes struct {
@@ -813,7 +814,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1, "gamma": 0x1})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1, "gamma": 0x6})
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil

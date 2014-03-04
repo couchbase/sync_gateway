@@ -40,7 +40,7 @@ type userImplBody struct {
 	PasswordHash_      []byte      `json:"passwordhash_bcrypt,omitempty"`
 	OldPasswordHash_   interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
 	ExplicitRoleNames_ []string    `json:"admin_roles,omitempty"`
-	RoleNames_         []string    `json:"roles"`
+	RolesSince_        ch.TimedSet `json:"rolesSince"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -75,7 +75,7 @@ func (auth *Authenticator) defaultGuestUser() User {
 func (auth *Authenticator) NewUser(username string, password string, channels base.Set) (User, error) {
 	user := &userImpl{
 		auth:         auth,
-		userImplBody: userImplBody{RoleNames_: []string{}},
+		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
 	}
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
@@ -162,12 +162,12 @@ func (user *userImpl) SetEmail(email string) error {
 	return nil
 }
 
-func (user *userImpl) RoleNames() []string {
-	return user.RoleNames_
+func (user *userImpl) RoleNames() ch.TimedSet {
+	return user.RolesSince_
 }
 
-func (user *userImpl) setRoleNames(names []string) {
-	user.RoleNames_ = names
+func (user *userImpl) setRolesSince(rolesSince ch.TimedSet) {
+	user.RolesSince_ = rolesSince
 	user.roles = nil // invalidate in-memory cache list of Role objects
 }
 
@@ -177,7 +177,7 @@ func (user *userImpl) ExplicitRoleNames() []string {
 
 func (user *userImpl) SetExplicitRoleNames(names []string) {
 	user.ExplicitRoleNames_ = names
-	user.setRoleNames(nil) // invalidate persistent cache of role names
+	user.setRolesSince(nil) // invalidate persistent cache of role names
 }
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.
@@ -214,8 +214,8 @@ func (user *userImpl) SetPassword(password string) {
 
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
-		roles := make([]Role, 0, len(user.RoleNames_))
-		for _, name := range user.RoleNames_ {
+		roles := make([]Role, 0, len(user.RolesSince_))
+		for name, _ := range user.RolesSince_ {
 			role, err := user.auth.GetRole(name)
 			//base.LogTo("Access", "User %s role %q = %v", user.Name_, name, role)
 			if err != nil {
@@ -262,7 +262,8 @@ func (user *userImpl) AuthorizeAnyChannel(channels base.Set) error {
 func (user *userImpl) InheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
-		channels.Add(role.Channels())
+		roleSince := user.RolesSince_[role.Name()]
+		channels.AddAtSequence(role.Channels(), roleSince)
 	}
 	return channels
 }

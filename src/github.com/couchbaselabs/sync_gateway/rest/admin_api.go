@@ -118,7 +118,7 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
 		info.ExplicitRoleNames = user.ExplicitRoleNames()
-		info.RoleNames = user.RoleNames()
+		info.RoleNames = user.RoleNames().AllChannels()
 	} else {
 		info.Channels = princ.Channels().AsSet()
 	}

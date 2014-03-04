@@ -28,7 +28,7 @@ type Authenticator struct {
 // The instantiator of an Authenticator must provide an implementation.
 type ChannelComputer interface {
 	ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error)
-	ComputeRolesForUser(User) ([]string, error)
+	ComputeRolesForUser(User) (ch.TimedSet, error)
 }
 
 type userByEmailInfo struct {
@@ -149,21 +149,25 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 }
 
 func (auth *Authenticator) rebuildRoles(user User) error {
-	var computedRoles []string
+	var roles ch.TimedSet
 	if auth.channelComputer != nil {
 		var err error
-		computedRoles, err = auth.channelComputer.ComputeRolesForUser(user)
+		roles, err = auth.channelComputer.ComputeRolesForUser(user)
 		if err != nil {
 			base.Warn("channelComputer.ComputeRolesForUser failed on user %s: %v", user.Name(), err)
 			return err
 		}
 	}
-	roles := base.MergeStringArrays(user.ExplicitRoleNames(), computedRoles)
 	if roles == nil {
-		roles = []string{} // it mustn't be nil; nil means it's unknown
+		roles = ch.TimedSet{} // it mustn't be nil; nil means it's unknown
 	}
+
+	for _, roleName := range user.ExplicitRoleNames() {
+		roles.AddChannel(roleName, 1)
+	}
+
 	base.LogTo("Access", "Computed roles for %q: %s", user.Name(), roles)
-	user.setRoleNames(roles)
+	user.setRolesSince(roles)
 	return nil
 }
 
@@ -221,7 +225,7 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 func (auth *Authenticator) InvalidateRoles(user User) error {
 	if user != nil && user.Channels() != nil {
 		base.LogTo("Access", "Invalidate roles of %q", user.Name())
-		user.setRoleNames(nil)
+		user.setRolesSince(nil)
 		if err := auth.Save(user); err != nil {
 			return err
 		}
