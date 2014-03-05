@@ -39,8 +39,10 @@ type userImplBody struct {
 	Disabled_        bool        `json:"disabled,omitempty"`
 	PasswordHash_    []byte      `json:"passwordhash_bcrypt,omitempty"`
 	OldPasswordHash_ interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
-	ExplicitRoles_   ch.TimedSet `json:"admin_roles,omitempty"`
+	ExplicitRoles_   ch.TimedSet `json:"explicit_roles,omitempty"`
 	RolesSince_      ch.TimedSet `json:"rolesSince"`
+
+	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -318,5 +320,12 @@ func (user *userImpl) UnmarshalJSON(data []byte) error {
 	} else if err := json.Unmarshal(data, &user.roleImpl); err != nil {
 		return err
 	}
+
+	// Migrate "admin_roles" field:
+	if user.OldExplicitRoles_ != nil {
+		user.ExplicitRoles_ = ch.AtSequence(base.SetFromArray(user.OldExplicitRoles_), 1)
+		user.OldExplicitRoles_ = nil
+	}
+
 	return nil
 }
