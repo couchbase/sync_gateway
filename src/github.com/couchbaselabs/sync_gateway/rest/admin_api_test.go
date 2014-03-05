@@ -85,6 +85,7 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
 
 	// DELETE the user

@@ -162,8 +162,8 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles = ch.TimedSet{} // it mustn't be nil; nil means it's unknown
 	}
 
-	for _, roleName := range user.ExplicitRoleNames() {
-		roles.AddChannel(roleName, 1)
+	if explicit := user.ExplicitRoles(); explicit != nil {
+		roles.Add(explicit)
 	}
 
 	base.LogTo("Access", "Computed roles for %q: %s", user.Name(), roles)

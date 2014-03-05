@@ -117,7 +117,7 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
-		info.ExplicitRoleNames = user.ExplicitRoleNames()
+		info.ExplicitRoleNames = user.ExplicitRoles().AllChannels()
 		info.RoleNames = user.RoleNames().AllChannels()
 	} else {
 		info.Channels = princ.Channels().AsSet()
@@ -170,14 +170,33 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, lastSeq+1)
 	princ.SetExplicitChannels(updatedChannels)
 
-	// Then the roles:
+	// Then the user-specific fields like roles:
 	if isUser {
 		user.SetEmail(newInfo.Email)
 		if newInfo.Password != nil {
 			user.SetPassword(*newInfo.Password)
 		}
 		user.SetDisabled(newInfo.Disabled)
-		user.SetExplicitRoleNames(newInfo.ExplicitRoleNames)
+
+		// Convert the array of role strings into a TimedSet by reapplying the current sequences
+		// for existing roles, and using the database's last sequence for any new roles.
+		newRoles := ch.TimedSet{}
+		oldRoles := user.ExplicitRoles()
+		var currentSequence uint64
+		for _, roleName := range newInfo.ExplicitRoleNames {
+			since, found := oldRoles[roleName]
+			if !found {
+				if currentSequence == 0 {
+					currentSequence, _ = dbc.LastSequence()
+					if currentSequence == 0 {
+						currentSequence = 1
+					}
+				}
+				since = currentSequence
+			}
+			newRoles[roleName] = since
+		}
+		user.SetExplicitRoles(newRoles)
 	}
 
 	// And finally save the Principal:

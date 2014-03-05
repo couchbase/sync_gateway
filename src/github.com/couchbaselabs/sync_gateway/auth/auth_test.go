@@ -340,7 +340,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	user, _ := auth.NewUser("testUser", "letmein", nil)
-	user.SetExplicitRoleNames([]string{"role3", "role1"})
+	user.SetExplicitRoles(ch.TimedSet{"role3": 1, "role1": 1})
 	err := auth.InvalidateRoles(user)
 	assert.Equals(t, err, nil)
 

@@ -35,12 +35,12 @@ type userImpl struct {
 // Marshalable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_             string      `json:"email,omitempty"`
-	Disabled_          bool        `json:"disabled,omitempty"`
-	PasswordHash_      []byte      `json:"passwordhash_bcrypt,omitempty"`
-	OldPasswordHash_   interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
-	ExplicitRoleNames_ []string    `json:"admin_roles,omitempty"`
-	RolesSince_        ch.TimedSet `json:"rolesSince"`
+	Email_           string      `json:"email,omitempty"`
+	Disabled_        bool        `json:"disabled,omitempty"`
+	PasswordHash_    []byte      `json:"passwordhash_bcrypt,omitempty"`
+	OldPasswordHash_ interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	ExplicitRoles_   ch.TimedSet `json:"admin_roles,omitempty"`
+	RolesSince_      ch.TimedSet `json:"rolesSince"`
 }
 
 var kValidEmailRegexp *regexp.Regexp
@@ -118,7 +118,7 @@ func (user *userImpl) validate() error {
 		// Real user must have a password; anon user must not have a password
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid password")
 	}
-	for _, roleName := range user.ExplicitRoleNames_ {
+	for roleName, _ := range user.ExplicitRoles_ {
 		if !IsValidPrincipalName(roleName) {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid role name %q", roleName)
 		}
@@ -171,12 +171,12 @@ func (user *userImpl) setRolesSince(rolesSince ch.TimedSet) {
 	user.roles = nil // invalidate in-memory cache list of Role objects
 }
 
-func (user *userImpl) ExplicitRoleNames() []string {
-	return user.ExplicitRoleNames_
+func (user *userImpl) ExplicitRoles() ch.TimedSet {
+	return user.ExplicitRoles_
 }
 
-func (user *userImpl) SetExplicitRoleNames(names []string) {
-	user.ExplicitRoleNames_ = names
+func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
+	user.ExplicitRoles_ = roles
 	user.setRolesSince(nil) // invalidate persistent cache of role names
 }
 

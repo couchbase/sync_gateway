@@ -82,10 +82,10 @@ type User interface {
 	RoleNames() ch.TimedSet
 
 	// The roles the user was explicitly granted access to thru the admin API.
-	ExplicitRoleNames() []string
+	ExplicitRoles() ch.TimedSet
 
 	// Sets the explicit roles the user belongs to.
-	SetExplicitRoleNames([]string)
+	SetExplicitRoles(ch.TimedSet)
 
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet

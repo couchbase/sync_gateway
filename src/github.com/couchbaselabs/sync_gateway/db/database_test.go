@@ -424,7 +424,7 @@ func TestAccessFunction(t *testing.T) {
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	user.SetExplicitRoleNames([]string{"animefan", "tumblr"})
+	user.SetExplicitRoles(channels.TimedSet{"animefan": 1, "tumblr": 1})
 	assertNoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
