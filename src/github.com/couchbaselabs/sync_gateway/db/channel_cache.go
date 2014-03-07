@@ -134,39 +134,25 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		return resultFromCache, nil
 	}
 
-	// Now query the view:
-	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom-1,
+	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
+	// overlap, which helps confirm that we've got everything.
+	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom,
 		options)
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache some of the view results, if there's room in the cache:
-	roomInCache := ChannelCacheMaxLength - len(resultFromCache)
-	if roomInCache > 0 {
-		// ** Acquire the regular lock since we're about to change c.logs:
-		c.lock.Lock()
-		defer c.lock.Unlock()
-
-		numFromView := len(resultFromView)
-		if numFromView > 0 {
-			if numFromView < roomInCache {
-				roomInCache = numFromView
-			}
-			toCache := resultFromView[numFromView-roomInCache:]
-			numPrepended := c._prependChanges(toCache)
-			if numPrepended > 0 {
-				base.LogTo("Cache", "  Added %d entries from view to cache of %q", numPrepended, c.channelName)
-			}
-		}
-	}
-	if options.Since < c.validFrom {
-		c.validFrom = options.Since
+	if len(resultFromCache) < ChannelCacheMaxLength {
+		c.prependChanges(resultFromView, options.Since+1, options.Limit == 0)
 	}
 
 	// Concatenate the view & cache results:
 	result := resultFromView
-	if options.Limit == 0 || len(result) < options.Limit {
+	if (options.Limit == 0 || len(result) < options.Limit) && len(resultFromCache) > 0 {
+		if resultFromCache[0].Sequence == result[len(result)-1].Sequence {
+			resultFromCache = resultFromCache[1:]
+		}
 		n := len(resultFromCache)
 		if options.Limit > 0 {
 			n = options.Limit - len(result)
@@ -209,27 +195,55 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 }
 
 // Prepends an array of entries to this one, skipping ones that I already have.
+// The new array needs to overlap with my current log, i.e. must contain the same sequence as
+// c.logs[0], otherwise nothing will be added because the method can't confirm that there are no
+// missing sequences in between.
 // Returns the number of entries actually prepended.
-func (c *channelCache) _prependChanges(changes LogEntries) int {
-	if len(changes) == 0 {
-		return 0
-	}
+func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, openEnded bool) int {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	log := c.logs
 	if len(log) == 0 {
-		c.logs = make(LogEntries, len(changes))
-		copy(c.logs, changes)
-		c._adjustFirstSeq(changes[0])
+		// If my cache is empty, just copy the new changes:
+		if len(changes) > 0 {
+			if !openEnded && changes[len(changes)-1].Sequence < c.validFrom {
+				return 0 // changes might not go all the way to the current time
+			}
+			if excess := len(changes) - ChannelCacheMaxLength; excess > 0 {
+				changes = changes[excess:]
+				changesValidFrom = changes[0].Sequence
+			}
+			c.logs = make(LogEntries, len(changes))
+			copy(c.logs, changes)
+			base.LogTo("Cache", "  Initialized cache of %q with %d entries from view (#%d--#%d)",
+				c.channelName, len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
+		}
+		c.validFrom = changesValidFrom
 		return len(changes)
 	}
+
+	// Look for an overlap, and prepend everything up to that point:
 	firstSequence := log[0].Sequence
-	for i := len(changes) - 1; i >= 0; i-- {
-		if changes[i].Sequence < firstSequence {
-			newLog := make(LogEntries, 0, i+len(log))
-			newLog = append(newLog, changes[0:i+1]...)
-			newLog = append(newLog, log...)
-			c.logs = newLog
-			c._adjustFirstSeq(newLog[0])
-			return i + 1
+	if changes[0].Sequence <= firstSequence {
+		for i := len(changes) - 1; i >= 0; i-- {
+			if changes[i].Sequence == firstSequence {
+				if excess := i + len(log) - ChannelCacheMaxLength; excess > 0 {
+					changes = changes[excess:]
+					changesValidFrom = changes[0].Sequence
+					i -= excess
+				}
+				if i > 0 {
+					newLog := make(LogEntries, 0, i+len(log))
+					newLog = append(newLog, changes[0:i]...)
+					newLog = append(newLog, log...)
+					c.logs = newLog
+					base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
+						i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
+				}
+				c.validFrom = changesValidFrom
+				return i
+			}
 		}
 	}
 	return 0
