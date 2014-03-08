@@ -9,6 +9,7 @@ import (
 	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
 // Bidirectional sync with an external Couchbase bucket.
@@ -131,7 +132,7 @@ func (s *Shadower) PushRevision(doc *document) {
 	}
 
 	var err error
-	if doc.Deleted {
+	if doc.Flags & channels.Deleted != 0 {
 		base.LogTo("Shadow", "Pushing %q, rev %q [deletion]", doc.ID, doc.CurrentRev)
 		err = s.bucket.Delete(doc.ID)
 	} else {

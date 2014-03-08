@@ -224,10 +224,8 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
-	chanLog, err := h.db.GetChangeLog(channelName, since)
-	if err != nil {
-		return err
-	} else if chanLog == nil {
+	chanLog := h.db.GetChangeLog(channelName, since)
+	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
@@ -238,9 +236,9 @@ func (h *handler) handleDumpChannel() error {
 		<p>Since = %d</p>
 		<table border=1>
 		`,
-		title, title, chanLog.Since)))
+		title, title, chanLog[0].Sequence-1)))
 	h.response.Write([]byte("\t<tr><th>Seq</th><th>Doc</th><th>Rev</th><th>Flags</th></tr>\n"))
-	for _, entry := range chanLog.Entries {
+	for _, entry := range chanLog {
 		h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
 			entry.Sequence,
 			html.EscapeString(entry.DocID), html.EscapeString(entry.RevID), entry.Flags)))

@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"time"
 	"fmt"
 	"sort"
 
@@ -8,10 +9,20 @@ import (
 )
 
 type LogEntry struct {
-	Sequence uint64 // Sequence number
-	DocID    string // Document ID
-	RevID    string // Revision ID
-	Flags    uint8  // Deleted/Removed/Hidden flags
+	Sequence     uint64     // Sequence number
+	DocID        string     // Document ID
+	RevID        string     // Revision ID
+	Flags        uint8      // Deleted/Removed/Hidden flags
+	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
+	TimeReceived time.Time  // Time received from tap feed
+	Channels     ChannelMap // Channels this entry is in or was removed from
+}
+
+type ChannelMap map[string]*ChannelRemoval
+type ChannelRemoval struct {
+	Seq     uint64 `json:"seq"`
+	RevID   string `json:"rev"`
+	Deleted bool   `json:"del,omitempty"`
 }
 
 // Bits in LogEntry.Flags
@@ -24,11 +35,12 @@ const (
 	kMaxFlag = (1 << iota) - 1
 )
 
+
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
-// The log is sorted by order revisions were added; this is mostly but not always by sequence.
+// The log is sorted by increasing sequence number.
 type ChangeLog struct {
 	Since   uint64      // Sequence this log is valid _after_, i.e. max sequence not in the log
-	Entries []*LogEntry // Entries in order they were added (not sequence order!)
+	Entries []*LogEntry // Ordered entries
 }
 
 func (entry *LogEntry) checkValid() bool {

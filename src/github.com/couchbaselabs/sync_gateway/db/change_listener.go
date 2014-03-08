@@ -13,13 +13,13 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	bucket           base.Bucket
-	tapFeed          base.TapFeed         // Observes changes to bucket
-	tapNotifier      *sync.Cond           // Posts notifications when documents are updated
-	counter          uint64               // Event counter; increments on every doc update
-	keyCounts        map[string]uint64    // Latest count at which each doc key was updated
-	DocChannel       chan walrus.TapEvent // Passthru channel for doc mutations
-	OnChannelChanged func(channelName string, channelLog []byte)
+	bucket       base.Bucket
+	tapFeed      base.TapFeed         // Observes changes to bucket
+	tapNotifier  *sync.Cond           // Posts notifications when documents are updated
+	counter      uint64               // Event counter; increments on every doc update
+	keyCounts    map[string]uint64    // Latest count at which each doc key was updated
+	DocChannel   chan walrus.TapEvent // Passthru channel for doc mutations
+	OnDocChanged func(docID string, jsonData []byte)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -41,7 +41,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
 	go func() {
 		defer func() {
-			listener.notify("")
+			listener.notifyStopping()
 			if listener.DocChannel != nil {
 				close(listener.DocChannel)
 			}
@@ -49,24 +49,19 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 		for event := range tapFeed.Events() {
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
-				if strings.HasPrefix(key, kChannelLogKeyPrefix) {
-					if listener.OnChannelChanged != nil {
-						channelName := string(event.Key)[len(kChannelLogKeyPrefix):]
-						// Notify the client synchronously via a fn call, instead of by writing
-						// to a channel, to ensure that the client can cache the updated channel
-						// log before any subsequent document change is processed.
-						listener.OnChannelChanged(channelName, event.Value)
-					}
-					listener.notify(key)
-				} else if strings.HasPrefix(key, auth.UserKeyPrefix) ||
+				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
-					listener.notify(key)
+					listener.Notify(base.SetOf(key))
 				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
+					if listener.OnDocChanged != nil {
+						listener.OnDocChanged(key, event.Value)
+					}
 					listener.DocChannel <- event
 				}
 			}
 		}
 	}()
+
 	return nil
 }
 
@@ -77,18 +72,29 @@ func (listener *changeListener) Stop() {
 	}
 }
 
+//////// NOTIFICATIONS:
+
 // Changes the counter, notifying waiting clients.
-func (listener *changeListener) notify(key string) {
+func (listener *changeListener) Notify(keys base.Set) {
+	if len(keys) == 0 {
+		return
+	}
 	listener.tapNotifier.L.Lock()
-	if key == "" {
-		listener.counter = 0
-		listener.keyCounts = map[string]uint64{}
-	} else {
-		listener.counter++
+	listener.counter++
+	for key, _ := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
-	base.LogTo("Changes+", "Notifying that %q changed (key=%q) count=%d",
-		listener.bucket.GetName(), key, listener.counter)
+	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
+		listener.bucket.GetName(), keys, listener.counter)
+	listener.tapNotifier.Broadcast()
+	listener.tapNotifier.L.Unlock()
+}
+
+func (listener *changeListener) notifyStopping() {
+	listener.tapNotifier.L.Lock()
+	listener.counter = 0
+	listener.keyCounts = map[string]uint64{}
+	base.LogTo("Changes+", "Notifying that changeListener is stopping")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -132,6 +138,7 @@ func (listener *changeListener) _currentCount(keys []string) uint64 {
 type changeWaiter struct {
 	listener    *changeListener
 	keys        []string
+	userKeys    []string
 	lastCounter uint64
 }
 
@@ -147,19 +154,32 @@ func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
 func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *changeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel, _ := range chans {
-		waitKeys = append(waitKeys, channelLogDocID(channel))
+		waitKeys = append(waitKeys, channel)
 	}
+	var userKeys []string
 	if user != nil {
-		waitKeys = append(waitKeys, auth.UserKeyPrefix+user.Name())
-		for _, role := range user.RoleNames() {
-			waitKeys = append(waitKeys, auth.RoleKeyPrefix+role)
+		userKeys = []string{auth.UserKeyPrefix + user.Name()}
+		for role, _ := range user.RoleNames() {
+			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
 		}
+		waitKeys = append(waitKeys, userKeys...)
 	}
-	return listener.NewWaiter(waitKeys)
+	waiter := listener.NewWaiter(waitKeys)
+	waiter.userKeys = userKeys
+	return waiter
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
 func (waiter *changeWaiter) Wait() bool {
 	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter)
 	return waiter.lastCounter > 0
+}
+
+// Returns the current counter value for the waiter's user (and roles).
+// If this value changes, it means the user or roles have been updated.
+func (waiter *changeWaiter) CurrentUserCount() uint64 {
+	if waiter.userKeys == nil {
+		return 0
+	}
+	return waiter.listener.CurrentCount(waiter.userKeys)
 }

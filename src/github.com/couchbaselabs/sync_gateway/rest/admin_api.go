@@ -67,6 +67,30 @@ func (h *handler) handleGetRawDoc() error {
 	return err
 }
 
+func (h *handler) handleGetLogging() error {
+	h.writeJSON(base.GetLogKeys())
+	return nil
+}
+
+func (h *handler) handleSetLogging() error {
+	body, err := h.readBody()
+	if err != nil {
+		return nil
+	}
+	if h.getQuery("level") != "" {
+		base.SetLogLevel(int(h.getRestrictedIntQuery("level", uint64(base.LogLevel()), 1, 3)))
+		if len(body) == 0 {
+			return nil // empty body is OK if request is just setting the log level
+		}
+	}
+	var keys map[string]bool
+	if err := json.Unmarshal(body, &keys); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values")
+	}
+	base.UpdateLogKeys(keys, h.rq.Method == "PUT")
+	return nil
+}
+
 //////// USERS & ROLES:
 
 func internalUserName(name string) string {
@@ -93,8 +117,8 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
-		info.ExplicitRoleNames = user.ExplicitRoleNames()
-		info.RoleNames = user.RoleNames()
+		info.ExplicitRoleNames = user.ExplicitRoles().AllChannels()
+		info.RoleNames = user.RoleNames().AllChannels()
 	} else {
 		info.Channels = princ.Channels().AsSet()
 	}
@@ -146,14 +170,33 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, lastSeq+1)
 	princ.SetExplicitChannels(updatedChannels)
 
-	// Then the roles:
+	// Then the user-specific fields like roles:
 	if isUser {
 		user.SetEmail(newInfo.Email)
 		if newInfo.Password != nil {
 			user.SetPassword(*newInfo.Password)
 		}
 		user.SetDisabled(newInfo.Disabled)
-		user.SetExplicitRoleNames(newInfo.ExplicitRoleNames)
+
+		// Convert the array of role strings into a TimedSet by reapplying the current sequences
+		// for existing roles, and using the database's last sequence for any new roles.
+		newRoles := ch.TimedSet{}
+		oldRoles := user.ExplicitRoles()
+		var currentSequence uint64
+		for _, roleName := range newInfo.ExplicitRoleNames {
+			since, found := oldRoles[roleName]
+			if !found {
+				if currentSequence == 0 {
+					currentSequence, _ = dbc.LastSequence()
+					if currentSequence == 0 {
+						currentSequence = 1
+					}
+				}
+				since = currentSequence
+			}
+			newRoles[roleName] = since
+		}
+		user.SetExplicitRoles(newRoles)
 	}
 
 	// And finally save the Principal:

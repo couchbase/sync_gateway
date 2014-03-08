@@ -14,6 +14,7 @@ import (
 	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -81,13 +82,13 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	var doc *document
 	var body Body
 	var revisions Body
-	var channels base.Set
+	var inChannels base.Set
 	var err error
 	revIDGiven := (revid != "")
 	if revIDGiven {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		body, revisions, channels, err = db.revisionCache.Get(docid, revid)
+		body, revisions, inChannels, err = db.revisionCache.Get(docid, revid)
 		if body == nil {
 			if err == nil {
 				err = base.HTTPErrorf(404, "missing")
@@ -103,16 +104,16 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 		if body, err = db.getRevision(doc, revid); err != nil {
 			return nil, err
 		}
-		if doc.Deleted {
+		if doc.hasFlag(channels.Deleted) {
 			body["_deleted"] = true
 		}
 		revisions = encodeRevisions(doc.History.getHistory(revid))
-		channels = doc.History[revid].Channels
+		inChannels = doc.History[revid].Channels
 	}
 
 	// Authorize the access:
 	if db.user != nil {
-		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
+		if err := db.user.AuthorizeAnyChannel(inChannels); err != nil {
 			if !revIDGiven {
 				return nil, base.HTTPErrorf(403, "forbidden")
 			}
@@ -169,7 +170,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) GetRevAndChannels(docid, revid string, listRevisions bool) (body Body, channels ChannelMap, access UserAccessMap, roleAccess UserAccessMap, err error) {
+func (db *Database) GetRevAndChannels(docid, revid string, listRevisions bool) (body Body, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, err error) {
 	doc, err := db.GetDoc(docid)
 	if doc == nil {
 		return
@@ -331,7 +332,7 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 	body := doc.body
 	doc.CurrentRev = createRevID(1, "", body)
 	body["_rev"] = doc.CurrentRev
-	doc.Deleted = false
+	doc.setFlag(channels.Deleted, false)
 	doc.History = make(RevTree)
 	doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false})
 	doc.Sequence, err = db.sequences.nextSequence()
@@ -447,6 +448,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var changedChannels base.Set
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
+	var unusedSequences []uint64
 	var inConflict = false
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
@@ -469,7 +471,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
 		doc.CurrentRev, inConflict = doc.History.winningRevision()
-		doc.Deleted = doc.History[doc.CurrentRev].Deleted
+		doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
+		doc.setFlag(channels.Conflict, inConflict)
 
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
@@ -482,8 +485,10 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 		if doc.CurrentRev == newRevID {
 			doc.NewestRev = ""
+			doc.setFlag(channels.Hidden, false)
 		} else {
 			doc.NewestRev = newRevID
+			doc.setFlag(channels.Hidden, true)
 			if doc.CurrentRev != prevCurrentRev {
 				// If the new revision is not current, transfer the current revision's
 				// body to the top level doc.body:
@@ -508,11 +513,21 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
 		// But be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
+			if docSequence > 0 {
+				// Oops: we're on our second iteration thanks to a conflict, but the sequence
+				// we previously allocated is unusable now. We have to allocate a new sequence
+				// instead, but we add the unused one(s) to the document so when the changeCache
+				// reads the doc it won't freak out over the break in the sequence numbering.
+				base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
+				unusedSequences = append(unusedSequences, docSequence)
+			}
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return
 			}
+			// base.TEMP("Allocated seq #%d for (%q / %q)", docSequence, docid, newRevID)
 		}
 		doc.Sequence = docSequence
+		doc.UnusedSequences = unusedSequences
 
 		if doc.CurrentRev != prevCurrentRev {
 			// Most of the time this update will change the doc's current rev. (The exception is
@@ -562,8 +577,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
 
+		doc.TimeSaved = time.Now()
+
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
+		base.LogTo("Cache", "SAVING #%d", doc.Sequence) //TEMP?
 		return
 	})
 
@@ -597,23 +615,6 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	for _, name := range changedRoleUsers {
 		db.invalUserRoles(name)
 	}
-
-	// Add the new revision to the change logs of all affected channels:
-	newEntry := channels.LogEntry{
-		Sequence: doc.Sequence,
-		DocID:    docid,
-		RevID:    newRevID,
-	}
-	if doc.History[newRevID].Deleted {
-		newEntry.Flags |= channels.Deleted
-	}
-	if newRevID != doc.CurrentRev {
-		newEntry.Flags |= channels.Hidden
-	}
-	if inConflict {
-		newEntry.Flags |= channels.Conflict
-	}
-	db.changesWriter.addToChangeLogs(changedChannels, doc.Channels, newEntry, parentRevID)
 
 	return newRevID, nil
 }
@@ -764,7 +765,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 
 // Recomputes the set of roles a User has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, error) {
+func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
 	var vres struct {
 		Rows []struct {
 			Value channels.TimedSet
@@ -775,19 +776,16 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) ([]string, e
 	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
 		return nil, verr
 	}
-	// Boil the list of TimedSets down to a simple set of role names:
-	all := map[string]bool{}
+	// Merge the TimedSets from the view result:
+	var result channels.TimedSet
 	for _, row := range vres.Rows {
-		for name, _ := range row.Value {
-			all[name] = true
+		if result == nil {
+			result = row.Value
+		} else {
+			result.Add(row.Value)
 		}
 	}
-	// Then turn that set into an array to return:
-	values := make([]string, 0, len(all))
-	for name, _ := range all {
-		values = append(values, name)
-	}
-	return values, nil
+	return result, nil
 }
 
 //////// REVS_DIFF:

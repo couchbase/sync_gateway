@@ -34,13 +34,13 @@ type DatabaseContext struct {
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
-	changesWriter      *changesWriter          // Writes changes to the channel-log docs
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
 	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
+	changeCache        changeCache
 }
 
 const DefaultRevsLimit = 1000
@@ -94,14 +94,19 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		autoImport: autoImport,
 	}
 	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
-	context.changesWriter = newChangesWriter(bucket)
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
 		return nil, err
 	}
-
-	context.tapListener.OnChannelChanged = context.changesWriter.channelLogUpdated
+	lastSeq, err := context.sequences.lastSequence()
+	if err != nil {
+		return nil, err
+	}
+	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
+		context.tapListener.Notify(changedChannels)
+	})
+	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
 	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
@@ -112,8 +117,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 
 func (context *DatabaseContext) Close() {
 	context.tapListener.Stop()
+	context.changeCache.Stop()
 	context.Shadower.Stop()
-	context.changesWriter.checkpoint()
 	context.Bucket.Close()
 	context.Bucket = nil
 }
@@ -174,7 +179,7 @@ func installViews(bucket base.Bucket) error {
                      var sync = doc._sync;
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
-                     if (sync.deleted)
+                     if ((sync.flags & 1) || sync.deleted)
                        return;
                      emit(meta.id, [sync.rev, sync.sequence]); }`
 	// View for importing unknown docs
@@ -208,22 +213,29 @@ func installViews(bucket base.Bucket) error {
 						var sequence = sync.sequence;
 	                    if (sequence === undefined)
 	                        return;
-	                    var value = [meta.id, sync.rev];
-	                    if (sync.deleted)
-	                        value.push(true);
-						emit(["*", sequence], value);
+	                    var value = {rev:sync.rev};
+	                    if (sync.flags) {
+	                    	value.flags = sync.flags
+	                    } else if (sync.deleted) {
+	                    	value.flags = %d // channels.Deleted
+	                    }
+	                    if (%v) // EnableStarChannelLog
+							emit(["*", sequence], value);
 						var channels = sync.channels;
 						if (channels) {
 							for (var name in channels) {
 								removed = channels[name];
 								if (!removed)
 									emit([name, sequence], value);
-								else
-									emit([name, removed.seq],
-										 [meta.id, removed.rev, !!removed.del, true]);
+								else {
+									var flags = removed.del ? %d : %d; // channels.Removed/Deleted
+									emit([name, removed.seq], {rev:removed.rev, flags: flags});
+								}
 							}
 						}
 					}`
+	channels_map = fmt.Sprintf(channels_map, channels.Deleted, EnableStarChannelLog,
+		channels.Removed|channels.Deleted, channels.Removed)
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
@@ -231,7 +243,7 @@ func installViews(bucket base.Bucket) error {
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var sequence = sync.sequence;
-	                    if (sync.deleted || sequence === undefined)
+	                    if ((sync.flags & 1) || sync.deleted || sequence === undefined)
 	                        return;
 	                    var access = sync.access;
 	                    if (access) {
@@ -247,7 +259,7 @@ func installViews(bucket base.Bucket) error {
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var sequence = sync.sequence;
-	                    if (sync.deleted || sequence === undefined)
+	                    if ((sync.flags & 1) || sync.deleted || sequence === undefined)
 	                        return;
 	                    var access = sync.role_access;
 	                    if (access) {
@@ -474,6 +486,12 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		return err
 	}
 
+	// We are about to alter documents without updating their sequence numbers, which would
+	// really confuse the changeCache, so turn it off until we're done:
+	db.changeCache.EnableChannelLogs(false)
+	defer db.changeCache.EnableChannelLogs(true)
+	db.changeCache.ClearLogs()
+
 	//base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
 	changeCount := 0
 	for _, row := range vres.Rows {
@@ -544,12 +562,6 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	}
 
 	if changeCount > 0 {
-		base.Log("%d docs changed; invalidating channel logs...", changeCount)
-		// The channel logs are now out of date, so delete them (they'll be rebuilt on demand):
-		if err := db.DeleteAllDocs(kChannelLogDocType); err != nil {
-			return err
-		}
-
 		// Now invalidate channel cache of all users/roles:
 		base.Log("Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()

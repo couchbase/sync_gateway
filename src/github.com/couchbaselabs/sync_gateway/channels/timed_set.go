@@ -105,8 +105,16 @@ func (set TimedSet) AddChannel(channelName string, atSequence uint64) bool {
 
 // Merges the other set into the receiver. In case of collisions the earliest sequence wins.
 func (set TimedSet) Add(other TimedSet) bool {
+	return set.AddAtSequence(other, 0)
+}
+
+// Merges the other set into the receiver at a given sequence. */
+func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 	changed := false
 	for ch, sequence := range other {
+		if sequence < atSequence {
+			sequence = atSequence
+		}
 		if set.AddChannel(ch, sequence) {
 			changed = true
 		}

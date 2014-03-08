@@ -88,5 +88,5 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 }
 
 func docIDForSession(sessionID string) string {
-	return "session:" + sessionID
+	return "_sync:session:" + sessionID
 }

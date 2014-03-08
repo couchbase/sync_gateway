@@ -34,7 +34,7 @@ const DefaultMaxCouchbaseConnections = 16
 const DefaultMaxCouchbaseOverflowConnections = 0
 
 // Default value of ServerConfig.MaxIncomingConnections
-const DefaultMaxIncomingConnections = 1000
+const DefaultMaxIncomingConnections = 0
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
@@ -299,7 +299,9 @@ func ParseCommandLine() *ServerConfig {
 	}
 
 	base.LogKeys["HTTP"] = true
-	base.LogKeys["HTTP+"] = *verbose
+	if *verbose {
+		base.LogKeys["HTTP+"] = true
+	}
 	base.ParseLogFlag(*logKeys)
 
 	return config
