@@ -89,7 +89,8 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		body = Body{"_deleted": true}
 	} else {
 		if err := json.Unmarshal(value, &body); err != nil {
-			return err
+			base.LogTo("Shadow", "Doc %q is not JSON; skipping", key)
+			return nil
 		}
 	}
 

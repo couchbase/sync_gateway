@@ -40,6 +40,7 @@ func TestShadowerPull(t *testing.T) {
 	defer bucket.Close()
 	bucket.Set("key1", 0, Body{"foo": 1})
 	bucket.Set("key2", 0, Body{"bar": -1})
+	bucket.SetRaw("key3", 0, []byte("qwertyuiop")) //will be ignored
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
