@@ -89,7 +89,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 	}
 
 	n := len(log) - start
-	if options.Limit > 0 && n < options.Limit {
+	if options.Limit > 0 && n > options.Limit {
 		n = options.Limit
 	}
 	result = make([]*LogEntry, n)
