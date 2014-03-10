@@ -147,15 +147,16 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		c.prependChanges(resultFromView, options.Since+1, options.Limit == 0)
 	}
 
-	// Concatenate the view & cache results:
 	result := resultFromView
-	if (options.Limit == 0 || len(result) < options.Limit) && len(resultFromCache) > 0 {
+	room := options.Limit - len(result)
+	if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
+		// Concatenate the view & cache results:
 		if resultFromCache[0].Sequence == result[len(result)-1].Sequence {
 			resultFromCache = resultFromCache[1:]
 		}
 		n := len(resultFromCache)
-		if options.Limit > 0 {
-			n = options.Limit - len(result)
+		if options.Limit > 0 && room > 0 && room < n {
+			n = room
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
