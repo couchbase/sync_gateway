@@ -111,16 +111,19 @@ func TestRevTreeIsLeaf(t *testing.T) {
 
 func TestRevTreeWinningRev(t *testing.T) {
 	tempmap := branchymap.copy()
-	winner, conflict := tempmap.winningRevision()
+	winner, branched, conflict := tempmap.winningRevision()
 	assert.Equals(t, winner, "3-three")
+	assert.True(t, branched)
 	assert.True(t, conflict)
 	tempmap.addRevision(RevInfo{ID: "4-four", Parent: "3-three"})
-	winner, conflict = tempmap.winningRevision()
+	winner, branched, conflict = tempmap.winningRevision()
 	assert.Equals(t, winner, "4-four")
+	assert.True(t, branched)
 	assert.True(t, conflict)
 	tempmap.addRevision(RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
-	winner, conflict = tempmap.winningRevision()
+	winner, branched, conflict = tempmap.winningRevision()
 	assert.Equals(t, winner, "3-drei")
+	assert.True(t, branched)
 	assert.False(t, conflict)
 }
 

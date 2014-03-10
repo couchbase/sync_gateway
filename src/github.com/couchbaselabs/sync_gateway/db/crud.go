@@ -449,7 +449,6 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
 	var unusedSequences []uint64
-	var inConflict = false
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -470,9 +469,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		newRevID = body["_rev"].(string)
 		parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
-		doc.CurrentRev, inConflict = doc.History.winningRevision()
+		var branched, inConflict bool
+		doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
 		doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
 		doc.setFlag(channels.Conflict, inConflict)
+		doc.setFlag(channels.Branched, branched)
 
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:

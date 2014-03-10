@@ -331,19 +331,18 @@ func TestConflicts(t *testing.T) {
 		"channels": []string{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
+	db.changeCache.waitForSequence(3)
 	log = db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log), 1)
 	assert.Equals(t, log[0].Sequence, uint64(3))
 	assert.Equals(t, log[0].DocID, "doc")
 	assert.Equals(t, log[0].RevID, "2-b")
-	assert.Equals(t, log[0].Flags, uint8(channels.Hidden|channels.Conflict))
+	assert.Equals(t, log[0].Flags, uint8(channels.Hidden|channels.Branched|channels.Conflict))
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
-		Conflicts:  true,
-		Terminator: make(chan bool),
+		Conflicts: true,
 	}
-	defer close(options.Terminator)
 	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 1)
@@ -351,10 +350,10 @@ func TestConflicts(t *testing.T) {
 		Seq:      3,
 		ID:       "doc",
 		Changes:  []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
-		conflict: true})
+		branched: true})
 
 	// Delete 2-b; verify this makes 2-a current:
-	_, err = db.DeleteDoc("doc", "2-b")
+	rev3, err := db.DeleteDoc("doc", "2-b")
 	assertNoError(t, err, "delete 2-b")
 	gotBody, err = db.Get("doc")
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
@@ -366,6 +365,17 @@ func TestConflicts(t *testing.T) {
 	assert.True(t, found)
 	assert.True(t, chan2a == nil)             // currently in 2a
 	assert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
+
+	// Verify the _changes feed:
+	db.changeCache.waitForSequence(4)
+	changes, err = db.GetChanges(channels.SetOf("all"), options)
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:      4,
+		ID:       "doc",
+		Changes:  []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
+		branched: true})
 }
 
 func TestInvalidChannel(t *testing.T) {

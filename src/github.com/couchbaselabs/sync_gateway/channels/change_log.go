@@ -1,9 +1,9 @@
 package channels
 
 import (
-	"time"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -31,10 +31,10 @@ const (
 	Removed              // Doc was removed from this channel
 	Hidden               // This rev is not the default (hidden by a conflict)
 	Conflict             // Document is in conflict at this time
+	Branched             // Revision tree is branched
 
 	kMaxFlag = (1 << iota) - 1
 )
-
 
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
 // The log is sorted by increasing sequence number.

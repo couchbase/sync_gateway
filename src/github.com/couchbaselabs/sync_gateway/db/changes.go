@@ -37,7 +37,7 @@ type ChangeEntry struct {
 	Removed  base.Set    `json:"removed,omitempty"`
 	Doc      Body        `json:"doc,omitempty"`
 	Changes  []ChangeRev `json:"changes"`
-	conflict bool
+	branched bool
 }
 
 type ChangeRev map[string]string // Key is always "rev", value is rev ID
@@ -48,7 +48,7 @@ type ViewDoc struct {
 
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
-	includeConflicts := options.Conflicts && entry.conflict
+	includeConflicts := options.Conflicts && entry.branched
 	if !options.IncludeDocs && !includeConflicts {
 		return
 	}
@@ -61,9 +61,11 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	revID := entry.Changes[0]["rev"]
 	if includeConflicts {
 		doc.History.forEachLeaf(func(leaf *RevInfo) {
-			if leaf.ID != revID && !leaf.Deleted {
+			if leaf.ID != revID {
 				entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
-				entry.Deleted = false
+				if !leaf.Deleted {
+					entry.Deleted = false
+				}
 			}
 		})
 	}
@@ -110,7 +112,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				ID:       logEntry.DocID,
 				Deleted:  (logEntry.Flags & channels.Deleted) != 0,
 				Changes:  []ChangeRev{{"rev": logEntry.RevID}},
-				conflict: (logEntry.Flags & channels.Conflict) != 0,
+				branched: (logEntry.Flags & channels.Branched) != 0,
 			}
 			if logEntry.Flags&channels.Removed != 0 {
 				change.Removed = channels.SetOf(channel)
