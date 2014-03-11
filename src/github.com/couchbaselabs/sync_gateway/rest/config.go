@@ -312,6 +312,29 @@ func ParseCommandLine() *ServerConfig {
 	return config
 }
 
+func setMaxFileDescriptors(maxP *uint64) {
+	maxFDs := DefaultMaxFileDescriptors
+	if maxP != nil {
+		maxFDs = *maxP
+	}
+	var limits syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limits); err != nil {
+		base.LogFatal("Getrlimit failed: %v", err)
+	}
+	if maxFDs > limits.Max {
+		maxFDs = limits.Max
+	}
+	if limits.Cur != maxFDs {
+		limits.Cur = maxFDs
+		limits.Max = maxFDs
+		err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
+		if err != nil {
+			base.LogFatal("Error raising MaxFileDescriptors to %d: %v", maxFDs, err)
+		}
+		base.Log("Configured MaxFileDescriptors (RLIMIT_NOFILE) to %d", maxFDs)
+	}
+}
+
 func (config *ServerConfig) serve(addr string, handler http.Handler) {
 	maxConns := DefaultMaxIncomingConnections
 	if config.MaxIncomingConnections != nil {
@@ -337,15 +360,7 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	maxFDs := DefaultMaxFileDescriptors
-	if config.MaxFileDescriptors != nil {
-		maxFDs = *config.MaxFileDescriptors
-	}
-	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{Cur: maxFDs, Max: maxFDs})
-	if err != nil {
-		base.LogFatal("Error raising MaxFileDescriptors to %d: %v", maxFDs, err)
-	}
-	base.Log("Configured MaxFileDescriptors (RLIMIT_NOFILE) to %d", maxFDs)
+	setMaxFileDescriptors(config.MaxFileDescriptors)
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
