@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"syscall"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -35,6 +36,9 @@ const DefaultMaxCouchbaseOverflowConnections = 0
 
 // Default value of ServerConfig.MaxIncomingConnections
 const DefaultMaxIncomingConnections = 0
+
+// Default value of ServerConfig.MaxFileDescriptors
+const DefaultMaxFileDescriptors uint64 = 5000
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
@@ -54,6 +58,7 @@ type ServerConfig struct {
 	MaxCouchbaseConnections *int            // Max # of sockets to open to a Couchbase Server node
 	MaxCouchbaseOverflow    *int            // Max # of overflow sockets to open
 	MaxIncomingConnections  *int            // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors      *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses       *bool           // If false, disables compression of HTTP responses
 	Databases               DbConfigMap     // Pre-configured databases, mapped by name
 }
@@ -331,6 +336,16 @@ func RunServer(config *ServerConfig) {
 			base.Log("Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
+
+	maxFDs := DefaultMaxFileDescriptors
+	if config.MaxFileDescriptors != nil {
+		maxFDs = *config.MaxFileDescriptors
+	}
+	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{Cur: maxFDs, Max: maxFDs})
+	if err != nil {
+		base.LogFatal("Error raising MaxFileDescriptors to %d: %v", maxFDs, err)
+	}
+	base.Log("Configured MaxFileDescriptors (RLIMIT_NOFILE) to %d", maxFDs)
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
