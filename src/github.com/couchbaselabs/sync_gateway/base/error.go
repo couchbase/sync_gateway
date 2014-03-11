@@ -24,7 +24,7 @@ type HTTPError struct {
 }
 
 func (err *HTTPError) Error() string {
-	return err.Message
+	return fmt.Sprintf("%d %s", err.Status, err.Message)
 }
 
 func HTTPErrorf(status int, format string, args ...interface{}) *HTTPError {

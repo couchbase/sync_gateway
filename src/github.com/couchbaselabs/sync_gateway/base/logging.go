@@ -15,20 +15,33 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
 // Default value is 1.
-var LogLevel int = 1
+var logLevel int = 1
 
 // Set of LogTo() key strings that are enabled.
 var LogKeys map[string]bool
+
+var logLock sync.RWMutex
 
 var logger *log.Logger
 
 func init() {
 	logger = log.New(os.Stderr, "", log.Lmicroseconds)
 	LogKeys = make(map[string]bool)
+}
+
+func LogLevel() int {
+	return logLevel
+}
+
+func SetLogLevel(level int) {
+	logLock.Lock()
+	logLevel = level
+	logLock.Unlock()
 }
 
 // Disables ANSI color in log output.
@@ -51,6 +64,7 @@ func ParseLogFlag(flag string) {
 // Parses an array of log keys, probably coming from a argv flags.
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlags(flags []string) {
+	logLock.Lock()
 	for _, key := range flags {
 		switch key {
 		case "bw":
@@ -65,7 +79,29 @@ func ParseLogFlags(flags []string) {
 			}
 		}
 	}
+	logLock.Unlock()
 	Log("Enabling logging: %s", flags)
+}
+
+func GetLogKeys() map[string]bool {
+	logLock.RLock()
+	defer logLock.RUnlock()
+	keys := map[string]bool{}
+	for k, v := range LogKeys {
+		keys[k] = v
+	}
+	return keys
+}
+
+func UpdateLogKeys(keys map[string]bool, replace bool) {
+	logLock.Lock()
+	defer logLock.Unlock()
+	if replace {
+		LogKeys = map[string]bool{}
+	}
+	for k, v := range keys {
+		LogKeys[k] = v
+	}
 }
 
 // Returns a string identifying a function on the call stack.
@@ -86,14 +122,22 @@ func GetCallersName(depth int) string {
 
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
 func LogTo(key string, format string, args ...interface{}) {
-	if LogLevel <= 1 && LogKeys[key] {
+	logLock.RLock()
+	ok := logLevel <= 1 && LogKeys[key]
+	logLock.RUnlock()
+
+	if ok {
 		logger.Printf(fgYellow+key+": "+reset+format, args...)
 	}
 }
 
 // Logs a message to the console.
 func Log(format string, args ...interface{}) {
-	if LogLevel <= 1 {
+	logLock.RLock()
+	ok := logLevel <= 1
+	logLock.RUnlock()
+
+	if ok {
 		logger.Printf(format, args...)
 	}
 }
@@ -101,15 +145,25 @@ func Log(format string, args ...interface{}) {
 // If the error is not nil, logs its description and the name of the calling function.
 // Returns the input error for easy chaining.
 func LogError(err error) error {
-	if LogLevel <= 2 && err != nil {
-		logWithCaller(fgRed, "ERROR", "%v", err)
+	if err != nil {
+		logLock.RLock()
+		ok := logLevel <= 2
+		logLock.Unlock()
+
+		if ok {
+			logWithCaller(fgRed, "ERROR", "%v", err)
+		}
 	}
 	return err
 }
 
 // Logs a warning to the console
 func Warn(format string, args ...interface{}) {
-	if LogLevel <= 2 {
+	logLock.RLock()
+	ok := logLevel <= 2
+	logLock.RUnlock()
+
+	if ok {
 		logWithCaller(fgRed, "WARNING", format, args...)
 	}
 }

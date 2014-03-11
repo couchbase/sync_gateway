@@ -12,6 +12,7 @@ package base
 import (
 	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -23,6 +24,8 @@ func init() {
 	// Increase max memcached request size to 10M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issue #210.)
 	gomemcached.MaxBodyLen = int(10.0e6)
+	// Cause warnings to be logged on slow Couchbase server calls
+	couchbase.SlowServerCallWarningThreshold = 200 * time.Millisecond
 }
 
 type Bucket walrus.Bucket
@@ -93,11 +96,12 @@ func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 	go func() {
 		for cbEvent := range cbFeed.C {
 			events <- walrus.TapEvent{
-				Opcode: walrus.TapOpcode(cbEvent.Opcode),
-				Expiry: cbEvent.Expiry,
-				Flags:  cbEvent.Flags,
-				Key:    cbEvent.Key,
-				Value:  cbEvent.Value,
+				Opcode:   walrus.TapOpcode(cbEvent.Opcode),
+				Expiry:   cbEvent.Expiry,
+				Flags:    cbEvent.Flags,
+				Key:      cbEvent.Key,
+				Value:    cbEvent.Value,
+				Sequence: cbEvent.Cas,
 			}
 		}
 	}()
@@ -133,13 +137,19 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Log("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		walrus.Logging = LogKeys["Walrus"]
-		return walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+	} else {
+		suffix := ""
+		if spec.Auth != nil {
+			username, _ := spec.Auth.GetCredentials()
+			suffix = fmt.Sprintf(" as user %q", username)
+		}
+		Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+		bucket, err = GetCouchbaseBucket(spec)
 	}
-	suffix := ""
-	if spec.Auth != nil {
-		username, _ := spec.Auth.GetCredentials()
-		suffix = fmt.Sprintf(" as user %q", username)
+
+	if LogKeys["Bucket"] {
+		bucket = &LoggingBucket{bucket: bucket}
 	}
-	Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
-	return GetCouchbaseBucket(spec)
+	return
 }

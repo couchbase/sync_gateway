@@ -13,148 +13,90 @@ import (
 	"encoding/json"
 	"math"
 
-	"github.com/couchbaselabs/go-couchbase"
-
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
-// Options for Database.getChanges
+// Options for changes-feeds
 type ChangesOptions struct {
-	Since       channels.TimedSet // maps channel -> last sequence # seen on it
-	Limit       int
-	Conflicts   bool
-	IncludeDocs bool
-	Wait        bool
+	Since       uint64    // sequence # to start _after_
+	Limit       int       // Max number of changes to return, if nonzero
+	Conflicts   bool      // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs bool      // Include doc body of each change?
+	Wait        bool      // Wait for results, instead of immediately returning empty result?
+	Continuous  bool      // Run continuously until terminated?
 	Terminator  chan bool // Caller can close this channel to terminate the feed
 }
 
-// A changes entry; Database.getChanges returns an array of these.
+// A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	seqNo   uint64      // Internal use only: sequence # in specific channel
-	Seq     string      `json:"seq"` // Public sequence ID (TimedSet)
-	ID      string      `json:"id"`
-	Deleted bool        `json:"deleted,omitempty"`
-	Removed base.Set    `json:"removed,omitempty"`
-	Doc     Body        `json:"doc,omitempty"`
-	Changes []ChangeRev `json:"changes"`
+	Seq      uint64      `json:"seq"`
+	ID       string      `json:"id"`
+	Deleted  bool        `json:"deleted,omitempty"`
+	Removed  base.Set    `json:"removed,omitempty"`
+	Doc      Body        `json:"doc,omitempty"`
+	Changes  []ChangeRev `json:"changes"`
+	branched bool
 }
 
-type ChangeRev map[string]string
+type ChangeRev map[string]string // Key is always "rev", value is rev ID
 
 type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
-// One "changes" row in a ViewResult
-type ViewRow struct {
-	ID    string
-	Key   interface{}
-	Value interface{}
-	Doc   *ViewDoc
-}
+// Adds a document body and/or its conflicts to a ChangeEntry
+func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
+	includeConflicts := options.Conflicts && entry.branched
+	if !options.IncludeDocs && !includeConflicts {
+		return
+	}
+	doc, err := db.GetDoc(entry.ID)
+	if err != nil {
+		base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
+		return
+	}
 
-// Unmarshaled JSON structure for "changes" view results
-type ViewResult struct {
-	TotalRows int `json:"total_rows"`
-	Rows      []ViewRow
-	Errors    []couchbase.ViewError
-}
-
-// Number of rows to query from the changes view at one time
-const kChangesViewPageSize = 1000
-
-func (db *Database) addDocToChangeEntry(doc *document, entry *ChangeEntry, includeDocs, includeConflicts bool) {
-	if doc != nil {
-		revID := entry.Changes[0]["rev"]
-		if includeConflicts {
-			for _, leafID := range doc.History.getLeaves() {
-				if leafID != revID {
-					entry.Changes = append(entry.Changes, ChangeRev{"rev": leafID})
+	revID := entry.Changes[0]["rev"]
+	if includeConflicts {
+		doc.History.forEachLeaf(func(leaf *RevInfo) {
+			if leaf.ID != revID {
+				entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
+				if !leaf.Deleted {
+					entry.Deleted = false
 				}
 			}
-		}
-		if includeDocs {
-			entry.Doc, _ = db.getRevFromDoc(doc, revID, false)
+		})
+	}
+	if options.IncludeDocs {
+		var err error
+		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
+		if err != nil {
+			base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
 		}
 	}
 }
 
-// Returns a list of all the changes made on a channel.
+// Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	since := options.Since[channel]
-	channelLog, err := db.changesWriter.getChangeLog(channel, since)
+	dbExpvars.Add("channelChangesFeeds", 1)
+	log, err := db.changeCache.GetChangesInChannel(channel, options)
 	if err != nil {
-		base.Warn("Error reading channel-log %q (using view instead): %v", channel, err)
-		channelLog = nil
-	}
-	rebuildLog := channelLog == nil && err == nil && (EnableStarChannelLog || channel != "*")
-	var log []*channels.LogEntry
-	if channelLog != nil {
-		log = channelLog.Entries
+		return nil, err
 	}
 
-	var viewFeed <-chan *ChangeEntry
-	if channelLog == nil || channelLog.Since > since {
-		var upToSeq uint64
-		if channelLog != nil {
-			upToSeq = channelLog.Since
-		}
-		// Channel log may not go back far enough, so also fetch view-based change feed:
-		viewFeed, err = db.changesFeedFromView(channel, options, upToSeq)
-		if err != nil {
-			return nil, err
-		}
+	if len(log) == 0 {
+		// There are no entries newer than 'since'. Return an empty feed:
+		feed := make(chan *ChangeEntry)
+		close(feed)
+		return feed, nil
 	}
 
-	feed := make(chan *ChangeEntry, 5)
+	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
-
-		// First, if we need to backfill from the view, write its early entries to the channel:
-		if viewFeed != nil {
-			newLog := channels.ChangeLog{Since: since}
-			for change := range viewFeed {
-				if channelLog != nil && change.seqNo > channelLog.Since {
-					// TODO: Close the view-based feed somehow
-					break
-				}
-
-				select {
-				case <-options.Terminator:
-					base.LogTo("Changes+", "Aborting changesFeed (reading from view)")
-					return
-				case feed <- change:
-				}
-
-				if rebuildLog {
-					// If there wasn't any channel log, build up a new one from the view:
-					entry := channels.LogEntry{
-						Sequence: change.seqNo,
-						DocID:    change.ID,
-						RevID:    change.Changes[0]["rev"],
-					}
-					if change.Deleted {
-						entry.Flags |= channels.Deleted
-					}
-					if change.Removed != nil {
-						entry.Flags |= channels.Removed
-					}
-					newLog.Add(entry)
-					newLog.TruncateTo(MaxChangeLogLength)
-				}
-			}
-
-			if rebuildLog {
-				// Save the missing channel log we just rebuilt:
-				base.LogTo("Changes", "Saving rebuilt channel log %q with %d sequences",
-					channel, len(newLog.Entries))
-				db.changesWriter.addChangeLog(channel, &newLog)
-			}
-		}
-
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
 			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
@@ -166,16 +108,14 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// from the view before this point.
 			}
 			change := ChangeEntry{
-				seqNo:   logEntry.Sequence,
-				ID:      logEntry.DocID,
-				Deleted: (logEntry.Flags & channels.Deleted) != 0,
-				Changes: []ChangeRev{{"rev": logEntry.RevID}},
+				Seq:      logEntry.Sequence,
+				ID:       logEntry.DocID,
+				Deleted:  (logEntry.Flags & channels.Deleted) != 0,
+				Changes:  []ChangeRev{{"rev": logEntry.RevID}},
+				branched: (logEntry.Flags & channels.Branched) != 0,
 			}
 			if logEntry.Flags&channels.Removed != 0 {
 				change.Removed = channels.SetOf(channel)
-			} else if options.IncludeDocs || options.Conflicts {
-				doc, _ := db.getDoc(logEntry.DocID)
-				db.addDocToChangeEntry(doc, &change, options.IncludeDocs, false)
 			}
 
 			select {
@@ -184,107 +124,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				return
 			case feed <- &change:
 			}
-
-			if options.Limit > 0 {
-				options.Limit--
-				if options.Limit == 0 {
-					break
-				}
-			}
-		}
-	}()
-	return feed, nil
-}
-
-// Returns a list of all the changes made on a channel, reading from a view instead of the
-// channel log. This will include all historical changes, but may omit very recent ones.
-func (db *Database) changesFeedFromView(channel string, options ChangesOptions, upToSeq uint64) (<-chan *ChangeEntry, error) {
-	base.LogTo("Changes", "Getting 'changes' view for channel %q %#v", channel, options)
-	since := options.Since[channel]
-	endkey := []interface{}{channel, upToSeq}
-	if upToSeq == 0 {
-		endkey[1] = map[string]interface{}{} // infinity
-	}
-	totalLimit := options.Limit
-	usingDocs := options.Conflicts || options.IncludeDocs
-	opts := Body{"stale": false, "update_seq": true,
-		"endkey":       endkey,
-		"include_docs": usingDocs}
-
-	feed := make(chan *ChangeEntry, kChangesViewPageSize)
-
-	// Generate the output in a new goroutine, writing to 'feed':
-	go func() {
-		defer close(feed)
-		for {
-			// Query the 'channels' view:
-			opts["startkey"] = []interface{}{channel, since + 1}
-			limit := totalLimit
-			if limit == 0 || limit > kChangesViewPageSize {
-				limit = kChangesViewPageSize
-			}
-			opts["limit"] = limit
-
-			var waiter *changeWaiter
-			if options.Wait {
-				waiter = db.tapListener.NewWaiterWithChannels(base.SetOf(channel), nil)
-			}
-			var vres ViewResult
-			var err error
-			for len(vres.Rows) == 0 {
-				base.LogTo("Changes+", "Querying 'changes' for channel %q %#v", channel, opts)
-				vres = ViewResult{}
-				err = db.Bucket.ViewCustom("sync_gateway", "channels", opts, &vres)
-				if err != nil {
-					base.Log("Error from 'channels' view: %v", err)
-					return
-				}
-				if len(vres.Rows) == 0 {
-					if waiter == nil || !waiter.Wait() {
-						return
-					}
-				}
-			}
-
-			for _, row := range vres.Rows {
-				key := row.Key.([]interface{})
-				since = uint64(key[1].(float64))
-				value := row.Value.([]interface{})
-				docID := value[0].(string)
-				revID := value[1].(string)
-				entry := &ChangeEntry{
-					seqNo:   since,
-					ID:      docID,
-					Changes: []ChangeRev{{"rev": revID}},
-					Deleted: (len(value) >= 3 && value[2].(bool)),
-				}
-				if len(value) >= 4 && value[3].(bool) {
-					entry.Removed = channels.SetOf(channel)
-				} else if usingDocs {
-					doc, _ := unmarshalDocument(docID, row.Doc.Json)
-					db.addDocToChangeEntry(doc, entry, options.IncludeDocs, options.Conflicts)
-				}
-
-				select {
-				case <-options.Terminator:
-					base.LogTo("Changes+", "Aborting changesFeedFromView")
-					return
-				case feed <- entry:
-				}
-			}
-
-			// Step to the next page of results:
-			nRows := len(vres.Rows)
-			if nRows < kChangesViewPageSize || options.Wait {
-				break
-			}
-			if totalLimit > 0 {
-				totalLimit -= nRows
-				if totalLimit <= 0 {
-					break
-				}
-			}
-			delete(opts, "stale") // we only need to update the index once
 		}
 	}()
 	return feed, nil
@@ -297,18 +136,17 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
 
-	var changeWaiter *changeWaiter
-	if options.Wait {
-		options.Wait = false
-		changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
-	}
-	if options.Since == nil {
-		options.Since = channels.TimedSet{}
-	}
-
-	output := make(chan *ChangeEntry, kChangesViewPageSize)
+	output := make(chan *ChangeEntry, 50)
 	go func() {
 		defer close(output)
+
+		var changeWaiter *changeWaiter
+		var userChangeCount uint64
+		if options.Wait {
+			options.Wait = false
+			changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
+			userChangeCount = changeWaiter.CurrentUserCount()
+		}
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -319,27 +157,22 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			if db.user != nil {
 				channelsSince = db.user.FilterToAvailableChannels(chans)
 			} else {
-				channelsSince = channels.AtSequence(chans, 1)
+				channelsSince = channels.AtSequence(chans, 0)
 			}
 			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
 			// Populate the parallel arrays of channels and names:
-			latestSequence, err := db.LastSequence()
-			if err != nil {
-				base.Warn("MultiChangesFeed got error from LastSequence: %v", err)
-				return
-			}
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
-			for name, _ := range channelsSince {
-				var feed <-chan *ChangeEntry
-				if latestSequence > options.Since[name] {
-					var err error
-					feed, err = db.changesFeed(name, options)
-					if err != nil {
-						base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
-						return
-					}
+			for name, seqAddedAt := range channelsSince {
+				chanOpts := options
+				if seqAddedAt > options.Since {
+					chanOpts.Since = 0 // Newly added channel so send all of it to user
+				}
+				feed, err := db.changesFeed(name, chanOpts)
+				if err != nil {
+					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+					return
 				}
 				feeds = append(feeds, feed)
 				names = append(names, name)
@@ -350,7 +183,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// and writes them to the output channel:
 			var sentSomething bool
 			for {
-				//FIX: This assumes Reverse or Limit aren't set in the options
 				// Read more entries to fill up the current[] array:
 				for i, cur := range current {
 					if cur == nil && feeds[i] != nil {
@@ -366,8 +198,8 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				var minSeq uint64 = math.MaxUint64
 				var minEntry *ChangeEntry
 				for _, cur := range current {
-					if cur != nil && cur.seqNo < minSeq {
-						minSeq = cur.seqNo
+					if cur != nil && cur.Seq < minSeq {
+						minSeq = cur.Seq
 						minEntry = cur
 					}
 				}
@@ -377,12 +209,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 				// Clear the current entries for the sequence just sent:
 				for i, cur := range current {
-					if cur != nil && cur.seqNo == minSeq {
+					if cur != nil && cur.Seq == minSeq {
 						current[i] = nil
-						// Update the public sequence ID and encode it into the entry:
-						options.Since[names[i]] = minSeq
-						cur.Seq = options.Since.String()
-						cur.seqNo = 0
+						options.Since = minSeq
 						// Also concatenate the matching entries' Removed arrays:
 						if cur != minEntry && cur.Removed != nil {
 							if minEntry.Removed == nil {
@@ -394,7 +223,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 				}
 
+				// Add the doc body or the conflicting rev IDs, if those options are set:
+				if options.IncludeDocs || options.Conflicts {
+					db.addDocToChangeEntry(minEntry, options)
+				}
+
 				// Send the entry, and repeat the loop:
+				base.LogTo("Changes+", "MultiChangesFeed sending %+v", minEntry)
 				select {
 				case <-options.Terminator:
 					base.LogTo("Changes+", "Aborting MultiChangesFeed")
@@ -412,16 +247,27 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 			}
 
-			// If nothing found, and in wait mode: wait for the db to change, then run again
-			if sentSomething || changeWaiter == nil || !changeWaiter.Wait() {
+			if !options.Continuous && (sentSomething || changeWaiter == nil) {
+				break
+			}
+
+			// If nothing found, and in wait mode: wait for the db to change, then run again.
+			// First notify the reader that we're waiting by sending a nil.
+			base.LogTo("Changes+", "MultiChangesFeed waiting...")
+			output <- nil
+			if !changeWaiter.Wait() {
 				break
 			}
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
-			if err := db.ReloadUser(); err != nil {
-				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
-				return
+			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
+				base.LogTo("Changes+", "MultiChangesFeed reloading user %q", db.user.Name())
+				userChangeCount = newCount
+				if err := db.ReloadUser(); err != nil {
+					base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+					return
+				}
 			}
 		}
 		base.LogTo("Changes", "MultiChangesFeed done")
@@ -445,12 +291,17 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 	return changes, err
 }
 
-func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (*channels.ChangeLog, error) {
-	db.changesWriter.checkpoint()
-	return db.changesWriter.getChangeLog(channelName, afterSeq)
+func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
+	options := ChangesOptions{Since: afterSeq}
+	_, log := db.changeCache.getChannelCache(channelName).getCachedChanges(options)
+	return log
 }
 
-// This is only used for unit tests
-func (context *DatabaseContext) CheckpointChangeLogs() {
-	context.changesWriter.checkpoint()
+// Wait until the change-cache has caught up with the latest writes to the database.
+func (context *DatabaseContext) WaitForPendingChanges() (err error) {
+	lastSequence, err := context.LastSequence()
+	if err == nil {
+		context.changeCache.waitForSequence(lastSequence)
+	}
+	return
 }

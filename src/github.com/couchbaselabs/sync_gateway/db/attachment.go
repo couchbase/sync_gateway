@@ -11,6 +11,7 @@ package db
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/md5"
 	"crypto/sha1"
 	"encoding/base64"
@@ -30,6 +31,9 @@ import (
 // MIME part.
 const kMaxInlineAttachmentSize = 200
 
+// JSON bodies smaller than this won't be GZip-encoded.
+const kMinCompressedJSONSize = 300
+
 // Key for retrieving an attachment from Couchbase.
 type AttachmentKey string
 
@@ -39,8 +43,14 @@ type AttachmentKey string
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
 	var parentAttachments map[string]interface{}
 	atts := BodyAttachments(body)
+	if atts == nil && body["_attachments"] != nil {
+		return base.HTTPErrorf(400, "Invalid _attachments")
+	}
 	for name, value := range atts {
-		meta := value.(map[string]interface{})
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return base.HTTPErrorf(400, "Invalid _attachments")
+		}
 		data, exists := meta["data"]
 		if exists {
 			// Attachment contains data, so store it in the db:
@@ -124,19 +134,28 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 
 //////// MIME MULTIPART:
 
-// Parses a JSON request body, unmarshaling it into "into".
+// Parses a JSON MIME body, unmarshaling it into "into".
 func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) error {
 	contentType := headers.Get("Content-Type")
 	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 	}
-	body, err := ioutil.ReadAll(input)
-	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "")
+
+	switch headers.Get("Content-Encoding") {
+	case "gzip":
+		var err error
+		if input, err = gzip.NewReader(input); err != nil {
+			return err
+		}
+	case "":
+		break
+	default:
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
-	err = json.Unmarshal(body, into)
-	if err != nil {
-		base.Warn("Couldn't parse JSON:\n%s", body)
+
+	decoder := json.NewDecoder(input)
+	if err := decoder.Decode(into); err != nil {
+		base.Warn("Couldn't parse JSON in HTTP request: %v", err)
 		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 	return nil
@@ -148,8 +167,37 @@ type attInfo struct {
 	data        []byte
 }
 
+func writeJSONPart(writer *multipart.Writer, contentType string, body Body, compressed bool) (err error) {
+	bytes, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	if len(bytes) < kMinCompressedJSONSize {
+		compressed = false
+	}
+
+	partHeaders := textproto.MIMEHeader{}
+	partHeaders.Set("Content-Type", contentType)
+	if compressed {
+		partHeaders.Set("Content-Encoding", "gzip")
+	}
+	part, err := writer.CreatePart(partHeaders)
+	if err != nil {
+		return err
+	}
+
+	if compressed {
+		gz := gzip.NewWriter(part)
+		_, err = gz.Write(bytes)
+		gz.Close()
+	} else {
+		_, err = part.Write(bytes)
+	}
+	return
+}
+
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer) {
+func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
 	for name, value := range BodyAttachments(body) {
@@ -166,11 +214,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer) 
 	}
 
 	// Write the main JSON body:
-	jsonOut, _ := json.Marshal(body)
-	partHeaders := textproto.MIMEHeader{}
-	partHeaders.Set("Content-Type", "application/json")
-	part, _ := writer.CreatePart(partHeaders)
-	part.Write(jsonOut)
+	writeJSONPart(writer, "application/json", body, compress)
 
 	// Write the following attachments
 	for _, info := range following {
@@ -186,7 +230,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer) 
 
 // Adds a new part to the given multipart writer, containing the given revision.
 // The revision will be written as a nested multipart body if it has attachments.
-func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, writer *multipart.Writer) error {
+func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress bool, writer *multipart.Writer) error {
 	partHeaders := textproto.MIMEHeader{}
 	docID, _ := revBody["_id"].(string)
 	revID, _ := revBody["_rev"].(string)
@@ -203,24 +247,23 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, writer *mult
 		contentType := fmt.Sprintf("multipart/related; boundary=%q",
 			docWriter.Boundary())
 		partHeaders.Set("Content-Type", contentType)
-		db.WriteMultipartDocument(revBody, docWriter)
+		db.WriteMultipartDocument(revBody, docWriter, compress)
 		docWriter.Close()
 		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
 
-		part, _ := writer.CreatePart(partHeaders)
-		part.Write(content)
+		part, err := writer.CreatePart(partHeaders)
+		if err == nil {
+			_, err = part.Write(content)
+		}
+		return err
 	} else {
 		// Write as JSON:
 		contentType := "application/json"
 		if isError {
 			contentType += `; error="true"`
 		}
-		partHeaders.Set("Content-Type", contentType)
-		part, _ := writer.CreatePart(partHeaders)
-		json.NewEncoder(part).Encode(revBody)
+		return writeJSONPart(writer, contentType, revBody, compress)
 	}
-
-	return nil
 }
 
 func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {

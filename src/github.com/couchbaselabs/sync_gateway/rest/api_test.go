@@ -11,6 +11,7 @@ package rest
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,6 +20,7 @@ import (
 	"runtime"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
@@ -30,6 +32,7 @@ import (
 )
 
 func init() {
+	base.LogNoColor()
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
@@ -106,6 +109,14 @@ func (rt *restTester) sendRequest(method, resource string, body string) *testRes
 	return rt.send(request(method, resource, body))
 }
 
+func (rt *restTester) sendRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+	req := request(method, resource, body)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return rt.send(req)
+}
+
 func (rt *restTester) send(request *http.Request) *testResponse {
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
@@ -160,8 +171,9 @@ func TestRoot(t *testing.T) {
 	var rt restTester
 	response := rt.sendRequest("GET", "/", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, response.Body.String(),
-		"{\"couchdb\":\"welcome\",\"version\":\""+VersionString+"\"}")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["couchdb"], "Welcome")
 
 	response = rt.sendRequest("HEAD", "/", "")
 	assertStatus(t, response, 200)
@@ -201,6 +213,182 @@ func TestFunkyDocIDs(t *testing.T) {
 
 	response := rt.sendRequest("GET", "/db/AC%2FDC", "")
 	assertStatus(t, response, 200)
+}
+
+func TestDesignDocs(t *testing.T) {
+	var rt restTester
+	response := rt.sendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
+	assertStatus(t, response, 403)
+	response = rt.sendAdminRequest("PUT", "/db/_design/foo", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/_design/foo", "")
+	assertStatus(t, response, 200)
+	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway", "")
+	assertStatus(t, response, 403)
+	response = rt.sendRequest("GET", "/db/_design/sync_gateway", "")
+	assertStatus(t, response, 200)
+	response = rt.sendRequest("GET", "/db/_design/bar", "")
+	assertStatus(t, response, 404)
+}
+
+func TestManualAttachment(t *testing.T) {
+	var rt restTester
+
+	doc1revId := rt.createDoc(t, "doc1")
+
+	// attach to existing document without rev (should fail)
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+	response := rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+
+	// attach to existing document with wrong rev (should fail)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev=1-xyz", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+
+	// attach to existing document with wrong rev using If-Match header (should fail)
+	reqHeaders["If-Match"] = "1-dnf"
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+	delete(reqHeaders, "If-Match")
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterAttachment != doc1revId)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// try to overwrite that attachment
+	attachmentBody = "updated content"
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterUpdateAttachment := body["rev"].(string)
+	if revIdAfterUpdateAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
+
+	// try to overwrite that attachment again, this time using If-Match header
+	attachmentBody = "updated content again"
+	reqHeaders["If-Match"] = revIdAfterUpdateAttachment
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterUpdateAttachmentAgain := body["rev"].(string)
+	if revIdAfterUpdateAttachmentAgain == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterUpdateAttachmentAgain != revIdAfterUpdateAttachment)
+	delete(reqHeaders, "If-Match")
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// add another attachment to the document
+	// also no explicit Content-Type header on this one
+	// should default to application/octet-stream
+	attachmentBody = "separate content"
+	response = rt.sendRequest("PUT", "/db/doc1/attach2?rev="+revIdAfterUpdateAttachmentAgain, attachmentBody)
+	assertStatus(t, response, 201)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterSecondAttachment := body["rev"].(string)
+	if revIdAfterSecondAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterSecondAttachment != revIdAfterUpdateAttachment)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attach2", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
+
+	// now check the attachments index on the document
+	response = rt.sendRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, 200)
+	body = db.Body{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	bodyAttachments, ok := body["_attachments"].(map[string]interface{})
+	if !ok {
+		t.Errorf("Attachments must be map")
+	} else {
+		assert.Equals(t, len(bodyAttachments), 2)
+	}
+	// make sure original document property has remained
+	prop, ok := body["prop"]
+	if !ok || !prop.(bool) {
+		t.Errorf("property prop is now missing or modified")
+	}
+}
+
+// PUT attachment on non-existant docid should create empty doc
+func TestManualAttachmentNewDoc(t *testing.T) {
+	var rt restTester
+
+	// attach to new document using bogus rev (should fail)
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "text/plain"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+	response := rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1?rev=1-abc", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+
+	// attach to new document using bogus rev using If-Match header (should fail)
+	reqHeaders["If-Match"] = "1-xyz"
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 409)
+	delete(reqHeaders, "If-Match")
+
+	// attach to new document without any rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/notexistyet/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// now check the document
+	body = db.Body{}
+	response = rt.sendRequest("GET", "/db/notexistyet", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	// body should only have 3 top-level entries _id, _rev, _attachments
+	assert.True(t, len(body) == 3)
 }
 
 func TestBulkDocs(t *testing.T) {
@@ -266,7 +454,8 @@ func TestRevsDiff(t *testing.T) {
 	// Now call _revs_diff:
 	input = `{"rd1": ["13-def", "12-abc", "11-eleven"],
               "rd2": ["34-def", "31-one"],
-              "rd9": ["1-a", "2-b", "3-c"]
+              "rd9": ["1-a", "2-b", "3-c"],
+              "_design/ddoc": ["1-woo"]
              }`
 	response = rt.sendRequest("POST", "/db/_revs_diff", input)
 	assertStatus(t, response, 200)
@@ -313,6 +502,29 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 404)
 	response = rt.sendRequest("DELETE", "/db/_local/loc1", "")
 	assertStatus(t, response, 404)
+}
+
+func TestResponseEncoding(t *testing.T) {
+	// Make a doc longer than 1k so the HTTP response will be compressed:
+	str := "DORKY "
+	for i := 0; i < 10; i++ {
+		str = str + str
+	}
+	docJSON := fmt.Sprintf(`{"long": %q}`, str)
+
+	var rt restTester
+	response := rt.sendRequest("PUT", "/db/_local/loc1", docJSON)
+	assertStatus(t, response, 201)
+	response = rt.sendRequestWithHeaders("GET", "/db/_local/loc1", "",
+		map[string]string{"Accept-Encoding": "foo, gzip, bar"})
+	assertStatus(t, response, 200)
+	assert.DeepEquals(t, response.HeaderMap["Content-Encoding"], []string{"gzip"})
+	unzip, err := gzip.NewReader(response.Body)
+	assert.Equals(t, err, nil)
+	unjson := json.NewDecoder(unzip)
+	var body db.Body
+	assert.Equals(t, unjson.Decode(&body), nil)
+	assert.Equals(t, body["long"], str)
 }
 
 func TestLogin(t *testing.T) {
@@ -417,7 +629,7 @@ func TestAccessControl(t *testing.T) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
-	//base.ParseLogFlags([]string{"Changes+", "CRUD"})
+	// base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -454,13 +666,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
-	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, since, "gamma:8")
+	assert.Equals(t, since, uint64(8))
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
@@ -480,7 +691,6 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Look at alice's _changes feed:
 	changes.Results = nil
-	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -498,7 +708,8 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%d", since),
+		"", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
@@ -535,6 +746,7 @@ func TestChannelAccessChanges(t *testing.T) {
 func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["Access"] = true
 	base.LogKeys["CRUD"] = true
+	base.LogKeys["Changes+"] = true
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -570,30 +782,29 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Check user access:
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1, "gamma": 0x1})
-	assert.DeepEquals(t, alice.RoleNames(), []string{"bogus", "hipster"})
+	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": 0x1, "hipster": 0x1})
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1})
-	assert.DeepEquals(t, zegpold.RoleNames(), []string{})
+	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
 	var changes struct {
 		Results  []db.ChangeEntry
-		Last_Seq string
+		Last_Seq interface{}
 	}
-	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	since := changes.Last_Seq
-	assert.Equals(t, since, "alpha:3,gamma:2")
+	assert.Equals(t, since, float64(3))
 
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since = changes.Last_Seq
-	assert.Equals(t, since, "beta:4")
+	assert.Equals(t, since, float64(4))
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
@@ -603,32 +814,35 @@ func TestRoleAccessChanges(t *testing.T) {
 	alice, _ = a.GetUser("alice")
 	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1, "gamma": 0x1})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1, "gamma": 0x6})
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
-	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
-	assert.Equals(t, changes.Last_Seq, "beta:4,gamma:2")
+	assert.Equals(t, changes.Last_Seq, float64(4))
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, changes.Results[1].ID, "b1")
 
-	// Changes feed with since=beta:4 would ordinarily be empty, but zegpold got access to channel
+	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "zegpold"))
+	base.LogKeys["Changes"] = true
+	base.LogKeys["Cache"] = true
+	response = rt.send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "g1")
+	base.LogKeys["Cache"] = false
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {
 	// See https://github.com/couchbase/couchbase-lite-ios/issues/59
-	//base.LogKeys["CRUD"] = true
+	// base.LogKeys["Changes"] = true
+	// base.LogKeys["Cache"] = true
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -641,16 +855,16 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	response := rt.send(request("PUT", "/db/alpha", `{"channel":"zero"}`))
 
 	// Check the _changes feed:
+	rt.ServerContext().Database("db").WaitForPendingChanges()
 	var changes struct {
 		Results []db.ChangeEntry
 	}
-	rt.ServerContext().Database("db").CheckpointChangeLogs()
 	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, since, "zero:1")
+	assert.Equals(t, since, uint64(1))
 
 	assert.Equals(t, changes.Results[0].ID, "alpha")
 	rev1 := changes.Results[0].Changes[0]["rev"]
@@ -659,8 +873,9 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assertStatus(t, rt.send(request("DELETE", "/db/alpha?rev="+rev1, "")), 200)
 
 	// Get the updates from the _changes feed:
-	rt.ServerContext().Database("db").CheckpointChangeLogs()
-	response = rt.send(requestByUser("GET", "/db/_changes?since="+since, "", "alice"))
+	time.Sleep(100 * time.Millisecond)
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%d", since),
+		"", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)

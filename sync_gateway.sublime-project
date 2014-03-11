@@ -32,7 +32,15 @@
 		},
 		{
 			"follow_symlinks": true,
+			"path": "utils"
+		},
+		{
+			"follow_symlinks": true,
 			"path": "examples"
+		},
+		{
+			"follow_symlinks": true,
+			"path": "vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui"
 		}
 	],
 	"settings":

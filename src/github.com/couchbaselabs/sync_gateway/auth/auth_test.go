@@ -284,7 +284,7 @@ func TestSaveRoles(t *testing.T) {
 
 type mockComputer struct {
 	channels ch.TimedSet
-	roles    []string
+	roles    ch.TimedSet
 	err      error
 }
 
@@ -292,7 +292,7 @@ func (self *mockComputer) ComputeChannelsForPrincipal(Principal) (ch.TimedSet, e
 	return self.channels, self.err
 }
 
-func (self *mockComputer) ComputeRolesForUser(User) ([]string, error) {
+func (self *mockComputer) ComputeRolesForUser(User) (ch.TimedSet, error) {
 	return self.roles, self.err
 }
 
@@ -337,16 +337,18 @@ func TestRebuildChannelsError(t *testing.T) {
 }
 
 func TestRebuildUserRoles(t *testing.T) {
-	computer := mockComputer{roles: []string{"role1", "role2"}}
+	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	user, _ := auth.NewUser("testUser", "letmein", nil)
-	user.SetExplicitRoleNames([]string{"role3", "role1"})
+	user.SetExplicitRoles(ch.TimedSet{"role3": 1, "role1": 1})
 	err := auth.InvalidateRoles(user)
 	assert.Equals(t, err, nil)
 
 	user2, err := auth.GetUser("testUser")
 	assert.Equals(t, err, nil)
-	assert.DeepEquals(t, user2.RoleNames(), []string{"role3", "role1", "role2"})
+	expected := ch.AtSequence(base.SetOf("role1", "role3"), 1)
+	expected.AddChannel("role2", 3)
+	assert.DeepEquals(t, user2.RoleNames(), expected)
 }
 
 func TestRoleInheritance(t *testing.T) {
@@ -358,8 +360,8 @@ func TestRoleInheritance(t *testing.T) {
 	assert.Equals(t, auth.Save(role), nil)
 
 	user, _ := auth.NewUser("arthur", "password", ch.SetOf("britain"))
-	user.(*userImpl).setRoleNames([]string{"square", "nonexistent", "frood"})
-	assert.DeepEquals(t, user.RoleNames(), []string{"square", "nonexistent", "frood"})
+	user.(*userImpl).setRolesSince(ch.TimedSet{"square": 0x3, "nonexistent": 0x42, "frood": 0x4})
+	assert.DeepEquals(t, user.RoleNames(), ch.TimedSet{"square": 0x3, "nonexistent": 0x42, "frood": 0x4})
 	auth.Save(user)
 
 	user2, err := auth.GetUser("arthur")
@@ -367,7 +369,7 @@ func TestRoleInheritance(t *testing.T) {
 	log.Printf("Channels = %s", user2.Channels())
 	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("britain"), 1))
 	assert.DeepEquals(t, user2.InheritedChannels(),
-		ch.AtSequence(ch.SetOf("britain", "dull", "duller", "dullest", "hoopy", "hoopier", "hoopiest"), 1))
+		ch.TimedSet{"britain": 0x1, "dull": 0x3, "duller": 0x3, "dullest": 0x3, "hoopy": 0x4, "hoopier": 0x4, "hoopiest": 0x4})
 	assert.True(t, user2.CanSeeChannel("britain"))
 	assert.True(t, user2.CanSeeChannel("duller"))
 	assert.True(t, user2.CanSeeChannel("hoopy"))

@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -41,12 +40,54 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+// Get admin database info
+func (h *handler) handleGetDbConfig() error {
+	h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+	return nil
+}
+
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
 	if !h.server.RemoveDatabase(h.db.Name) {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
+	return nil
+}
+
+// raw document access for admin api
+
+func (h *handler) handleGetRawDoc() error {
+	h.assertAdminOnly()
+	docid := h.PathVar("docid")
+	doc, err := h.db.GetDoc(docid)
+	if doc != nil {
+		h.writeJSON(doc)
+	}
+	return err
+}
+
+func (h *handler) handleGetLogging() error {
+	h.writeJSON(base.GetLogKeys())
+	return nil
+}
+
+func (h *handler) handleSetLogging() error {
+	body, err := h.readBody()
+	if err != nil {
+		return nil
+	}
+	if h.getQuery("level") != "" {
+		base.SetLogLevel(int(h.getRestrictedIntQuery("level", uint64(base.LogLevel()), 1, 3)))
+		if len(body) == 0 {
+			return nil // empty body is OK if request is just setting the log level
+		}
+	}
+	var keys map[string]bool
+	if err := json.Unmarshal(body, &keys); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values")
+	}
+	base.UpdateLogKeys(keys, h.rq.Method == "PUT")
 	return nil
 }
 
@@ -71,13 +112,15 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	info := PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
-		Channels:         princ.Channels().AsSet(),
 	}
 	if user, ok := princ.(auth.User); ok {
+		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
-		info.ExplicitRoleNames = user.ExplicitRoleNames()
-		info.RoleNames = user.RoleNames()
+		info.ExplicitRoleNames = user.ExplicitRoles().AllChannels()
+		info.RoleNames = user.RoleNames().AllChannels()
+	} else {
+		info.Channels = princ.Channels().AsSet()
 	}
 	return json.Marshal(info)
 }
@@ -127,14 +170,33 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, lastSeq+1)
 	princ.SetExplicitChannels(updatedChannels)
 
-	// Then the roles:
+	// Then the user-specific fields like roles:
 	if isUser {
 		user.SetEmail(newInfo.Email)
 		if newInfo.Password != nil {
 			user.SetPassword(*newInfo.Password)
 		}
 		user.SetDisabled(newInfo.Disabled)
-		user.SetExplicitRoleNames(newInfo.ExplicitRoleNames)
+
+		// Convert the array of role strings into a TimedSet by reapplying the current sequences
+		// for existing roles, and using the database's last sequence for any new roles.
+		newRoles := ch.TimedSet{}
+		oldRoles := user.ExplicitRoles()
+		var currentSequence uint64
+		for _, roleName := range newInfo.ExplicitRoleNames {
+			since, found := oldRoles[roleName]
+			if !found {
+				if currentSequence == 0 {
+					currentSequence, _ = dbc.LastSequence()
+					if currentSequence == 0 {
+						currentSequence = 1
+					}
+				}
+				since = currentSequence
+			}
+			newRoles[roleName] = since
+		}
+		user.SetExplicitRoles(newRoles)
 	}
 
 	// And finally save the Principal:
@@ -146,7 +208,7 @@ func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bo
 func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
-	body, _ := ioutil.ReadAll(h.rq.Body)
+	body, _ := h.readBody()
 	var newInfo PrincipalConfig
 	var err error
 	if err = json.Unmarshal(body, &newInfo); err != nil {
@@ -170,12 +232,11 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	replaced, err := updatePrincipal(h.db.DatabaseContext, newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
+	} else if replaced {
+		h.writeStatus(http.StatusOK, "OK")
+	} else {
+		h.writeStatus(http.StatusCreated, "Created")
 	}
-	status := http.StatusOK
-	if !replaced {
-		status = http.StatusCreated
-	}
-	h.response.WriteHeader(status)
 	return nil
 }
 

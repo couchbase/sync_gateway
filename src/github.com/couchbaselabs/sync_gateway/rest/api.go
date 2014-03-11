@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"runtime"
@@ -25,13 +24,16 @@ import (
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
-const VersionString = "Couchbase Sync Gateway/0.9"
+const ServerName = "Couchbase Sync Gateway"
+const VersionNumberString = "0.93"
+const VersionString = ServerName + "/" + VersionNumberString
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
 	response := map[string]interface{}{
-		"couchdb": "welcome",
+		"couchdb": "Welcome",
 		"version": VersionString,
+		"vendor":  db.Body{"name": ServerName, "version": VersionNumberString},
 	}
 	if h.privs == adminPrivs {
 		response["ADMIN"] = true
@@ -77,13 +79,13 @@ func (h *handler) handleGetDB() error {
 	}
 	response := db.Body{
 		"db_name":              h.db.Name,
-		"doc_count":            h.db.DocCount(),
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
 		"instance_start_time":  h.instanceStartTime(),
 		"compact_running":      false, // TODO: Implement this
 		"purge_seq":            0,     // TODO: Should track this value
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
+		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)
 	return nil
@@ -99,24 +101,45 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 }
 
 func (h *handler) handleDesign() error {
-	// we serve this content here so that CouchDB 1.2 has something to
-	// hash into the replication-id, to correspond to our filter.
-	filter := "ok"
-	if h.db.DatabaseContext.ChannelMapper != nil {
-		hash := sha1.New()
-		io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
-		filter = fmt.Sprint(hash.Sum(nil))
+	designDocID := h.PathVar("docid")
+	if designDocID == "sync_gateway" {
+		// we serve this content here so that CouchDB 1.2 has something to
+		// hash into the replication-id, to correspond to our filter.
+		filter := "ok"
+		if h.db.DatabaseContext.ChannelMapper != nil {
+			hash := sha1.New()
+			io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
+			filter = fmt.Sprint(hash.Sum(nil))
+		}
+		h.writeJSON(db.Body{"filters": db.Body{"bychannel": filter}})
+		return nil
+	} else {
+		h.SetPathVar("docid", "_design/"+designDocID)
+		return h.handleGetDoc()
 	}
-	h.writeJSON(db.Body{"filters": db.Body{"bychannel": filter}})
-	return nil
+}
+
+func (h *handler) handlePutDesign() error {
+	designDocID := h.PathVar("docid")
+	if designDocID == "sync_gateway" {
+		return base.HTTPErrorf(http.StatusForbidden, "forbidden")
+	} else {
+		h.SetPathVar("docid", "_design/"+designDocID)
+		if h.rq.Method == "DELETE" {
+			return h.handleDeleteDoc()
+		} else {
+			return h.handlePutDoc()
+		}
+	}
 }
 
 // ADMIN API to turn Go CPU profiling on/off
-func (h *handler) handleCPUProfiling() error {
+func (h *handler) handleProfiling() error {
+	profileName := h.PathVar("name")
 	var params struct {
 		File string `json:"file"`
 	}
-	body, err := ioutil.ReadAll(h.rq.Body)
+	body, err := h.readBody()
 	if err != nil {
 		return err
 	}
@@ -127,15 +150,29 @@ func (h *handler) handleCPUProfiling() error {
 	}
 
 	if params.File != "" {
-		base.Log("Profiling to %s ...", params.File)
 		f, err := os.Create(params.File)
 		if err != nil {
 			return err
 		}
-		pprof.StartCPUProfile(f)
+		if profileName != "" {
+			defer f.Close()
+			if profile := pprof.Lookup(profileName); profile != nil {
+				profile.WriteTo(f, 0)
+				base.Log("Wrote %s profile to %s", profileName, params.File)
+			} else {
+				return base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
+			}
+		} else {
+			base.Log("Starting CPU profile to %s ...", params.File)
+			pprof.StartCPUProfile(f)
+		}
 	} else {
-		base.Log("...ending profile.")
-		pprof.StopCPUProfile()
+		if profileName != "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
+		} else {
+			base.Log("...ending CPU profile.")
+			pprof.StopCPUProfile()
+		}
 	}
 	return nil
 }
@@ -145,7 +182,7 @@ func (h *handler) handleHeapProfiling() error {
 	var params struct {
 		File string `json:"file"`
 	}
-	body, err := ioutil.ReadAll(h.rq.Body)
+	body, err := h.readBody()
 	if err != nil {
 		return err
 	}

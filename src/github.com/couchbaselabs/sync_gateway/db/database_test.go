@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/couchbaselabs/go.assert"
 
@@ -26,6 +27,7 @@ import (
 const kTestURL = "walrus:"
 
 func init() {
+	base.LogNoColor()
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["CRUD+"] = true
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
@@ -92,7 +94,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Retrieve rev 1...")
 	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
 	assertNoError(t, err, "Couldn't get document with rev 1")
-	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": int64(1234), "_id": "doc1", "_rev": rev1id})
+	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234, "_id": "doc1", "_rev": rev1id})
 
 	log.Printf("Retrieve rev 2...")
 	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
@@ -114,24 +116,21 @@ func TestDatabase(t *testing.T) {
 
 	// Test RevDiff:
 	log.Printf("Check RevDiff...")
-	missing, possible, err := db.RevDiff("doc1",
+	missing, possible := db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"2-488724414d0ed6b398d6d2aeb228d797"})
-	assertNoError(t, err, "RevDiff failed")
 	assert.True(t, missing == nil)
 	assert.True(t, possible == nil)
 
-	missing, possible, err = db.RevDiff("doc1",
+	missing, possible = db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
-	assertNoError(t, err, "RevDiff failed")
 	assert.DeepEquals(t, missing, []string{"3-foo"})
 	assert.DeepEquals(t, possible, []string{"2-488724414d0ed6b398d6d2aeb228d797"})
 
-	missing, possible, err = db.RevDiff("nosuchdoc",
+	missing, possible = db.RevDiff("nosuchdoc",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
-	assertNoError(t, err, "RevDiff failed")
 	assert.DeepEquals(t, missing, []string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 		"3-foo"})
 	assert.True(t, possible == nil)
@@ -192,26 +191,24 @@ func TestGetDeleted(t *testing.T) {
 }
 
 func TestAllDocs(t *testing.T) {
-	AlwaysCompactChangeLog = true // Makes examining the change log deterministic
-	defer func() { AlwaysCompactChangeLog = false }()
-
+	// base.LogKeys["Cache"] = true
+	// base.LogKeys["Changes"] = true
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	// Lower the log capacity to 50 to ensure the test will overflow, causing logs to be truncated,
-	// so the changes feed will have to backfill from its view.
-	oldMaxLogLength := MaxChangeLogLength
-	oldAlwaysCompact := AlwaysCompactChangeLog
-	MaxChangeLogLength = 50
-	AlwaysCompactChangeLog = true
-	defer func() { MaxChangeLogLength = oldMaxLogLength; AlwaysCompactChangeLog = oldAlwaysCompact }()
+	// Lower the log expiration time to zero so no more than 50 items will be kept.
+	oldChannelCacheAge := ChannelCacheAge
+	ChannelCacheAge = 0
+	defer func() { ChannelCacheAge = oldChannelCacheAge }()
 
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
-	defer func() {
-		base.LogKeys["Changes"] = false
-		base.LogKeys["Changes+"] = false
-	}()
+	/*
+		base.LogKeys["Changes"] = true
+		base.LogKeys["Changes+"] = true
+		defer func() {
+			base.LogKeys["Changes"] = false
+			base.LogKeys["Changes+"] = false
+		}()
+	*/
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -251,15 +248,12 @@ func TestAllDocs(t *testing.T) {
 		assert.DeepEquals(t, entry, ids[j])
 	}
 
-	db.changesWriter.checkpoint()
-
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	log, err := db.GetChangeLog("all", 0)
-	assertNoError(t, err, "GetChangeLog")
-	assert.Equals(t, log.Since, uint64(51))
-	assert.Equals(t, len(log.Entries), 50)
-	assert.Equals(t, int(log.Entries[0].Sequence), 52)
+	db.changeCache.waitForSequence(101)
+	log := db.GetChangeLog("all", 0)
+	assert.Equals(t, len(log), 50)
+	assert.Equals(t, int(log[0].Sequence), 52)
 
 	// Now check the changes feed:
 	var options ChangesOptions
@@ -273,7 +267,7 @@ func TestAllDocs(t *testing.T) {
 		if i >= 23 {
 			seq++
 		}
-		assert.Equals(t, change.Seq, fmt.Sprintf("all:%d", seq))
+		assert.Equals(t, change.Seq, uint64(seq))
 		assert.Equals(t, change.Deleted, i == 99)
 		var removed base.Set
 		if i == 99 {
@@ -287,36 +281,20 @@ func TestAllDocs(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 10)
 	for i, change := range changes {
-		assert.Equals(t, change.Seq, fmt.Sprintf("KFJC:%d", 10*i+1))
+		assert.Equals(t, change.Seq, uint64(10*i+1))
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, base.Set(nil))
 		assert.Equals(t, change.Doc["serialnumber"], int64(10*i))
 	}
-
-	// Delete the channel log to test if it can be rebuilt:
-	assertNoError(t, db.Bucket.Delete(channelLogDocID("all")), "delete channel log")
-
-	// Get the changes feed; result should still be correct:
-	changes, err = db.GetChanges(channels.SetOf("all"), options)
-	assertNoError(t, err, "Couldn't GetChanges")
-	assert.Equals(t, len(changes), 100)
-
-	// Verify it was rebuilt
-	log, err = db.GetChangeLog("all", 0)
-	assertNoError(t, err, "GetChangeLog")
-	assert.Equals(t, len(log.Entries), 50)
-	assert.Equals(t, int(log.Entries[0].Sequence), 52)
 }
 
 func TestConflicts(t *testing.T) {
-	AlwaysCompactChangeLog = true // Makes examining the change log deterministic
-	defer func() { AlwaysCompactChangeLog = false }()
-
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	//base.LogKeys["Cache"] = true
 	// base.LogKeys["CRUD"] = true
 	// base.LogKeys["Changes"] = true
 
@@ -324,12 +302,10 @@ func TestConflicts(t *testing.T) {
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
 
-	db.changesWriter.checkpoint()
+	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
 
-	log, err := db.GetChangeLog("all", 0)
-	assertNoError(t, err, "GetChangeLog")
-	assert.Equals(t, len(log.Entries), 1)
-	assert.Equals(t, int(log.Since), 0)
+	log := db.GetChangeLog("all", 0)
+	assert.Equals(t, len(log), 1)
 
 	// Create two conflicting changes:
 	body["n"] = 2
@@ -339,6 +315,8 @@ func TestConflicts(t *testing.T) {
 	body["channels"] = []string{"all", "2a"}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
 
+	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
+
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": int64(2),
@@ -346,53 +324,58 @@ func TestConflicts(t *testing.T) {
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev("doc", "1-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": int64(1),
-		"channels": []interface{}{"all", "1"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": 1,
+		"channels": []string{"all", "1"}})
 	gotBody, err = db.GetRev("doc", "2-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
-		"channels": []interface{}{"all", "2a"}})
-
-	db.changesWriter.checkpoint()
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
+		"channels": []string{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
-	log, _ = db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log.Entries), 2)
-	assert.Equals(t, int(log.Since), 0)
-	assert.DeepEquals(t, log.Entries[0], &channels.LogEntry{Sequence: 2, DocID: "doc", RevID: "2-b"})
-	assert.DeepEquals(t, log.Entries[1], &channels.LogEntry{Sequence: 3, DocID: "doc", RevID: "2-a", Flags: channels.Hidden})
+	db.changeCache.waitForSequence(3)
+	log = db.GetChangeLog("all", 0)
+	assert.Equals(t, len(log), 1)
+	assert.Equals(t, log[0].Sequence, uint64(3))
+	assert.Equals(t, log[0].DocID, "doc")
+	assert.Equals(t, log[0].RevID, "2-b")
+	assert.Equals(t, log[0].Flags, uint8(channels.Hidden|channels.Branched|channels.Conflict))
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
-		Conflicts:  true,
-		Terminator: make(chan bool),
+		Conflicts: true,
 	}
-	defer close(options.Terminator)
 	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
-	assert.Equals(t, len(changes), 2)
-	// (CouchDB would merge these into one entry, but the gateway doesn't.)
+	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     "all:2",
-		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-b"}}})
-	assert.DeepEquals(t, changes[1], &ChangeEntry{
-		Seq:     "all:3",
-		ID:      "doc",
-		Changes: []ChangeRev{{"rev": "2-a"}}})
+		Seq:      3,
+		ID:       "doc",
+		Changes:  []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
+		branched: true})
 
 	// Delete 2-b; verify this makes 2-a current:
-	_, err = db.DeleteDoc("doc", "2-b")
+	rev3, err := db.DeleteDoc("doc", "2-b")
 	assertNoError(t, err, "delete 2-b")
 	gotBody, err = db.Get("doc")
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
 		"channels": []interface{}{"all", "2a"}})
 
 	// Verify channel assignments are correct for channels defined by 2-a:
-	doc, _ := db.getDoc("doc")
+	doc, _ := db.GetDoc("doc")
 	chan2a, found := doc.Channels["2a"]
 	assert.True(t, found)
 	assert.True(t, chan2a == nil)             // currently in 2a
 	assert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
+
+	// Verify the _changes feed:
+	db.changeCache.waitForSequence(4)
+	changes, err = db.GetChanges(channels.SetOf("all"), options)
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:      4,
+		ID:       "doc",
+		Changes:  []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
+		branched: true})
 }
 
 func TestInvalidChannel(t *testing.T) {
@@ -451,7 +434,7 @@ func TestAccessFunction(t *testing.T) {
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	user.SetExplicitRoleNames([]string{"animefan", "tumblr"})
+	user.SetExplicitRoles(channels.TimedSet{"animefan": 1, "tumblr": 1})
 	assertNoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
@@ -477,12 +460,11 @@ func TestAccessFunction(t *testing.T) {
 }
 
 func TestDocIDs(t *testing.T) {
-	var db *Database
-	assert.Equals(t, db.realDocID(""), "")
-	assert.Equals(t, db.realDocID("_"), "")
-	assert.Equals(t, db.realDocID("_foo"), "")
-	assert.Equals(t, db.realDocID("foo"), "foo")
-	assert.Equals(t, db.realDocID("_design/foo"), "_design/foo")
+	assert.Equals(t, realDocID(""), "")
+	assert.Equals(t, realDocID("_"), "")
+	assert.Equals(t, realDocID("_foo"), "")
+	assert.Equals(t, realDocID("foo"), "foo")
+	assert.Equals(t, realDocID("_design/foo"), "_design/foo")
 }
 
 func TestUpdateDesignDoc(t *testing.T) {
@@ -508,7 +490,7 @@ func TestImport(t *testing.T) {
 	}
 
 	// Make sure they aren't visible thru the gateway:
-	doc, err := db.getDoc("alreadyHere1")
+	doc, err := db.GetDoc("alreadyHere1")
 	assert.Equals(t, doc, (*document)(nil))
 	assert.Equals(t, err.(*base.HTTPError).Status, 404)
 
@@ -517,7 +499,7 @@ func TestImport(t *testing.T) {
 	assertNoError(t, err, "ApplySyncFun")
 
 	// Now they're visible:
-	doc, err = db.getDoc("alreadyHere1")
+	doc, err = db.GetDoc("alreadyHere1")
 	base.Log("doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")
@@ -526,7 +508,7 @@ func TestImport(t *testing.T) {
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.LogLevel = 2
+	base.SetLogLevel(2) // disables logging
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,

@@ -28,6 +28,7 @@ func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 }
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
+	dbExpvars.Add("sequence_gets", 1)
 	last, err := s.bucket.Incr("_sync:seq", 0, 0, 0)
 	if err != nil {
 		base.Warn("Error from Incr in lastSequence(): %v", err)
@@ -48,6 +49,11 @@ func (s *sequenceAllocator) nextSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
+	if s.last < s.max {
+		return nil // Already have some sequences left; don't be greedy and waste them
+		//OPT: Could remember multiple discontiguous ranges of free sequences
+	}
+	dbExpvars.Add("sequence_reserves", 1)
 	max, err := s.bucket.Incr("_sync:seq", numToReserve, numToReserve, 0)
 	if err != nil {
 		base.Warn("Error from Incr in _reserveSequences(%d): %v", numToReserve, err)

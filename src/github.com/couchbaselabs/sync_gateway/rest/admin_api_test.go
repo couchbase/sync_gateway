@@ -34,6 +34,7 @@ func TestUserAPI(t *testing.T) {
 	assert.Equals(t, body["name"], "snej")
 	assert.Equals(t, body["email"], "jens@couchbase.com")
 	assert.DeepEquals(t, body["admin_channels"], []interface{}{"bar", "foo"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "foo"})
 	assert.Equals(t, body["password"], nil)
 
 	// Check the list of all users:
@@ -69,6 +70,25 @@ func TestUserAPI(t *testing.T) {
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["name"], "snej")
+
+	// Create a role
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+	response = rt.sendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
+	assertStatus(t, response, 201)
+
+	// Give the user that role
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"admin_channels":["foo", "bar"],"admin_roles":["hipster"]}`)
+	assertStatus(t, response, 200)
+
+	// GET the user and verify that it shows the channels inherited from the role
+	response = rt.sendAdminRequest("GET", "/db/_user/snej", "")
+	assertStatus(t, response, 200)
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
+
+	// DELETE the user
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 }
 

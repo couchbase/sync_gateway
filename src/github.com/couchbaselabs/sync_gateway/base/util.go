@@ -10,12 +10,14 @@
 package base
 
 import (
+	"strconv"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 func GenerateRandomSecret() string {
@@ -120,4 +122,24 @@ func ToInt64(value interface{}) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// IntMax is an expvar.Value that tracks the maximum value it's given.
+type IntMax struct {
+	i  int64
+	mu sync.RWMutex
+}
+
+func (v *IntMax) String() string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return strconv.FormatInt(v.i, 10)
+}
+
+func (v *IntMax) SetIfMax(value int64) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if value > v.i {
+		v.i = value
+	}
 }

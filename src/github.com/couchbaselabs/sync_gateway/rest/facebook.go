@@ -12,7 +12,6 @@ package rest
 import (
 	"encoding/json"
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/db"
 	"net/http"
 	"net/url"
 )
@@ -31,7 +30,7 @@ func (h *handler) handleFacebookPOST() error {
 	var params struct {
 		AccessToken string `json:"access_token"`
 	}
-	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
+	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
 	}

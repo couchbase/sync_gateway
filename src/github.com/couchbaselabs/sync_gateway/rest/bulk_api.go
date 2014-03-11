@@ -15,6 +15,7 @@ import (
 	"html"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -24,14 +25,18 @@ import (
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
+	includeChannels := h.getBoolQuery("channels") && h.user == nil
+	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
 	includeSeqs := h.getBoolQuery("update_seq")
 	var ids []db.IDAndRev
 	var err error
+	var docCount int
 
 	// Get the doc IDs:
 	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
 		ids, err = h.db.AllDocIDs()
+		docCount = len(ids)
 	} else {
 		input, err := h.readJSON()
 		if err == nil {
@@ -47,17 +52,23 @@ func (h *handler) handleAllDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
+		docCount = h.db.DocCount()
 	}
 	if err != nil {
 		return err
 	}
 
+	type viewRowValue struct {
+		Rev      string              `json:"rev"`
+		Channels base.Set            `json:"channels,omitempty"` // for admins only
+		Access   map[string]base.Set `json:"access,omitempty"`   // for admins only
+	}
 	type viewRow struct {
-		ID        string            `json:"id"`
-		Key       string            `json:"key"`
-		Value     map[string]string `json:"value"`
-		Doc       db.Body           `json:"doc,omitempty"`
-		UpdateSeq uint64            `json:"update_seq,omitempty"`
+		ID        string       `json:"id"`
+		Key       string       `json:"key"`
+		Value     viewRowValue `json:"value"`
+		Doc       db.Body      `json:"doc,omitempty"`
+		UpdateSeq uint64       `json:"update_seq,omitempty"`
 	}
 	h.setHeader("Content-Type", "application/json")
 	h.response.Write([]byte(`{"rows":[` + "\n"))
@@ -66,19 +77,30 @@ func (h *handler) handleAllDocs() error {
 	totalRows := 0
 	for _, id := range ids {
 		row := viewRow{ID: id.DocID, Key: id.DocID}
-		if includeDocs || id.RevID == "" {
-			// Fetch the document body:
-			body, err := h.db.GetRev(id.DocID, id.RevID, includeRevs, nil)
-			if err == nil {
-				if body["_removed"] != nil {
-					continue
-				}
-				id.RevID = body["_rev"].(string)
-				if includeDocs {
-					row.Doc = body
-				}
-			} else {
+		if includeDocs || id.RevID == "" || includeChannels || includeAccess {
+			// Fetch the document body and other metadata that lives with it:
+			body, channels, access, roleAccess, err := h.db.GetRevAndChannels(id.DocID, id.RevID, includeRevs)
+			if err != nil || body["_removed"] != nil {
 				continue
+			}
+			id.RevID = body["_rev"].(string)
+			if includeDocs {
+				row.Doc = body
+			}
+			if includeChannels && channels != nil {
+				row.Value.Channels = base.Set{}
+				for channelName, _ := range channels {
+					row.Value.Channels[channelName] = struct{}{}
+				}
+			}
+			if includeAccess && (access != nil || roleAccess != nil) {
+				row.Value.Access = map[string]base.Set{}
+				for userName, channels := range access {
+					row.Value.Access[userName] = channels.AsSet()
+				}
+				for roleName, channels := range roleAccess {
+					row.Value.Access["role:"+roleName] = channels.AsSet()
+				}
 			}
 		} else if err := h.db.AuthorizeDocID(id.DocID, id.RevID); err != nil {
 			continue
@@ -86,7 +108,7 @@ func (h *handler) handleAllDocs() error {
 		if includeSeqs {
 			row.UpdateSeq = id.Sequence
 		}
-		row.Value = map[string]string{"rev": id.RevID}
+		row.Value.Rev = id.RevID
 
 		if totalRows > 0 {
 			h.response.Write([]byte(",\n"))
@@ -95,7 +117,9 @@ func (h *handler) handleAllDocs() error {
 		h.addJSON(row)
 	}
 
-	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d}`, totalRows)))
+	lastSeq, _ := h.db.LastSequence()
+	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
+		docCount, lastSeq)))
 	return nil
 }
 
@@ -128,15 +152,80 @@ func (h *handler) handleDump() error {
 	return nil
 }
 
+// HTTP handler for _view
+func (h *handler) handleView() error {
+	viewName := h.PathVar("view")
+	opts := db.Body{}
+	qStale := h.getQuery("stale")
+	if "" != qStale {
+		opts["stale"] = qStale == "true"
+	}
+	qReduce := h.getQuery("reduce")
+	if "" != qReduce {
+		opts["reduce"] = qReduce == "true"
+	}
+	qStartkey := h.getQuery("startkey")
+	if "" != qStartkey {
+		var sKey interface{}
+		errS := json.Unmarshal([]byte(qStartkey), &sKey)
+		if errS != nil {
+			return errS
+		}
+		opts["startkey"] = sKey
+	}
+	qEndkey := h.getQuery("endkey")
+	if "" != qEndkey {
+		var eKey interface{}
+		errE := json.Unmarshal([]byte(qEndkey), &eKey)
+		if errE != nil {
+			return errE
+		}
+		opts["endkey"] = eKey
+	}
+	qGroupLevel := h.getQuery("group_level")
+	if "" != qGroupLevel {
+		opts["group_level"] = int(h.getIntQuery("group_level", 1))
+	}
+	qGroup := h.getQuery("group")
+	if "" != qGroup {
+		opts["group"] = qGroup == "true"
+	}
+	qLimit := h.getQuery("limit")
+	if "" != qLimit {
+		opts["limit"] = int(h.getIntQuery("limit", 1))
+	}
+	base.LogTo("HTTP", "JSON view %q opts %q", viewName, opts)
+	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
+	if err != nil {
+		return err
+	}
+	h.setHeader("Content-Type", `application/json; charset="UTF-8"`)
+	h.response.Write([]byte(`{"rows":[`))
+	first := true
+	for _, row := range result.Rows {
+		if first {
+			first = false
+		} else {
+			h.response.Write([]byte(",\n"))
+		}
+		key, _ := json.Marshal(row.Key)
+		value, _ := json.Marshal(row.Value)
+		id, _ := json.Marshal(row.ID)
+		h.response.Write([]byte(fmt.Sprintf("{\"key\":%s, \"value\":%s , \"id\":%s}",
+			string(key), string(value), string(id))))
+	}
+	h.response.Write([]byte("]}\n"))
+	return nil
+}
+
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
+	since := h.getIntQuery("since", 0)
 	base.LogTo("HTTP", "Dump channel %q", channelName)
 
-	chanLog, err := h.db.GetChangeLog(channelName, 0)
-	if err != nil {
-		return err
-	} else if chanLog == nil {
+	chanLog := h.db.GetChangeLog(channelName, since)
+	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
@@ -147,9 +236,9 @@ func (h *handler) handleDumpChannel() error {
 		<p>Since = %d</p>
 		<table border=1>
 		`,
-		title, title, chanLog.Since)))
+		title, title, chanLog[0].Sequence-1)))
 	h.response.Write([]byte("\t<tr><th>Seq</th><th>Doc</th><th>Rev</th><th>Flags</th></tr>\n"))
-	for _, entry := range chanLog.Entries {
+	for _, entry := range chanLog {
 		h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
 			entry.Sequence,
 			html.EscapeString(entry.DocID), html.EscapeString(entry.RevID), entry.Flags)))
@@ -172,6 +261,7 @@ func (h *handler) handleDumpChannel() error {
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
+	canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 	body, err := h.readJSON()
 	if err != nil {
 		return err
@@ -179,6 +269,10 @@ func (h *handler) handleBulkGet() error {
 
 	err = h.writeMultipart(func(writer *multipart.Writer) error {
 		for _, item := range body["docs"].([]interface{}) {
+			var body db.Body
+			var attsSince []string
+			var err error
+
 			doc := item.(map[string]interface{})
 			docid, _ := doc["id"].(string)
 			revid := ""
@@ -187,32 +281,35 @@ func (h *handler) handleBulkGet() error {
 				revid, revok = doc["rev"].(string)
 			}
 			if docid == "" || !revok {
-				return base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID")
-			}
-
-			var attsSince []string = nil
-			if includeAttachments {
-				if doc["atts_since"] != nil {
-					raw, ok := doc["atts_since"].([]interface{})
-					if ok {
-						attsSince = make([]string, len(raw))
-						for i := 0; i < len(raw); i++ {
-							attsSince[i], ok = raw[i].(string)
-							if !ok {
-								break
+				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
+			} else {
+				if includeAttachments {
+					if doc["atts_since"] != nil {
+						raw, ok := doc["atts_since"].([]interface{})
+						if ok {
+							attsSince = make([]string, len(raw))
+							for i := 0; i < len(raw); i++ {
+								attsSince[i], ok = raw[i].(string)
+								if !ok {
+									break
+								}
 							}
 						}
+						if !ok {
+							err = base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
+						}
+					} else {
+						attsSince = []string{}
 					}
-					if !ok {
-						return base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
-					}
-				} else {
-					attsSince = []string{}
 				}
 			}
 
-			body, err := h.db.GetRev(docid, revid, includeRevs, attsSince)
+			if err == nil {
+				body, err = h.db.GetRev(docid, revid, includeRevs, attsSince)
+			}
+
 			if err != nil {
+				// Report error in the response for this doc:
 				status, reason := base.ErrorAsHTTPStatus(err)
 				errStr := base.CouchHTTPErrorName(status)
 				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
@@ -221,7 +318,7 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			h.db.WriteRevisionAsPart(body, err != nil, writer)
+			h.db.WriteRevisionAsPart(body, err != nil, canCompress, writer)
 		}
 		return nil
 	})

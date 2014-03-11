@@ -3,29 +3,44 @@ package channels
 import (
 	"fmt"
 	"sort"
+	"time"
+
+	"github.com/couchbaselabs/sync_gateway/base"
 )
 
 type LogEntry struct {
-	Sequence uint64 // Sequence number
-	DocID    string // Document ID
-	RevID    string // Revision ID
-	Flags    uint8  // Deleted/Removed/Hidden flags
+	Sequence     uint64     // Sequence number
+	DocID        string     // Document ID
+	RevID        string     // Revision ID
+	Flags        uint8      // Deleted/Removed/Hidden flags
+	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
+	TimeReceived time.Time  // Time received from tap feed
+	Channels     ChannelMap // Channels this entry is in or was removed from
+}
+
+type ChannelMap map[string]*ChannelRemoval
+type ChannelRemoval struct {
+	Seq     uint64 `json:"seq"`
+	RevID   string `json:"rev"`
+	Deleted bool   `json:"del,omitempty"`
 }
 
 // Bits in LogEntry.Flags
 const (
-	Deleted = 1 << iota
-	Removed
-	Hidden
+	Deleted  = 1 << iota // This rev is a deletion
+	Removed              // Doc was removed from this channel
+	Hidden               // This rev is not the default (hidden by a conflict)
+	Conflict             // Document is in conflict at this time
+	Branched             // Revision tree is branched
 
 	kMaxFlag = (1 << iota) - 1
 )
 
 // A sequential log of document revisions added to a channel, used to generate _changes feeds.
-// The log is sorted by order revisions were added; this is mostly but not always by sequence.
+// The log is sorted by increasing sequence number.
 type ChangeLog struct {
 	Since   uint64      // Sequence this log is valid _after_, i.e. max sequence not in the log
-	Entries []*LogEntry // Entries in order they were added (not sequence order!)
+	Entries []*LogEntry // Ordered entries
 }
 
 func (entry *LogEntry) checkValid() bool {
@@ -38,6 +53,13 @@ func (entry *LogEntry) assertValid() {
 	}
 }
 
+func (cp *ChangeLog) LastSequence() uint64 {
+	if n := len(cp.Entries); n > 0 {
+		return cp.Entries[n-1].Sequence
+	}
+	return cp.Since
+}
+
 // Adds a new entry, always at the end of the log.
 func (cp *ChangeLog) Add(newEntry LogEntry) {
 	newEntry.assertValid()
@@ -45,6 +67,16 @@ func (cp *ChangeLog) Add(newEntry LogEntry) {
 		cp.Since = newEntry.Sequence - 1
 	}
 	cp.Entries = append(cp.Entries, &newEntry)
+}
+
+func (cp *ChangeLog) AddEntries(entries []*LogEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	if len(cp.Entries) == 0 {
+		cp.Since = entries[0].Sequence - 1
+	}
+	cp.Entries = append(cp.Entries, entries...)
 }
 
 // Removes the oldest entries to limit the log's length to `maxLength`.
@@ -56,7 +88,10 @@ func (cp *ChangeLog) TruncateTo(maxLength int) int {
 				cp.Since = entry.Sequence
 			}
 		}
-		cp.Entries = cp.Entries[remove:]
+		// Copy entries into a new array to avoid leaving the entire old array in memory:
+		newEntries := make([]*LogEntry, maxLength)
+		copy(newEntries, cp.Entries[remove:])
+		cp.Entries = newEntries
 		return remove
 	}
 	return 0
@@ -66,12 +101,15 @@ func (cp *ChangeLog) TruncateTo(maxLength int) int {
 // (They're not guaranteed to have higher sequence numbers; sequences may be added out of order.)
 func (cp *ChangeLog) EntriesAfter(after uint64) []*LogEntry {
 	entries := cp.Entries
+	if after == cp.Since {
+		return entries
+	}
 	for i, entry := range entries {
 		if entry.Sequence == after {
 			return entries[i+1:]
 		}
 	}
-	return entries
+	return nil
 }
 
 // Filters the log to only the entries added after the one with sequence number 'after.
@@ -79,6 +117,34 @@ func (cp *ChangeLog) FilterAfter(after uint64) {
 	cp.Entries = cp.EntriesAfter(after)
 	if after > cp.Since {
 		cp.Since = after
+	}
+}
+
+func (cp *ChangeLog) HasEmptyEntries() bool {
+	for _, entry := range cp.Entries {
+		if entry.DocID == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Returns a copy without empty (no DocID) entries that resulted from revisions that have
+// been replaced. Result does not share a slice with the original cp.
+func (cp *ChangeLog) CopyRemovingEmptyEntries() *ChangeLog {
+	dst := make([]*LogEntry, 0, len(cp.Entries))
+	for _, entry := range cp.Entries {
+		if entry.DocID != "" {
+			dst = append(dst, entry)
+		}
+	}
+	return &ChangeLog{cp.Since, dst}
+}
+
+func (cp *ChangeLog) Dump() {
+	base.Log("Since: %d\n", cp.Since)
+	for _, e := range cp.Entries {
+		base.Log("    %5d %q %q %b\n", e.Sequence, e.DocID, e.RevID, e.Flags)
 	}
 }
 

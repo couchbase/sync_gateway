@@ -111,11 +111,20 @@ func TestRevTreeIsLeaf(t *testing.T) {
 
 func TestRevTreeWinningRev(t *testing.T) {
 	tempmap := branchymap.copy()
-	assert.Equals(t, tempmap.winningRevision(), "3-three")
+	winner, branched, conflict := tempmap.winningRevision()
+	assert.Equals(t, winner, "3-three")
+	assert.True(t, branched)
+	assert.True(t, conflict)
 	tempmap.addRevision(RevInfo{ID: "4-four", Parent: "3-three"})
-	assert.Equals(t, tempmap.winningRevision(), "4-four")
+	winner, branched, conflict = tempmap.winningRevision()
+	assert.Equals(t, winner, "4-four")
+	assert.True(t, branched)
+	assert.True(t, conflict)
 	tempmap.addRevision(RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
-	assert.Equals(t, tempmap.winningRevision(), "3-drei")
+	winner, branched, conflict = tempmap.winningRevision()
+	assert.Equals(t, winner, "3-drei")
+	assert.True(t, branched)
+	assert.False(t, conflict)
 }
 
 func TestRevTreeDepths(t *testing.T) {
@@ -155,6 +164,32 @@ func TestRevTreeDepths(t *testing.T) {
 	assert.Equals(t, tempmap["3-three"].Parent, "")
 	assert.True(t, tempmap["4-vier"] != nil)
 	assert.Equals(t, tempmap["4-vier"].Parent, "")
+}
+
+func TestParseRevisions(t *testing.T) {
+	type testCase struct {
+		json string
+		ids  []string
+	}
+	cases := []testCase{
+		{`{"_revisions": {"start": 5, "ids": ["huey", "dewey", "louie"]}}`,
+			[]string{"5-huey", "4-dewey", "3-louie"}},
+		{`{"_revisions": {"start": 3, "ids": ["huey"]}}`,
+			[]string{"3-huey"}},
+		{`{"_revisions": {"start": 2, "ids": ["huey", "dewey", "louie"]}}`, nil},
+		{`{"_revisions": {"ids": ["huey", "dewey", "louie"]}}`, nil},
+		{`{"_revisions": {"ids": "bogus"}}`, nil},
+		{`{"_revisions": {"start": 2}}`, nil},
+		{`{"_revisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
+		{`{"_revisions": 3.14159}`, nil},
+		{`{"_Xrevisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
+	}
+	for _, c := range cases {
+		var body Body
+		assertNoError(t, json.Unmarshal([]byte(c.json), &body), "base JSON in test case")
+		ids := ParseRevisions(body)
+		assert.DeepEquals(t, ids, c.ids)
+	}
 }
 
 //////// HELPERS:

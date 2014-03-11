@@ -11,8 +11,10 @@ package rest
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,6 +43,8 @@ var DebugMultipart bool = false
 
 var lastSerialNum uint64 = 0
 
+var restExpvars = expvar.NewMap("syncGateway_rest")
+
 func init() {
 	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
 }
@@ -51,14 +55,18 @@ var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server       *ServerContext
-	rq           *http.Request
-	response     http.ResponseWriter
-	db           *db.Database
-	user         auth.User
-	privs        handlerPrivs
-	startTime    time.Time
-	serialNumber uint64
+	server         *ServerContext
+	rq             *http.Request
+	response       http.ResponseWriter
+	status         int
+	statusMessage  string
+	requestBody    io.ReadCloser
+	db             *db.Database
+	user           auth.User
+	privs          handlerPrivs
+	startTime      time.Time
+	serialNumber   uint64
+	loggedDuration bool
 }
 
 type handlerPrivs int
@@ -77,31 +85,53 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		h := newHandler(server, privs, r, rq)
 		err := h.invoke(method)
 		h.writeError(err)
+		h.logDuration(true)
 	})
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request) *handler {
-	h := &handler{
+	return &handler{
 		server:       server,
 		privs:        privs,
 		rq:           rq,
 		response:     r,
+		status:       http.StatusOK,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
+		startTime:    time.Now(),
 	}
-	if base.LogKeys["HTTP+"] {
-		h.startTime = time.Now()
-	}
-	return h
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
+	restExpvars.Add("requests_total", 1)
+	restExpvars.Add("requests_active", 1)
+	defer restExpvars.Add("requests_active", -1)
+
+	var err error
+	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
+		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+			h.response = encoded
+			defer encoded.Close()
+		}
+	}
+
+	switch h.rq.Header.Get("Content-Encoding") {
+	case "":
+		h.requestBody = h.rq.Body
+	case "gzip":
+		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
+			return err
+		}
+		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
+	default:
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
+	}
+
 	h.setHeader("Server", VersionString)
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
 	if dbname := h.PathVar("db"); dbname != "" {
-		var err error
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
 			return err
@@ -110,7 +140,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
-		if err := h.checkAuth(dbContext); err != nil {
+		if err = h.checkAuth(dbContext); err != nil {
 			h.logRequestLine()
 			return err
 		}
@@ -120,7 +150,6 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		var err error
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
@@ -141,6 +170,34 @@ func (h *handler) logRequestLine() {
 		as = fmt.Sprintf("  (as %s)", h.user.Name())
 	}
 	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
+}
+
+func (h *handler) logDuration(realTime bool) {
+	if h.loggedDuration {
+		return
+	}
+	h.loggedDuration = true
+
+	var duration time.Duration
+	if realTime {
+		duration := time.Since(h.startTime)
+		bin := int(duration/(100*time.Millisecond)) * 100
+		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
+	}
+
+	logKey := "HTTP+"
+	if h.status >= 300 {
+		logKey = "HTTP"
+	}
+	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
+		h.serialNumber, h.status, h.statusMessage,
+		float64(duration)/float64(time.Millisecond))
+}
+
+// Used for indefinitely-long handlers like _changes that we don't want to track duration of
+func (h *handler) logStatus(status int, message string) {
+	h.setStatus(status, message)
+	h.logDuration(false) // don't track actual time
 }
 
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
@@ -199,6 +256,10 @@ func (h *handler) PathVar(name string) string {
 	return v
 }
 
+func (h *handler) SetPathVar(name string, value string) {
+	mux.Vars(h.rq)[name] = url.QueryEscape(value)
+}
+
 func (h *handler) getQuery(query string) string {
 	return h.rq.URL.Query().Get(query)
 }
@@ -236,6 +297,11 @@ func (h *handler) userAgentIs(agent string) bool {
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
 }
 
+// Returns the request body as a raw byte array.
+func (h *handler) readBody() ([]byte, error) {
+	return ioutil.ReadAll(h.requestBody)
+}
+
 // Parses a JSON request body, returning it as a Body map.
 func (h *handler) readJSON() (db.Body, error) {
 	var body db.Body
@@ -244,9 +310,10 @@ func (h *handler) readJSON() (db.Body, error) {
 
 // Parses a JSON request body into a custom structure.
 func (h *handler) readJSONInto(into interface{}) error {
-	return db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, into)
+	return db.ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
+// Reads & parses the request body, handling either JSON or multipart.
 func (h *handler) readDocument() (db.Body, error) {
 	contentType, attrs, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 	switch contentType {
@@ -254,7 +321,7 @@ func (h *handler) readDocument() (db.Body, error) {
 		return h.readJSON()
 	case "multipart/related":
 		if DebugMultipart {
-			raw, err := ioutil.ReadAll(h.rq.Body)
+			raw, err := h.readBody()
 			if err != nil {
 				return nil, err
 			}
@@ -266,11 +333,12 @@ func (h *handler) readDocument() (db.Body, error) {
 			}
 			return body, err
 		} else {
-			reader := multipart.NewReader(h.rq.Body, attrs["boundary"])
+			reader := multipart.NewReader(h.requestBody, attrs["boundary"])
 			return db.ReadMultipartDocument(reader)
 		}
+	default:
+		return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 	}
-	return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
 }
 
 func (h *handler) requestAccepts(mimetype string) bool {
@@ -314,11 +382,15 @@ func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)
 }
 
-func (h *handler) logStatus(status int, message string) {
-	if base.LogKeys["HTTP+"] {
-		duration := float64(time.Since(h.startTime)) / float64(time.Millisecond)
-		base.LogTo("HTTP+", "#%03d:     --> %d %s  (%.1f ms)",
-			h.serialNumber, status, message, duration)
+func (h *handler) setStatus(status int, message string) {
+	h.status = status
+	h.statusMessage = message
+}
+
+func (h *handler) disableResponseCompression() {
+	switch r := h.response.(type) {
+	case *EncodedResponseWriter:
+		r.disableCompression()
 	}
 }
 
@@ -344,15 +416,18 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 	}
 	h.setHeader("Content-Type", "application/json")
 	if h.rq.Method != "HEAD" {
+		if len(jsonOut) < 1000 {
+			h.disableResponseCompression()
+		}
 		h.setHeader("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
 		if status > 0 {
 			h.response.WriteHeader(status)
-			h.logStatus(status, "")
+			h.setStatus(status, "")
 		}
 		h.response.Write(jsonOut)
 	} else if status > 0 {
 		h.response.WriteHeader(status)
-		h.logStatus(status, "")
+		h.setStatus(status, "")
 	}
 }
 
@@ -398,32 +473,11 @@ func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 	return err
 }
 
-func (h *handler) writeln(line []byte) error {
-	var err error
-	if len(line) > 0 {
-		_, err = h.response.Write(line)
+func (h *handler) flush() {
+	switch r := h.response.(type) {
+	case http.Flusher:
+		r.Flush()
 	}
-	if err == nil {
-		_, err = h.response.Write([]byte("\r\n"))
-	}
-	if err == nil {
-		switch r := h.response.(type) {
-		case http.Flusher:
-			r.Flush()
-		}
-	}
-	return err
-}
-
-func (h *handler) write(line []byte) error {
-	_, err := h.response.Write(line)
-	if err == nil {
-		switch r := h.response.(type) {
-		case http.Flusher:
-			r.Flush()
-		}
-	}
-	return err
 }
 
 // If the error parameter is non-nil, sets the response status code appropriately and
@@ -439,7 +493,7 @@ func (h *handler) writeError(err error) {
 func (h *handler) writeStatus(status int, message string) {
 	if status < 300 {
 		h.response.WriteHeader(status)
-		h.logStatus(status, message)
+		h.setStatus(status, message)
 		return
 	}
 	// Got an error:
@@ -456,9 +510,10 @@ func (h *handler) writeStatus(status int, message string) {
 		}
 	}
 
+	h.disableResponseCompression()
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
-	base.LogTo("HTTP", " #%03d:     --> %d %s", h.serialNumber, status, message)
+	h.setStatus(status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }

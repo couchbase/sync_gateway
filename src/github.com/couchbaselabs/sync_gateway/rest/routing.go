@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )
 
@@ -41,8 +42,9 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/_all_docs", makeHandler(sc, privs, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, (*handler).handleBulkDocs)).Methods("POST")
 	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("POST")
-	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/sync_gateway", makeHandler(sc, privs, (*handler).handleDesign)).Methods("GET", "HEAD")
+	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_design/{docid}", makeHandler(sc, privs, (*handler).handleDesign)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/{docid}", makeHandler(sc, privs, (*handler).handlePutDesign)).Methods("PUT", "DELETE")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(sc, privs, (*handler).handleRevsDiff)).Methods("POST")
 
@@ -56,6 +58,19 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleDeleteDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handlePutAttachment)).Methods("PUT")
+
+	// Session/login URLs are per-database (unlike in CouchDB)
+	// These have public privileges so that they can be called without being logged in already
+	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
+	if sc.config.Persona != nil {
+		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
+			(*handler).handlePersonaPOST)).Methods("POST")
+	}
+	if sc.config.Facebook != nil {
+		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
+			(*handler).handleFacebookPOST)).Methods("POST")
+	}
 
 	return r, dbr
 }
@@ -63,22 +78,10 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 // Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, regularPrivs)
-
-	// Session/login URLs are per-database (unlike in CouchDB)
-	// These have public privileges so that they can be called without being logged in already
-	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
-	if sc.config.Persona != nil {
-		dbr.Handle("/_persona", makeHandler(sc, publicPrivs,
-			(*handler).handlePersonaPOST)).Methods("POST")
-	}
-
-	if sc.config.Facebook != nil {
-		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
-			(*handler).handleFacebookPOST)).Methods("POST")
-	}
-
+	dbr.Handle("/_session", makeHandler(sc, regularPrivs,
+		(*handler).handleSessionDELETE)).Methods("DELETE")
 	return wrapRouter(sc, regularPrivs, r)
 }
 
@@ -88,8 +91,19 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, adminPrivs)
 
+	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sc.config.AdminUI != nil {
+			http.ServeFile(w, r, *sc.config.AdminUI)
+		} else {
+			w.Write(sync_gateway_admin_ui.Admin_bundle_html())
+		}
+	})
+
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
+
+	dbr.Handle("/_raw/{docid:"+docRegex+"}",
+		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, (*handler).getUsers)).Methods("GET", "HEAD")
@@ -113,17 +127,29 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_role/{name}",
 		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
 
+	r.Handle("/_logging",
+		makeHandler(sc, adminPrivs, (*handler).handleGetLogging)).Methods("GET")
+	r.Handle("/_logging",
+		makeHandler(sc, adminPrivs, (*handler).handleSetLogging)).Methods("PUT", "POST")
+	r.Handle("/_profile/{name}",
+		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_profile",
-		makeHandler(sc, adminPrivs, (*handler).handleCPUProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_heap",
 		makeHandler(sc, adminPrivs, (*handler).handleHeapProfiling)).Methods("POST")
 	r.Handle("/_stats",
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
+	r.Handle(kDebugURLPathPrefix,
+		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
 
+	dbr.Handle("/_config",
+		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
+	dbr.Handle("/_view/{view}",
+		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
 

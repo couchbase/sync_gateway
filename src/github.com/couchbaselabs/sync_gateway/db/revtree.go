@@ -77,7 +77,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	if tree == nil {
-		base.Warn("No RevTree for input %q", inputjson)
+		//base.Warn("No RevTree for input %q", inputjson)
 		return nil
 	}
 	var rep revTreeList
@@ -182,19 +182,25 @@ func (tree RevTree) isLeaf(revid string) bool {
 
 // Finds the "winning" revision, the one that should be treated as the default.
 // This is the leaf revision whose (!deleted, generation, hash) tuple compares the highest.
-func (tree RevTree) winningRevision() string {
-	winner := ""
+func (tree RevTree) winningRevision() (winner string, branched bool, inConflict bool) {
 	winnerExists := false
-	for _, revid := range tree.getLeaves() {
-		info := tree[revid]
+	leafCount := 0
+	activeLeafCount := 0
+	tree.forEachLeaf(func(info *RevInfo) {
 		exists := !info.Deleted
+		leafCount++
+		if exists {
+			activeLeafCount++
+		}
 		if (exists && !winnerExists) ||
-			((exists == winnerExists) && compareRevIDs(revid, winner) > 0) {
-			winner = revid
+			((exists == winnerExists) && compareRevIDs(info.ID, winner) > 0) {
+			winner = info.ID
 			winnerExists = exists
 		}
-	}
-	return winner
+	})
+	branched = (leafCount>1)
+	inConflict = (activeLeafCount > 1)
+	return
 }
 
 // Given a revision and a set of possible ancestors, finds the one that is the most recent
@@ -333,12 +339,14 @@ func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 	revisions, ok := body["_revisions"].(map[string]interface{})
 	if !ok {
-		base.Warn("Unable to parse _revisions: %v", body["_revisions"])
 		return nil
 	}
-	start := int(revisions["start"].(float64))
-	ids := revisions["ids"].([]interface{})
-	if start < len(ids) {
+	var start int
+	if startf, ok := revisions["start"].(float64); ok {
+		start = int(startf)
+	}
+	ids, ok := revisions["ids"].([]interface{})
+	if !ok || len(ids) == 0 || start < len(ids) {
 		return nil
 	}
 	result := make([]string, 0, len(ids))

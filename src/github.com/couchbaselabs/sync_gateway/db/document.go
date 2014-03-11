@@ -11,30 +11,36 @@ package db
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
-
-type ChannelRemoval struct {
-	Seq     uint64 `json:"seq"`
-	RevID   string `json:"rev"`
-	Deleted bool   `json:"del,omitempty"`
-}
-type ChannelMap map[string]*ChannelRemoval
 
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
-	CurrentRev string        `json:"rev"`
-	Deleted    bool          `json:"deleted,omitempty"`
-	Sequence   uint64        `json:"sequence"`
-	History    RevTree       `json:"history"`
-	Channels   ChannelMap    `json:"channels,omitempty"`
-	Access     UserAccessMap `json:"access,omitempty"`
-	RoleAccess UserAccessMap `json:"role_access,omitempty"`
+	CurrentRev      string              `json:"rev"`
+	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags           uint8               `json:"flags,omitempty"`
+	Sequence        uint64              `json:"sequence"`
+	UnusedSequences []uint64            `json:"unused_sequences,omitempty"`
+	History         RevTree             `json:"history"`
+	Channels        channels.ChannelMap `json:"channels,omitempty"`
+	Access          UserAccessMap       `json:"access,omitempty"`
+	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
+
+	// Fields used by bucket-shadowing:
+	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
+	UpstreamRev string  `json:"upstream_rev,omitempty"` // Rev ID remote doc was saved as
+
+	// Only used for performance metrics:
+	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
+
+	// Backward compatibility (the "deleted" field was, um, deleted in commit 4194f81, 2/17/14)
+	Deleted_OLD bool `json:"deleted,omitempty"`
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -58,12 +64,52 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 		if err := json.Unmarshal(data, doc); err != nil {
 			return nil, err
 		}
+		if doc != nil && doc.Deleted_OLD {
+			doc.Deleted_OLD = false
+			doc.Flags |= channels.Deleted // Backward compatibility with old Deleted property
+		}
 	}
 	return doc, nil
 }
 
-func (doc *document) hasValidSyncData() bool {
-	return doc.CurrentRev != "" && doc.Sequence > 0
+// Unmarshals just a document's sync metadata from JSON data.
+// (This is somewhat faster, if all you need is the sync data without the doc body.)
+func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
+	var root documentRoot
+	if needHistory {
+		root.SyncData = &syncData{History: make(RevTree)}
+	}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil, err
+	}
+	if root.SyncData != nil && root.SyncData.Deleted_OLD {
+		root.SyncData.Deleted_OLD = false
+		root.SyncData.Flags |= channels.Deleted // Backward compatibility with old Deleted property
+	}
+	return root.SyncData, nil
+}
+
+func (doc *syncData) hasValidSyncData() bool {
+	return doc != nil && doc.CurrentRev != "" && doc.Sequence > 0
+}
+
+func (doc *document) hasFlag(flag uint8) bool {
+	return doc.Flags&flag != 0
+}
+
+func (doc *document) setFlag(flag uint8, state bool) {
+	if state {
+		doc.Flags |= flag
+	} else {
+		doc.Flags &^= flag
+	}
+}
+
+func (doc *document) newestRevID() string {
+	if doc.NewestRev != "" {
+		return doc.NewestRev
+	}
+	return doc.CurrentRev
 }
 
 // Fetches the body of a revision as a map, or nil if it's not available.
@@ -113,17 +159,17 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
-		oldChannels = ChannelMap{}
+		oldChannels = channels.ChannelMap{}
 		doc.Channels = oldChannels
 	} else {
 		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
 		for channel, removal := range oldChannels {
 			if removal == nil && !newChannels.Contains(channel) {
-				oldChannels[channel] = &ChannelRemoval{
+				oldChannels[channel] = &channels.ChannelRemoval{
 					Seq:     curSequence,
 					RevID:   doc.CurrentRev,
-					Deleted: doc.Deleted}
+					Deleted: doc.hasFlag(channels.Deleted)}
 				changed = append(changed, channel)
 			}
 		}

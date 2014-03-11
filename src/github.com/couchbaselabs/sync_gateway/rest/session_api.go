@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -55,7 +54,7 @@ func (h *handler) handleSessionPOST() error {
 		Name     string `json:"name"`
 		Password string `json:"password"`
 	}
-	err := db.ReadJSONFromMIME(h.rq.Header, h.rq.Body, &params)
+	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
 	}
@@ -68,6 +67,16 @@ func (h *handler) handleSessionPOST() error {
 		user = nil
 	}
 	return h.makeSession(user)
+}
+
+// DELETE /_session logs out the current session
+func (h *handler) handleSessionDELETE() error {
+	cookie := h.db.Authenticator().DeleteSessionForCookie(h.rq)
+	if cookie == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "no session")
+	}
+	http.SetCookie(h.response, cookie)
+	return nil
 }
 
 func (h *handler) makeSession(user auth.User) error {
@@ -144,8 +153,6 @@ func (h *handler) createUserSession() error {
 	response.SessionID = session.ID
 	response.Expires = session.Expiration
 	response.CookieName = auth.CookieName
-	bytes, _ := json.Marshal(response)
-	h.response.Header().Set("Content-Type", "application/json")
-	h.response.Write(bytes)
+	h.writeJSON(response)
 	return nil
 }
