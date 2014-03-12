@@ -386,19 +386,20 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 
 func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
 	var input struct {
-		Feed        string   `json:"feed"`
-		Since       uint64   `json:"since"`
-		Limit       int      `json:"limit"`
-		Style       string   `json:"style"`
-		IncludeDocs bool     `json:"include_docs"`
-		Filter      string   `json:"filter"`
-		Channels    []string `json:"channels"`
+		Feed        string      `json:"feed"`
+		Since       interface{} `json:"since"`
+		Limit       int         `json:"limit"`
+		Style       string      `json:"style"`
+		IncludeDocs bool        `json:"include_docs"`
+		Filter      string      `json:"filter"`
+		Channels    []string    `json:"channels"`
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
 	}
 	feed = input.Feed
-	options.Since = input.Since
+	since, _ := input.Since.(float64) // Unmarshal parses numbers to float64
+	options.Since = uint64(since)
 	options.Limit = input.Limit
 	options.Conflicts = (input.Style == "all_docs")
 	options.IncludeDocs = input.IncludeDocs
