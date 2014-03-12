@@ -222,30 +222,37 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		}
 		c.validFrom = changesValidFrom
 		return len(changes)
-	}
 
-	// Look for an overlap, and prepend everything up to that point:
-	firstSequence := log[0].Sequence
-	if changes[0].Sequence <= firstSequence {
-		for i := len(changes) - 1; i >= 0; i-- {
-			if changes[i].Sequence == firstSequence {
-				if excess := i + len(log) - ChannelCacheMaxLength; excess > 0 {
-					changes = changes[excess:]
-					changesValidFrom = changes[0].Sequence
-					i -= excess
+	} else if len(changes) == 0 {
+		if openEnded && changesValidFrom < c.validFrom {
+			c.validFrom = changesValidFrom
+		}
+		return 0
+
+	} else {
+		// Look for an overlap, and prepend everything up to that point:
+		firstSequence := log[0].Sequence
+		if changes[0].Sequence <= firstSequence {
+			for i := len(changes) - 1; i >= 0; i-- {
+				if changes[i].Sequence == firstSequence {
+					if excess := i + len(log) - ChannelCacheMaxLength; excess > 0 {
+						changes = changes[excess:]
+						changesValidFrom = changes[0].Sequence
+						i -= excess
+					}
+					if i > 0 {
+						newLog := make(LogEntries, 0, i+len(log))
+						newLog = append(newLog, changes[0:i]...)
+						newLog = append(newLog, log...)
+						c.logs = newLog
+						base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
+							i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
+					}
+					c.validFrom = changesValidFrom
+					return i
 				}
-				if i > 0 {
-					newLog := make(LogEntries, 0, i+len(log))
-					newLog = append(newLog, changes[0:i]...)
-					newLog = append(newLog, log...)
-					c.logs = newLog
-					base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
-						i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
-				}
-				c.validFrom = changesValidFrom
-				return i
 			}
 		}
+		return 0
 	}
-	return 0
 }
