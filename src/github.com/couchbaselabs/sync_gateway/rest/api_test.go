@@ -554,6 +554,21 @@ func TestLogin(t *testing.T) {
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
 }
 
+func TestReadChangesOptionsFromJSON(t *testing.T) {
+	optStr := `{"feed":"longpoll", "since": 123456, "limit":123, "style": "all_docs",
+				"include_docs": true, "filter": "Melitta", "channels": ["ABC", "BBC"]}`
+	feed, options, filter, channelsArray, err := readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, feed, "longpoll")
+	assert.DeepEquals(t, options, db.ChangesOptions{
+		Since:       123456,
+		Limit:       123,
+		Conflicts:   true,
+		IncludeDocs: true})
+	assert.Equals(t, filter, "Melitta")
+	assert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
+}
+
 func TestAccessControl(t *testing.T) {
 	type viewRow struct {
 		ID    string            `json:"id"`
