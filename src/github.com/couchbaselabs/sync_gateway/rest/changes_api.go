@@ -343,22 +343,27 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options db.ChangesOptions) error {
 	handler := func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to WebSocket protocol")
+		defer func() {
+			conn.Close()
+			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
+		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:
 		if msg, err := readWebSocketMessage(conn); err != nil {
-			conn.Close()
 			return
 		} else {
 			var channelNames []string
-			_, options, _, channelNames, err = readChangesOptionsFromJSON(msg)
-			if err != nil {
-				conn.Close()
+			var err error
+			if _, options, _, channelNames, err = readChangesOptionsFromJSON(msg); err != nil {
 				return
 			}
 			if channelNames != nil {
 				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
 			}
 		}
+
+		options.Terminator = make(chan bool)
+		defer close(options.Terminator)
 
 		caughtUp := false
 		h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
@@ -374,7 +379,6 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			_, err := conn.Write(data)
 			return err
 		})
-		conn.Close()
 	}
 	server := websocket.Server{
 		Handshake: func(*websocket.Config, *http.Request) error { return nil },
