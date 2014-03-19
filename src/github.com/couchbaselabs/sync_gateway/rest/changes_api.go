@@ -396,7 +396,7 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		Style       string      `json:"style"`
 		IncludeDocs bool        `json:"include_docs"`
 		Filter      string      `json:"filter"`
-		Channels    []string    `json:"channels"`
+		Channels    string      `json:"channels"` // a filter query param, so it has to be a string
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
@@ -411,7 +411,10 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 	options.Conflicts = (input.Style == "all_docs")
 	options.IncludeDocs = input.IncludeDocs
 	filter = input.Filter
-	channelsArray = input.Channels
+
+	if input.Channels != "" {
+		channelsArray = strings.Split(input.Channels, ",")
+	}
 	return
 }
 
