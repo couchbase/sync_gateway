@@ -202,14 +202,21 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 	following := []attInfo{}
 	for name, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
-		var info attInfo
-		info.contentType, _ = meta["content_type"].(string)
-		info.data, _ = decodeAttachment(meta["data"])
-		if info.data != nil && len(info.data) > kMaxInlineAttachmentSize {
-			info.name = name
-			following = append(following, info)
-			delete(meta, "data")
-			meta["follows"] = true
+		if meta["stub"] != true {
+			var err error
+			var info attInfo
+			info.contentType, _ = meta["content_type"].(string)
+			info.data, err = decodeAttachment(meta["data"])
+			if info.data == nil {
+				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
+				meta["stub"] = true
+				delete(meta, "data")
+			} else if len(info.data) > kMaxInlineAttachmentSize {
+				info.name = name
+				following = append(following, info)
+				meta["follows"] = true
+				delete(meta, "data")
+			}
 		}
 	}
 
@@ -391,10 +398,11 @@ func attachmentKeyToString(key AttachmentKey) string {
 
 func decodeAttachment(att interface{}) ([]byte, error) {
 	switch att := att.(type) {
-	case string:
-		return base64.StdEncoding.DecodeString(att)
 	case []byte:
 		return att, nil
+	case string:
+		return base64.StdEncoding.DecodeString(att)
+	default:
+		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
 	}
-	return nil, base.HTTPErrorf(400, "invalid attachment data")
 }
