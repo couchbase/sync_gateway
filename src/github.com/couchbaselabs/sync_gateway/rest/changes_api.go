@@ -402,8 +402,11 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		return
 	}
 	feed = input.Feed
-	since, _ := input.Since.(float64) // Unmarshal parses numbers to float64
-	options.Since = uint64(since)
+	if since, ok := input.Since.(float64); ok { // (Unmarshal parses all numbers to float64)
+		options.Since = uint64(since)
+	} else if sinceStr, ok := input.Since.(string); ok {
+		options.Since = sequenceFromString(sinceStr) // Support numeric strings
+	}
 	options.Limit = input.Limit
 	options.Conflicts = (input.Style == "all_docs")
 	options.IncludeDocs = input.IncludeDocs
