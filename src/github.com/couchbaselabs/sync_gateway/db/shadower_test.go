@@ -109,6 +109,32 @@ func TestShadowerPush(t *testing.T) {
 	assert.True(t, base.IsDocNotFoundError(err))
 }
 
+// Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
+// shadower as a different revision.
+func TestShadowerPushEchoCancellation(t *testing.T) {
+	base.LogKeys["Shadow"] = true
+	base.LogKeys["Shadow+"] = true
+	bucket := makeExternalBucket()
+	defer bucket.Close()
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	var err error
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
+	assertNoError(t, err, "NewShadower")
+
+	// Push an existing doc revision (the way a client's push replicator would)
+	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"})
+	waitFor(t, func() bool {
+		return db.Shadower.pullCount >= 1
+	})
+
+	// Make sure the echoed pull didn't create a new revision:
+	doc, _ := db.GetDoc("foo")
+	assert.Equals(t, len(doc.History), 1)
+}
+
 func TestShadowerPattern(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()

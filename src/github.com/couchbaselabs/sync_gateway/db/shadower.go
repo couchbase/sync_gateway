@@ -2,8 +2,10 @@ package db
 
 import (
 	"encoding/json"
+	"reflect"
 	"regexp"
 	"strings"
+	"sync/atomic"
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
@@ -17,10 +19,11 @@ import (
 // Accepts local change notifications and makes equivalent changes to the external bucket.
 // See: https://github.com/couchbase/sync_gateway/wiki/Bucket-Shadowing
 type Shadower struct {
-	context      *DatabaseContext // Database
-	bucket       base.Bucket      // External bucket we sync with
-	tapFeed      base.TapFeed     // Observes changes to bucket
-	docIDPattern *regexp.Regexp    // Optional regex that key/doc IDs must match
+	context              *DatabaseContext // Database
+	bucket               base.Bucket      // External bucket we sync with
+	tapFeed              base.TapFeed     // Observes changes to bucket
+	docIDPattern         *regexp.Regexp   // Optional regex that key/doc IDs must match
+	pullCount, pushCount uint64           // Used for testing
 }
 
 // Creates a new Shadower.
@@ -73,6 +76,7 @@ func (s *Shadower) readTapFeed() {
 			if err != nil {
 				base.Warn("Error applying change from external bucket: %v", err)
 			}
+			atomic.AddUint64(&s.pullCount, 1)
 		case walrus.TapEndBackfill:
 			if vbucketsFilling--; vbucketsFilling == 0 {
 				base.LogTo("Shadow", "Caught up with history of external bucket")
@@ -101,14 +105,20 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 			return nil, couchbase.UpdateCancel // we already have this doc revision
 		}
 		base.LogTo("Shadow+", "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", key, cas, doc.UpstreamRev, doc.UpstreamCAS)
-		// Make the prior pulled revision (if any) the parent:
+
+		// Compare this body to the current revision body to see if it's an echo:
 		parentRev := doc.UpstreamRev
-		generation, _ := parseRevID(parentRev)
-		newRev := createRevID(generation+1, parentRev, body)
+		newRev := doc.CurrentRev
+		if !reflect.DeepEqual(body, doc.getRevision(newRev)) {
+			// Nope, it's not. Assign it a new rev ID
+			generation, _ := parseRevID(parentRev)
+			newRev = createRevID(generation+1, parentRev, body)
+		}
 		doc.UpstreamRev = newRev
 		doc.UpstreamCAS = &cas
 		body["_rev"] = newRev
 		if doc.History[newRev] == nil {
+			// It's a new rev, so add it to the history:
 			doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
 			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
 		} else {
@@ -126,6 +136,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 
 // Saves a new local revision to the external bucket.
 func (s *Shadower) PushRevision(doc *document) {
+	defer func() { atomic.AddUint64(&s.pushCount, 1) }()
 	if !s.docIDMatches(doc.ID) {
 		return
 	} else if doc.newestRevID() == doc.UpstreamRev {
@@ -133,7 +144,7 @@ func (s *Shadower) PushRevision(doc *document) {
 	}
 
 	var err error
-	if doc.Flags & channels.Deleted != 0 {
+	if doc.Flags&channels.Deleted != 0 {
 		base.LogTo("Shadow", "Pushing %q, rev %q [deletion]", doc.ID, doc.CurrentRev)
 		err = s.bucket.Delete(doc.ID)
 	} else {
