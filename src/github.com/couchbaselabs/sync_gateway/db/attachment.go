@@ -62,16 +62,26 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if err != nil {
 				return err
 			}
-			delete(meta, "data")
-			meta["stub"] = true
-			meta["digest"] = string(key)
-			meta["revpos"] = generation
-			if meta["encoding"] == nil {
-				meta["length"] = len(attachment)
-				delete(meta, "encoded_length")
-			} else {
-				meta["encoded_length"] = len(attachment)
+
+			newMeta := map[string]interface{}{
+				"stub":   true,
+				"digest": string(key),
+				"revpos": generation,
 			}
+			if contentType, ok := meta["content_type"].(string); ok {
+				newMeta["content_type"] = contentType
+			}
+			if encoding := meta["encoding"]; encoding != nil {
+				newMeta["encoding"] = encoding
+				newMeta["encoded_length"] = len(attachment)
+				if length, ok := meta["length"].(float64); ok {
+					newMeta["length"] = length
+				}
+			} else {
+				newMeta["length"] = len(attachment)
+			}
+			atts[name] = newMeta
+
 		} else {
 			// No data given; look it up from the parent revision.
 			if parentAttachments == nil {
