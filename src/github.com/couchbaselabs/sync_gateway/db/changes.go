@@ -136,9 +136,16 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
 
+	if (options.Continuous || options.Wait) && options.Terminator == nil {
+		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
+	}
+
 	output := make(chan *ChangeEntry, 50)
 	go func() {
-		defer close(output)
+		defer func() {
+			base.LogTo("Changes", "MultiChangesFeed done")
+			close(output)
+		}()
 
 		var changeWaiter *changeWaiter
 		var userChangeCount uint64
@@ -159,7 +166,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			} else {
 				channelsSince = channels.AtSequence(chans, 0)
 			}
-			base.LogTo("Changes", "MultiChangesFeed: channels expand to %s ...", channelsSince)
+			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %s ...", channelsSince)
 
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
@@ -232,7 +239,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				base.LogTo("Changes+", "MultiChangesFeed sending %+v", minEntry)
 				select {
 				case <-options.Terminator:
-					base.LogTo("Changes+", "Aborting MultiChangesFeed")
 					return
 				case output <- minEntry:
 				}
@@ -259,6 +265,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				break
 			}
 
+			// Check whether I was terminated while waiting for a change:
+			select {
+			case <-options.Terminator:
+				return
+			default:
+			}
+
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
 			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
@@ -270,7 +283,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 			}
 		}
-		base.LogTo("Changes", "MultiChangesFeed done")
 	}()
 
 	return output, nil

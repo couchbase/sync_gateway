@@ -343,22 +343,27 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options db.ChangesOptions) error {
 	handler := func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to WebSocket protocol")
+		defer func() {
+			conn.Close()
+			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
+		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:
 		if msg, err := readWebSocketMessage(conn); err != nil {
-			conn.Close()
 			return
 		} else {
 			var channelNames []string
-			_, options, _, channelNames, err = readChangesOptionsFromJSON(msg)
-			if err != nil {
-				conn.Close()
+			var err error
+			if _, options, _, channelNames, err = readChangesOptionsFromJSON(msg); err != nil {
 				return
 			}
 			if channelNames != nil {
 				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
 			}
 		}
+
+		options.Terminator = make(chan bool)
+		defer close(options.Terminator)
 
 		caughtUp := false
 		h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
@@ -374,7 +379,6 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			_, err := conn.Write(data)
 			return err
 		})
-		conn.Close()
 	}
 	server := websocket.Server{
 		Handshake: func(*websocket.Config, *http.Request) error { return nil },
@@ -392,19 +396,25 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		Style       string      `json:"style"`
 		IncludeDocs bool        `json:"include_docs"`
 		Filter      string      `json:"filter"`
-		Channels    []string    `json:"channels"`
+		Channels    string      `json:"channels"` // a filter query param, so it has to be a string
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
 	}
 	feed = input.Feed
-	since, _ := input.Since.(float64) // Unmarshal parses numbers to float64
-	options.Since = uint64(since)
+	if since, ok := input.Since.(float64); ok { // (Unmarshal parses all numbers to float64)
+		options.Since = uint64(since)
+	} else if sinceStr, ok := input.Since.(string); ok {
+		options.Since = sequenceFromString(sinceStr) // Support numeric strings
+	}
 	options.Limit = input.Limit
 	options.Conflicts = (input.Style == "all_docs")
 	options.IncludeDocs = input.IncludeDocs
 	filter = input.Filter
-	channelsArray = input.Channels
+
+	if input.Channels != "" {
+		channelsArray = strings.Split(input.Channels, ",")
+	}
 	return
 }
 

@@ -25,7 +25,7 @@ import (
 )
 
 const ServerName = "Couchbase Sync Gateway"
-const VersionNumberString = "0.93"
+const VersionNumberString = "0.94"
 const VersionString = ServerName + "/" + VersionNumberString
 
 // HTTP handler for the root ("/")

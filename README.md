@@ -4,7 +4,13 @@ Gluing [Couchbase Lite][COUCHBASE_LITE] to [Couchbase Server][COUCHBASE_SERVER]
 
 The Sync Gateway manages HTTP-based data access for mobile clients. It handles access control and data routing, so that a single large Couchbase Server cluster can manage data for multiple users and complex applications.
 
-[Click here for the **Official Sync Gateway Documentation**](http://docs.couchbase.com/sync-gateway/)
+[**Product home page**](http://www.couchbase.com/mobile)
+
+[**Documentation**](http://docs.couchbase.com/sync-gateway/)
+
+[**Downloads**](http://www.couchbase.com/download#cb-mobile)
+
+[**Building The Sync Gateway Yourself**](http://docs.couchbase.com/sync-gateway/#building-from-source)
 
 <img src="http://jchris.ic.ht/files/slides/mobile-arch.png" width="600px"/>
 

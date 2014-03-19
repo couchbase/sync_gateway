@@ -556,7 +556,7 @@ func TestLogin(t *testing.T) {
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
 	optStr := `{"feed":"longpoll", "since": 123456, "limit":123, "style": "all_docs",
-				"include_docs": true, "filter": "Melitta", "channels": ["ABC", "BBC"]}`
+				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
 	feed, options, filter, channelsArray, err := readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")

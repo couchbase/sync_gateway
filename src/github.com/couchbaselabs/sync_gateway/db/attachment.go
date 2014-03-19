@@ -62,16 +62,26 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if err != nil {
 				return err
 			}
-			delete(meta, "data")
-			meta["stub"] = true
-			meta["digest"] = string(key)
-			meta["revpos"] = generation
-			if meta["encoding"] == nil {
-				meta["length"] = len(attachment)
-				delete(meta, "encoded_length")
-			} else {
-				meta["encoded_length"] = len(attachment)
+
+			newMeta := map[string]interface{}{
+				"stub":   true,
+				"digest": string(key),
+				"revpos": generation,
 			}
+			if contentType, ok := meta["content_type"].(string); ok {
+				newMeta["content_type"] = contentType
+			}
+			if encoding := meta["encoding"]; encoding != nil {
+				newMeta["encoding"] = encoding
+				newMeta["encoded_length"] = len(attachment)
+				if length, ok := meta["length"].(float64); ok {
+					newMeta["length"] = length
+				}
+			} else {
+				newMeta["length"] = len(attachment)
+			}
+			atts[name] = newMeta
+
 		} else {
 			// No data given; look it up from the parent revision.
 			if parentAttachments == nil {
@@ -202,14 +212,21 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 	following := []attInfo{}
 	for name, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
-		var info attInfo
-		info.contentType, _ = meta["content_type"].(string)
-		info.data, _ = decodeAttachment(meta["data"])
-		if info.data != nil && len(info.data) > kMaxInlineAttachmentSize {
-			info.name = name
-			following = append(following, info)
-			delete(meta, "data")
-			meta["follows"] = true
+		if meta["stub"] != true {
+			var err error
+			var info attInfo
+			info.contentType, _ = meta["content_type"].(string)
+			info.data, err = decodeAttachment(meta["data"])
+			if info.data == nil {
+				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
+				meta["stub"] = true
+				delete(meta, "data")
+			} else if len(info.data) > kMaxInlineAttachmentSize {
+				info.name = name
+				following = append(following, info)
+				meta["follows"] = true
+				delete(meta, "data")
+			}
 		}
 	}
 
@@ -391,10 +408,11 @@ func attachmentKeyToString(key AttachmentKey) string {
 
 func decodeAttachment(att interface{}) ([]byte, error) {
 	switch att := att.(type) {
-	case string:
-		return base64.StdEncoding.DecodeString(att)
 	case []byte:
 		return att, nil
+	case string:
+		return base64.StdEncoding.DecodeString(att)
+	default:
+		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
 	}
-	return nil, base.HTTPErrorf(400, "invalid attachment data")
 }
