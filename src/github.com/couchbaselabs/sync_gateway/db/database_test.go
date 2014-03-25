@@ -378,6 +378,42 @@ func TestConflicts(t *testing.T) {
 		branched: true})
 }
 
+func TestSyncFnOnPush(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+		log("doc _id = "+doc._id+", _rev = "+doc._rev);
+		if (oldDoc)
+			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
+		channel(doc.channels);
+	}`)
+
+	// Create first revision:
+	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
+	rev1id, err := db.Put("doc1", body)
+	assertNoError(t, err, "Couldn't create document")
+
+	// Add several revisions at once to a doc, as on a push:
+	log.Printf("Check PutExistingRev...")
+	body["_rev"] = "4-four"
+	body["key1"] = "fourth value"
+	body["key2"] = int64(4444)
+	body["channels"] = "clibup"
+	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
+		rev1id}
+	err = db.PutExistingRev("doc1", body, history)
+	assertNoError(t, err, "PutExistingRev failed")
+
+	// Check that the doc has the correct channel (test for issue #300)
+	doc, err := db.GetDoc("doc1")
+	assert.DeepEquals(t, doc.Channels, channels.ChannelMap{
+		"clibup": nil, // i.e. it is currently in this channel (no removal)
+		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
+	})
+	assert.DeepEquals(t, doc.History["4-four"].Channels, base.SetOf("clibup"))
+}
+
 func TestInvalidChannel(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
