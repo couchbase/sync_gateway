@@ -212,7 +212,6 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	if err != nil {
 		return err
 	} else if h.user != nil {
-		base.LogTo("HTTP+", "#%03d: Authenticated as %q via cookie", h.serialNumber, h.user.Name())
 		return nil
 	}
 
@@ -223,9 +222,6 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 			base.Log("HTTP auth failed for username=%q", userName)
 			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
-		}
-		if h.user.Name() != "" {
-			base.LogTo("HTTP+", "#%03d: Authenticated as %q", h.serialNumber, h.user.Name())
 		}
 		return nil
 	}
