@@ -531,7 +531,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			changed := 0
 			doc.History.forEachLeaf(func(rev *RevInfo) {
 				body, _ := db.getRevFromDoc(doc, rev.ID, false)
-				channels, access, roles, err := db.getChannelsAndAccess(doc, body, rev.Parent)
+				channels, access, roles, err := db.getChannelsAndAccess(doc, body, rev.ID)
 				if err != nil {
 					// Probably the validator rejected the doc
 					base.Warn("Error calling sync() on doc %q: %v", docid, err)

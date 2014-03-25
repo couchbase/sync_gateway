@@ -245,6 +245,20 @@ func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error)
 	}
 }
 
+// Gets the body of a revision's nearest ancestor, as raw JSON (without _id or _rev.)
+// If no ancestor has any JSON, returns nil but no error.
+func (db *Database) getAncestorJSON(doc *document, revid string) ([]byte, error) {
+	for {
+		if revid = doc.History.getParent(revid); revid == "" {
+			return nil, nil
+		} else if body, err := db.getRevisionJSON(doc, revid); body != nil {
+			return body, nil
+		} else if !base.IsDocNotFoundError(err) {
+			return nil, err
+		}
+	}
+}
+
 // Returns the body of a revision given a document struct. Checks user access.
 func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions bool) (Body, error) {
 	var body Body
@@ -500,7 +514,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
-		channels, access, roles, err := db.getChannelsAndAccess(doc, body, parentRevID)
+		channels, access, roles, err := db.getChannelsAndAccess(doc, body, newRevID)
 		if err != nil {
 			return
 		}
@@ -542,8 +556,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
 					base.LogTo("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
 						docid, newRevID, doc.CurrentRev)
-					curParent := doc.History[doc.CurrentRev].Parent
-					channels, access, roles, err = db.getChannelsAndAccess(doc, curBody, curParent)
+					channels, access, roles, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
 					if err != nil {
 						return
 					}
@@ -643,22 +656,15 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, parentRevID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
+func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
 	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 
 	// Get the parent revision, to pass to the sync function:
-	var oldJson string
-	if parentRevID != "" {
-		var oldJsonBytes []byte
-		oldJsonBytes, err = db.getRevisionJSON(doc, parentRevID)
-		if err != nil {
-			if base.IsDocNotFoundError(err) {
-				err = nil
-			}
-			return
-		}
-		oldJson = string(oldJsonBytes)
+	var oldJsonBytes []byte
+	if oldJsonBytes, err = db.getAncestorJSON(doc, revID); err != nil {
+		return
 	}
+	oldJson := string(oldJsonBytes)
 
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:

@@ -120,7 +120,7 @@ func (tree RevTree) contains(revid string) bool {
 func (tree RevTree) getInfo(revid string) *RevInfo {
 	info, exists := tree[revid]
 	if !exists {
-		panic("can't find rev")
+		panic("can't find rev: " + revid)
 	}
 	return info
 }
@@ -198,7 +198,7 @@ func (tree RevTree) winningRevision() (winner string, branched bool, inConflict 
 			winnerExists = exists
 		}
 	})
-	branched = (leafCount>1)
+	branched = (leafCount > 1)
 	inConflict = (activeLeafCount > 1)
 	return
 }
