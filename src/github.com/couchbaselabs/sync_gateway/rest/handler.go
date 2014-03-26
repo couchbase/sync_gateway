@@ -440,7 +440,7 @@ func (h *handler) addJSON(value interface{}) {
 	}
 }
 
-func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
+func (h *handler) writeMultipart(subtype string, callback func(*multipart.Writer) error) error {
 	if !h.requestAccepts("multipart/") {
 		return base.HTTPErrorf(http.StatusNotAcceptable, "Response is multipart")
 	}
@@ -457,7 +457,7 @@ func (h *handler) writeMultipart(callback func(*multipart.Writer) error) error {
 
 	writer := multipart.NewWriter(output)
 	h.setHeader("Content-Type",
-		fmt.Sprintf("multipart/related; boundary=%q", writer.Boundary()))
+		fmt.Sprintf("multipart/%s; boundary=%q", subtype, writer.Boundary()))
 
 	err := callback(writer)
 	writer.Close()

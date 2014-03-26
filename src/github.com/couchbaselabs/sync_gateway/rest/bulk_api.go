@@ -267,7 +267,7 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
-	err = h.writeMultipart(func(writer *multipart.Writer) error {
+	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range body["docs"].([]interface{}) {
 			var body db.Body
 			var attsSince []string
