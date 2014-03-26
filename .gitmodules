@@ -7,9 +7,6 @@
 [submodule "vendor/src/github.com/couchbaselabs/walrus"]
 	path = vendor/src/github.com/couchbaselabs/walrus
 	url = https://github.com/couchbaselabs/walrus
-[submodule "vendor/src/github.com/dchest/passwordhash"]
-	path = vendor/src/github.com/dchest/passwordhash
-	url = https://github.com/dchest/passwordhash
 [submodule "vendor/src/github.com/gorilla/mux"]
 	path = vendor/src/github.com/gorilla/mux
 	url = https://github.com/gorilla/mux
