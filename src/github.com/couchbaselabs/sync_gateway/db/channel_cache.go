@@ -151,7 +151,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	room := options.Limit - len(result)
 	if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
 		// Concatenate the view & cache results:
-		if resultFromCache[0].Sequence == result[len(result)-1].Sequence {
+		if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
 			resultFromCache = resultFromCache[1:]
 		}
 		n := len(resultFromCache)
