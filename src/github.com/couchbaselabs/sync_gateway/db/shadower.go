@@ -67,11 +67,13 @@ func (s *Shadower) readTapFeed() {
 			//base.LogTo("Shadow", "Reading history of external bucket")
 		case walrus.TapMutation, walrus.TapDeletion:
 			key := string(event.Key)
-			// Ignore ephemeral documents or ones whose ID would conflict with our metadata
-			if event.Expiry > 0 || !s.docIDMatches(key) {
+			if !s.docIDMatches(key) {
 				break
 			}
 			isDeletion := event.Opcode == walrus.TapDeletion
+			if !isDeletion && event.Expiry > 0 {
+				break // ignore ephemeral documents
+			}
 			err := s.pullDocument(key, event.Value, isDeletion, event.Sequence, event.Flags)
 			if err != nil {
 				base.Warn("Error applying change from external bucket: %v", err)
