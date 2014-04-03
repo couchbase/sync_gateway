@@ -49,6 +49,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 			return http.StatusConflict, "Conflict"
 		case gomemcached.E2BIG:
 			return http.StatusRequestEntityTooLarge, "Too Large: " + string(err.Body)
+		case gomemcached.TMPFAIL:
+			return http.StatusServiceUnavailable, "Database server is over capacity"
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(err.Body), err.Status.String())
