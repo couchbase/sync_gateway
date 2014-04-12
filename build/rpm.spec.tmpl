@@ -76,7 +76,7 @@ if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
   RPM_INSTALL_PREFIX0=@@PREFIX@@
 fi
 
-ln -f -s $RPM_INSTALL_PREFIX0 @@PREFIX@@
+# ln -f -s $RPM_INSTALL_PREFIX0 @@PREFIX@@
 
 if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
 then

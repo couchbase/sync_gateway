@@ -54,7 +54,7 @@ func (h *handler) handleGetDoc() error {
 		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
-			return h.writeMultipart(func(writer *multipart.Writer) error {
+			return h.writeMultipart("related", func(writer *multipart.Writer) error {
 				h.db.WriteMultipartDocument(value, writer, canCompress)
 				return nil
 			})
@@ -75,7 +75,7 @@ func (h *handler) handleGetDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
 		}
 
-		err = h.writeMultipart(func(writer *multipart.Writer) error {
+		err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 			for _, revid := range revids {
 				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 				if err != nil {
