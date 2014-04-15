@@ -17,7 +17,7 @@ conditions of this Agreement, Couchbase Inc. hereby grants to Licensee a
 perpetual, non-exclusive, non-transferable, non-sublicensable,
 royalty-free, limited license to install and use the Software only for
 Licensee's own internal non-production use for the purpose of
-evaluation and/or development Servers.
+evaluation and/or development.
 
 2. Restrictions. Licensee will not reverse engineer, disassemble, or
 decompile the Software (except to the extent such restrictions are
