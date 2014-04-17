@@ -29,6 +29,7 @@ import (
 // The URL that stats will be reported to if deployment_id is set in the config
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
+const kDefaultSlowServerCallWarningThreshold = 200 // ms
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -61,6 +62,12 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	if config.MaxCouchbaseOverflow != nil {
 		couchbase.PoolOverflow = *config.MaxCouchbaseOverflow
 	}
+
+	slow := kDefaultSlowServerCallWarningThreshold
+	if config.SlowServerCallWarningThreshold != nil {
+		slow = *config.SlowServerCallWarningThreshold
+	}
+	couchbase.SlowServerCallWarningThreshold = time.Duration(slow) * time.Millisecond
 
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
