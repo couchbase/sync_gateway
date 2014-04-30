@@ -25,15 +25,33 @@ import (
 )
 
 const ServerName = "Couchbase Sync Gateway"
-const VersionNumberString = "1.0"
-const VersionString = ServerName + "/" + VersionNumberString
+const VersionNumber float64 = 1.0                    // API/feature level
+const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
+const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
+
+// This appears in the "Server:" header of HTTP responses
+var VersionString string
+
+// This includes build number; appears in the response of "GET /" and the initial log message
+var LongVersionString string
+
+func init() {
+	VersionString = fmt.Sprintf("%s/%.2f", ServerName, VersionNumber)
+
+	if VersionBuildNumberString[0] != '@' {
+		LongVersionString = fmt.Sprintf("%s (%s; commit %.8s)",
+			VersionString, VersionBuildNumberString, VersionCommitSHA)
+	} else {
+		LongVersionString = VersionString + " (unofficial)"
+	}
+}
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
 	response := map[string]interface{}{
 		"couchdb": "Welcome",
-		"version": VersionString,
-		"vendor":  db.Body{"name": ServerName, "version": VersionNumberString},
+		"version": LongVersionString,
+		"vendor":  db.Body{"name": ServerName, "version": VersionNumber},
 	}
 	if h.privs == adminPrivs {
 		response["ADMIN"] = true
