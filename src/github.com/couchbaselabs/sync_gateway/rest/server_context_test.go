@@ -45,6 +45,8 @@ func TestConfigServer(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, dbc.Name, "db2")
 	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
+
+	rt.bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 }
 
 //////// MOCK HTTP CLIENT: (TODO: Move this into a separate package)
