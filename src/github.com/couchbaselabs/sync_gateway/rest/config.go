@@ -51,6 +51,7 @@ type ServerConfig struct {
 	ConfigServer                   *string         // URL of config server (for dynamic db discovery)
 	Persona                        *PersonaConfig  // Configuration for Mozilla Persona validation
 	Facebook                       *FacebookConfig // Configuration for Facebook validation
+	CORS                           *CORSConfig     // Configuration for allowing CORS
 	Log                            []string        // Log keywords to enable
 	Pretty                         bool            // Pretty-print JSON responses?
 	DeploymentID                   *string         // Optional customer/deployment ID for stats reporting
@@ -101,6 +102,12 @@ type PersonaConfig struct {
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
+}
+
+type CORSConfig struct {
+	Origin []string  // List of allowed origins, use ["*"] to allow access from everywhere
+	Headers []string // List of allowed headers
+	MaxAge int       // Maximum age of the CORS Options request
 }
 
 type ShadowConfig struct {
@@ -199,6 +206,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.Facebook == nil {
 		self.Facebook = other.Facebook
 	}
+  if self.CORS == nil {
+  	self.CORS = other.CORS
+  }
 	for _, flag := range other.Log {
 		self.Log = append(self.Log, flag)
 	}
