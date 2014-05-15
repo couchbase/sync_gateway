@@ -18,7 +18,6 @@ import (
 	"net/url"
 	"os"
 	"runtime"
-	"syscall"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -318,21 +317,11 @@ func setMaxFileDescriptors(maxP *uint64) {
 	if maxP != nil {
 		maxFDs = *maxP
 	}
-	var limits syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limits); err != nil {
-		base.LogFatal("Getrlimit failed: %v", err)
-	}
-	if maxFDs > limits.Max {
-		maxFDs = limits.Max
-	}
-	if limits.Cur != maxFDs {
-		limits.Cur = maxFDs
-		limits.Max = maxFDs
-		err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
-		if err != nil {
-			base.LogFatal("Error raising MaxFileDescriptors to %d: %v", maxFDs, err)
-		}
-		base.Log("Configured MaxFileDescriptors (RLIMIT_NOFILE) to %d", maxFDs)
+	actualMax, err := base.SetMaxFileDescriptors(maxFDs)
+	if err != nil {
+		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+	} else if maxP != nil {
+		base.Log("Configured process to allow %d open file descriptors", actualMax)
 	}
 }
 
