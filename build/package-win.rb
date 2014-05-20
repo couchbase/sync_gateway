@@ -78,7 +78,7 @@ INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/PROJECT_ASSISTANT/SINGLE_EXE_IMAGE/
 print "\nISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#ENV['WORKSPACE']  #{INSTALL_SRC}/#{INSTALL_PROJ}"
         `ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#ENV['WORKSPACE']  #{INSTALL_SRC}/#{INSTALL_PROJ}`
 
-if     File.exist("#{INSTALL_OUT}/setup.exe")
+if   File.exists?("#{INSTALL_OUT}/setup.exe")
     FileUtils.cp  "#{INSTALL_OUT}/setup.exe",  "#{PREFIXD}/#{PKGNAME}"
     FileUtils.mv  "#{STAGE_DIR}/manifest.txt", "#{PREFIXD}/manifest.txt"
     FileUtils.mv  "#{STAGE_DIR}/manifest.xml", "#{PREFIXD}/manifest.xml"
