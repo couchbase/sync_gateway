@@ -47,9 +47,7 @@ print "\n"
 
 START_DIR  = Dir.getwd()
 STAGE_DIR = "#{START_DIR}/opt/couchbase-sync-gateway/"
-FileUtils.rm_rf   "#{STAGE_DIR}"
-FileUtils.mkdir_p "#{STAGE_DIR}"
-
+                                                     #  created by build_sync_gateway.bat
 [["#{START_DIR}", "#{STAGE_DIR}"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
         ["manifest.txt.tmpl", "manifest.xml.tmpl"].each do |x|
