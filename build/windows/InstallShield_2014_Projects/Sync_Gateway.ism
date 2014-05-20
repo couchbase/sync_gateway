@@ -2318,8 +2318,8 @@
 		<row><td>ISProjectDataFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
 		<row><td>PATH_TO_JENKINS_WORKSPACE</td><td>C:\jenkins\workspace\build_sync_gateway_master_win-2008-x86</td><td/><td>2</td></row>
-		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\build\license\sync_gateway</td><td/><td>2</td></row>
 		<row><td>PATH_TO_SYNC_GATEWAY_FILES</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway</td><td/><td>2</td></row>
+		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;</td><td/><td>2</td></row>
 		<row><td>ProgramFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>SystemFolder</td><td/><td/><td>1</td></row>
 		<row><td>WindowsFolder</td><td/><td/><td>1</td></row>
