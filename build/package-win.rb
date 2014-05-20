@@ -73,7 +73,7 @@ end
 
 INSTALL_PROJ  = "Sync_Gateway.ism"
 INSTALL_SRC   = "#{START_DIR}/windows/InstallShield_2014_Projects"
-INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/PROJECT_ASSISTANT/SINGLE_EXE_IMAGE/DiskImages/DISK1"
+INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/SINGLE_EXE_IMAGE/Release/DiskImages/DISK1"
 
 proj_param    = "#{INSTALL_SRC}/#{INSTALL_PROJ}"
 proj_param    = proj_param.gsub('/', '\\')

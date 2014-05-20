@@ -1857,7 +1857,7 @@
 		<col def="S255">Data</col>
 		<row><td>BiildCDROMEnabled</td><td/></row>
 		<row><td>BiildInternetEnabled</td><td/></row>
-		<row><td>BiildSingleExeEnabled</td><td/></row>
+		<row><td>BiildSingleExeEnabled</td><td>Yes</td></row>
 		<row><td>BiildSingleMSIEnabled</td><td/></row>
 		<row><td>PROJECT_ASSISTANT_DEFAULT_FEATURE</td><td>Sync_Gateway_Files</td></row>
 		<row><td>PROJECT_ASSISTANT_FEATURES</td><td>NonSelectable</td></row>
@@ -2335,7 +2335,7 @@
 		<col key="yes" def="s72">ISProductConfiguration</col>
 		<col def="S255">ProductConfigurationFlags</col>
 		<col def="I4">GeneratePackageCode</col>
-		<row><td>Product Configuration 1</td><td/><td>1</td></row>
+		<row><td>SINGLE_EXE_IMAGE</td><td/><td>1</td></row>
 	</table>
 
 	<table name="ISProductConfigurationInstance">
@@ -2349,8 +2349,8 @@
 		<col key="yes" def="s72">ISProductConfiguration_</col>
 		<col key="yes" def="s72">Property</col>
 		<col def="L255">Value</col>
-		<row><td>Product Configuration 1</td><td>IncludeActionHelp</td><td>1</td></row>
-		<row><td>Product Configuration 1</td><td>SetupFileName</td><td>setup</td></row>
+		<row><td>SINGLE_EXE_IMAGE</td><td>IncludeActionHelp</td><td>1</td></row>
+		<row><td>SINGLE_EXE_IMAGE</td><td>SetupFileName</td><td>setup</td></row>
 	</table>
 
 	<table name="ISRelease">
@@ -2384,7 +2384,7 @@
 		<col def="S255">DotNetBuildConfiguration</col>
 		<col def="S255">MsiCommandLine</col>
 		<col def="I4">ISSetupPrerequisiteLocation</col>
-		<row><td>Release 1</td><td>Product Configuration 1</td><td>&lt;ISProjectDataFolder&gt;</td><td>PackageName</td><td>1</td><td>1033</td><td>2</td><td>2</td><td>Intel</td><td/><td>1033</td><td>0</td><td>0</td><td>0</td><td>0</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>8464397</td><td/><td/><td/><td/></row>
+		<row><td>Release</td><td>SINGLE_EXE_IMAGE</td><td>&lt;ISProjectDataFolder&gt;</td><td>PackageName</td><td>1</td><td>1033</td><td>2</td><td>2</td><td>Intel</td><td/><td>1033</td><td>0</td><td>0</td><td>0</td><td>0</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>8464397</td><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="ISReleaseASPublishInfo">
@@ -2425,7 +2425,7 @@
 		<col def="I4">MsiEngineVersion</col>
 		<col def="S255">WinMsi30Url</col>
 		<col def="S255">CertPassword</col>
-		<row><td>Release 1</td><td>Product Configuration 1</td><td>0</td><td>http://</td><td>0</td><td>install</td><td>install</td><td>[LocalAppDataFolder]Downloaded Installations</td><td>0</td><td>http://www.installengine.com/Msiengine20</td><td>http://www.installengine.com/Msiengine20</td><td/><td>http://www.installengine.com/cert05/isengine</td><td/><td/><td/><td/><td>3</td><td>http://www.installengine.com/cert05/dotnetfx</td><td>0</td><td>1033</td><td/><td/><td/><td/><td>16</td><td>3</td><td>16</td><td>http://www.installengine.com/Msiengine30</td><td/></row>
+		<row><td>Release</td><td>SINGLE_EXE_IMAGE</td><td>0</td><td>http://</td><td>0</td><td>install</td><td>install</td><td>[LocalAppDataFolder]Downloaded Installations</td><td>0</td><td>http://www.installengine.com/Msiengine20</td><td>http://www.installengine.com/Msiengine20</td><td/><td>http://www.installengine.com/cert05/isengine</td><td/><td/><td/><td/><td>3</td><td>http://www.installengine.com/cert05/dotnetfx</td><td>0</td><td>1033</td><td/><td/><td/><td/><td>16</td><td>3</td><td>16</td><td>http://www.installengine.com/Msiengine30</td><td/></row>
 	</table>
 
 	<table name="ISReleaseProperty">
