@@ -76,8 +76,8 @@ INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/SINGLE_EXE_IMAGE/Release/DiskImages
 proj_param    = "#{INSTALL_SRC}/#{INSTALL_PROJ}"
 proj_param    = proj_param.gsub('/', '\\')
 
-print "\nISCmdBld.exe -v -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']} -p #{proj_param}"
-        `ISCmdBld.exe -v -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']} -p #{proj_param}`
+print "\nISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']} -p #{proj_param}"
+        `ISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']} -p #{proj_param}`
 
 if  File.exists?("#{INSTALL_OUT}/setup.exe")
     FileUtils.cp "#{INSTALL_OUT}/setup.exe",  "#{PREFIXD}/#{PKGNAME}"
