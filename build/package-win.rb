@@ -55,15 +55,15 @@ FileUtils.mkdir_p "#{STAGE_DIR}"
         ["manifest.txt.tmpl", "manifest.xml.tmpl"].each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
             text = File.read("#{x}")
-            text = text.gsub("@@VERSION@@",          "#{BLDNUM}"           )
-            text = text.gsub("@@PLATFORM@@",         "#{PLATFORM}"         )
-            text = text.gsub("@@RELEASE@@",          "#{RELEASE}"          )
-            text = text.gsub("@@REPO_SHA@@",         "#{REPO_SHA}"         )
-            text = text.gsub("@@PREFIX@@",           "#{PREFIX}"           )
-            text = text.gsub("@@PRODUCT@@",          "#{PRODUCT}"          )
-            text = text.gsub("@@PRODUCT_BASE@@",     "#{PRODUCT_BASE}"     )
-            text = text.gsub("@@PRODUCT_BASE_CAP@@", "#{product_base_cap}" )
-            text = text.gsub("@@PRODUCT_KIND@@",     "#{PRODUCT_KIND}"     )
+            text.gsub("@@VERSION@@",          "#{RELEASE}-#{BLDNUM}")
+            text.gsub("@@PLATFORM@@",         "#{PLATFORM}"         )
+            text.gsub("@@RELEASE@@",          "#{RELEASE}"          )
+            text.gsub("@@REPO_SHA@@",         "#{REPO_SHA}"         )
+            text.gsub("@@PREFIX@@",           "#{PREFIX}"           )
+            text.gsub("@@PRODUCT@@",          "#{PRODUCT}"          )
+            text.gsub("@@PRODUCT_BASE@@",     "#{PRODUCT_BASE}"     )
+            text.gsub("@@PRODUCT_BASE_CAP@@", "#{product_base_cap}" )
+            text.gsub("@@PRODUCT_KIND@@",     "#{PRODUCT_KIND}"     )
             File.open("#{target}", "w") { |file| file.puts text }
         end
     end
@@ -75,8 +75,11 @@ INSTALL_PROJ  = "Sync_Gateway.ism"
 INSTALL_SRC   = "#{START_DIR}/windows/InstallShield_2014_Projects"
 INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/PROJECT_ASSISTANT/SINGLE_EXE_IMAGE/DiskImages/DISK1"
 
-print "\nISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']}  #{INSTALL_SRC}/#{INSTALL_PROJ}"
-        `ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']}  #{INSTALL_SRC}/#{INSTALL_PROJ}`
+proj_param    = "#{INSTALL_SRC}/#{INSTALL_PROJ}""
+proj_param    = proj_param.gsub('/', '\')
+
+print "\nISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']}  #{proj_param}"
+        `ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']}  #{proj_param}`
 
 if  File.exists?("#{INSTALL_OUT}/setup.exe")
     FileUtils.cp "#{INSTALL_OUT}/setup.exe",  "#{PREFIXD}/#{PKGNAME}"
