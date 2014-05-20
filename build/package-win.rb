@@ -29,7 +29,7 @@ ARCH            = ARGV[5] ||                           `uname -m`.chomp
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
 
-PKGNAME="setup_#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{PLATFORM}.exe"
+PKGNAME="setup_#{PRODUCT}_#{RELEASE}-#{BLDNUM}_#{ARCH}.exe"
 product_base_cap = PRODUCT_BASE[0..0].upcase + PRODUCT_BASE[1..-1] # Ex: "Couchbase".
 
 print "\nDEBUG:  0: PREFIX          = ", PREFIX
@@ -71,9 +71,9 @@ end
 
 #  make installer
 
-INSTALL_PROJ  = Sync_Gateway.ism
-INSTALL_SRC  = "#{START_DIR}/windows/InstallShield_2014_Projects"
-INSTALL_OUT  = "#{INSTALL_SRC}/Sync_Gateway/PROJECT_ASSISTANT/SINGLE_EXE_IMAGE/DiskImages/DISK1"
+INSTALL_PROJ  = "Sync_Gateway.ism"
+INSTALL_SRC   = "#{START_DIR}/windows/InstallShield_2014_Projects"
+INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/PROJECT_ASSISTANT/SINGLE_EXE_IMAGE/DiskImages/DISK1"
 
 echo "ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=ENV['WORKSPACE']  #{INSTALL_SRC}/#{INSTALL_PROJ}"
      `ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=ENV['WORKSPACE']  #{INSTALL_SRC}/#{INSTALL_PROJ}`
