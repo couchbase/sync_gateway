@@ -75,7 +75,8 @@ INSTALL_PROJ  = Sync_Gateway.ism
 INSTALL_SRC  = "#{START_DIR}/windows/InstallShield_2014_Projects"
 INSTALL_OUT  = "#{INSTALL_SRC}/Sync_Gateway/PROJECT_ASSISTANT/SINGLE_EXE_IMAGE/DiskImages/DISK1"
 
-`ISCmdBld.exe #{INSTALL_SRC}/#{INSTALL_PROJ}`
+echo "ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=ENV['WORKSPACE']  #{INSTALL_SRC}/#{INSTALL_PROJ}"
+     `ISCmdBld.exe -d ProductVersion=#{RELEASE}-#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=ENV['WORKSPACE']  #{INSTALL_SRC}/#{INSTALL_PROJ}`
 
 FileUtils.cp  "#{INSTALL_OUT}/setup.exe",  "#{PREFIXD}/#{PKGNAME}"
 FileUtils.mv  "#{STAGE_DIR}/manifest.txt", "#{PREFIXD}/manifest.txt"
