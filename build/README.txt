@@ -1,4 +1,4 @@
-Couchbase Sync Gateway Community Edition 1.0-Beta 3
+Couchbase Sync Gateway 1.0
 
 This is a self-contained installation of Couchbase Sync Gateway. You start Sync Gateway by running sync_gateway with the -url option. The argument for the -url option is the HTTP URL of the Couchbase Server to which you want Sync Gateway to connect. If you do not include any additional command-line options, the default values are used.
 
