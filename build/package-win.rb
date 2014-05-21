@@ -76,8 +76,13 @@ INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/SINGLE_EXE_IMAGE/Release/DiskImages
 proj_param    = "#{INSTALL_SRC}/#{INSTALL_PROJ}"
 proj_param    = proj_param.gsub('/', '\\')
 
-print "\nISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']} -p #{proj_param}"
-print   `ISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM},PATH_TO_JENKINS_WORKSPACE=#{ENV['WORKSPACE']} -p #{proj_param}`
+path_to_workspace = "#{ENV['WORKSPACE']}"
+path_to_sgw_files = "#{path_to_workspace}\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway"
+installer_params  = "-l PATH_TO_JENKINS_WORKSPACE=#{path_to_workspace} -l PATH_TO_SYNC_GATEWAY_FILES=#{path_to_sgw_files}"
+
+print "\nISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM} #{installer_params} -p #{proj_param}\n"
+print   `ISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM} #{installer_params} -p #{proj_param}`
+print "\n\n"
 
 if  File.exists?("#{INSTALL_OUT}/setup.exe")
     FileUtils.cp "#{INSTALL_OUT}/setup.exe",  "#{PREFIXD}/#{PKGNAME}"
