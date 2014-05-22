@@ -1127,7 +1127,7 @@
 		<row><td>WindowsVolume</td><td>TARGETDIR</td><td>.:WinRoot</td><td/><td>0</td><td/></row>
 		<row><td>couchb_1_couchbase__inc.</td><td>ProgramMenuFolder</td><td>COUCHB~1|Couchbase, Inc.</td><td/><td>1</td><td/></row>
 		<row><td>sync_g_1_sync_gateway</td><td>couchb_1_couchbase__inc.</td><td>SYNC_G~1|Sync_Gateway</td><td/><td>1</td><td/></row>
-		<row><td>sync_gateway</td><td>couchb_1_couchbase__inc.</td><td>SYNCGA~1|sync gateway</td><td/><td>1</td><td/></row>
+		<row><td>sync_gateway</td><td>couchb_1_couchbase__inc.</td><td>SYNCGA~1|Sync Gateway</td><td/><td>1</td><td/></row>
 	</table>
 
 	<table name="DrLocator">
@@ -2318,8 +2318,8 @@
 		<row><td>ISProjectDataFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
 		<row><td>PATH_TO_JENKINS_WORKSPACE</td><td>C:\jenkins\workspace\build_sync_gateway_master_win-2008-x86</td><td/><td>2</td></row>
-		<row><td>PATH_TO_SYNC_GATEWAY_FILES</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway</td><td/><td>2</td></row>
 		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;</td><td/><td>2</td></row>
+		<row><td>PATH_TO_SYNC_GATEWAY_FILES</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway</td><td/><td>2</td></row>
 		<row><td>ProgramFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>SystemFolder</td><td/><td/><td>1</td></row>
 		<row><td>WindowsFolder</td><td/><td/><td>1</td></row>
@@ -2384,7 +2384,7 @@
 		<col def="S255">DotNetBuildConfiguration</col>
 		<col def="S255">MsiCommandLine</col>
 		<col def="I4">ISSetupPrerequisiteLocation</col>
-		<row><td>Release</td><td>SINGLE_EXE_IMAGE</td><td>&lt;ISProjectDataFolder&gt;</td><td>PackageName</td><td>1</td><td>1033</td><td>2</td><td>2</td><td>Intel</td><td/><td>1033</td><td>0</td><td>0</td><td>0</td><td>0</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>8464397</td><td/><td/><td/><td/></row>
+		<row><td>Release</td><td>SINGLE_EXE_IMAGE</td><td>&lt;ISProjectDataFolder&gt;</td><td>PackageName</td><td>1</td><td>1033</td><td>2</td><td>1</td><td>Intel</td><td/><td>1033</td><td>0</td><td>0</td><td>0</td><td>0</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>8464397</td><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="ISReleaseASPublishInfo">
@@ -2425,7 +2425,7 @@
 		<col def="I4">MsiEngineVersion</col>
 		<col def="S255">WinMsi30Url</col>
 		<col def="S255">CertPassword</col>
-		<row><td>Release</td><td>SINGLE_EXE_IMAGE</td><td>0</td><td>http://</td><td>0</td><td>install</td><td>install</td><td>[LocalAppDataFolder]Downloaded Installations</td><td>0</td><td>http://www.installengine.com/Msiengine20</td><td>http://www.installengine.com/Msiengine20</td><td/><td>http://www.installengine.com/cert05/isengine</td><td/><td/><td/><td/><td>3</td><td>http://www.installengine.com/cert05/dotnetfx</td><td>0</td><td>1033</td><td/><td/><td/><td/><td>16</td><td>3</td><td>16</td><td>http://www.installengine.com/Msiengine30</td><td/></row>
+		<row><td>Release</td><td>SINGLE_EXE_IMAGE</td><td>0</td><td>http://</td><td>0</td><td>install</td><td>install</td><td>[LocalAppDataFolder]Downloaded Installations</td><td>1</td><td>http://www.installengine.com/Msiengine20</td><td>http://www.installengine.com/Msiengine20</td><td/><td>http://www.installengine.com/cert05/isengine</td><td/><td/><td/><td/><td>3</td><td>http://www.installengine.com/cert05/dotnetfx</td><td>0</td><td>1033</td><td/><td/><td/><td/><td>16</td><td>3</td><td>16</td><td>http://www.installengine.com/Msiengine30</td><td/></row>
 	</table>
 
 	<table name="ISReleaseProperty">
@@ -3454,7 +3454,7 @@
 		<row><td>IDS_PROGMSG_XML_UPDATE_FILE</td><td>1033</td><td>Updating XML file %s...</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SETUPEXE_EXPIRE_MSG</td><td>1033</td><td>This setup works until %s. The setup will now exit.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SETUPEXE_LAUNCH_COND_E</td><td>1033</td><td>This setup was built with an evaluation version of InstallShield and can only be launched from setup.exe.</td><td>0</td><td/><td>1789059243</td></row>
-		<row><td>IDS_SHORTCUT_DISPLAY_NAME1</td><td>1033</td><td>Launch Sync Gateway.exe</td><td>0</td><td/><td>-1700644078</td></row>
+		<row><td>IDS_SHORTCUT_DISPLAY_NAME1</td><td>1033</td><td>Launch Couchbase Sync Gateway</td><td>0</td><td/><td>-1700644078</td></row>
 		<row><td>IDS_SQLBROWSE_INTRO</td><td>1033</td><td>From the list of servers below, select the database server you would like to target.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SQLBROWSE_INTRO_DB</td><td>1033</td><td>From the list of catalog names below, select the database catalog you would like to target.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SQLBROWSE_INTRO_TEMPLATE</td><td>1033</td><td>[IS_SQLBROWSE_INTRO]</td><td>0</td><td/><td>1789059243</td></row>
@@ -3967,8 +3967,8 @@
 		<col def="S0">Value</col>
 		<row><td>ActiveLanguage</td><td>1033</td></row>
 		<row><td>Comments</td><td/></row>
-		<row><td>CurrentMedia</td><td dt:dt="bin.base64" md5="b491486f2ea923dc16dc8132d9c8c265">
-UgBlAGwAZQBhAHMAZQAgADEAAQBQAHIAbwBkAHUAYwB0ACAAQwBvAG4AZgBpAGcAdQByAGEAdABpAG8AbgAgADEA
+               <row><td>CurrentMedia</td><td dt:dt="bin.base64" md5="339226946b2b8837de6f52a2e16ff6be">
+UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 			</td></row>
 		<row><td>EnableSwidtag</td><td>1</td></row>
 		<row><td>ISCompilerOption_CompileBeforeBuild</td><td>1</td></row>
@@ -4352,7 +4352,7 @@ UgBlAGwAZQBhAHMAZQAgADEAAQBQAHIAbwBkAHUAYwB0ACAAQwBvAG4AZgBpAGcAdQByAGEAdABpAG8A
 		<row><td>ProductCode</td><td>{D1AC3E57-6427-4847-8D70-A56B0370F3A8}</td><td/></row>
 		<row><td>ProductID</td><td>none</td><td/></row>
 		<row><td>ProductLanguage</td><td>1033</td><td/></row>
-		<row><td>ProductName</td><td>Sync Gateway</td><td/></row>
+		<row><td>ProductName</td><td>Couchbase Sync Gateway</td><td/></row>
 		<row><td>ProductVersion</td><td>1.00.0000</td><td/></row>
 		<row><td>ProgressType0</td><td>install</td><td/></row>
 		<row><td>ProgressType1</td><td>Installing</td><td/></row>
@@ -4514,7 +4514,7 @@ UgBlAGwAZQBhAHMAZQAgADEAAQBQAHIAbwBkAHUAYwB0ACAAQwBvAG4AZgBpAGcAdQByAGEAdABpAG8A
 		<col def="S255">ISComments</col>
 		<col def="S255">ISShortcutName</col>
 		<col def="I4">ISAttributes</col>
-		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>sync_gateway</td><td>UNINST|Uninstall Sync Gateway</td><td>IS_ININSTALL_SHORTCUT</td><td>[SystemFolder]msiexec.exe</td><td>/x {354EC10C-E6CE-4A10-86C3-6D91B0A93119}</td><td/><td/><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td>0</td><td>1</td><td/><td/><td/><td/><td/><td/><td/><td/></row>
+		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>sync_gateway</td><td>UNINST|Uninstall Couchbase Sync Gateway</td><td>IS_ININSTALL_SHORTCUT</td><td>[SystemFolder]msiexec.exe</td><td>/x {354EC10C-E6CE-4A10-86C3-6D91B0A93119}</td><td/><td/><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td>0</td><td>1</td><td/><td/><td/><td/><td/><td/><td/><td/></row>
 		<row><td>sync_gateway.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sync_gateway.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sync_gateway.exe_A642E39404584103A7318EFA7E2670FD.exe</td><td>0</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
 	</table>
 
