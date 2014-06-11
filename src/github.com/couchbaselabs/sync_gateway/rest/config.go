@@ -300,7 +300,10 @@ func ParseCommandLine() *ServerConfig {
 	}
 
 	if *siteURL != "" {
-		config.Persona = &PersonaConfig{Origin: *siteURL}
+		if config.Persona == nil {
+			config.Persona = new(PersonaConfig)
+		}
+		config.Persona.Origin = *siteURL
 	}
 
 	base.LogKeys["HTTP"] = true
