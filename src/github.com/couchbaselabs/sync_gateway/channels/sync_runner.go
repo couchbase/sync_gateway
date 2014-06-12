@@ -47,25 +47,37 @@ const funcWrapper = `
 		// Proxy userCtx that allows queries but not direct access to user/roles:
 		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
 
+		function haveUser(names) {
+			if (!shouldValidate) return true;
+			names = makeArray(names);
+			return (inArray(realUserCtx.name, names));
+		}
+
+		function haveRole(roles) {
+			if (!shouldValidate) return true;
+			roles = makeArray(roles);
+			return (anyInArray(realUserCtx.roles, roles));
+		}
+
+		function haveAccess(channels) {
+			if (!shouldValidate) return true;
+			channels = makeArray(channels);
+			return (anyInArray(realUserCtx.channels, channels));
+		}
+
 		function requireUser(names) {
-				if (!shouldValidate) return;
-				names = makeArray(names);
-				if (!inArray(realUserCtx.name, names))
-					throw({forbidden: "wrong user"});
+			if (!haveUser(names))
+				throw({forbidden: "wrong user"});
 		}
 
 		function requireRole(roles) {
-				if (!shouldValidate) return;
-				roles = makeArray(roles);
-				if (!anyInArray(realUserCtx.roles, roles))
-					throw({forbidden: "missing role"});
+			if (!haveRole(roles))
+				throw({forbidden: "missing role"});
 		}
 
 		function requireAccess(channels) {
-				if (!shouldValidate) return;
-				channels = makeArray(channels);
-				if (!anyInArray(realUserCtx.channels, channels))
-					throw({forbidden: "missing channel access"});
+			if (!haveAccess(channels))
+				throw({forbidden: "missing channel access"});
 		}
 
 		try {
