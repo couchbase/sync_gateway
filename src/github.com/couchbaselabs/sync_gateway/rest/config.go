@@ -185,7 +185,7 @@ func ReadServerConfigFromUrl(url string) (*ServerConfig, error) {
 
 // Reads a ServerConfig from either a JSON file or from a URL.
 func ReadServerConfig(path string) (*ServerConfig, error) {
-	if strings.HasPrefix(path, "http") {
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return ReadServerConfigFromUrl(path)
 	} else {
 		return ReadServerConfigFromFile(path)
