@@ -168,6 +168,7 @@ func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
 	return config, nil
 }
 
+// Reads a ServerConfig from a URL.
 func ReadServerConfigFromUrl(url string) (*ServerConfig, error) {
 
 	resp, err := http.Get(url)
