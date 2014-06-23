@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -151,8 +152,49 @@ func (shadowConfig *ShadowConfig) GetCredentials() (string, string) {
 	return shadowConfig.Username, shadowConfig.Password
 }
 
-// Reads a ServerConfig from a JSON file.
+// Reads a ServerConfig from raw data
+func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
+
+	data = base.ConvertBackQuotedStrings(data)
+	var config *ServerConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	// Validation:
+	for name, dbConfig := range config.Databases {
+		dbConfig.setup(name)
+	}
+	return config, nil
+}
+
+func ReadServerConfigFromUrl(url string) (*ServerConfig, error) {
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	responseBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return ReadServerConfigFromData(responseBody)
+
+}
+
+// Reads a ServerConfig from either a JSON file or from a URL.
 func ReadServerConfig(path string) (*ServerConfig, error) {
+	if strings.HasPrefix(path, "http") {
+		return ReadServerConfigFromUrl(path)
+	} else {
+		return ReadServerConfigFromFile(path)
+	}
+}
+
+// Reads a ServerConfig from a JSON file.
+func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
+
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
