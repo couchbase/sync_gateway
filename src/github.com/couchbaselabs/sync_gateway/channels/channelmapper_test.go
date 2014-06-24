@@ -273,7 +273,7 @@ func TestCheckRole(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc) {
 			requireRole(doc.role);
 		}`)
-	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}}
+	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl":1, "5yo":1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, sally)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
@@ -293,12 +293,12 @@ func TestCheckRoleArray(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc) {
 			requireRole(doc.roles);
 		}`)
-	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}}
+	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl":1, "5yo":1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"roles": ["kid","girl"]}`), `{}`, sally)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
 
-	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}}
+	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy":1, "musician":1}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, linus)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing role"))
