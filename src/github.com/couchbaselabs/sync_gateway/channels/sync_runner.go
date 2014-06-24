@@ -44,6 +44,14 @@ const funcWrapper = `
 			return false;
 		}
 
+		function anyKeysInArray(any, array) {
+			for (var key in any) {
+				if (inArray(key, array))
+					return true;
+			}
+			return false;
+		}
+
 		// Proxy userCtx that allows queries but not direct access to user/roles:
 		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
 
@@ -57,7 +65,7 @@ const funcWrapper = `
 		function requireRole(roles) {
 				if (!shouldValidate) return;
 				roles = makeArray(roles);
-				if (!anyInArray(realUserCtx.roles, roles))
+				if (!anyKeysInArray(realUserCtx.roles, roles))
 					throw({forbidden: "missing role"});
 		}
 
