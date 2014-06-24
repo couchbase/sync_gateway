@@ -6,7 +6,7 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 
 [**Product home page**](http://www.couchbase.com/mobile)
 
-[**Documentation**](http://docs.couchbase.com/sync-gateway/)
+[**Documentation**](http://developer.couchbase.com/mobile/develop/guides/sync-gateway/index.html)
 
 [**Downloads**](http://www.couchbase.com/download#cb-mobile)
 
