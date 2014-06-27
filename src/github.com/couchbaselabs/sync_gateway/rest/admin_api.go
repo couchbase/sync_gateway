@@ -17,7 +17,6 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
-	ch "github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -109,7 +108,7 @@ func externalUserName(name string) string {
 
 func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	name := externalUserName(princ.Name())
-	info := PrincipalConfig{
+	info := db.PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 	}
@@ -125,91 +124,12 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	return json.Marshal(info)
 }
 
-// Updates or creates a principal from a PrincipalConfig structure.
-func updatePrincipal(dbc *db.DatabaseContext, newInfo PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
-	// Get the existing principal, or if this is a POST make sure there isn't one:
-	var princ auth.Principal
-	var user auth.User
-	authenticator := dbc.Authenticator()
-	if isUser {
-		user, err = authenticator.GetUser(internalUserName(*newInfo.Name))
-		princ = user
-	} else {
-		princ, err = authenticator.GetRole(*newInfo.Name)
-	}
-	if err != nil {
-		return
-	}
-
-	replaced = (princ != nil)
-	if !replaced {
-		// If user/role didn't exist already, instantiate a new one:
-		if isUser {
-			user, err = authenticator.NewUser(internalUserName(*newInfo.Name), "", nil)
-			princ = user
-		} else {
-			princ, err = authenticator.NewRole(*newInfo.Name, nil)
-		}
-		if err != nil {
-			return
-		}
-	} else if !allowReplace {
-		err = base.HTTPErrorf(http.StatusConflict, "Already exists")
-		return
-	}
-
-	// Now update the Principal object from the properties in the request, first the channels:
-	updatedChannels := princ.ExplicitChannels()
-	if updatedChannels == nil {
-		updatedChannels = ch.TimedSet{}
-	}
-	lastSeq, err := dbc.LastSequence()
-	if err != nil {
-		return
-	}
-	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, lastSeq+1)
-	princ.SetExplicitChannels(updatedChannels)
-
-	// Then the user-specific fields like roles:
-	if isUser {
-		user.SetEmail(newInfo.Email)
-		if newInfo.Password != nil {
-			user.SetPassword(*newInfo.Password)
-		}
-		user.SetDisabled(newInfo.Disabled)
-
-		// Convert the array of role strings into a TimedSet by reapplying the current sequences
-		// for existing roles, and using the database's last sequence for any new roles.
-		newRoles := ch.TimedSet{}
-		oldRoles := user.ExplicitRoles()
-		var currentSequence uint64
-		for _, roleName := range newInfo.ExplicitRoleNames {
-			since, found := oldRoles[roleName]
-			if !found {
-				if currentSequence == 0 {
-					currentSequence, _ = dbc.LastSequence()
-					if currentSequence == 0 {
-						currentSequence = 1
-					}
-				}
-				since = currentSequence
-			}
-			newRoles[roleName] = since
-		}
-		user.SetExplicitRoles(newRoles)
-	}
-
-	// And finally save the Principal:
-	err = authenticator.Save(princ)
-	return
-}
-
 // Handles PUT and POST for a user or a role.
 func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
 	body, _ := h.readBody()
-	var newInfo PrincipalConfig
+	var newInfo db.PrincipalConfig
 	var err error
 	if err = json.Unmarshal(body, &newInfo); err != nil {
 		return err
@@ -229,7 +149,9 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		}
 	}
 
-	replaced, err := updatePrincipal(h.db.DatabaseContext, newInfo, isUser, h.rq.Method != "POST")
+	internalName := internalUserName(*newInfo.Name)
+	newInfo.Name = &internalName
+	replaced, err := h.db.UpdatePrincipal(newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
