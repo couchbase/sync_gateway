@@ -295,16 +295,22 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*PrincipalConfig, what string) error {
+func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
 	for name, princ := range spec {
-		princ.Name = &name
-		_, err := updatePrincipal(context, *princ, (what == "user"), (name == "GUEST"))
+		isGuest := name == "GUEST"
+		if isGuest {
+			internalName := ""
+			princ.Name = &internalName
+		} else {
+			princ.Name = &name
+		}
+		_, err := context.UpdatePrincipal(*princ, (what == "user"), isGuest)
 		if err != nil {
 			// A conflict error just means updatePrincipal didn't overwrite an existing user.
 			if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
 				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
 			}
-		} else if name == "GUEST" {
+		} else if isGuest {
 			base.Log("    Reset guest user to config")
 		} else {
 			base.Log("    Created %s %q", what, name)
