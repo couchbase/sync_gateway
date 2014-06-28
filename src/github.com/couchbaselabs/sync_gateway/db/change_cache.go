@@ -4,9 +4,11 @@ import (
 	"container/heap"
 	"expvar"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
@@ -142,6 +144,15 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
+		// Is this a user/role doc?
+		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
+			c.processPrincipalDoc(docID, docJSON, true)
+			return
+		} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+			c.processPrincipalDoc(docID, docJSON, false)
+			return
+		}
+
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, err := unmarshalDocumentSyncData(docJSON, false)
 		if err != nil || !doc.hasValidSyncData() {
@@ -185,6 +196,36 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			c.onChange(changedChannels)
 		}
 	}()
+}
+
+func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
+	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
+	// them because they have sequence numbers, so without them the sequence of sequences would
+	// have gaps in it, causing later sequences to get stuck in the queue.
+	princ, err := c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	if princ == nil {
+		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		return
+	}
+	sequence := princ.Sequence()
+	if sequence <= c.initialSequence {
+		return // Tap is sending us an old value from before I started up; ignore it
+	}
+
+	// Now add the (somewhat fictitious) entry:
+	change := &LogEntry{
+		Sequence:     sequence,
+		TimeReceived: time.Now(),
+	}
+	if isUser {
+		change.DocID = "_user/" + princ.Name()
+	} else {
+		change.DocID = "_role/" + princ.Name()
+	}
+
+	base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
+
+	c.processEntry(change)
 }
 
 // Handles a newly-arrived LogEntry.

@@ -51,6 +51,9 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 				key := string(event.Key)
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
+					if listener.OnDocChanged != nil {
+						listener.OnDocChanged(key, event.Value)
+					}
 					listener.Notify(base.SetOf(key))
 				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
 					if listener.OnDocChanged != nil {

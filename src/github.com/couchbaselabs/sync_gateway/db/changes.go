@@ -166,7 +166,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			} else {
 				channelsSince = channels.AtSequence(chans, 0)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %s ...", channelsSince)
+			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ...", channelsSince)
 
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
@@ -184,6 +184,21 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				feeds = append(feeds, feed)
 				names = append(names, name)
 			}
+
+			// If the user object has changed, create a special pseudo-feed for it:
+			if db.user != nil && db.user.Sequence() > options.Since {
+				entry := ChangeEntry{
+					Seq:     db.user.Sequence(),
+					ID:      "_user/" + db.user.Name(),
+					Changes: []ChangeRev{},
+				}
+				userFeed := make(chan *ChangeEntry, 1)
+				userFeed <- &entry
+				close(userFeed)
+				feeds = append(feeds, userFeed)
+				names = append(names, entry.ID)
+			}
+
 			current := make([]*ChangeEntry, len(feeds))
 
 			// This loop reads the available entries from all the feeds in parallel, merges them,
