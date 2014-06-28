@@ -19,6 +19,10 @@ type Principal interface {
 	// The Principal's identifier.
 	Name() string
 
+	// The database sequence at which this Principal last changed
+	Sequence() uint64
+	SetSequence(sequence uint64)
+
 	// The set of channels the Principal belongs to, and what sequence access was granted.
 	Channels() ch.TimedSet
 

@@ -24,6 +24,7 @@ type roleImpl struct {
 	Name_             string      `json:"name,omitempty"`
 	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet `json:"all_channels"`
+	Sequence_         uint64      `json:"sequence"`
 }
 
 var kValidNameRegexp *regexp.Regexp
@@ -101,6 +102,13 @@ func (role *roleImpl) Name() string {
 	return role.Name_
 }
 
+func (role *roleImpl) Sequence() uint64 {
+	return role.Sequence_
+}
+func (role *roleImpl) SetSequence(sequence uint64) {
+	role.Sequence_ = sequence
+}
+
 func (role *roleImpl) Channels() ch.TimedSet {
 	return role.Channels_
 }
@@ -130,7 +138,7 @@ func (role *roleImpl) validate() error {
 
 func (role *roleImpl) UnauthError(message string) error {
 	if role.Name_ == "" {
-		return base.HTTPErrorf(http.StatusUnauthorized, "login required: " + message)
+		return base.HTTPErrorf(http.StatusUnauthorized, "login required: "+message)
 	}
 	return base.HTTPErrorf(http.StatusForbidden, message)
 }
