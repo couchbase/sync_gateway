@@ -111,25 +111,12 @@ func (bucket couchbaseBucket) Dump() {
 
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
-	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
-	if err != nil {
-		return
-	}
-	poolName := spec.PoolName
-	if poolName == "" {
-		poolName = "default"
-	}
-	pool, err := client.GetPool(poolName)
-	if err != nil {
-		return
-	}
-	cbbucket, err := pool.GetBucket(spec.BucketName)
-	if err == nil {
-		bucket = couchbaseBucket{cbbucket}
-	}
-	return
+        cbbucket, err := couchbase.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+        if err == nil {
+                bucket = couchbaseBucket{cbbucket}
+        }
+        return
 }
-
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Log("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
