@@ -31,7 +31,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	start := time.Now()
 	// Query the view:
 	optMap := changesViewOptions(channelName, endSeq, options)
-	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since+1, endSeq, options.Limit)
+	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.Seq+1, endSeq, options.Limit)
 	vres := channelsViewResult{}
 	err := dbc.Bucket.ViewCustom("sync_gateway", "channels", optMap, &vres)
 	if err != nil {
@@ -73,7 +73,7 @@ func changesViewOptions(channelName string, endSeq uint64, options ChangesOption
 	}
 	optMap := Body{
 		"stale":    false,
-		"startkey": []interface{}{channelName, options.Since + 1},
+		"startkey": []interface{}{channelName, options.Since.Seq + 1},
 		"endkey":   endKey,
 	}
 	if options.Limit > 0 {

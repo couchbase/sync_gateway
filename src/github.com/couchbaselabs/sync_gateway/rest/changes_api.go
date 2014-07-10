@@ -76,7 +76,10 @@ func (h *handler) handleChanges() error {
 	if h.rq.Method == "GET" {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
-		options.Since = sequenceFromString(h.getQuery("since"))
+		var err error
+		if options.Since, err = db.ParseSequenceID(h.getQuery("since")); err != nil {
+			return err
+		}
 		options.Limit = int(h.getIntQuery("limit", 0))
 		options.Conflicts = (h.getQuery("style") == "all_docs")
 		options.IncludeDocs = (h.getBoolQuery("include_docs"))
@@ -198,7 +201,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			}
 		}
 	}
-	s := fmt.Sprintf("],\n\"last_seq\":%d}\n", lastSeq)
+	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	h.response.Write([]byte(s))
 	h.logStatus(http.StatusOK, message)
 	return nil
@@ -228,7 +231,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 
 	options.Wait = true       // we want the feed channel to wait for changes
 	options.Continuous = true // and to keep sending changes indefinitely
-	var lastSeq uint64
+	var lastSeq db.SequenceID
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
 	var err error
@@ -237,7 +240,7 @@ loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			if lastSeq > 0 { // start after end of last feed
+			if lastSeq.Seq > 0 { // start after end of last feed
 				options.Since = lastSeq
 			}
 			feed, err = h.db.MultiChangesFeed(inChannels, options)
@@ -390,23 +393,19 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 
 func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
 	var input struct {
-		Feed        string      `json:"feed"`
-		Since       interface{} `json:"since"`
-		Limit       int         `json:"limit"`
-		Style       string      `json:"style"`
-		IncludeDocs bool        `json:"include_docs"`
-		Filter      string      `json:"filter"`
-		Channels    string      `json:"channels"` // a filter query param, so it has to be a string
+		Feed        string        `json:"feed"`
+		Since       db.SequenceID `json:"since"`
+		Limit       int           `json:"limit"`
+		Style       string        `json:"style"`
+		IncludeDocs bool          `json:"include_docs"`
+		Filter      string        `json:"filter"`
+		Channels    string        `json:"channels"` // a filter query param, so it has to be a string
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
 	}
 	feed = input.Feed
-	if since, ok := input.Since.(float64); ok { // (Unmarshal parses all numbers to float64)
-		options.Since = uint64(since)
-	} else if sinceStr, ok := input.Since.(string); ok {
-		options.Since = sequenceFromString(sinceStr) // Support numeric strings
-	}
+	options.Since = input.Since
 	options.Limit = input.Limit
 	options.Conflicts = (input.Style == "all_docs")
 	options.IncludeDocs = input.IncludeDocs

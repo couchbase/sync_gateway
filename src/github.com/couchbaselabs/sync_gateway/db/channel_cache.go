@@ -78,7 +78,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 		return // Return nil if nothing is cached
 	}
 	var start int
-	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since; start-- {
+	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since.Seq; start-- {
 	}
 	start++
 
@@ -114,7 +114,8 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		base.LogTo("Cache", "getCachedChanges(%q, %d) --> nothing cached",
 			c.channelName, options.Since)
 	}
-	if cacheValidFrom <= options.Since+1 {
+	startSeq := options.Since.Seq + 1
+	if cacheValidFrom <= startSeq {
 		return resultFromCache, nil
 	}
 
@@ -130,7 +131,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		base.LogTo("Cache", "2nd getCachedChanges(%q, %d) got %d more, valid from #%d!",
 			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
-	if cacheValidFrom <= options.Since+1 {
+	if cacheValidFrom <= startSeq {
 		return resultFromCache, nil
 	}
 
@@ -144,7 +145,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 	// Cache some of the view results, if there's room in the cache:
 	if len(resultFromCache) < ChannelCacheMaxLength {
-		c.prependChanges(resultFromView, options.Since+1, options.Limit == 0)
+		c.prependChanges(resultFromView, startSeq, options.Limit == 0)
 	}
 
 	result := resultFromView
