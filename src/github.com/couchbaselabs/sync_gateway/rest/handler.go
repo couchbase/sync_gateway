@@ -208,7 +208,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 
 	// Check cookie first:
 	var err error
-	h.user, err = context.Authenticator().AuthenticateCookie(h.rq)
+	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
 	if err != nil {
 		return err
 	} else if h.user != nil {

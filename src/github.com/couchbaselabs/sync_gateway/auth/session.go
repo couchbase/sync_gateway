@@ -21,11 +21,12 @@ type LoginSession struct {
 	ID         string    `json:"id"`
 	Username   string    `json:"username"`
 	Expiration time.Time `json:"expiration"`
+	Ttl time.Duration    `json:"ttl"`
 }
 
 const CookieName = "SyncGatewaySession"
 
-func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (User, error) {
+func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
 	cookie, _ := rq.Cookie(CookieName)
 	if cookie == nil {
 		return nil, nil
@@ -40,6 +41,17 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (User, error) {
 		return nil, err
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
+        //update the session Expiration if 10% or more of the current expiration time has elapsed
+        if(int((time.Now().Add(session.Ttl).Sub(session.Expiration)).Seconds()) > int(session.Ttl.Seconds())/10) {
+        	session.Expiration = time.Now().Add(session.Ttl)
+        	ttlSec := int(session.Ttl.Seconds())
+		if err = auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
+                	return nil, err
+        	}
+
+		cookie.Expires = session.Expiration
+		http.SetCookie(response, cookie)
+	}
 	user, err := auth.GetUser(session.Username)
 	if user != nil && user.Disabled() {
 		user = nil
@@ -56,6 +68,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		ID:         base.GenerateRandomSecret(),
 		Username:   username,
 		Expiration: time.Now().Add(ttl),
+		Ttl: ttl,
 	}
 	if err := auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
 		return nil, err
