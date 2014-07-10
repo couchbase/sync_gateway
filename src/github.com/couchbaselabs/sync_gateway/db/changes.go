@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"math"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -19,19 +18,19 @@ import (
 
 // Options for changes-feeds
 type ChangesOptions struct {
-	Since       uint64    // sequence # to start _after_
-	Limit       int       // Max number of changes to return, if nonzero
-	Conflicts   bool      // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs bool      // Include doc body of each change?
-	Wait        bool      // Wait for results, instead of immediately returning empty result?
-	Continuous  bool      // Run continuously until terminated?
-	Terminator  chan bool // Caller can close this channel to terminate the feed
+	Since       SequenceID // sequence # to start _after_
+	Limit       int        // Max number of changes to return, if nonzero
+	Conflicts   bool       // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs bool       // Include doc body of each change?
+	Wait        bool       // Wait for results, instead of immediately returning empty result?
+	Continuous  bool       // Run continuously until terminated?
+	Terminator  chan bool  // Caller can close this channel to terminate the feed
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq      uint64      `json:"seq"`
+	Seq      SequenceID  `json:"seq"`
 	ID       string      `json:"id"`
 	Deleted  bool        `json:"deleted,omitempty"`
 	Removed  base.Set    `json:"removed,omitempty"`
@@ -107,8 +106,15 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// we won't emit the doc at all because we already stopped emitting entries
 				// from the view before this point.
 			}
+			if logEntry.Sequence >= options.Since.TriggeredBy {
+				options.Since.TriggeredBy = 0
+			}
+			seqID := SequenceID{
+				Seq:         logEntry.Sequence,
+				TriggeredBy: options.Since.TriggeredBy,
+			}
 			change := ChangeEntry{
-				Seq:      logEntry.Sequence,
+				Seq:      seqID,
 				ID:       logEntry.DocID,
 				Deleted:  (logEntry.Flags & channels.Deleted) != 0,
 				Changes:  []ChangeRev{{"rev": logEntry.RevID}},
@@ -173,8 +179,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			names := make([]string, 0, len(channelsSince))
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
-				if seqAddedAt > options.Since {
-					chanOpts.Since = 0 // Newly added channel so send all of it to user
+				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) {
+					// Newly added channel so send all of it to user:
+					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				}
 				feed, err := db.changesFeed(name, chanOpts)
 				if err != nil {
@@ -186,17 +193,20 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 
 			// If the user object has changed, create a special pseudo-feed for it:
-			if db.user != nil && db.user.Sequence() > options.Since {
-				entry := ChangeEntry{
-					Seq:     db.user.Sequence(),
-					ID:      "_user/" + db.user.Name(),
-					Changes: []ChangeRev{},
+			if db.user != nil {
+				userSeq := SequenceID{Seq: db.user.Sequence()}
+				if options.Since.Before(userSeq) {
+					entry := ChangeEntry{
+						Seq:     userSeq,
+						ID:      "_user/" + db.user.Name(),
+						Changes: []ChangeRev{},
+					}
+					userFeed := make(chan *ChangeEntry, 1)
+					userFeed <- &entry
+					close(userFeed)
+					feeds = append(feeds, userFeed)
+					names = append(names, entry.ID)
 				}
-				userFeed := make(chan *ChangeEntry, 1)
-				userFeed <- &entry
-				close(userFeed)
-				feeds = append(feeds, userFeed)
-				names = append(names, entry.ID)
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
@@ -217,10 +227,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				// Find the current entry with the minimum sequence:
-				var minSeq uint64 = math.MaxUint64
+				minSeq := MaxSequenceID
 				var minEntry *ChangeEntry
 				for _, cur := range current {
-					if cur != nil && cur.Seq < minSeq {
+					if cur != nil && cur.Seq.Before(minSeq) {
 						minSeq = cur.Seq
 						minEntry = cur
 					}
@@ -233,7 +243,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				for i, cur := range current {
 					if cur != nil && cur.Seq == minSeq {
 						current[i] = nil
-						options.Since = minSeq
+						//options.Since = minSeq //TEMP ???
 						// Also concatenate the matching entries' Removed arrays:
 						if cur != minEntry && cur.Removed != nil {
 							if minEntry.Removed == nil {
@@ -243,6 +253,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 							}
 						}
 					}
+				}
+
+				if !options.Since.Before(minSeq) {
+					continue // out of order; skip it
 				}
 
 				// Add the doc body or the conflicting rev IDs, if those options are set:
@@ -319,7 +333,7 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 }
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
-	options := ChangesOptions{Since: afterSeq}
+	options := ChangesOptions{Since: SequenceID{Seq: afterSeq}}
 	_, log := db.changeCache.getChannelCache(channelName).getCachedChanges(options)
 	return log
 }
