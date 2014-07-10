@@ -180,7 +180,7 @@ func (h *handler) logDuration(realTime bool) {
 
 	var duration time.Duration
 	if realTime {
-		duration := time.Since(h.startTime)
+		duration = time.Since(h.startTime)
 		bin := int(duration/(100*time.Millisecond)) * 100
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
