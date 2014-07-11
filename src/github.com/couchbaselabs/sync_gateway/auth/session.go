@@ -42,7 +42,9 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
         //update the session Expiration if 10% or more of the current expiration time has elapsed
-        if(int((time.Now().Add(session.Ttl).Sub(session.Expiration)).Seconds()) > int(session.Ttl.Seconds())/10) {
+        sessionPercentElapsed := int((time.Now().Add(session.Ttl).Sub(session.Expiration)).Seconds())
+	tenPercentOfTtl := int(session.Ttl.Seconds())/10
+        if(sessionPercentElapsed > tenPercentOfTtl) {
         	session.Expiration = time.Now().Add(session.Ttl)
         	ttlSec := int(session.Ttl.Seconds())
 		if err = auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
