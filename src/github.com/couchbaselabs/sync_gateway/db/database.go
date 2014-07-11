@@ -242,9 +242,6 @@ func installViews(bucket base.Bucket) error {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
-	                    var sequence = sync.sequence;
-	                    if ((sync.flags & 1) || sync.deleted || sequence === undefined)
-	                        return;
 	                    var access = sync.access;
 	                    if (access) {
 	                        for (var name in access) {
@@ -257,9 +254,6 @@ func installViews(bucket base.Bucket) error {
 	roleAccess_map := `function (doc, meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                        return;
-	                    var sequence = sync.sequence;
-	                    if ((sync.flags & 1) || sync.deleted || sequence === undefined)
 	                        return;
 	                    var access = sync.role_access;
 	                    if (access) {

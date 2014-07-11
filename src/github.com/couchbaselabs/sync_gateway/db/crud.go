@@ -623,11 +623,17 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
 
 	// Mark affected users/roles as needing to recompute their channel access:
-	for _, name := range changedPrincipals {
-		db.invalUserOrRoleChannels(name)
+	if len(changedPrincipals) > 0 {
+		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
+		for _, name := range changedPrincipals {
+			db.invalUserOrRoleChannels(name)
+		}
 	}
-	for _, name := range changedRoleUsers {
-		db.invalUserRoles(name)
+	if len(changedRoleUsers) > 0 {
+		base.LogTo("Access", "Rev %q/%q invalidates roles of %s", docid, newRevID, changedRoleUsers)
+		for _, name := range changedRoleUsers {
+			db.invalUserRoles(name)
+		}
 	}
 
 	return newRevID, nil
@@ -673,8 +679,10 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			makeUserCtx(db.user))
 		if err == nil {
 			result = output.Channels
-			access = output.Access
-			roles = output.Roles
+			if !doc.hasFlag(channels.Deleted) { // deleted docs can't grant access
+				access = output.Access
+				roles = output.Roles
+			}
 			err = output.Rejection
 			if err != nil {
 				base.Log("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
