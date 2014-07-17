@@ -41,16 +41,16 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		return nil, err
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
-        //update the session Expiration if 10% or more of the current expiration time has elapsed
-        duration, _ := time.ParseDuration(session.Ttl)
-	sessionPercentElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Seconds())
-	tenPercentOfTtl := int(duration.Seconds())/10
-        if(sessionPercentElapsed > tenPercentOfTtl) {
-        	session.Expiration = time.Now().Add(duration)
-        	ttlSec := int(duration.Seconds())
+	//update the session Expiration if 10% or more of the current expiration time has elapsed
+	duration, _ := time.ParseDuration(session.Ttl)
+	sessionTimeElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Seconds())
+	tenPercentOfTtl := int(duration.Seconds()) / 10
+	if sessionTimeElapsed > tenPercentOfTtl {
+		session.Expiration = time.Now().Add(duration)
+		ttlSec := int(duration.Seconds())
 		if err = auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
-                	return nil, err
-        	}
+			return nil, err
+		}
 
 		cookie.Expires = session.Expiration
 		http.SetCookie(response, cookie)
@@ -71,7 +71,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		ID:         base.GenerateRandomSecret(),
 		Username:   username,
 		Expiration: time.Now().Add(ttl),
-		Ttl: ttl.String(),
+		Ttl:        ttl.String(),
 	}
 	if err := auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
 		return nil, err
