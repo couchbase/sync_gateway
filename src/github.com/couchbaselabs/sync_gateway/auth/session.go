@@ -16,6 +16,8 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+const kDefaultSessionTTL = 24 * time.Hour
+
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
 	ID         string        `json:"id"`
@@ -44,11 +46,10 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	//update the session Expiration if 10% or more of the current expiration time has elapsed
 	//if the session does not contain a Ttl (probably created prior to upgrading SG), use
 	//default value of 24Hours
-	duration := session.Ttl
-	if duration == 0 {
-		duration, _ = time.ParseDuration("24h")
-		session.Ttl = duration
+	if session.Ttl == 0 {
+		session.Ttl = kDefaultSessionTTL
 	}
+	duration := session.Ttl
 	sessionTimeElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Seconds())
 	tenPercentOfTtl := int(duration.Seconds()) / 10
 	if sessionTimeElapsed > tenPercentOfTtl {
