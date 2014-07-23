@@ -246,6 +246,10 @@ func (h *handler) assertAdminOnly() {
 
 func (h *handler) PathVar(name string) string {
 	v := mux.Vars(h.rq)[name]
+
+	//Escape special chars i.e. '+' otherwise they are removed by QueryUnescape()
+	v = fixUnescapedSpecialChars(v)
+
 	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
 	// (see function fixQuotedSlashes). So we have to unescape them now.
 	v, _ = url.QueryUnescape(v)
@@ -512,4 +516,13 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setStatus(status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
+}
+
+func fixUnescapedSpecialChars(path string) string {
+
+	if strings.Contains(path, "+") {
+		newpath := strings.Replace(path, "+", "%2B", 1)
+		return newpath
+	}
+	return path
 }
