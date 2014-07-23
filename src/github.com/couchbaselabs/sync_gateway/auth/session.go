@@ -16,16 +16,19 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+const kDefaultSessionTTL = 24 * time.Hour
+
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID         string    `json:"id"`
-	Username   string    `json:"username"`
-	Expiration time.Time `json:"expiration"`
+	ID         string        `json:"id"`
+	Username   string        `json:"username"`
+	Expiration time.Time     `json:"expiration"`
+	Ttl        time.Duration `json:"ttl"`
 }
 
 const CookieName = "SyncGatewaySession"
 
-func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (User, error) {
+func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
 	cookie, _ := rq.Cookie(CookieName)
 	if cookie == nil {
 		return nil, nil
@@ -40,6 +43,25 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request) (User, error) {
 		return nil, err
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
+	//update the session Expiration if 10% or more of the current expiration time has elapsed
+	//if the session does not contain a Ttl (probably created prior to upgrading SG), use
+	//default value of 24Hours
+	if session.Ttl == 0 {
+		session.Ttl = kDefaultSessionTTL
+	}
+	duration := session.Ttl
+	sessionTimeElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Seconds())
+	tenPercentOfTtl := int(duration.Seconds()) / 10
+	if sessionTimeElapsed > tenPercentOfTtl {
+		session.Expiration = time.Now().Add(duration)
+		ttlSec := int(duration.Seconds())
+		if err = auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
+			return nil, err
+		}
+
+		cookie.Expires = session.Expiration
+		http.SetCookie(response, cookie)
+	}
 	user, err := auth.GetUser(session.Username)
 	if user != nil && user.Disabled() {
 		user = nil
@@ -56,6 +78,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		ID:         base.GenerateRandomSecret(),
 		Username:   username,
 		Expiration: time.Now().Add(ttl),
+		Ttl:        ttl,
 	}
 	if err := auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
 		return nil, err
