@@ -277,7 +277,12 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		return err
 	}
 	dbcontext.Shadower = shadower
-	base.Log("Database %q shadowing remote bucket %q, pool %q, server <%s>", dbcontext.Name, spec.BucketName, spec.PoolName, spec.Server)
+
+	//Remove credentials from server URL before logging
+	url, err := couchbase.ParseURL(spec.Server)
+	if err == nil {
+		base.Log("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", dbcontext.Name, spec.BucketName, spec.PoolName, url.Scheme, url.Host, url.Path)
+	}
 	return nil
 }
 
