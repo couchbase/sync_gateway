@@ -107,6 +107,11 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 		if !createUserIfNeeded {
 			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
 		}
+		
+		if len(email) < 1 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Cannot register new user: email is missing")
+		}
+		
 		// Create a User with the given email address as username and a random password.
 		user, err = h.registerNewUser(email)
 		if err != nil {
