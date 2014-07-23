@@ -55,6 +55,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	var user auth.User
 	authenticator := dbc.Authenticator()
 	if isUser {
+		if newInfo.Password != nil && len(*(newInfo.Password)) < 3 {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Passwords must be at least three 3 characters")
+			return
+		}
 		user, err = authenticator.GetUser(*newInfo.Name)
 		princ = user
 	} else {
