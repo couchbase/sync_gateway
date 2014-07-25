@@ -570,16 +570,20 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 }
 
 func TestAccessControl(t *testing.T) {
-	type viewRow struct {
-		ID    string            `json:"id"`
-		Key   string            `json:"key"`
-		Value map[string]string `json:"value"`
-		Doc   db.Body           `json:"doc,omitempty"`
+	type allDocsRow struct {
+		ID    string `json:"id"`
+		Key   string `json:"key"`
+		Value struct {
+			Rev      string              `json:"rev"`
+			Channels []string            `json:"channels,omitempty"`
+			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+		} `json:"value"`
+		Doc db.Body `json:"doc,omitempty"`
 	}
-	var viewResult struct {
-		TotalRows int       `json:"total_rows"`
-		Offset    int       `json:"offset"`
-		Rows      []viewRow `json:"rows"`
+	var allDocsResult struct {
+		TotalRows int          `json:"total_rows"`
+		Offset    int          `json:"offset"`
+		Rows      []allDocsRow `json:"rows"`
 	}
 
 	// Create some docs:
@@ -617,17 +621,19 @@ func TestAccessControl(t *testing.T) {
 	assertStatus(t, response, 403)
 
 	// Check that _all_docs only returns the docs the user has access to:
-	request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
+	request, _ = http.NewRequest("GET", "/db/_all_docs?channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.send(request)
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
-	err = json.Unmarshal(response.Body.Bytes(), &viewResult)
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(viewResult.Rows), 2)
-	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
-	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
+	assert.Equals(t, len(allDocsResult.Rows), 2)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs with include_docs option:
 	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
@@ -636,11 +642,39 @@ func TestAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
-	err = json.Unmarshal(response.Body.Bytes(), &viewResult)
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(viewResult.Rows), 2)
-	assert.Equals(t, viewResult.Rows[0].ID, "doc3")
-	assert.Equals(t, viewResult.Rows[1].ID, "doc4")
+	assert.Equals(t, len(allDocsResult.Rows), 2)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+
+	// Check POST to _all_docs:
+	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
+	request, _ = http.NewRequest("POST", "/db/_all_docs?channels=true", bytes.NewBufferString(body))
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 2)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
+
+	// Check _all_docs as admin:
+	response = rt.sendAdminRequest("GET", "/db/_all_docs", "")
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 4)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
+
 }
 
 func TestChannelAccessChanges(t *testing.T) {

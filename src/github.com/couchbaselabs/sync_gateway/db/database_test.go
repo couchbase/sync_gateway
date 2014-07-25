@@ -190,6 +190,27 @@ func TestGetDeleted(t *testing.T) {
 	assert.DeepEquals(t, body, expectedResult)
 }
 
+type AllDocsEntry struct {
+	IDAndRev
+	Channels []string
+}
+
+func (e AllDocsEntry) Equal(e2 AllDocsEntry) bool {
+	return e.DocID == e2.DocID && e.RevID == e2.RevID && e.Sequence == e2.Sequence &&
+		base.SetFromArray(e.Channels).Equals(base.SetFromArray(e2.Channels))
+}
+
+func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
+	err = db.ForEachDocID(func(doc IDAndRev, channels []string) error {
+		docs = append(docs, AllDocsEntry{
+			IDAndRev: doc,
+			Channels: channels,
+		})
+		return nil
+	})
+	return
+}
+
 func TestAllDocs(t *testing.T) {
 	// base.LogKeys["Cache"] = true
 	// base.LogKeys["Changes"] = true
@@ -212,7 +233,7 @@ func TestAllDocs(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	ids := make([]IDAndRev, 100)
+	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
 		channels := []string{"all"}
 		if i%10 == 0 {
@@ -223,21 +244,22 @@ func TestAllDocs(t *testing.T) {
 		revid, err := db.Put(ids[i].DocID, body)
 		ids[i].RevID = revid
 		ids[i].Sequence = uint64(i + 1)
+		ids[i].Channels = channels
 		assertNoError(t, err, "Couldn't create document")
 	}
 
-	alldocs, err := db.AllDocIDs()
+	alldocs, err := allDocIDs(db)
 	assertNoError(t, err, "AllDocIDs failed")
 	assert.Equals(t, len(alldocs), 100)
 	for i, entry := range alldocs {
-		assert.DeepEquals(t, entry, ids[i])
+		assert.True(t, entry.Equal(ids[i]))
 	}
 
 	// Now delete one document and try again:
 	_, err = db.DeleteDoc(ids[23].DocID, ids[23].RevID)
 	assertNoError(t, err, "Couldn't delete doc 23")
 
-	alldocs, err = db.AllDocIDs()
+	alldocs, err = allDocIDs(db)
 	assertNoError(t, err, "AllDocIDs failed")
 	assert.Equals(t, len(alldocs), 99)
 	for i, entry := range alldocs {
@@ -245,7 +267,7 @@ func TestAllDocs(t *testing.T) {
 		if i >= 23 {
 			j++
 		}
-		assert.DeepEquals(t, entry, ids[j])
+		assert.True(t, entry.Equal(ids[j]))
 	}
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.

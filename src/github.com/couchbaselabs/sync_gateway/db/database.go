@@ -181,7 +181,13 @@ func installViews(bucket base.Bucket) error {
                        return;
                      if ((sync.flags & 1) || sync.deleted)
                        return;
-                     emit(meta.id, [sync.rev, sync.sequence]); }`
+                     var channels = sync.channels;
+                     var channelNames = [];
+                     for (ch in channels) {
+                     	if (channels[ch] == null)
+                     		channelNames.push(ch);
+                     }
+                     emit(meta.id, {r:sync.rev, s:sync.sequence, c:channelNames}); }`
 	// View for importing unknown docs
 	// Key is [existing?, docid] where 'existing?' is false for unknown docs
 	import_map := `function (doc, meta) {
@@ -298,24 +304,35 @@ type IDAndRev struct {
 	Sequence uint64
 }
 
-// Returns all document IDs as an array.
-func (db *Database) AllDocIDs() ([]IDAndRev, error) {
-	vres, err := db.queryAllDocs(false)
+type ForEachDocIDFunc func(id IDAndRev, channels []string) error
+
+// Iterates over all documents in the database, calling the callback function on each
+func (db *Database) ForEachDocID(callback ForEachDocIDFunc) error {
+	type viewRow struct {
+		Key   string
+		Value struct {
+			RevID    string   `json:"r"`
+			Sequence uint64   `json:"s"`
+			Channels []string `json:"c"`
+		}
+	}
+	var vres struct {
+		Rows []viewRow
+	}
+	opts := Body{"stale": false, "reduce": false}
+	err := db.Bucket.ViewCustom("sync_housekeeping", "all_docs", opts, &vres)
 	if err != nil {
-		return nil, err
+		base.Warn("all_docs got error: %v", err)
+		return err
 	}
 
-	rows := vres.Rows
-	result := make([]IDAndRev, 0, len(rows))
-	for _, row := range rows {
-		value := row.Value.([]interface{})
-		result = append(result, IDAndRev{
-			DocID:    row.Key.(string),
-			RevID:    value[0].(string),
-			Sequence: uint64(value[1].(float64)),
-		})
+	for _, row := range vres.Rows {
+		err = callback(IDAndRev{row.Key, row.Value.RevID, row.Value.Sequence}, row.Value.Channels)
+		if err != nil {
+			return err
+		}
 	}
-	return result, nil
+	return nil
 }
 
 // Returns the IDs of all users and roles

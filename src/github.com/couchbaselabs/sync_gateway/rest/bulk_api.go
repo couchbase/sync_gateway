@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/sync_gateway/db"
 )
 
@@ -25,26 +26,20 @@ import (
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
-	includeChannels := h.getBoolQuery("channels") && h.user == nil
+	includeChannels := h.getBoolQuery("channels")
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
 	includeSeqs := h.getBoolQuery("update_seq")
-	var ids []db.IDAndRev
-	var err error
-	var docCount int
 
-	// Get the doc IDs:
-	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
-		ids, err = h.db.AllDocIDs()
-		docCount = len(ids)
-	} else {
+	// Get the doc IDs if this is a POST request:
+	var explicitDocIDs []string
+	if h.rq.Method == "POST" {
 		input, err := h.readJSON()
 		if err == nil {
 			keys, ok := input["keys"].([]interface{})
-			ids = make([]db.IDAndRev, len(keys))
+			explicitDocIDs = make([]string, len(keys))
 			for i := 0; i < len(keys); i++ {
-				ids[i].DocID, ok = keys[i].(string)
-				if !ok {
+				if explicitDocIDs[i], ok = keys[i].(string); !ok {
 					break
 				}
 			}
@@ -52,46 +47,86 @@ func (h *handler) handleAllDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
-		docCount = h.db.DocCount()
-	}
-	if err != nil {
-		return err
 	}
 
-	type viewRowValue struct {
-		Rev      string              `json:"rev"`
-		Channels base.Set            `json:"channels,omitempty"` // for admins only
-		Access   map[string]base.Set `json:"access,omitempty"`   // for admins only
+	// Get the set of channels the user has access to; nil if user is admin or has access to "*"
+	var availableChannels channels.TimedSet
+	if h.user != nil {
+		availableChannels = h.user.InheritedChannels()
+		if availableChannels == nil {
+			panic("no channels for user?")
+		}
+		if availableChannels.Contains("*") {
+			availableChannels = nil
+		}
 	}
-	type viewRow struct {
-		ID        string       `json:"id"`
-		Key       string       `json:"key"`
-		Value     viewRowValue `json:"value"`
-		Doc       db.Body      `json:"doc,omitempty"`
-		UpdateSeq uint64       `json:"update_seq,omitempty"`
-	}
-	h.setHeader("Content-Type", "application/json")
-	h.response.Write([]byte(`{"rows":[` + "\n"))
 
-	// Assemble the result (and read docs if includeDocs is set)
-	totalRows := 0
-	for _, id := range ids {
-		row := viewRow{ID: id.DocID, Key: id.DocID}
-		if includeDocs || id.RevID == "" || includeChannels || includeAccess {
-			// Fetch the document body and other metadata that lives with it:
-			body, channels, access, roleAccess, err := h.db.GetRevAndChannels(id.DocID, id.RevID, includeRevs)
-			if err != nil || body["_removed"] != nil {
-				continue
+	// Subroutines that filter a channel list down to the ones that the user has access to:
+	filterChannels := func(channels []string) []string {
+		if availableChannels == nil {
+			return channels
+		}
+		dst := 0
+		for _, ch := range channels {
+			if availableChannels.Contains(ch) {
+				channels[dst] = ch
+				dst++
 			}
-			id.RevID = body["_rev"].(string)
+		}
+		if dst == 0 {
+			return nil
+		}
+		return channels[0:dst]
+	}
+	filterChannelSet := func(channelMap channels.ChannelMap) []string {
+		var result []string
+		for ch, _ := range channelMap {
+			if availableChannels == nil || availableChannels.Contains(ch) {
+				result = append(result, ch)
+			}
+		}
+		return result
+	}
+
+	// Subroutine that writes a response entry for a document:
+	totalRows := 0
+	writeDoc := func(doc db.IDAndRev, channels []string) error {
+		type allDocsRowValue struct {
+			Rev      string              `json:"rev"`
+			Channels []string            `json:"channels,omitempty"`
+			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+		}
+		type allDocsRow struct {
+			ID        string          `json:"id"`
+			Key       string          `json:"key"`
+			Value     allDocsRowValue `json:"value"`
+			Doc       db.Body         `json:"doc,omitempty"`
+			UpdateSeq uint64          `json:"update_seq,omitempty"`
+		}
+
+		row := allDocsRow{ID: doc.DocID, Key: doc.DocID}
+
+		// Filter channels to ones available to user, and bail out if inaccessible:
+		if explicitDocIDs == nil {
+			if channels = filterChannels(channels); channels == nil {
+				return nil
+			}
+		}
+
+		if explicitDocIDs != nil || includeDocs || includeAccess {
+			// Fetch the document body and other metadata that lives with it:
+			body, channelSet, access, roleAccess, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
+			if err != nil || body["_removed"] != nil {
+				return nil
+			}
+			if explicitDocIDs != nil {
+				if channels = filterChannelSet(channelSet); channels == nil {
+					return nil
+				}
+				doc.RevID = body["_rev"].(string)
+			}
 			if includeDocs {
 				row.Doc = body
-			}
-			if includeChannels && channels != nil {
-				row.Value.Channels = base.Set{}
-				for channelName, _ := range channels {
-					row.Value.Channels[channelName] = struct{}{}
-				}
 			}
 			if includeAccess && (access != nil || roleAccess != nil) {
 				row.Value.Access = map[string]base.Set{}
@@ -102,24 +137,41 @@ func (h *handler) handleAllDocs() error {
 					row.Value.Access["role:"+roleName] = channels.AsSet()
 				}
 			}
-		} else if err := h.db.AuthorizeDocID(id.DocID, id.RevID); err != nil {
-			continue
 		}
+
+		row.Value.Rev = doc.RevID
 		if includeSeqs {
-			row.UpdateSeq = id.Sequence
+			row.UpdateSeq = doc.Sequence
 		}
-		row.Value.Rev = id.RevID
+		if includeChannels {
+			row.Value.Channels = channels
+		}
 
 		if totalRows > 0 {
 			h.response.Write([]byte(",\n"))
 		}
 		totalRows++
 		h.addJSON(row)
+		return nil
 	}
 
+	// Now it's time to actually write the response!
 	lastSeq, _ := h.db.LastSequence()
+	h.setHeader("Content-Type", "application/json")
+	h.response.Write([]byte(`{"rows":[` + "\n"))
+
+	if explicitDocIDs != nil {
+		for _, docID := range explicitDocIDs {
+			writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+		}
+	} else {
+		if err := h.db.ForEachDocID(writeDoc); err != nil {
+			return err
+		}
+	}
+
 	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
-		docCount, lastSeq)))
+		totalRows, lastSeq)))
 	return nil
 }
 
