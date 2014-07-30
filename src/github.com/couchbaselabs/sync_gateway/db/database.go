@@ -467,45 +467,17 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 	return
 }
 
-/*
-	err = context.Bucket.Get(kSyncDataKey, &syncData)
-	syncDataMissing := base.IsDocNotFoundError(err)
-	if err != nil && !syncDataMissing {
-		return err
-	} else if syncFun == syncData.Sync {
-		// Sync function hasn't changed. But if importing, scan imported docs anyway:
-		if importExistingDocs {
-			db := &Database{context, nil}
-			return db.UpdateAllDocChannels(false, importExistingDocs)
-		}
-		return nil
-	} else {
-		if !syncDataMissing {
-			// It's changed, so re-run it on all docs:
-			db := &Database{context, nil}
-			if err = db.UpdateAllDocChannels(true, importExistingDocs); err != nil {
-				return err
-			}
-		}
-
-		// Finally save the new function source:
-		syncData.Sync = syncFun
-		return context.Bucket.Set(kSyncDataKey, 0, syncData)
-	}
-}
-*/
-
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
-func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) error {
+func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) (int, error) {
 	if doCurrentDocs {
 		base.Log("Recomputing document channels...")
 	}
 	if doImportDocs {
 		base.Log("Importing documents...")
 	} else if !doCurrentDocs {
-		return nil // no-op if neither option is set
+		return 0, nil // no-op if neither option is set
 	}
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
@@ -516,7 +488,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	}
 	vres, err := db.Bucket.View("sync_housekeeping", "import", options)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// We are about to alter documents without updating their sequence numbers, which would
@@ -525,7 +497,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	defer db.changeCache.EnableChannelLogs(true)
 	db.changeCache.ClearLogs()
 
-	//base.Log("Re-running sync() function on all %d documents...", len(vres.Rows))
+	base.Log("Re-running sync function on all %d documents...", len(vres.Rows))
 	changeCount := 0
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
@@ -593,6 +565,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
+	base.Log("Finished re-running sync function; %d docs changed", changeCount)
 
 	if changeCount > 0 {
 		// Now invalidate channel cache of all users/roles:
@@ -605,7 +578,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			db.invalRoleChannels(name)
 		}
 	}
-	return nil
+	return changeCount, nil
 }
 
 func (db *Database) invalUserRoles(username string) {

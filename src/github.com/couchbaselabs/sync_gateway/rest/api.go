@@ -83,6 +83,15 @@ func (h *handler) handleVacuum() error {
 	return nil
 }
 
+func (h *handler) handleResync() error {
+	docsChanged, err := h.db.UpdateAllDocChannels(true, false)
+	if err != nil {
+		return err
+	}
+	h.writeJSON(db.Body{"changes": docsChanged})
+	return nil
+}
+
 func (h *handler) instanceStartTime() json.Number {
 	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
 }

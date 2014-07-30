@@ -609,8 +609,9 @@ func TestImport(t *testing.T) {
 	assert.Equals(t, err.(*base.HTTPError).Status, 404)
 
 	// Import them:
-	err = db.ApplySyncFun("", true)
+	count, err := db.UpdateAllDocChannels(false, true)
 	assertNoError(t, err, "ApplySyncFun")
+	assert.Equals(t, count, 20)
 
 	// Now they're visible:
 	doc, err = db.GetDoc("alreadyHere1")

@@ -214,7 +214,7 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 
 	if importDocs {
 		db, _ := db.GetDatabase(dbcontext, nil)
-		if err := db.UpdateAllDocChannels(false, true); err != nil {
+		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
 			return nil, err
 		}
 	}
