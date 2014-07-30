@@ -425,12 +425,10 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 const kSyncDataKey = "_sync:syncdata"
 
 // Sets the database context's sync function based on the JS code from config.
-// If the function is different from the prior one, all documents are run through it again to
-// update their channel assignments and the access privileges they assign to users and roles.
-// If importExistingDocs is true, documents in the bucket that are not known to Sync Gateway will
-// be imported (have _sync data added) and run through the sync function.
-func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs bool) error {
-	var err error
+// Returns a boolean indicating whether the function is different from the saved one.
+// If multiple gateway instances try to update the function at the same time (to the same new
+// value) only one of them will get a changed=true result.
+func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err error) {
 	if syncFun == "" {
 		context.ChannelMapper = nil
 	} else if context.ChannelMapper != nil {
@@ -440,13 +438,36 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs 
 	}
 	if err != nil {
 		base.Warn("Error setting sync function: %s", err)
-		return err
+		return
 	}
 
-	// Check whether the sync function is different from the previous one:
-	var syncData struct {
+	var syncData struct { // format of the sync-fn document
 		Sync string
 	}
+
+	err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, error) {
+		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
+		if currentValue != nil {
+			parseErr := json.Unmarshal(currentValue, &syncData)
+			if parseErr != nil || syncData.Sync != syncFun {
+				changed = true
+			}
+		}
+		if changed || currentValue == nil {
+			syncData.Sync = syncFun
+			return json.Marshal(syncData)
+		} else {
+			return nil, couchbase.UpdateCancel // value unchanged, no need to save
+		}
+	})
+
+	if err == couchbase.UpdateCancel {
+		err = nil
+	}
+	return
+}
+
+/*
 	err = context.Bucket.Get(kSyncDataKey, &syncData)
 	syncDataMissing := base.IsDocNotFoundError(err)
 	if err != nil && !syncDataMissing {
@@ -472,10 +493,11 @@ func (context *DatabaseContext) ApplySyncFun(syncFun string, importExistingDocs 
 		return context.Bucket.Set(kSyncDataKey, 0, syncData)
 	}
 }
+*/
 
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
-// To be used when the JavaScript channelmap function changes.
+// To be used when the JavaScript sync function changes.
 func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) error {
 	if doCurrentDocs {
 		base.Log("Recomputing document channels...")

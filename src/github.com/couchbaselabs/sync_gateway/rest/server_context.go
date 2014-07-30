@@ -208,8 +208,15 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	if config.Sync != nil {
 		syncFn = *config.Sync
 	}
-	if err := dbcontext.ApplySyncFun(syncFn, importDocs); err != nil {
+	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
 		return nil, err
+	}
+
+	if importDocs {
+		db, _ := db.GetDatabase(dbcontext, nil)
+		if err := db.UpdateAllDocChannels(false, true); err != nil {
+			return nil, err
+		}
 	}
 
 	if config.RevsLimit != nil && *config.RevsLimit > 0 {
@@ -242,6 +249,16 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	}
 	sc.setDatabaseConfig(config.name, config)
 	return dbcontext, nil
+}
+
+func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn string) error {
+	changed, err := dbcontext.UpdateSyncFun(syncFn)
+	if err != nil || !changed {
+		return err
+	}
+	// Sync function has changed:
+	base.Log("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", dbcontext.Name)
+	return nil
 }
 
 func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *ShadowConfig) error {
