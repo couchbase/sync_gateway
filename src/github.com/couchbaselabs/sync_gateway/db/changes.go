@@ -196,9 +196,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			if db.user != nil {
 				userSeq := SequenceID{Seq: db.user.Sequence()}
 				if options.Since.Before(userSeq) {
+					name := db.user.Name()
+					if name == "" {
+						name = "GUEST"
+					}
 					entry := ChangeEntry{
 						Seq:     userSeq,
-						ID:      "_user/" + db.user.Name(),
+						ID:      "_user/" + name,
 						Changes: []ChangeRev{},
 					}
 					userFeed := make(chan *ChangeEntry, 1)
