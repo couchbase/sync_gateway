@@ -11,8 +11,8 @@ package rest
 
 import (
 	"encoding/json"
-	"testing"
 	"log"
+	"testing"
 	"time"
 
 	"github.com/couchbaselabs/go.assert"
@@ -153,56 +153,56 @@ func TestGuestUser(t *testing.T) {
 	// Check that the actual User object is correct:
 	user, _ := rt.ServerContext().Database("db").Authenticator().GetUser("")
 	assert.Equals(t, user.Name(), "")
-	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet(nil))
+	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{})
 	assert.Equals(t, user.Disabled(), true)
 }
 
 func TestSessionExtension(t *testing.T) {
-        var rt restTester
-        a := auth.NewAuthenticator(rt.bucket(), nil)
-        user, err := a.GetUser("")
-        assert.Equals(t, err, nil)
-        user.SetDisabled(true)
-        err = a.Save(user)
-        assert.Equals(t, err, nil)
+	var rt restTester
+	a := auth.NewAuthenticator(rt.bucket(), nil)
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
 
-        user, err = a.GetUser("")
-        assert.Equals(t, err, nil)
-        assert.True(t, user.Disabled())
-    
-        log.Printf("hello")
-        response := rt.sendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-        assertStatus(t, response, 401)
+	user, err = a.GetUser("")
+	assert.Equals(t, err, nil)
+	assert.True(t, user.Disabled())
 
-        user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
-        a.Save(user)
+	log.Printf("hello")
+	response := rt.sendRequest("PUT", "/db/doc", `{"hi": "there"}`)
+	assertStatus(t, response, 401)
 
-        assertStatus(t, rt.sendAdminRequest("GET", "/db/_session", ""), 200)
+	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
+	a.Save(user)
 
-        response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":10}`)
-        assertStatus(t, response, 200)
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_session", ""), 200)
+
+	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":10}`)
+	assertStatus(t, response, 200)
 
 	var body db.Body
-        json.Unmarshal(response.Body.Bytes(), &body)
-        sessionId := body["session_id"].(string)
-        sessionExpiration := body["expires"].(string)
-        assert.True(t, sessionId != "")
-        assert.True(t, sessionExpiration != "")
-        assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
+	json.Unmarshal(response.Body.Bytes(), &body)
+	sessionId := body["session_id"].(string)
+	sessionExpiration := body["expires"].(string)
+	assert.True(t, sessionId != "")
+	assert.True(t, sessionExpiration != "")
+	assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
 
 	reqHeaders := map[string]string{
-                "Cookie": "SyncGatewaySession="+body["session_id"].(string),
-        }
-        response = rt.sendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
-        assertStatus(t, response, 201)
+		"Cookie": "SyncGatewaySession=" + body["session_id"].(string),
+	}
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
+	assertStatus(t, response, 201)
 
-        assert.True(t, response.Header().Get("Set-Cookie") == "")
-        
-        //Sleep for 2 seconds, this will ensure 10% of the 100 seconds session ttl has elapsed and
-        //should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
-        time.Sleep(2 * time.Second) 
+	assert.True(t, response.Header().Get("Set-Cookie") == "")
+
+	//Sleep for 2 seconds, this will ensure 10% of the 100 seconds session ttl has elapsed and
+	//should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
+	time.Sleep(2 * time.Second)
 	response = rt.sendRequestWithHeaders("PUT", "/db/doc2", `{"hi": "there"}`, reqHeaders)
-        assertStatus(t, response, 201)
+	assertStatus(t, response, 201)
 
-        assert.True(t, response.Header().Get("Set-Cookie") != "")
+	assert.True(t, response.Header().Get("Set-Cookie") != "")
 }

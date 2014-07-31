@@ -68,6 +68,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		return
 	}
 
+	changed := false
 	replaced = (princ != nil)
 	if !replaced {
 		// If user/role didn't exist already, instantiate a new one:
@@ -80,6 +81,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		if err != nil {
 			return
 		}
+		changed = true
 	} else if !allowReplace {
 		err = base.HTTPErrorf(http.StatusConflict, "Already exists")
 		return
@@ -97,26 +99,39 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	if updatedChannels == nil {
 		updatedChannels = ch.TimedSet{}
 	}
-	updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq)
-	princ.SetExplicitChannels(updatedChannels)
+	if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
+		princ.SetExplicitChannels(updatedChannels)
+		changed = true
+	}
 
 	// Then the user-specific fields like roles:
 	if isUser {
-		user.SetEmail(newInfo.Email)
+		if newInfo.Email != user.Email() {
+			user.SetEmail(newInfo.Email)
+			changed = true
+		}
 		if newInfo.Password != nil {
 			user.SetPassword(*newInfo.Password)
+			changed = true
 		}
-		user.SetDisabled(newInfo.Disabled)
+		if newInfo.Disabled != user.Disabled() {
+			user.SetDisabled(newInfo.Disabled)
+			changed = true
+		}
 
 		updatedRoles := user.ExplicitRoles()
 		if updatedRoles == nil {
 			updatedRoles = ch.TimedSet{}
 		}
-		updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq)
-		user.SetExplicitRoles(updatedRoles)
+		if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
+			user.SetExplicitRoles(updatedRoles)
+			changed = true
+		}
 	}
 
 	// And finally save the Principal:
-	err = authenticator.Save(princ)
+	if changed {
+		err = authenticator.Save(princ)
+	}
 	return
 }
