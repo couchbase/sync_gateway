@@ -502,6 +502,14 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 404)
 	response = rt.sendRequest("DELETE", "/db/_local/loc1", "")
 	assertStatus(t, response, 404)
+
+	// Check the handling of URL encoded slash at end of _local%2Fdoc
+	response = rt.sendRequest("PUT", "/db/_local%2Floc12", `{"hi": "there"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/_local/loc2", "")
+	assertStatus(t, response, 404)
+	response = rt.sendRequest("DELETE", "/db/_local%2floc2", "")
+	assertStatus(t, response, 404)
 }
 
 func TestResponseEncoding(t *testing.T) {

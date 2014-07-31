@@ -50,8 +50,14 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 
 	// Document URLs:
 	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_local%2F{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_local%2f{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local%2F{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local%2f{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
 	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	dbr.Handle("/_local%2F{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	dbr.Handle("/_local%2f{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleGetDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handlePutDoc)).Methods("PUT")
