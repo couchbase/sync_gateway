@@ -4,7 +4,8 @@
 OS=""
 VER=""
 SERVICE_NAME="sync_gateway"
-SRCSGCFG=../examples/admin_party.json
+SRCCFGDIR=../examples
+SRCCFG=admin_party.json
 RUNAS_TEMPLATE_VAR=sync_gateway
 RUNBASE_TEMPLATE_VAR=/home/sync_gateway
 PIDFILE_TEMPLATE_VAR=/var/run/sync-gateway.pid
@@ -27,6 +28,8 @@ usage()
     echo "\t--runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)"
     echo "\t--pidfile : The path where the .pid file will be created; default (/var/run/sync-gateway.pid)"
     echo "\t--sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)"
+    echo "\t--srccfgdir : The path to the source sync_gateway JSON config directory)"
+    echo "\t--srccfgname : The name of the source sync_gateway JSON config file)"
     echo "\t--cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)"
     echo "\t--logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)"
     echo "\t--servicename : The name of the service to install; default (sync_gateway)"
@@ -54,18 +57,19 @@ ostype() {
     OS_MINOR_VERSION=`echo $VER | sed s/[0-9]*\.//`
 }
 
-# expand variables + preserve formatting
+# expand template variables + preserve formatting
 render_template() {
   eval "echo \"$(cat $1)\""
 }
 
 #script start here
-#
+# Make sure we are running with root privilages
 if [ `id -u` != 0 ]; then
     echo "This script should be run as root." > /dev/stderr
     exit 1
 fi
 
+# Process the command line args
 while [ "$1" != "" ]; do
     PARAM=`echo $1 | awk -F= '{print $1}'`
     VALUE=`echo $1 | awk -F= '{print $2}'`
@@ -92,6 +96,12 @@ while [ "$1" != "" ]; do
         --sgpath)
             GATEWAY_TEMPLATE_VAR=$VALUE
             ;;
+        --srccfgdir)
+            SRCCFGDIR=$VALUE
+            ;;
+        --srccfg)
+            SRCCFG=$VALUE
+            ;;
         --cfgpath)
             CONFIG_TEMPLATE_VAR=$VALUE
             ;;
@@ -110,21 +120,76 @@ while [ "$1" != "" ]; do
     shift
 done
 
+# If OS and VER were not provided on the command line get them for current env
 if  ["$OS" = ""] && ["$VER" = ""] ; then
     ostype
 fi
 
+# Check that runtime user account exists
+if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+    echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
+    exit 1
+fi
+
+# Check that the runtime base directory exists
+if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
+    echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
+    exit 1
+fi
+
+# Check that the sync_gateway executable exists
+if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
+    echo "The sync_gateway executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
+    exit 1
+fi
+
+# Check that the sync_gateway src JSON config directory exists
+if [ ! -d "$SRCCFGDIR" ]; then
+    echo "The sync_gateway source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
+    exit 1
+fi
+
+# Check that the sync_gateway src JSON config file exists
+if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
+    echo "The sync_gateway source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
+    exit 1
+fi
+
+#Install the service for the specific platform
 case $OS in
     Ubuntu)
-        render_template script_templates/upstart_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-        cp $SRCSGCFG $CONFIG_TEMPLATE_VAR
-        service ${SERVICE_NAME} start
+        case $OS_MAJOR_VERSION in
+            10|12)
+                render_template script_templates/upstart_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                service ${SERVICE_NAME} start
+                ;;
+            *)
+                echo "ERROR: Unsupported Ubuntu Version \"$VER\""
+                usage
+                exit 1
+                ;;
+        esac
         ;;
     RedHat)
-        render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
-        chkconfig ${SERVICE_NAME} --add
-        chkconfig ${SERVICE_NAME} on
-        service ${SERVICE_NAME} start
+        case $OS_MAJOR_VERSION in
+            5) 
+                render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
+                chkconfig ${SERVICE_NAME} --add
+                chkconfig ${SERVICE_NAME} on
+                service ${SERVICE_NAME} start
+                ;;
+            6)
+                render_template script_templates/upstart_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                service ${SERVICE_NAME} start
+                ;;
+            *)
+                echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
+                usage
+                exit 1
+                ;;
+        esac
         ;;
     *)
         echo "ERROR: unknown OS \"$OS\""
