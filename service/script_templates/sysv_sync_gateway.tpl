@@ -1,6 +1,8 @@
 #!/bin/sh
 ### BEGIN INIT INFO
-# Provides:          
+# Provides:          ${SERVICE_NAME}
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Start sync_gateway service at boot time
@@ -14,21 +16,16 @@ GATEWAY=${GATEWAY_TEMPLATE_VAR}
 CONFIG=${CONFIG_TEMPLATE_VAR}
 LOGS=${LOGS_TEMPLATE_VAR}
 
-dir=${RUNBASE_TEMPLATE_VAR}
-user=${RUNAS_TEMPLATE_VAR}
-cmd=${GATEWAY_TEMPLATE_VAR}
-
-name=`basename $0`
-pid_file="/var/run/$name.pid"
-stdout_log="/var/log/$name.log"
-stderr_log="/var/log/$name.err"
+name=${SERVICE_NAME}
+stdout_log="$LOGS/$name_access.log"
+stderr_log="$LOGS/$name_error.log"
 
 get_pid() {
-    cat "$pid_file"    
+    cat "$PIDFILE"    
 }
 
 is_running() {
-    [ -f "$pid_file" ] && ps `get_pid` > /dev/null 2>&1
+    [ -f "$PIDFILE" ] && ps `get_pid` > /dev/null 2>&1
 }
 
 case "$1" in
@@ -37,9 +34,9 @@ case "$1" in
         echo "Already started"
     else
         echo "Starting $name"
-        cd "$dir"
-        sudo -u "$user" $cmd >> "$stdout_log" 2>> "$stderr_log" &
-        echo $! > "$pid_file"
+        cd "$RUNBASE"
+        sudo -u "$RUNAS" $GATEWAY >> "$stdout_log" 2>> "$stderr_log" &
+        echo $! > "$PIDFILE"
         if ! is_running; then
             echo "Unable to start, see $stdout_log and $stderr_log"
             exit 1
@@ -66,8 +63,8 @@ case "$1" in
             exit 1
         else
             echo "Stopped"
-            if [ -f "$pid_file" ]; then
-                rm "$pid_file"
+            if [ -f "$PIDFILE" ]; then
+                rm "$PIDFILE"
             fi
         fi
     else

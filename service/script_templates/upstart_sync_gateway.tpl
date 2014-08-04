@@ -10,6 +10,10 @@ env GATEWAY=${GATEWAY_TEMPLATE_VAR}
 env CONFIG=${CONFIG_TEMPLATE_VAR}
 env LOGS=${LOGS_TEMPLATE_VAR}
 
+name=${SERVICE_NAME}
+stdout_log="$LOGS/$name_access.log"
+stderr_log="$LOGS/$name_error.log"
+
 # Keep the server running on crash or machine reboot
 start on started mountall
 stop on shutdown
