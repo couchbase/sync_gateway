@@ -17,80 +17,85 @@ CONFIG=${CONFIG_TEMPLATE_VAR}
 LOGS=${LOGS_TEMPLATE_VAR}
 
 name=${SERVICE_NAME}
-stdout_log="$LOGS/$name_access.log"
-stderr_log="$LOGS/$name_error.log"
+stdout_log=\${LOGS}/\${name}_access.log
+stderr_log=\${LOGS}/\${name}_error.log
 
 get_pid() {
-    cat "$PIDFILE"    
+    cat \"\$PIDFILE\"    
 }
 
 is_running() {
-    [ -f "$PIDFILE" ] && ps `get_pid` > /dev/null 2>&1
+    [ -f \"\$PIDFILE\" ] && ps \`get_pid\` > /dev/null 2>&1
 }
 
-case "$1" in
+mkdir -p \$LOGS
+chown -R \$RUNAS:\$RUNAS \$LOGS
+
+mkdir -p \$RUNBASE/data
+chown -R \$RUNAS:\$RUNAS \$RUNBASE/data
+
+case \"\$1\" in
     start)
-    if is_running; then
-        echo "Already started"
-    else
-        echo "Starting $name"
-        cd "$RUNBASE"
-        sudo -u "$RUNAS" $GATEWAY >> "$stdout_log" 2>> "$stderr_log" &
-        echo $! > "$PIDFILE"
-        if ! is_running; then
-            echo "Unable to start, see $stdout_log and $stderr_log"
+        if is_running; then
+            echo "Already started"
+        else
+            echo "Starting $name"
+            cd \"\$RUNBASE\"
+            sudo -u \"\$RUNAS\" \$GATEWAY \$CONFIG >> \"\$stdout_log\" 2>> \"\$stderr_log\" &
+            echo \$! > \"\$PIDFILE\"
+            if ! is_running; then
+                echo "Unable to start, see \$stdout_log and \$stderr_log"
+                exit 1
+            fi
+        fi
+        ;;
+    stop)
+        if is_running; then
+            echo -n "Stopping $name.."
+            kill \`get_pid\`
+            for i in {1..10}
+            do
+                if ! is_running; then
+                    break
+                fi
+                
+                echo -n "."
+                sleep 1
+            done
+            echo
+            
+            if is_running; then
+                echo "Not stopped, may still be shutting down or shutdown may have failed"
+                exit 1
+            else
+                echo "Stopped"
+                if [ -f \"\$PIDFILE\" ]; then
+                    rm \"\$PIDFILE\"
+                fi
+            fi
+        else
+            echo "Not running"
+        fi
+        ;;
+    restart)
+        \$name stop
+        if is_running; then
+            echo "Unable to stop, will not attempt to start"
             exit 1
         fi
-    fi
-    ;;
-    stop)
-    if is_running; then
-        echo -n "Stopping $name.."
-        kill `get_pid`
-        for i in {1..10}
-        do
-            if ! is_running; then
-                break
-            fi
-            
-            echo -n "."
-            sleep 1
-        done
-        echo
-        
+        \$name start
+        ;;
+    status)
         if is_running; then
-            echo "Not stopped; may still be shutting down or shutdown may have failed"
-            exit 1
+            echo "Running"
         else
             echo "Stopped"
-            if [ -f "$PIDFILE" ]; then
-                rm "$PIDFILE"
-            fi
+            exit 1
         fi
-    else
-        echo "Not running"
-    fi
-    ;;
-    restart)
-    $0 stop
-    if is_running; then
-        echo "Unable to stop, will not attempt to start"
-        exit 1
-    fi
-    $0 start
-    ;;
-    status)
-    if is_running; then
-        echo "Running"
-    else
-        echo "Stopped"
-        exit 1
-    fi
-    ;;
+        ;;
     *)
-    echo "Usage: $0 {start|stop|restart|status}"
-    exit 1
-    ;;
+        exit 1
+        ;;
 esac
 
 exit 0
