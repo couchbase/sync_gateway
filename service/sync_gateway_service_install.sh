@@ -48,6 +48,7 @@ ostype() {
         VER=$(cat /etc/debian_version)
     elif [ -f /etc/redhat-release ]; then
         OS=RedHat
+        VER=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
     else
         OS=$(uname -s)
         VER=$(uname -r)
@@ -175,7 +176,9 @@ case $OS in
         case $OS_MAJOR_VERSION in
             5) 
                 render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
-                chkconfig ${SERVICE_NAME} --add
+                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
+                chkconfig --add ${SERVICE_NAME}
                 chkconfig ${SERVICE_NAME} on
                 service ${SERVICE_NAME} start
                 ;;
