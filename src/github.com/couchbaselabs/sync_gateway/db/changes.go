@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -140,7 +141,12 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	if len(chans) == 0 {
 		return nil, nil
 	}
-	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ...", chans, options)
+	to := ""
+	if db.user != nil && db.user.Name() != "" {
+		to = fmt.Sprintf("  (to %s)", db.user.Name())
+	}
+
+	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
 
 	if (options.Continuous || options.Wait) && options.Terminator == nil {
 		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
@@ -149,7 +155,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	output := make(chan *ChangeEntry, 50)
 	go func() {
 		defer func() {
-			base.LogTo("Changes", "MultiChangesFeed done")
+			base.LogTo("Changes", "MultiChangesFeed done %s", to)
 			close(output)
 		}()
 
@@ -172,7 +178,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			} else {
 				channelsSince = channels.AtSequence(chans, 0)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ...", channelsSince)
+			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
 
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
@@ -269,7 +275,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				// Send the entry, and repeat the loop:
-				base.LogTo("Changes+", "MultiChangesFeed sending %+v", minEntry)
+				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
 				select {
 				case <-options.Terminator:
 					return
@@ -292,7 +298,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
-			base.LogTo("Changes+", "MultiChangesFeed waiting...")
+			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
 			if !changeWaiter.Wait() {
 				break
