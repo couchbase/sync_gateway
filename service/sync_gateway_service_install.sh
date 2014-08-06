@@ -39,16 +39,16 @@ usage()
 ostype() {
     ARCH=$(uname -m | sed 's/x86_//;s/i[3-6]86/32/')
 
-    if [ -f /etc/lsb-release ]; then
-        . /etc/lsb-release
-        OS=$DISTRIB_ID
-        VER=$DISTRIB_RELEASE
-    elif [ -f /etc/debian_version ]; then
+    if [ -f /etc/debian_version ]; then
         OS=Debian  # XXX or Ubuntu??
         VER=$(cat /etc/debian_version)
     elif [ -f /etc/redhat-release ]; then
         OS=RedHat
         VER=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
+    elif [ -f /etc/lsb-release ]; then
+        . /etc/lsb-release
+        OS=$DISTRIB_ID
+        VER=$DISTRIB_RELEASE
     else
         OS=$(uname -s)
         VER=$(uname -r)
@@ -161,7 +161,7 @@ case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
             10|12)
-                render_template script_templates/upstart_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 service ${SERVICE_NAME} start
                 ;;
@@ -183,9 +183,9 @@ case $OS in
                 service ${SERVICE_NAME} start
                 ;;
             6)
-                render_template script_templates/upstart_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
-                service ${SERVICE_NAME} start
+                initctl start ${SERVICE_NAME}
                 ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
