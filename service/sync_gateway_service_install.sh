@@ -39,16 +39,15 @@ usage()
 ostype() {
     ARCH=$(uname -m | sed 's/x86_//;s/i[3-6]86/32/')
 
-    if [ -f /etc/debian_version ]; then
+    if [ -f /etc/lsb-release ]; then
+        OS=$(lsb_release -si)
+        VER=$(lsb_release -sr)
+    elif [ -f /etc/debian_version ]; then
         OS=Debian  # XXX or Ubuntu??
         VER=$(cat /etc/debian_version)
     elif [ -f /etc/redhat-release ]; then
         OS=RedHat
         VER=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
-    elif [ -f /etc/lsb-release ]; then
-        . /etc/lsb-release
-        OS=$DISTRIB_ID
-        VER=$DISTRIB_RELEASE
     else
         OS=$(uname -s)
         VER=$(uname -r)
@@ -100,7 +99,7 @@ while [ "$1" != "" ]; do
         --srccfgdir)
             SRCCFGDIR=$VALUE
             ;;
-        --srccfg)
+        --srccfgname)
             SRCCFG=$VALUE
             ;;
         --cfgpath)
