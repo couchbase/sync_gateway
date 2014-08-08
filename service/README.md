@@ -15,17 +15,17 @@ To see the list of arguments available pass a -h or --help parameter to the scri
 ```
 sync_gateway_service_install.sh
 -h --help
---os : Manually set the target OS for the service <Ubuntu | Redhat >; default (auto detected)
---ver : Manually set the target OS version; default (auto detected)
---runas : The user account to run sync_gateway as; default (sync_gateway)
---runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)
---pidfile : The path where the .pid file will be created; default (/var/run/sync-gateway.pid)
---sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)
---srccfgdir : The path to the source sync_gateway JSON config directory)
---srccfgname : The name of the source sync_gateway JSON config file)
---cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)
---logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)
---servicename : The name of the service to install; default (sync_gateway)
+  --os : Manually set the target OS for the service <Ubuntu | Redhat >; default (auto detected)
+  --ver : Manually set the target OS version; default (auto detected)
+  --runas : The user account to run sync_gateway as; default (sync_gateway)
+  --runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)
+  --pidfile : The path where the .pid file will be created; default (/var/run/sync-gateway.pid)
+  --sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)
+  --srccfgdir : The path to the source sync_gateway JSON config directory)
+  --srccfgname : The name of the source sync_gateway JSON config file)
+  --cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)
+  --logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)
+  --servicename : The name of the service to install; default (sync_gateway)
 ```
 
 This script creates an init service to run a sync_gateway instance.
