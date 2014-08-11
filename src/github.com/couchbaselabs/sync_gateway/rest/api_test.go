@@ -178,7 +178,7 @@ func TestRoot(t *testing.T) {
 	response = rt.sendRequest("HEAD", "/", "")
 	assertStatus(t, response, 200)
 	response = rt.sendRequest("OPTIONS", "/", "")
-	assertStatus(t, response, 200)
+	assertStatus(t, response, 204)
 	assert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
 	response = rt.sendRequest("PUT", "/", "")
 	assertStatus(t, response, 405)
