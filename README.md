@@ -10,7 +10,40 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 
 [**Downloads**](http://www.couchbase.com/download#cb-mobile)
 
-[**Building The Sync Gateway Yourself**](http://docs.couchbase.com/sync-gateway/#building-from-source)
+## Building From Source¶
+To build Sync Gateway from source, you must have Go 1.2 or later installed on your computer.
+
+On Mac or Unix systems, you can build Sync Gateway from source as follows:
+
+Open a terminal window and change to the directory that you want to store Sync Gateway in.
+
+Clone the Sync Gateway GitHub repository:
+
+```
+$ git clone https://github.com/couchbase/sync_gateway.git
+```
+ 
+Change to the sync_gateway directory:
+
+```
+$ cd sync_gateway
+```
+ 
+Set up the submodules:
+
+```
+$ git submodule init
+$ git submodule update
+```
+Build Sync Gateway:
+
+```
+$ ./build.sh
+```
+Sync Gateway is a standalone, native executable located in the ./bin directory. You can run the executable from the build location or move it anywhere you want.
+
+To update your build later, pull the latest updates from GitHub, update the submodules, and run ./build.sh again.
+
 
 <img src="http://jchris.ic.ht/files/slides/mobile-arch.png" width="600px"/>
 
