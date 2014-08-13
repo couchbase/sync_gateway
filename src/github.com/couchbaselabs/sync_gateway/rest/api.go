@@ -36,13 +36,14 @@ var VersionString string
 var LongVersionString string
 
 func init() {
-	VersionString = fmt.Sprintf("%s/%.2f", ServerName, VersionNumber)
-
 	if VersionBuildNumberString[0] != '@' {
-		LongVersionString = fmt.Sprintf("%s (%s; commit %.8s)",
-			VersionString, VersionBuildNumberString, VersionCommitSHA)
+		LongVersionString = fmt.Sprintf("%s/%s(commit %.7s)",
+			ServerName, VersionBuildNumberString, VersionCommitSHA)
+
+		VersionString = fmt.Sprintf("%s/%.2f", ServerName, VersionNumber)
 	} else {
-		LongVersionString = VersionString + " (unofficial)"
+		LongVersionString = fmt.Sprintf("%s/%s(commit %.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
+		VersionString = fmt.Sprintf("%s/(unofficial)", ServerName)
 	}
 }
 
