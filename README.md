@@ -19,17 +19,27 @@ Open a terminal window and change to the directory that you want to store Sync G
 
 Clone the Sync Gateway GitHub repository:
 
- $ git clone https://github.com/couchbase/sync_gateway.git
+```
+$ git clone https://github.com/couchbase/sync_gateway.git
+```
+ 
 Change to the sync_gateway directory:
 
- $ cd sync_gateway
+```
+$ cd sync_gateway
+```
+ 
 Set up the submodules:
 
- $ git submodule init
- $ git submodule update
+```
+$ git submodule init
+$ git submodule update
+```
 Build Sync Gateway:
 
- $ ./build.sh
+```
+$ ./build.sh
+```
 Sync Gateway is a standalone, native executable located in the ./bin directory. You can run the executable from the build location or move it anywhere you want.
 
 To update your build later, pull the latest updates from GitHub, update the submodules, and run ./build.sh again.
