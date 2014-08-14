@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strconv"
+	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -37,12 +38,19 @@ var LongVersionString string
 
 func init() {
 	if VersionBuildNumberString[0] != '@' {
-		LongVersionString = fmt.Sprintf("%s/%s(commit %.7s)",
-			ServerName, VersionBuildNumberString, VersionCommitSHA)
+		//Split version number and build number (optional)
+		versionTokens := strings.Split(VersionBuildNumberString, "-")
+		BuildVersionString := versionTokens[0]
+		var BuildNumberString string
+		if len(versionTokens) > 1 {
+			BuildNumberString = fmt.Sprintf("%s;", versionTokens[1])
+		}
+		LongVersionString = fmt.Sprintf("%s/%s(%s%.7s)",
+			ServerName, BuildVersionString, BuildNumberString, VersionCommitSHA)
 
 		VersionString = fmt.Sprintf("%s/%.2f", ServerName, VersionNumber)
 	} else {
-		LongVersionString = fmt.Sprintf("%s/%s(commit %.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
+		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
 		VersionString = fmt.Sprintf("%s/unofficial", ServerName)
 	}
 }
