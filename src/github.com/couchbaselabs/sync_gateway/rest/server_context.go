@@ -273,7 +273,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	}
 
 	spec := base.BucketSpec{
-		Server:     shadow.Server,
+		Server:     *shadow.Server,
 		PoolName:   "default",
 		BucketName: shadow.Bucket,
 	}
