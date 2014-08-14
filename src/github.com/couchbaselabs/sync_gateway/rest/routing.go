@@ -197,6 +197,8 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				response.Header().Add("Allow", strings.Join(options, ", "))
 				if rq.Method != "OPTIONS" {
 					h.writeStatus(http.StatusMethodNotAllowed, "")
+				} else {
+					h.writeStatus(http.StatusNoContent, "")
 				}
 			}
 		}
