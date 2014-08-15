@@ -7,6 +7,8 @@
 
 # Set the git commit info before the build
 BUILD_INFO="./src/github.com/couchbaselabs/sync_gateway/rest/git_info.go"
+#tell git to ignore any local changes to git_info.go, we don't want to commit them to the repo
+git update-index --assume-unchanged ${BUILD_INFO}
 # Escape forward slash's so sed command does not get confused
 # We use thses in feature branches e.g. feature/issue_nnn
 GIT_BRANCH=`git status -b -s | sed q | sed 's/## //' | sed 's/\.\.\..*$//' | sed 's/\\//\\\\\//g'`
