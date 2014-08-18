@@ -246,6 +246,10 @@ func (h *handler) assertAdminOnly() {
 
 func (h *handler) PathVar(name string) string {
 	v := mux.Vars(h.rq)[name]
+
+	//Escape special chars i.e. '+' otherwise they are removed by QueryUnescape()
+	v = strings.Replace(v, "+", "%2B", -1)
+
 	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
 	// (see function fixQuotedSlashes). So we have to unescape them now.
 	v, _ = url.QueryUnescape(v)

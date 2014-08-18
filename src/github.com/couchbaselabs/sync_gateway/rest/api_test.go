@@ -213,6 +213,37 @@ func TestFunkyDocIDs(t *testing.T) {
 
 	response := rt.sendRequest("GET", "/db/AC%2FDC", "")
 	assertStatus(t, response, 200)
+
+	rt.createDoc(t, "AC+DC")
+	response = rt.sendRequest("GET", "/db/AC+DC", "")
+	assertStatus(t, response, 200)
+
+	rt.createDoc(t, "AC+DC+GC")
+	response = rt.sendRequest("GET", "/db/AC+DC+GC", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendRequest("PUT", "/db/foo+bar+moo+car", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/foo+bar+moo+car", "")
+	assertStatus(t, response, 200)
+
+	rt.createDoc(t, "AC%2BDC2")
+	response = rt.sendRequest("GET", "/db/AC%2BDC2", "")
+	assertStatus(t, response, 200)
+
+	rt.createDoc(t, "AC%2BDC%2BGC2")
+	response = rt.sendRequest("GET", "/db/AC%2BDC%2BGC2", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendRequest("PUT", "/db/foo%2Bbar%2Bmoo%2Bcar2", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/foo%2Bbar%2Bmoo%2Bcar2", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendRequest("PUT", "/db/foo%2Bbar+moo%2Bcar3", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/foo+bar%2Bmoo+car3", "")
+	assertStatus(t, response, 200)
 }
 
 func TestDesignDocs(t *testing.T) {
