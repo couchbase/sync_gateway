@@ -148,6 +148,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle(kDebugURLPathPrefix,
 		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
 
+	// Database-relative handlers:
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
 	dbr.Handle("/_resync",
@@ -156,7 +157,9 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
-	dbr.Handle("/_view/{view}",
+	dbr.Handle("/_design/{ddoc}/_view/{view}",
+		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
+	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")

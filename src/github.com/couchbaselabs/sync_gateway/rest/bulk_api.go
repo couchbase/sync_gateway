@@ -206,6 +206,10 @@ func (h *handler) handleDump() error {
 
 // HTTP handler for _view
 func (h *handler) handleView() error {
+	ddocName := h.PathVar("ddoc")
+	if ddocName == "" {
+		ddocName = "sync_gateway"
+	}
 	viewName := h.PathVar("view")
 	opts := db.Body{}
 	qStale := h.getQuery("stale")
@@ -246,27 +250,15 @@ func (h *handler) handleView() error {
 	if "" != qLimit {
 		opts["limit"] = int(h.getIntQuery("limit", 1))
 	}
-	base.LogTo("HTTP", "JSON view %q opts %q", viewName, opts)
-	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
+	base.LogTo("HTTP", "JSON view %q/%q - opts %v", ddocName, viewName, opts)
+
+	var result interface{}
+	err := h.db.Bucket.ViewCustom(ddocName, viewName, opts, &result)
 	if err != nil {
 		return err
 	}
 	h.setHeader("Content-Type", `application/json; charset="UTF-8"`)
-	h.response.Write([]byte(`{"rows":[`))
-	first := true
-	for _, row := range result.Rows {
-		if first {
-			first = false
-		} else {
-			h.response.Write([]byte(",\n"))
-		}
-		key, _ := json.Marshal(row.Key)
-		value, _ := json.Marshal(row.Value)
-		id, _ := json.Marshal(row.ID)
-		h.response.Write([]byte(fmt.Sprintf("{\"key\":%s, \"value\":%s , \"id\":%s}",
-			string(key), string(value), string(id))))
-	}
-	h.response.Write([]byte("]}\n"))
+	h.writeJSON(result)
 	return nil
 }
 
