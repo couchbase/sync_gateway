@@ -247,7 +247,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				for i, cur := range current {
 					if cur != nil && cur.Seq == minSeq {
 						current[i] = nil
-						//options.Since = minSeq //TEMP ???
 						// Also concatenate the matching entries' Removed arrays:
 						if cur != minEntry && cur.Removed != nil {
 							if minEntry.Removed == nil {
@@ -262,6 +261,8 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				if !options.Since.Before(minSeq) {
 					continue // out of order; skip it
 				}
+				// Remember we got this far, for the next outer loop iteration:
+				options.Since = minSeq
 
 				// Add the doc body or the conflicting rev IDs, if those options are set:
 				if options.IncludeDocs || options.Conflicts {
