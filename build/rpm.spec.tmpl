@@ -153,16 +153,21 @@ exit 0
 %dir %attr (0755, @@PRODUCT_BASE@@, @@PRODUCT_BASE@@) @@PREFIX@@
 
 %dir %attr (0755, bin, bin) @@PREFIX@@/bin
+%dir %attr (0644, bin, bin) @@PREFIX@@/examples
+%dir %attr (0755, bin, bin) @@PREFIX@@/service
 
 # Files
 #
 
 %attr (0755, bin, bin) @@PREFIX@@/bin/*
+%attr (0644, bin, bin) @@PREFIX@@/examples/*
+%attr (0755, bin, bin) @@PREFIX@@/service/*
 %attr (0644, bin, bin) @@PREFIX@@/LICENSE.txt
 %attr (0644, bin, bin) @@PREFIX@@/manifest.txt
 %attr (0644, bin, bin) @@PREFIX@@/manifest.xml
 %attr (0644, bin, bin) @@PREFIX@@/VERSION.txt
 %attr (0644, bin, bin) @@PREFIX@@/README.txt
+%attr (0644, bin, bin) @@PREFIX@@/README.md
 
 %changelog
 * Wed Sep 4 2013 Bin Cui <bin.cui@gmail.com> - 1.0-1
