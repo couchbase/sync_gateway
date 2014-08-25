@@ -340,7 +340,10 @@
 		<col def="S0">ISDotNetInstallerArgsUninstall</col>
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
 		<row><td>AllOtherFiles</td><td>{313AA091-BBF1-45B2-BF63-4810EA8A2F03}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles1</td><td>{5DD246BC-42D0-481F-9C31-F73C8765DE42}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles2</td><td>{2E2C484C-2D49-42BC-A2B5-D80931145DBA}</td><td>SERVICE</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>NewComponent1</td><td>{AE3B88A5-C0FF-46FB-ABE5-5B916402086B}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sync_gateway.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sync_gateway.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
@@ -1009,6 +1012,7 @@
 	<table name="CreateFolder">
 		<col key="yes" def="s72">Directory_</col>
 		<col key="yes" def="s72">Component_</col>
+		<row><td>EXAMPLES</td><td>AllOtherFiles1</td></row>
 		<row><td>INSTALLDIR</td><td>IS_ININSTALL_SHORTCUT</td></row>
 	</table>
 
@@ -1096,6 +1100,7 @@
 		<row><td>CommonFilesFolder</td><td>TARGETDIR</td><td>.:Common</td><td/><td>0</td><td/></row>
 		<row><td>DATABASEDIR</td><td>ISYourDataBaseDir</td><td>.</td><td/><td>0</td><td/></row>
 		<row><td>DesktopFolder</td><td>TARGETDIR</td><td>.:Desktop</td><td/><td>3</td><td/></row>
+		<row><td>EXAMPLES</td><td>INSTALLDIR</td><td>examples</td><td/><td>0</td><td/></row>
 		<row><td>FavoritesFolder</td><td>TARGETDIR</td><td>.:FAVORI~1|Favorites</td><td/><td>0</td><td/></row>
 		<row><td>FontsFolder</td><td>TARGETDIR</td><td>.:Fonts</td><td/><td>0</td><td/></row>
 		<row><td>GlobalAssemblyCache</td><td>TARGETDIR</td><td>.:Global~1|GlobalAssemblyCache</td><td/><td>0</td><td/></row>
@@ -1112,6 +1117,7 @@
 		<row><td>ProgramFiles64Folder</td><td>TARGETDIR</td><td>.:Prog64~1|Program Files 64</td><td/><td>0</td><td/></row>
 		<row><td>ProgramFilesFolder</td><td>TARGETDIR</td><td>.:PROGRA~1|program files</td><td/><td>0</td><td/></row>
 		<row><td>ProgramMenuFolder</td><td>TARGETDIR</td><td>.:Programs</td><td/><td>3</td><td/></row>
+		<row><td>SERVICE</td><td>INSTALLDIR</td><td>service</td><td/><td>0</td><td/></row>
 		<row><td>SYNC_GATEWAY</td><td>COUCHBASE__INC.</td><td>SYNCGA~1|Sync Gateway</td><td/><td>0</td><td/></row>
 		<row><td>SendToFolder</td><td>TARGETDIR</td><td>.:SendTo</td><td/><td>3</td><td/></row>
 		<row><td>StartMenuFolder</td><td>TARGETDIR</td><td>.:STARTM~1|Start Menu</td><td/><td>3</td><td/></row>
@@ -1820,7 +1826,10 @@
 		<col key="yes" def="s38">Feature_</col>
 		<col key="yes" def="s72">Component_</col>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles1</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles2</td></row>
 		<row><td>Sync_Gateway_Files</td><td>IS_ININSTALL_SHORTCUT</td></row>
+		<row><td>Sync_Gateway_Files</td><td>NewComponent1</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sync_gateway.exe</td></row>
 	</table>
 
@@ -1837,6 +1846,7 @@
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
 		<row><td>license.txt</td><td>AllOtherFiles</td><td>LICENSE.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\LICENSE.txt</td><td>1</td><td/></row>
+		<row><td>readme.md</td><td>AllOtherFiles</td><td>README.md</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LICENSE_FILE&gt;\README.md</td><td>1</td><td/></row>
 		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\README.txt</td><td>1</td><td/></row>
 		<row><td>sync_gateway.exe</td><td>sync_gateway.exe</td><td>SYNC_G~1.EXE|sync_gateway.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\bin\sync_gateway.exe</td><td>1</td><td/></row>
 		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
@@ -1988,7 +1998,10 @@
 		<col def="S0">HTTPLocation</col>
 		<col def="S0">Miscellaneous</col>
 		<row><td>AllOtherFiles</td><td/><td/><td>_18BC31A1_BA70_4DC6_A80A_B57B53686816_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles1</td><td/><td/><td>_18D06767_763A_44B8_8FE1_EFADFC607A73_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles2</td><td/><td/><td>_6B7A038C_E831_44BC_8DA2_00A49A1D2BD9_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td/><td/><td>_293EBFE3_A3F9_4726_9D49_510ED0C578AB_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>NewComponent1</td><td/><td/><td>_EAE36E87_E1F8_440D_BF5C_A42CBBD1E568_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sync_gateway.exe</td><td/><td/><td>_074FBDC3_5A35_4CDB_940C_23B4369E994A_FILTER</td><td/><td/><td/><td/></row>
 	</table>
 
@@ -2082,6 +2095,8 @@
 		<col def="S0">IncludeFiles</col>
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
+		<row><td>AllOtherFiles2</td><td>&lt;PATH_TO_LICENSE_FILE&gt;\service</td><td>4</td><td/><td/><td>10</td></row>
+		<row><td>NewComponent1</td><td>&lt;PATH_TO_LICENSE_FILE&gt;\examples</td><td>4</td><td/><td/><td>10</td></row>
 	</table>
 
 	<table name="ISFeatureDIMReferences">
@@ -3967,7 +3982,7 @@
 		<col def="S0">Value</col>
 		<row><td>ActiveLanguage</td><td>1033</td></row>
 		<row><td>Comments</td><td/></row>
-               <row><td>CurrentMedia</td><td dt:dt="bin.base64" md5="339226946b2b8837de6f52a2e16ff6be">
+		<row><td>CurrentMedia</td><td dt:dt="bin.base64" md5="339226946b2b8837de6f52a2e16ff6be">
 UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 			</td></row>
 		<row><td>EnableSwidtag</td><td>1</td></row>
