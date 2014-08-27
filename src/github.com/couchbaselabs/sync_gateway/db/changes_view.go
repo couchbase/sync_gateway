@@ -30,6 +30,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
 	start := time.Now()
 	// Query the view:
+	options.Limit = 0
 	optMap := changesViewOptions(channelName, endSeq, options)
 	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.Seq+1, endSeq, options.Limit)
 	vres := channelsViewResult{}
