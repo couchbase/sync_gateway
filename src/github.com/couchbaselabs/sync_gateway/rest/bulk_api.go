@@ -91,40 +91,48 @@ func (h *handler) handleAllDocs() error {
 		return result
 	}
 
-	// Subroutine that writes a response entry for a document:
-	totalRows := 0
-	writeDoc := func(doc db.IDAndRev, channels []string) error {
-		type allDocsRowValue struct {
-			Rev      string              `json:"rev"`
-			Channels []string            `json:"channels,omitempty"`
-			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-		}
-		type allDocsRow struct {
-			ID        string          `json:"id"`
-			Key       string          `json:"key"`
-			Value     allDocsRowValue `json:"value"`
-			Doc       db.Body         `json:"doc,omitempty"`
-			UpdateSeq uint64          `json:"update_seq,omitempty"`
-		}
+	type allDocsRowValue struct {
+		Rev      string              `json:"rev"`
+		Channels []string            `json:"channels,omitempty"`
+		Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+	}
+	type allDocsRow struct {
+		Key       string           `json:"key"`
+		ID        string           `json:"id,omitempty"`
+		Value     *allDocsRowValue `json:"value,omitempty"`
+		Doc       db.Body          `json:"doc,omitempty"`
+		UpdateSeq uint64           `json:"update_seq,omitempty"`
+		Error     string           `json:"error,omitempty"`
+		Status    int              `json:"status,omitempty"`
+	}
 
-		row := allDocsRow{ID: doc.DocID, Key: doc.DocID}
+	// Subroutine that creates a response row for a document:
+	totalRows := 0
+	createRow := func(doc db.IDAndRev, channels []string) *allDocsRow {
+		row := &allDocsRow{Key: doc.DocID}
+		value := allDocsRowValue{}
 
 		// Filter channels to ones available to user, and bail out if inaccessible:
 		if explicitDocIDs == nil {
 			if channels = filterChannels(channels); channels == nil {
-				return nil
+				return nil // silently skip this doc
 			}
 		}
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
 			body, channelSet, access, roleAccess, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
-			if err != nil || body["_removed"] != nil {
-				return nil
+			if err != nil {
+				row.Status, _ = base.ErrorAsHTTPStatus(err)
+				return row
+			} else if body["_removed"] != nil {
+				row.Status = http.StatusForbidden
+				return row
 			}
 			if explicitDocIDs != nil {
 				if channels = filterChannelSet(channelSet); channels == nil {
-					return nil
+					row.Status = http.StatusForbidden
+					return row
 				}
 				doc.RevID = body["_rev"].(string)
 			}
@@ -132,29 +140,41 @@ func (h *handler) handleAllDocs() error {
 				row.Doc = body
 			}
 			if includeAccess && (access != nil || roleAccess != nil) {
-				row.Value.Access = map[string]base.Set{}
+				value.Access = map[string]base.Set{}
 				for userName, channels := range access {
-					row.Value.Access[userName] = channels.AsSet()
+					value.Access[userName] = channels.AsSet()
 				}
 				for roleName, channels := range roleAccess {
-					row.Value.Access["role:"+roleName] = channels.AsSet()
+					value.Access["role:"+roleName] = channels.AsSet()
 				}
 			}
 		}
 
-		row.Value.Rev = doc.RevID
+		row.Value = &value
+		row.ID = doc.DocID
+		value.Rev = doc.RevID
 		if includeSeqs {
 			row.UpdateSeq = doc.Sequence
 		}
 		if includeChannels {
 			row.Value.Channels = channels
 		}
+		return row
+	}
 
-		if totalRows > 0 {
-			h.response.Write([]byte(",\n"))
+	// Subroutine that writes a response entry for a document:
+	writeDoc := func(doc db.IDAndRev, channels []string) error {
+		row := createRow(doc, channels)
+		if row != nil {
+			if row.Status >= 300 {
+				row.Error = base.CouchHTTPErrorName(row.Status)
+			}
+			if totalRows > 0 {
+				h.response.Write([]byte(","))
+			}
+			totalRows++
+			h.addJSON(row)
 		}
-		totalRows++
-		h.addJSON(row)
 		return nil
 	}
 

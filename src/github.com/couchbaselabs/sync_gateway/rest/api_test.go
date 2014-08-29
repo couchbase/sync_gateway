@@ -617,7 +617,8 @@ func TestAccessControl(t *testing.T) {
 			Channels []string            `json:"channels,omitempty"`
 			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
 		} `json:"value"`
-		Doc db.Body `json:"doc,omitempty"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
 	}
 	var allDocsResult struct {
 		TotalRows int          `json:"total_rows"`
@@ -697,11 +698,16 @@ func TestAccessControl(t *testing.T) {
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 2)
+	assert.Equals(t, len(allDocsResult.Rows), 4)
+	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
 	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
 	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
 
 	// Check _all_docs as admin:
 	response = rt.sendAdminRequest("GET", "/db/_all_docs", "")
