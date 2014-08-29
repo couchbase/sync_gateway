@@ -80,6 +80,9 @@ func (h *handler) handleAllDocs() error {
 	}
 	filterChannelSet := func(channelMap channels.ChannelMap) []string {
 		var result []string
+		if availableChannels == nil {
+			result = []string{}
+		}
 		for ch, _ := range channelMap {
 			if availableChannels == nil || availableChannels.Contains(ch) {
 				result = append(result, ch)
