@@ -841,10 +841,11 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(0))
 }
 
+//Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 	// base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD"})
 
-	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
+	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -852,118 +853,64 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	err = a.Save(guest)
 	assert.Equals(t, err, nil)
 
-	// Create users:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf("zero"))
-	a.Save(alice)
-	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf("zero"))
-	a.Save(zegpold)
+	// Create user1:
+	user1, err := a.NewUser("user1", "letmein", channels.SetOf("*"))
+	a.Save(user1)
 
-	// Create some docs that give users access:
-	response := rt.send(request("PUT", "/db/alpha", `{"owner":"alice"}`)) // seq=1
-	assertStatus(t, response, 201)
-	var body db.Body
-	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
-	alphaRevID := body["rev"].(string)
+	// Create 100 docs
+	for i := 0; i < 100; i++ {
+		docpath := fmt.Sprintf("/db/doc%d", i)
+		assertStatus(t, rt.send(request("PUT", docpath, `{"foo": "bar"}`)), 201)
+	}
 
-	assertStatus(t, rt.send(request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201) // seq=2
-	assertStatus(t, rt.send(request("PUT", "/db/delta", `{"owner":"alice"}`)), 201)   // seq=3
-	assertStatus(t, rt.send(request("PUT", "/db/gamma", `{"owner":"zegpold"}`)), 201) // seq=4
-
-	assertStatus(t, rt.send(request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201) // seq=5
-	assertStatus(t, rt.send(request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)  // seq=6
-	assertStatus(t, rt.send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
-	assertStatus(t, rt.send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
-
-	// Check the _changes feed:
+	// Check the _changes feed with limit, to split feed into two
 	var changes struct {
 		Results []db.ChangeEntry
 	}
-	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
+
+	limit := 50
+	response := rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?limit=%d", limit), "", "user1"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 1)
-	since := changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "g1")
-	assert.Equals(t, since, db.SequenceID{Seq: 8})
+	assert.Equals(t, len(changes.Results), 50)
+	since := changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc49")
+	assert.Equals(t, since, db.SequenceID{Seq: 50})
 
-	// Check user access:
-	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x1, "delta": 0x3})
-	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "gamma": 0x4})
-
-	// Update a document to revoke access to alice and grant it to zegpold:
-	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
-	assertStatus(t, rt.send(request("PUT", "/db/alpha", str)), 201) // seq=9
-
-	// Check user access again:
-	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "delta": 0x3})
-	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
-
-	// Look at alice's _changes feed:
-	changes.Results = nil
-	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
-	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, changes.Results[0].ID, "d1")
-
-	// The complete _changes feed for zegpold contains docs a1 and g1:
-	changes.Results = nil
-	response = rt.send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("//////// _changes for zegpold looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 2)
-	assert.Equals(t, changes.Results[0].ID, "g1")
-	assert.Equals(t, changes.Results[0].Seq, db.SequenceID{Seq: 8})
-	assert.Equals(t, changes.Results[1].ID, "a1")
-	assert.Equals(t, changes.Results[1].Seq, db.SequenceID{Seq: 5, TriggeredBy: 9})
-
-	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
-	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
-		"", "zegpold"))
+	//// Check the _changes feed with  since and limit, to get second half of feed
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user1"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	changes.Results = nil
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, changes.Results[0].ID, "a1")
-
-	// What happens if we call access() with a nonexistent username?
-	assertStatus(t, rt.send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
-
-	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
-	// be changed while the database is in use (only when it's re-opened) but for testing purposes
-	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	dbc := rt.ServerContext().Database("db")
-	db, _ := db.GetDatabase(dbc, nil)
-	changed, err := db.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.True(t, changed)
-	changeCount, err := db.UpdateAllDocChannels(true, false)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, changeCount, 9)
+	assert.Equals(t, len(changes.Results), 50)
+	since = changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc99")
+	assert.Equals(t, since, db.SequenceID{Seq: 100})
 
-	changes.Results = nil
-	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
+	// Create user2:
+	user2, err := a.NewUser("user2", "letmein", channels.SetOf("*"))
+	a.Save(user2)
+
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?limit=%d", limit), "", "user2"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	assert.Equals(t, len(changes.Results), len(expectedIDs))
-	for i, expectedID := range expectedIDs {
-		assert.Equals(t, changes.Results[i].ID, expectedID)
-	}
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	since = changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc49")
+	assert.Equals(t, since, db.SequenceID{Seq: 50})
 
-	// Check accumulated statistics:
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
-	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
-	db.ChangesClientStats.Reset()
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
-	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(0))
+	//// Check the _changes feed with  since and limit, to get second half of feed
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user2"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	since = changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc99")
+	assert.Equals(t, since, db.SequenceID{Seq: 100})
+
 }
 
 func TestRoleAccessChanges(t *testing.T) {
