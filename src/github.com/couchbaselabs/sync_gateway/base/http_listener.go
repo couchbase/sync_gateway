@@ -20,7 +20,7 @@ func init() {
 
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
-func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler) error {
+func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler, readTimeout *int, writeTimeout *int) error {
 	var config *tls.Config
 	if certFile != nil {
 		config = &tls.Config{}
@@ -41,6 +41,13 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 	}
 	defer listener.Close()
 	server := &http.Server{Addr: addr, Handler: handler}
+	if readTimeout != nil {
+		server.ReadTimeout = time.Duration(*readTimeout) * time.Second
+	}
+	if writeTimeout != nil {
+		server.WriteTimeout = time.Duration(*writeTimeout) * time.Second
+	}
+
 	return server.Serve(listener)
 }
 

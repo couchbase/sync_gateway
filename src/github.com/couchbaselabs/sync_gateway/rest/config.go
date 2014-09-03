@@ -46,6 +46,8 @@ type ServerConfig struct {
 	Interface                      *string         // Interface to bind REST API to, default ":4984"
 	SSLCert                        *string         // Path to SSL cert file, or nil
 	SSLKey                         *string         // Path to SSL private key file, or nil
+	ServerReadTimeout              *int            // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout             *int            // maximum duration.Second before timing out write of the HTTP(S) response
 	AdminInterface                 *string         // Interface to bind admin API to, default ":4985"
 	AdminUI                        *string         // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface               *string         // Interface to bind Go profile API to (no default)
@@ -384,7 +386,8 @@ func (config *ServerConfig) serve(addr string, handler http.Handler) {
 	if config.MaxIncomingConnections != nil {
 		maxConns = *config.MaxIncomingConnections
 	}
-	err := base.ListenAndServeHTTP(addr, maxConns, config.SSLCert, config.SSLKey, handler)
+
+	err := base.ListenAndServeHTTP(addr, maxConns, config.SSLCert, config.SSLKey, handler, config.ServerReadTimeout, config.ServerWriteTimeout)
 	if err != nil {
 		base.LogFatal("Failed to start HTTP server on %s: %v", addr, err)
 	}
