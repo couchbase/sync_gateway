@@ -578,19 +578,20 @@ func TestDocIDs(t *testing.T) {
 	assert.Equals(t, realDocID("_"), "")
 	assert.Equals(t, realDocID("_foo"), "")
 	assert.Equals(t, realDocID("foo"), "foo")
-	assert.Equals(t, realDocID("_design/foo"), "_design/foo")
+	assert.Equals(t, realDocID("_design/foo"), "")
+	assert.Equals(t, realDocID("_sync:rev:x"), "")
 }
 
 func TestUpdateDesignDoc(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	_, err := db.Put("_design/official", Body{})
+	err := db.PutDesignDoc("official", Body{})
 	assertNoError(t, err, "add design doc as admin")
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	_, err = db.Put("_design/pwn3d", Body{})
+	err = db.PutDesignDoc("_design/pwn3d", Body{})
 	assertHTTPError(t, err, 403)
 }
 

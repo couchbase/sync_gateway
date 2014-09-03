@@ -29,8 +29,8 @@ func realDocID(docid string) string {
 	if len(docid) > 250 {
 		return "" // Invalid doc IDs
 	}
-	if strings.HasPrefix(docid, "_") && !strings.HasPrefix(docid, "_design/") {
-		return "" // Disallow "_" prefix, except in "_design/"" (for CouchDB compatibility)
+	if strings.HasPrefix(docid, "_") {
+		return "" // Disallow "_" prefix, which is for special docs
 	}
 	return docid
 }
@@ -446,11 +446,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
-	// As a special case, it's illegal to put a design document except in admin mode:
-	if strings.HasPrefix(docid, "_design/") && db.user != nil {
-		return "", base.HTTPErrorf(403, "Forbidden to update design doc")
-	}
-
 	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")

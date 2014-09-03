@@ -248,18 +248,29 @@ func TestFunkyDocIDs(t *testing.T) {
 
 func TestDesignDocs(t *testing.T) {
 	var rt restTester
-	response := rt.sendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
+	response := rt.sendRequest("GET", "/db/_design/foo", "")
 	assertStatus(t, response, 403)
+	response = rt.sendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
+	assertStatus(t, response, 403)
+	response = rt.sendRequest("DELETE", "/db/_design/foo", "")
+	assertStatus(t, response, 403)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo", "")
+	assertStatus(t, response, 404)
 	response = rt.sendAdminRequest("PUT", "/db/_design/foo", `{"prop":true}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("GET", "/db/_design/foo", "")
+	response = rt.sendAdminRequest("GET", "/db/_design/foo", "")
 	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway", "")
+	response = rt.sendAdminRequest("GET", "/db/_design%2ffoo", "")
+	assertStatus(t, response, 200)
+	response = rt.sendAdminRequest("GET", "/db/_design%2Ffoo", "")
+	assertStatus(t, response, 200)
+	response = rt.sendAdminRequest("DELETE", "/db/_design/foo", "")
+	assertStatus(t, response, 200)
+	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
 	assertStatus(t, response, 403)
-	response = rt.sendRequest("GET", "/db/_design/sync_gateway", "")
+	response = rt.sendAdminRequest("GET", "/db/_design/sync_gateway", "")
 	assertStatus(t, response, 200)
-	response = rt.sendRequest("GET", "/db/_design/bar", "")
-	assertStatus(t, response, 404)
 }
 
 func TestManualAttachment(t *testing.T) {

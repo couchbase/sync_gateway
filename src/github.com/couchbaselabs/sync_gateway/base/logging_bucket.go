@@ -74,10 +74,20 @@ func (b *LoggingBucket) Incr(k string, amt, def uint64, exp int) (uint64, error)
 	defer func() { LogTo("Bucket", "Incr(%q, %d, %d, %d) [%v]", k, amt, def, exp, time.Since(start)) }()
 	return b.bucket.Incr(k, amt, def, exp)
 }
+func (b *LoggingBucket) GetDDoc(docname string, value interface{}) error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "GetDDoc(%q, ...) [%v]", docname, time.Since(start)) }()
+	return b.bucket.GetDDoc(docname, value)
+}
 func (b *LoggingBucket) PutDDoc(docname string, value interface{}) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "PutDDoc(%q, ...) [%v]", docname, time.Since(start)) }()
 	return b.bucket.PutDDoc(docname, value)
+}
+func (b *LoggingBucket) DeleteDDoc(docname string) error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "DeleteDDoc(%q, ...) [%v]", docname, time.Since(start)) }()
+	return b.bucket.DeleteDDoc(docname)
 }
 func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
 	start := time.Now()

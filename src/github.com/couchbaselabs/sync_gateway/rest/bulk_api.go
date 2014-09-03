@@ -227,64 +227,6 @@ func (h *handler) handleDump() error {
 	return nil
 }
 
-// HTTP handler for _view
-func (h *handler) handleView() error {
-	ddocName := h.PathVar("ddoc")
-	if ddocName == "" {
-		ddocName = "sync_gateway"
-	}
-	viewName := h.PathVar("view")
-	opts := db.Body{}
-	qStale := h.getQuery("stale")
-	if "" != qStale {
-		opts["stale"] = qStale == "true"
-	}
-	qReduce := h.getQuery("reduce")
-	if "" != qReduce {
-		opts["reduce"] = qReduce == "true"
-	}
-	qStartkey := h.getQuery("startkey")
-	if "" != qStartkey {
-		var sKey interface{}
-		errS := json.Unmarshal([]byte(qStartkey), &sKey)
-		if errS != nil {
-			return errS
-		}
-		opts["startkey"] = sKey
-	}
-	qEndkey := h.getQuery("endkey")
-	if "" != qEndkey {
-		var eKey interface{}
-		errE := json.Unmarshal([]byte(qEndkey), &eKey)
-		if errE != nil {
-			return errE
-		}
-		opts["endkey"] = eKey
-	}
-	qGroupLevel := h.getQuery("group_level")
-	if "" != qGroupLevel {
-		opts["group_level"] = int(h.getIntQuery("group_level", 1))
-	}
-	qGroup := h.getQuery("group")
-	if "" != qGroup {
-		opts["group"] = qGroup == "true"
-	}
-	qLimit := h.getQuery("limit")
-	if "" != qLimit {
-		opts["limit"] = int(h.getIntQuery("limit", 1))
-	}
-	base.LogTo("HTTP", "JSON view %q/%q - opts %v", ddocName, viewName, opts)
-
-	var result interface{}
-	err := h.db.Bucket.ViewCustom(ddocName, viewName, opts, &result)
-	if err != nil {
-		return err
-	}
-	h.setHeader("Content-Type", `application/json; charset="UTF-8"`)
-	h.writeJSON(result)
-	return nil
-}
-
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")

@@ -11,6 +11,7 @@ package rest
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
@@ -22,6 +23,13 @@ import (
 // like "/_profile" and "/db/_all_docs".
 const dbRegex = "[^_/][^/]*"
 const docRegex = "[^_/][^/]*"
+
+// Regex that matches a URI containing a regular doc ID with an escaped "/" character
+var docWithSlashPathRegex *regexp.Regexp
+
+func init() {
+	docWithSlashPathRegex, _ = regexp.Compile("/" + dbRegex + "/[^_].*%2[fF]")
+}
 
 // Creates a GorillaMux router containing the basic HTTP handlers for a server.
 // This is the common functionality of the public and admin ports.
@@ -43,21 +51,17 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, (*handler).handleBulkDocs)).Methods("POST")
 	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("POST")
 	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_design/{docid}", makeHandler(sc, privs, (*handler).handleDesign)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/{docid}", makeHandler(sc, privs, (*handler).handlePutDesign)).Methods("PUT", "DELETE")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
+	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(sc, privs, (*handler).handleRevsDiff)).Methods("POST")
 
 	// Document URLs:
 	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local%2F{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local%2f{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local%2F{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local%2f{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
 	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
-	dbr.Handle("/_local%2F{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
-	dbr.Handle("/_local%2f{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleGetDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handlePutDoc)).Methods("PUT")
@@ -157,8 +161,6 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
-	dbr.Handle("/_design/{ddoc}/_view/{view}",
-		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
@@ -216,7 +218,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 
 func fixQuotedSlashes(rq *http.Request) {
 	uri := rq.RequestURI
-	if strings.Contains(uri, "%2f") || strings.Contains(uri, "%2F") {
+	if docWithSlashPathRegex.MatchString(uri) {
 		if stop := strings.IndexAny(uri, "?#"); stop >= 0 {
 			uri = uri[0:stop]
 		}
