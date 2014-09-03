@@ -5,7 +5,10 @@ import (
 	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/walrus"
 )
+
+type DesignDoc walrus.DesignDoc
 
 func isInternalDDoc(ddocName string) bool {
 	return strings.HasPrefix(ddocName, "sync_")
@@ -26,9 +29,23 @@ func (db *Database) GetDesignDoc(ddocName string, result interface{}) (err error
 	return
 }
 
-func (db *Database) PutDesignDoc(ddocName string, body Body) (err error) {
+func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
+	// Wrap the map functions to ignore special docs and strip _sync metadata:
+	for name, view := range ddoc.Views {
+		view.Map = `function(doc,meta) {
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                      return;
+	                    if ((sync.flags & 1) || sync.deleted)
+	                      return;
+	                    delete doc.sync;
+	                    meta.rev = sync.rev;
+						(` + view.Map + `) (doc, meta); }`
+		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
+	}
+
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.PutDDoc(ddocName, body)
+		err = db.Bucket.PutDDoc(ddocName, ddoc)
 	}
 	return
 }

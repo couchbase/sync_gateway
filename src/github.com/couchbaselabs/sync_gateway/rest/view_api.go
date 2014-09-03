@@ -38,11 +38,12 @@ func (h *handler) handleGetDesignDoc() error {
 // HTTP handler for PUT _design/$ddoc
 func (h *handler) handlePutDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	body, err := h.readJSON()
+	var ddoc db.DesignDoc
+	err := h.readJSONInto(&ddoc)
 	if err != nil {
 		return err
 	}
-	if err = h.db.PutDesignDoc(ddocID, body); err != nil {
+	if err = h.db.PutDesignDoc(ddocID, ddoc); err != nil {
 		return err
 	}
 	h.writeStatus(http.StatusCreated, "OK")

@@ -586,12 +586,12 @@ func TestUpdateDesignDoc(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	err := db.PutDesignDoc("official", Body{})
+	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	err = db.PutDesignDoc("_design/pwn3d", Body{})
+	err = db.PutDesignDoc("_design/pwn3d", DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
 
