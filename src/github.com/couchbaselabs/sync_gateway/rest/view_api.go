@@ -104,8 +104,7 @@ func (h *handler) handleView() error {
 	}
 	base.LogTo("HTTP", "JSON view %q/%q - opts %v", ddocName, viewName, opts)
 
-	var result interface{}
-	err := h.db.QueryDesignDoc(ddocName, viewName, opts, &result)
+	result, err := h.db.QueryDesignDoc(ddocName, viewName, opts)
 	if err != nil {
 		return err
 	}

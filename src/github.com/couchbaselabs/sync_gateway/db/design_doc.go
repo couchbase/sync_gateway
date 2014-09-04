@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
+	ch "github.com/couchbaselabs/sync_gateway/channels"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -38,9 +40,27 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 	                      return;
 	                    if ((sync.flags & 1) || sync.deleted)
 	                      return;
+	                    var channels = [];
+	                    var channelMap = sync.channels;
+						if (channelMap) {
+							for (var name in channelMap) {
+								removed = channelMap[name];
+								if (!removed)
+									channels.push(name);
+							}
+						}
 	                    delete doc.sync;
 	                    meta.rev = sync.rev;
-						(` + view.Map + `) (doc, meta); }`
+	                    meta.channels = channels;
+
+	                    var _emit = emit;
+	                    (function(){
+		                    var emit = function(key,value) {
+		                    	_emit(key,[channels, value]);
+		                    };
+							(` + view.Map + `) (doc, meta);
+						}());
+					}`
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
 
@@ -57,13 +77,54 @@ func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
 	return
 }
 
-func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}, result interface{}) error {
+func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (*walrus.ViewResult, error) {
 	// Query has slightly different access control than checkDDocAccess():
 	// * Admins can query any design doc including the internal ones
 	// * Regular users can query non-internal design docs
-	//NOTE: Restricting query access to admins until we implement proper result-set filtering.
-	if db.user != nil /*&& isInternalDDoc(ddocName)*/ {
-		return base.HTTPErrorf(http.StatusForbidden, "forbidden")
+	if db.user != nil && isInternalDDoc(ddocName) {
+		return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
 	}
-	return db.Bucket.ViewCustom(ddocName, viewName, options, result)
+
+	result, err := db.Bucket.View(ddocName, viewName, options)
+	if err != nil {
+		return nil, err
+	}
+	if !isInternalDDoc(ddocName) {
+		result = filterViewResult(result, db.user)
+	}
+	return &result, nil
+}
+
+func filterViewResult(input walrus.ViewResult, user auth.User) (result walrus.ViewResult) {
+	checkChannels := false
+	var visibleChannels ch.TimedSet
+	if user != nil {
+		visibleChannels = user.InheritedChannels()
+		checkChannels = !visibleChannels.Contains("*")
+	}
+	result.TotalRows = input.TotalRows
+	result.Rows = make([]*walrus.ViewRow, 0, len(input.Rows)/2)
+	for _, row := range input.Rows {
+		value := row.Value.([]interface{})
+		// value[0] is the array of channels; value[1] is the actual value
+		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+			// Add this row:
+			result.Rows = append(result.Rows, &walrus.ViewRow{
+				Key:   row.Key,
+				Value: value[1],
+				ID:    row.ID,
+				Doc:   row.Doc,
+			})
+		}
+	}
+	return
+}
+
+func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool {
+	for _, channel := range channels {
+		if visibleChannels.Contains(channel.(string)) || channel == "*" {
+			return true
+		}
+	}
+	return false
 }
