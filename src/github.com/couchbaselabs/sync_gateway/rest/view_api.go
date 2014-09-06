@@ -2,7 +2,6 @@ package rest
 
 import (
 	"crypto/sha1"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,32 +71,23 @@ func (h *handler) handleView() error {
 	if "" != qReduce {
 		opts["reduce"] = qReduce == "true"
 	}
-	qStartkey := h.getQuery("startkey")
-	if "" != qStartkey {
-		var sKey interface{}
-		errS := json.Unmarshal([]byte(qStartkey), &sKey)
-		if errS != nil {
-			return errS
-		}
-		opts["startkey"] = sKey
+	opts["inclusive_end"] = h.getOptBoolQuery("inclusive_end", true)
+	var err error
+	if key, err := h.getJSONQuery("startkey"); err != nil {
+		return err
+	} else if key != nil {
+		opts["startkey"] = key
 	}
-	qEndkey := h.getQuery("endkey")
-	if "" != qEndkey {
-		var eKey interface{}
-		errE := json.Unmarshal([]byte(qEndkey), &eKey)
-		if errE != nil {
-			return errE
-		}
-		opts["endkey"] = eKey
+	if key, err := h.getJSONQuery("endkey"); err != nil {
+		return err
+	} else if key != nil {
+		opts["endkey"] = key
 	}
 	qGroupLevel := h.getQuery("group_level")
 	if "" != qGroupLevel {
 		opts["group_level"] = int(h.getIntQuery("group_level", 1))
 	}
-	qGroup := h.getQuery("group")
-	if "" != qGroup {
-		opts["group"] = qGroup == "true"
-	}
+	opts["group"] = h.getOptBoolQuery("group", false)
 	qLimit := h.getQuery("limit")
 	if "" != qLimit {
 		opts["limit"] = int(h.getIntQuery("limit", 1))
