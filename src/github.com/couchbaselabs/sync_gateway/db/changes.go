@@ -185,7 +185,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			names := make([]string, 0, len(channelsSince))
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
-				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) {
+				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
 					// Newly added channel so send all of it to user:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				}
