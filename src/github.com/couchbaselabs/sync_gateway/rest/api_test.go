@@ -858,6 +858,110 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(0))
 }
 
+//Test for wrong _changes entries for user joining a populated channel
+func TestUserJoiningPopulatedChannel(t *testing.T) {
+	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes", "Changes+", "CRUD"})
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create user1
+	response := rt.sendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	assertStatus(t, response, 201)
+
+	// Create 100 docs
+	for i := 0; i < 100; i++ {
+		docpath := fmt.Sprintf("/db/doc%d", i)
+		assertStatus(t, rt.send(request("PUT", docpath, `{"foo": "bar", "channels":["alpha"]}`)), 201)
+	}
+
+	// Check the _changes feed with limit, to split feed into two
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+
+	limit := 50
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?limit=%d", limit), "", "user1"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	since := changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc48")
+	assert.Equals(t, since, db.SequenceID{Seq: 50})
+
+	//// Check the _changes feed with  since and limit, to get second half of feed
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user1"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	since = changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc98")
+	assert.Equals(t, since, db.SequenceID{Seq: 100})
+
+	// Create user2
+	response = rt.sendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	assertStatus(t, response, 201)
+
+	//Retrieve all changes for user2 with no limits
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes"), "", "user2"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 101)
+	assert.Equals(t, changes.Results[99].ID, "doc99")
+
+	// Create user3
+	response = rt.sendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	assertStatus(t, response, 201)
+
+	//Get first 50 document changes
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?limit=%d", limit), "", "user3"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	since = changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc49")
+	assert.Equals(t, since, db.SequenceID{TriggeredBy: 103, Seq: 51})
+
+	//// Get remainder of changes i.e. no limit parameter
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since), "", "user3"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 51)
+	assert.Equals(t, changes.Results[49].ID, "doc99")
+
+	// Create user4
+	response = rt.sendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	assertStatus(t, response, 201)
+
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?limit=%d", limit), "", "user4"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	since = changes.Results[49].Seq
+	assert.Equals(t, changes.Results[49].ID, "doc49")
+	assert.Equals(t, since, db.SequenceID{TriggeredBy: 104, Seq: 51})
+
+	//// Check the _changes feed with  since and limit, to get second half of feed
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user4"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 50)
+	assert.Equals(t, changes.Results[49].ID, "doc99")
+
+}
+
 func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["Access"] = true
 	base.LogKeys["CRUD"] = true
