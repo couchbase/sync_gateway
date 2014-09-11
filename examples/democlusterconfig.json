@@ -10,6 +10,13 @@
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
+    "firefly": {
+      "server":"http://172.23.107.250:8091",
+      "bucket":"firefly",
+      "users": {
+        "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
+      }
+    },
     "todolite": {
       "server":"http://172.23.107.250:8091",
       "bucket":"todolite",
