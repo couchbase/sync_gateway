@@ -62,22 +62,6 @@
         }
       }
     `
-    },
-    "checkers": {
-        "server":"http://172.23.107.250:8091",
-        "bucket":"checkers",
-        "RevsLimit": 1,
-        "users": {
-            "GUEST": {"disabled": false, "admin_channels": ["*"]}
-        },
-        "sync": `
-            function(doc) {
-                if(doc._id.match(/^game:/) || doc._id.match(/^votes:/)) {
-                    requireUser("overlord");
-                }
-                channel(doc.channels);
-            }
-        `
-     }
+    }
   }
 }
