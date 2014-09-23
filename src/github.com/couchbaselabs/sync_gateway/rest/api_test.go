@@ -991,7 +991,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["ok"], true)
 
-	// GET the user and verify that it shows the assigned role
+	// POST the new user the GET and verify that it shows the assigned role
 	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"letmein"}`)
 	assertStatus(t, response, 201)
 	response = rt.sendAdminRequest("GET", "/db/_user/user1", "")
