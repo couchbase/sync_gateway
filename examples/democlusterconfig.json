@@ -17,6 +17,13 @@
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
+    "Connect2014": {
+      "server":"http://172.23.107.250:8091",
+      "bucket":"Connect2014",
+      "users": {
+        "GUEST": {"disabled": true} 
+      }
+    },
     "grocery-sync": {
       "server":"http://172.23.107.250:8091",
       "bucket":"grocery-sync",
