@@ -10,16 +10,16 @@
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
-    "firefly2": {
+    "firefly": {
       "server":"http://172.23.107.250:8091",
-      "bucket":"firefly2",
+      "bucket":"firefly",
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
-    "firefly": {
+    "connect2014": {
       "server":"http://172.23.107.250:8091",
-      "bucket":"firefly",
+      "bucket":"connect2014",
       "users": {
         "GUEST": {"disabled": true} 
       },
