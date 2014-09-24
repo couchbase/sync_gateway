@@ -12,10 +12,37 @@
     },
     "firefly": {
       "server":"http://172.23.107.250:8091",
-      "bucket":"firefly",
+      "bucket":"connect2014",
       "users": {
-        "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
-      }
+        "GUEST": {"disabled": true} 
+      },
+      "sync":
+        `
+	function(doc, oldDoc){
+
+	  if (oldDoc == null && doc.type == "contact") {
+	    // give user access to it's contact channel
+	    access(doc.userId, "contact-" + doc.userId);
+	    // add doc to user's contact channel
+	    channel("contact-" + doc.userId);
+	  }
+
+	  if (oldDoc == null && doc.type == "contactexchange") {
+	    // trade access to each user's contact channel
+	    access(doc.userId, "contact-" + doc.localUserId);
+	    access(doc.localUserId, "contact-" + doc.userId);
+	  }
+
+	  if (oldDoc == null && 
+	      (doc.type == "session" || 
+	       doc.type == "speaker" || 
+	       doc.type == "schedule" || 
+	       doc.type == "appconfig" )) {
+
+	    // everyone can sync these documents
+	    channel("*");
+	  }
+	}
     },
     "connect2014": {
       "server":"http://172.23.107.250:8091",
