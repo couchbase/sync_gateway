@@ -1161,7 +1161,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	assert.Equals(t, body["ok"], true)
 	doc1RevID := body["rev"].(string)
 
-	// Run _all_docs as admin with channels=true:
+	// Run GET _all_docs as admin with channels=true:
 	response = rt.sendAdminRequest("GET", "/db/_all_docs?channels=true", "")
 	assertStatus(t, response, 200)
 
@@ -1184,12 +1184,12 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
 	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
 
-	//Commit rev 2 on a differenec channel
-	// Update a document to revoke access to alice and grant it to zegpold:
+	//Commit rev 2 that maps to a differenet channel
 	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
 	assertStatus(t, rt.send(request("PUT", "/db/doc1", str)), 201)
 
-	// Run _all_docs as admin with channels=true:
+	// Run GET _all_docs as admin with channels=true
+	// Make sure that only the new channel appears in the docs channel list
 	response = rt.sendAdminRequest("GET", "/db/_all_docs?channels=true", "")
 	assertStatus(t, response, 200)
 
@@ -1200,7 +1200,8 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
 	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 
-	// Run POST _all_docs as admin with explicit docIDs and channels=true:
+	// Run POST _all_docs as admin with explicit docIDs and channels=true
+	// Make sure that only the new channel appears in the docs channel list
 	keys = `{"keys": ["doc1"]}`
 	response = rt.sendAdminRequest("POST", "/db/_all_docs?channels=true", keys)
 	assertStatus(t, response, 200)
