@@ -46,7 +46,7 @@
 	      doc.type == "appconfig" ) {
 
 	    // everyone can sync these documents
-	    channel("*");
+	    channel("public");
 	  }
 	}
         `
