@@ -1125,3 +1125,90 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
 	assert.Equals(t, response.Code, 200)
 }
+
+func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
+
+	type allDocsRow struct {
+		ID    string `json:"id"`
+		Key   string `json:"key"`
+		Value struct {
+			Rev      string              `json:"rev"`
+			Channels []string            `json:"channels,omitempty"`
+			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+		} `json:"value"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
+	}
+	var allDocsResult struct {
+		TotalRows int          `json:"total_rows"`
+		Offset    int          `json:"offset"`
+		Rows      []allDocsRow `json:"rows"`
+	}
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create a doc
+	response := rt.send(request("PUT", "/db/doc1", `{"foo":"bar", "channels":["ch1"]}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	doc1RevID := body["rev"].(string)
+
+	// Run _all_docs as admin with channels=true:
+	response = rt.sendAdminRequest("GET", "/db/_all_docs?channels=true", "")
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+
+	// Run POST _all_docs as admin with explicit docIDs and channels=true:
+	keys := `{"keys": ["doc1"]}`
+	response = rt.sendAdminRequest("POST", "/db/_all_docs?channels=true", keys)
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+
+	//Commit rev 2 on a differenec channel
+	// Update a document to revoke access to alice and grant it to zegpold:
+	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
+	assertStatus(t, rt.send(request("PUT", "/db/doc1", str)), 201)
+
+	// Run _all_docs as admin with channels=true:
+	response = rt.sendAdminRequest("GET", "/db/_all_docs?channels=true", "")
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+
+	// Run POST _all_docs as admin with explicit docIDs and channels=true:
+	keys = `{"keys": ["doc1"]}`
+	response = rt.sendAdminRequest("POST", "/db/_all_docs?channels=true", keys)
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+}
