@@ -21,6 +21,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
@@ -79,6 +80,8 @@ const (
 
 type handlerMethod func(*handler) error
 
+const kAppServerProxyUrlPrefix string = "/_appserver"
+
 // Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
@@ -87,6 +90,37 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		h.writeError(err)
 		h.logDuration(true)
 	})
+}
+
+func makeRevProxyHandler(server *ServerContext, privs handlerPrivs) http.Handler {
+
+	// if no app server proxy is configured, the endpoint just returns an error
+	if server.config.AppServerProxyTarget == nil {
+		return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+			http.Error(r, "No app server proxy configured", 500)
+		})
+	}
+
+	// get the app server proxy target
+	appServerProxyTarget := *server.config.AppServerProxyTarget
+	target, err := url.Parse(appServerProxyTarget)
+
+	// if it's not a valid url, the endoint returns an error
+	if err != nil {
+		base.LogTo("HTTP", "Ignoring invalid app proxy: %s.  Err: %s", appServerProxyTarget, err)
+		return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+			http.Error(r, "Invalid app server proxy URL configured", 500)
+		})
+	}
+
+	// create a proxy to this target
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// wrap in StripPrefix so it removes /_appserver prefix on outgoing requests
+	proxyWithoutPrefix := http.StripPrefix(kAppServerProxyUrlPrefix, proxy)
+
+	return proxyWithoutPrefix
+
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request) *handler {

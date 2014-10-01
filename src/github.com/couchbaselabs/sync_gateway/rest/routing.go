@@ -40,6 +40,9 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	// Global operations:
 	r.Handle("/", makeHandler(sc, privs, (*handler).handleRoot)).Methods("GET", "HEAD")
 
+	// Reverse proxy at /_appserver endpoint (or no-op if nothing configured)
+	r.NewRoute().PathPrefix(kAppServerProxyUrlPrefix).Handler(makeRevProxyHandler(sc, privs))
+
 	// Operations on databases:
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handlePostDoc)).Methods("POST")

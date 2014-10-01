@@ -10,12 +10,12 @@
 package base
 
 import (
-	"strconv"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -142,4 +142,18 @@ func (v *IntMax) SetIfMax(value int64) {
 	if value > v.i {
 		v.i = value
 	}
+}
+
+// Append a to b, using a single joining slash.
+// Eg, "/foo/" + "/bar" -> "/foo/bar"
+func SingleJoiningSlash(a, b string) string {
+	aslash := strings.HasSuffix(a, "/")
+	bslash := strings.HasPrefix(b, "/")
+	switch {
+	case aslash && bslash:
+		return a + b[1:]
+	case !aslash && !bslash:
+		return a + "/" + b
+	}
+	return a + b
 }
