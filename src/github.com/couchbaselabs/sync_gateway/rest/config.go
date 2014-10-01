@@ -63,6 +63,7 @@ type ServerConfig struct {
 	MaxFileDescriptors             *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses              *bool           // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
+	AppServerProxyTarget           *string         // If non-null, requests to /_appserver will be proxied here
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -240,6 +241,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.ConfigServer == nil {
 		self.ConfigServer = other.ConfigServer
 	}
+	if self.AppServerProxyTarget == nil {
+		self.AppServerProxyTarget = other.AppServerProxyTarget
+	}
 	if self.DeploymentID == nil {
 		self.DeploymentID = other.DeploymentID
 	}
@@ -279,6 +283,7 @@ func ParseCommandLine() *ServerConfig {
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	logKeys := flag.String("log", "", "Log keywords, comma separated")
+	appServerProxyTarget := flag.String("appServerProxyTarget", "", "URL of AppServer proxy target, if any")
 	flag.Parse()
 
 	var config *ServerConfig
@@ -327,6 +332,9 @@ func ParseCommandLine() *ServerConfig {
 		}
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
+		}
+		if *appServerProxyTarget != "" {
+			config.AppServerProxyTarget = appServerProxyTarget
 		}
 
 	} else {
