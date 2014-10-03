@@ -26,73 +26,66 @@
       "sync":
         `
 	function(doc, oldDoc){
+		
+	  if (doc.type == "contact") {
+              // Users can't assign their contact document to another user.
+              if (oldDoc != null && oldDoc.userId != doc.userId) throw({forbidden: "Can't change userId."});            
+              // Users can only change their own contact.
+              requireUser(oldDoc == null ? doc.userId : oldDoc.userId);
 
-        if (doc.type == "contact") {
-            // Users can't assign their contact document to another user.
-            if (oldDoc != null && oldDoc.userId != doc.userId) throw({forbidden: "Can't change userId."});            
-            // Users can only change their own contact.
-            requireUser(oldDoc == null ? doc.userId : oldDoc.userId);
+          } else if (doc.type == "contactexchange") {
+              // Can't modify a contact exchange document.
+              if (oldDoc != null) throw({forbidden: "Can't modify a contact exchange document."});                      
+              // Issuing user must be the local user.
+              requireUser(doc.localUserId);
 
-        } else if (doc.type == "contactexchange") {
-            // Can't modify a contact exchange document.
-            if (oldDoc != null) throw({forbidden: "Can't modify a contact exchange document."});                      
-            // Issuing user must be the local user.
-            requireUser(doc.localUserId);
+          } else if (doc.type == "surveyresult") {
+              // Can't modify a conference survey document.
+              if (oldDoc != null) throw({forbidden: "Can't modify a conference survey document."});                      
+              // Extract the userId from the document _id (the format of _id is "surveyresult-USER-ID").
+              var userId = doc._id.substring(13);
+              // Users can only create their own conference survey.
+              requireUser(userId);
 
-        } else if (doc.type == "surveyresult") {
-            // Can't modify a conference survey document.
-            if (oldDoc != null) throw({forbidden: "Can't modify a conference survey document."});                      
-            // Extract the userId from the document _id (the format of _id is "surveyresult-USER-ID").
-            var userId = doc._id.substring(13);
-            // Users can only create their own conference survey.
-            requireUser(userId);
+          } else if (doc.type == "ratingresult") {
+              // Extract the userId from the document _id (the format of _id is "sessionrating-session-XXXX-USER-ID").
+              var userId = doc._id.substring(27);
+              // Users can only change their own session ratings.
+              requireUser(userId);
 
-        } else if (doc.type == "ratingresult") {
-            // Extract the userId from the document _id (the format of _id is "sessionrating-session-XXXX-USER-ID").
-            var userId = doc._id.substring(27);
-            // Users can only change their own session ratings.
-            requireUser(userId);
+          } else if (doc.type == "agenda") {
+              // Extract the userId from the document _id (the format of _id is "agenda-USER-ID").
+              var userId = doc._id.substring(7);
+              // Users can only change their own agenda.
+              requireUser(userId);
 
-        } else if (doc.type == "scavengerhuntcapture") {
-            // Extract the userId from the document _id (the format of _id is "scavenger-hunt-item-XXX-USER-ID").
-            var userId = doc._id.substring(24);
-            // Users can only change their own scavenger hunt pictures.
-            requireUser(userId);
+          } else {
+              // The 'admin' user can change any document.
+              requireUser("admin");
+          }
 
-        } else if (doc.type == "agenda") {
-            // Extract the userId from the document _id (the format of _id is "agenda-USER-ID").
-            var userId = doc._id.substring(7);
-            // Users can only change their own agenda.
-            requireUser(userId);
+	  if (doc.type == "contact") {
+	    // give user access to it's contact channel
+	    access(doc.userId, "contact-" + doc.userId);
+	    // add doc to user's contact channel
+	    channel("contact-" + doc.userId);
+	  }
 
-        } else {
-            // The 'admin' user can change any document.
-            requireUser("admin");
-        }
+	  if (doc.type == "contactexchange") {
+	    // trade access to each user's contact channel
+	    access(doc.userId, "contact-" + doc.localUserId);
+	    access(doc.localUserId, "contact-" + doc.userId);
+	  }
 
-        if (doc.type == "contact") {
-          // give user access to it's contact channel
-          access(doc.userId, "contact-" + doc.userId);
-          // add doc to user's contact channel
-          channel("contact-" + doc.userId);
-        }
+	  if (doc.type == "session" || 
+	      doc.type == "speaker" || 
+	      doc.type == "schedule" || 
+	      doc.type == "appconfig" ) {
 
-        if (doc.type == "contactexchange") {
-          // trade access to each user's contact channel
-          access(doc.userId, "contact-" + doc.localUserId);
-          access(doc.localUserId, "contact-" + doc.userId);
-        }
-
-        if (doc.type == "session" || 
-            doc.type == "speaker" || 
-            doc.type == "schedule" || 
-            doc.type == "appconfig" ||
-            doc.type == "scavengerhuntitem" ) {
-
-          // everyone can sync these documents
-          channel("public")
-        }
-      }
+	    // everyone can sync these documents
+	    channel("public");
+	  }
+	}
         `
     },
     "grocery-sync": {
