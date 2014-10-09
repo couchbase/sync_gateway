@@ -621,6 +621,39 @@ func TestImport(t *testing.T) {
 	assertNoError(t, err, "can't get doc")
 }
 
+func TestPostWithExistingId(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with existing id property:
+	customDocId := "customIdValue"
+	log.Printf("Create document with existing id...")
+	body := Body{"_id": customDocId, "key1": "value1", "key2": "existing"}
+	docid, rev1id, err := db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid == customDocId)
+	assertNoError(t, err, "Couldn't create document")
+
+	// Test retrieval
+	doc, err := db.GetDoc(customDocId)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "Unable to retrieve doc using custom id")
+
+	// Test that standard UUID creation still works:
+	log.Printf("Create document with existing id...")
+	body = Body{"_notAnId": customDocId, "key1": "value1", "key2": "existing"}
+	docid, rev1id, err = db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != customDocId)
+	assertNoError(t, err, "Couldn't create document")
+
+	// Test retrieval
+	doc, err = db.GetDoc(docid)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
+
+}
+
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
