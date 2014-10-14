@@ -1,0 +1,17 @@
+{
+	"log": ["CRUD+", "REST+", "Changes+", "Attach+"],
+	"databases": {
+		"grocery-sync": {
+			"server": "walrus:",
+			"sync": `
+function(doc){
+	channel(doc.channels);
+}`,
+			"users": {
+			    "GUEST": {"disabled": false, "admin_channels": ["*"]}
+			}
+
+		}
+
+	}
+}
