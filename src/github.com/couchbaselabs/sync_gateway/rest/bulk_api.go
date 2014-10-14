@@ -83,9 +83,12 @@ func (h *handler) handleAllDocs() error {
 		if availableChannels == nil {
 			result = []string{}
 		}
-		for ch, _ := range channelMap {
+		for ch, rm := range channelMap {
 			if availableChannels == nil || availableChannels.Contains(ch) {
-				result = append(result, ch)
+				//Do not include channels doc removed from in this rev
+				if rm == nil {
+					result = append(result, ch)
+				}
 			}
 		}
 		return result
