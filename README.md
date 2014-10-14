@@ -53,9 +53,14 @@ Apache 2 license.
 
 ## Tutorials and Other Resources
 
-There is a [broad overview of mobile and Couchbase Lite here, with pointers to most of the docs](https://github.com/couchbase/mobile)
+* [Broad overview of mobile and Couchbase Lite](https://github.com/couchbase/mobile)
 
-If you're having trouble, feel free to ask for help on the [mailing list][MAILING_LIST]. If you're pretty sure you've found a bug, please [file a bug report][ISSUE_TRACKER].
+* [Example Sync Gateway Configurations](https://github.com/couchbase/sync_gateway/wiki/Example-Configs)
+
+* [Mailing list][MAILING_LIST] -- feel free to ask for help!
+
+* [File a bug report][ISSUE_TRACKER] if you find a bug.
+
 
 [COUCHBASE_LITE]: https://github.com/couchbase/couchbase-lite-ios
 [TOUCHDB]: https://github.com/couchbaselabs/TouchDB-iOS
