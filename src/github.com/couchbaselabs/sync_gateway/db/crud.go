@@ -104,6 +104,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 		if body, err = db.getRevision(doc, revid); err != nil {
 			return nil, err
 		}
+		body = body.ImmutableAttachmentsCopy()
 		if doc.hasFlag(channels.Deleted) {
 			body["_deleted"] = true
 		}

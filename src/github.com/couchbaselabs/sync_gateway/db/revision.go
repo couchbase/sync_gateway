@@ -28,6 +28,27 @@ func (body Body) ShallowCopy() Body {
 	return copied
 }
 
+func (body Body) ImmutableAttachmentsCopy() Body {
+	copied := make(Body, len(body))
+	for k1, v1 := range body {
+		if k1 == "_attachments" {
+			atts := v1.(map[string]interface{})
+			attscopy := make(map[string]interface{}, len(atts))
+			for k2, v2 := range atts {
+				attachment := v2.(map[string]interface{})
+				attachmentcopy := make(map[string]interface{}, len(attachment))
+				for k3, v3 := range attachment {
+					attachmentcopy[k3] = v3
+				}
+				attscopy[k2] = attachmentcopy
+			}
+			v1 = attscopy
+		}
+		copied[k1] = v1
+	}
+	return copied
+}
+
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
