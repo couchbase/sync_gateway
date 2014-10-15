@@ -273,7 +273,7 @@ func TestCheckRole(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc) {
 			requireRole(doc.role);
 		}`)
-	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl":1, "5yo":1}}
+	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, sally)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
@@ -293,12 +293,12 @@ func TestCheckRoleArray(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc) {
 			requireRole(doc.roles);
 		}`)
-	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl":1, "5yo":1}}
+	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"roles": ["kid","girl"]}`), `{}`, sally)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
 
-	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy":1, "musician":1}}
+	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy": 1, "musician": 1}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, linus)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing role"))
@@ -348,6 +348,54 @@ func TestCheckAccessArray(t *testing.T) {
 	assert.DeepEquals(t, res.Rejection, nil)
 }
 
+// Test the required() function
+func TestRequiredProperties(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+			required("color", "texture");
+		}`)
+	doc := parse(`{"color": "yellow", "texture": "squishy"}`)
+	res, err := mapper.MapToChannelsAndAccess(doc, `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, nil)
+
+	doc = parse(`{"color": "blue"}`)
+	res, err = mapper.MapToChannelsAndAccess(doc, `{}`, nil)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, `required property "texture" missing`))
+}
+
+// Test the immutable() function
+func TestImmutableProperties(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc, oldDoc) {
+			immutable("color", "texture");
+		}`)
+	oldDoc := ``
+
+	testChange := func(newDoc string, errStr string) {
+		res, err := mapper.MapToChannelsAndAccess(parse(newDoc), oldDoc, nil)
+		assertNoError(t, err, "MapToChannelsAndAccess failed")
+		if errStr == "" {
+			assert.DeepEquals(t, res.Rejection, nil)
+			oldDoc = newDoc
+		} else {
+			assert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, errStr))
+		}
+	}
+
+	testChange(`{"color": "yellow", "texture": "squishy", "name": "banana"}`, "")
+	testChange(`{"color": "yellow", "texture": "squishy", "name": "banananananana"}`, "")
+	testChange(`{"color": "yellow", "texture": "creamy", "name": "banananananana"}`,
+		`immutable property "texture" changed`)
+	testChange(`{"texture": "squishy", "name": "banananananana"}`,
+		`immutable property "color" changed`)
+	testChange(`{"_deleted": true}`, "")
+
+	// Check non-scalar immutable properties:
+	oldDoc = ``
+	testChange(`{"color": [255, 255, 0]}`, "")
+	testChange(`{"color": [255, 255, 0], "name": "banana"}`, "")
+	testChange(`{"color": [0, 0, 255]}`, `immutable property "color" changed`)
+}
 
 // Test changing the function
 func TestSetFunction(t *testing.T) {

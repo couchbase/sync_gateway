@@ -11,6 +11,7 @@ package channels
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/couchbaselabs/walrus"
@@ -56,10 +57,10 @@ const funcWrapper = `
 		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
 
 		function requireUser(names) {
-				if (!shouldValidate) return;
-				names = makeArray(names);
-				if (!inArray(realUserCtx.name, names))
-					throw({forbidden: "wrong user"});
+			if (!shouldValidate) return;
+			names = makeArray(names);
+			if (!inArray(realUserCtx.name, names))
+				throw({forbidden: "wrong user"});
 		}
 
 		function requireRole(roles) {
@@ -70,10 +71,31 @@ const funcWrapper = `
 		}
 
 		function requireAccess(channels) {
-				if (!shouldValidate) return;
-				channels = makeArray(channels);
-				if (!anyInArray(realUserCtx.channels, channels))
-					throw({forbidden: "missing channel access"});
+			if (!shouldValidate) return;
+			channels = makeArray(channels);
+			if (!anyInArray(realUserCtx.channels, channels))
+				throw({forbidden: "missing channel access"});
+		}
+
+		function required(/*prop, ...*/) {
+			if (newDoc._deleted)
+				return;
+			for (var i = 0; i < arguments.length; i++) {
+				var prop = arguments[i]
+				if (newDoc[prop] === undefined)
+					throw({forbidden: 'required property "'+prop+'" missing'});
+			}
+		}
+
+		function immutable(/*prop, ...*/) {
+			if (!oldDoc || newDoc._deleted)
+				return;
+			for (var i = 0; i < arguments.length; i++) {
+				var prop = arguments[i]
+				var old = oldDoc[prop];
+				if (old !== undefined && newDoc[prop] != old && !deepEqual(newDoc[prop],old))
+					throw({forbidden: 'immutable property "'+prop+'" changed'});
+			}
 		}
 
 		try {
@@ -137,6 +159,18 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 			}
 		}
 		return otto.UndefinedValue()
+	})
+
+	// Implementation of the 'deepEqual()' callback:
+	runner.DefineNativeFunction("deepEqual", func(call otto.FunctionCall) otto.Value {
+		obj1, _ := call.Argument(0).Export()
+		obj2, _ := call.Argument(1).Export()
+		base.TEMP("deepEqual(%+v, %+v)", obj1, obj2)
+		if reflect.DeepEqual(obj1, obj2) {
+			return otto.TrueValue()
+		} else {
+			return otto.FalseValue()
+		}
 	})
 
 	runner.Before = func() {
