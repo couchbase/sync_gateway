@@ -935,6 +935,50 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 }
 
+func TestRoleAssignmentBeforeUserExists(t *testing.T) {
+	base.LogKeys["Access"] = true
+	base.LogKeys["CRUD"] = true
+	base.LogKeys["Changes+"] = true
+
+	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// POST a role
+	response := rt.sendAdminRequest("POST", "/db/_role/", `{"name":"role1","admin_channels":["chan1"]}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("GET", "/db/_role/role1", "")
+	assertStatus(t, response, 200)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["name"], "role1")
+
+	//Put document to trigger sync function
+	response = rt.send(request("PUT", "/db/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
+	assertStatus(t, response, 201)
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+
+	// POST the new user the GET and verify that it shows the assigned role
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"letmein"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("GET", "/db/_user/user1", "")
+	assertStatus(t, response, 200)
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["name"], "user1")
+	assert.DeepEquals(t, body["roles"], []interface{}{"role1"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"chan1"})
+
+	//assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
+	//assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
+}
+
 func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["Access"] = true
 	base.LogKeys["CRUD"] = true
