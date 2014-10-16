@@ -1,3 +1,11 @@
 #!/bin/sh
 
 set -e
+
+stop service sync_gateway
+
+//uninstall service at boot
+
+rm /etc/init/sync_gateway
+
+rmuser sync_gateway
