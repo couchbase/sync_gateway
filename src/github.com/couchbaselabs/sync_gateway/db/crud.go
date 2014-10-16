@@ -146,6 +146,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 		body["_revisions"] = revisions
 	}
 
+	body = body.ImmutableAttachmentsCopy()
 	// Add attachment bodies:
 	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
 		minRevpos := 1
