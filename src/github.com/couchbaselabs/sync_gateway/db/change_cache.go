@@ -265,7 +265,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		}
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
-		base.Warn("  Received out-of-order change (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
+		base.LogTo("Cache", "  Received out-of-order change (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		changedChannels = c._addToCache(change)
 	}
 	return changedChannels
