@@ -159,7 +159,7 @@ fi
 case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
-            10|12)
+            10|12|14)
                 render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 service ${SERVICE_NAME} start
