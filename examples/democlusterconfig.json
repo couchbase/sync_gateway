@@ -10,12 +10,43 @@
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
-    "firefly": {
+    "chess-park": {
       "server":"http://172.23.107.250:8091",
-      "bucket":"firefly",
-      "users": {
-        "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
-      }
+      "bucket":"chess-park",
+      "sync":`
+	function(doc, oldDoc){
+		log("sync function enter as log")
+		if (doc.type == "match") {
+			log("processing match");
+			if (doc._deleted) {
+				// only owners can delete
+				requireUser(oldDoc.ownerId);
+			} else {
+				if (doc.status == "active") {
+					requireUser([doc.ownerId, doc.opponentId]);
+					channel("games-" + doc.ownerId);
+					channel("games-" + doc.opponentId);
+				} else if (doc.status == "waiting") {
+					channel("games-waiting");
+				}
+			}
+		} else if (doc.type == "userProfile") {
+			log("processing user profile");
+			// only users can update their user profile
+			requireUser(doc.userId);
+
+			// for now, only users can see their profiles (no friend support)
+			channel("userprofile-" + doc.userId);
+
+			// if a profile is present, grant them access to their own games channel
+			access(doc.userId, "userprofile-" + doc.userId);
+			access(doc.userId, "games-" + doc.userId);
+			access(doc.userId, "games-waiting");
+		} else {
+			channel(doc.channels);
+		}
+	}
+	` 
     },
     "connect2014": {
       "server":"http://172.23.107.250:8091",
