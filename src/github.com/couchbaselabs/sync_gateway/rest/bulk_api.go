@@ -30,6 +30,9 @@ func (h *handler) handleAllDocs() error {
 	includeAccess := h.getBoolQuery("access") && h.user == nil
 	includeRevs := h.getBoolQuery("revs")
 	includeSeqs := h.getBoolQuery("update_seq")
+	limit := int(h.getIntQuery("limit", 0))
+
+	base.LogTo("ANDY", "Limit value is set to = %d", limit)
 
 	// Get the doc IDs if this is a POST request:
 	var explicitDocIDs []string
@@ -187,11 +190,16 @@ func (h *handler) handleAllDocs() error {
 	h.response.Write([]byte(`{"rows":[` + "\n"))
 
 	if explicitDocIDs != nil {
+		count := 0
 		for _, docID := range explicitDocIDs {
+			count++
 			writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			if limit > 0 && count == limit {
+				break
+			}
 		}
 	} else {
-		if err := h.db.ForEachDocID(writeDoc); err != nil {
+		if err := h.db.ForEachDocID(writeDoc, limit); err != nil {
 			return err
 		}
 	}

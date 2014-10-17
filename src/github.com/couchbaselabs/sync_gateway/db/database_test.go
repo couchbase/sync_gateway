@@ -207,7 +207,7 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 			Channels: channels,
 		})
 		return nil
-	})
+	}, 0)
 	return
 }
 

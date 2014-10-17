@@ -307,7 +307,7 @@ type IDAndRev struct {
 type ForEachDocIDFunc func(id IDAndRev, channels []string) error
 
 // Iterates over all documents in the database, calling the callback function on each
-func (db *Database) ForEachDocID(callback ForEachDocIDFunc) error {
+func (db *Database) ForEachDocID(callback ForEachDocIDFunc, limit int) error {
 	type viewRow struct {
 		Key   string
 		Value struct {
@@ -326,10 +326,15 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc) error {
 		return err
 	}
 
+	count := 0
 	for _, row := range vres.Rows {
+		count++
 		err = callback(IDAndRev{row.Key, row.Value.RevID, row.Value.Sequence}, row.Value.Channels)
 		if err != nil {
 			return err
+		}
+		if limit > 0 && count == limit {
+			break
 		}
 	}
 	return nil
