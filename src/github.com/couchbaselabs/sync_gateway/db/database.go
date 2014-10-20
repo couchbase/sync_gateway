@@ -200,6 +200,15 @@ func installViews(bucket base.Bucket) error {
                      var sync = doc._sync;
                      if (meta.id.substring(0,10) == "_sync:rev:")
 	                     emit("",null); }`
+
+	// Sessions view - used for session delete
+	// Key is username; value is docid
+	sessions_map := `function (doc, meta) {
+                     	var prefix = meta.id.substring(0,%d);
+                     	if (prefix == %q)
+                     		emit(doc.username, meta.id);}`
+	sessions_map = fmt.Sprintf(sessions_map, len(auth.SessionKeyPrefix), auth.SessionKeyPrefix)
+
 	// All-principals view
 	// Key is name; value is true for user, false for role
 	principals_map := `function (doc, meta) {
@@ -288,6 +297,7 @@ func installViews(bucket base.Bucket) error {
 			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			"import":   walrus.ViewDef{Map: import_map, Reduce: "_count"},
 			"old_revs": walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
+			"sessions": walrus.ViewDef{Map: sessions_map},
 		},
 	}
 	err = bucket.PutDDoc("sync_housekeeping", ddoc)
@@ -386,6 +396,27 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	for _, row := range vres.Rows {
 		base.LogTo("CRUD", "\tDeleting %q", row.ID)
 		if err := db.Bucket.Delete(row.ID); err != nil {
+			base.Warn("Error deleting %q: %v", row.ID, err)
+		}
+	}
+	return nil
+}
+
+// Deletes all session documents for a user
+func (db *Database) DeleteUserSessions(userName string) error {
+	opts := Body{"stale": false}
+	opts["startkey"] = userName
+	opts["endkey"] = userName
+	vres, err := db.Bucket.View("sync_housekeeping", "sessions", opts)
+	if err != nil {
+		base.Warn("sessions view returned %v", err)
+		return err
+	}
+
+	for _, row := range vres.Rows {
+		docId := row.Value.(string)
+		base.LogTo("CRUD", "\tDeleting %q", docId)
+		if err := db.Bucket.Delete(docId); err != nil {
 			base.Warn("Error deleting %q: %v", row.ID, err)
 		}
 	}

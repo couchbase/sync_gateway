@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -23,22 +25,9 @@ const kDefaultSessionTTL = 24 * time.Hour
 
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfo() error {
-	var name *string
-	allChannels := channels.TimedSet{}
-	if h.user != nil {
-		userName := h.user.Name()
-		if userName != "" {
-			name = &userName
-		}
-		allChannels = h.user.Channels()
-	}
-	// Return a JSON struct similar to what CouchDB returns:
-	userCtx := db.Body{"name": name, "channels": allChannels}
-	handlers := []string{"default", "cookie"}
-	if h.PersonaEnabled() {
-		handlers = append(handlers, "persona")
-	}
-	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
+
+	response := h.formatSessionResponse(h.user)
+
 	h.writeJSON(response)
 	return nil
 }
@@ -63,6 +52,7 @@ func (h *handler) handleSessionPOST() error {
 	if err != nil {
 		return err
 	}
+
 	if !user.Authenticate(params.Password) {
 		user = nil
 	}
@@ -107,11 +97,11 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 		if !createUserIfNeeded {
 			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
 		}
-		
+
 		if len(email) < 1 {
 			return base.HTTPErrorf(http.StatusBadRequest, "Cannot register new user: email is missing")
 		}
-		
+
 		// Create a User with the given email address as username and a random password.
 		user, err = h.registerNewUser(email)
 		if err != nil {
@@ -160,4 +150,139 @@ func (h *handler) createUserSession() error {
 	response.CookieName = auth.CookieName
 	h.writeJSON(response)
 	return nil
+}
+
+func (h *handler) getUserSession() error {
+
+	h.assertAdminOnly()
+	session, err := h.db.Authenticator().GetSession(mux.Vars(h.rq)["sessionid"])
+
+	if session == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+
+	return h.respondWithSessionInfoForSession(session)
+}
+
+// ADMIN API: Deletes a specified session.  If username is present on the request, validates
+// that the session being deleted is associated with the user.
+func (h *handler) deleteUserSession() error {
+	h.assertAdminOnly()
+	userName := mux.Vars(h.rq)["name"]
+	if userName != "" {
+		return h.deleteUserSessionWithValidation(mux.Vars(h.rq)["sessionid"], userName)
+	} else {
+		return h.db.Authenticator().DeleteSession(mux.Vars(h.rq)["sessionid"])
+	}
+}
+
+// ADMIN API: Deletes a collection of sessions for a user.  If "*" is included as a
+// key, removes all session for the user.
+func (h *handler) deleteUserSessions() error {
+	h.assertAdminOnly()
+
+	var sessionIds []string
+	deleteAll := false
+	input, err := h.readJSON()
+	if err == nil {
+		keys, ok := input["keys"].([]interface{})
+		sessionIds = make([]string, len(keys))
+
+		for i := 0; i < len(keys); i++ {
+			if sessionIds[i], ok = keys[i].(string); !ok {
+				break
+			}
+			// if * is passed in as a session id, we want to delete all sessions for the user
+			if sessionIds[i] == "*" {
+				deleteAll = true
+			}
+		}
+		if !ok {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
+		}
+	}
+
+	userName := mux.Vars(h.rq)["name"]
+	if deleteAll {
+		err = h.db.DeleteUserSessions(userName)
+		if err != nil {
+			return err
+		}
+	} else {
+		for _, sessionId := range sessionIds {
+			err = h.deleteUserSessionWithValidation(sessionId, userName)
+			if err != nil {
+				// fail silently for failed delete
+			}
+		}
+	}
+
+	return err
+}
+
+// Delete a session if associated with the user provided
+func (h *handler) deleteUserSessionWithValidation(sessionId string, userName string) error {
+
+	// Validate that the session being deleted belongs to the user.  This adds some
+	// overhead - for user-agnostic session deletion should use deleteSession
+	session, getErr := h.db.Authenticator().GetSession(sessionId)
+	if getErr == nil {
+		if session.Username == userName {
+			delErr := h.db.Authenticator().DeleteSession(sessionId)
+			if delErr != nil {
+				return delErr
+			}
+		}
+	}
+	return nil
+}
+
+// Respond with a JSON struct containing info about the current login session
+func (h *handler) respondWithSessionInfoForSession(session *auth.LoginSession) error {
+
+	var userName string
+	if session != nil {
+		userName = session.Username
+	}
+
+	user, err := h.db.Authenticator().GetUser(userName)
+
+	// let the empty user case succeed
+	if err != nil {
+		return err
+	}
+
+	response := h.formatSessionResponse(user)
+	if response != nil {
+		h.writeJSON(response)
+	}
+	return nil
+}
+
+// Formats session response similar to what is returned by CouchDB
+func (h *handler) formatSessionResponse(user auth.User) db.Body {
+
+	var name *string
+	allChannels := channels.TimedSet{}
+
+	if user != nil {
+		userName := user.Name()
+		if userName != "" {
+			name = &userName
+		}
+		allChannels = user.Channels()
+	}
+
+	// Return a JSON struct similar to what CouchDB returns:
+	userCtx := db.Body{"name": name, "channels": allChannels}
+	handlers := []string{"default", "cookie"}
+	if h.PersonaEnabled() {
+		handlers = append(handlers, "persona")
+	}
+	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
+	return response
+
 }

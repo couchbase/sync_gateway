@@ -11,6 +11,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"testing"
 	"time"
@@ -205,4 +206,113 @@ func TestSessionExtension(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
+}
+
+func TestSessionAPI(t *testing.T) {
+
+	var rt restTester
+
+	// create session test users
+	response := rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user2", "password":"1234"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user3", "password":"1234"}`)
+	assertStatus(t, response, 201)
+
+	// create multiple sessions for the users
+	user1sessions := make([]string, 5)
+	user2sessions := make([]string, 5)
+	user3sessions := make([]string, 5)
+
+	for i := 0; i < 5; i++ {
+		user1sessions[i] = rt.createSession(t, "user1")
+		user2sessions[i] = rt.createSession(t, "user2")
+		user3sessions[i] = rt.createSession(t, "user3")
+	}
+
+	// GET Tests
+	// 1. GET a session and make sure the result is OK
+	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
+	assertStatus(t, response, 200)
+
+	// DELETE tests
+	// 1. DELETE a session by session id
+	response = rt.sendAdminRequest("DELETE", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
+	assertStatus(t, response, 200)
+
+	// Attempt to GET the deleted session and make sure it's not found
+	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
+	assertStatus(t, response, 404)
+
+	// 2. DELETE a session with user validation
+	response = rt.sendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user1sessions[1]), "")
+	assertStatus(t, response, 200)
+
+	// Attempt to GET the deleted session and make sure it's not found
+	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[1]), "")
+	assertStatus(t, response, 404)
+
+	// 3. DELETE a session not belonging to the user (should fail)
+	response = rt.sendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user2sessions[0]), "")
+	assertStatus(t, response, 200)
+
+	// GET the session and make sure it still exists
+	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[0]), "")
+	assertStatus(t, response, 200)
+
+	// 4. DELETE multiple sessions for a user
+	response = rt.sendAdminRequest("DELETE", "/db/_user/user1/_session", fmt.Sprintf(`{"keys":[%q,%q]}`, user1sessions[2], user1sessions[3]))
+	assertStatus(t, response, 200)
+
+	// Validate that multiple sessions were deleted
+	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[2]), "")
+	assertStatus(t, response, 404)
+	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[3]), "")
+	assertStatus(t, response, 404)
+
+	// 5. DELETE all sessions for a user
+	response = rt.sendAdminRequest("DELETE", "/db/_user/user2/_session", `{"keys":["*"]}`)
+	assertStatus(t, response, 200)
+
+	// Validate that all sessions were deleted
+	for i := 0; i < 5; i++ {
+		response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[i]), "")
+		assertStatus(t, response, 404)
+	}
+
+	// 6. DELETE sessions when password is changed
+	// Change password for user3
+	response = rt.sendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
+
+	assertStatus(t, response, 200)
+
+	// Validate that all sessions were deleted
+	for i := 0; i < 5; i++ {
+		response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
+		assertStatus(t, response, 404)
+	}
+
+	// DELETE the users
+	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_user/user1", ""), 404)
+
+	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/user2", ""), 200)
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_user/user2", ""), 404)
+
+	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_user/user3", ""), 404)
+
+}
+
+func (rt *restTester) createSession(t *testing.T, username string) string {
+
+	response := rt.sendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
+	assertStatus(t, response, 200)
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	sessionId := body["session_id"].(string)
+
+	return sessionId
 }
