@@ -576,6 +576,20 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				// might not incorporate the effects of this change.
 				writeOpts |= walrus.Indexable
 			}
+
+			if len(access) > 0 && db.user != nil {
+				//invalidate channels current user
+				base.Log("Invalidating channels of current user")
+				db.invalUserChannels(db.user.Name())
+				//db.invalRoleChannels(db.user.Name())
+			}
+
+			if len(roles) > 0 && db.user != nil {
+				//invalidate channels current user
+				base.Log("Invalidating channels of current user")
+				db.invalRoleChannels(db.user.Name())
+			}
+
 		} else {
 			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
 				docid, newRevID, prevCurrentRev)
