@@ -420,6 +420,36 @@ func TestBulkDocs(t *testing.T) {
 		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
 }
 
+func TestBulkDocsChangeToAccess(t *testing.T) {
+
+	base.LogKeys["Access"] = true
+
+	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	//Create a test user
+	user, err = a.NewUser("user1", "letmein", nil)
+	a.Save(user)
+
+	input := `{"docs": [{"_id": "bulk1", "type" : "setaccess", "owner":"user1" , "channel":"chan1"}, {"_id": "bulk2" , "channel":"chan1"}]}`
+
+	response := rt.send(requestByUser("POST", "/db/_bulk_docs", input, "user1"))
+	assertStatus(t, response, 201)
+
+	var docs []interface{}
+	json.Unmarshal(response.Body.Bytes(), &docs)
+	assert.Equals(t, len(docs), 2)
+	assert.DeepEquals(t, docs[0],
+		map[string]interface{}{"rev": "1-afbcffa8a4641a0f4dd94d3fc9593e74", "id": "bulk1"})
+	assert.DeepEquals(t, docs[1],
+		map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"})
+}
+
 func TestBulkDocsNoEdits(t *testing.T) {
 	var rt restTester
 	input := `{"new_edits":false, "docs": [
