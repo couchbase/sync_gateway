@@ -13,8 +13,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -155,7 +153,7 @@ func (h *handler) createUserSession() error {
 func (h *handler) getUserSession() error {
 
 	h.assertAdminOnly()
-	session, err := h.db.Authenticator().GetSession(mux.Vars(h.rq)["sessionid"])
+	session, err := h.db.Authenticator().GetSession(h.PathVar("sessionid"))
 
 	if session == nil {
 		if err == nil {
@@ -171,56 +169,20 @@ func (h *handler) getUserSession() error {
 // that the session being deleted is associated with the user.
 func (h *handler) deleteUserSession() error {
 	h.assertAdminOnly()
-	userName := mux.Vars(h.rq)["name"]
+	userName := h.PathVar("name")
 	if userName != "" {
-		return h.deleteUserSessionWithValidation(mux.Vars(h.rq)["sessionid"], userName)
+		return h.deleteUserSessionWithValidation(h.PathVar("sessionid"), userName)
 	} else {
-		return h.db.Authenticator().DeleteSession(mux.Vars(h.rq)["sessionid"])
+		return h.db.Authenticator().DeleteSession(h.PathVar("sessionid"))
 	}
 }
 
-// ADMIN API: Deletes a collection of sessions for a user.  If "*" is included as a
-// key, removes all session for the user.
+// ADMIN API: Deletes all sessions for a user
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
 
-	var sessionIds []string
-	deleteAll := false
-	input, err := h.readJSON()
-	if err == nil {
-		keys, ok := input["keys"].([]interface{})
-		sessionIds = make([]string, len(keys))
-
-		for i := 0; i < len(keys); i++ {
-			if sessionIds[i], ok = keys[i].(string); !ok {
-				break
-			}
-			// if * is passed in as a session id, we want to delete all sessions for the user
-			if sessionIds[i] == "*" {
-				deleteAll = true
-			}
-		}
-		if !ok {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
-		}
-	}
-
-	userName := mux.Vars(h.rq)["name"]
-	if deleteAll {
-		err = h.db.DeleteUserSessions(userName)
-		if err != nil {
-			return err
-		}
-	} else {
-		for _, sessionId := range sessionIds {
-			err = h.deleteUserSessionWithValidation(sessionId, userName)
-			if err != nil {
-				// fail silently for failed delete
-			}
-		}
-	}
-
-	return err
+	userName := h.PathVar("name")
+	return h.db.DeleteUserSessions(userName)
 }
 
 // Delete a session if associated with the user provided
@@ -229,12 +191,21 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 	// Validate that the session being deleted belongs to the user.  This adds some
 	// overhead - for user-agnostic session deletion should use deleteSession
 	session, getErr := h.db.Authenticator().GetSession(sessionId)
+	if session == nil {
+		if getErr == nil {
+			getErr = kNotFoundError
+		}
+		return getErr
+	}
+
 	if getErr == nil {
 		if session.Username == userName {
 			delErr := h.db.Authenticator().DeleteSession(sessionId)
 			if delErr != nil {
 				return delErr
 			}
+		} else {
+			return kNotFoundError
 		}
 	}
 	return nil
@@ -243,12 +214,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfoForSession(session *auth.LoginSession) error {
 
-	var userName string
-	if session != nil {
-		userName = session.Username
-	}
-
-	user, err := h.db.Authenticator().GetUser(userName)
+	user, err := h.db.Authenticator().GetUser(session.Username)
 
 	// let the empty user case succeed
 	if err != nil {

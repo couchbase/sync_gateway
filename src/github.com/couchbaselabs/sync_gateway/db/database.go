@@ -403,7 +403,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 }
 
 // Deletes all session documents for a user
-func (db *Database) DeleteUserSessions(userName string) error {
+func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	opts := Body{"stale": false}
 	opts["startkey"] = userName
 	opts["endkey"] = userName

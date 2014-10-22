@@ -255,24 +255,14 @@ func TestSessionAPI(t *testing.T) {
 
 	// 3. DELETE a session not belonging to the user (should fail)
 	response = rt.sendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user2sessions[0]), "")
-	assertStatus(t, response, 200)
+	assertStatus(t, response, 404)
 
 	// GET the session and make sure it still exists
 	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[0]), "")
 	assertStatus(t, response, 200)
 
-	// 4. DELETE multiple sessions for a user
-	response = rt.sendAdminRequest("DELETE", "/db/_user/user1/_session", fmt.Sprintf(`{"keys":[%q,%q]}`, user1sessions[2], user1sessions[3]))
-	assertStatus(t, response, 200)
-
-	// Validate that multiple sessions were deleted
-	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[2]), "")
-	assertStatus(t, response, 404)
-	response = rt.sendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[3]), "")
-	assertStatus(t, response, 404)
-
-	// 5. DELETE all sessions for a user
-	response = rt.sendAdminRequest("DELETE", "/db/_user/user2/_session", `{"keys":["*"]}`)
+	// 4. DELETE all sessions for a user
+	response = rt.sendAdminRequest("DELETE", "/db/_user/user2/_session", "")
 	assertStatus(t, response, 200)
 
 	// Validate that all sessions were deleted
@@ -281,7 +271,7 @@ func TestSessionAPI(t *testing.T) {
 		assertStatus(t, response, 404)
 	}
 
-	// 6. DELETE sessions when password is changed
+	// 5. DELETE sessions when password is changed
 	// Change password for user3
 	response = rt.sendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
 
