@@ -246,33 +246,6 @@ func TestFunkyDocIDs(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
-func TestDesignDocs(t *testing.T) {
-	var rt restTester
-	response := rt.sendRequest("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 403)
-	response = rt.sendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
-	assertStatus(t, response, 403)
-	response = rt.sendRequest("DELETE", "/db/_design/foo", "")
-	assertStatus(t, response, 403)
-
-	response = rt.sendAdminRequest("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 404)
-	response = rt.sendAdminRequest("PUT", "/db/_design/foo", `{"prop":true}`)
-	assertStatus(t, response, 201)
-	response = rt.sendAdminRequest("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("GET", "/db/_design%2ffoo", "")
-	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("GET", "/db/_design%2Ffoo", "")
-	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("DELETE", "/db/_design/foo", "")
-	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
-	assertStatus(t, response, 403)
-	response = rt.sendAdminRequest("GET", "/db/_design/sync_gateway", "")
-	assertStatus(t, response, 200)
-}
-
 func TestManualAttachment(t *testing.T) {
 	var rt restTester
 
@@ -686,6 +659,45 @@ func TestAccessControl(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
 	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
 
+	//Check all docs limit option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs startkey option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc4&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs endkey option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
 	// Check _all_docs with include_docs option:
 	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
 	request.SetBasicAuth("alice", "letmein")
@@ -719,6 +731,21 @@ func TestAccessControl(t *testing.T) {
 	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
 	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
 	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+
+	// Check POST to _all_docs with limit option:
+	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
+	request, _ = http.NewRequest("POST", "/db/_all_docs?limit=1&channels=true", bytes.NewBufferString(body))
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs as admin:
 	response = rt.sendAdminRequest("GET", "/db/_all_docs", "")
@@ -962,6 +989,50 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 }
 
+func TestRoleAssignmentBeforeUserExists(t *testing.T) {
+	base.LogKeys["Access"] = true
+	base.LogKeys["CRUD"] = true
+	base.LogKeys["Changes+"] = true
+
+	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// POST a role
+	response := rt.sendAdminRequest("POST", "/db/_role/", `{"name":"role1","admin_channels":["chan1"]}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("GET", "/db/_role/role1", "")
+	assertStatus(t, response, 200)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["name"], "role1")
+
+	//Put document to trigger sync function
+	response = rt.send(request("PUT", "/db/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
+	assertStatus(t, response, 201)
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+
+	// POST the new user the GET and verify that it shows the assigned role
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"letmein"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("GET", "/db/_user/user1", "")
+	assertStatus(t, response, 200)
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["name"], "user1")
+	assert.DeepEquals(t, body["roles"], []interface{}{"role1"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"chan1"})
+
+	//assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
+	//assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
+}
+
 func TestRoleAccessChanges(t *testing.T) {
 	base.LogKeys["Access"] = true
 	base.LogKeys["CRUD"] = true
@@ -1124,6 +1195,94 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// Get the old revision, which should still be accessible:
 	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
 	assert.Equals(t, response.Code, 200)
+}
+
+func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
+
+	type allDocsRow struct {
+		ID    string `json:"id"`
+		Key   string `json:"key"`
+		Value struct {
+			Rev      string              `json:"rev"`
+			Channels []string            `json:"channels,omitempty"`
+			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+		} `json:"value"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
+	}
+	var allDocsResult struct {
+		TotalRows int          `json:"total_rows"`
+		Offset    int          `json:"offset"`
+		Rows      []allDocsRow `json:"rows"`
+	}
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create a doc
+	response := rt.send(request("PUT", "/db/doc1", `{"foo":"bar", "channels":["ch1"]}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	doc1RevID := body["rev"].(string)
+
+	// Run GET _all_docs as admin with channels=true:
+	response = rt.sendAdminRequest("GET", "/db/_all_docs?channels=true", "")
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+
+	// Run POST _all_docs as admin with explicit docIDs and channels=true:
+	keys := `{"keys": ["doc1"]}`
+	response = rt.sendAdminRequest("POST", "/db/_all_docs?channels=true", keys)
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+
+	//Commit rev 2 that maps to a differenet channel
+	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
+	assertStatus(t, rt.send(request("PUT", "/db/doc1", str)), 201)
+
+	// Run GET _all_docs as admin with channels=true
+	// Make sure that only the new channel appears in the docs channel list
+	response = rt.sendAdminRequest("GET", "/db/_all_docs?channels=true", "")
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+
+	// Run POST _all_docs as admin with explicit docIDs and channels=true
+	// Make sure that only the new channel appears in the docs channel list
+	keys = `{"keys": ["doc1"]}`
+	response = rt.sendAdminRequest("POST", "/db/_all_docs?channels=true", keys)
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 }
 
 //Test for regression of issue #447

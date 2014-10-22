@@ -65,7 +65,10 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
 	base.LogTo("CRUD+", "Saving old revision %q / %q (%d bytes)", docid, revid, len(body))
-	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 0, body)
+
+	// Set old revisions to expire after 5 minutes.  Future enhancement to make this a config
+	// setting might be appropriate.
+	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 300, body)
 }
 
 //////// UTILITY FUNCTIONS:

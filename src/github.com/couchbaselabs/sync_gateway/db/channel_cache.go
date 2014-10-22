@@ -180,7 +180,7 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 	end := len(log) - 1
 	if end >= 0 {
 		if change.Sequence <= log[end].Sequence {
-			base.Warn("LogEntries.appendChange: out-of-order sequence #%d (last is #%d)",
+			base.LogTo("Cache", "LogEntries.appendChange: out-of-order sequence #%d (last is #%d)",
 				change.Sequence, log[end].Sequence)
 		}
 		for i := end; i >= 0; i-- {

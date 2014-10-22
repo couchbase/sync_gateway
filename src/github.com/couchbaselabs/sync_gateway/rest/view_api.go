@@ -58,54 +58,50 @@ func (h *handler) handleDeleteDesignDoc() error {
 
 // HTTP handler for GET _design/$ddoc/_view/$view
 func (h *handler) handleView() error {
+	// Couchbase Server view API:
+	// http://docs.couchbase.com/admin/admin/REST/rest-views-get.html
 	ddocName := h.PathVar("ddoc")
 	if ddocName == "" {
 		ddocName = "sync_gateway"
 	}
 	viewName := h.PathVar("view")
 	opts := db.Body{}
-	qStale := h.getQuery("stale")
-	if "" != qStale {
-		opts["stale"] = qStale == "true"
-	}
-	qReduce := h.getQuery("reduce")
-	if "" != qReduce {
-		opts["reduce"] = qReduce == "true"
-	}
-	qStartkey := h.getQuery("startkey")
-	if "" != qStartkey {
-		var sKey interface{}
-		errS := json.Unmarshal([]byte(qStartkey), &sKey)
-		if errS != nil {
-			return errS
+
+	// Boolean options:
+	for _, name := range []string{"inclusive_end", "descending", "include_docs", "reduce", "group"} {
+		if val := h.getQuery(name); "" != val {
+			opts[name] = (val == "true")
 		}
-		opts["startkey"] = sKey
 	}
-	qEndkey := h.getQuery("endkey")
-	if "" != qEndkey {
-		var eKey interface{}
-		errE := json.Unmarshal([]byte(qEndkey), &eKey)
-		if errE != nil {
-			return errE
+
+	// Integer options:
+	for _, name := range []string{"skip", "limit", "group_level"} {
+		if h.getQuery(name) != "" {
+			opts[name] = h.getIntQuery(name, 0)
 		}
-		opts["endkey"] = eKey
 	}
-	qGroupLevel := h.getQuery("group_level")
-	if "" != qGroupLevel {
-		opts["group_level"] = int(h.getIntQuery("group_level", 1))
+
+	// String options:
+	for _, name := range []string{"startkey_docid", "endkey_docid", "stale"} {
+		if val := h.getQuery(name); "" != val {
+			opts[name] = val
+		}
 	}
-	qGroup := h.getQuery("group")
-	if "" != qGroup {
-		opts["group"] = qGroup == "true"
+
+	// JSON options:
+	for _, name := range []string{"startkey", "endkey", "key", "keys"} {
+		if rawVal := h.getQuery(name); "" != rawVal {
+			var val interface{}
+			if err := json.Unmarshal([]byte(rawVal), &val); err != nil {
+				return err
+			}
+			opts[name] = val
+		}
 	}
-	qLimit := h.getQuery("limit")
-	if "" != qLimit {
-		opts["limit"] = int(h.getIntQuery("limit", 1))
-	}
+
 	base.LogTo("HTTP", "JSON view %q/%q - opts %v", ddocName, viewName, opts)
 
-	var result interface{}
-	err := h.db.QueryDesignDoc(ddocName, viewName, opts, &result)
+	result, err := h.db.QueryDesignDoc(ddocName, viewName, opts)
 	if err != nil {
 		return err
 	}

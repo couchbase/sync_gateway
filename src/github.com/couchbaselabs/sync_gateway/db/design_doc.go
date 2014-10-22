@@ -57,13 +57,25 @@ func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
 	return
 }
 
-func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}, result interface{}) error {
+func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (result walrus.ViewResult, err error) {
 	// Query has slightly different access control than checkDDocAccess():
 	// * Admins can query any design doc including the internal ones
 	// * Regular users can query non-internal design docs
 	//NOTE: Restricting query access to admins until we implement proper result-set filtering.
 	if db.user != nil /*&& isInternalDDoc(ddocName)*/ {
-		return base.HTTPErrorf(http.StatusForbidden, "forbidden")
+		err = base.HTTPErrorf(http.StatusForbidden, "forbidden")
+		return
 	}
-	return db.Bucket.ViewCustom(ddocName, viewName, options, result)
+	result, err = db.Bucket.View(ddocName, viewName, options)
+	if err == nil {
+		if includeDocs := options["include_docs"]; includeDocs == true {
+			// Stripg "_sync" properties from doc bodies:
+			for _, row := range result.Rows {
+				if doc := row.Doc; doc != nil {
+					delete((*doc).(map[string]interface{}), "_sync")
+				}
+			}
+		}
+	}
+	return
 }

@@ -200,14 +200,16 @@ func (e AllDocsEntry) Equal(e2 AllDocsEntry) bool {
 		base.SetFromArray(e.Channels).Equals(base.SetFromArray(e2.Channels))
 }
 
+var options ForEachDocIDOptions
+
 func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
-	err = db.ForEachDocID(func(doc IDAndRev, channels []string) error {
+	err = db.ForEachDocID(func(doc IDAndRev, channels []string) bool {
 		docs = append(docs, AllDocsEntry{
 			IDAndRev: doc,
 			Channels: channels,
 		})
-		return nil
-	})
+		return true
+	}, options)
 	return
 }
 
@@ -619,6 +621,39 @@ func TestImport(t *testing.T) {
 	base.Log("doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")
+}
+
+func TestPostWithExistingId(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with existing id property:
+	customDocId := "customIdValue"
+	log.Printf("Create document with existing id...")
+	body := Body{"_id": customDocId, "key1": "value1", "key2": "existing"}
+	docid, rev1id, err := db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid == customDocId)
+	assertNoError(t, err, "Couldn't create document")
+
+	// Test retrieval
+	doc, err := db.GetDoc(customDocId)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "Unable to retrieve doc using custom id")
+
+	// Test that standard UUID creation still works:
+	log.Printf("Create document with existing id...")
+	body = Body{"_notAnId": customDocId, "key1": "value1", "key2": "existing"}
+	docid, rev1id, err = db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != customDocId)
+	assertNoError(t, err, "Couldn't create document")
+
+	// Test retrieval
+	doc, err = db.GetDoc(docid)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
+
 }
 
 //////// BENCHMARKS

@@ -639,7 +639,13 @@ func (db *Database) Post(body Body) (string, string, error) {
 	if body["_rev"] != nil {
 		return "", "", base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 	}
-	docid := base.CreateUUID()
+
+	// If there's an incoming _id property, use that as the doc ID.
+	docid, idFound := body["_id"].(string)
+	if !idFound {
+		docid = base.CreateUUID()
+	}
+
 	rev, err := db.Put(docid, body)
 	if err != nil {
 		docid = ""

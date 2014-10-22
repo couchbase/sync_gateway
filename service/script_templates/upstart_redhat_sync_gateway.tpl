@@ -12,7 +12,7 @@ env LOGS=${LOGS_TEMPLATE_VAR}
 env NAME=${SERVICE_NAME}
 
 # Keep the server running on crash or machine reboot
-start on started mountall
+start on started
 stop on shutdown
 respawn
 

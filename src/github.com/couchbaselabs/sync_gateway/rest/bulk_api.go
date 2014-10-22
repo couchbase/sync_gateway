@@ -83,9 +83,12 @@ func (h *handler) handleAllDocs() error {
 		if availableChannels == nil {
 			result = []string{}
 		}
-		for ch, _ := range channelMap {
+		for ch, rm := range channelMap {
 			if availableChannels == nil || availableChannels.Contains(ch) {
-				result = append(result, ch)
+				//Do not include channels doc removed from in this rev
+				if rm == nil {
+					result = append(result, ch)
+				}
 			}
 		}
 		return result
@@ -163,7 +166,7 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	// Subroutine that writes a response entry for a document:
-	writeDoc := func(doc db.IDAndRev, channels []string) error {
+	writeDoc := func(doc db.IDAndRev, channels []string) bool {
 		row := createRow(doc, channels)
 		if row != nil {
 			if row.Status >= 300 {
@@ -174,9 +177,15 @@ func (h *handler) handleAllDocs() error {
 			}
 			totalRows++
 			h.addJSON(row)
+			return true
 		}
-		return nil
+		return false
 	}
+
+	var options db.ForEachDocIDOptions
+	options.Startkey = h.getQuery("startkey")
+	options.Endkey = h.getQuery("endkey")
+	options.Limit = h.getIntQuery("limit", 0)
 
 	// Now it's time to actually write the response!
 	lastSeq, _ := h.db.LastSequence()
@@ -184,11 +193,17 @@ func (h *handler) handleAllDocs() error {
 	h.response.Write([]byte(`{"rows":[` + "\n"))
 
 	if explicitDocIDs != nil {
+		count := uint64(0)
 		for _, docID := range explicitDocIDs {
 			writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			count++
+			if options.Limit > 0 && count == options.Limit {
+				break
+			}
+
 		}
 	} else {
-		if err := h.db.ForEachDocID(writeDoc); err != nil {
+		if err := h.db.ForEachDocID(writeDoc, options); err != nil {
 			return err
 		}
 	}
