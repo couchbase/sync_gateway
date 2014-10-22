@@ -627,7 +627,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			if db.user != nil && db.user.Name() == name {
 				user, err := db.Authenticator().GetUser(db.user.Name())
 				if err != nil {
-					base.Warn("Error reloading db.user[%s], channels list is out of date: %+v", db.user.Name(), err)
+					base.Warn("Error reloading db.user[%s], channels list is out of date --> %+v", db.user.Name(), err)
 				} else {
 					db.user = user
 				}
@@ -643,7 +643,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			if db.user != nil && db.user.Name() == name {
 				user, err := db.Authenticator().GetUser(db.user.Name())
 				if err != nil {
-					base.Warn("Error reloading db.user[%s], roles list is out of date: %+v", db.user.Name(), err)
+					base.Warn("Error reloading db.user[%s], roles list is out of date --> %+v", db.user.Name(), err)
 				} else {
 					db.user = user
 				}
