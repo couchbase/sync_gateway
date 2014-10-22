@@ -160,7 +160,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 				minRevpos++
 			}
 		}
-		err = db.loadBodyAttachments(body, minRevpos)
+		body, err = db.loadBodyAttachments(body, minRevpos)
 		if err != nil {
 			return nil, err
 		}

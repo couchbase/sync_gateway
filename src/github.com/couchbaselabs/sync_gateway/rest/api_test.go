@@ -1284,3 +1284,55 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
 	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 }
+
+//Test for regression of issue #447
+func TestAttachmentsNoCrossTalk(t *testing.T) {
+	base.LogKeys["ANDY"] = true
+	var rt restTester
+
+	doc1revId := rt.createDoc(t, "doc1")
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should succeed)
+	response := rt.sendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterAttachment != doc1revId)
+
+	reqHeaders = map[string]string{
+		"Accept": "application/json",
+	}
+
+	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId)
+	response = rt.sendRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId), "", reqHeaders)
+	assert.Equals(t, response.Code, 200)
+	//validate attachment has data property
+	json.Unmarshal(response.Body.Bytes(), &body)
+	log.Printf("response body revid1 = %s", body)
+	attachments := body["_attachments"].(map[string]interface{})
+	attach1 := attachments["attach1"].(map[string]interface{})
+	data := attach1["data"]
+	assert.True(t, data != nil)
+
+	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment)
+	response = rt.sendRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment), "", reqHeaders)
+	assert.Equals(t, response.Code, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	log.Printf("response body revid1 = %s", body)
+	attachments = body["_attachments"].(map[string]interface{})
+	attach1 = attachments["attach1"].(map[string]interface{})
+	data = attach1["data"]
+	assert.True(t, data == nil)
+
+}
