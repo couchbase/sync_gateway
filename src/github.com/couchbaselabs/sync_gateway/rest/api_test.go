@@ -659,6 +659,45 @@ func TestAccessControl(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
 	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
 
+	//Check all docs limit option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs startkey option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc4&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs endkey option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
 	// Check _all_docs with include_docs option:
 	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
 	request.SetBasicAuth("alice", "letmein")
@@ -692,6 +731,21 @@ func TestAccessControl(t *testing.T) {
 	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
 	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
 	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+
+	// Check POST to _all_docs with limit option:
+	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
+	request, _ = http.NewRequest("POST", "/db/_all_docs?limit=1&channels=true", bytes.NewBufferString(body))
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs as admin:
 	response = rt.sendAdminRequest("GET", "/db/_all_docs", "")

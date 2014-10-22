@@ -304,10 +304,17 @@ type IDAndRev struct {
 	Sequence uint64
 }
 
-type ForEachDocIDFunc func(id IDAndRev, channels []string) error
+// The ForEachDocID options for limiting query results
+type ForEachDocIDOptions struct {
+	Startkey string
+	Endkey   string
+	Limit    uint64
+}
+
+type ForEachDocIDFunc func(id IDAndRev, channels []string) bool
 
 // Iterates over all documents in the database, calling the callback function on each
-func (db *Database) ForEachDocID(callback ForEachDocIDFunc) error {
+func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 	type viewRow struct {
 		Key   string
 		Value struct {
@@ -320,18 +327,33 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc) error {
 		Rows []viewRow
 	}
 	opts := Body{"stale": false, "reduce": false}
+
+	if resultsOpts.Startkey != "" {
+		opts["startkey"] = resultsOpts.Startkey
+	}
+
+	if resultsOpts.Endkey != "" {
+		opts["endkey"] = resultsOpts.Endkey
+	}
+
 	err := db.Bucket.ViewCustom("sync_housekeeping", "all_docs", opts, &vres)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 		return err
 	}
 
+	count := uint64(0)
 	for _, row := range vres.Rows {
-		err = callback(IDAndRev{row.Key, row.Value.RevID, row.Value.Sequence}, row.Value.Channels)
-		if err != nil {
-			return err
+		if callback(IDAndRev{row.Key, row.Value.RevID, row.Value.Sequence}, row.Value.Channels) {
+			count++
+		}
+		//We have to apply limit check after callback has been called
+		//to account for rows that are not in the current users channels
+		if resultsOpts.Limit > 0 && count == resultsOpts.Limit {
+			break
 		}
 	}
+
 	return nil
 }
 
