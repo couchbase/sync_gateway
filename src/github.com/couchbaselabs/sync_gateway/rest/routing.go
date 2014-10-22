@@ -112,6 +112,12 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
 
+	dbr.Handle("/_session/{sessionid}",
+		makeHandler(sc, adminPrivs, (*handler).getUserSession)).Methods("GET")
+
+	dbr.Handle("/_session/{sessionid}",
+		makeHandler(sc, adminPrivs, (*handler).deleteUserSession)).Methods("DELETE")
+
 	dbr.Handle("/_raw/{docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
@@ -125,6 +131,11 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).putUser)).Methods("PUT")
 	dbr.Handle("/_user/{name}",
 		makeHandler(sc, adminPrivs, (*handler).deleteUser)).Methods("DELETE")
+
+	dbr.Handle("/_user/{name}/_session",
+		makeHandler(sc, adminPrivs, (*handler).deleteUserSessions)).Methods("DELETE")
+	dbr.Handle("/_user/{name}/_session/{sessionid}",
+		makeHandler(sc, adminPrivs, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_role/",
 		makeHandler(sc, adminPrivs, (*handler).getRoles)).Methods("GET", "HEAD")

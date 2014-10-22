@@ -28,6 +28,8 @@ type LoginSession struct {
 
 const CookieName = "SyncGatewaySession"
 
+const SessionKeyPrefix = "_sync:session:"
+
 func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
 	cookie, _ := rq.Cookie(CookieName)
 	if cookie == nil {
@@ -86,6 +88,18 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 	return session, nil
 }
 
+func (auth *Authenticator) GetSession(sessionid string) (*LoginSession, error) {
+	var session LoginSession
+	err := auth.bucket.Get(docIDForSession(sessionid), &session)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			err = nil
+		}
+		return nil, err
+	}
+	return &session, nil
+}
+
 func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie {
 	if session == nil {
 		return nil
@@ -110,6 +124,12 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	return &newCookie
 }
 
+func (auth Authenticator) DeleteSession(sessionid string) error {
+
+	return auth.bucket.Delete(docIDForSession(sessionid))
+
+}
+
 func docIDForSession(sessionID string) string {
-	return "_sync:session:" + sessionID
+	return SessionKeyPrefix + sessionID
 }
