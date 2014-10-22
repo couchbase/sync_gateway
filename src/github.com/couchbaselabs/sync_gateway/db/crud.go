@@ -623,13 +623,14 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
 		for _, name := range changedPrincipals {
 			db.invalUserOrRoleChannels(name)
-			//If this is the current in memory db.user, reload to generate updated channel
+			//If this is the current in memory db.user, reload to generate updated channels
 			if db.user != nil && db.user.Name() == name {
 				user, err := db.Authenticator().GetUser(db.user.Name())
 				if err != nil {
-					return "", err
+					base.Warn("Error reloading db.user[%s], channels list is out of date: %+v", db.user.Name(), err)
+				} else {
+					db.user = user
 				}
-				db.user = user
 			}
 		}
 	}
@@ -642,9 +643,10 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			if db.user != nil && db.user.Name() == name {
 				user, err := db.Authenticator().GetUser(db.user.Name())
 				if err != nil {
-					return "", err
+					base.Warn("Error reloading db.user[%s], roles list is out of date: %+v", db.user.Name(), err)
+				} else {
+					db.user = user
 				}
-				db.user = user
 			}
 		}
 	}
