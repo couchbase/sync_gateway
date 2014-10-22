@@ -576,6 +576,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				// might not incorporate the effects of this change.
 				writeOpts |= walrus.Indexable
 			}
+
 		} else {
 			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
 				docid, newRevID, prevCurrentRev)
@@ -622,12 +623,31 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
 		for _, name := range changedPrincipals {
 			db.invalUserOrRoleChannels(name)
+			//If this is the current in memory db.user, reload to generate updated channels
+			if db.user != nil && db.user.Name() == name {
+				user, err := db.Authenticator().GetUser(db.user.Name())
+				if err != nil {
+					base.Warn("Error reloading db.user[%s], channels list is out of date --> %+v", db.user.Name(), err)
+				} else {
+					db.user = user
+				}
+			}
 		}
 	}
+
 	if len(changedRoleUsers) > 0 {
 		base.LogTo("Access", "Rev %q/%q invalidates roles of %s", docid, newRevID, changedRoleUsers)
 		for _, name := range changedRoleUsers {
 			db.invalUserRoles(name)
+			//If this is the current in memory db.user, reload to generate updated roles
+			if db.user != nil && db.user.Name() == name {
+				user, err := db.Authenticator().GetUser(db.user.Name())
+				if err != nil {
+					base.Warn("Error reloading db.user[%s], roles list is out of date --> %+v", db.user.Name(), err)
+				} else {
+					db.user = user
+				}
+			}
 		}
 	}
 
