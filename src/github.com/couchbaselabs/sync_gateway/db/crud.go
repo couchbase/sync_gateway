@@ -10,6 +10,7 @@
 package db
 
 import (
+	"bytes"
 	"encoding/json"
 	"github.com/couchbaselabs/walrus"
 	"net/http"
@@ -691,6 +692,17 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 	if oldJsonBytes, err = db.getAncestorJSON(doc, revID); err != nil {
 		return
 	}
+
+	// inject the _id property into oldJsonBytes if it's non-empty
+	if len(oldJsonBytes) > 0 {
+
+		// strip the leading {
+		oldJsonBytes = oldJsonBytes[1:len(oldJsonBytes)]
+
+		// rebuild as `{"_id":"` + doc.ID + `",` + oldJsonBytes
+		oldJsonBytes, err = bytes.Join([][]byte{[]byte(`{"_id":"`), []byte(doc.ID), []byte(`",`), oldJsonBytes}, []byte("")), nil
+	}
+
 	oldJson := string(oldJsonBytes)
 
 	if db.ChannelMapper != nil {
