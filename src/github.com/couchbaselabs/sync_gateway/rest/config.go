@@ -277,7 +277,7 @@ func ParseCommandLine() *ServerConfig {
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
 	poolName := flag.String("pool", DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of CouchDB database (defaults to name of bucket)")
+	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	logKeys := flag.String("log", "", "Log keywords, comma separated")
