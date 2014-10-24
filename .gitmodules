@@ -14,8 +14,8 @@
 	path = vendor/src/github.com/robertkrimen/otto
 	url = https://github.com/robertkrimen/otto
 [submodule "vendor/src/github.com/dustin/gomemcached"]
-	path = vendor/src/github.com/dustin/gomemcached
-	url = https://github.com/dustin/gomemcached
+       path = vendor/src/github.com/dustin/gomemcached
+       url = https://github.com/dustin/gomemcached
 [submodule "vendor/src/github.com/gorilla/context"]
 	path = vendor/src/github.com/gorilla/context
 	url = https://github.com/gorilla/context
@@ -31,3 +31,9 @@
 [submodule "vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui"]
 	path = vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui
 	url = https://github.com/couchbaselabs/sync_gateway_admin_ui.git
+[submodule "vendor/src/github.com/couchbase/gomemcached"]
+	path = vendor/src/github.com/couchbase/gomemcached
+	url = https://github.com/couchbase/gomemcached
+[submodule "vendor/src/github.com/couchbaselabs/retriever"]
+	path = vendor/src/github.com/couchbaselabs/retriever
+	url = https://github.com/couchbaselabs/retriever

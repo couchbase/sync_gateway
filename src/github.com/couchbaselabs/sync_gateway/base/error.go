@@ -15,7 +15,7 @@ import (
 	"net/http"
 
 	"github.com/couchbaselabs/walrus"
-	"github.com/dustin/gomemcached"
+	"github.com/couchbase/gomemcached"
 )
 
 // Simple error implementation wrapping an HTTP response status.

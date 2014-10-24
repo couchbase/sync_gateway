@@ -15,8 +15,8 @@ import (
 
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/walrus"
-	"github.com/dustin/gomemcached"
-	"github.com/dustin/gomemcached/client"
+	"github.com/couchbase/gomemcached"
+	"github.com/couchbase/gomemcached/client"
 )
 
 func init() {

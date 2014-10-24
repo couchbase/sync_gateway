@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
-	_ "github.com/dustin/gomemcached/debug"
+	_ "github.com/couchbase/gomemcached/debug"
 	"github.com/samuel/go-metrics/metrics"
 
 	"github.com/couchbaselabs/sync_gateway/base"
