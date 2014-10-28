@@ -2,10 +2,10 @@
 
 set -e
 
-stop service sync_gateway
+service sync_gateway stop
 
-//uninstall service at boot
+//uninstall service start at boot
 
 rm /etc/init/sync_gateway
 
-rmuser sync_gateway
+userdel -r sync_gateway
