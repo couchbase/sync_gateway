@@ -102,7 +102,7 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	userChannels := channels.SetOf("*")
+	userChannels := channels.SetOf(channels.AllChannelWildcard)
 	if filter != "" {
 		if filter != "sync_gateway/bychannel" {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")

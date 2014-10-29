@@ -839,9 +839,9 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x1, "delta": 0x3})
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "alpha": 0x1, "delta": 0x3})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "gamma": 0x4})
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "gamma": 0x4})
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
@@ -849,9 +849,9 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"zero": 0x1, "delta": 0x3})
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "delta": 0x3})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"zero": 0x1, "alpha": 0x9, "gamma": 0x4})
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "alpha": 0x9, "gamma": 0x4})
 
 	// Look at alice's _changes feed:
 	changes.Results = nil
@@ -1057,7 +1057,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["name"], "user1")
 	assert.DeepEquals(t, body["roles"], []interface{}{"role1"})
-	assert.DeepEquals(t, body["all_channels"], []interface{}{"chan1"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"!", "chan1"})
 
 	//assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	//assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
@@ -1101,10 +1101,10 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1, "gamma": 0x1})
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": 0x1, "alpha": 0x1, "gamma": 0x1})
 	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": 0x1, "hipster": 0x1})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": 0x1, "beta": 0x1})
 	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
@@ -1132,9 +1132,9 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"alpha": 0x1})
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": 0x1, "alpha": 0x1})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"beta": 0x1, "gamma": 0x6})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": 0x1, "beta": 0x1, "gamma": 0x6})
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
@@ -1365,4 +1365,210 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	data = attach1["data"]
 	assert.True(t, data == nil)
 
+}
+
+func TestStarAccess(t *testing.T) {
+	type allDocsRow struct {
+		ID    string `json:"id"`
+		Key   string `json:"key"`
+		Value struct {
+			Rev      string              `json:"rev"`
+			Channels []string            `json:"channels,omitempty"`
+			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+		} `json:"value"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
+	}
+	var allDocsResult struct {
+		TotalRows int          `json:"total_rows"`
+		Offset    int          `json:"offset"`
+		Rows      []allDocsRow `json:"rows"`
+	}
+
+	// Create some docs:
+	var rt restTester
+
+	base.LogKeys["Changes+"] = true
+	a := auth.NewAuthenticator(rt.bucket(), nil)
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"channels":["books"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"channels":["gifts"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc3", `{"channels":["!"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc4", `{"channels":["gifts"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc5", `{"channels":["!"]}`), 201)
+	// document added to "*" channel should only end up available to users with * access
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc6", `{"channels":["*"]}`), 201)
+
+	guest.SetDisabled(true)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+	//
+	// Part 1 - Tests for user with single channel access:
+	//
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("books"))
+	a.Save(bernard)
+
+	// GET /db/docid - basic test for channel user has
+	response := rt.send(requestByUser("GET", "/db/doc1", "", "bernard"))
+	assertStatus(t, response, 200)
+
+	// GET /db/docid - negative test for channel user doesn't have
+	response = rt.send(requestByUser("GET", "/db/doc2", "", "bernard"))
+	assertStatus(t, response, 403)
+
+	// GET /db/docid - test for doc with ! channel
+	response = rt.send(requestByUser("GET", "/db/doc3", "", "bernard"))
+	assertStatus(t, response, 200)
+
+	// GET /db/_all_docs?channels=true
+	// Check that _all_docs returns the docs the user has access to:
+	response = rt.send(requestByUser("GET", "/db/_all_docs?channels=true", "", "bernard"))
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 3)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"!"})
+
+	// GET /db/_changes
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 3)
+	since := changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc1")
+	assert.Equals(t, since, db.SequenceID{Seq: 1})
+
+	// GET /db/_changes for single channel
+	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 1)
+	since = changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc1")
+	assert.Equals(t, since, db.SequenceID{Seq: 1})
+
+	// GET /db/_changes for ! channel
+	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+	since = changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc3")
+	assert.Equals(t, since, db.SequenceID{Seq: 3})
+
+	// GET /db/_changes for unauthorized channel
+	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 0)
+
+	//
+	// Part 2 - Tests for user with * channel access
+	//
+
+	// Create a user:
+	fran, err := a.NewUser("fran", "letmein", channels.SetOf("*"))
+	a.Save(fran)
+
+	// GET /db/docid - basic test for doc that has channel
+	response = rt.send(requestByUser("GET", "/db/doc1", "", "fran"))
+	assertStatus(t, response, 200)
+
+	// GET /db/docid - test for doc with ! channel
+	response = rt.send(requestByUser("GET", "/db/doc3", "", "fran"))
+	assertStatus(t, response, 200)
+
+	// GET /db/_all_docs?channels=true
+	// Check that _all_docs returns all docs (based on user * channel)
+	response = rt.send(requestByUser("GET", "/db/_all_docs?channels=true", "", "fran"))
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 6)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
+
+	// GET /db/_changes
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "fran"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 6)
+	since = changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc1")
+	assert.Equals(t, since, db.SequenceID{Seq: 1})
+
+	// GET /db/_changes for ! channel
+	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+	since = changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc3")
+	assert.Equals(t, since, db.SequenceID{Seq: 3})
+
+	//
+	// Part 3 - Tests for user with no user channel access
+	//
+	// Create a user:
+	manny, err := a.NewUser("manny", "letmein", nil)
+	a.Save(manny)
+
+	// GET /db/docid - basic test for doc that has channel
+	response = rt.send(requestByUser("GET", "/db/doc1", "", "manny"))
+	assertStatus(t, response, 403)
+
+	// GET /db/docid - test for doc with ! channel
+	response = rt.send(requestByUser("GET", "/db/doc3", "", "manny"))
+	assertStatus(t, response, 200)
+
+	// GET /db/_all_docs?channels=true
+	// Check that _all_docs only returns ! docs (based on doc ! channel)
+	response = rt.send(requestByUser("GET", "/db/_all_docs?channels=true", "", "manny"))
+	assertStatus(t, response, 200)
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 2)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+
+	// GET /db/_changes
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "manny"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+	since = changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc3")
+	assert.Equals(t, since, db.SequenceID{Seq: 3})
+
+	// GET /db/_changes for ! channel
+	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+	since = changes.Results[0].Seq
+	assert.Equals(t, changes.Results[0].ID, "doc3")
+	assert.Equals(t, since, db.SequenceID{Seq: 3})
 }

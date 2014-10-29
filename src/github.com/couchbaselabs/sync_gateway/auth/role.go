@@ -146,14 +146,14 @@ func (role *roleImpl) UnauthError(message string) error {
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
 func (role *roleImpl) CanSeeChannel(channel string) bool {
-	return role == nil || role.Channels_.Contains(channel) || role.Channels_.Contains("*")
+	return role == nil || role.Channels_.Contains(channel) || role.Channels_.Contains(ch.UserStarChannel)
 }
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
 func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
 	seq := role.Channels_[channel]
 	if seq == 0 {
-		seq = role.Channels_["*"]
+		seq = role.Channels_[ch.UserStarChannel]
 	}
 	return seq
 }
@@ -193,7 +193,7 @@ func authorizeAnyChannel(princ Principal, channels base.Set) error {
 				return nil
 			}
 		}
-	} else if princ.Channels().Contains("*") {
+	} else if princ.Channels().Contains(ch.UserStarChannel) {
 		return nil
 	}
 	return princ.UnauthError("You are not allowed to see this")

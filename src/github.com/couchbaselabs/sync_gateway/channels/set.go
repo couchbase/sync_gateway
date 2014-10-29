@@ -24,11 +24,16 @@ const (
 	ExpandStar
 )
 
+// Constants for the * channel variations
+const UserStarChannel = "*"     // user channel for "can access all docs"
+const DocumentStarChannel = "!" // doc channel for "visible to all users"
+const AllChannelWildcard = "*"  // wildcard for 'all channels'
+
 var kValidChannelRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	kValidChannelRegexp, err = regexp.Compile(`^([-+=/_.@\p{L}\p{Nd}]+|\*)$`)
+	kValidChannelRegexp, err = regexp.Compile(`^([-+=/_.@\p{L}\p{Nd}]+|[\*\!])$`)
 	if err != nil {
 		panic("Bad IsValidChannel regexp")
 	}
@@ -52,10 +57,10 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 	result := base.SetFromArray(names)
 	switch mode {
 	case RemoveStar:
-		result = result.Removing("*")
+		result = result.Removing(UserStarChannel)
 	case ExpandStar:
-		if result.Contains("*") {
-			result = base.SetOf("*")
+		if result.Contains(UserStarChannel) {
+			result = base.SetOf(UserStarChannel)
 		}
 	}
 	return result, nil
@@ -83,13 +88,13 @@ func SetOf(names ...string) base.Set {
 
 // If the set contains "*", returns a set of only "*". Else returns the original set.
 func ExpandingStar(set base.Set) base.Set {
-	if _, exists := set["*"]; exists {
-		return base.SetOf("*")
+	if _, exists := set[UserStarChannel]; exists {
+		return base.SetOf(UserStarChannel)
 	}
 	return set
 }
 
 // Returns a set with any "*" channel removed.
 func IgnoringStar(set base.Set) base.Set {
-	return set.Removing("*")
+	return set.Removing(UserStarChannel)
 }

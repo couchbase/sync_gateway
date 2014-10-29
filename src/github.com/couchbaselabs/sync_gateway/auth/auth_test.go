@@ -170,7 +170,7 @@ func TestUserAccess(t *testing.T) {
 	// User with no access:
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("foo", "password", nil)
-	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf())
+	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("!"))
 	assert.False(t, user.CanSeeChannel("x"))
 	assert.True(t, canSeeAllChannels(user, ch.SetOf()))
 	assert.False(t, canSeeAllChannels(user, ch.SetOf("x")))
@@ -307,7 +307,7 @@ func TestRebuildUserChannels(t *testing.T) {
 	user2, err := auth.GetUser("testUser")
 	assert.Equals(t, err, nil)
 	log.Printf("Channels = %s", user2.Channels())
-	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("explicit1", "derived1", "derived2"), 1))
+	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("explicit1", "derived1", "derived2", "!"), 1))
 }
 
 func TestRebuildRoleChannels(t *testing.T) {
@@ -319,7 +319,7 @@ func TestRebuildRoleChannels(t *testing.T) {
 
 	role2, err := auth.GetRole("testRole")
 	assert.Equals(t, err, nil)
-	assert.DeepEquals(t, role2.Channels(), ch.AtSequence(ch.SetOf("explicit1", "derived1", "derived2"), 1))
+	assert.DeepEquals(t, role2.Channels(), ch.AtSequence(ch.SetOf("explicit1", "derived1", "derived2", "!"), 1))
 }
 
 func TestRebuildChannelsError(t *testing.T) {
@@ -367,9 +367,9 @@ func TestRoleInheritance(t *testing.T) {
 	user2, err := auth.GetUser("arthur")
 	assert.Equals(t, err, nil)
 	log.Printf("Channels = %s", user2.Channels())
-	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("britain"), 1))
+	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("!", "britain"), 1))
 	assert.DeepEquals(t, user2.InheritedChannels(),
-		ch.TimedSet{"britain": 0x1, "dull": 0x3, "duller": 0x3, "dullest": 0x3, "hoopy": 0x4, "hoopier": 0x4, "hoopiest": 0x4})
+		ch.TimedSet{"!": 0x1, "britain": 0x1, "dull": 0x3, "duller": 0x3, "dullest": 0x3, "hoopy": 0x4, "hoopier": 0x4, "hoopiest": 0x4})
 	assert.True(t, user2.CanSeeChannel("britain"))
 	assert.True(t, user2.CanSeeChannel("duller"))
 	assert.True(t, user2.CanSeeChannel("hoopy"))

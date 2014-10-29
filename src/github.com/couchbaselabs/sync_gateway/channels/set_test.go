@@ -16,13 +16,13 @@ import (
 )
 
 func TestIsValidChannel(t *testing.T) {
-	valid := []string{"*", "a", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_"}
+	valid := []string{"*", "a", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_", "!"}
 	for _, ch := range valid {
 		if !IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be true", ch)
 		}
 	}
-	invalid := []string{"", "**", "a*", "a ", "b?", ",", "Z∫•"}
+	invalid := []string{"", "**", "a*", "a ", "b?", ",", "Z∫•", "*!"}
 	for _, ch := range invalid {
 		if IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be false", ch)
