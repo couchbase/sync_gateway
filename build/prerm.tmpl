@@ -2,10 +2,30 @@
 
 set -e
 
-service sync_gateway stop
+check_upstart_service () {
+    if [ -f /etc/init/sync_gateway.conf ]; then
+        status $1 | grep -q "^$1 start" > /dev/null
+        return $?
+    else
+        return 1
+    fi
+}
 
-//uninstall service start at boot
+check_sync_gateway_user () {
+	getent passwd $1 > /dev/null
+	return $?
+}
 
-rm /etc/init/sync_gateway
+if check_upstart_service sync_gateway; then
+    service sync_gateway stop
+fi
 
-userdel -r sync_gateway
+#uninstall service start at boot
+
+if [ -f /etc/init/sync_gateway.conf ]; then
+    rm /etc/init/sync_gateway.conf
+fi
+
+if check_sync_gateway_user sync_gateway; then
+    userdel -r sync_gateway
+fi

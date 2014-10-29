@@ -3,7 +3,7 @@
 set -e
 
 #kill any sync_gateway processes started by third party, sync_gateway has been uninstalled
-ps aux | grep /opt/cocuhbase-sync-gateway/bin/sync_gateway | awk '{print $2}' |
+ps aux | grep -v grep | grep /opt/cocuhbase-sync-gateway/bin/sync_gateway | awk '{print $2}' |
 while read line; do
   # kill process
   kill -9 $line
