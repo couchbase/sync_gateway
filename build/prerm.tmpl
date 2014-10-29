@@ -2,10 +2,22 @@
 
 set -e
 
-stop service sync_gateway
+check_upstart_service () {
+    if [ -f /etc/init/sync_gateway.conf ]; then
+        status $1 | grep -q "^$1 start" > /dev/null
+        return $?
+    else
+        return 1
+    fi
+}
 
-//uninstall service at boot
+if check_upstart_service sync_gateway; then
+    service sync_gateway stop
+fi
 
-rm /etc/init/sync_gateway
+#uninstall service start at boot
 
-rmuser sync_gateway
+if [ -f /etc/init/sync_gateway.conf ]; then
+    rm /etc/init/sync_gateway.conf
+fi
+
