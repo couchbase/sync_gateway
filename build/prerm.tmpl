@@ -11,11 +11,6 @@ check_upstart_service () {
     fi
 }
 
-check_sync_gateway_user () {
-	getent passwd $1 > /dev/null
-	return $?
-}
-
 if check_upstart_service sync_gateway; then
     service sync_gateway stop
 fi
@@ -26,6 +21,3 @@ if [ -f /etc/init/sync_gateway.conf ]; then
     rm /etc/init/sync_gateway.conf
 fi
 
-if check_sync_gateway_user sync_gateway; then
-    userdel -r sync_gateway
-fi
