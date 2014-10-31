@@ -53,7 +53,7 @@ ostype() {
         VER=$(uname -r)
     fi
 
-    OS_MAJOR_VERSION=`echo $VER | sed s/\.[0-9]*$//`
+    OS_MAJOR_VERSION=`echo $VER | sed 's/\..*$//'`
     OS_MINOR_VERSION=`echo $VER | sed s/[0-9]*\.//`
 }
 
@@ -186,6 +186,12 @@ case $OS in
                 render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 initctl start ${SERVICE_NAME}
+                ;;
+            7)
+                render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
+                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                systemctl enable ${SERVICE_NAME}
+                systemctl start ${SERVICE_NAME}
                 ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
