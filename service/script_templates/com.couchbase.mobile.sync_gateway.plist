@@ -1,17 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
+<?xml version=1.0 encoding=UTF-8?>
+<!DOCTYPE plist PUBLIC -//Apple//DTD PLIST 1.0//EN http://www.apple.com/DTDs/PropertyList-1.0.dtd>
+<plist version=1.0>
 <dict>
-	<key>Label</key>
-	<string>com.couchbase.mobile.sync_gateway</string>
-	<key>Program</key>
-	<string>/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud.app/Contents/MacOS/Creative Cloud</string>
-	<key>ProgramArguments</key>
-	<array>
-		<string>/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud.app/Contents/MacOS/Creative Cloud</string>
-	       <string>sync_gateway.json</string>
-	</array>
-	<key>KeepAlive</key>
-	<true/>
+        <key>Label</key>
+        <string>com.couchbase.mobile.sync_gateway</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>${GATEWAY_TEMPLATE_VAR}</string>
+            <string>/opt/couchbase-sync-gateway/examples/admin_party.json</string>
+        </array>
+        <key>KeepAlive</key>
+        <true/>
+        <key>StandardOutPath</key>
+        <string>${GATEWAYROOT_TEMPLATE_VAR}/sync-gateway-access.log</string>
+        <key>StandardErrorPath</key>
+        <string>${GATEWAYROOT_TEMPLATE_VAR}/sync-gateway-error.log</string>
 </dict>
 </plist>
+
