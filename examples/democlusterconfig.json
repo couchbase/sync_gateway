@@ -4,14 +4,14 @@
     },
 	"databases": {
     "officeradar": {
-      "server":"http://172.23.121.37:8091",
+      "server":"http://172.23.121.42:8091",
       "bucket":"officeradar",
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
     "chess-park": {
-      "server":"http://172.23.121.37:8091",
+      "server":"http://172.23.121.42:8091",
       "bucket":"chess-park",
       "sync":`
 	function(doc, oldDoc){
@@ -49,7 +49,7 @@
 	` 
     },
     "connect2014": {
-      "server":"http://172.23.121.37:8091",
+      "server":"http://172.23.121.42:8091",
       "bucket":"connect2014",
       "users": {
         "GUEST": {"disabled": true} 
@@ -127,14 +127,14 @@
         `
     },
     "grocery-sync": {
-      "server":"http://172.23.121.37:8091",
+      "server":"http://172.23.121.42:8091",
       "bucket":"grocery-sync",
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
     "todolite": {
-      "server":"http://172.23.121.37:8091",
+      "server":"http://172.23.121.42:8091",
       "bucket":"todolite",
       "users": {
         "GUEST": {"disabled": true}
