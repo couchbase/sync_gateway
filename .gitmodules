@@ -37,3 +37,6 @@
 [submodule "vendor/src/github.com/couchbaselabs/retriever"]
 	path = vendor/src/github.com/couchbaselabs/retriever
 	url = https://github.com/couchbaselabs/retriever
+[submodule "vendor/src/github.com/natefinch/npipe"]
+	path = vendor/src/github.com/natefinch/npipe
+	url = https://github.com/natefinch/npipe
