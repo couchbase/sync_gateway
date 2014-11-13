@@ -691,7 +691,6 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 	if oldJsonBytes, err = db.getAncestorJSON(doc, revID); err != nil {
 		return
 	}
-
 	oldJson := string(oldJsonBytes)
 
 	if db.ChannelMapper != nil {
