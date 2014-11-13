@@ -22,7 +22,12 @@ import (
 
 const funcWrapper = `
 	function(newDoc, oldDoc, realUserCtx) {
+
 		var v = %s;
+
+		if (oldDoc) {
+			oldDoc._id = newDoc._id;
+		}
 
 		function makeArray(maybeArray) {
 			if (Array.isArray(maybeArray)) {
