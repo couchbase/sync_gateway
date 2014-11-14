@@ -9,11 +9,6 @@
 # Description:       Allow sync_gateway to be run as a service on linux/unix distros
 ### END INIT INFO
 
-# Source function library.
-if [ -x /etc/rc.d/init.d/functions ]; then
-. /etc/rc.d/init.d/functions
-fi
-
 RUNAS=${RUNAS_TEMPLATE_VAR}
 RUNBASE=${RUNBASE_TEMPLATE_VAR}
 PIDFILE=${PIDFILE_TEMPLATE_VAR}
@@ -46,14 +41,8 @@ case \"\$1\" in
         else
             echo "Starting $name"
             cd \"\$RUNBASE\"
-
-            daemon --user \"\$RUNAS\" --pidfile \"\$PIDFILE\" \"\$GATEWAY \$CONFIG >> \$stdout_log 2>> \$stderr_log &\"
-            pid=\`ps -eo pid,args | grep -v grep | grep \$GATEWAY | sed 's/^ *//' | cut -d\" \" -f1\`
-
-            if [ -n \"\$pid\" ]; then
-                echo \$pid > \"\$PIDFILE\"
-            fi
-
+            sudo -u \"\$RUNAS\" \$GATEWAY \$CONFIG >> \"\$stdout_log\" 2>> \"\$stderr_log\" &
+            echo \$! > \"\$PIDFILE\"
             if ! is_running; then
                 echo "Unable to start, see \$stdout_log and \$stderr_log"
                 exit 1
