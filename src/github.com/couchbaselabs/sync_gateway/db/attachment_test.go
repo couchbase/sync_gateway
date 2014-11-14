@@ -46,6 +46,7 @@ func TestAttachments(t *testing.T) {
 	var body Body
 	json.Unmarshal([]byte(rev1input), &body)
 	revid, err := db.Put("doc1", unjson(rev1input))
+	rev1id := revid
 	assertNoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
@@ -55,7 +56,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equals(t, tojson(gotbody), rev1output)
 
 	log.Printf("Create rev 2...")
-	rev2str := `{"_attachments": {"hello.txt": {}, "bye.txt": {"data": "YnllLXlh"}}}`
+	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
 	var body2 Body
 	json.Unmarshal([]byte(rev2str), &body2)
 	body2["_rev"] = revid
@@ -76,7 +77,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equals(t, tojson(gotbody), rev2Aoutput)
 
 	log.Printf("Create rev 3...")
-	rev3str := `{"_attachments": {"bye.txt": {}}}`
+	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
 	var body3 Body
 	json.Unmarshal([]byte(rev3str), &body3)
 	body3["_rev"] = revid
@@ -89,4 +90,14 @@ func TestAttachments(t *testing.T) {
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev3output)
+
+	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
+	err = db.Bucket.Delete(oldRevisionKey("doc1", rev1id))
+	assertNoError(t, err, "Couldn't compact old revision")
+	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
+	var body2B Body
+	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
+	assertNoError(t, err, "bad JSON")
+	err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id})
+	assertNoError(t, err, "Couldn't update document")
 }

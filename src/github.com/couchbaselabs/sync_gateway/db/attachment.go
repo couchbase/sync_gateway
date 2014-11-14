@@ -83,23 +83,26 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			atts[name] = newMeta
 
 		} else {
-			// No data given; look it up from the parent revision.
+			// Attachment must be a stub that repeats a parent attachment
+			if meta["stub"] != true {
+				return base.HTTPErrorf(400, "Missing data of attachment %q", name)
+			}
+			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
+				return base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
+			}
+			// Try to look up the attachment in the parent revision:
 			if parentAttachments == nil {
-				parent, err := db.getAvailableRev(doc, parentRev)
-				if err != nil {
-					base.Warn("storeAttachments: no such parent rev %q to find %v", parentRev, meta)
-					return err
-				}
-				parentAttachments, exists = parent["_attachments"].(map[string]interface{})
-				if !exists {
-					return base.HTTPErrorf(400, "Unknown attachment %s", name)
+				if parent, _ := db.getAvailableRev(doc, parentRev); parent != nil {
+					parentAttachments, _ = parent["_attachments"].(map[string]interface{})
 				}
 			}
-			parentAttachment := parentAttachments[name]
-			if parentAttachment == nil {
-				return base.HTTPErrorf(400, "Unknown attachment %s", name)
+			if parentAttachments != nil {
+				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
+					atts[name] = parentAttachment
+				}
+			} else if meta["digest"] == nil {
+				return base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
 			}
-			atts[name] = parentAttachment
 		}
 	}
 	return nil
