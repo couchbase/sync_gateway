@@ -8,7 +8,8 @@ SRCCFGDIR=../examples
 SRCCFG=admin_party.json
 RUNAS_TEMPLATE_VAR=sync_gateway
 RUNBASE_TEMPLATE_VAR=/home/sync_gateway
-PIDFILE_TEMPLATE_VAR=/var/run/sync_gateway.pid
+PIDFILE_TEMPLATE_VAR=/var/run/sync-gateway.pid
+GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sync-gateway
 GATEWAY_TEMPLATE_VAR=/opt/couchbase-sync-gateway/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=/home/sync_gateway/sync_gateway.json
 LOGS_TEMPLATE_VAR=/home/sync_gateway/logs
@@ -53,7 +54,7 @@ ostype() {
         VER=$(uname -r)
     fi
 
-    OS_MAJOR_VERSION=`echo $VER | sed s/\.[0-9]*$//`
+    OS_MAJOR_VERSION=`echo $VER | sed 's/\..*$//'`
     OS_MINOR_VERSION=`echo $VER | sed s/[0-9]*\.//`
 }
 
@@ -126,7 +127,7 @@ if  ["$OS" = ""] && ["$VER" = ""] ; then
 fi
 
 # Check that runtime user account exists
-if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+if [ "$OS" != "Darwin" && -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
     echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
     exit 1
 fi
@@ -187,12 +188,22 @@ case $OS in
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 initctl start ${SERVICE_NAME}
                 ;;
+            7)
+                render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
+                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                systemctl enable ${SERVICE_NAME}
+                systemctl start ${SERVICE_NAME}
+                ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
                 usage
                 exit 1
                 ;;
         esac
+        ;;
+    Darwin)
+        render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+        launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         ;;
     *)
         echo "ERROR: unknown OS \"$OS\""
