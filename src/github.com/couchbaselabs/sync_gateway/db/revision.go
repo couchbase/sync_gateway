@@ -29,6 +29,9 @@ func (body Body) ShallowCopy() Body {
 }
 
 func (body Body) ImmutableAttachmentsCopy() Body {
+	if body == nil {
+		return nil
+	}
 	copied := make(Body, len(body))
 	for k1, v1 := range body {
 		if k1 == "_attachments" {
