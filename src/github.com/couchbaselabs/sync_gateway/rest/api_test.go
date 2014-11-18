@@ -1366,3 +1366,43 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	assert.True(t, data == nil)
 
 }
+
+func TestOldDocHandling(t *testing.T) {
+
+	rt := restTester{syncFn: `
+		function(doc,oldDoc){
+			log("doc id:"+doc._id);
+			if(oldDoc){
+				log("old doc id:"+oldDoc._id);
+				if(!oldDoc._id){
+					throw ({forbidden : "Old doc id not available"})
+				}
+				if(!(oldDoc._id == doc._id)) {
+					throw ({forbidden : "Old doc id doesn't match doc id"})
+				}
+			}
+		}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create user:
+	frank, err := a.NewUser("charles", "1234", nil)
+	a.Save(frank)
+
+	// Create a doc:
+	response := rt.send(request("PUT", "/db/testOldDocId", `{"foo":"bar"}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	alphaRevID := body["rev"].(string)
+
+	// Update a document to validate oldDoc id handling.  Will reject if old doc id not available
+	str := fmt.Sprintf(`{"foo":"ball", "_rev":%q}`, alphaRevID)
+	assertStatus(t, rt.send(request("PUT", "/db/testOldDocId", str)), 201)
+
+}
