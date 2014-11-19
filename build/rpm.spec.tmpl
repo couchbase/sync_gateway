@@ -102,6 +102,12 @@ find $RPM_INSTALL_PREFIX0 -name '*.pyc' | xargs rm -f || true
 
 rm -f $RPM_INSTALL_PREFIX0/bin/*
 
+cat <<EOF
+
+You have successfully uninstalled Couchbase Sync Gateway.
+
+EOF
+
 exit 0
 
 %posttrans
