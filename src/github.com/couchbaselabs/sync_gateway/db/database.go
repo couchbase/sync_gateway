@@ -40,7 +40,8 @@ type DatabaseContext struct {
 	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
-	changeCache        changeCache
+	changeCache        changeCache             //
+	EventMgr           *EventManager           // Manages notification events
 }
 
 const DefaultRevsLimit = 1000
@@ -94,6 +95,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 		autoImport: autoImport,
 	}
 	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
+
+	context.EventMgr = NewEventManager()
+
 	var err error
 	context.sequences, err = newSequenceAllocator(bucket)
 	if err != nil {
