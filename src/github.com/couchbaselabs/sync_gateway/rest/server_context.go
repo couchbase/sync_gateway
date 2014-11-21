@@ -242,6 +242,27 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		}
 	}
 
+	// Initialize event handlers, if any:
+	if config.EventHandlers != nil {
+		if config.EventHandlers.Webhooks != nil {
+			base.Log("webhooks: %v", config.EventHandlers)
+			for _, webhook := range config.EventHandlers.Webhooks {
+
+				base.Log("Processing webhook: %v", webhook)
+				channelRegex := ""
+				if webhook.Channels != nil {
+					channelRegex = *webhook.Channels
+				}
+				wh, err := db.NewWebhook(webhook.Url, channelRegex)
+				if err != nil {
+					base.Warn("Error creating webhook for: %v", webhook)
+				} else {
+					dbcontext.EventMgr.RegisterEventHandler(wh)
+				}
+			}
+		}
+	}
+
 	// Register it so HTTP handlers can find it:
 	if err := sc.registerDatabase(dbcontext); err != nil {
 		dbcontext.Close()

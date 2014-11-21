@@ -615,6 +615,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	revChannels := doc.History[newRevID].Channels
 	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
+	// TODO EVENT
+	db.EventMgr.RaiseDocumentCommitEvent(body, revChannels)
+
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
 
