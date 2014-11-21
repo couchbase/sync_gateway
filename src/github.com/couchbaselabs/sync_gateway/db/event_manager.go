@@ -23,9 +23,9 @@ const (
 // EventCoordinator goroutine works the event channel and sends events to the appropriate listener channels
 
 type EventManager struct {
-	activeEventTypes map[EventType]bool
-	eventHandlers    []EventHandler
-	eventChannel     chan Event
+	activeEventTypes  map[EventType]bool
+	eventHandlers     []EventHandler
+	asyncEventChannel chan Event
 }
 
 func NewEventManager() *EventManager {
@@ -34,7 +34,7 @@ func NewEventManager() *EventManager {
 		eventHandlers: make([]EventHandler, 0),
 	}
 
-	// create channel for incoming events
+	// create channel for incoming asynchronous events
 	em.eventChannel = make(chan Event)
 
 	// TODO: retrieve handlers from config
@@ -54,13 +54,16 @@ func NewEventManager() *EventManager {
 
 	// Start incoming event queue worker go routine
 	go func() {
-		for event := range em.eventChannel {
+		for event := range em.asyncEventChannel {
 
-			// send event to all handlers
+			// send event to all registered handlers
 			for _, handler := range em.eventHandlers {
 
 				base.LogTo("Events", "Event queue worker sending event to: %s", handler)
-				handler.HandleEvent(event)
+
+				if handler.HandlesEvent(event) {
+					handler.HandleEvent(event)
+				}
 			}
 		}
 	}()
@@ -78,6 +81,12 @@ func (em *EventManager) HasHandlerForEvent(eventType EventType) bool {
 
 	// TODO EVENT: activeEvents might be getting stored somewhere less redundant
 	return em.activeEventTypes[eventType]
+
+}
+
+func (em *EventManager) raiseAsyncEvent(event Event) {
+	em.asyncEventChannel <- event
+	base.LogTo("Events", "%s added to event channel", event.EventType())
 }
 
 func (em *EventManager) RaiseDocumentCommitEvent(body Body, channels base.Set) {
@@ -88,11 +97,7 @@ func (em *EventManager) RaiseDocumentCommitEvent(body Body, channels base.Set) {
 	event := &DocumentCommitEvent{
 		body:     body,
 		channels: channels}
-
-	base.LogTo("Events", "event type: %d", event.EventType())
-	em.eventChannel <- event
-
-	base.LogTo("Events", "Document commit event %s added to event channel", body["_id"])
+	em.raiseAsyncEvent(event)
 
 }
 
@@ -145,17 +150,12 @@ func NewWebhook(url string, channelRegexString string) (Webhook, error) {
 
 func (wh Webhook) HandleEvent(event Event) error {
 
-	base.LogTo("Events", "Starting handler for event.")
-	// TODO return error
-	if !wh.handlesEvent(event) {
-
-		base.LogTo("Events", "Webhook handler doesn't handle event %s", event)
-		return nil
-	}
-
 	switch event := event.(type) {
 	case *DocumentCommitEvent:
 		// start a goroutine to perform the HTTP POST
+
+		// TODO: consider just returning this function, and let the EventManager coordinate
+		// go routine execution, to support throttling if needed
 		go func() {
 
 			// transform body if map function provided
@@ -164,15 +164,15 @@ func (wh Webhook) HandleEvent(event Event) error {
 			jsonOut, err := json.Marshal(event.body)
 			if err != nil {
 				base.Warn("Couldn't serialize event JSON for %v", event.body)
-				return
+				return err
 			}
 			resp, err := http.Post(wh.url, "application/json", bytes.NewBuffer(jsonOut))
 			if err != nil {
 				base.LogTo("Events", "Error posting to webhook %s", err)
-				return
+				return err
 			}
 
-			base.LogTo("Events", "Handler ran for event.  Doc with id %s posted to URL %s, got status %s",
+			base.LogTo("Events", "Webhook handler ran for event.  Doc with id %s posted to URL %s, got status %s",
 				event.body["_id"], wh.url, resp.Status)
 		}()
 	}
@@ -184,7 +184,7 @@ func (wh Webhook) HandleEvent(event Event) error {
 // HandlesEvent checks whether the incoming event type is handled by the webhook listener, and
 // if so, that the set of channels on the document associated with the event match the channel regex
 // in the webhook definition.
-func (wh Webhook) handlesEvent(event Event) bool {
+func (wh Webhook) HandlesEvent(event Event) bool {
 
 	dceEvent := event.(*DocumentCommitEvent)
 
