@@ -49,14 +49,14 @@ func (h *handler) handleAllDocs() error {
 		}
 	}
 
-	// Get the set of channels the user has access to; nil if user is admin or has access to "*"
+	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
 	var availableChannels channels.TimedSet
 	if h.user != nil {
 		availableChannels = h.user.InheritedChannels()
 		if availableChannels == nil {
 			panic("no channels for user?")
 		}
-		if availableChannels.Contains("*") {
+		if availableChannels.Contains(channels.UserStarChannel) {
 			availableChannels = nil
 		}
 	}

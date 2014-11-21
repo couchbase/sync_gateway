@@ -275,9 +275,9 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 	return channels
 }
 
-// If a channel list contains a wildcard ("*"), replace it with all the user's accessible channels.
+// If a channel list contains the all-channel wildcard, replace it with all the user's accessible channels.
 func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
-	if channels.Contains("*") {
+	if channels.Contains(ch.AllChannelWildcard) {
 		channels = user.InheritedChannels().AsSet()
 	}
 	return channels
@@ -286,7 +286,7 @@ func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
 func (user *userImpl) FilterToAvailableChannels(channels base.Set) ch.TimedSet {
 	output := ch.TimedSet{}
 	for channel, _ := range channels {
-		if channel == "*" {
+		if channel == ch.AllChannelWildcard {
 			return user.InheritedChannels().Copy()
 		}
 		output.AddChannel(channel, user.CanSeeChannelSince(channel))

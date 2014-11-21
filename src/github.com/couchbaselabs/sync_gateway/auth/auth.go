@@ -143,6 +143,9 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		}
 		channels.Add(set)
 	}
+	// always grant access to the public document channel
+	channels.AddChannel(ch.DocumentStarChannel, 1)
+
 	base.LogTo("Access", "Computed channels for %q: %s", princ.Name(), channels)
 	princ.setChannels(channels)
 	return nil

@@ -16,7 +16,7 @@ import (
 var MaxChannelLogPendingCount = 10000              // Max number of waiting sequences
 var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a missing sequence
 
-// Enable keeping a channel-log for the "*" channel. The only time this channel is needed is if
+// Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
 
@@ -290,8 +290,8 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}
 
 	if EnableStarChannelLog {
-		c._getChannelCache("*").addToCache(change, false)
-		addedTo = append(addedTo, "*")
+		c._getChannelCache(channels.UserStarChannel).addToCache(change, false)
+		addedTo = append(addedTo, channels.UserStarChannel)
 	}
 
 	// Record a histogram of the overall lag from the time the doc was saved:

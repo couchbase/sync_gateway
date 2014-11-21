@@ -568,7 +568,7 @@ func TestAccessFunction(t *testing.T) {
 
 	user, err = authenticator.GetUser("naomi")
 	assertNoError(t, err, "GetUser")
-	expected := channels.AtSequence(channels.SetOf("Hulu", "Netflix"), 1)
+	expected := channels.AtSequence(channels.SetOf("Hulu", "Netflix", "!"), 1)
 	assert.DeepEquals(t, user.Channels(), expected)
 
 	expected.AddChannel("CrunchyRoll", 2)

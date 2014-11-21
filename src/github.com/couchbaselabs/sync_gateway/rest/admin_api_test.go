@@ -37,7 +37,7 @@ func TestUserAPI(t *testing.T) {
 	assert.Equals(t, body["name"], "snej")
 	assert.Equals(t, body["email"], "jens@couchbase.com")
 	assert.DeepEquals(t, body["admin_channels"], []interface{}{"bar", "foo"})
-	assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "foo"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "foo"})
 	assert.Equals(t, body["password"], nil)
 
 	// Check the list of all users:
@@ -89,7 +89,7 @@ func TestUserAPI(t *testing.T) {
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
-	assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
+	assert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "fedoras", "fixies", "foo"})
 
 	// DELETE the user
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
