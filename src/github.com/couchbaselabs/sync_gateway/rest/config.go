@@ -81,7 +81,7 @@ type DbConfig struct {
 	RevsLimit     *uint32                        `json:"revs_limit,omitempty"`     // Max depth a document's revision tree can grow to
 	ImportDocs    interface{}                    `json:"import_docs,omitempty"`    // false, true, or "continuous"
 	Shadow        *ShadowConfig                  `json:"shadow,omitempty"`         // External bucket to shadow
-	EventHandlers *EventConfig                   `json:"eventHandlers, omitempty"` // Event handlers (webhook)
+	EventHandlers *EventHandlerConfig            `json:"eventHandlers, omitempty"` // Event handlers (webhook)
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -104,15 +104,24 @@ type ShadowConfig struct {
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
 }
 
+type EventHandlerConfig struct {
+	DocumentCommitEvent *EventConfig `json:"document_commit_event,omitempty"` // Document Commit
+	UserCommitEvent     *EventConfig `json:"user_commit_event,omitempty"`     // User Commit
+}
+
 type EventConfig struct {
-	TestWH   string           `json:"testwh"`             // test
-	Webhooks []*WebhookConfig `json:"webhooks,omitempty"` // Webhook events
+	Webhooks []*WebhookConfig     `json:"webhooks,omitempty"` // Webhook events
+	Custom   []*CustomEventConfig `json:"custom, omitempty"`  // Custom events
 }
 
 type WebhookConfig struct {
-	Url          string  `json:"url"`                    //url
-	Channels     *string `json:"channels,omitempty"`     // channels
-	TransformMap *string `json:"transformMap,omitempty"` // map
+	Url       string  `json:"url"`                 // url
+	Channels  *string `json:"channels,omitempty"`  // channels
+	Transform *string `json:"transform,omitempty"` // map
+}
+
+type CustomEventConfig struct {
+	HandleEventFn *string `json:"handleFn, omitEmpty"`
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

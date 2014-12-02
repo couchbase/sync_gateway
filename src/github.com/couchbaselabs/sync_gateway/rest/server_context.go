@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -244,22 +245,12 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 
 	// Initialize event handlers, if any:
 	if config.EventHandlers != nil {
-		if config.EventHandlers.Webhooks != nil {
-			base.Log("webhooks: %v", config.EventHandlers)
-			for _, webhook := range config.EventHandlers.Webhooks {
-
-				base.Log("Processing webhook: %v", webhook)
-				channelRegex := ""
-				if webhook.Channels != nil {
-					channelRegex = *webhook.Channels
-				}
-				wh, err := db.NewWebhook(webhook.Url, channelRegex)
-				if err != nil {
-					base.Warn("Error creating webhook for: %v", webhook)
-				} else {
-					dbcontext.EventMgr.RegisterEventHandler(wh)
-				}
-			}
+		// Process document commit event handlers
+		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentCommitEvent, db.DocumentCommit, dbcontext); err != nil {
+			return nil, err
+		}
+		if err = sc.processEventHandlersForEvent(config.EventHandlers.UserCommitEvent, db.UserAdd, dbcontext); err != nil {
+			return nil, err
 		}
 	}
 
@@ -270,6 +261,46 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	}
 	sc.setDatabaseConfig(config.name, config)
 	return dbcontext, nil
+}
+
+func (sc *ServerContext) processEventHandlersForEvent(eventConfig *EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
+
+	if eventConfig != nil {
+		// Process webhook event handlers
+		for _, webhook := range eventConfig.Webhooks {
+			channelRegex := ""
+			if webhook.Channels != nil {
+				channelRegex = *webhook.Channels
+			}
+			transformFunction := ""
+			if webhook.Transform != nil {
+				transformFunction = *webhook.Transform
+			}
+			wh, err := db.NewWebhook(webhook.Url, channelRegex, transformFunction)
+			if err != nil {
+				base.Warn("Error creating webhook for: %v", webhook)
+				return err
+			} else {
+				dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
+			}
+		}
+		// Process custom event handlers
+		for _, customHandler := range eventConfig.Custom {
+			if customHandler.HandleEventFn == nil {
+				return errors.New("Custom event handler must define a handleEventFn")
+			}
+
+			ch, err := db.NewCustomEventHandler(*customHandler.HandleEventFn)
+			if err != nil {
+				base.Warn("Error creating custom handler  for %v", customHandler)
+				return err
+			} else {
+				dbcontext.EventMgr.RegisterEventHandler(ch, eventType)
+			}
+		}
+
+	}
+	return nil
 }
 
 func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn string) error {
