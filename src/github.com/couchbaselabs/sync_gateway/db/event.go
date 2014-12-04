@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"errors"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/walrus"
@@ -13,11 +12,11 @@ import (
 type EventType uint8
 
 const (
-	DocumentCommit EventType = iota
+	DocumentChange EventType = iota
 	UserAdd
 )
 
-// Event
+// An event that can be raised during SG processing.
 type Event interface {
 	Synchronous() bool
 	EventType() EventType
@@ -31,6 +30,8 @@ func (e *EventImpl) EventType() EventType {
 	return e.eventType
 }
 
+// Currently the AsyncEvent type only manages the Synchronous() check.  Future enhancements
+// around async processing would leverage this type.
 type AsyncEvent struct {
 	EventImpl
 }
@@ -39,19 +40,15 @@ func (ae *AsyncEvent) Synchronous() bool {
 	return false
 }
 
-type DocumentCommitEvent struct {
+// DocumentChangeEvent is raised when a document has been successfully written to the backing
+// data store.  Event has the document body and channel set as properties.
+type DocumentChangeEvent struct {
 	AsyncEvent
-	Doc      Body     `json:"doc,omitempty"`
-	OldDoc   string   `json:"oldDoc,omitempty"`
-	Channels base.Set `json:"channels,omitempty"`
+	Doc      Body
+	Channels base.Set
 }
 
-/*
-func (d DocumentCommitEvent) EventType() EventType {
-	return DocumentCommit
-}
-*/
-// Transform function handling
+// Javascript function handling for events
 const kTaskCacheSize = 4
 
 type ResponseType uint8
@@ -107,6 +104,7 @@ type JSEventFunction struct {
 
 func NewJSEventFunction(fnSource string) *JSEventFunction {
 
+	base.LogTo("Events", "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: walrus.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (walrus.JSServerTask, error) {
@@ -115,7 +113,7 @@ func NewJSEventFunction(fnSource string) *JSEventFunction {
 	}
 }
 
-// Calls a jsMapTask.
+// Calls a jsEventFunction returning an interface{}
 func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 
 	var err error
@@ -124,8 +122,8 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	// Different events send different parameters
 	switch event := event.(type) {
 
-	case *DocumentCommitEvent:
-		result, err = ef.Call(event.Doc, event.OldDoc)
+	case *DocumentChangeEvent:
+		result, err = ef.Call(event.Doc)
 	}
 
 	if err != nil {
@@ -136,6 +134,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	return result, err
 }
 
+// Calls a jsEventFunction returning bool.
 func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 
 	result, err := ef.CallFunction(event)
@@ -157,27 +156,4 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 
-}
-
-func (ef *JSEventFunction) CallTransformFunction(event Event) (string, ResponseType, error) {
-
-	result, err := ef.CallFunction(event)
-
-	var stringResult string
-	var responseType ResponseType
-	switch result := result.(type) {
-	case string:
-		stringResult = result
-		responseType = StringResponse
-	case interface{}:
-		resultBytes, marshErr := json.Marshal(result)
-		if marshErr != nil {
-			err = marshErr
-		} else {
-			stringResult = string(resultBytes)
-			responseType = JSObjectResponse
-		}
-	}
-
-	return stringResult, responseType, err
 }

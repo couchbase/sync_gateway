@@ -616,18 +616,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
 	// Raise event
-	if db.EventMgr.HasHandlerForEvent(DocumentCommit) {
-		// todo: refactor to reuse the oldDoc that was used during sync function execution
-		// Get the parent revision
-		var oldJsonBytes []byte
-		var err error
-		oldJsonBytes, err = db.getAncestorJSON(doc, doc.CurrentRev)
-		if err != nil {
-			base.Warn("Error retrieving ancestor JSON for event handling - event not raised")
-		} else {
-			oldJson := string(oldJsonBytes)
-			db.EventMgr.RaiseDocumentCommitEvent(body, oldJson, revChannels)
-		}
+	if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+		db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:

@@ -105,23 +105,13 @@ type ShadowConfig struct {
 }
 
 type EventHandlerConfig struct {
-	DocumentCommitEvent *EventConfig `json:"document_commit_event,omitempty"` // Document Commit
-	UserCommitEvent     *EventConfig `json:"user_commit_event,omitempty"`     // User Commit
+	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
 }
 
 type EventConfig struct {
-	Webhooks []*WebhookConfig     `json:"webhooks,omitempty"` // Webhook events
-	Custom   []*CustomEventConfig `json:"custom, omitempty"`  // Custom events
-}
-
-type WebhookConfig struct {
-	Url       string  `json:"url"`                 // url
-	Channels  *string `json:"channels,omitempty"`  // channels
-	Transform *string `json:"transform,omitempty"` // map
-}
-
-type CustomEventConfig struct {
-	HandleEventFn *string `json:"handleFn, omitEmpty"`
+	HandlerType string `json:"handler"`          // Handler type
+	Url         string `json:"url,omitempty"`    // Url (webhook)
+	Filter      string `json:"filter,omitempty"` // Filter function (webhook)
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

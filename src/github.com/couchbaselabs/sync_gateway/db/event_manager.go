@@ -4,33 +4,37 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
-// EventManager manages the configured set of event listeners.  Incoming events are just dumped in the
+// EventManager routes raised events to corresponding event handlers.  Incoming events are just dumped in the
 // eventChannel to minimize time spent blocking whatever process is raising the event.
-// The event queue worker goroutine works the event channel and sends events to the appropriate listener channels
+// The event queue worker goroutine works the event channel and sends events to the appropriate handlers
 type EventManager struct {
 	activeEventTypes  map[EventType]bool
 	eventHandlers     map[EventType][]EventHandler
 	asyncEventChannel chan Event
 }
 
+// Creates a new event manager.  Sets up the event channel for async events, and the goroutine to
+// monitor and process that channel.
 func NewEventManager() *EventManager {
 
 	em := &EventManager{
 		eventHandlers: make(map[EventType][]EventHandler, 0),
 	}
 
-	// create channel for incoming asynchronous events
-	em.asyncEventChannel = make(chan Event)
+	// Create channel for queued asynchronous events.
+	em.asyncEventChannel = make(chan Event, 500)
 
 	em.activeEventTypes = make(map[EventType]bool)
 
-	// Start event queue worker go routine
+	// Start event channel worker go routine
 	go func() {
 		for event := range em.asyncEventChannel {
 			// send event to all registered handlers
 			for _, handler := range em.eventHandlers[event.EventType()] {
-				base.LogTo("Events", "Event queue worker sending event to: %s", handler)
-				handler.HandleEvent(event)
+				base.LogTo("Events+", "Event queue worker sending event to: %s", handler)
+				//TODO: currently we're not tracking success/fail from event handlers.  When this
+				// is needed, could pass a channel to HandleEvent for tracking results
+				go handler.HandleEvent(event)
 			}
 		}
 	}()
@@ -38,37 +42,38 @@ func NewEventManager() *EventManager {
 	return em
 }
 
+// Register a new event handler to the EventManger.  The event manager will route events of
+// type eventType to the handler.
 func (em *EventManager) RegisterEventHandler(handler EventHandler, eventType EventType) {
 	em.eventHandlers[eventType] = append(em.eventHandlers[eventType], handler)
 	em.activeEventTypes[eventType] = true
 	base.LogTo("Events", "Registered event handler: %v", handler)
 }
 
+// Checks whether a handler of the given type has been registered to the event manager.
 func (em *EventManager) HasHandlerForEvent(eventType EventType) bool {
-
-	// TODO EVENT: activeEvents might be getting stored somewhere less redundant
 	return em.activeEventTypes[eventType]
-
 }
 
-func (em *EventManager) raiseEvent(event Event) bool {
+// Adds async events to the channel for processing
+func (em *EventManager) raiseEvent(event Event) {
 	if !event.Synchronous() {
 		em.asyncEventChannel <- event
 	}
 	// TODO: handling for synchronous events
-	return true
 }
 
-func (em *EventManager) RaiseDocumentCommitEvent(body Body, oldBody string, channels base.Set) {
+// Raises a document change event based on the the document body and channel set.  If the
+// event manager doesn't have a listener for this event, ignores.
+func (em *EventManager) RaiseDocumentChangeEvent(body Body, channels base.Set) {
 
-	if !em.activeEventTypes[DocumentCommit] {
+	if !em.activeEventTypes[DocumentChange] {
 		return
 	}
-
-	event := &DocumentCommitEvent{
+	event := &DocumentChangeEvent{
 		Doc:      body,
-		OldDoc:   oldBody,
 		Channels: channels}
+
 	em.raiseEvent(event)
 
 }
