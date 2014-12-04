@@ -136,6 +136,15 @@ func stripSpecialProperties(body Body) Body {
 	return stripped
 }
 
+func containsUserSpecialProperties(body Body) bool {
+	for key, _ := range body {
+		if key[0] == '_' && key != "_id" && key != "_rev" && key != "_deleted" && key != "_attachments" && key != "_revisions" {
+			return true
+		}
+	}
+	return false
+}
+
 func canonicalEncoding(body Body) []byte {
 	encoded, err := json.Marshal(body) //FIX: Use canonical JSON encoder
 	if err != nil {

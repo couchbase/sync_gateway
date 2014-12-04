@@ -474,6 +474,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			return
 		}
 
+		//Reject bodies containing user special properties for compatibility with CouchDB
+		if containsUserSpecialProperties(body) {
+			err = base.HTTPErrorf(400, "user defined top level properties beginning with '_' are not allowed in document body")
+			return
+		}
+
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
 		parentRevID = doc.History[newRevID].Parent

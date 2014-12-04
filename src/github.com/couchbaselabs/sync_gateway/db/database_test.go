@@ -643,7 +643,7 @@ func TestPostWithExistingId(t *testing.T) {
 
 	// Test that standard UUID creation still works:
 	log.Printf("Create document with existing id...")
-	body = Body{"_notAnId": customDocId, "key1": "value1", "key2": "existing"}
+	body = Body{"notAnId": customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, err = db.Post(body)
 	assert.True(t, rev1id != "")
 	assert.True(t, docid != customDocId)
@@ -652,6 +652,55 @@ func TestPostWithExistingId(t *testing.T) {
 	// Test retrieval
 	doc, err = db.GetDoc(docid)
 	assert.True(t, doc != nil)
+	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
+
+}
+
+// Unit test for issue #507
+func TestPutWithUserSpecialProperty(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with existing id property:
+	customDocId := "customIdValue"
+	log.Printf("Create document with existing id...")
+	body := Body{"_id": customDocId, "key1": "value1", "_key2": "existing"}
+	docid, rev1id, err := db.Post(body)
+	assert.True(t, rev1id == "")
+	assert.True(t, docid == "")
+	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
+}
+
+// Unit test for issue #507
+func TestPostWithUserSpecialProperty(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with existing id property:
+	customDocId := "customIdValue"
+	log.Printf("Create document with existing id...")
+	body := Body{"_id": customDocId, "key1": "value1", "key2": "existing"}
+	docid, rev1id, err := db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid == customDocId)
+	assertNoError(t, err, "Couldn't create document")
+
+	// Test retrieval
+	doc, err := db.GetDoc(customDocId)
+	assert.True(t, doc != nil)
+	assertNoError(t, err, "Unable to retrieve doc using custom id")
+
+	// Test that posting an update with a user special property does not update the
+	//document
+	log.Printf("Update document with existing id...")
+	body = Body{"_id": customDocId, "_rev": rev1id, "_special": "value", "key1": "value1", "key2": "existing"}
+	_, err = db.Put(docid, body)
+	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
+
+	// Test retrieval gets rev1
+	doc, err = db.GetDoc(docid)
+	assert.True(t, doc != nil)
+	assert.True(t, doc.CurrentRev == rev1id)
 	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
 
 }
