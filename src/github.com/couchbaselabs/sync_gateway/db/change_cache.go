@@ -13,8 +13,8 @@ import (
 	"github.com/couchbaselabs/sync_gateway/channels"
 )
 
-var MaxChannelLogPendingCount = 10000              // Max number of waiting sequences
-var MaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a missing sequence
+var MaxChannelLogPendingCount = 10000               // Max number of waiting sequences
+var MaxChannelLogPendingWaitTime = 60 * time.Second // Max time we'll wait for a missing sequence
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
