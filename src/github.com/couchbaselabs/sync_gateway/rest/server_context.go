@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -249,6 +250,16 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
 			return nil, err
 		}
+		// WaitForProcess uses string, to support both omitempty and zero values
+		customWaitTime := int64(-1)
+		if config.EventHandlers.WaitForProcess != "" {
+			customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
+			if err != nil {
+				customWaitTime = -1
+				base.Warn("Error parsing wait_for_process from config, using default %s", err)
+			}
+		}
+		dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
 	}
 
 	// Register it so HTTP handlers can find it:
@@ -265,7 +276,7 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
-			wh, err := db.NewWebhook(event.Url, event.Filter)
+			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout)
 			if err != nil {
 				base.Warn("Error creating webhook %v", err)
 				return err

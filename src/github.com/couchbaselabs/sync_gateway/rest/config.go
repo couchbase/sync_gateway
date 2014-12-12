@@ -81,7 +81,7 @@ type DbConfig struct {
 	RevsLimit     *uint32                        `json:"revs_limit,omitempty"`     // Max depth a document's revision tree can grow to
 	ImportDocs    interface{}                    `json:"import_docs,omitempty"`    // false, true, or "continuous"
 	Shadow        *ShadowConfig                  `json:"shadow,omitempty"`         // External bucket to shadow
-	EventHandlers *EventHandlerConfig            `json:"eventHandlers, omitempty"` // Event handlers (webhook)
+	EventHandlers *EventHandlerConfig            `json:"event_handlers,omitempty"` // Event handlers (webhook)
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -105,13 +105,16 @@ type ShadowConfig struct {
 }
 
 type EventHandlerConfig struct {
+	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
+	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
 	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
 }
 
 type EventConfig struct {
-	HandlerType string `json:"handler"`          // Handler type
-	Url         string `json:"url,omitempty"`    // Url (webhook)
-	Filter      string `json:"filter,omitempty"` // Filter function (webhook)
+	HandlerType string `json:"handler"`           // Handler type
+	Url         string `json:"url,omitempty"`     // Url (webhook)
+	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

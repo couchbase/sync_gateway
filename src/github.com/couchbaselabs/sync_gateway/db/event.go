@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
@@ -20,6 +21,7 @@ const (
 type Event interface {
 	Synchronous() bool
 	EventType() EventType
+	String() string
 }
 
 type EventImpl struct {
@@ -46,6 +48,10 @@ type DocumentChangeEvent struct {
 	AsyncEvent
 	Doc      Body
 	Channels base.Set
+}
+
+func (dce *DocumentChangeEvent) String() string {
+	return fmt.Sprintf("Document change event for doc id: %s", dce.Doc["_id"])
 }
 
 // Javascript function handling for events

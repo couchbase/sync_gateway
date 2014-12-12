@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"net/http"
+	"time"
 )
 
 // EventHandler interface represents an instance of an event handler defined in the database config
 type EventHandler interface {
 	HandleEvent(event Event)
+	String() string
 }
 
 type AsyncEventHandler struct{}
@@ -19,12 +21,16 @@ type AsyncEventHandler struct{}
 // Webhook is an implementation of EventHandler that sends an asynchronous HTTP POST
 type Webhook struct {
 	AsyncEventHandler
-	url    string
-	filter *JSEventFunction
+	url     string
+	filter  *JSEventFunction
+	timeout time.Duration
 }
 
+// default HTTP post timeout
+const kDefaultWebhookTimeout = 60
+
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(url string, filterFnString string) (*Webhook, error) {
+func NewWebhook(url string, filterFnString string, timeout uint64) (*Webhook, error) {
 
 	var err error
 
@@ -38,6 +44,12 @@ func NewWebhook(url string, filterFnString string) (*Webhook, error) {
 	}
 	if filterFnString != "" {
 		wh.filter = NewJSEventFunction(filterFnString)
+	}
+
+	if timeout != 0 {
+		wh.timeout = time.Duration(timeout) * time.Second
+	} else {
+		wh.timeout = time.Duration(kDefaultWebhookTimeout) * time.Second
 	}
 
 	return wh, err
@@ -79,7 +91,8 @@ func (wh *Webhook) HandleEvent(event Event) {
 		return
 	}
 
-	resp, err := http.Post(wh.url, contentType, payload)
+	client := http.Client{Timeout: wh.timeout}
+	resp, err := client.Post(wh.url, contentType, payload)
 	if err != nil {
 		base.Warn("Error attempting to post to url %s: %s", wh.url, err)
 		return
