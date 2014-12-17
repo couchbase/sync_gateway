@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ type EventManager struct {
 	eventHandlers      map[EventType][]EventHandler
 	asyncEventChannel  chan Event
 	activeCountChannel chan bool
+	waitTime           int
 }
 
 const kMaxActiveEvents = 500 // number of events that are processed concurrently
@@ -38,10 +40,12 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 		maxProcesses = kMaxActiveEvents
 	}
 	if waitTime < 0 {
-		waitTime = kEventWaitTime
+		em.waitTime = kEventWaitTime
+	} else {
+		em.waitTime = waitTime
 	}
 
-	base.LogTo("Events", "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, waitTime)
+	base.LogTo("Events", "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
 	// activeCountChannel limits the number of concurrent events being processed
 	em.activeCountChannel = make(chan bool, maxProcesses)
 
@@ -50,40 +54,34 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 	em.asyncEventChannel = make(chan Event, 3*maxProcesses)
 
 	// Start the event channel worker go routine.  If activeCountChannel is not full, spawns a new
-	// goroutine to process the event.  When the activeCountChannel is full, waits for
-	// (waitTime) milliseconds before cancelling the event.  When asyncEventChannel is full, the raiseEvent
-	// method will block for (waitTime).
-	// Default value of (waitTime) is 5 ms.
+	// goroutine to process the event.  When the activeCountChannel is full, blocks.
 	go func() {
 		for event := range em.asyncEventChannel {
-			select {
-			case em.activeCountChannel <- true:
-				// Spawn a go routine to process the event
-				go func(event Event) {
-					defer func() { <-em.activeCountChannel }()
-					base.LogTo("Events+", "Processing event: %s", event.String())
-					// Send event to all registered handlers concurrently.  WaitGroup blocks
-					// until all are finished
-					var wg sync.WaitGroup
-					for _, handler := range em.eventHandlers[event.EventType()] {
-						base.LogTo("Events+", "Event queue worker sending event %s to: %s", event.String(), handler)
-						wg.Add(1)
-						go func(event Event, handler EventHandler) {
-							defer wg.Done()
-							//TODO: Currently we're not tracking success/fail from event handlers.  When this
-							// is needed, could pass a channel to HandleEvent for tracking results
-							handler.HandleEvent(event)
-						}(event, handler)
-					}
-					wg.Wait()
-				}(event)
-			case <-time.After(time.Duration(waitTime) * time.Millisecond):
-				// We've hit the maximum number of concurrent event processing routines - ignore event and log error
-				base.Warn("Event queue full - discarding event: %s", event.String())
-			}
+			em.activeCountChannel <- true
+			// Spawn a go routine to process the event
+			go em.ProcessEvent(event)
 		}
 	}()
 
+}
+
+// Concurrent processing of all async event handlers registered for the event type
+func (em *EventManager) ProcessEvent(event Event) {
+	defer func() { <-em.activeCountChannel }()
+	// Send event to all registered handlers concurrently.  WaitGroup blocks
+	// until all are finished
+	var wg sync.WaitGroup
+	for _, handler := range em.eventHandlers[event.EventType()] {
+		base.LogTo("Events+", "Event queue worker sending event %s to: %s", event.String(), handler)
+		wg.Add(1)
+		go func(event Event, handler EventHandler) {
+			defer wg.Done()
+			//TODO: Currently we're not tracking success/fail from event handlers.  When this
+			// is needed, could pass a channel to HandleEvent for tracking results
+			handler.HandleEvent(event)
+		}(event, handler)
+	}
+	wg.Wait()
 }
 
 // Register a new event handler to the EventManager.  The event manager will route events of
@@ -100,24 +98,34 @@ func (em *EventManager) HasHandlerForEvent(eventType EventType) bool {
 }
 
 // Adds async events to the channel for processing
-func (em *EventManager) raiseEvent(event Event) {
+func (em *EventManager) raiseEvent(event Event) error {
 	if !event.Synchronous() {
-		em.asyncEventChannel <- event
+		// When asyncEventChannel is full, the raiseEvent method will block for (waitTime).
+		// Default value of (waitTime) is 5 ms.
+		select {
+		case em.asyncEventChannel <- event:
+		case <-time.After(time.Duration(em.waitTime) * time.Millisecond):
+			// Event queue channel is full - ignore event and log error
+			base.Warn("Event queue full - discarding event: %s", event.String())
+			return errors.New("Event queue full")
+		}
 	}
 	// TODO: handling for synchronous events
+	return nil
 }
 
 // Raises a document change event based on the the document body and channel set.  If the
 // event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseDocumentChangeEvent(body Body, channels base.Set) {
+func (em *EventManager) RaiseDocumentChangeEvent(body Body, channels base.Set) error {
 
 	if !em.activeEventTypes[DocumentChange] {
-		return
+		return nil
 	}
 	event := &DocumentChangeEvent{
 		Doc:      body,
-		Channels: channels}
+		Channels: channels,
+	}
 
-	em.raiseEvent(event)
+	return em.raiseEvent(event)
 
 }

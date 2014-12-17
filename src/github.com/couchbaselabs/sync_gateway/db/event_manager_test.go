@@ -123,7 +123,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, channels)
 	}
 	// wait for Event Manager queue worker to process
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(2 * time.Second)
 	fmt.Println("resultChannel:", len(resultChannel))
 
 	assert.True(t, len(resultChannel) == 20)
@@ -226,7 +226,7 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 	// Start HTTP listener for webhook calls
 	go func() {
 		http.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(1 * time.Second)
+			time.Sleep(1000 * time.Millisecond)
 			counter++
 			fmt.Fprintf(w, "OK")
 		})
@@ -271,8 +271,8 @@ func TestWebhook(t *testing.T) {
 		return
 	}
 	count, sum, payloads := InitWebhookTest()
-	ids := make([]string, 20)
-	for i := 0; i < 20; i++ {
+	ids := make([]string, 200)
+	for i := 0; i < 200; i++ {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
@@ -347,21 +347,29 @@ func TestWebhook(t *testing.T) {
 		body, channels := eventForTest(i % 10)
 		em.RaiseDocumentChangeEvent(body, channels)
 	}
-	time.Sleep(5 * time.Second)
+	time.Sleep(50 * time.Millisecond)
 	assert.Equals(t, *count, 100)
 
 	// Test queue full, slow webhook.  Drops events
 	*count, *sum = 0, 0.0
+	errCount := 0
 	em = NewEventManager()
 	em.Start(5, -1)
 	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", 0)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
-		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, channels)
+		body, channels := eventForTest(i)
+		err := em.RaiseDocumentChangeEvent(body, channels)
+		time.Sleep(2 * time.Millisecond)
+		if err != nil {
+			errCount++
+		}
 	}
 	time.Sleep(5 * time.Second)
-	assert.Equals(t, *count, 5)
+	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
+	// for a goroutine.  The rest get discarded because the queue is full.
+	assert.Equals(t, *count, 21)
+	assert.Equals(t, errCount, 79)
 
 	// Test queue full, slow webhook, long wait time.  Throttles events
 	*count, *sum = 0, 0.0
@@ -373,7 +381,7 @@ func TestWebhook(t *testing.T) {
 		body, channels := eventForTest(i % 10)
 		em.RaiseDocumentChangeEvent(body, channels)
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
 	assert.Equals(t, *count, 100)
 
 }

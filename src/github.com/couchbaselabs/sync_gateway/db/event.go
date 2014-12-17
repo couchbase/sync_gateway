@@ -38,7 +38,7 @@ type AsyncEvent struct {
 	EventImpl
 }
 
-func (ae *AsyncEvent) Synchronous() bool {
+func (ae AsyncEvent) Synchronous() bool {
 	return false
 }
 
