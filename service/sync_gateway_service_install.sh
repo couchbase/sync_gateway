@@ -127,9 +127,11 @@ if  ["$OS" = ""] && ["$VER" = ""] ; then
 fi
 
 # Check that runtime user account exists
-if [ "$OS" != "Darwin" && -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
-    echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
-    exit 1
+if [ "$OS" != "Darwin" ]; then
+    if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+        echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
+    fi
 fi
 
 # Check that the runtime base directory exists
