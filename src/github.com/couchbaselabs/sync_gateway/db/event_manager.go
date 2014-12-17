@@ -53,12 +53,12 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 	// handle temporary spikes in event inflow
 	em.asyncEventChannel = make(chan Event, 3*maxProcesses)
 
-	// Start the event channel worker go routine.  If activeCountChannel is not full, spawns a new
-	// goroutine to process the event.  When the activeCountChannel is full, blocks.
+	// Start the event channel worker go routine, which will work the event queue and spawn goroutines to process the
+	// event.  Blocks if the activeCountChannel is full, to prevent spawning more than cap(activeCountChannel)
+	// goroutines.
 	go func() {
 		for event := range em.asyncEventChannel {
 			em.activeCountChannel <- true
-			// Spawn a go routine to process the event
 			go em.ProcessEvent(event)
 		}
 	}()
