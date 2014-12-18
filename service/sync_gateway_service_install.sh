@@ -119,6 +119,7 @@ while [ "$1" != "" ]; do
             ;;
     esac
     shift
+    shift
 done
 
 # If OS and VER were not provided on the command line get them for current env
