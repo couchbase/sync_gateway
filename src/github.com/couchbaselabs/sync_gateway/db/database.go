@@ -414,7 +414,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	base.Log("Deleting %d %q documents of %q ...", len(vres.Rows), docType, db.Name)
+	base.Logf("Deleting %d %q documents of %q ...", len(vres.Rows), docType, db.Name)
 	for _, row := range vres.Rows {
 		base.LogTo("CRUD", "\tDeleting %q", row.ID)
 		if err := db.Bucket.Delete(row.ID); err != nil {
@@ -455,7 +455,7 @@ func (db *Database) Compact() (int, error) {
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	base.Log("Compacting away %d old revs of %q ...", len(vres.Rows), db.Name)
+	base.Logf("Compacting away %d old revs of %q ...", len(vres.Rows), db.Name)
 	count := 0
 	for _, row := range vres.Rows {
 		base.LogTo("CRUD", "\tDeleting %q", row.ID)
@@ -550,7 +550,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	defer db.changeCache.EnableChannelLogs(true)
 	db.changeCache.ClearLogs()
 
-	base.Log("Re-running sync function on all %d documents...", len(vres.Rows))
+	base.Logf("Re-running sync function on all %d documents...", len(vres.Rows))
 	changeCount := 0
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
@@ -618,7 +618,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			base.Warn("Error updating doc %q: %v", docid, err)
 		}
 	}
-	base.Log("Finished re-running sync function; %d docs changed", changeCount)
+	base.Logf("Finished re-running sync function; %d docs changed", changeCount)
 
 	if changeCount > 0 {
 		// Now invalidate channel cache of all users/roles:

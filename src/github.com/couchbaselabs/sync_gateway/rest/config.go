@@ -69,7 +69,7 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	name       string                         `json:"name"`                  // Database name in REST API (stored as key in JSON)
+	Name       string                         `json:"name"`                  // Database name in REST API (stored as key in JSON)
 	Server     *string                        `json:"server"`                // Couchbase (or Walrus) server URL, default "http://localhost:8091"
 	Username   string                         `json:"username,omitempty"`    // Username for authenticating to server
 	Password   string                         `json:"password,omitempty"`    // Password for authenticating to server
@@ -104,9 +104,9 @@ type ShadowConfig struct {
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
-	dbConfig.name = name
+	dbConfig.Name = name
 	if dbConfig.Bucket == nil {
-		dbConfig.Bucket = &dbConfig.name
+		dbConfig.Bucket = &dbConfig.Name
 	}
 	if dbConfig.Server == nil {
 		dbConfig.Server = &DefaultServer
@@ -343,7 +343,7 @@ func ParseCommandLine() *ServerConfig {
 			Pretty:           *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
-					name:   *dbName,
+					Name:   *dbName,
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,
@@ -377,7 +377,7 @@ func setMaxFileDescriptors(maxP *uint64) {
 	if err != nil {
 		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 	} else if maxP != nil {
-		base.Log("Configured process to allow %d open file descriptors", actualMax)
+		base.Logf("Configured process to allow %d open file descriptors", actualMax)
 	}
 }
 
@@ -397,13 +397,13 @@ func (config *ServerConfig) serve(addr string, handler http.Handler) {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
-	base.Log("==== %s ====", LongVersionString)
+	base.Logf("==== %s ====", LongVersionString)
 
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {
 			runtime.GOMAXPROCS(cpus)
-			base.Log("Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+			base.Logf("Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
 
@@ -418,15 +418,15 @@ func RunServer(config *ServerConfig) {
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
-		base.Log("Starting profile server on %s", *config.ProfileInterface)
+		base.Logf("Starting profile server on %s", *config.ProfileInterface)
 		go func() {
 			http.ListenAndServe(*config.ProfileInterface, nil)
 		}()
 	}
 
-	base.Log("Starting admin server on %s", *config.AdminInterface)
+	base.Logf("Starting admin server on %s", *config.AdminInterface)
 	go config.serve(*config.AdminInterface, CreateAdminHandler(sc))
-	base.Log("Starting server on %s ...", *config.Interface)
+	base.Logf("Starting server on %s ...", *config.Interface)
 	config.serve(*config.Interface, CreatePublicHandler(sc))
 }
 
