@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/couchbaselabs/go-couchbase"
-	"github.com/couchbaselabs/walrus"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
+	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbaselabs/walrus"
 )
 
 func init() {
@@ -138,7 +138,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	} else {
 		suffix := ""
 		if spec.Auth != nil {
-			username, _ := spec.Auth.GetCredentials()
+			username, _, _ := spec.Auth.GetCredentials()
 			suffix = fmt.Sprintf(" as user %q", username)
 		}
 		Log("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)

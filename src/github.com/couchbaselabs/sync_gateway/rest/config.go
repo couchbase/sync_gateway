@@ -153,13 +153,13 @@ func (dbConfig *DbConfig) setup(name string) error {
 }
 
 // Implementation of AuthHandler interface for DbConfig
-func (dbConfig *DbConfig) GetCredentials() (string, string) {
-	return dbConfig.Username, dbConfig.Password
+func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
+	return dbConfig.Username, dbConfig.Password, ""
 }
 
 // Implementation of AuthHandler interface for ShadowConfig
-func (shadowConfig *ShadowConfig) GetCredentials() (string, string) {
-	return shadowConfig.Username, shadowConfig.Password
+func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
+	return shadowConfig.Username, shadowConfig.Password, ""
 }
 
 // Reads a ServerConfig from raw data
