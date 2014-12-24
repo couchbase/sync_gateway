@@ -219,7 +219,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 		if h.user == nil {
-			base.Log("HTTP auth failed for username=%q", userName)
+			base.Logf("HTTP auth failed for username=%q", userName)
 			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}

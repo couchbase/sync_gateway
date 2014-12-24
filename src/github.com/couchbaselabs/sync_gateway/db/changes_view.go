@@ -35,7 +35,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	vres := channelsViewResult{}
 	err := dbc.Bucket.ViewCustom("sync_gateway", "channels", optMap, &vres)
 	if err != nil {
-		base.Log("Error from 'channels' view: %v", err)
+		base.Logf("Error from 'channels' view: %v", err)
 		return nil, err
 	} else if len(vres.Rows) == 0 {
 		base.LogTo("Cache", "    Got no rows from view for %q", channelName)
@@ -59,7 +59,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
 		len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		base.Log("changes_view: Query took %v to return %d rows, options = %#v",
+		base.Logf("changes_view: Query took %v to return %d rows, options = %#v",
 			elapsed, len(entries), optMap)
 	}
 	changeCacheExpvars.Add("view_queries", 1)

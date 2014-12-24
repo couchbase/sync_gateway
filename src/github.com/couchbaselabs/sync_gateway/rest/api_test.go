@@ -63,7 +63,7 @@ func (rt *restTester) bucket() base.Bucket {
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
 			Server: &server,
 			Bucket: &bucketName,
-			name:   "db",
+			Name:   "db",
 			Sync:   syncFnPtr,
 		})
 		if err != nil {
