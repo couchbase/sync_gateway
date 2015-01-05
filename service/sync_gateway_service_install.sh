@@ -98,7 +98,7 @@ while [ "$1" != "" ]; do
             exit 1
             ;;
     esac
-    shift 2
+    shift
 done
 
 # If OS and VER were not provided on the command line get them for current env
