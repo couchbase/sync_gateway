@@ -34,6 +34,8 @@ EOF
 
     chown -R @@PRODUCT_BASE@@:@@PRODUCT_BASE@@ @@PREFIX@@
 
+    chmod 755 @@PREFIX@@/service/sync_gateway_service_install.sh
+
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 
     cat <<EOF
