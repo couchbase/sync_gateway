@@ -29,7 +29,7 @@ script
   # Keep a pid around
   echo \$\$ > \$PIDFILE
   cd \$RUNBASE
-  exec su -c \"\$GATEWAY \$CONFIG >> \${LOGS}/\${NAME}_access.log 2>> \${LOGS}/\${NAME}_error.log\" \$RUNAS
+  su -c \"\$GATEWAY \$CONFIG >> \${LOGS}/\${NAME}_access.log 2>> \${LOGS}/\${NAME}_error.log\" \$RUNAS
 end script
  
 # Remove pid file when we stop the server

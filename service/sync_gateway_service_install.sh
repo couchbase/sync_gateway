@@ -22,18 +22,13 @@ usage()
     echo "create additional services with different names."
     echo ""
     echo "sync_gateway_service_install.sh"
-    echo "\t-h --help"
-    echo "\t--os : Manually set the target OS for the service <Ubuntu | Redhat >; default (auto detected)"
-    echo "\t--ver : Manually set the target OS version; default (auto detected)"
-    echo "\t--runas : The user account to run sync_gateway as; default (sync_gateway)"
-    echo "\t--runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)"
-    echo "\t--pidfile : The path where the .pid file will be created; default (/var/run/sync-gateway.pid)"
-    echo "\t--sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)"
-    echo "\t--srccfgdir : The path to the source sync_gateway JSON config directory)"
-    echo "\t--srccfgname : The name of the source sync_gateway JSON config file)"
-    echo "\t--cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)"
-    echo "\t--logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)"
-    echo "\t--servicename : The name of the service to install; default (sync_gateway)"
+    echo "    -h --help"
+    echo "    --runas : The user account to run sync_gateway as; default (sync_gateway)"
+    echo "    --runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)"
+    echo "    --sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)"
+    echo "    --cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)"
+    echo "    --logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)"
+    echo "    --servicename : The name of the service to install; default (sync_gateway)"
     echo ""
 }
  
@@ -79,29 +74,14 @@ while [ "$1" != "" ]; do
             usage
             exit
             ;;
-        --os)
-            OS=$VALUE
-            ;;
-        --ver)
-            VER=$VALUE
-            ;;
         --runas)
             RUNAS_TEMPLATE_VAR=$VALUE
             ;;
         --runbase)
             RUNBASE_TEMPLATE_VAR=$VALUE
             ;;
-        --pidfile)
-            PIDFILE_TEMPLATE_VAR=$VALUE
-            ;;
         --sgpath)
             GATEWAY_TEMPLATE_VAR=$VALUE
-            ;;
-        --srccfgdir)
-            SRCCFGDIR=$VALUE
-            ;;
-        --srccfgname)
-            SRCCFG=$VALUE
             ;;
         --cfgpath)
             CONFIG_TEMPLATE_VAR=$VALUE
@@ -118,6 +98,7 @@ while [ "$1" != "" ]; do
             exit 1
             ;;
     esac
+    shift
     shift
 done
 
