@@ -15,14 +15,13 @@ To see the list of arguments available pass a -h or --help parameter to the scri
 
 ```
 sync_gateway_service_install.sh
--h --help
-  --runas : The user account to run sync_gateway as; default (sync_gateway)
-  --runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)
-  --pidfile : The path where the .pid file will be created; default (/var/run/sync-gateway.pid)
-  --sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)
-  --cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)
-  --logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)
-  --servicename : The name of the service to install; default (sync_gateway)
+	-h --help
+	--runas=<The user account to run sync_gateway as; default (sync_gateway)>
+	--runbase=<The directory to run sync_gateway from; defaut (/home/sync_gateway)>
+	--sgpath=<The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)>
+	--cfgpath=<The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)>
+	--logsdir=<The path to the log file direcotry; default (/home/sync_gateway/logs)>
+	--servicename=<The name of the service to install; default (sync_gateway)>
 ```
 
 This script creates an init service to run a sync_gateway instance.
