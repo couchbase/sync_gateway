@@ -1110,7 +1110,7 @@
 		<row><td>ProgramFiles64Folder</td><td>TARGETDIR</td><td>.:Prog64~1|Program Files 64</td><td/><td>0</td><td/></row>
 		<row><td>ProgramFilesFolder</td><td>TARGETDIR</td><td>.:PROGRA~1|program files</td><td/><td>0</td><td/></row>
 		<row><td>ProgramMenuFolder</td><td>TARGETDIR</td><td>.:Programs</td><td/><td>3</td><td/></row>
-		<row><td>SERVICE</td><td>EXAMPLES</td><td>service</td><td/><td>0</td><td/></row>
+		<row><td>SERVICE</td><td>INSTALLDIR</td><td>service</td><td/><td>0</td><td/></row>
 		<row><td>SYNC_GATEWAY</td><td>COUCHBASE__INC.</td><td>SYNCGA~1|Sync Gateway</td><td/><td>0</td><td/></row>
 		<row><td>SendToFolder</td><td>TARGETDIR</td><td>.:SendTo</td><td/><td>3</td><td/></row>
 		<row><td>StartMenuFolder</td><td>TARGETDIR</td><td>.:STARTM~1|Start Menu</td><td/><td>3</td><td/></row>
