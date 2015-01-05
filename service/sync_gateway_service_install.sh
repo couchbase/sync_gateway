@@ -23,12 +23,12 @@ usage()
     echo ""
     echo "sync_gateway_service_install.sh"
     echo "    -h --help"
-    echo "    --runas : The user account to run sync_gateway as; default (sync_gateway)"
-    echo "    --runbase : The directory to run sync_gateway from; defaut (/home/sync_gateway)"
-    echo "    --sgpath : The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)"
-    echo "    --cfgpath : The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)"
-    echo "    --logsdir : The path to the log file direcotry; default (/home/sync_gateway/logs)"
-    echo "    --servicename : The name of the service to install; default (sync_gateway)"
+    echo "    --runas=<The user account to run sync_gateway as; default (sync_gateway)>"
+    echo "    --runbase=<The directory to run sync_gateway from; defaut (/home/sync_gateway)>"
+    echo "    --sgpath=<The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)>"
+    echo "    --cfgpath=<The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)>"
+    echo "    --logsdir=<The path to the log file direcotry; default (/home/sync_gateway/logs)>"
+    echo "    --servicename=<The name of the service to install; default (sync_gateway)>"
     echo ""
 }
  
@@ -98,8 +98,7 @@ while [ "$1" != "" ]; do
             exit 1
             ;;
     esac
-    shift
-    shift
+    shift 2
 done
 
 # If OS and VER were not provided on the command line get them for current env
