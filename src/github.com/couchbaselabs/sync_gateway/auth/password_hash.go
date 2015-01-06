@@ -13,7 +13,7 @@ import (
 	"crypto/sha1"
 	"sync"
 
-	"code.google.com/p/go.crypto/bcrypt"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Set of known-to-be-valid {password, bcryt-hash} pairs.
