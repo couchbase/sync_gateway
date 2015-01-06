@@ -76,6 +76,9 @@ while [ "$1" != "" ]; do
             ;;
         --runas)
             RUNAS_TEMPLATE_VAR=$VALUE
+            RUNBASE_TEMPLATE_VAR=`echo ~${VALUE}`
+            CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
+            LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
             ;;
         --runbase)
             RUNBASE_TEMPLATE_VAR=$VALUE
