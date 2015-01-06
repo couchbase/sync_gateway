@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
+	"github.com/couchbaselabs/walrus"
 )
 
 const ServerName = "Couchbase Sync Gateway"
@@ -88,6 +89,22 @@ func (h *handler) handleVacuum() error {
 	}
 	h.writeJSON(db.Body{"atts": attsDeleted})
 	return nil
+}
+
+func (h *handler) handleFlush() error {
+	if bucket, ok := h.db.Bucket.(walrus.DeleteableBucket); ok {
+		name := h.db.Name
+		config := h.server.GetDatabaseConfig(name)
+		h.server.RemoveDatabase(name)
+		err := bucket.CloseAndDelete()
+		_, err2 := h.server.AddDatabaseFromConfig(config)
+		if err == nil {
+			err = err2
+		}
+		return err
+	} else {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush")
+	}
 }
 
 func (h *handler) handleResync() error {

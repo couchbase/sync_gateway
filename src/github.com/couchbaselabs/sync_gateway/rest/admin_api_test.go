@@ -295,6 +295,23 @@ func TestSessionAPI(t *testing.T) {
 
 }
 
+func TestFlush(t *testing.T) {
+	var rt restTester
+	rt.createDoc(t, "doc1")
+	rt.createDoc(t, "doc2")
+	assertStatus(t, rt.sendRequest("GET", "/db/doc1", ""), 200)
+	assertStatus(t, rt.sendRequest("GET", "/db/doc2", ""), 200)
+
+	log.Printf("Flushing db...")
+	assertStatus(t, rt.sendAdminRequest("POST", "/db/_flush", ""), 200)
+	rt.setAdminParty(true) // needs to be re-enabled after flush since guest user got wiped
+
+	// After the flush, the db exists but the documents are gone:
+	assertStatus(t, rt.sendRequest("GET", "/db/", ""), 200)
+	assertStatus(t, rt.sendRequest("GET", "/db/doc1", ""), 404)
+	assertStatus(t, rt.sendRequest("GET", "/db/doc2", ""), 404)
+}
+
 func (rt *restTester) createSession(t *testing.T, username string) string {
 
 	response := rt.sendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
