@@ -7,14 +7,14 @@
         <key>ProgramArguments</key>
         <array>
             <string>${GATEWAY_TEMPLATE_VAR}</string>
-            <string>/opt/couchbase-sync-gateway/examples/admin_party.json</string>
+            <string>${CONFIG_TEMPLATE_VAR}</string>
         </array>
         <key>KeepAlive</key>
         <true/>
         <key>StandardOutPath</key>
-        <string>${GATEWAYROOT_TEMPLATE_VAR}/sync-gateway-access.log</string>
+        <string>${LOGS_TEMPLATE_VAR}/${SERVICE_NAME}_access.log</string> 
         <key>StandardErrorPath</key>
-        <string>${GATEWAYROOT_TEMPLATE_VAR}/sync-gateway-error.log</string>
+        <string>${LOGS_TEMPLATE_VAR}/${SERVICE_NAME}_error.log</string>
 </dict>
 </plist>
 
