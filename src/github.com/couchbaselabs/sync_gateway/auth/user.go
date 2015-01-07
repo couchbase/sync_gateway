@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"regexp"
 
-	"code.google.com/p/go.crypto/bcrypt"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	ch "github.com/couchbaselabs/sync_gateway/channels"

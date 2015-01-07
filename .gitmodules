@@ -40,3 +40,12 @@
 [submodule "vendor/src/github.com/natefinch/npipe"]
 	path = vendor/src/github.com/natefinch/npipe
 	url = https://github.com/natefinch/npipe
+[submodule "vendor/src/golang.org/x/net"]
+	path = vendor/src/golang.org/x/net
+	url = https://go.googlesource.com/net
+[submodule "vendor/src/golang.org/x/crypto"]
+	path = vendor/src/golang.org/x/crypto
+	url = https://go.googlesource.com/crypto
+[submodule "vendor/src/golang.org/x/text"]
+	path = vendor/src/golang.org/x/text
+	url = https://go.googlesource.com/text
