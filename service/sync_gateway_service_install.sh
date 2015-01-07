@@ -143,6 +143,13 @@ if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
     exit 1
 fi
 
+# If a /tmp/log_upr_client.sock file exists from a previous installation remove it
+if [ -f /tmp/log_upr_client.sock ]; then
+    rm /tmp/log_upr_client.sock > /dev/null
+fi
+
+
+
 #Install the service for the specific platform
 case $OS in
     Ubuntu)
