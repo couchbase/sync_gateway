@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -242,6 +243,14 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		}
 	}
 
+	// Initialize event handlers, if any:
+	if config.EventHandlers != nil {
+		// Process document commit event handlers
+		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+			return nil, err
+		}
+	}
+
 	// Register it so HTTP handlers can find it:
 	if err := sc.registerDatabase(dbcontext); err != nil {
 		dbcontext.Close()
@@ -249,6 +258,25 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	}
 	sc.setDatabaseConfig(config.name, config)
 	return dbcontext, nil
+}
+
+func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
+
+	for _, event := range events {
+		switch event.HandlerType {
+		case "webhook":
+			wh, err := db.NewWebhook(event.Url, event.Filter)
+			if err != nil {
+				base.Warn("Error creating webhook %v", err)
+				return err
+			}
+			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
+		default:
+			return errors.New(fmt.Sprintf("Unknown event handler type %s", event.HandlerType))
+		}
+
+	}
+	return nil
 }
 
 func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn string) error {
