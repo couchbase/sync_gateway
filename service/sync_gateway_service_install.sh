@@ -76,7 +76,11 @@ while [ "$1" != "" ]; do
             ;;
         --runas)
             RUNAS_TEMPLATE_VAR=$VALUE
-            RUNBASE_TEMPLATE_VAR=`echo ~${VALUE}`
+            if [ "$OS" != "Darwin" ]; then
+                RUNBASE_TEMPLATE_VAR=`getent passwd "$VALUE" | cut -d: -f 6`
+            else
+                RUNBASE_TEMPLATE_VAR=`eval "echo ~$VALUE"`
+            fi
             CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
             LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
             ;;
