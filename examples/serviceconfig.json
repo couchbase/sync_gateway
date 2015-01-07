@@ -1,0 +1,11 @@
+{
+	"log": ["HTTP+"],
+	"databases": {
+		"db": {
+			"server": "walrus:data",
+			"users": {
+				"GUEST": {"disabled": false, "admin_channels": ["*"] }
+			}
+		}
+	}
+}
