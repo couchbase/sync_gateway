@@ -10,6 +10,13 @@
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
       }
     },
+    "gaggle": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"gaggle",
+      "users": {
+        "GUEST": {"disabled": false, "admin_channels": ["*"]} 
+      }
+    },
     "chess-park": {
       "server":"http://172.23.121.42:8091",
       "bucket":"chess-park",
