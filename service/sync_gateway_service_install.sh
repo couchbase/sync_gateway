@@ -76,6 +76,13 @@ while [ "$1" != "" ]; do
             ;;
         --runas)
             RUNAS_TEMPLATE_VAR=$VALUE
+            if [ "$OS" != "Darwin" ]; then
+                RUNBASE_TEMPLATE_VAR=`getent passwd "$VALUE" | cut -d: -f 6`
+            else
+                RUNBASE_TEMPLATE_VAR=`eval "echo ~$VALUE"`
+            fi
+            CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
+            LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
             ;;
         --runbase)
             RUNBASE_TEMPLATE_VAR=$VALUE
@@ -140,7 +147,7 @@ fi
 case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
-            10|12|14)
+            12|14)
                 render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 service ${SERVICE_NAME} start
@@ -154,15 +161,6 @@ case $OS in
         ;;
     RedHat|CentOS)
         case $OS_MAJOR_VERSION in
-            5) 
-                render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
-                chmod 755 /etc/init.d/${SERVICE_NAME}
-                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
-                PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
-                chkconfig --add ${SERVICE_NAME}
-                chkconfig ${SERVICE_NAME} on
-                service ${SERVICE_NAME} start
-                ;;
             6)
                 render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
