@@ -243,6 +243,9 @@ loop:
 			if lastSeq.Seq > 0 { // start after end of last feed
 				options.Since = lastSeq
 			}
+			if h.db.IsClosed() {
+				break loop
+			}
 			feed, err = h.db.MultiChangesFeed(inChannels, options)
 			if err != nil || feed == nil {
 				return err

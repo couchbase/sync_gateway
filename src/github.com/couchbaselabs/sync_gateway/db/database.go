@@ -123,6 +123,10 @@ func (context *DatabaseContext) Close() {
 	context.Bucket = nil
 }
 
+func (context *DatabaseContext) IsClosed() bool {
+	return context.Bucket == nil
+}
+
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	return auth.NewAuthenticator(context.Bucket, context)

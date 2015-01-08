@@ -37,6 +37,7 @@ type changeCache struct {
 	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
 	channelCaches   map[string]*channelCache // A cache of changes for each channel
 	onChange        func(base.Set)           // Client callback that notifies of channel changes
+	stopped         bool                     // Set by the Stop method
 	lock            sync.RWMutex             // Coordinates access to struct fields
 }
 
@@ -73,8 +74,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 	c.lock.Lock()
-	c.channelCaches = nil
-	c.pendingLogs = nil
+	c.stopped = true
 	c.logsDisabled = true
 	c.lock.Unlock()
 }
@@ -347,6 +347,9 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 //////// CHANGE ACCESS:
 
 func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+	if c.stopped {
+		return nil, base.HTTPErrorf(503, "Database closed")
+	}
 	return c.getChannelCache(channelName).GetChanges(options)
 }
 

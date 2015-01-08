@@ -170,6 +170,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleResync)).Methods("POST")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
+	dbr.Handle("/_flush",
+		makeHandler(sc, adminPrivs, (*handler).handleFlush)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
