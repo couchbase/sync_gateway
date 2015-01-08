@@ -105,7 +105,7 @@ check_upstart_service () {
 
 # stop upstart service if it's running
 if check_upstart_service sync_gateway; then
-    service sync_gateway stop
+    stop sync_gateway
 fi
 
 #uninstall upstart service start at boot
