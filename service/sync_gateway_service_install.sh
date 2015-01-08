@@ -28,7 +28,6 @@ usage()
     echo "    --sgpath=<The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)>"
     echo "    --cfgpath=<The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)>"
     echo "    --logsdir=<The path to the log file direcotry; default (/home/sync_gateway/logs)>"
-    echo "    --servicename=<The name of the service to install; default (sync_gateway)>"
     echo ""
 }
  
@@ -109,9 +108,6 @@ while [ "$1" != "" ]; do
         --logsdir)
             LOGS_TEMPLATE_VAR=$VALUE
             ;;
-        --servicename)
-            SERVICE_NAME=$VALUE
-            ;;
         *)
             echo "ERROR: unknown parameter \"$PARAM\""
             usage
@@ -153,7 +149,7 @@ fi
 
 # If a /tmp/log_upr_client.sock file exists from a previous installation remove it
 if [ -f /tmp/log_upr_client.sock ]; then
-    rm /tmp/log_upr_client.sock > /dev/null
+    rm -f /tmp/log_upr_client.sock
 fi
 
 

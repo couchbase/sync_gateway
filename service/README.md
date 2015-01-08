@@ -1,7 +1,7 @@
 # Couchbase Sync Gateway Service installation script
 
 The shell script sync_gateway_service_install.sh will install sync_gateway as a service on Ubuntu 12/14
-, RedHat/CentOS 6/7 and MAC OS X 10.10 and later. This installation script is not available for MS Windows.
+, RedHat/CentOS 6/7 and MAC OS X 10.9 and later. This installation script is not available for MS Windows.
 
 The script determines the type of system it is running on, then copies one of the service templates in script_templates
 to the appropriate service directoy. The template is also populated with system specific configuration properties.
@@ -21,7 +21,6 @@ sync_gateway_service_install.sh
 	--sgpath=<The path to the sync_gateway executable; default (/opt/couchbase-sync-gateway/bin/sync_gateway)>
 	--cfgpath=<The path to the sync_gateway JSON config file; default (/home/sync_gateway/sync_gateway.json)>
 	--logsdir=<The path to the log file direcotry; default (/home/sync_gateway/logs)>
-	--servicename=<The name of the service to install; default (sync_gateway)>
 ```
 
 This script creates an init service to run a sync_gateway instance.
