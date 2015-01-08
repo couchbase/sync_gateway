@@ -11,6 +11,7 @@ Environment=\"LOGS=${LOGS_TEMPLATE_VAR}\"
 Environment=\"NAME=${SERVICE_NAME}\"
 Type=simple
 User=${RUNAS_TEMPLATE_VAR}
+WorkingDirectory=${RUNBASE_TEMPLATE_VAR}
 ExecStartPre=/bin/mkdir -p ${LOGS_TEMPLATE_VAR}
 ExecStartPre=/bin/chown -R ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${LOGS_TEMPLATE_VAR}
 ExecStartPre=/bin/mkdir -p ${RUNBASE_TEMPLATE_VAR}/data
