@@ -11,8 +11,8 @@ RUNBASE_TEMPLATE_VAR=/home/sync_gateway
 PIDFILE_TEMPLATE_VAR=/var/run/sync-gateway.pid
 GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sync-gateway
 GATEWAY_TEMPLATE_VAR=/opt/couchbase-sync-gateway/bin/sync_gateway
-CONFIG_TEMPLATE_VAR=/home/sync_gateway/sync_gateway.json
-LOGS_TEMPLATE_VAR=/home/sync_gateway/logs
+CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
+LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 
 
 usage()
@@ -58,7 +58,20 @@ render_template() {
   eval "echo \"$(cat $1)\""
 }
 
-#script start here
+#
+#script starts here
+#
+
+#Figure out the OS type of the current system
+ostype
+
+#If the OS is MAC OSX, set the default user account home path to /Users/sync_gateway
+if [ "$OS" == "Darwin" ]; then
+    RUNBASE_TEMPLATE_VAR=/Users/sync_gateway
+    CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
+    LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
+fi
+
 # Make sure we are running with root privilages
 if [ `id -u` != 0 ]; then
     echo "This script should be run as root." > /dev/stderr
@@ -107,11 +120,6 @@ while [ "$1" != "" ]; do
     esac
     shift
 done
-
-# If OS and VER were not provided on the command line get them for current env
-if  ["$OS" = ""] && ["$VER" = ""] ; then
-    ostype
-fi
 
 # Check that runtime user account exists
 if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
