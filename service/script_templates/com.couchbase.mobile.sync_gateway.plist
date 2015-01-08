@@ -4,6 +4,10 @@
 <dict>
         <key>Label</key>
         <string>com.couchbase.mobile.sync_gateway</string>
+        <key>UserName</key>key>
+        <string>${RUNAS_TEMPLATE_VAR}</string>
+        <key>WorkingDirectory</key>
+        <string>${RUNBASE_TEMPLATE_VAR}</string>
         <key>ProgramArguments</key>
         <array>
             <string>${GATEWAY_TEMPLATE_VAR}</string>

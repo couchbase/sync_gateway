@@ -152,8 +152,6 @@ if [ -f /tmp/log_upr_client.sock ]; then
     rm -f /tmp/log_upr_client.sock
 fi
 
-
-
 #Install the service for the specific platform
 case $OS in
     Ubuntu)
@@ -191,7 +189,12 @@ case $OS in
         esac
         ;;
     Darwin)
+        mkdir -p ${LOGS_TEMPLATE_VAR}
+        chown -R ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${LOGS}
+        mkdir -p ${RUNBASE_TEMPLATE_VAR}/data
+        chown -R ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
         render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+        cp $SRCCFGDIR/$SRCCFG ${CONFIG_TEMPLATE_VAR}
         launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         ;;
     *)
