@@ -82,6 +82,7 @@ type DbConfig struct {
 	ImportDocs    interface{}                    `json:"import_docs,omitempty"`    // false, true, or "continuous"
 	Shadow        *ShadowConfig                  `json:"shadow,omitempty"`         // External bucket to shadow
 	EventHandlers *EventHandlerConfig            `json:"event_handlers,omitempty"` // Event handlers (webhook)
+	FeedType      string                         `json:"feed_type,omitempty"`      // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -102,6 +103,7 @@ type ShadowConfig struct {
 	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
 	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
+	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 }
 
 type EventHandlerConfig struct {
@@ -168,12 +170,12 @@ func (dbConfig *DbConfig) setup(name string) error {
 
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
-	return dbConfig.Username, dbConfig.Password, ""
+	return dbConfig.Username, dbConfig.Password, *dbConfig.Bucket
 }
 
 // Implementation of AuthHandler interface for ShadowConfig
 func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
-	return shadowConfig.Username, shadowConfig.Password, ""
+	return shadowConfig.Username, shadowConfig.Password, shadowConfig.Bucket
 }
 
 // Reads a ServerConfig from raw data
