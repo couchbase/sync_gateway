@@ -57,6 +57,14 @@ render_template() {
   eval "echo \"$(cat $1)\""
 }
 
+# sets up the output directories for logs and data
+setup_output_dirs() {
+    mkdir -p ${LOGS_TEMPLATE_VAR}
+    chown -R ${RUNAS_TEMPLATE_VAR} ${LOGS}
+    mkdir -p ${RUNBASE_TEMPLATE_VAR}/data
+    chown -R ${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
+}
+
 #
 #script starts here
 #
@@ -157,6 +165,7 @@ case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
+                setup_output_dirs
                 render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 service ${SERVICE_NAME} start
@@ -171,11 +180,13 @@ case $OS in
     RedHat|CentOS)
         case $OS_MAJOR_VERSION in
             6)
+                setup_output_dirs
                 render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 initctl start ${SERVICE_NAME}
                 ;;
             7)
+                setup_output_dirs
                 render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
                 cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 systemctl enable ${SERVICE_NAME}
@@ -189,10 +200,7 @@ case $OS in
         esac
         ;;
     Darwin)
-        mkdir -p ${LOGS_TEMPLATE_VAR}
-        chown -R ${RUNAS_TEMPLATE_VAR} ${LOGS}
-        mkdir -p ${RUNBASE_TEMPLATE_VAR}/data
-        chown -R ${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
+        setup_output_dirs
         render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         cp $SRCCFGDIR/$SRCCFG ${CONFIG_TEMPLATE_VAR}
         launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
