@@ -60,7 +60,7 @@ render_template() {
 # sets up the output directories for logs and data
 setup_output_dirs() {
     mkdir -p ${LOGS_TEMPLATE_VAR}
-    chown -R ${RUNAS_TEMPLATE_VAR} ${LOGS}
+    chown -R ${RUNAS_TEMPLATE_VAR}  ${LOGS_TEMPLATE_VAR}
     mkdir -p ${RUNBASE_TEMPLATE_VAR}/data
     chown -R ${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
 }
@@ -73,7 +73,7 @@ setup_output_dirs() {
 ostype
 
 #If the OS is MAC OSX, set the default user account home path to /Users/sync_gateway
-if [ "$OS" == "Darwin" ]; then
+if [ "$OS" = "Darwin" ]; then
     RUNBASE_TEMPLATE_VAR=/Users/sync_gateway
     CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
     LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
