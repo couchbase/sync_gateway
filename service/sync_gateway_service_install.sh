@@ -147,8 +147,8 @@ if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
     exit 1
 fi
 
-# If a /tmp/log_upr_client.sock file exists from a previous installation remove it
-if [ -f /tmp/log_upr_client.sock ]; then
+# If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
+if [ -S /tmp/log_upr_client.sock ]; then
     rm -f /tmp/log_upr_client.sock
 fi
 
@@ -190,9 +190,9 @@ case $OS in
         ;;
     Darwin)
         mkdir -p ${LOGS_TEMPLATE_VAR}
-        chown -R ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${LOGS}
+        chown -R ${RUNAS_TEMPLATE_VAR} ${LOGS}
         mkdir -p ${RUNBASE_TEMPLATE_VAR}/data
-        chown -R ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
+        chown -R ${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
         render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         cp $SRCCFGDIR/$SRCCFG ${CONFIG_TEMPLATE_VAR}
         launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist

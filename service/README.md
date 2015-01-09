@@ -24,9 +24,6 @@ sync_gateway_service_install.sh
 ```
 
 This script creates an init service to run a sync_gateway instance.
-If you want to install more than one service instance
-create additional services with different names.
-
 
 The shell script must be run using the root account or using 'sudo' from a non privilaged account.
 
