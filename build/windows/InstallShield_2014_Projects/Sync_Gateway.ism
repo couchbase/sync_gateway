@@ -340,7 +340,6 @@
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
 		<row><td>AllOtherFiles</td><td>{313AA091-BBF1-45B2-BF63-4810EA8A2F03}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>AllOtherFiles2</td><td>{A575BC8B-0B03-4ED4-A1FF-08B3F354A2AE}</td><td>SERVICE</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sync_gateway.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sync_gateway.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
@@ -1110,7 +1109,6 @@
 		<row><td>ProgramFiles64Folder</td><td>TARGETDIR</td><td>.:Prog64~1|Program Files 64</td><td/><td>0</td><td/></row>
 		<row><td>ProgramFilesFolder</td><td>TARGETDIR</td><td>.:PROGRA~1|program files</td><td/><td>0</td><td/></row>
 		<row><td>ProgramMenuFolder</td><td>TARGETDIR</td><td>.:Programs</td><td/><td>3</td><td/></row>
-		<row><td>SERVICE</td><td>EXAMPLES</td><td>service</td><td/><td>0</td><td/></row>
 		<row><td>SYNC_GATEWAY</td><td>COUCHBASE__INC.</td><td>SYNCGA~1|Sync Gateway</td><td/><td>0</td><td/></row>
 		<row><td>SendToFolder</td><td>TARGETDIR</td><td>.:SendTo</td><td/><td>3</td><td/></row>
 		<row><td>StartMenuFolder</td><td>TARGETDIR</td><td>.:STARTM~1|Start Menu</td><td/><td>3</td><td/></row>
@@ -1820,7 +1818,6 @@
 		<col key="yes" def="s72">Component_</col>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles</td></row>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles1</td></row>
-		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles2</td></row>
 		<row><td>Sync_Gateway_Files</td><td>IS_ININSTALL_SHORTCUT</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sync_gateway.exe</td></row>
 	</table>
@@ -1990,7 +1987,6 @@
 		<col def="S0">Miscellaneous</col>
 		<row><td>AllOtherFiles</td><td/><td/><td>_18BC31A1_BA70_4DC6_A80A_B57B53686816_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>AllOtherFiles1</td><td/><td/><td>_E0898BA1_B9A4_40FB_BE7A_DED099FFD6CA_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>AllOtherFiles2</td><td/><td/><td>_5645B66A_2F0E_46ED_BC0E_9BC7A5D8BC19_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td/><td/><td>_293EBFE3_A3F9_4726_9D49_510ED0C578AB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sync_gateway.exe</td><td/><td/><td>_074FBDC3_5A35_4CDB_940C_23B4369E994A_FILTER</td><td/><td/><td/><td/></row>
 	</table>
@@ -2086,7 +2082,6 @@
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
 		<row><td>AllOtherFiles1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\examples</td><td>4</td><td/><td/><td>10</td></row>
-		<row><td>AllOtherFiles2</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\service</td><td>4</td><td/><td/><td>10</td></row>
 	</table>
 
 	<table name="ISFeatureDIMReferences">
