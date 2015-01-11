@@ -255,3 +255,19 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 	}
 	return user
 }
+
+// Registers a new user account based on the given verified email address.
+// Username will be the same as the verified email address. Password will be random.
+// The user will have access to no channels.
+func (auth *Authenticator) RegisterNewUser(username, email string) (User, error) {
+	user, err := auth.NewUser(username, base.GenerateRandomSecret(), base.Set{})
+	if err != nil {
+		return nil, err
+	}
+	user.SetEmail(email)
+	err = auth.Save(user)
+	if err != nil {
+		return nil, err
+	}
+	return user, err
+}

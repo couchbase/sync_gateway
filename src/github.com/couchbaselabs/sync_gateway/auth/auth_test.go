@@ -375,3 +375,36 @@ func TestRoleInheritance(t *testing.T) {
 	assert.True(t, user2.CanSeeChannel("hoopy"))
 	assert.Equals(t, user2.AuthorizeAllChannels(ch.SetOf("britain", "dull", "hoopiest")), nil)
 }
+
+func TestRegisterUser(t *testing.T) {
+	// Register user based on name, email
+	auth := NewAuthenticator(gTestBucket, nil)
+	user, err := auth.RegisterNewUser("ValidName", "foo@example.com")
+	assert.Equals(t, user.Name(), "ValidName")
+	assert.Equals(t, user.Email(), "foo@example.com")
+	assert.Equals(t, err, nil)
+
+	// verify retrieval by username
+	user, err = auth.GetUser("ValidName")
+	assert.Equals(t, user.Name(), "ValidName")
+	assert.Equals(t, err, nil)
+
+	// verify retrieval by email
+	user, err = auth.GetUserByEmail("foo@example.com")
+	assert.Equals(t, user.Name(), "ValidName")
+	assert.Equals(t, err, nil)
+
+	// Register user based on email, retrieve based on username, email
+	user, err = auth.RegisterNewUser("bar@example.com", "bar@example.com")
+	assert.Equals(t, user.Name(), "bar@example.com")
+	assert.Equals(t, user.Email(), "bar@example.com")
+	assert.Equals(t, err, nil)
+
+	user, err = auth.GetUser("UnknownName")
+	assert.Equals(t, user, nil)
+	assert.Equals(t, err, nil)
+
+	user, err = auth.GetUserByEmail("bar@example.com")
+	assert.Equals(t, user.Name(), "bar@example.com")
+	assert.Equals(t, err, nil)
+}

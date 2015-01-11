@@ -101,13 +101,60 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 		}
 
 		// Create a User with the given email address as username and a random password.
-		user, err = h.registerNewUser(email)
+		user, err = h.db.Authenticator().RegisterNewUser(email, email)
 		if err != nil {
 			return err
 		}
 	}
 	return h.makeSession(user)
 
+}
+
+// MakeSessionFromUserAndEmail first attempts to find the user by username.  If found, updates the users's
+// email if different. If no match for username, attempts to find by the user by email.
+// If not found, and createUserIfNeeded=true, creates a new user based on username, email.
+func (h *handler) makeSessionFromNameAndEmail(username, email string, createUserIfNeeded bool) error {
+
+	// Username and email are verified. Look up the user and make a login session for her - first
+	// attempt lookup by name
+	user, err := h.db.Authenticator().GetUser(username)
+	if err != nil {
+		return err
+	}
+
+	// If user found, check whether the email needs to be updated (e.g. user has changed email in
+	// external auth system)
+	if user != nil {
+		if email != user.Email() {
+			if err := user.SetEmail(email); err == nil {
+				h.db.Authenticator().Save(user)
+			}
+		}
+	} else {
+		// User not found by name.  Attempt user lookup by email.  This provides backward
+		// compatibility for users that were originally created with id = email
+		user, err = h.db.Authenticator().GetUserByEmail(email)
+		if err != nil {
+			return err
+		}
+	}
+	if user == nil {
+		// The user/email are validated, but we don't have a user for either
+		if !createUserIfNeeded {
+			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
+		}
+
+		if len(email) < 1 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Cannot register new user: email is missing")
+		}
+
+		// Create a User with the given email address as username and a random password.
+		user, err = h.db.Authenticator().RegisterNewUser(username, email)
+		if err != nil {
+			return err
+		}
+	}
+	return h.makeSession(user)
 }
 
 // ADMIN API: Generates a login session for a user and returns the session ID and cookie name.
