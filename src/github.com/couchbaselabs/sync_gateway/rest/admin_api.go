@@ -51,6 +51,7 @@ func (h *handler) handleDeleteDB() error {
 	if !h.server.RemoveDatabase(h.db.Name) {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
+	h.response.Write([]byte("{}"))
 	return nil
 }
 
