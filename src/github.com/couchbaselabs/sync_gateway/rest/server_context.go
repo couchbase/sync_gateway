@@ -106,11 +106,12 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		if err != nil {
 			return nil, err
 		}
-		if dbc, err = sc.AddDatabaseFromConfig(config); err != nil {
+		if dbc, err = sc.getOrAddDatabaseFromConfig(config, true); err != nil {
 			return nil, err
 		}
-		return dbc, nil
 	}
+	return dbc, nil
+
 }
 
 func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
@@ -118,12 +119,6 @@ func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
 	config := sc.config.Databases[name]
 	sc.lock.RUnlock()
 	return config
-}
-
-func (sc *ServerContext) setDatabaseConfig(name string, config *DbConfig) {
-	sc.lock.Lock()
-	sc.config.Databases[name] = config
-	sc.lock.Unlock()
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
@@ -137,21 +132,14 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
-func (sc *ServerContext) registerDatabase(dbcontext *db.DatabaseContext) error {
+// Adds a database to the ServerContext.  Attempts a read after it gets the write
+// lock to see if it's already been added by another process. If so, returns either the
+// existing DatabaseContext or an error based on the useExisting flag.
+func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
+	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	name := dbcontext.Name
-	if sc.databases_[name] != nil {
-		return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
-			"Duplicate database name %q", name)
-	}
-	sc.databases_[name] = dbcontext
-	return nil
-}
-
-// Adds a database to the ServerContext given its configuration.
-func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseContext, error) {
 	server := "http://localhost:8091"
 	pool := "default"
 	bucketName := config.name
@@ -169,6 +157,16 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	if dbName == "" {
 		dbName = bucketName
 	}
+
+	if sc.databases_[dbName] != nil {
+		if useExisting {
+			return sc.databases_[dbName], nil
+		} else {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+				"Duplicate database name %q", dbName)
+		}
+	}
+
 	base.Log("Opening db /%s as bucket %q, pool %q, server <%s>",
 		dbName, bucketName, pool, server)
 
@@ -263,12 +261,17 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	}
 
 	// Register it so HTTP handlers can find it:
-	if err := sc.registerDatabase(dbcontext); err != nil {
-		dbcontext.Close()
-		return nil, err
-	}
-	sc.setDatabaseConfig(config.name, config)
+	sc.databases_[dbcontext.Name] = dbcontext
+
+	// Save the config
+	sc.config.Databases[config.name] = config
 	return dbcontext, nil
+}
+
+// Adds a database to the ServerContext given its configuration.  If an existing config is found
+// for the name, returns an error.
+func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(config, false)
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
