@@ -94,6 +94,33 @@ exit 0
 
 %preun
 
+check_upstart_service () {
+    if [ -f /etc/init/sync_gateway.conf ]; then
+        status $1 | grep -q "^$1 start" > /dev/null
+        return $?
+    else
+        return 1
+    fi
+}
+
+# stop upstart service if it's running
+if check_upstart_service sync_gateway; then
+    stop sync_gateway
+fi
+
+#uninstall upstart service start at boot
+if [ -f /etc/init/sync_gateway.conf ]; then
+    rm /etc/init/sync_gateway.conf
+fi
+
+# stop systemd service and disable start at boot
+if [ -f /usr/lib/systemd/system/sync_gateway.service ]; then
+    systemctl stop sync_gateway
+    systemctl disable sync_gateway
+    rm /usr/lib/systemd/system/sync_gateway.service
+fi
+
+
 if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
   RPM_INSTALL_PREFIX0=@@PREFIX@@
 fi
@@ -107,6 +134,17 @@ cat <<EOF
 You have successfully uninstalled Couchbase Sync Gateway.
 
 EOF
+
+exit 0
+
+%postun
+
+#kill any sync_gateway processes started by third party, sync_gateway has been uninstalled
+ps aux | grep -v grep | grep bin/sync_gateway | awk '{print $2}' |
+while read line; do
+  # kill process
+  kill -9 $line
+done
 
 exit 0
 
