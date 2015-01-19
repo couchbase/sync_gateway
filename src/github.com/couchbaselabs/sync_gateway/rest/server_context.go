@@ -12,10 +12,12 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -104,11 +106,12 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		if err != nil {
 			return nil, err
 		}
-		if dbc, err = sc.AddDatabaseFromConfig(config); err != nil {
+		if dbc, err = sc.getOrAddDatabaseFromConfig(config, true); err != nil {
 			return nil, err
 		}
-		return dbc, nil
 	}
+	return dbc, nil
+
 }
 
 func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
@@ -116,12 +119,6 @@ func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
 	config := sc.config.Databases[name]
 	sc.lock.RUnlock()
 	return config
-}
-
-func (sc *ServerContext) setDatabaseConfig(name string, config *DbConfig) {
-	sc.lock.Lock()
-	sc.config.Databases[name] = config
-	sc.lock.Unlock()
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
@@ -135,24 +132,17 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
-func (sc *ServerContext) registerDatabase(dbcontext *db.DatabaseContext) error {
+// Adds a database to the ServerContext.  Attempts a read after it gets the write
+// lock to see if it's already been added by another process. If so, returns either the
+// existing DatabaseContext or an error based on the useExisting flag.
+func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
+	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	name := dbcontext.Name
-	if sc.databases_[name] != nil {
-		return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
-			"Duplicate database name %q", name)
-	}
-	sc.databases_[name] = dbcontext
-	return nil
-}
-
-// Adds a database to the ServerContext given its configuration.
-func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseContext, error) {
 	server := "http://localhost:8091"
 	pool := "default"
-	bucketName := config.Name
+	bucketName := config.name
 
 	if config.Server != nil {
 		server = *config.Server
@@ -163,10 +153,20 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 	if config.Bucket != nil {
 		bucketName = *config.Bucket
 	}
-	dbName := config.Name
+	dbName := config.name
 	if dbName == "" {
 		dbName = bucketName
 	}
+
+	if sc.databases_[dbName] != nil {
+		if useExisting {
+			return sc.databases_[dbName], nil
+		} else {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+				"Duplicate database name %q", dbName)
+		}
+	}
+
 	base.Logf("Opening db /%s as bucket %q, pool %q, server <%s>",
 		dbName, bucketName, pool, server)
 
@@ -242,13 +242,55 @@ func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseCo
 		}
 	}
 
-	// Register it so HTTP handlers can find it:
-	if err := sc.registerDatabase(dbcontext); err != nil {
-		dbcontext.Close()
-		return nil, err
+	// Initialize event handlers, if any:
+	if config.EventHandlers != nil {
+		// Process document commit event handlers
+		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+			return nil, err
+		}
+		// WaitForProcess uses string, to support both omitempty and zero values
+		customWaitTime := int64(-1)
+		if config.EventHandlers.WaitForProcess != "" {
+			customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
+			if err != nil {
+				customWaitTime = -1
+				base.Warn("Error parsing wait_for_process from config, using default %s", err)
+			}
+		}
+		dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
 	}
-	sc.setDatabaseConfig(config.Name, config)
+
+	// Register it so HTTP handlers can find it:
+	sc.databases_[dbcontext.Name] = dbcontext
+
+	// Save the config
+	sc.config.Databases[config.name] = config
 	return dbcontext, nil
+}
+
+// Adds a database to the ServerContext given its configuration.  If an existing config is found
+// for the name, returns an error.
+func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(config, false)
+}
+
+func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
+
+	for _, event := range events {
+		switch event.HandlerType {
+		case "webhook":
+			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout)
+			if err != nil {
+				base.Warn("Error creating webhook %v", err)
+				return err
+			}
+			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
+		default:
+			return errors.New(fmt.Sprintf("Unknown event handler type %s", event.HandlerType))
+		}
+
+	}
+	return nil
 }
 
 func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn string) error {
@@ -389,7 +431,7 @@ func (sc *ServerContext) startStatsReporter() {
 			sc.reportStats()
 		}
 	}()
-	base.Logf("Will report server stats for %q every %v",
+	base.Log("Will report server stats for %q every %v",
 		*sc.config.DeploymentID, interval)
 }
 

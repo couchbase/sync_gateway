@@ -69,18 +69,19 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	Name       string                         `json:"name"`                  // Database name in REST API (stored as key in JSON)
-	Server     *string                        `json:"server"`                // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username   string                         `json:"username,omitempty"`    // Username for authenticating to server
-	Password   string                         `json:"password,omitempty"`    // Password for authenticating to server
-	Bucket     *string                        `json:"bucket"`                // Bucket name on server; defaults to same as 'name'
-	Pool       *string                        `json:"pool"`                  // Couchbase pool name, default "default"
-	Sync       *string                        `json:"sync"`                  // Sync function defines which users can see which data
-	Users      map[string]*db.PrincipalConfig `json:"users,omitempty"`       // Initial user accounts
-	Roles      map[string]*db.PrincipalConfig `json:"roles,omitempty"`       // Initial roles
-	RevsLimit  *uint32                        `json:"revs_limit,omitempty"`  // Max depth a document's revision tree can grow to
-	ImportDocs interface{}                    `json:"import_docs,omitempty"` // false, true, or "continuous"
-	Shadow     *ShadowConfig                  `json:"shadow,omitempty"`      // External bucket to shadow
+	Name          string                         `json:"name"`                     // Database name in REST API (stored as key in JSON)
+	Server        *string                        `json:"server"`                   // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username      string                         `json:"username,omitempty"`       // Username for authenticating to server
+	Password      string                         `json:"password,omitempty"`       // Password for authenticating to server
+	Bucket        *string                        `json:"bucket"`                   // Bucket name on server; defaults to same as 'name'
+	Pool          *string                        `json:"pool"`                     // Couchbase pool name, default "default"
+	Sync          *string                        `json:"sync"`                     // Sync function defines which users can see which data
+	Users         map[string]*db.PrincipalConfig `json:"users,omitempty"`          // Initial user accounts
+	Roles         map[string]*db.PrincipalConfig `json:"roles,omitempty"`          // Initial roles
+	RevsLimit     *uint32                        `json:"revs_limit,omitempty"`     // Max depth a document's revision tree can grow to
+	ImportDocs    interface{}                    `json:"import_docs,omitempty"`    // false, true, or "continuous"
+	Shadow        *ShadowConfig                  `json:"shadow,omitempty"`         // External bucket to shadow
+	EventHandlers *EventHandlerConfig            `json:"event_handlers,omitempty"` // Event handlers (webhook)
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -103,10 +104,23 @@ type ShadowConfig struct {
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
 }
 
+type EventHandlerConfig struct {
+	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
+	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
+	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
+}
+
+type EventConfig struct {
+	HandlerType string `json:"handler"`           // Handler type
+	Url         string `json:"url,omitempty"`     // Url (webhook)
+	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+}
+
 func (dbConfig *DbConfig) setup(name string) error {
-	dbConfig.Name = name
+	dbConfig.name = name
 	if dbConfig.Bucket == nil {
-		dbConfig.Bucket = &dbConfig.Name
+		dbConfig.Bucket = &dbConfig.name
 	}
 	if dbConfig.Server == nil {
 		dbConfig.Server = &DefaultServer
@@ -153,13 +167,13 @@ func (dbConfig *DbConfig) setup(name string) error {
 }
 
 // Implementation of AuthHandler interface for DbConfig
-func (dbConfig *DbConfig) GetCredentials() (string, string) {
-	return dbConfig.Username, dbConfig.Password
+func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
+	return dbConfig.Username, dbConfig.Password, ""
 }
 
 // Implementation of AuthHandler interface for ShadowConfig
-func (shadowConfig *ShadowConfig) GetCredentials() (string, string) {
-	return shadowConfig.Username, shadowConfig.Password
+func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
+	return shadowConfig.Username, shadowConfig.Password, ""
 }
 
 // Reads a ServerConfig from raw data
@@ -343,7 +357,7 @@ func ParseCommandLine() *ServerConfig {
 			Pretty:           *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
-					Name:   *dbName,
+					name:   *dbName,
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,
