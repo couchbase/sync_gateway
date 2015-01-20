@@ -81,13 +81,13 @@ func (h *handler) handlePersonaPOST() error {
 	}
 
 	// OK, now verify it:
-	base.Log("Persona: Verifying assertion %q for %q", params.Assertion, origin)
+	base.Logf("Persona: Verifying assertion %q for %q", params.Assertion, origin)
 	verifiedInfo, err := VerifyPersona(params.Assertion, origin)
 	if err != nil {
-		base.Log("Persona: Failed verify: %v", err)
+		base.Logf("Persona: Failed verify: %v", err)
 		return err
 	}
-	base.Log("Persona: Logged in %q!", verifiedInfo.Email)
+	base.Logf("Persona: Logged in %q!", verifiedInfo.Email)
 
 	createUserIfNeeded := h.server.config.Persona.Register
 	return h.makeSessionFromEmail(verifiedInfo.Email, createUserIfNeeded)

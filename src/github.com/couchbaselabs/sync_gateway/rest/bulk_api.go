@@ -395,7 +395,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.Log("\tBulkDocs: Doc %q --> %d %s (%v)", docid, code, msg, err)
+			base.Logf("\tBulkDocs: Doc %q --> %d %s (%v)", docid, code, msg, err)
 			err = nil // wrote it to output already; not going to return it
 		} else {
 			status["rev"] = revid
