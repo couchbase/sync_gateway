@@ -618,7 +618,7 @@ func TestImport(t *testing.T) {
 
 	// Now they're visible:
 	doc, err = db.GetDoc("alreadyHere1")
-	base.Log("doc = %+v", doc)
+	base.Logf("doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")
 }

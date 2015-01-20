@@ -82,7 +82,7 @@ func ParseLogFlags(flags []string) {
 		}
 	}
 	logLock.Unlock()
-	Log("Enabling logging: %s", flags)
+	Logf("Enabling logging: %s", flags)
 }
 
 func GetLogKeys() map[string]bool {
@@ -134,7 +134,18 @@ func LogTo(key string, format string, args ...interface{}) {
 }
 
 // Logs a message to the console.
-func Log(format string, args ...interface{}) {
+func Log(message string) {
+	logLock.RLock()
+	ok := logLevel <= 1
+	logLock.RUnlock()
+
+	if ok {
+		logger.Printf(message)
+	}
+}
+
+// Logs a formatted message to the console.
+func Logf(format string, args ...interface{}) {
 	logLock.RLock()
 	ok := logLevel <= 1
 	logLock.RUnlock()

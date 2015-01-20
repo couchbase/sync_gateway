@@ -128,7 +128,7 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 		nextSequence := c.nextSequence
 		c.lock.Unlock()
 		if nextSequence >= sequence+1 {
-			base.Log("waitForSequence(%d) took %d ms", sequence, i*100)
+			base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 			return
 		}
 		time.Sleep(100 * time.Millisecond)

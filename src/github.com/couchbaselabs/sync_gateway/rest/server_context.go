@@ -101,7 +101,7 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	} else {
 		// Let's ask the config server if it knows this database:
-		base.Log("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
+		base.Logf("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
 		config, err := sc.getDbConfigFromServer(name)
 		if err != nil {
 			return nil, err
@@ -142,7 +142,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	server := "http://localhost:8091"
 	pool := "default"
-	bucketName := config.name
+	bucketName := config.Name
 
 	if config.Server != nil {
 		server = *config.Server
@@ -153,7 +153,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	if config.Bucket != nil {
 		bucketName = *config.Bucket
 	}
-	dbName := config.name
+	dbName := config.Name
 	if dbName == "" {
 		dbName = bucketName
 	}
@@ -167,7 +167,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 	}
 
-	base.Log("Opening db /%s as bucket %q, pool %q, server <%s>",
+	base.Logf("Opening db /%s as bucket %q, pool %q, server <%s>",
 		dbName, bucketName, pool, server)
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
@@ -224,7 +224,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	}
 
 	if dbcontext.ChannelMapper == nil {
-		base.Log("Using default sync function 'channel(doc.channels)' for database %q", dbName)
+		base.Logf("Using default sync function 'channel(doc.channels)' for database %q", dbName)
 	}
 
 	// Create default users & roles:
@@ -264,7 +264,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config
-	sc.config.Databases[config.name] = config
+	sc.config.Databases[config.Name] = config
 	return dbcontext, nil
 }
 
@@ -299,7 +299,7 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 		return err
 	}
 	// Sync function has changed:
-	base.Log("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", dbcontext.Name)
+	base.Logf("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", dbcontext.Name)
 	return nil
 }
 
@@ -340,7 +340,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	//Remove credentials from server URL before logging
 	url, err := couchbase.ParseURL(spec.Server)
 	if err == nil {
-		base.Log("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", dbcontext.Name, spec.BucketName, spec.PoolName, url.Scheme, url.Host, url.Path)
+		base.Logf("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", dbcontext.Name, spec.BucketName, spec.PoolName, url.Scheme, url.Host, url.Path)
 	}
 	return nil
 }
@@ -353,7 +353,7 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	if context == nil {
 		return false
 	}
-	base.Log("Closing db /%s (bucket %q)", context.Name, context.Bucket.GetName())
+	base.Logf("Closing db /%s (bucket %q)", context.Name, context.Bucket.GetName())
 	context.Close()
 	delete(sc.databases_, dbName)
 	return true
@@ -377,7 +377,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		} else if isGuest {
 			base.Log("    Reset guest user to config")
 		} else {
-			base.Log("    Created %s %q", what, name)
+			base.Logf("    Created %s %q", what, name)
 		}
 	}
 	return nil
@@ -431,7 +431,7 @@ func (sc *ServerContext) startStatsReporter() {
 			sc.reportStats()
 		}
 	}()
-	base.Log("Will report server stats for %q every %v",
+	base.Logf("Will report server stats for %q every %v",
 		*sc.config.DeploymentID, interval)
 }
 
@@ -451,7 +451,7 @@ func (sc *ServerContext) reportStats() {
 	if stats == nil {
 		return // No activity
 	}
-	base.Log("Reporting server stats to %s ...", kStatsReportURL)
+	base.Logf("Reporting server stats to %s ...", kStatsReportURL)
 	body, _ := json.Marshal(stats)
 	bodyReader := bytes.NewReader(body)
 	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
