@@ -47,7 +47,7 @@ func init() {
 		LongVersionString = fmt.Sprintf("%s/%s(%s%.7s)",
 			ServerName, BuildVersionString, BuildNumberString, VersionCommitSHA)
 
-		VersionString = fmt.Sprintf("%s/%.2f", ServerName, VersionNumber)
+		VersionString = fmt.Sprintf("%s/%s", ServerName, BuildVersionString)
 	} else {
 		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
 		VersionString = fmt.Sprintf("%s/unofficial", ServerName)
