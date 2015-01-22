@@ -513,6 +513,25 @@ func TestRevsDiff(t *testing.T) {
 		"rd9": RevDiffResponse{"missing": []string{"1-a", "2-b", "3-c"}}})
 }
 
+func TestOpenRevs(t *testing.T) {
+	var rt restTester
+
+	// Create some docs:
+	input := `{"new_edits":false, "docs": [
+                    {"_id": "or1", "_rev": "12-abc", "n": 1,
+                     "_revisions": {"start": 12, "ids": ["abc", "eleven", "ten", "nine"]}}
+              ]}`
+	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 201)
+
+	response = rt.sendRequest("GET", `/db/or1?open_revs=["12-abc","10-ten"]`, "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, response.Body.String(), `[
+{"_id":"or1","_rev":"12-abc","_revisions":{"ids":["abc","eleven","ten","nine"],"start":12},"n":1}
+,{"missing":"10-ten"}
+]`)
+}
+
 func TestLocalDocs(t *testing.T) {
 	var rt restTester
 	response := rt.sendRequest("GET", "/db/_local/loc1", "")
