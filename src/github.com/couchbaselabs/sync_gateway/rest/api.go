@@ -142,6 +142,18 @@ func (h *handler) handleGetDB() error {
 	return nil
 }
 
+// Stub handler for hadling create DB on the public API returns HTTP status 412
+// if the db exists, and 403 if it doesn't.
+// fixes issue #562
+func (h *handler) handleCreateTarget() error {
+	dbname := h.PathVar("targetdb")
+	if _, err := h.server.GetDatabase(dbname); err != nil {
+		return base.HTTPErrorf(http.StatusForbidden, "does not exist")
+	} else {
+		return base.HTTPErrorf(http.StatusPreconditionFailed, "exists")
+	}
+}
+
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
 	h.writeJSONStatus(http.StatusCreated, db.Body{

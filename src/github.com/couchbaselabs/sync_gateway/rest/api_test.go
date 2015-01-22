@@ -1612,3 +1612,14 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "doc3")
 	assert.Equals(t, since, db.SequenceID{Seq: 3})
 }
+
+// Test for issue #562
+func TestCreateTarget(t *testing.T) {
+	var rt restTester
+	//Attempt to create existing target DB on public API
+	response := rt.sendRequest("PUT", "/db/", "")
+	assertStatus(t, response, 412)
+	//Attempt to create new target DB on public API
+	response = rt.sendRequest("PUT", "/foo/", "")
+	assertStatus(t, response, 403)
+}

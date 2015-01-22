@@ -92,6 +92,11 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 		(*handler).handleSessionPOST)).Methods("POST")
 	dbr.Handle("/_session", makeHandler(sc, regularPrivs,
 		(*handler).handleSessionDELETE)).Methods("DELETE")
+	// The routine below is part of the CouchDB REST API, users can't create DB's via the pblic API
+	// but if the client set the 'createTarget' property of the Replicatior SG should return HTTP status 412
+	// if the db exists, and 403 if it doesn't.
+	r.Handle("/{targetdb:"+dbRegex+"}/",
+		makeHandler(sc, publicPrivs, (*handler).handleCreateTarget)).Methods("PUT")
 	return wrapRouter(sc, regularPrivs, r)
 }
 
