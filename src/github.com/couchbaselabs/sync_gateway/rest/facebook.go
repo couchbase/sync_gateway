@@ -41,7 +41,7 @@ func (h *handler) handleFacebookPOST() error {
 	}
 
 	createUserIfNeeded := h.server.config.Facebook.Register
-	return h.makeSessionFromEmail(facebookResponse.Email, createUserIfNeeded)
+	return h.makeSessionFromNameAndEmail(facebookResponse.Id, facebookResponse.Email, createUserIfNeeded)
 
 }
 
