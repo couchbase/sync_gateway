@@ -32,6 +32,8 @@ var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
+var config *ServerConfig
+
 const DefaultMaxCouchbaseConnections = 16
 const DefaultMaxCouchbaseOverflowConnections = 0
 
@@ -55,6 +57,7 @@ type ServerConfig struct {
 	Persona                        *PersonaConfig  // Configuration for Mozilla Persona validation
 	Facebook                       *FacebookConfig // Configuration for Facebook validation
 	Log                            []string        // Log keywords to enable
+	LogFilePath                    *string         // Path to log file, if missing write to stderr
 	Pretty                         bool            // Pretty-print JSON responses?
 	DeploymentID                   *string         // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64        // Optional stats report interval (0 to disable)
@@ -281,7 +284,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine() *ServerConfig {
+func ParseCommandLine() {
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
@@ -295,9 +298,8 @@ func ParseCommandLine() *ServerConfig {
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	logKeys := flag.String("log", "", "Log keywords, comma separated")
+	logFilePath := flag.String("logFilePath", "", "Path to log file")
 	flag.Parse()
-
-	var config *ServerConfig
 
 	if flag.NArg() > 0 {
 		// Read the configuration file(s), if any:
@@ -344,6 +346,9 @@ func ParseCommandLine() *ServerConfig {
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
 		}
+		if *logFilePath != "" {
+			config.LogFilePath = logFilePath
+		}
 
 	} else {
 		// If no config file is given, create a default config, filled in from command line flags:
@@ -379,7 +384,7 @@ func ParseCommandLine() *ServerConfig {
 	}
 	base.ParseLogFlag(*logKeys)
 
-	return config
+	//return config
 }
 
 func setMaxFileDescriptors(maxP *uint64) {
@@ -444,8 +449,17 @@ func RunServer(config *ServerConfig) {
 	config.serve(*config.Interface, CreatePublicHandler(sc))
 }
 
+// for now  just cycle the logger to allow for log file rotation
+func ReloadConf() {
+	if config.LogFilePath != nil {
+		base.UpdateLogger(*config.LogFilePath)
+	}
+}
+
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain() {
-	RunServer(ParseCommandLine())
+	ParseCommandLine()
+	ReloadConf()
+	RunServer(config)
 }

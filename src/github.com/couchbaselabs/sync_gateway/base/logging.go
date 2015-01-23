@@ -10,6 +10,7 @@
 package base
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -29,6 +30,7 @@ var logLock sync.RWMutex
 
 var logger *log.Logger
 
+//Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", log.Lmicroseconds)
 	LogKeys = make(map[string]bool)
@@ -213,6 +215,19 @@ func lastComponent(path string) string {
 		path = path[index+1:]
 	}
 	return path
+}
+
+func UpdateLogger(logFilePath string) {
+	logLock.Lock()
+
+	//Attempt to open file for write at path provided
+	fo, err := os.Create(logFilePath)
+	if err != nil {
+		LogFatal("unable to open logfile for write: %s", logFilePath)
+	}
+
+	logger = log.New(bufio.NewWriter(fo), "", log.Lmicroseconds)
+	logLock.Unlock()
 }
 
 // ANSI color control escape sequences.

@@ -9,9 +9,26 @@
 
 package main
 
-import "github.com/couchbaselabs/sync_gateway/rest"
+import (
+	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway/rest"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
 // Simple Sync Gateway launcher tool.
 func main() {
+
+	signalchannel := make(chan os.Signal, 1)
+	signal.Notify(signalchannel, syscall.SIGHUP)
+
+	go func() {
+		for _ = range signalchannel {
+			base.Logf("SIGHUP: Reloading Config....\n")
+			rest.ReloadConf()
+		}
+	}()
+
 	rest.ServerMain()
 }
