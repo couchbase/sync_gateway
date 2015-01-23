@@ -524,7 +524,11 @@ func TestOpenRevs(t *testing.T) {
 	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
-	response = rt.sendRequest("GET", `/db/or1?open_revs=["12-abc","10-ten"]`, "")
+
+	reqHeaders := map[string]string{
+		"Accept": "application/json",
+	}
+	response = rt.sendRequestWithHeaders("GET", `/db/or1?open_revs=["12-abc","10-ten"]`, "", reqHeaders)
 	assertStatus(t, response, 200)
 	assert.Equals(t, response.Body.String(), `[
 {"_id":"or1","_rev":"12-abc","_revisions":{"ids":["abc","eleven","ten","nine"],"start":12},"n":1}
