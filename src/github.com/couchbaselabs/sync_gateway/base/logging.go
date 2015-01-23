@@ -10,7 +10,6 @@
 package base
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -52,7 +51,9 @@ func LogNoColor() {
 }
 
 func LogNoTime() {
+	logLock.RLock()
 	logger.SetFlags(logger.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
+	logLock.RUnlock()
 }
 
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
@@ -126,9 +127,9 @@ func GetCallersName(depth int) string {
 
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
 func LogTo(key string, format string, args ...interface{}) {
-	logLock.RLock()
+	logLock.Lock()
+	defer logLock.Unlock()
 	ok := logLevel <= 1 && LogKeys[key]
-	logLock.RUnlock()
 
 	if ok {
 		logger.Printf(fgYellow+key+": "+reset+format, args...)
@@ -137,9 +138,9 @@ func LogTo(key string, format string, args ...interface{}) {
 
 // Logs a message to the console.
 func Log(message string) {
-	logLock.RLock()
+	logLock.Lock()
+	defer logLock.Unlock()
 	ok := logLevel <= 1
-	logLock.RUnlock()
 
 	if ok {
 		logger.Printf(message)
@@ -148,9 +149,9 @@ func Log(message string) {
 
 // Logs a formatted message to the console.
 func Logf(format string, args ...interface{}) {
-	logLock.RLock()
+	logLock.Lock()
+	defer logLock.Unlock()
 	ok := logLevel <= 1
-	logLock.RUnlock()
 
 	if ok {
 		logger.Printf(format, args...)
@@ -204,6 +205,8 @@ func LogFatal(format string, args ...interface{}) {
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
+	logLock.Lock()
+	defer logLock.Unlock()
 	logger.Print(color, prefix, ": ", message, reset,
 		dim, " -- ", GetCallersName(2), reset)
 }
@@ -221,12 +224,12 @@ func UpdateLogger(logFilePath string) {
 	logLock.Lock()
 
 	//Attempt to open file for write at path provided
-	fo, err := os.Create(logFilePath)
+	fo, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
 	if err != nil {
 		LogFatal("unable to open logfile for write: %s", logFilePath)
 	}
 
-	logger = log.New(bufio.NewWriter(fo), "", log.Lmicroseconds)
+	logger = log.New(fo, "", log.Lmicroseconds)
 	logLock.Unlock()
 }
 
