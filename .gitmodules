@@ -49,3 +49,48 @@
 [submodule "vendor/src/golang.org/x/text"]
 	path = vendor/src/golang.org/x/text
 	url = https://go.googlesource.com/text
+[submodule "src/github.com/couchbaselabs/go-couchbase"]
+	path = src/github.com/couchbaselabs/go-couchbase
+	url = https://github.com/couchbaselabs/go-couchbase
+[submodule "src/github.com/couchbaselabs/go.assert"]
+	path = src/github.com/couchbaselabs/go.assert
+	url = https://github.com/couchbaselabs/go.assert
+[submodule "src/github.com/couchbaselabs/walrus"]
+	path = src/github.com/couchbaselabs/walrus
+	url = https://github.com/couchbaselabs/walrus
+[submodule "src/github.com/gorilla/mux"]
+	path = src/github.com/gorilla/mux
+	url = https://github.com/gorilla/mux
+[submodule "src/github.com/robertkrimen/otto"]
+	path = src/github.com/robertkrimen/otto
+	url = https://github.com/robertkrimen/otto
+[submodule "src/github.com/gorilla/context"]
+	path = src/github.com/gorilla/context
+	url = https://github.com/gorilla/context
+[submodule "src/github.com/tleyden/fakehttp"]
+	path = src/github.com/tleyden/fakehttp
+	url = https://github.com/tleyden/fakehttp.git
+[submodule "src/github.com/samuel/go-metrics"]
+	path = src/github.com/samuel/go-metrics
+	url = https://github.com/samuel/go-metrics
+[submodule "src/github.com/couchbaselabs/sync_gateway_admin_ui"]
+	path = src/github.com/couchbaselabs/sync_gateway_admin_ui
+	url = https://github.com/couchbaselabs/sync_gateway_admin_ui.git
+[submodule "src/github.com/couchbase/gomemcached"]
+	path = src/github.com/couchbase/gomemcached
+	url = https://github.com/couchbase/gomemcached
+[submodule "src/github.com/couchbaselabs/retriever"]
+	path = src/github.com/couchbaselabs/retriever
+	url = https://github.com/couchbaselabs/retriever
+[submodule "src/github.com/natefinch/npipe"]
+	path = src/github.com/natefinch/npipe
+	url = https://github.com/natefinch/npipe
+[submodule "src/golang.org/x/net"]
+	path = src/golang.org/x/net
+	url = https://go.googlesource.com/net
+[submodule "src/golang.org/x/crypto"]
+	path = src/golang.org/x/crypto
+	url = https://go.googlesource.com/crypto
+[submodule "src/golang.org/x/text"]
+	path = src/golang.org/x/text
+	url = https://go.googlesource.com/text
