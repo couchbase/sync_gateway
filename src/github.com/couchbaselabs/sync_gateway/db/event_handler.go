@@ -91,7 +91,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 		return
 	}
 
-	client := http.Client{Timeout: wh.timeout}
+	client := http.Client{} //{Timeout: wh.timeout} re-instate once Jenkins build has been upgraded to go 1.3
 	resp, err := client.Post(wh.url, contentType, payload)
 	if err != nil {
 		base.Warn("Error attempting to post to url %s: %s", wh.url, err)
