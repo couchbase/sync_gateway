@@ -22,6 +22,8 @@ import (
 	"github.com/couchbaselabs/walrus"
 )
 
+const TapFeedType = "tap"
+
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issues #210, #333, #342)
@@ -58,10 +60,6 @@ func (bucket couchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
-/*func (bucket couchbaseBucket) GetUUID() string {
-	return bucket.Bucket.UUID
-}*/
-
 func (bucket couchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
 	return bucket.Bucket.Write(k, flags, exp, v, couchbase.WriteOptions(opt))
 }
@@ -86,7 +84,7 @@ func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interfac
 
 func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
 	// Use tap only when it's explicitly requested, or if DCP isn't supported
-	if bucket.spec.FeedType == "tap" {
+	if bucket.spec.FeedType == TapFeedType {
 		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
 		return bucket.StartCouchbaseTapFeed(args)
 	} else {
@@ -94,10 +92,10 @@ func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 		if err != nil {
 			Warn("Unable to start DCP feed - reverting to using TAP feed: %s", err)
 			return bucket.StartCouchbaseTapFeed(args)
-		} else {
-			LogTo("Feed", "Using DCP feed for bucket: %q", bucket.GetName())
-			return feed, nil
 		}
+		LogTo("Feed", "Using DCP feed for bucket: %q", bucket.GetName())
+		return feed, nil
+
 	}
 }
 
@@ -114,9 +112,10 @@ func (bucket couchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (w
 
 	// Create a bridge from the Couchbase tap feed to a Walrus tap feed:
 	events := make(chan walrus.TapEvent)
-	impl := couchbaseFeedImpl{cbFeed, events}
+	tapFeed := couchbaseFeedImpl{cbFeed, events}
 	go func() {
 		for cbEvent := range cbFeed.C {
+			LogTo("FeedTiming", "Got TAP Event %s", cbEvent)
 			events <- walrus.TapEvent{
 				Opcode:   walrus.TapOpcode(cbEvent.Opcode),
 				Expiry:   cbEvent.Expiry,
@@ -127,10 +126,10 @@ func (bucket couchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (w
 			}
 		}
 	}()
-	return &impl, nil
+	return &tapFeed, nil
 }
 
-// Start cbdatasource-based DCP feed.  Supports
+// Start cbdatasource-based DCP feed, using DCPReceiver.
 func (bucket couchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
 
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
@@ -144,7 +143,7 @@ func (bucket couchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.Tap
 
 	vbucketIdsArr := []uint16(nil) // nil means get all the vbuckets.
 
-	receiver := NewDCPReceiver()
+	dcpReceiver := NewDCPReceiver()
 
 	maxVbno, err := bucket.getMaxVbno()
 	if err != nil {
@@ -168,49 +167,63 @@ func (bucket couchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.Tap
 		vbuuids = statsUuids
 		startSeqnos = highSeqnos
 	}
-	receiver.SeedSeqnos(vbuuids, startSeqnos)
+	dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
 
-	// Auth handler for DCP connection needs to support bucket name defaults
-	username, password := "", ""
-	if bucket.spec.Auth != nil {
-		username, password, _ = bucket.spec.Auth.GetCredentials()
-	}
-	auth := &dcpAuth{username, password, bucketName}
+	auth := bucket.getDcpAuthHandler()
 
 	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, auth)
-	bds, err := cbdatasource.NewBucketDataSource(urls, poolName, bucketName, "", vbucketIdsArr, auth, receiver, nil)
+	bds, err := cbdatasource.NewBucketDataSource(
+		urls,
+		poolName,
+		bucketName,
+		"",
+		vbucketIdsArr,
+		auth,
+		dcpReceiver,
+		nil,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	events := make(chan walrus.TapEvent)
-	impl := couchbaseDCPFeedImpl{bds, events}
+	dcpFeed := couchbaseDCPFeedImpl{bds, events}
 
 	if err = bds.Start(); err != nil {
 		return nil, err
 	}
 
 	go func() {
-		for dcpEvent := range receiver.EventFeed {
+		for dcpEvent := range dcpReceiver.EventFeed {
 			events <- dcpEvent
 		}
 	}()
 
-	return &impl, nil
+	return &dcpFeed, nil
 }
 
-func (bucket couchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (map[uint16]uint64, map[uint16]uint64, error) {
+func (bucket couchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
+
+	// Auth handler for DCP connection needs to support bucket name defaults
+	username, password := "", ""
+	if bucket.spec.Auth != nil {
+		username, password, _ = bucket.spec.Auth.GetCredentials()
+	}
+	return &dcpAuth{username, password, bucket.spec.BucketName}
+}
+
+func (bucket couchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	stats := bucket.Bucket.GetStats("vbucket-seqno")
 	if len(stats) == 0 {
 		// If vbucket-seqno map is empty, bucket doesn't support DCP
-		return nil, nil, errors.New("vbucket-seqno call returned empty map.")
+		seqErr = errors.New("vbucket-seqno call returned empty map.")
+		return
 	}
 
-	uuids := make(map[uint16]uint64, maxVbno)
-	highSeqnos := make(map[uint16]uint64, maxVbno)
-
 	// GetStats response is in the form map[serverURI]map[]
+	uuids = make(map[uint16]uint64, maxVbno)
+	highSeqnos = make(map[uint16]uint64, maxVbno)
 	for _, serverMap := range stats {
 		for i := uint16(0); i < maxVbno; i++ {
 			// stats come map with keys in format:
@@ -230,9 +243,10 @@ func (bucket couchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (map[uint16]uint64
 				}
 			}
 		}
+		// We're only using a single server, so can break after the first entry in the map.
 		break
 	}
-	return uuids, highSeqnos, nil
+	return
 }
 
 func (bucket couchbaseBucket) getMaxVbno() (uint16, error) {

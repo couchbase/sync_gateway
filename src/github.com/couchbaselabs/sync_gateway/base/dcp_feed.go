@@ -36,7 +36,14 @@ type dcpAuth struct {
 	Username, Password, BucketName string
 }
 
-// GetCredentials is based on approach used in go-couchbase pools.go authHandler().
+// GetCredentials is used when cbdatasource makes a new bucket connection, based on approach we're
+// using for our other bucket connections (via go-couchbase pools.go authHandler()).
+// Background: After hitting an auth issue when connecting to a new cbdatasource bucket with the
+// standard username/password authenticator, I talked to Steve Yen and he tipped me off about the
+// default bucketname-as-username handling, and figured out that go-couchbase was doing that for us
+// for our usual bucket handling.
+// Reviewed with Steve and he said that the auth handling in couchbase server is undergoing changes
+// as part of Sherlock, so we may need to revisit once they've stabilized on an approach.
 func (a dcpAuth) GetCredentials() (string, string, string) {
 	if a.Username == "" {
 		return a.BucketName, "", a.BucketName
