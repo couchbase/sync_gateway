@@ -127,8 +127,8 @@ func GetCallersName(depth int) string {
 
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
 func LogTo(key string, format string, args ...interface{}) {
-	logLock.Lock()
-	defer logLock.Unlock()
+	logLock.RLock()
+	defer logLock.RUnlock()
 	ok := logLevel <= 1 && LogKeys[key]
 
 	if ok {
@@ -138,8 +138,8 @@ func LogTo(key string, format string, args ...interface{}) {
 
 // Logs a message to the console.
 func Log(message string) {
-	logLock.Lock()
-	defer logLock.Unlock()
+	logLock.RLock()
+	defer logLock.RUnlock()
 	ok := logLevel <= 1
 
 	if ok {
@@ -149,8 +149,8 @@ func Log(message string) {
 
 // Logs a formatted message to the console.
 func Logf(format string, args ...interface{}) {
-	logLock.Lock()
-	defer logLock.Unlock()
+	logLock.RLock()
+	defer logLock.RUnlock()
 	ok := logLevel <= 1
 
 	if ok {
@@ -164,7 +164,7 @@ func LogError(err error) error {
 	if err != nil {
 		logLock.RLock()
 		ok := logLevel <= 2
-		logLock.Unlock()
+		logLock.RUnlock()
 
 		if ok {
 			logWithCaller(fgRed, "ERROR", "%v", err)
@@ -205,8 +205,8 @@ func LogFatal(format string, args ...interface{}) {
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	logLock.Lock()
-	defer logLock.Unlock()
+	logLock.RLock()
+	defer logLock.RUnlock()
 	logger.Print(color, prefix, ": ", message, reset,
 		dim, " -- ", GetCallersName(2), reset)
 }
