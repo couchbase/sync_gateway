@@ -29,6 +29,8 @@ var logLock sync.RWMutex
 
 var logger *log.Logger
 
+var logFile *os.File
+
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", log.Lmicroseconds)
@@ -41,8 +43,8 @@ func LogLevel() int {
 
 func SetLogLevel(level int) {
 	logLock.Lock()
+	defer logLock.Unlock()
 	logLevel = level
-	logLock.Unlock()
 }
 
 // Disables ANSI color in log output.
@@ -52,8 +54,9 @@ func LogNoColor() {
 
 func LogNoTime() {
 	logLock.RLock()
+	defer logLock.RUnlock()
 	logger.SetFlags(logger.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
-	logLock.RUnlock()
+
 }
 
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
@@ -221,16 +224,29 @@ func lastComponent(path string) string {
 }
 
 func UpdateLogger(logFilePath string) {
-	logLock.Lock()
-
 	//Attempt to open file for write at path provided
 	fo, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
 	if err != nil {
 		LogFatal("unable to open logfile for write: %s", logFilePath)
 	}
 
+	//defer write lock to here otherwise LogFatal above will deadlock
+	logLock.Lock()
+
+	//We keep a reference to the underlying log File as log.Logger and io.Writer
+	//have no close() methods and we want to close old files on log rotation
+	oldLogFile := logFile
+	logFile = fo
 	logger = log.New(fo, "", log.Lmicroseconds)
 	logLock.Unlock()
+
+	//If there is a previously opened log file, explicitly close it
+	if oldLogFile != nil {
+		err = oldLogFile.Close()
+		if err != nil {
+			Warn("unable to close old log File after updating logger")
+		}
+	}
 }
 
 // ANSI color control escape sequences.
