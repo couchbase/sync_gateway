@@ -148,9 +148,9 @@ func (h *handler) handleGetDB() error {
 func (h *handler) handleCreateTarget() error {
 	dbname := h.PathVar("targetdb")
 	if _, err := h.server.GetDatabase(dbname); err != nil {
-		return base.HTTPErrorf(http.StatusForbidden, "does not exist")
+		return base.HTTPErrorf(http.StatusForbidden, "Creating a DB over the public API is unsupported")
 	} else {
-		return base.HTTPErrorf(http.StatusPreconditionFailed, "exists")
+		return base.HTTPErrorf(http.StatusPreconditionFailed, "Database already exists")
 	}
 }
 
