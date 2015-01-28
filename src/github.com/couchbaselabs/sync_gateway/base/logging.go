@@ -25,6 +25,8 @@ var logLevel int = 1
 // Set of LogTo() key strings that are enabled.
 var LogKeys map[string]bool
 
+var logNoTime bool
+
 var logLock sync.RWMutex
 
 var logger *log.Logger
@@ -56,7 +58,7 @@ func LogNoTime() {
 	logLock.RLock()
 	defer logLock.RUnlock()
 	logger.SetFlags(logger.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
-
+	logNoTime = true
 }
 
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
@@ -239,6 +241,11 @@ func UpdateLogger(logFilePath string) {
 	logFile = fo
 	logger = log.New(fo, "", log.Lmicroseconds)
 	logLock.Unlock()
+
+	//re-apply log no time flags on new logger
+	if logNoTime {
+		LogNoTime()
+	}
 
 	//If there is a previously opened log file, explicitly close it
 	if oldLogFile != nil {
