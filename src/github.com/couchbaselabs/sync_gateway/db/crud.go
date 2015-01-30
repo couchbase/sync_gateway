@@ -570,13 +570,6 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
-			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				// If this update affects user/role access privileges, make sure the write blocks till
-				// the new value is indexable, otherwise when a User/Role updates (using a view) it
-				// might not incorporate the effects of this change.
-				writeOpts |= walrus.Indexable
-			}
-
 		} else {
 			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
 				docid, newRevID, prevCurrentRev)
