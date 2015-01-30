@@ -25,10 +25,15 @@ var logLevel int = 1
 // Set of LogTo() key strings that are enabled.
 var LogKeys map[string]bool
 
+var logNoTime bool
+
 var logLock sync.RWMutex
 
 var logger *log.Logger
 
+var logFile *os.File
+
+//Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", log.Lmicroseconds)
 	LogKeys = make(map[string]bool)
@@ -40,8 +45,8 @@ func LogLevel() int {
 
 func SetLogLevel(level int) {
 	logLock.Lock()
+	defer logLock.Unlock()
 	logLevel = level
-	logLock.Unlock()
 }
 
 // Disables ANSI color in log output.
@@ -50,7 +55,10 @@ func LogNoColor() {
 }
 
 func LogNoTime() {
+	logLock.RLock()
+	defer logLock.RUnlock()
 	logger.SetFlags(logger.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
+	logNoTime = true
 }
 
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
@@ -125,8 +133,8 @@ func GetCallersName(depth int) string {
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
 func LogTo(key string, format string, args ...interface{}) {
 	logLock.RLock()
+	defer logLock.RUnlock()
 	ok := logLevel <= 1 && LogKeys[key]
-	logLock.RUnlock()
 
 	if ok {
 		logger.Printf(fgYellow+key+": "+reset+format, args...)
@@ -136,8 +144,8 @@ func LogTo(key string, format string, args ...interface{}) {
 // Logs a message to the console.
 func Log(message string) {
 	logLock.RLock()
+	defer logLock.RUnlock()
 	ok := logLevel <= 1
-	logLock.RUnlock()
 
 	if ok {
 		logger.Printf(message)
@@ -147,8 +155,8 @@ func Log(message string) {
 // Logs a formatted message to the console.
 func Logf(format string, args ...interface{}) {
 	logLock.RLock()
+	defer logLock.RUnlock()
 	ok := logLevel <= 1
-	logLock.RUnlock()
 
 	if ok {
 		logger.Printf(format, args...)
@@ -161,7 +169,7 @@ func LogError(err error) error {
 	if err != nil {
 		logLock.RLock()
 		ok := logLevel <= 2
-		logLock.Unlock()
+		logLock.RUnlock()
 
 		if ok {
 			logWithCaller(fgRed, "ERROR", "%v", err)
@@ -202,6 +210,8 @@ func LogFatal(format string, args ...interface{}) {
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
+	logLock.RLock()
+	defer logLock.RUnlock()
 	logger.Print(color, prefix, ": ", message, reset,
 		dim, " -- ", GetCallersName(2), reset)
 }
@@ -213,6 +223,37 @@ func lastComponent(path string) string {
 		path = path[index+1:]
 	}
 	return path
+}
+
+func UpdateLogger(logFilePath string) {
+	//Attempt to open file for write at path provided
+	fo, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+	if err != nil {
+		LogFatal("unable to open logfile for write: %s", logFilePath)
+	}
+
+	//defer write lock to here otherwise LogFatal above will deadlock
+	logLock.Lock()
+
+	//We keep a reference to the underlying log File as log.Logger and io.Writer
+	//have no close() methods and we want to close old files on log rotation
+	oldLogFile := logFile
+	logFile = fo
+	logger = log.New(fo, "", log.Lmicroseconds)
+	logLock.Unlock()
+
+	//re-apply log no time flags on new logger
+	if logNoTime {
+		LogNoTime()
+	}
+
+	//If there is a previously opened log file, explicitly close it
+	if oldLogFile != nil {
+		err = oldLogFile.Close()
+		if err != nil {
+			Warn("unable to close old log File after updating logger")
+		}
+	}
 }
 
 // ANSI color control escape sequences.
