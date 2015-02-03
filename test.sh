@@ -2,7 +2,7 @@
 # This script runs unit tests in all the subpackages.
 
 export GOPATH="`pwd`:`pwd`/vendor"
-cd src/github.com/couchbaselabs/sync_gateway
+cd src/github.com/couchbase/sync_gateway
 
 # vet reports two errors which are actually OK here.  There are flags
 # to vet to tell it just what you want, but he invocation is a lot
