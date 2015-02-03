@@ -87,6 +87,7 @@ type DbConfig struct {
 	EventHandlers      *EventHandlerConfig            `json:"event_handlers,omitempty"`       // Event handlers (webhook)
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
+	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -121,6 +122,12 @@ type EventConfig struct {
 	Url         string `json:"url,omitempty"`     // Url (webhook)
 	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
 	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+}
+
+type CacheConfig struct {
+	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
+	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
+	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

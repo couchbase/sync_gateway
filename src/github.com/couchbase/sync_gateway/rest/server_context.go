@@ -202,7 +202,22 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	if err != nil {
 		return nil, err
 	}
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport)
+
+	// Set cache properties, if present
+	cacheOptions := db.CacheOptions{}
+	if config.CacheConfig != nil {
+		if config.CacheConfig.CachePendingSeqMaxNum != nil && *config.CacheConfig.CachePendingSeqMaxNum > 0 {
+			cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.CachePendingSeqMaxNum
+		}
+		if config.CacheConfig.CachePendingSeqMaxWait != nil && *config.CacheConfig.CachePendingSeqMaxWait > 0 {
+			cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.CachePendingSeqMaxWait) * time.Millisecond
+		}
+		if config.CacheConfig.CacheSkippedSeqMaxWait != nil && *config.CacheConfig.CacheSkippedSeqMaxWait > 0 {
+			cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.CacheSkippedSeqMaxWait) * time.Millisecond
+		}
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions)
 	if err != nil {
 		return nil, err
 	}

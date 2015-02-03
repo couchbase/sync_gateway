@@ -114,16 +114,8 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				Seq:         logEntry.Sequence,
 				TriggeredBy: options.Since.TriggeredBy,
 			}
-			change := ChangeEntry{
-				Seq:      seqID,
-				ID:       logEntry.DocID,
-				Deleted:  (logEntry.Flags & channels.Deleted) != 0,
-				Changes:  []ChangeRev{{"rev": logEntry.RevID}},
-				branched: (logEntry.Flags & channels.Branched) != 0,
-			}
-			if logEntry.Flags&channels.Removed != 0 {
-				change.Removed = channels.SetOf(channel)
-			}
+
+			change := makeChangeEntry(logEntry, seqID, channel)
 
 			select {
 			case <-options.Terminator:
@@ -134,6 +126,20 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 		}
 	}()
 	return feed, nil
+}
+
+func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
+	change := ChangeEntry{
+		Seq:      seqID,
+		ID:       logEntry.DocID,
+		Deleted:  (logEntry.Flags & channels.Deleted) != 0,
+		Changes:  []ChangeRev{{"rev": logEntry.RevID}},
+		branched: (logEntry.Flags & channels.Branched) != 0,
+	}
+	if logEntry.Flags&channels.Removed != 0 {
+		change.Removed = channels.SetOf(channelName)
+	}
+	return change
 }
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
@@ -161,10 +167,35 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 		var changeWaiter *changeWaiter
 		var userChangeCount uint64
+		var lowSequence uint64
+		var lateSequenceFeeds map[string]*lateSequenceFeed
+
+		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
+		// skipped sequences in a future iteration or request.
+		oldestSkipped := db.changeCache.getOldestSkippedSequence()
+		if oldestSkipped > 0 {
+			lowSequence = oldestSkipped - 1
+		} else {
+			lowSequence = 0
+		}
+
 		if options.Wait {
 			options.Wait = false
 			changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
 			userChangeCount = changeWaiter.CurrentUserCount()
+			// If a longpoll request has a low sequence that matches the current lowSequence,
+			// ignore the low sequence.  This avoids infinite looping of the records between
+			// low::high.  It also means any additional skipped sequences between low::high won't
+			// be sent until low arrives or is abandoned.
+			if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
+				options.Since.LowSeq = 0
+			}
+		}
+
+		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
+		// to the channel caches.
+		if options.Continuous {
+			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
 		}
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
@@ -180,9 +211,23 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
 
+			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
+			// skipped sequences in a future iteration or request.
+			oldestSkipped = db.changeCache.getOldestSkippedSequence()
+			if oldestSkipped > 0 {
+				lowSequence = oldestSkipped - 1
+			} else {
+				lowSequence = 0
+			}
+
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
+
+			// Get read lock for late-arriving sequences, to avoid sending the same late arrival in
+			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
+			// could be written to channel X during one iteration, and channel Y during another.  Users
+			// with access to both channels would see two versions on the feed.
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
 				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
@@ -196,6 +241,29 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 				feeds = append(feeds, feed)
 				names = append(names, name)
+
+				// Late sequence handling - for out-of-order sequences prior to options.Since that
+				// have arrived in the channel cache since this changes request started.  Only need for
+				// continuous feeds - one-off changes requests only need the standard channel cache.
+				if options.Continuous {
+					lateSequenceFeedHandler := lateSequenceFeeds[name]
+					if lateSequenceFeedHandler != nil {
+						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
+						if err != nil {
+							base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
+						} else {
+							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
+							// when the user loses channel access
+							lateSequenceFeedHandler.active = true
+							feeds = append(feeds, latefeed)
+							names = append(names, fmt.Sprintf("late_%s", name))
+						}
+
+					} else {
+						// Initialize lateSequenceFeeds[name] for next iteration
+						lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+					}
+				}
 			}
 
 			// If the user object has changed, create a special pseudo-feed for it:
@@ -264,16 +332,20 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 				}
 
-				if !options.Since.Before(minSeq) {
-					continue // out of order; skip it
+				// Update options.Since for use in the next outer loop iteration.  Only update
+				// when minSeq is greater than the previous options.Since value - we don't want to
+				// roll back the Since value when we get an late sequence is processed.
+				if options.Since.Before(minSeq) {
+					options.Since = minSeq
 				}
-				// Remember we got this far, for the next outer loop iteration:
-				options.Since = minSeq
 
 				// Add the doc body or the conflicting rev IDs, if those options are set:
 				if options.IncludeDocs || options.Conflicts {
 					db.addDocToChangeEntry(minEntry, options)
 				}
+
+				// Update the low sequence on the entry we're going to send
+				minEntry.Seq.LowSeq = lowSequence
 
 				// Send the entry, and repeat the loop:
 				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
@@ -322,6 +394,16 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					return
 				}
 			}
+
+			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
+			for channel, lateFeed := range lateSequenceFeeds {
+				if !lateFeed.active {
+					db.closeLateFeed(lateFeed)
+					delete(lateSequenceFeeds, channel)
+				} else {
+					lateFeed.active = false
+				}
+			}
 		}
 	}()
 
@@ -356,4 +438,66 @@ func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 		context.changeCache.waitForSequence(lastSequence)
 	}
 	return
+}
+
+// Late Sequence Feed
+// Manages the changes feed interaction with a channels cache's set of late-arriving entries
+type lateSequenceFeed struct {
+	active       bool   // Whether the changes feed is still serving the channel this feed is associated with
+	lastSequence uint64 // Last late sequence processed on the feed
+	channelName  string // channelName
+}
+
+// Returns a lateSequenceFeed for the channel, used to find late-arriving (previously
+// skipped) sequences that have been sent to the channel cache.  The lateSequenceFeed stores the last (late)
+// sequence seen by this particular _changes feed to support continuous changes.
+func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
+	chanCache := db.changeCache.channelCaches[channelName]
+	if chanCache == nil {
+		return nil
+	}
+	lsf := &lateSequenceFeed{
+		active:       true,
+		lastSequence: chanCache.InitLateSequenceClient(),
+		channelName:  channelName,
+	}
+	return lsf
+}
+
+// Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.
+func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEntry, error) {
+
+	logs, lastSequence, err := db.changeCache.getChannelCache(feedHandler.channelName).GetLateSequencesSince(feedHandler.lastSequence)
+	if err != nil {
+		return nil, err
+	}
+	if logs == nil || len(logs) == 0 {
+		// There are no late entries newer than lastSequence
+		feed := make(chan *ChangeEntry)
+		close(feed)
+		return feed, nil
+	}
+
+	feed := make(chan *ChangeEntry, 1)
+	go func() {
+		defer close(feed)
+		// Write each log entry to the 'feed' channel in turn:
+		for _, logEntry := range logs {
+			// We don't need TriggeredBy handling here, because when backfilling from a
+			// channel in response to a user being added to the channel, we don't need to worry about
+			// late arrived sequences
+			seqID := SequenceID{
+				Seq: logEntry.Sequence,
+			}
+			change := makeChangeEntry(logEntry, seqID, feedHandler.channelName)
+			feed <- &change
+		}
+	}()
+
+	feedHandler.lastSequence = lastSequence
+	return feed, nil
+}
+
+func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
+	db.changeCache.getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
 }
