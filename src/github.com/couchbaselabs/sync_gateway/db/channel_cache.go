@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -21,6 +22,8 @@ type channelCache struct {
 	validFrom   uint64           // First sequence that logs is valid for
 	lock        sync.RWMutex     // Controls access to logs, validFrom
 	viewLock    sync.Mutex       // Ensures only one view query is made at a time
+	lateLogs    []*lateLogEntry  // Late arriving LogEntries, stored in the order they were received
+	lateLogLock sync.RWMutex     // Controls access to lateLogs
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
@@ -78,7 +81,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 		return // Return nil if nothing is cached
 	}
 	var start int
-	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since.Seq; start-- {
+	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since.SafeSequence(); start-- {
 	}
 	start++
 
@@ -114,7 +117,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		base.LogTo("Cache", "getCachedChanges(%q, %d) --> nothing cached",
 			c.channelName, options.Since)
 	}
-	startSeq := options.Since.Seq + 1
+	startSeq := options.Since.SafeSequence() + 1
 	if cacheValidFrom <= startSeq {
 		return resultFromCache, nil
 	}
@@ -180,9 +183,13 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 	end := len(log) - 1
 	if end >= 0 {
 		if change.Sequence <= log[end].Sequence {
-			base.LogTo("Cache", "LogEntries.appendChange: out-of-order sequence #%d (last is #%d)",
+			base.LogTo("Cache", "LogEntries.appendChange: out-of-order sequence #%d (last is #%d) - handling as insert",
 				change.Sequence, log[end].Sequence)
+			// insert the change in the array, ensuring the docID isn't already present
+			insertChange(&c.logs, change)
+			return
 		}
+		// If entry with DocID already exists, remove it.
 		for i := end; i >= 0; i-- {
 			if log[i].DocID == change.DocID {
 				copy(log[i:], log[i+1:])
@@ -194,6 +201,45 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 		c._adjustFirstSeq(change)
 	}
 	c.logs = append(log, change)
+}
+
+// Insert out-of-sequence entry into the cache.  If the docId is already present in a later
+// sequence, we skip the insert.  If the docId is already present in an earlier sequence,
+// we remove the earlier sequence.
+func insertChange(log *LogEntries, change *LogEntry) {
+
+	end := len(*log) - 1
+	insertAfterIndex := -1
+	for i := end; i >= 0; i-- {
+		currLog := (*log)[i]
+		if insertAfterIndex == -1 && currLog.Sequence < change.Sequence {
+			insertAfterIndex = i
+		}
+		if currLog.DocID == change.DocID {
+			if currLog.Sequence >= change.Sequence {
+				// we've already cached a later revision of this document, can ignore update
+				return
+			} else {
+				// found existing prior to insert position
+				if i == insertAfterIndex {
+					// The sequence is adjacent to another with the same docId - replace it
+					// instead of inserting
+					(*log)[i] = change
+					return
+				} else {
+					// Shift and insert to remove the old entry and add the new one
+					copy((*log)[i:insertAfterIndex], (*log)[i+1:insertAfterIndex+1])
+					(*log)[insertAfterIndex] = change
+				}
+			}
+		}
+	}
+	// We didn't find a match for DocID, so standard insert.
+	*log = append(*log, nil)
+	copy((*log)[insertAfterIndex+2:], (*log)[insertAfterIndex+1:])
+	(*log)[insertAfterIndex+1] = change
+
+	return
 }
 
 // Prepends an array of entries to this one, skipping ones that I already have.
@@ -256,4 +302,130 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		}
 		return 0
 	}
+}
+
+type lateLogEntry struct {
+	logEntry      *LogEntry
+	arrived       time.Time
+	listenerCount uint64
+	listenerLock  sync.RWMutex
+}
+
+func (l *lateLogEntry) addListener() {
+	l.listenerLock.Lock()
+	l.listenerCount++
+	l.listenerLock.Unlock()
+}
+
+func (l *lateLogEntry) removeListener() {
+	l.listenerLock.Lock()
+	l.listenerCount--
+	l.listenerLock.Unlock()
+}
+
+func (l *lateLogEntry) getListenerCount() uint64 {
+	l.listenerLock.RLock()
+	defer l.listenerLock.RUnlock()
+	return l.listenerCount
+}
+
+// Retrieve late-arriving sequences that have arrived since the previous sequence.  Retrieves set of sequences, and the last
+// sequence number in the list.  Note that lateLogs is sorted by arrival on Tap, not sequence number.
+func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
+
+	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
+
+	// If we don't have any late sequences, return empty
+	if len(c.lateLogs) == 0 {
+		return nil, 0, nil
+	}
+
+	previousFound := false
+	// If sinceSequence = 0, return everything
+	if sinceSequence == 0 {
+		previousFound = true
+		entries = make([]*LogEntry, 0, len(c.lateLogs))
+	}
+
+	// Return everything in lateLogs after sinceSequence (the caller's last seen sequence).
+	var previousEntry *lateLogEntry
+	var newLastEntry *lateLogEntry
+
+	for index, lateLog := range c.lateLogs {
+		if previousFound {
+			entries = append(entries, lateLog.logEntry)
+			newLastEntry = lateLog
+		} else {
+			if lateLog.logEntry.Sequence == sinceSequence {
+				// Found the previous sequence.
+				entries = make([]*LogEntry, 0, len(c.lateLogs)-index)
+				previousEntry = lateLog
+				previousFound = true
+			}
+		}
+	}
+
+	// If we didn't find the previous sequence, the consumer may be missing sequences and must rollback
+	// to their last safe sequence
+	if !previousFound {
+		err = errors.New("Missing previous sequence - rollback required")
+		return
+	}
+
+	if previousEntry != nil {
+		previousEntry.removeListener()
+	}
+
+	if newLastEntry != nil {
+		newLastEntry.addListener()
+		lastSequence = newLastEntry.logEntry.Sequence
+	}
+
+	return entries, lastSequence, nil
+
+}
+
+// Called on first call to the channel during changes processing, to get starting point for
+// subsequent checks for late arriving sequences.
+func (c *channelCache) InitLateSequence() uint64 {
+	if c.lateLogs != nil && len(c.lateLogs) > 0 {
+		return c.lateLogs[len(c.lateLogs)-1].logEntry.Sequence
+	}
+	return 0
+}
+
+func (c *channelCache) ReleaseLateSequence(sequence uint64) error {
+	for _, log := range c.lateLogs {
+		if log.logEntry.Sequence == sequence {
+			log.removeListener()
+			return nil
+		}
+	}
+	return errors.New("Sequence not found")
+}
+
+// Receive new late sequence
+func (c *channelCache) AddLateSequence(change *LogEntry) {
+	// Add to lateLogs.
+	lateEntry := &lateLogEntry{
+		logEntry:      change,
+		arrived:       time.Now(),
+		listenerCount: 0,
+	}
+	c.lateLogLock.Lock()
+	c.lateLogs = append(c.lateLogs, lateEntry)
+	c.lateLogLock.Unlock()
+}
+
+// Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
+// will get these entries directly from the cache.
+func (c *channelCache) purgeLateLogEntries() {
+	c.lateLogLock.Lock()
+	defer c.lateLogLock.Unlock()
+
+	for len(c.lateLogs) > 0 && c.lateLogs[0].getListenerCount() == 0 {
+		c.lateLogs = c.lateLogs[1:]
+	}
+
 }
