@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/couchbase/go.assert"
+	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
 )
 
