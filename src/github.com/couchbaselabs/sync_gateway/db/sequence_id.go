@@ -91,11 +91,13 @@ func ParseSequenceComponent(component string, allowEmpty bool) (uint64, error) {
 }
 
 func (s SequenceID) MarshalJSON() ([]byte, error) {
-	if s.TriggeredBy > 0 {
-		return []byte(fmt.Sprintf("\"%d:%d\"", s.TriggeredBy, s.Seq)), nil
+
+	if s.TriggeredBy > 0 || s.LowSeq > 0 {
+		return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
 	} else {
 		return []byte(strconv.FormatUint(s.Seq, 10)), nil
 	}
+
 }
 
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
