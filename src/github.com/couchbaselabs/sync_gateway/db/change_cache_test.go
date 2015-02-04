@@ -67,7 +67,7 @@ func TestSkippedSequenceQueue(t *testing.T) {
 
 func TestLateSequenceHandling(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false)
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := &channelCache{context: context, channelName: "Test1", validFrom: 0}
 	assert.True(t, cache != nil)
 
@@ -174,7 +174,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	base.LogKeys["Cache"] = true
 	base.LogKeys["Changes"] = true
 	base.LogKeys["Changes+"] = true
-	db := setupTestDB(t)
+	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -237,7 +237,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	//base.LogKeys["Cache"] = true
 	//base.LogKeys["Changes"] = true
 	//base.LogKeys["Changes+"] = true
-	db := setupTestDB(t)
+	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -323,7 +323,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	//base.LogKeys["Cache"] = true
 	//base.LogKeys["Changes"] = true
 	//base.LogKeys["Changes+"] = true
-	db := setupTestDB(t)
+	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -407,7 +407,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	//base.LogKeys["Cache"] = true
 	//base.LogKeys["Changes"] = true
 	//base.LogKeys["Changes+"] = true
-	db := setupTestDB(t)
+	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -481,7 +481,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	base.LogKeys["Sequence"] = true
 	//base.LogKeys["Changes"] = true
 	//base.LogKeys["Changes+"] = true
-	db := setupTestDB(t)
+	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -554,9 +554,16 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 1. 2::8 is the user sequence
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
-	// 3.
 
 	close(options.Terminator)
+}
+
+func shortWaitCache() CacheOptions {
+
+	return CacheOptions{
+		CachePendingSeqMaxWait: 5 * time.Millisecond,
+		CachePendingSeqMaxNum:  50,
+		CacheSkippedSeqMaxWait: 60 * time.Minute}
 }
 
 func verifySkippedSequences(queue SkippedSequenceQueue, sequences []uint64) bool {
