@@ -75,17 +75,34 @@ func (h *handler) handleGetDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
 		}
 
-		err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
+		if h.requestAccepts("multipart/") {
+			err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
+				for _, revid := range revids {
+					revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+					if err != nil {
+						revBody = db.Body{"missing": revid} //TODO: More specific error
+					}
+					h.db.WriteRevisionAsPart(revBody, err != nil, false, writer)
+				}
+				return nil
+			})
+			return err
+		} else {
+			base.LogTo("HTTP+", "Fallback to non-multipart for open_revs")
+			h.setHeader("Content-Type", "application/json")
+			h.response.Write([]byte(`[` + "\n"))
+			separator := []byte(``)
 			for _, revid := range revids {
 				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				}
-				h.db.WriteRevisionAsPart(revBody, err != nil, false, writer)
+				h.response.Write(separator)
+				separator = []byte(",")
+				h.addJSON(revBody)
 			}
-			return nil
-		})
-		return err
+			h.response.Write([]byte(`]`))
+		}
 	}
 	return nil
 }
