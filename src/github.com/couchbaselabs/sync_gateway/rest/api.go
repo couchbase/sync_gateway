@@ -18,6 +18,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/db"
@@ -34,6 +35,8 @@ var VersionString string
 
 // This includes build number; appears in the response of "GET /" and the initial log message
 var LongVersionString string
+
+var MemoryLeak []string
 
 func init() {
 	if VersionBuildNumberString[0] != '@' {
@@ -56,6 +59,13 @@ func init() {
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
+	base.Warn("MemoryLeak slice len: %v", len(MemoryLeak))
+	for i := 0; i < 1000000; i++ {
+
+		MemoryLeak = append(MemoryLeak, fmt.Sprintf("%v", time.Now()))
+	}
+	base.Warn("MemoryLeak slice len: %v", len(MemoryLeak))
+
 	response := map[string]interface{}{
 		"couchdb": "Welcome",
 		"version": LongVersionString,
