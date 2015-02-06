@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
@@ -42,7 +43,7 @@ type BucketSpec struct {
 }
 
 // Implementation of walrus.Bucket that talks to a Couchbase server
-type couchbaseBucket struct {
+type CouchbaseBucket struct {
 	*couchbase.Bucket
 	spec BucketSpec // keep a copy of the BucketSpec for DCP usage
 }
@@ -52,23 +53,25 @@ type couchbaseFeedImpl struct {
 	events <-chan walrus.TapEvent
 }
 
+var versionString string
+
 func (feed *couchbaseFeedImpl) Events() <-chan walrus.TapEvent {
 	return feed.events
 }
 
-func (bucket couchbaseBucket) GetName() string {
+func (bucket CouchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
-func (bucket couchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
+func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
 	return bucket.Bucket.Write(k, flags, exp, v, couchbase.WriteOptions(opt))
 }
 
-func (bucket couchbaseBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
+func (bucket CouchbaseBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
 }
 
-func (bucket couchbaseBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) error {
+func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, err := callback(current)
 		opt = couchbase.WriteOptions(walrusOpt)
@@ -77,12 +80,12 @@ func (bucket couchbaseBucket) WriteUpdate(k string, exp int, callback walrus.Wri
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
-func (bucket couchbaseBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
+func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
 	vres := walrus.ViewResult{}
 	return vres, bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
 }
 
-func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (bucket CouchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
 	// Use tap only when it's explicitly requested, or if DCP isn't supported
 	if bucket.spec.FeedType == TapFeedType {
 		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
@@ -99,7 +102,7 @@ func (bucket couchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 	}
 }
 
-func (bucket couchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
 	cbArgs := memcached.TapArguments{
 		Backfill: args.Backfill,
 		Dump:     args.Dump,
@@ -130,7 +133,7 @@ func (bucket couchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (w
 }
 
 // Start cbdatasource-based DCP feed, using DCPReceiver.
-func (bucket couchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (bucket CouchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
 
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
@@ -202,7 +205,7 @@ func (bucket couchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.Tap
 	return &dcpFeed, nil
 }
 
-func (bucket couchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
+func (bucket CouchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
 
 	// Auth handler for DCP connection needs to support bucket name defaults
 	username, password := "", ""
@@ -212,7 +215,7 @@ func (bucket couchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
 	return &dcpAuth{username, password, bucket.spec.BucketName}
 }
 
-func (bucket couchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	stats := bucket.Bucket.GetStats("vbucket-seqno")
 	if len(stats) == 0 {
@@ -249,7 +252,7 @@ func (bucket couchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]
 	return
 }
 
-func (bucket couchbaseBucket) getMaxVbno() (uint16, error) {
+func (bucket CouchbaseBucket) getMaxVbno() (uint16, error) {
 
 	var maxVbno uint16
 	vbsMap := bucket.Bucket.VBServerMap()
@@ -261,8 +264,44 @@ func (bucket couchbaseBucket) getMaxVbno() (uint16, error) {
 	return maxVbno, nil
 }
 
-func (bucket couchbaseBucket) Dump() {
+func (bucket CouchbaseBucket) Dump() {
 	Warn("Dump not implemented for couchbaseBucket")
+}
+
+func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro string, err error) {
+
+	if versionString == "" {
+		stats := bucket.Bucket.GetStats("")
+
+		for _, serverMap := range stats {
+			versionString = serverMap["version"]
+			// We only check the version of the first server, hopefully same for whole cluster
+			break
+		}
+	}
+
+	if versionString == "" {
+		return 0, 0, "", errors.New("version not defined in GetStats map")
+	}
+
+	arr := strings.SplitN(versionString, ".", 4)
+
+	major, err = strconv.ParseUint(arr[0], 10, 8)
+
+	if err != nil {
+		return 0, 0, "", errors.New("Unable to parse version major component ")
+	}
+	minor, err = strconv.ParseUint(arr[1], 10, 8)
+
+	if err != nil {
+		return 0, 0, "", errors.New("Unable to parse version minor component ")
+	}
+
+	micro = arr[2]
+
+	LogTo("CRUD+", "major = %i, minor = %i, micro = %s", major, minor, micro)
+
+	return
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -281,7 +320,7 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
 	if err == nil {
-		bucket = couchbaseBucket{cbbucket, spec}
+		bucket = CouchbaseBucket{cbbucket, spec}
 	}
 
 	return
