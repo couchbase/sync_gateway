@@ -115,7 +115,6 @@ func (bucket couchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (w
 	tapFeed := couchbaseFeedImpl{cbFeed, events}
 	go func() {
 		for cbEvent := range cbFeed.C {
-			LogTo("FeedTiming", "Got TAP Event %s", cbEvent)
 			events <- walrus.TapEvent{
 				Opcode:   walrus.TapOpcode(cbEvent.Opcode),
 				Expiry:   cbEvent.Expiry,
@@ -194,7 +193,7 @@ func (bucket couchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.Tap
 	}
 
 	go func() {
-		for dcpEvent := range dcpReceiver.EventFeed {
+		for dcpEvent := range dcpReceiver.GetEventFeed() {
 			events <- dcpEvent
 		}
 	}()
