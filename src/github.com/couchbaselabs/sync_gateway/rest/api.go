@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"expvar"
 	"fmt"
 	"net/http"
 	"os"
@@ -166,13 +165,7 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 
 // ADMIN API to turn Go CPU profiling on/off
 func (h *handler) handleProfiling() error {
-
-	numGoRoutine := expvar.NewInt("num_goroutine")
-	numGoRoutine.Set(int64(runtime.NumGoroutine()))
-	restExpvars.Set("num_goroutine", numGoRoutine)
-
 	profileName := h.PathVar("name")
-
 	var params struct {
 		File string `json:"file"`
 	}
@@ -216,11 +209,6 @@ func (h *handler) handleProfiling() error {
 
 // ADMIN API to dump Go heap profile
 func (h *handler) handleHeapProfiling() error {
-
-	numGoRoutine := expvar.NewInt("num_goroutine")
-	numGoRoutine.Set(int64(runtime.NumGoroutine()))
-	restExpvars.Set("num_goroutine", numGoRoutine)
-
 	var params struct {
 		File string `json:"file"`
 	}
