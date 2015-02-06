@@ -570,11 +570,23 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
+
 			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				// If this update affects user/role access privileges, make sure the write blocks till
-				// the new value is indexable, otherwise when a User/Role updates (using a view) it
-				// might not incorporate the effects of this change.
-				writeOpts |= walrus.Indexable
+				if cbb, ok := db.Bucket.(base.CouchbaseBucket); ok { //Backing store is Couchbase Server
+					if major, _, _, err := cbb.CBSVersion(); err == nil && major >= 3 {
+						base.LogTo("CRUD+", "Optimizing write for Couchbase Server >= 3.0")
+					} else {
+						// make sure the write blocks till
+						// the new value is indexable, otherwise when a User/Role updates (using a view) it
+						// might not incorporate the effects of this change.
+						writeOpts |= walrus.Indexable
+					}
+				} else {
+					// If this update affects user/role access privileges, make sure the write blocks till
+					// the new value is indexable, otherwise when a User/Role updates (using a view) it
+					// might not incorporate the effects of this change.
+					writeOpts |= walrus.Indexable
+				}
 			}
 
 		} else {
