@@ -1,14 +1,18 @@
 package rest
 
 import (
+	"bytes"
+	"encoding/json"
 	"expvar"
+	"fmt"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/couchbaselabs/go-couchbase"
 	_ "github.com/couchbase/gomemcached/debug"
+	"github.com/couchbaselabs/go-couchbase"
 	"github.com/samuel/go-metrics/metrics"
 
 	"github.com/couchbaselabs/sync_gateway/base"
@@ -23,6 +27,8 @@ var (
 
 	expPoolHistos *expvar.Map
 	expOpsHistos  *expvar.Map
+
+	grTracker *goroutineTracker
 )
 
 func init() {
@@ -37,6 +43,48 @@ func init() {
 	expOpsHistos = &expvar.Map{}
 	expOpsHistos.Init()
 	expCb.Set("ops", expOpsHistos)
+
+	grTracker = &goroutineTracker{}
+	expvar.Publish("goroutine_stats", grTracker)
+
+}
+
+type goroutineTracker struct {
+	HighWaterMark uint64       // max number of goroutines seen thus far
+	Snapshots     []uint64     // history of number of goroutines in system
+	mutex         sync.RWMutex // mutex lock
+}
+
+func (g *goroutineTracker) String() string {
+
+	g.mutex.RLock()
+	defer g.mutex.RUnlock()
+
+	buf := bytes.Buffer{}
+	encoder := json.NewEncoder(&buf)
+	err := encoder.Encode(g)
+	if err != nil {
+		return fmt.Sprintf("Error encoding json: %v", err)
+	}
+	return buf.String()
+
+}
+
+func (g *goroutineTracker) recordSnapshot() {
+
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	// get number of goroutines
+	numGoroutines := uint64(runtime.NumGoroutine())
+
+	// bump the high water mark
+	if numGoroutines > g.HighWaterMark {
+		g.HighWaterMark = numGoroutines
+	}
+
+	// append to history
+	g.Snapshots = append(g.Snapshots, numGoroutines)
 }
 
 func connPoolHisto(name string) metrics.Histogram {
@@ -85,6 +133,7 @@ func recordCBClientStat(opname, k string, start time.Time, err error) {
 
 func (h *handler) handleExpvar() error {
 	base.LogTo("HTTP", "debuggin'")
+	grTracker.recordSnapshot()
 	h.rq.URL.Path = strings.Replace(h.rq.URL.Path, kDebugURLPathPrefix, "/debug/vars", 1)
 	http.DefaultServeMux.ServeHTTP(h.response, h.rq)
 	return nil
