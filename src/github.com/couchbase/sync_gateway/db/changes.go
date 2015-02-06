@@ -474,6 +474,7 @@ func (l *lateSequenceFeed) getLateFeed() (<-chan *ChangeEntry, error) {
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
+		dbExpvars.Add("lateFeed_goroutine", 1)
 		// Write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range logs {
 			// We don't need TriggeredBy handling here, because when backfilling from a

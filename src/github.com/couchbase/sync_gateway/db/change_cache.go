@@ -176,20 +176,24 @@ func (c *changeCache) CleanUp() bool {
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	c.skippedSeqLock.Lock()
 
+	dbExpvars.Add("clean_seq_queue", 1)
 	var foundEntries []*LogEntry
 	var pendingDeletes []uint64
 
 	for _, skippedSeq := range c.skippedSeqs {
 		if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
+			dbExpvars.Add("view_query_for_skipped_purge", 1)
 			// Attempt to retrieve the sequence from the view before we remove
 			options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
 			entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
 			if err != nil && len(entries) > 0 {
 				// Found it - store to send to the caches.
 				foundEntries = append(foundEntries, entries[0])
+				dbExpvars.Add("skip_purge_view_hit", 1)
 			} else {
 				base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
 				pendingDeletes = append(pendingDeletes, skippedSeq.seq)
+				dbExpvars.Add("skip_purge_view_miss", 1)
 			}
 		} else {
 			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
@@ -383,6 +387,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
+			dbExpvars.Add("pending_cache_full", 1)
 			changedChannels = c._addPendingLogs()
 		}
 	} else if sequence > c.initialSequence {
@@ -391,8 +396,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		wasSkipped := false
 		if c.skippedSeqs.Remove(sequence) != nil {
 			// Error removing from skipped sequences
+			dbExpvars.Add("late_find_fail", 1)
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
+			dbExpvars.Add("late_find_success", 1)
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			wasSkipped = true
 		}
@@ -420,7 +427,12 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
 	// twice)
 	if isLateSequence {
+		lockWait := time.Now()
 		c.LateSeqLock.Lock()
+		// Record a histogram of the overall wait for the lateSeq write lock
+		lag := time.Since(lockWait)
+		lagMs := int(lag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("block-lateSeqLock-%04dms", lagMs), 1)
 	}
 
 	for channelName, removal := range ch {
@@ -522,6 +534,7 @@ func (c *changeCache) _allChannels() base.Set {
 func (c *changeCache) addToSkipped(sequence uint64) {
 	c.skippedSeqLock.Lock()
 	defer c.skippedSeqLock.Unlock()
+	dbExpvars.Add("skipped_sequences", 1)
 	base.LogTo("Cache+", "Adding sequence #%d to missed sequence queue", sequence)
 	c.skippedSeqs.Push(SkippedSequence{seq: sequence, timeAdded: time.Now()})
 }
