@@ -68,11 +68,12 @@ func TestSkippedSequenceQueue(t *testing.T) {
 func TestLateSequenceHandling(t *testing.T) {
 
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
-	cache := &channelCache{context: context, channelName: "Test1", validFrom: 0}
+	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
-	entries, lastSeq, err := cache.GetLateSequencesSince(0)
+	startSequence := cache.InitLateSequenceClient()
+	entries, lastSeq, err := cache.GetLateSequencesSince(startSequence)
 	assert.Equals(t, len(entries), 0)
 	assert.Equals(t, lastSeq, uint64(0))
 	assert.True(t, err == nil)
@@ -85,18 +86,25 @@ func TestLateSequenceHandling(t *testing.T) {
 	log.Println("entries:", entries)
 	assert.Equals(t, len(entries), 2)
 	assert.Equals(t, lastSeq, uint64(8))
-	assert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(1))
+	assert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
 	assert.True(t, err == nil)
 
-	// Retrieve since previous
+	// Add Sequences.  Will trigger purge on old sequences without listeners
 	cache.AddLateSequence(e(2, "foo3", "1-a"))
 	cache.AddLateSequence(e(7, "foo4", "1-a"))
+	assert.Equals(t, len(cache.lateLogs), 3)
+	assert.Equals(t, cache.lateLogs[0].logEntry.Sequence, uint64(8))
+	assert.Equals(t, cache.lateLogs[1].logEntry.Sequence, uint64(2))
+	assert.Equals(t, cache.lateLogs[2].logEntry.Sequence, uint64(7))
+	assert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
+
+	// Retrieve since previous
 	entries, lastSeq, err = cache.GetLateSequencesSince(lastSeq)
 	log.Println("entries:", entries)
 	assert.Equals(t, len(entries), 2)
 	assert.Equals(t, lastSeq, uint64(7))
-	assert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(0))
-	assert.Equals(t, cache.lateLogs[3].getListenerCount(), uint64(1))
+	assert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(0))
+	assert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
 	log.Println("cache.lateLogs:", cache.lateLogs)
 	assert.True(t, err == nil)
 
@@ -113,11 +121,60 @@ func TestLateSequenceHandling(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Release the listener, and purge again
-	cache.ReleaseLateSequence(uint64(7))
+	cache.ReleaseLateSequenceClient(uint64(7))
 	cache.purgeLateLogEntries()
-	assert.Equals(t, len(cache.lateLogs), 0)
-	log.Println("cache.lateLogs:", cache.lateLogs)
+	assert.Equals(t, len(cache.lateLogs), 1)
 	assert.True(t, err == nil)
+
+}
+
+func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
+
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Test1", 0)
+	assert.True(t, cache != nil)
+
+	// Add Listener before late entries arrive
+	startSequence := cache.InitLateSequenceClient()
+	entries, lastSeq1, err := cache.GetLateSequencesSince(startSequence)
+	assert.Equals(t, len(entries), 0)
+	assert.Equals(t, lastSeq1, uint64(0))
+	assert.True(t, err == nil)
+
+	// Add two entries
+	cache.AddLateSequence(e(5, "foo", "1-a"))
+	cache.AddLateSequence(e(8, "foo2", "1-a"))
+
+	// Add a second client.  Expect the first listener at [0], and the new one at [2]
+	startSequence = cache.InitLateSequenceClient()
+	entries, lastSeq2, err := cache.GetLateSequencesSince(startSequence)
+	assert.Equals(t, startSequence, uint64(8))
+	assert.Equals(t, lastSeq2, uint64(8))
+
+	assert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
+	assert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
+
+	cache.AddLateSequence(e(3, "foo3", "1-a"))
+	// First client requests again.  Expect first client at latest (3), second still at (8).
+	entries, lastSeq1, err = cache.GetLateSequencesSince(lastSeq1)
+	assert.Equals(t, lastSeq1, uint64(3))
+	assert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
+	assert.Equals(t, cache.lateLogs[3].getListenerCount(), uint64(1))
+
+	// Add another sequence, which triggers a purge.  Ensure we don't lose our listeners
+	cache.AddLateSequence(e(12, "foo4", "1-a"))
+	assert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
+	assert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(1))
+
+	// Release the first listener - ensure we maintain the second
+	cache.ReleaseLateSequenceClient(lastSeq1)
+	assert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
+	assert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(0))
+
+	// Release the second listener
+	cache.ReleaseLateSequenceClient(lastSeq2)
+	assert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(0))
+	assert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(0))
 
 }
 
