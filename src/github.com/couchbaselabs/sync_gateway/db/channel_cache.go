@@ -16,18 +16,21 @@ var ChannelCacheAge = 60 * time.Second // Keep entries at least this long
 const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
 
 type channelCache struct {
-	channelName string           // The channel name, duh
-	context     *DatabaseContext // Database connection (used for view queries)
-	logs        LogEntries       // Log entries in sequence order
-	validFrom   uint64           // First sequence that logs is valid for
-	lock        sync.RWMutex     // Controls access to logs, validFrom
-	viewLock    sync.Mutex       // Ensures only one view query is made at a time
-	lateLogs    []*lateLogEntry  // Late arriving LogEntries, stored in the order they were received
-	lateLogLock sync.RWMutex     // Controls access to lateLogs
+	channelName      string           // The channel name, duh
+	context          *DatabaseContext // Database connection (used for view queries)
+	logs             LogEntries       // Log entries in sequence order
+	validFrom        uint64           // First sequence that logs is valid for
+	lock             sync.RWMutex     // Controls access to logs, validFrom
+	viewLock         sync.Mutex       // Ensures only one view query is made at a time
+	lateLogs         []*lateLogEntry  // Late arriving LogEntries, stored in the order they were received
+	lastLateSequence uint64           // Used for fast check of whether listener has the latest
+	lateLogLock      sync.RWMutex     // Controls access to lateLogs
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
-	return &channelCache{context: context, channelName: channelName, validFrom: validFrom}
+	cache := &channelCache{context: context, channelName: channelName, validFrom: validFrom}
+	cache.initializeLateLogs()
+	return cache
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
@@ -329,6 +332,17 @@ func (l *lateLogEntry) getListenerCount() uint64 {
 	return l.listenerCount
 }
 
+// Initialize the late-arriving log queue with a zero entry, used to track listeners.  This is needed
+// to support purging later entries once everyone has seen them.
+func (c *channelCache) initializeLateLogs() {
+	log := &LogEntry{Sequence: 0}
+	lateEntry := &lateLogEntry{
+		logEntry:      log,
+		listenerCount: 0,
+	}
+	c.lateLogs = append(c.lateLogs, lateEntry)
+}
+
 // Retrieve late-arriving sequences that have arrived since the previous sequence.  Retrieves set of sequences, and the last
 // sequence number in the list.  Note that lateLogs is sorted by arrival on Tap, not sequence number.
 func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
@@ -336,26 +350,18 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 	c.lateLogLock.RLock()
 	defer c.lateLogLock.RUnlock()
 
-	// If we don't have any late sequences, return empty
-	if len(c.lateLogs) == 0 {
-		return nil, 0, nil
-	}
-
-	previousFound := false
-	// If sinceSequence = 0, return everything
-	if sinceSequence == 0 {
-		previousFound = true
-		entries = make([]*LogEntry, 0, len(c.lateLogs))
+	// If we don't have any new late sequences, return empty
+	if sinceSequence == c.lastLateSequence {
+		return nil, sinceSequence, nil
 	}
 
 	// Return everything in lateLogs after sinceSequence (the caller's last seen sequence).
 	var previousEntry *lateLogEntry
-	var newLastEntry *lateLogEntry
+	previousFound := false
 
 	for index, lateLog := range c.lateLogs {
 		if previousFound {
 			entries = append(entries, lateLog.logEntry)
-			newLastEntry = lateLog
 		} else {
 			if lateLog.logEntry.Sequence == sinceSequence {
 				// Found the previous sequence.
@@ -373,14 +379,10 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 		return
 	}
 
-	if previousEntry != nil {
-		previousEntry.removeListener()
-	}
-
-	if newLastEntry != nil {
-		newLastEntry.addListener()
-		lastSequence = newLastEntry.logEntry.Sequence
-	}
+	// Remove listener from the sinceSequence entry, and add a listener to the latest
+	previousEntry.removeListener()
+	c.lateLogs[len(c.lateLogs)-1].addListener()
+	lastSequence = c.lateLogs[len(c.lateLogs)-1].logEntry.Sequence
 
 	return entries, lastSequence, nil
 
@@ -388,14 +390,13 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 
 // Called on first call to the channel during changes processing, to get starting point for
 // subsequent checks for late arriving sequences.
-func (c *channelCache) InitLateSequence() uint64 {
-	if c.lateLogs != nil && len(c.lateLogs) > 0 {
-		return c.lateLogs[len(c.lateLogs)-1].logEntry.Sequence
-	}
-	return 0
+func (c *channelCache) InitLateSequenceClient() uint64 {
+	log := c.lateLogs[len(c.lateLogs)-1]
+	log.addListener()
+	return log.logEntry.Sequence
 }
 
-func (c *channelCache) ReleaseLateSequence(sequence uint64) error {
+func (c *channelCache) ReleaseLateSequenceClient(sequence uint64) error {
 	for _, log := range c.lateLogs {
 		if log.logEntry.Sequence == sequence {
 			log.removeListener()
@@ -414,18 +415,31 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 		listenerCount: 0,
 	}
 	c.lateLogLock.Lock()
+	defer c.lateLogLock.Unlock()
 	c.lateLogs = append(c.lateLogs, lateEntry)
-	c.lateLogLock.Unlock()
+	c.lastLateSequence = change.Sequence
+	// Currently we're only purging on add.  Could also consider a timed purge to handle the case
+	// where all the listeners get caught up, but there aren't any subsequent late entries.  Not
+	// a high priority, as the memory overhead for the late entries should be trivial, and probably
+	// doesn't merit
+	c._purgeLateLogEntries()
 }
 
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
-// will get these entries directly from the cache.
+// will get these entries directly from the cache.  Always maintain
+// at least one entry in the list, to track new listeners.  Expects to have a lock on lateLogLock.
+func (c *channelCache) _purgeLateLogEntries() {
+	for len(c.lateLogs) > 1 && c.lateLogs[0].getListenerCount() == 0 {
+		c.lateLogs = c.lateLogs[1:]
+	}
+}
+
+// Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
+// will get these entries directly from the cache.  Always maintain
+// at least one entry in the list, to track new listeners.
 func (c *channelCache) purgeLateLogEntries() {
 	c.lateLogLock.Lock()
 	defer c.lateLogLock.Unlock()
-
-	for len(c.lateLogs) > 0 && c.lateLogs[0].getListenerCount() == 0 {
-		c.lateLogs = c.lateLogs[1:]
-	}
+	c._purgeLateLogEntries()
 
 }
