@@ -81,7 +81,6 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
-	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
 	if err != nil {
 		return nil, err
@@ -474,7 +473,6 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
-		dbExpvars.Add("lateFeed_goroutine", 1)
 		// Write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range logs {
 			// We don't need TriggeredBy handling here, because when backfilling from a

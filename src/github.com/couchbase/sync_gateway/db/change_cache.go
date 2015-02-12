@@ -184,9 +184,10 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
 			dbExpvars.Add("view_query_for_skipped_purge", 1)
 			// Attempt to retrieve the sequence from the view before we remove
-			options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
+			options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq - 1}}
 			entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-			if err != nil && len(entries) > 0 {
+
+			if err == nil && len(entries) > 0 {
 				// Found it - store to send to the caches.
 				foundEntries = append(foundEntries, entries[0])
 				dbExpvars.Add("skip_purge_view_hit", 1)
@@ -202,20 +203,22 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		}
 	}
 
-	defer c.skippedSeqLock.Unlock()
-
-	// Add found entries
-	for _, entry := range foundEntries {
-		c.processEntry(entry)
-	}
-
 	// Purge pending deletes
 	for _, sequence := range pendingDeletes {
 		err := c.skippedSeqs.Remove(sequence)
 		if err != nil {
+			base.Warn("Error purging skipped sequence %d from skipped sequence queue, %v", sequence, err)
+		} else {
 			dbExpvars.Add("abandoned_seqs", 1)
-			base.Warn("Error purging skipped sequence %d from skipped sequence queue", sequence)
 		}
+	}
+
+	// Unlock before adding the found entries
+	c.skippedSeqLock.Unlock()
+
+	// Add found entries
+	for _, entry := range foundEntries {
+		c.processEntry(entry)
 	}
 
 	return true
@@ -303,6 +306,10 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 				TimeReceived: time.Now(),
 			}
 			c.processEntry(change)
+		}
+
+		if doc.TimeSaved.IsZero() {
+			base.Warn("Found doc with zero timeSaved, docID=%s", docID)
 		}
 
 		// Now add the entry for the new doc revision:
@@ -458,11 +465,14 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	// Record a histogram of the overall lag from the time the doc was saved:
 	lag := time.Since(change.TimeSaved)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
+	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%05dms", lagMs), 1)
+	if lagMs > 10000000 {
+		base.Warn("Warning - extremely long total lag - time saved was: %v", change.TimeSaved)
+	}
 	// ...and from the time the doc was received from Tap:
 	lag = time.Since(change.TimeReceived)
 	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
+	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%05dms", lagMs), 1)
 
 	return base.SetFromArray(addedTo)
 }
