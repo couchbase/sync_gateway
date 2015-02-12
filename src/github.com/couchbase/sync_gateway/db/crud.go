@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
@@ -627,7 +628,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	lag := time.Since(writeTimer)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
-	dbExpVars.Add(fmt.Sprintf("lag-write-%05dms", lagMs), 1)
+	dbExpvars.Add(fmt.Sprintf("lag-write-%05dms", lagMs), 1)
 	dbExpvars.Add("revs_added", 1)
 
 	// Store the new revision in the cache
