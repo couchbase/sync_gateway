@@ -60,6 +60,10 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 		return err
 	}
 	s.max = max
+	if numToReserve > max {
+		base.Warn("Reserve sequences has max (%d) less than numToReserve (%d).", max, numToReserve)
+		dbExpvars.Add("bad_sequences", 1)
+	}
 	s.last = max - numToReserve
 	return nil
 }
