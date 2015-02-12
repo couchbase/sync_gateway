@@ -459,6 +459,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var docSequence uint64
 	var unusedSequences []uint64
 
+	writeTimer := time.Now()
+
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
@@ -617,6 +619,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		return "", err
 	}
 
+	lag := time.Since(writeTimer)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	dbExpVars.Add(fmt.Sprintf("lag-write-%05dms", lagMs), 1)
 	dbExpvars.Add("revs_added", 1)
 
 	// Store the new revision in the cache
