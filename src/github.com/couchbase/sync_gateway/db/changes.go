@@ -212,9 +212,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// with access to both channels would see two versions on the feed.
 			// UPDATE - removing the RLock, as clients will revsdiff the duplicate away, and the RLock
 			// has potentially high performance impact.
-			/* if options.Continuous {
+			if options.Continuous {
 				db.changeCache.LateSeqLock.RLock()
-			} */
+			}
+
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
 				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
@@ -252,11 +253,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 				}
 			}
-			/* see above for discussion on Rlock
+			//see above for discussion on Rlock
 			if options.Continuous {
 				db.changeCache.LateSeqLock.RUnlock()
 			}
-			*/
 
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
