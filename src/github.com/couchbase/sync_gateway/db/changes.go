@@ -81,6 +81,9 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+	// Uncomment the following two lines (and add an import for 'time') to run TestChannelRace in change_cache_test.go
+	//  base.LogTo("Sequences", "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
+	//  time.Sleep(100 * time.Millisecond)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
 	if err != nil {
 		return nil, err
@@ -206,56 +209,60 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
 
-			// Get read lock for late-arriving sequences, to avoid sending the same late arrival in
-			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
-			// could be written to channel X during one iteration, and channel Y during another.  Users
-			// with access to both channels would see two versions on the feed.
-			// UPDATE - removing the RLock, as clients will revsdiff the duplicate away, and the RLock
-			// has potentially high performance impact.
-			if options.Continuous {
-				db.changeCache.LateSeqLock.RLock()
-			}
+			// Get change cache read-lock to avoid two possible race conditions:
+			//    1. New sequences arrive in between calls to db.changesFeed for already processed and not
+			//   yet processed channels.  When later channels increment minSeq (since), the sequence for the already
+			//   processed channel will be missed on the changes feed.
+			//    2. Avoid sending the same late arrival in two different changes iterations.  Without the RLock,
+			//   a late-arriving sequence could be written to channel X during one iteration, and channel Y during another.
+			//   Users with access to both channels would see two copies of the same sequence on t
 
-			for name, seqAddedAt := range channelsSince {
-				chanOpts := options
-				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
-					// Newly added channel so send all of it to user:
-					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
-				}
-				feed, err := db.changesFeed(name, chanOpts)
-				if err != nil {
-					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
-					return
-				}
-				feeds = append(feeds, feed)
-				names = append(names, name)
+			// Wrapping in func() to allow use of defer
+			err := func() error {
+				db.changeCache.lock.RLock()
+				defer db.changeCache.lock.RUnlock()
 
-				// Late sequence handling - for out-of-order sequences prior to options.Since that
-				// have arrived in the channel cache since this changes request started.  Only need for
-				// continuous feeds - one-off changes requests only need the standard channel cache.
-				if options.Continuous {
-					lateSequenceFeedHandler := lateSequenceFeeds[name]
-					if lateSequenceFeedHandler != nil {
-						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
-						if err != nil {
-							base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
+				for name, seqAddedAt := range channelsSince {
+					chanOpts := options
+					if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
+						// Newly added channel so send all of it to user:
+						chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
+					}
+					feed, err := db.changesFeed(name, chanOpts)
+					if err != nil {
+						base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+					}
+					feeds = append(feeds, feed)
+					names = append(names, name)
+
+					// Late sequence handling - for out-of-order sequences prior to options.Since that
+					// have arrived in the channel cache since this changes request started.  Only need for
+					// continuous feeds - one-off changes requests only need the standard channel cache.
+					if options.Continuous {
+						lateSequenceFeedHandler := lateSequenceFeeds[name]
+						if lateSequenceFeedHandler != nil {
+							latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
+							if err != nil {
+								base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
+							} else {
+								// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
+								// when the user loses channel access
+								lateSequenceFeedHandler.active = true
+								feeds = append(feeds, latefeed)
+								names = append(names, fmt.Sprintf("late_%s", name))
+							}
+
 						} else {
-							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
-							// when the user loses channel access
-							lateSequenceFeedHandler.active = true
-							feeds = append(feeds, latefeed)
-							names = append(names, fmt.Sprintf("late_%s", name))
+							// Initialize lateSequenceFeeds[name] for next iteration
+							lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
 						}
-
-					} else {
-						// Initialize lateSequenceFeeds[name] for next iteration
-						lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
 					}
 				}
-			}
-			//see above for discussion on Rlock
-			if options.Continuous {
-				db.changeCache.LateSeqLock.RUnlock()
+				return nil
+			}()
+
+			if err != nil {
+				return
 			}
 
 			// If the user object has changed, create a special pseudo-feed for it:
@@ -459,7 +466,7 @@ func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.
 func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEntry, error) {
 
-	logs, lastSequence, err := db.changeCache.getChannelCache(feedHandler.channelName).GetLateSequencesSince(feedHandler.lastSequence)
+	logs, lastSequence, err := db.changeCache._getChannelCache(feedHandler.channelName).GetLateSequencesSince(feedHandler.lastSequence)
 	if err != nil {
 		return nil, err
 	}
