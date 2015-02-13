@@ -44,7 +44,6 @@ type changeCache struct {
 	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
 	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
 	lock            sync.RWMutex             // Coordinates access to struct fields
-	LateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
 	options         CacheOptions             // Cache config
 }
 
@@ -363,8 +362,12 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
+	base.LogTo("Cache", "Waiting for c.lock in processEntry for sequence %d", change.Sequence)
 	c.lock.Lock()
-	defer c.lock.Unlock()
+	defer func() {
+		base.LogTo("Cache", "Releasing c.lock in processEntry for sequence %d", change.Sequence)
+		c.lock.Unlock()
+	}()
 
 	if c.logsDisabled {
 		return nil
@@ -430,18 +433,6 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
-	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
-	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
-	// twice)
-	if isLateSequence {
-		lockWait := time.Now()
-		c.LateSeqLock.Lock()
-		// Record a histogram of the overall wait for the lateSeq write lock
-		lag := time.Since(lockWait)
-		lagMs := int(lag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("block-lateSeqLock-%04dms", lagMs), 1)
-	}
-
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
 			channelCache := c._getChannelCache(channelName)
@@ -451,10 +442,6 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 				channelCache.AddLateSequence(change)
 			}
 		}
-	}
-
-	if isLateSequence {
-		c.LateSeqLock.Unlock()
 	}
 
 	if EnableStarChannelLog {
@@ -521,7 +508,7 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 	if c.stopped {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c.getChannelCache(channelName).GetChanges(options)
+	return c._getChannelCache(channelName).GetChanges(options)
 }
 
 // Returns the sequence number the cache is up-to-date with.

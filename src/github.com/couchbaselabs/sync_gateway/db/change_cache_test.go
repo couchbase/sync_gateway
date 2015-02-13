@@ -195,6 +195,7 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 		CurrentRev: rev,
 		Sequence:   sequence,
 		Channels:   chanMap,
+		TimeSaved:  time.Now(),
 	}
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
@@ -611,6 +612,106 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 1. 2::8 is the user sequence
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
+
+	close(options.Terminator)
+}
+
+// Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
+// in the main changes.go iteration loop, without a lock on the underlying channel caches.  The following
+// sequence is possible while running a changes feed for channels "A", "B":
+//    1. Sequence 100, Channel A arrives, and triggers changes loop iteration
+//    2. Changes loop calls changes.changesFeed(A) - gets 100
+//    3. Sequence 101, Channel A arrives
+//    4. Sequence 102, Channel B arrives
+//    5. Changes loop calls changes.changesFeed(B) - gets 102
+//    6. Changes sends 100, 102, and sets since=102
+// Here 101 is skipped, and never gets sent.  There are a number of ways a sufficient delay between #2 and #5
+// could be introduced in a real-world scenario
+//     - there are channels C,D,E,F,G with large caches that get processed between A and B
+// To test, uncomment the following
+// lines at the start of changesFeed() in changes.go to simulate slow processing:
+//	    base.LogTo("Sequences", "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
+//	    time.Sleep(100 * time.Millisecond)
+
+func TestChannelRace(t *testing.T) {
+
+	base.LogKeys["Sequences"] = true
+	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channels "Odd", "Even"
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Even", "Odd"))
+	authenticator.Save(user)
+
+	// Write initial sequences
+	WriteDirect(db, []string{"Odd"}, 1)
+	WriteDirect(db, []string{"Even"}, 2)
+	WriteDirect(db, []string{"Odd"}, 3)
+
+	db.changeCache.waitForSequence(3)
+	db.user, _ = authenticator.GetUser("naomi")
+
+	// Start changes feed
+
+	var options ChangesOptions
+	options.Since = SequenceID{Seq: 0}
+	options.Terminator = make(chan bool)
+	options.Continuous = true
+	options.Wait = true
+	feed, err := db.MultiChangesFeed(base.SetOf("Even", "Odd"), options)
+	assert.True(t, err == nil)
+	feedClosed := false
+
+	// Go-routine to work the feed channel and write to an array for use by assertions
+	var changes = make([]*ChangeEntry, 0, 50)
+	go func() {
+		for feedClosed == false {
+			select {
+			case entry, ok := <-feed:
+				if ok {
+					// feed sends nil after each continuous iteration
+					if entry != nil {
+						log.Println("Changes entry:", entry.Seq)
+						changes = append(changes, entry)
+					}
+				} else {
+					log.Println("Closing feed")
+					feedClosed = true
+				}
+			}
+		}
+	}()
+
+	// Wait for processing of two channels (100 ms each)
+	time.Sleep(250 * time.Millisecond)
+	// Validate the initial sequences arrive as expected
+	assert.Equals(t, len(changes), 3)
+
+	// Send update to trigger the start of the next changes iteration
+	WriteDirect(db, []string{"Even"}, 4)
+	time.Sleep(150 * time.Millisecond)
+	// After read of "Even" channel, but before read of "Odd" channel, send three new entries
+	WriteDirect(db, []string{"Odd"}, 5)
+	WriteDirect(db, []string{"Even"}, 6)
+	WriteDirect(db, []string{"Odd"}, 7)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// At this point we've haven't sent sequence 6, but the continuous changes feed has since=7
+
+	// Write a few more to validate that we're not catching up on the missing '6' later
+	WriteDirect(db, []string{"Even"}, 8)
+	WriteDirect(db, []string{"Odd"}, 9)
+	time.Sleep(750 * time.Millisecond)
+	assert.Equals(t, len(changes), 9)
+	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
+	changesString := ""
+	for _, change := range changes {
+		changesString = fmt.Sprintf("%s%d, ", changesString, change.Seq.Seq)
+	}
+	fmt.Println("changes: ", changesString)
 
 	close(options.Terminator)
 }
