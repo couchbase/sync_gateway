@@ -173,51 +173,48 @@ func (c *changeCache) CleanUp() bool {
 // than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
 // prior to removal
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
-	c.skippedSeqLock.Lock()
 
-	dbExpvars.Add("clean_seq_queue", 1)
-	var foundEntries []*LogEntry
-	var pendingDeletes []uint64
+	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
+		c.skippedSeqLock.Lock()
+		defer c.skippedSeqLock.Unlock()
 
-	for _, skippedSeq := range c.skippedSeqs {
-		if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-			dbExpvars.Add("view_query_for_skipped_purge", 1)
-			// Attempt to retrieve the sequence from the view before we remove
-			options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq - 1}}
-			entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-
-			if err == nil && len(entries) > 0 {
-				// Found it - store to send to the caches.
-				foundEntries = append(foundEntries, entries[0])
-				dbExpvars.Add("skip_purge_view_hit", 1)
+		var foundEntries []*LogEntry
+		var pendingDeletes []uint64
+		for _, skippedSeq := range c.skippedSeqs {
+			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
+				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
+				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
+				if err != nil && len(entries) > 0 {
+					// Found it - store to send to the caches.
+					foundEntries = append(foundEntries, entries[0])
+					dbExpvars.Add("skip_purge_view_hit", 1)
+				} else {
+					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
+					pendingDeletes = append(pendingDeletes, skippedSeq.seq)
+					dbExpvars.Add("skip_purge_view_miss", 1)
+				}
 			} else {
-				base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
-				pendingDeletes = append(pendingDeletes, skippedSeq.seq)
-				dbExpvars.Add("skip_purge_view_miss", 1)
+				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
+				// still inside the time window
+				break
 			}
-		} else {
-			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
-			// still inside the time window
-			break
 		}
+		return foundEntries, pendingDeletes
+	}()
+
+	// Add found entries
+	for _, entry := range foundEntries {
+		c.processEntry(entry)
 	}
 
 	// Purge pending deletes
 	for _, sequence := range pendingDeletes {
-		err := c.skippedSeqs.Remove(sequence)
+		err := c.RemoveSkipped(sequence)
 		if err != nil {
 			base.Warn("Error purging skipped sequence %d from skipped sequence queue, %v", sequence, err)
 		} else {
 			dbExpvars.Add("abandoned_seqs", 1)
 		}
-	}
-
-	// Unlock before adding the found entries
-	c.skippedSeqLock.Unlock()
-
-	// Add found entries
-	for _, entry := range foundEntries {
-		c.processEntry(entry)
 	}
 
 	return true
@@ -529,11 +526,9 @@ func (c *changeCache) _allChannels() base.Set {
 }
 
 func (c *changeCache) addToSkipped(sequence uint64) {
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
+
 	dbExpvars.Add("skipped_sequences", 1)
-	base.LogTo("Cache+", "Adding sequence #%d to missed sequence queue", sequence)
-	c.skippedSeqs.Push(SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	c.PushSkipped(SkippedSequence{seq: sequence, timeAdded: time.Now()})
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
@@ -566,8 +561,22 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 //////// SKIPPED SEQUENCE QUEUE
 
+func (c *changeCache) RemoveSkipped(x uint64) error {
+	c.skippedSeqLock.Lock()
+	defer c.skippedSeqLock.Unlock()
+	return c.skippedSeqs.Remove(x)
+}
+
+func (c *changeCache) PushSkipped(x SkippedSequence) {
+	c.skippedSeqLock.Lock()
+	defer c.skippedSeqLock.Unlock()
+	c.skippedSeqs.Push(x)
+}
+
 // Remove does a simple binary search to find and remove.
 func (h *SkippedSequenceQueue) Remove(x uint64) error {
+
+	// TODO: use sort.SearchInts instead?
 	old := *h
 	low := 0
 	high := len(old) - 1
