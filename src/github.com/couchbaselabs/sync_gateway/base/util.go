@@ -10,12 +10,13 @@
 package base
 
 import (
-	"strconv"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -106,6 +107,11 @@ func MergeStringArrays(arrays ...[]string) (merged []string) {
 		}
 	}
 	return
+}
+
+// uint64 version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
+func SearchUint64s(a []uint64, x uint64) int {
+	return sort.Search(len(a), func(i int) bool { return a[i] >= x })
 }
 
 func ToInt64(value interface{}) (int64, bool) {
