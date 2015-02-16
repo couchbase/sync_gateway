@@ -44,7 +44,6 @@ type changeCache struct {
 	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
 	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
 	lock            sync.RWMutex             // Coordinates access to struct fields
-	LateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
 	options         CacheOptions             // Cache config
 }
 
@@ -174,31 +173,32 @@ func (c *changeCache) CleanUp() bool {
 // than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
 // prior to removal
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
-	c.skippedSeqLock.Lock()
 
-	var foundEntries []*LogEntry
-	var pendingDeletes []uint64
+	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
+		c.skippedSeqLock.Lock()
+		defer c.skippedSeqLock.Unlock()
 
-	for _, skippedSeq := range c.skippedSeqs {
-		if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-			// Attempt to retrieve the sequence from the view before we remove
-			options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
-			entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-			if err != nil && len(entries) > 0 {
-				// Found it - store to send to the caches.
-				foundEntries = append(foundEntries, entries[0])
+		var foundEntries []*LogEntry
+		var pendingDeletes []uint64
+		for _, skippedSeq := range c.skippedSeqs {
+			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
+				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
+				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
+				if err != nil && len(entries) > 0 {
+					// Found it - store to send to the caches.
+					foundEntries = append(foundEntries, entries[0])
+				} else {
+					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
+					pendingDeletes = append(pendingDeletes, skippedSeq.seq)
+				}
 			} else {
-				base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
-				pendingDeletes = append(pendingDeletes, skippedSeq.seq)
+				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
+				// still inside the time window
+				break
 			}
-		} else {
-			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
-			// still inside the time window
-			break
 		}
-	}
-
-	defer c.skippedSeqLock.Unlock()
+		return foundEntries, pendingDeletes
+	}()
 
 	// Add found entries
 	for _, entry := range foundEntries {
@@ -207,7 +207,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Purge pending deletes
 	for _, sequence := range pendingDeletes {
-		err := c.skippedSeqs.Remove(sequence)
+		err := c.RemoveSkipped(sequence)
 		if err != nil {
 			dbExpvars.Add("abandoned_seqs", 1)
 			base.Warn("Error purging skipped sequence %d from skipped sequence queue", sequence)
@@ -416,13 +416,6 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
-	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
-	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
-	// twice)
-	if isLateSequence {
-		c.LateSeqLock.Lock()
-	}
-
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
 			channelCache := c._getChannelCache(channelName)
@@ -432,10 +425,6 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 				channelCache.AddLateSequence(change)
 			}
 		}
-	}
-
-	if isLateSequence {
-		c.LateSeqLock.Unlock()
 	}
 
 	if EnableStarChannelLog {
@@ -520,10 +509,7 @@ func (c *changeCache) _allChannels() base.Set {
 }
 
 func (c *changeCache) addToSkipped(sequence uint64) {
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
-	base.LogTo("Cache+", "Adding sequence #%d to missed sequence queue", sequence)
-	c.skippedSeqs.Push(SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	c.PushSkipped(SkippedSequence{seq: sequence, timeAdded: time.Now()})
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
@@ -556,8 +542,22 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 //////// SKIPPED SEQUENCE QUEUE
 
+func (c *changeCache) RemoveSkipped(x uint64) error {
+	c.skippedSeqLock.Lock()
+	defer c.skippedSeqLock.Unlock()
+	return c.skippedSeqs.Remove(x)
+}
+
+func (c *changeCache) PushSkipped(x SkippedSequence) {
+	c.skippedSeqLock.Lock()
+	defer c.skippedSeqLock.Unlock()
+	c.skippedSeqs.Push(x)
+}
+
 // Remove does a simple binary search to find and remove.
 func (h *SkippedSequenceQueue) Remove(x uint64) error {
+
+	// TODO: use sort.SearchInts instead?
 	old := *h
 	low := 0
 	high := len(old) - 1
