@@ -244,6 +244,7 @@ func insertChange(log *LogEntries, change *LogEntry) {
 					// Shift and insert to remove the old entry and add the new one
 					copy((*log)[i:insertAfterIndex], (*log)[i+1:insertAfterIndex+1])
 					(*log)[insertAfterIndex] = change
+					return
 				}
 			}
 		}
@@ -252,7 +253,6 @@ func insertChange(log *LogEntries, change *LogEntry) {
 	*log = append(*log, nil)
 	copy((*log)[insertAfterIndex+2:], (*log)[insertAfterIndex+1:])
 	(*log)[insertAfterIndex+1] = change
-
 	return
 }
 
