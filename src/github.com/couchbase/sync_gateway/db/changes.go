@@ -157,6 +157,8 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+
+	dbExpvars.Add("multiChangesFeeds", 1)
 	if len(chans) == 0 {
 		return nil, nil
 	}
@@ -521,7 +523,8 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 }
 
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
-	db.changeCache.getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
+	dbExpvars.Add("closedLateFeeds", 1)
+	db.changeCache._getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
 }
 
 // endIteration is called at the end of the changes loop, and moves the currently sent sequences
