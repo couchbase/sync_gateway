@@ -409,7 +409,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
 		wasSkipped := false
-		if c.skippedSeqs.Remove(sequence) != nil {
+		if c.skippedSeqs.RemoveSkipped(sequence) != nil {
 			// Error removing from skipped sequences
 			dbExpvars.Add("late_find_fail", 1)
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
