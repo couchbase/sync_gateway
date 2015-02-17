@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -35,8 +36,12 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 
 // Low-level method to add a LogEntry to a single channel's cache.
 func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
+	channelLockTime := time.Now()
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	lag := time.Since(channelLockTime)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-channel-lock-addToCache-%05dms", lagMs), 1)
 
 	if !isRemoval {
 		c._appendChange(change)
@@ -71,8 +76,14 @@ func (c *channelCache) pruneCache() {
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
 func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
+
+	channelCacheLockTime := time.Now()
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
+	lag := time.Since(channelCacheLockTime)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-channelcache-rlock-getCachedChanges-%05dms", lagMs), 1)
 	return c._getCachedChanges(options)
 }
 

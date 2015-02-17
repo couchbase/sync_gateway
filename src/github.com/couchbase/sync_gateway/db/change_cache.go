@@ -300,6 +300,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			change := &LogEntry{
 				Sequence:     seq,
 				TimeReceived: time.Now(),
+				TimeSaved:    time.Now(),
 			}
 			c.processEntry(change)
 		}
@@ -345,6 +346,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	change := &LogEntry{
 		Sequence:     sequence,
 		TimeReceived: time.Now(),
+		TimeSaved:    time.Now(),
 	}
 	if isUser {
 		change.DocID = "_user/" + princ.Name()
@@ -359,12 +361,13 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
-	base.LogTo("Cache", "Waiting for c.lock in processEntry for sequence %d", change.Sequence)
+	changeCacheLockTime := time.Now()
 	c.lock.Lock()
-	defer func() {
-		base.LogTo("Cache", "Releasing c.lock in processEntry for sequence %d", change.Sequence)
-		c.lock.Unlock()
-	}()
+	defer c.lock.Unlock()
+
+	lag := time.Since(changeCacheLockTime)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-cache-lock-processEntry-%05dms", lagMs), 1)
 
 	if c.logsDisabled {
 		return nil
@@ -420,6 +423,8 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Set {
+
+	sentToCache := time.Now()
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
@@ -457,6 +462,11 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	lag = time.Since(change.TimeReceived)
 	lagMs = int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%05dms", lagMs), 1)
+
+	// ...and from the time the doc was sent for caching:
+	lag = time.Since(sentToCache)
+	lagMs = int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-caching-%05dms", lagMs), 1)
 
 	return base.SetFromArray(addedTo)
 }
