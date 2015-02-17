@@ -204,6 +204,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Add found entries
 	for _, entry := range foundEntries {
+		changeCacheExpvars.Add("processEntry-count-CleanSkipped", 1)
 		c.processEntry(entry)
 	}
 
@@ -302,6 +303,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 				TimeReceived: time.Now(),
 				TimeSaved:    time.Now(),
 			}
+			changeCacheExpvars.Add("processEntry-count-UnusedSequences", 1)
 			c.processEntry(change)
 		}
 
@@ -321,7 +323,9 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 		}
 		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
+		changeCacheExpvars.Add("processEntry-count-DocChanged", 1)
 		changedChannels := c.processEntry(change)
+
 		if c.onChange != nil && len(changedChannels) > 0 {
 			c.onChange(changedChannels)
 		}
@@ -356,6 +360,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
 
+	changeCacheExpvars.Add("processEntry-count-processPrincipalDoc", 1)
 	c.processEntry(change)
 }
 

@@ -294,7 +294,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	base.LogKeys["Sequences"] = true
 	//base.LogKeys["Cache"] = true
 	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	base.LogKeys["Changes+"] = true
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
