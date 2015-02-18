@@ -67,6 +67,7 @@ type HighWaterMark struct {
 }
 
 var highWatermark *HighWaterMark
+var highWatermarkLockAcquire *HighWaterMark
 
 func (h HighWaterMark) String() string {
 	return fmt.Sprintf("%v", h.Payload)
@@ -100,7 +101,13 @@ func init() {
 	highWatermark = &HighWaterMark{
 		Payload: 0,
 	}
+	highWatermarkLockAcquire = &HighWaterMark{
+		Payload: 0,
+	}
+
 	dbExpvars.Set("process-entry-high-water-mark-ns", highWatermark)
+	dbExpvars.Set("process-entry-lock-acquire-high-water-mark-ns", highWatermarkLockAcquire)
+
 }
 
 func ValidateDatabaseName(dbName string) error {

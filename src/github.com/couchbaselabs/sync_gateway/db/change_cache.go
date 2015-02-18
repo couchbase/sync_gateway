@@ -387,6 +387,11 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
 	changeCacheLockTime := time.Now()
 	c.lock.Lock()
+
+	lockAcquireDelta := time.Since(timeEntered)
+	dbExpvars.Add("process-entry-lock-acuire-cumulative-ns", int64(lockAcquireDelta))
+	highWatermarkLockAcquire.CasUpdate(int64(lockAcquireDelta))
+
 	defer func() {
 		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
 		c.lock.Unlock()
