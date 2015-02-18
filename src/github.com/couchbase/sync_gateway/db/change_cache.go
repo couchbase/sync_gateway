@@ -175,15 +175,26 @@ func (c *changeCache) CleanUp() bool {
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
+		dbExpvars.Add("cleanskipped_waitForLock", 1)
 		c.skippedSeqLock.Lock()
-		defer c.skippedSeqLock.Unlock()
-
+		dbExpvars.Add("cleanSkipped_hasLock", 1)
+		defer func() {
+			c.skippedSeqLock.Unlock()
+			dbExpvars.Add("cleanskipped_unlock", 1)
+		}()
 		var foundEntries []*LogEntry
 		var pendingDeletes []uint64
+
+		dbExpvars.Add("cleanskipped_count", int64(len(c.skippedSeqs)))
 		for _, skippedSeq := range c.skippedSeqs {
 			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
+				dbExpvars.Add("cleanskipped_expiredCount", 1)
 				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
+				queryStart := time.Now()
 				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
+				lag := time.Since(queryStart)
+				lagMs := int(lag/(100*time.Millisecond)) * 100
+				dbExpvars.Add(fmt.Sprintf("cleanskipped_query-total-%05dms", lagMs), 1)
 				if err != nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					foundEntries = append(foundEntries, entries[0])
@@ -203,14 +214,18 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	}()
 
 	// Add found entries
+
+	dbExpvars.Add("cleanskipped_addingFound", int64(len(foundEntries)))
 	for _, entry := range foundEntries {
 		changeCacheExpvars.Add("processEntry-count-CleanSkipped", 1)
 		c.processEntry(entry)
 	}
 
 	// Purge pending deletes
+	dbExpvars.Add("cleanskipped_pendingDeletes", int64(len(pendingDeletes)))
 	for _, sequence := range pendingDeletes {
 		err := c.RemoveSkipped(sequence)
+		dbExpvars.Add("cleanskipped_removedSkipped", 1)
 		if err != nil {
 			base.Warn("Error purging skipped sequence %d from skipped sequence queue, %v", sequence, err)
 		} else {

@@ -69,8 +69,8 @@ func (c *channelCache) _pruneCache() {
 
 func (c *channelCache) pruneCache() {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	c._pruneCache()
-	c.lock.Unlock()
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
