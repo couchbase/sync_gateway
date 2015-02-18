@@ -965,6 +965,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 		Results []db.ChangeEntry
 	}
 
+	<-time.After(time.Millisecond * 500)
+
 	limit := 50
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?limit=%d", limit), "", "user1"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
