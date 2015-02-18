@@ -381,12 +381,19 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
+
+	timeEntered := time.Now()
+
 	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
 	changeCacheLockTime := time.Now()
 	c.lock.Lock()
 	defer func() {
 		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
 		c.lock.Unlock()
+		dbExpvars.Add("num-process-entry-calls", 1)
+		delta := time.Since(timeEntered)
+		dbExpvars.Add("process-entry-cumulative-ns", int64(delta))
+		highWatermark.CasUpdate(int64(delta))
 	}()
 
 	lag := time.Since(changeCacheLockTime)
