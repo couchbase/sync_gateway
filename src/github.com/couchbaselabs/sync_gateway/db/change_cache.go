@@ -390,6 +390,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	defer func() {
 		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
 		c.lock.Unlock(sessionId)
+		changeCacheExpvars.Add("processEntry-tracker-defer-exit-post-unlock", 1)
 	}()
 
 	lag := time.Since(changeCacheLockTime)
