@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbaselabs/go-couchbase"
@@ -60,6 +61,47 @@ type Database struct {
 const kSyncKeyPrefix = "_sync:"
 
 var dbExpvars = expvar.NewMap("syncGateway_db")
+
+type HighWaterMark struct {
+	Payload int64
+}
+
+var highWatermark *HighWaterMark
+
+func (h HighWaterMark) String() string {
+	return fmt.Sprintf("%v", h.Payload)
+}
+
+func (h *HighWaterMark) CasUpdate(newVal int64) {
+
+	for i := 0; i < 50; i++ {
+
+		// if its not higher than current value, no point in continuing
+		if int64(newVal) <= h.Payload {
+			return
+		}
+
+		// do a CAS update
+		casSuccessful := atomic.CompareAndSwapInt64(
+			&h.Payload,
+			h.Payload,
+			newVal,
+		)
+
+		if casSuccessful {
+			return
+		}
+
+	}
+
+}
+
+func init() {
+	highWatermark = &HighWaterMark{
+		Payload: 0,
+	}
+	dbExpvars.Set("process-entry-high-water-mark-ns", highWatermark)
+}
 
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
