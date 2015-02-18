@@ -8,6 +8,7 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
+	"github.com/tleyden/isync"
 )
 
 var ChannelCacheMinLength = 50         // Keep at least this many entries in cache
@@ -17,19 +18,21 @@ var ChannelCacheAge = 60 * time.Second // Keep entries at least this long
 const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
 
 type channelCache struct {
-	channelName      string           // The channel name, duh
-	context          *DatabaseContext // Database connection (used for view queries)
-	logs             LogEntries       // Log entries in sequence order
-	validFrom        uint64           // First sequence that logs is valid for
-	lock             sync.RWMutex     // Controls access to logs, validFrom
-	viewLock         sync.Mutex       // Ensures only one view query is made at a time
-	lateLogs         []*lateLogEntry  // Late arriving LogEntries, stored in the order they were received
-	lastLateSequence uint64           // Used for fast check of whether listener has the latest
-	lateLogLock      sync.RWMutex     // Controls access to lateLogs
+	channelName      string                   // The channel name, duh
+	context          *DatabaseContext         // Database connection (used for view queries)
+	logs             LogEntries               // Log entries in sequence order
+	validFrom        uint64                   // First sequence that logs is valid for
+	lock             isync.InstrumentedLocker // Controls access to logs, validFrom
+	viewLock         sync.Mutex               // Ensures only one view query is made at a time
+	lateLogs         []*lateLogEntry          // Late arriving LogEntries, stored in the order they were received
+	lastLateSequence uint64                   // Used for fast check of whether listener has the latest
+	lateLogLock      isync.InstrumentedLocker // Controls access to lateLogs
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
 	cache := &channelCache{context: context, channelName: channelName, validFrom: validFrom}
+	cache.lock = isync.NewRWMutex()
+	cache.lateLogLock = isync.NewRWMutex()
 	cache.initializeLateLogs()
 	return cache
 }
@@ -37,8 +40,8 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 // Low-level method to add a LogEntry to a single channel's cache.
 func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	channelLockTime := time.Now()
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	sessionId := c.lock.LockWithUserData("channel-cache-add-to-cache")
+	defer c.lock.Unlock(sessionId)
 	lag := time.Since(channelLockTime)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-channel-lock-addToCache-%05dms", lagMs), 1)
@@ -68,9 +71,9 @@ func (c *channelCache) _pruneCache() {
 }
 
 func (c *channelCache) pruneCache() {
-	c.lock.Lock()
+	sessionId := c.lock.LockWithUserData("channel-cache-prune-cache")
 	c._pruneCache()
-	c.lock.Unlock()
+	c.lock.Unlock(sessionId)
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
@@ -78,8 +81,8 @@ func (c *channelCache) pruneCache() {
 func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 
 	channelCacheLockTime := time.Now()
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	sessionId := c.lock.RLockWithUserData("channel-cache-get-cached-changes")
+	defer c.lock.RUnlock(sessionId)
 
 	lag := time.Since(channelCacheLockTime)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
@@ -262,8 +265,8 @@ func insertChange(log *LogEntries, change *LogEntry) {
 // missing sequences in between.
 // Returns the number of entries actually prepended.
 func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, openEnded bool) int {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	sessionId := c.lock.LockWithUserData("prependChanges")
+	defer c.lock.Unlock(sessionId)
 
 	log := c.logs
 	if len(log) == 0 {
@@ -358,8 +361,8 @@ func (c *channelCache) initializeLateLogs() {
 // sequence number in the list.  Note that lateLogs is sorted by arrival on Tap, not sequence number.
 func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
 
-	c.lateLogLock.RLock()
-	defer c.lateLogLock.RUnlock()
+	sessionId := c.lateLogLock.RLockWithUserData("channel-cache-get-late-sequences-since")
+	defer c.lateLogLock.RUnlock(sessionId)
 
 	// If we don't have any new late sequences, return empty
 	if sinceSequence == c.lastLateSequence {
@@ -425,8 +428,8 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 		arrived:       time.Now(),
 		listenerCount: 0,
 	}
-	c.lateLogLock.Lock()
-	defer c.lateLogLock.Unlock()
+	sessionId := c.lateLogLock.LockWithUserData("channel-cache-add-late-sequence")
+	defer c.lateLogLock.Unlock(sessionId)
 	c.lateLogs = append(c.lateLogs, lateEntry)
 	c.lastLateSequence = change.Sequence
 	// Currently we're only purging on add.  Could also consider a timed purge to handle the case
@@ -449,8 +452,8 @@ func (c *channelCache) _purgeLateLogEntries() {
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.
 func (c *channelCache) purgeLateLogEntries() {
-	c.lateLogLock.Lock()
-	defer c.lateLogLock.Unlock()
+	sessionId := c.lateLogLock.LockWithUserData("channel-cache-purge-late-log-entries")
+	defer c.lateLogLock.Unlock(sessionId)
 	c._purgeLateLogEntries()
 
 }

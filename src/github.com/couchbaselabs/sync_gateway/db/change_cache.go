@@ -6,7 +6,6 @@ import (
 	"expvar"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/couchbaselabs/sync_gateway/auth"
@@ -43,7 +42,7 @@ type changeCache struct {
 	onChange        func(base.Set)           // Client callback that notifies of channel changes
 	stopped         bool                     // Set by the Stop method
 	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
-	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
+	skippedSeqLock  isync.InstrumentedLocker // Coordinates access to skippedSeqs queue
 	lock            isync.InstrumentedLocker // Coordinates access to struct fields
 	options         CacheOptions             // Cache config
 }
@@ -77,6 +76,7 @@ type CacheOptions struct {
 func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set), options CacheOptions) {
 
 	c.lock = isync.NewRWMutex()
+	c.skippedSeqLock = isync.NewRWMutex()
 	c.context = context
 	c.initialSequence = lastSequence
 	c.nextSequence = lastSequence + 1
@@ -178,8 +178,8 @@ func (c *changeCache) CleanUp() bool {
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
-		c.skippedSeqLock.Lock()
-		defer c.skippedSeqLock.Unlock()
+		sessionId := c.skippedSeqLock.LockWithUserData("change-cache-clean-skippped-sequence-queue")
+		defer c.skippedSeqLock.Unlock(sessionId)
 
 		var foundEntries []*LogEntry
 		var pendingDeletes []uint64
@@ -562,8 +562,8 @@ func (c *changeCache) addToSkipped(sequence uint64) {
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
-	c.skippedSeqLock.RLock()
-	defer c.skippedSeqLock.RUnlock()
+	sessionId := c.skippedSeqLock.RLockWithUserData("change-cache-get-oldest-skipped-sequence")
+	defer c.skippedSeqLock.RUnlock(sessionId)
 	if len(c.skippedSeqs) > 0 {
 		return c.skippedSeqs[0].seq
 	} else {
@@ -592,14 +592,14 @@ func (h *LogPriorityQueue) Pop() interface{} {
 //////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
+	sessionId := c.skippedSeqLock.LockWithUserData("change-cache-removed-skipped")
+	defer c.skippedSeqLock.Unlock(sessionId)
 	return c.skippedSeqs.Remove(x)
 }
 
 func (c *changeCache) PushSkipped(x SkippedSequence) {
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
+	sessionId := c.skippedSeqLock.LockWithUserData("change-cache-push-skipped")
+	defer c.skippedSeqLock.Unlock(sessionId)
 	c.skippedSeqs.Push(x)
 }
 
