@@ -43,3 +43,12 @@
 [submodule "src/golang.org/x/text"]
 	path = src/golang.org/x/text
 	url = https://go.googlesource.com/text
+[submodule "src/github.com/tleyden/isync"]
+	path = src/github.com/tleyden/isync
+	url = https://github.com/tleyden/isync.git
+[submodule "src/github.com/nu7hatch/gouuid"]
+	path = src/github.com/nu7hatch/gouuid
+	url = https://github.com/nu7hatch/gouuid.git
+[submodule "src/github.com/tleyden/go-safe-dstruct"]
+	path = src/github.com/tleyden/go-safe-dstruct
+	url = https://github.com/tleyden/go-safe-dstruct.git

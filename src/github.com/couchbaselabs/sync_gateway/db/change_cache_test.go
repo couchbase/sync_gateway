@@ -17,6 +17,7 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
+	"github.com/tleyden/isync"
 
 	"github.com/couchbaselabs/go.assert"
 )
@@ -290,6 +291,9 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
+
+	isync.DisableLockTracking()
+	defer isync.EnableLockTracking()
 
 	base.LogKeys["Sequences"] = true
 	//base.LogKeys["Cache"] = true

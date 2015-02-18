@@ -12,6 +12,7 @@ import (
 	"github.com/couchbaselabs/sync_gateway/auth"
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
+	"github.com/tleyden/isync"
 )
 
 var DefaultMaxChannelLogPendingCount = 10000              // Max number of waiting sequences
@@ -43,7 +44,7 @@ type changeCache struct {
 	stopped         bool                     // Set by the Stop method
 	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
 	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
-	lock            sync.RWMutex             // Coordinates access to struct fields
+	lock            isync.InstrumentedLocker // Coordinates access to struct fields
 	options         CacheOptions             // Cache config
 }
 
@@ -74,6 +75,8 @@ type CacheOptions struct {
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
 func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set), options CacheOptions) {
+
+	c.lock = isync.NewRWMutex()
 	c.context = context
 	c.initialSequence = lastSequence
 	c.nextSequence = lastSequence + 1
@@ -121,27 +124,27 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
-	c.lock.Lock()
+	sessionId := c.lock.LockWithUserData("change-cache-stop")
 	c.stopped = true
 	c.logsDisabled = true
-	c.lock.Unlock()
+	c.lock.Unlock(sessionId)
 }
 
 // Forgets all cached changes for all channels.
 func (c *changeCache) ClearLogs() {
-	c.lock.Lock()
+	sessionId := c.lock.LockWithUserData("change-cache-clear-logs")
 	c.initialSequence, _ = c.context.LastSequence()
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
-	c.lock.Unlock()
+	c.lock.Unlock(sessionId)
 }
 
 // If set to false, DocChanged() becomes a no-op.
 func (c *changeCache) EnableChannelLogs(enable bool) {
-	c.lock.Lock()
+	sessionId := c.lock.LockWithUserData("change-cache-enablechanlogs")
 	c.logsDisabled = !enable
-	c.lock.Unlock()
+	c.lock.Unlock(sessionId)
 }
 
 // Cleanup function, invoked periodically.
@@ -149,8 +152,8 @@ func (c *changeCache) EnableChannelLogs(enable bool) {
 // Removes entries older than MaxChannelLogCacheAge from the cache.
 // Returns false if the changeCache has been closed.
 func (c *changeCache) CleanUp() bool {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	sessionId := c.lock.LockWithUserData("change-cache-cleanup")
+	defer c.lock.Unlock(sessionId)
 	if c.channelCaches == nil {
 		return false
 	}
@@ -225,9 +228,9 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 func (c *changeCache) waitForSequence(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		sessionId := c.lock.LockWithUserData("change-cache-wait-for-sequence")
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.Unlock(sessionId)
 		if nextSequence >= sequence+1 {
 			base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 			return
@@ -241,9 +244,9 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		sessionId := c.lock.LockWithUserData("change-cache-wait-for-sequence-with-missing")
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.Unlock(sessionId)
 		if nextSequence >= sequence+1 {
 			foundInMissing := false
 			for _, skippedSeq := range c.skippedSeqs {
@@ -368,10 +371,10 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
 	changeCacheLockTime := time.Now()
-	c.lock.Lock()
+	sessionId := c.lock.LockWithUserData("change-cache-process-entry")
 	defer func() {
 		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
-		c.lock.Unlock()
+		c.lock.Unlock(sessionId)
 	}()
 
 	lag := time.Since(changeCacheLockTime)
@@ -512,8 +515,8 @@ func (c *changeCache) _addPendingLogs() base.Set {
 }
 
 func (c *changeCache) getChannelCache(channelName string) *channelCache {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	sessionId := c.lock.LockWithUserData("change-cache-get-channel-cache")
+	defer c.lock.Unlock(sessionId)
 	return c._getChannelCache(channelName)
 }
 
@@ -537,8 +540,8 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 
 // Returns the sequence number the cache is up-to-date with.
 func (c *changeCache) LastSequence() uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	sessionId := c.lock.RLockWithUserData("change-cache-last-sequence")
+	defer c.lock.RUnlock(sessionId)
 	return c.nextSequence - 1
 }
 

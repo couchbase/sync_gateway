@@ -14,6 +14,7 @@ import (
 	_ "github.com/couchbase/gomemcached/debug"
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/samuel/go-metrics/metrics"
+	"github.com/tleyden/isync"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 )
@@ -47,6 +48,7 @@ func init() {
 	grTracker = &goroutineTracker{}
 	expvar.Publish("goroutine_stats", grTracker)
 
+	expvar.Publish("isync", isync.OpenLocksExpvarPublisher())
 }
 
 type goroutineTracker struct {
