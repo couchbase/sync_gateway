@@ -72,8 +72,8 @@ func (c *channelCache) _pruneCache() {
 
 func (c *channelCache) pruneCache() {
 	sessionId := c.lock.LockWithUserData("channel-cache-prune-cache")
+	defer c.lock.Unlock(sessionId)
 	c._pruneCache()
-	c.lock.Unlock(sessionId)
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
