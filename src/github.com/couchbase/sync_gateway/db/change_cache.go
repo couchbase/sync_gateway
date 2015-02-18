@@ -366,13 +366,18 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
+	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
 	changeCacheLockTime := time.Now()
 	c.lock.Lock()
-	defer c.lock.Unlock()
+	defer func() {
+		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
+		c.lock.Unlock()
+	}()
 
 	lag := time.Since(changeCacheLockTime)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-cache-lock-processEntry-%05dms", lagMs), 1)
+	changeCacheExpvars.Add("processEntry-tracker-got-lock", 1)
 
 	if c.logsDisabled {
 		return nil
@@ -389,12 +394,15 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	var changedChannels base.Set
 	if sequence == nextSequence || nextSequence == 0 {
+		changeCacheExpvars.Add("processEntry-tracker-next", 1)
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change, false)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
+		changeCacheExpvars.Add("processEntry-tracker-next_done", 1)
 	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
+		changeCacheExpvars.Add("processEntry-tracker-pending", 1)
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
@@ -405,7 +413,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			dbExpvars.Add("pending_cache_full", 1)
 			changedChannels = c._addPendingLogs()
 		}
+		changeCacheExpvars.Add("processEntry-tracker-pending-done", 1)
 	} else if sequence > c.initialSequence {
+		changeCacheExpvars.Add("processEntry-tracker-skipped", 1)
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
 		wasSkipped := false
@@ -419,7 +429,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			wasSkipped = true
 		}
 
+		changeCacheExpvars.Add("processEntry-tracker-skipped-removed", 1)
 		changedChannels = c._addToCache(change, wasSkipped)
+		changeCacheExpvars.Add("processEntry-tracker-skipped-done", 1)
 
 	}
 	return changedChannels
