@@ -175,34 +175,23 @@ func (c *changeCache) CleanUp() bool {
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
-		dbExpvars.Add("cleanskipped_waitForLock", 1)
 		c.skippedSeqLock.Lock()
-		dbExpvars.Add("cleanSkipped_hasLock", 1)
-		defer func() {
-			c.skippedSeqLock.Unlock()
-			dbExpvars.Add("cleanskipped_unlock", 1)
-		}()
+		defer c.skippedSeqLock.Unlock()
+
 		var foundEntries []*LogEntry
 		var pendingDeletes []uint64
 
-		dbExpvars.Add("cleanskipped_count", int64(len(c.skippedSeqs)))
 		for _, skippedSeq := range c.skippedSeqs {
 			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-				dbExpvars.Add("cleanskipped_expiredCount", 1)
 				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
-				queryStart := time.Now()
 				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-				lag := time.Since(queryStart)
-				lagMs := int(lag/(100*time.Millisecond)) * 100
-				dbExpvars.Add(fmt.Sprintf("cleanskipped_query-total-%05dms", lagMs), 1)
+
 				if err != nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					foundEntries = append(foundEntries, entries[0])
-					dbExpvars.Add("skip_purge_view_hit", 1)
 				} else {
-					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
+					//base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
 					pendingDeletes = append(pendingDeletes, skippedSeq.seq)
-					dbExpvars.Add("skip_purge_view_miss", 1)
 				}
 			} else {
 				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
@@ -215,22 +204,13 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Add found entries
 
-	dbExpvars.Add("cleanskipped_addingFound", int64(len(foundEntries)))
 	for _, entry := range foundEntries {
-		changeCacheExpvars.Add("processEntry-count-CleanSkipped", 1)
 		c.processEntry(entry)
 	}
 
 	// Purge pending deletes
-	dbExpvars.Add("cleanskipped_pendingDeletes", int64(len(pendingDeletes)))
 	for _, sequence := range pendingDeletes {
-		err := c.RemoveSkipped(sequence)
-		dbExpvars.Add("cleanskipped_removedSkipped", 1)
-		if err != nil {
-			base.Warn("Error purging skipped sequence %d from skipped sequence queue, %v", sequence, err)
-		} else {
-			dbExpvars.Add("abandoned_seqs", 1)
-		}
+		c.RemoveSkipped(sequence)
 	}
 
 	return true
@@ -282,7 +262,6 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(docID string, docJSON []byte) {
-	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
 		// Is this a user/role doc?
@@ -305,25 +284,15 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			return // Tap is sending us an old value from before I started up; ignore it
 		}
 
-		// Record a histogram of the Tap feed's lag:
-		tapLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
-		lagMs := int(tapLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
-
 		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 		for _, seq := range doc.UnusedSequences {
-			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+			//base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
 			change := &LogEntry{
 				Sequence:     seq,
 				TimeReceived: time.Now(),
 				TimeSaved:    time.Now(),
 			}
-			changeCacheExpvars.Add("processEntry-count-UnusedSequences", 1)
 			c.processEntry(change)
-		}
-
-		if doc.TimeSaved.IsZero() {
-			base.Warn("Found doc with zero timeSaved, docID=%s", docID)
 		}
 
 		// Now add the entry for the new doc revision:
@@ -336,9 +305,8 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			TimeSaved:    doc.TimeSaved,
 			Channels:     doc.Channels,
 		}
-		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
+		//base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
-		changeCacheExpvars.Add("processEntry-count-DocChanged", 1)
 		changedChannels := c.processEntry(change)
 
 		if c.onChange != nil && len(changedChannels) > 0 {
@@ -373,41 +341,17 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		change.DocID = "_role/" + princ.Name()
 	}
 
-	base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
+	//base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
 
-	changeCacheExpvars.Add("processEntry-count-processPrincipalDoc", 1)
 	c.processEntry(change)
 }
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
-	timeEntered := time.Now()
-	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
 	c.lock.Lock()
 
-	lag := time.Since(timeEntered)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("processEntry-lock-time-%05dms", lagMs), 1)
-
-	processStart := time.Now()
-	lockAcquireDelta := time.Since(timeEntered)
-	dbExpvars.Add("process-entry-lock-acquire-cumulative-ns", int64(lockAcquireDelta))
-	highWatermarkLockAcquire.CasUpdate(int64(lockAcquireDelta))
-
-	defer func() {
-		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
-		c.lock.Unlock()
-		dbExpvars.Add("num-process-entry-calls", 1)
-		delta := time.Since(timeEntered)
-		dbExpvars.Add("process-entry-cumulative-ns", int64(delta))
-		highWatermark.CasUpdate(int64(delta))
-		executionTime := time.Since(processStart)
-		changeCacheExpvars.Add("processEntry-execution-cumulative", int64(executionTime))
-		changeCacheExpvars.Add("processEntry-execution-count", 1)
-		lagMs := int(lag/(10*time.Millisecond)) * 10
-		changeCacheExpvars.Add(fmt.Sprintf("processEntry-execution-time-%05dms", lagMs), 1)
-	}()
+	defer c.lock.Unlock()
 
 	if c.logsDisabled {
 		return nil
@@ -416,55 +360,40 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	sequence := change.Sequence
 	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
-		changeCacheExpvars.Add("processEntry-exit-duplicate", 1)
-		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+		//base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
 	var changedChannels base.Set
-	var exitType string
 	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change, false)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
-
-		exitType = "next"
 	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
-		changeCacheExpvars.Add("processEntry-tracker-pending", 1)
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
-		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
-			sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
-		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
+		//	sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
-			dbExpvars.Add("pending_cache_full", 1)
 			changedChannels = c._addPendingLogs()
 		}
-		exitType = "pending"
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
 		wasSkipped := false
 		if c.RemoveSkipped(sequence) != nil {
 			// Error removing from skipped sequences
-			dbExpvars.Add("late_find_fail", 1)
-			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
+			//base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
-			dbExpvars.Add("late_find_success", 1)
-			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
+			//base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			wasSkipped = true
 		}
 		changedChannels = c._addToCache(change, wasSkipped)
-		changeCacheExpvars.Add("processEntry-exit-skipped", 1)
-		exitType = "skipped"
 	}
-
-	changeCacheExpvars.Add(fmt.Sprintf("processEntry-exit-%s", exitType), 1)
 
 	return changedChannels
 }
@@ -473,7 +402,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Set {
 
-	sentToCache := time.Now()
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
@@ -500,23 +428,6 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 		addedTo = append(addedTo, channels.UserStarChannel)
 	}
 
-	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.TimeSaved)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%05dms", lagMs), 1)
-	if lagMs > 10000000 {
-		base.Warn("Warning - extremely long total lag - time saved was: %v", change.TimeSaved)
-	}
-	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.TimeReceived)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%05dms", lagMs), 1)
-
-	// ...and from the time the doc was sent for caching:
-	lag = time.Since(sentToCache)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-caching-%05dms", lagMs), 1)
-
 	return base.SetFromArray(addedTo)
 }
 
@@ -532,8 +443,6 @@ func (c *changeCache) _addPendingLogs() base.Set {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Union(c._addToCache(change, false))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
-			base.LogTo("Cache", "Adding #%d to skipped", c.nextSequence)
-			changeCacheExpvars.Add("outOfOrder", 1)
 			c.addToSkipped(c.nextSequence)
 			c.nextSequence++
 		} else {
@@ -585,8 +494,6 @@ func (c *changeCache) _allChannels() base.Set {
 }
 
 func (c *changeCache) addToSkipped(sequence uint64) {
-
-	dbExpvars.Add("skipped_sequences", 1)
 	c.PushSkipped(SkippedSequence{seq: sequence, timeAdded: time.Now()})
 }
 

@@ -93,7 +93,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 	// Uncomment the following two lines (and add an import for 'time') to run TestChannelRace in change_cache_test.go
 	//  base.LogTo("Sequences", "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
 	//  time.Sleep(100 * time.Millisecond)
-	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
 	if err != nil {
 		return nil, options.Since.SafeSequence(), err
@@ -158,7 +157,6 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 // Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 
-	dbExpvars.Add("multiChangesFeeds", 1)
 	if len(chans) == 0 {
 		return nil, nil
 	}
@@ -216,7 +214,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			} else {
 				channelsSince = channels.AtSequence(chans, 0)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
+			//base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
@@ -363,7 +361,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					minEntry.Seq.LowSeq = lowSequence
 
 					// Send the entry, and repeat the loop:
-					base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
+					//base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
 					select {
 					case <-options.Terminator:
 						return
@@ -390,7 +388,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
 			if !sentSomething {
-				base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
+				//base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 				output <- nil
 				if !changeWaiter.Wait() {
 					break
@@ -407,7 +405,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
 			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
-				base.LogTo("Changes+", "MultiChangesFeed reloading user %q", db.user.Name())
+				//base.LogTo("Changes+", "MultiChangesFeed reloading user %q", db.user.Name())
 				userChangeCount = newCount
 				if err := db.ReloadUser(); err != nil {
 					base.Warn("Error reloading user %q: %v", db.user.Name(), err)
@@ -523,7 +521,6 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 }
 
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
-	dbExpvars.Add("closedLateFeeds", 1)
 	db.changeCache._getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
 }
 
@@ -531,9 +528,11 @@ func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 // into the previously sent map.
 func (ct *ChangesTracker) endIteration() {
 
-	if base.LogEnabled("Changes+") {
-		base.LogTo("Changes+", ct.String())
-	}
+	/*
+		if base.LogEnabled("Changes+") {
+			base.LogTo("Changes+", ct.String())
+		}
+	*/
 
 	// Empty the lastSent map.  Emptying here instead of doing a new make() to avoid GC
 	if ct.LastSent == nil {
