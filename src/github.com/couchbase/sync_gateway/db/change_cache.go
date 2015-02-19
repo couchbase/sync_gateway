@@ -406,7 +406,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		executionTime := time.Since(processStart)
 		changeCacheExpvars.Add("processEntry-execution-cumulative", int64(executionTime))
 		changeCacheExpvars.Add("processEntry-execution-count", 1)
-		lagMs := int(lag/(100*time.Millisecond)) * 100
+		lagMs := int(executionTime/(100*time.Millisecond)) * 100
 		changeCacheExpvars.Add(fmt.Sprintf("processEntry-execution-time-%s-%05dms", exitType, lagMs), 1)
 	}()
 
