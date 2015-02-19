@@ -5,6 +5,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -55,7 +56,7 @@ type LogEntries []*LogEntry
 type LogPriorityQueue []*LogEntry
 
 // An ordered queue of supporting Remove
-type SkippedSequenceQueue []SkippedSequence
+type SkippedSequenceQueue []*SkippedSequence
 
 type SkippedSequence struct {
 	seq       uint64
@@ -395,18 +396,18 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	dbExpvars.Add("process-entry-lock-acquire-cumulative-ns", int64(lockAcquireDelta))
 	highWatermarkLockAcquire.CasUpdate(int64(lockAcquireDelta))
 
+	var exitType string
 	defer func() {
 		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
 		c.lock.Unlock()
-		dbExpvars.Add("num-process-entry-calls", 1)
 		delta := time.Since(timeEntered)
 		dbExpvars.Add("process-entry-cumulative-ns", int64(delta))
 		highWatermark.CasUpdate(int64(delta))
 		executionTime := time.Since(processStart)
 		changeCacheExpvars.Add("processEntry-execution-cumulative", int64(executionTime))
 		changeCacheExpvars.Add("processEntry-execution-count", 1)
-		lagMs := int(lag/(10*time.Millisecond)) * 10
-		changeCacheExpvars.Add(fmt.Sprintf("processEntry-execution-time-%05dms", lagMs), 1)
+		lagMs := int(lag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("processEntry-execution-time-%s-%05dms", exitType, lagMs), 1)
 	}()
 
 	if c.logsDisabled {
@@ -424,17 +425,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
 	var changedChannels base.Set
-	var exitType string
 	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change, false)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
-
 		exitType = "next"
 	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
-		changeCacheExpvars.Add("processEntry-tracker-pending", 1)
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
@@ -460,7 +458,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			wasSkipped = true
 		}
 		changedChannels = c._addToCache(change, wasSkipped)
-		changeCacheExpvars.Add("processEntry-exit-skipped", 1)
 		exitType = "skipped"
 	}
 
@@ -504,9 +501,7 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	lag := time.Since(change.TimeSaved)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%05dms", lagMs), 1)
-	if lagMs > 10000000 {
-		base.Warn("Warning - extremely long total lag - time saved was: %v", change.TimeSaved)
-	}
+
 	// ...and from the time the doc was received from Tap:
 	lag = time.Since(change.TimeReceived)
 	lagMs = int(lag/(100*time.Millisecond)) * 100
@@ -587,7 +582,7 @@ func (c *changeCache) _allChannels() base.Set {
 func (c *changeCache) addToSkipped(sequence uint64) {
 
 	dbExpvars.Add("skipped_sequences", 1)
-	c.PushSkipped(SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	c.PushSkipped(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
@@ -626,7 +621,7 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	return c.skippedSeqs.Remove(x)
 }
 
-func (c *changeCache) PushSkipped(x SkippedSequence) {
+func (c *changeCache) PushSkipped(x *SkippedSequence) {
 	c.skippedSeqLock.Lock()
 	defer c.skippedSeqLock.Unlock()
 	c.skippedSeqs.Push(x)
@@ -635,29 +630,28 @@ func (c *changeCache) PushSkipped(x SkippedSequence) {
 // Remove does a simple binary search to find and remove.
 func (h *SkippedSequenceQueue) Remove(x uint64) error {
 
-	// TODO: use sort.SearchInts instead?
-	old := *h
-	low := 0
-	high := len(old) - 1
-
-	for low <= high {
-		mid := (low + high) >> 1
-		midVal := old[mid].seq
-		if midVal < x {
-			low = mid + 1
-		} else if midVal > x {
-			high = mid - 1
-		} else {
-			//remove from list and return
-			*h = append(old[:mid], old[mid+1:]...)
-			return nil
-		}
+	i := SearchSequenceQueue(*h, x)
+	if i < len(*h) && (*h)[i].seq == x {
+		*h = append((*h)[:i], (*h)[i+1:]...)
+		return nil
+	} else {
+		return errors.New("Value not found")
 	}
-	return errors.New("Value not found")
+
 }
 
 // We always know that incoming missed sequence numbers will be larger than any previously
 // added, so we don't need to do any sorting - just append to the slice
-func (h *SkippedSequenceQueue) Push(x SkippedSequence) {
+func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
+	// ensure valid sequence
+	if len(*h) > 0 && x.seq <= (*h)[len(*h)-1].seq {
+		return errors.New("Can't push sequence lower than existing maximum")
+	}
 	*h = append(*h, x)
+	return nil
+}
+
+// Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
+func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
+	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
 }

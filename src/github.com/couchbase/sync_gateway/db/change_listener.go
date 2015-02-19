@@ -57,6 +57,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 					listener.Notify(base.SetOf(key))
 				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
 					if listener.OnDocChanged != nil {
+						dbExpvars.Add("tapFeed-onDocChanged", 1)
 						listener.OnDocChanged(key, event.Value)
 					}
 					listener.DocChannel <- event
