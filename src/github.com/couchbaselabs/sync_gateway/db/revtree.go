@@ -142,7 +142,7 @@ func (tree RevTree) getHistory(revid string) []string {
 }
 
 // Returns the leaf revision IDs (those that have no children.)
-func (tree RevTree) getLeaves() []string {
+func (tree RevTree) GetLeaves() []string {
 	isParent := map[string]bool{}
 	for _, info := range tree {
 		isParent[info.Parent] = true
@@ -288,7 +288,7 @@ func (tree RevTree) computeDepths() (maxDepth uint32) {
 	}
 	// Walk from each leaf to its root, assigning ancestors consecutive depths,
 	// but stopping if we'd increase an already-visited ancestor's depth:
-	for _, revid := range tree.getLeaves() {
+	for _, revid := range tree.GetLeaves() {
 		var depth uint32 = 1
 		for node := tree[revid]; node != nil; node = tree[node.Parent] {
 			if node.depth <= depth {

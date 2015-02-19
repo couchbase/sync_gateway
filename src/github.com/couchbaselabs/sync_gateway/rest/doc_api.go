@@ -61,22 +61,30 @@ func (h *handler) handleGetDoc() error {
 		} else {
 			h.writeJSON(value)
 		}
-
-	} else if openRevs == "all" {
-		// open_revs=all:
-		return base.HTTPErrorf(http.StatusNotImplemented, "open_revs=all unimplemented") // TODO
-
 	} else {
-		// open_revs=["id1", "id2", ...]
-		attachmentsSince = []string{}
 		var revids []string
-		err := json.Unmarshal([]byte(openRevs), &revids)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
+		attachmentsSince = []string{}
+
+		if openRevs == "all" {
+			// open_revs=all
+			doc, err := h.db.GetDoc(docid)
+			if err != nil {
+				return err
+			}
+			if doc == nil {
+				return kNotFoundError
+			}
+			revids = doc.History.GetLeaves()
+		} else {
+			// open_revs=["id1", "id2", ...]
+			err := json.Unmarshal([]byte(openRevs), &revids)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
+			}
 		}
 
 		if h.requestAccepts("multipart/") {
-			err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
+			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
 					revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 					if err != nil {
@@ -96,6 +104,8 @@ func (h *handler) handleGetDoc() error {
 				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
+				} else {
+					revBody = db.Body{"ok": revBody}
 				}
 				h.response.Write(separator)
 				separator = []byte(",")
