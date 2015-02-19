@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	httpprof "net/http/pprof"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -227,6 +228,41 @@ func (h *handler) handleHeapProfiling() error {
 	}
 	pprof.WriteHeapProfile(f)
 	f.Close()
+	return nil
+}
+
+func (h *handler) handlePprofGoroutine() error {
+	httpprof.Handler("goroutine").ServeHTTP(h.response, h.rq)
+	return nil
+}
+
+func (h *handler) handlePprofCmdline() error {
+	httpprof.Cmdline(h.response, h.rq)
+	return nil
+}
+
+func (h *handler) handlePprofSymbol() error {
+	httpprof.Symbol(h.response, h.rq)
+	return nil
+}
+
+func (h *handler) handlePprofHeap() error {
+	httpprof.Handler("heap").ServeHTTP(h.response, h.rq)
+	return nil
+}
+
+func (h *handler) handlePprofProfile() error {
+	httpprof.Profile(h.response, h.rq)
+	return nil
+}
+
+func (h *handler) handlePprofBlock() error {
+	httpprof.Handler("block").ServeHTTP(h.response, h.rq)
+	return nil
+}
+
+func (h *handler) handlePprofThreadcreate() error {
+	httpprof.Handler("threadcreate").ServeHTTP(h.response, h.rq)
 	return nil
 }
 
