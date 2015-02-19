@@ -183,7 +183,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		var changeWaiter *changeWaiter
 		var userChangeCount uint64
 		var lowSequence uint64
-		var lateSequenceFeeds map[string]*lateSequenceFeed
+		// var lateSequenceFeeds map[string]*lateSequenceFeed
 		if options.Wait {
 			options.Wait = false
 			changeWaiter = db.tapListener.NewWaiterWithChannels(chans, db.user)
@@ -193,15 +193,20 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		// For a continuous feed, initialise
 		//  - lateSequenceFeeds to track late-arriving sequences to the channel caches.
 		//  - changesTracker to ensure correctness across multiple channels
-		if options.Continuous {
-			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
+		/*
+			if options.Continuous {
+				lateSequenceFeeds = make(map[string]*lateSequenceFeed)
 
-		}
+			}
+		*/
 
-		changesTracker := &ChangesTracker{
-			Since:           options.Since,
-			MinChannelSince: options.Since,
-		}
+		// disable de-dup
+		/*
+			changesTracker := &ChangesTracker{
+				Since:           options.Since,
+				MinChannelSince: options.Since,
+			}
+		*/
 
 		var minChannelSince uint64 // used to recalculate in each iteration of the loop
 
@@ -252,25 +257,29 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				// Late sequence handling - for out-of-order sequences prior to options.Since that
 				// have arrived in the channel cache since this changes request started.  Only need for
 				// continuous feeds - one-off changes requests only need the standard channel cache.
-				if options.Continuous {
-					lateSequenceFeedHandler := lateSequenceFeeds[name]
-					if lateSequenceFeedHandler != nil {
-						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
-						if err != nil {
-							base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
-						} else {
-							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
-							// when the user loses channel access
-							lateSequenceFeedHandler.active = true
-							feeds = append(feeds, latefeed)
-							names = append(names, fmt.Sprintf("late_%s", name))
-						}
+				// disable late sequence handling
+				/*
+					if options.Continuous {
+						lateSequenceFeedHandler := lateSequenceFeeds[name]
+						if lateSequenceFeedHandler != nil {
+							latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
+							if err != nil {
+								base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
+							} else {
+								// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
+								// when the user loses channel access
+								lateSequenceFeedHandler.active = true
+								feeds = append(feeds, latefeed)
+								names = append(names, fmt.Sprintf("late_%s", name))
+							}
 
-					} else {
-						// Initialize lateSequenceFeeds[name] for next iteration
-						lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+						} else {
+							// Initialize lateSequenceFeeds[name] for next iteration
+							disable late sequence handling
+							lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+						}
 					}
-				}
+				*/
 			}
 
 			// If the user object has changed, create a special pseudo-feed for it:
@@ -349,37 +358,44 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				// Check whether the sequence was already sent by this feed
-				if _, found := changesTracker.LastSent[minSeq.Seq]; found {
-					if minSeq.Seq > changesTracker.MaxDuplicateSeq {
-						changesTracker.MaxDuplicateSeq = minSeq.Seq
-					}
-				} else {
-					// Add the doc body or the conflicting rev IDs, if those options are set:
-					if options.IncludeDocs || options.Conflicts {
-						db.addDocToChangeEntry(minEntry, options)
-					}
 
-					// Update the low sequence on the entry we're going to send
-					minEntry.Seq.LowSeq = lowSequence
-
-					// Send the entry, and repeat the loop:
-					base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
-					select {
-					case <-options.Terminator:
-						return
-					case output <- minEntry:
-					}
-					changesTracker.CurrentSent = append(changesTracker.CurrentSent, minEntry.Seq.Seq)
-					sentSomething = true
-
-					// Stop when we hit the limit (if any):
-					if options.Limit > 0 {
-						options.Limit--
-						if options.Limit == 0 {
-							break outer
+				// disable deduplication
+				/*
+					if _, found := changesTracker.LastSent[minSeq.Seq]; found {
+						if minSeq.Seq > changesTracker.MaxDuplicateSeq {
+							changesTracker.MaxDuplicateSeq = minSeq.Seq
 						}
+					} else {
+				*/
+				// Add the doc body or the conflicting rev IDs, if those options are set:
+				if options.IncludeDocs || options.Conflicts {
+					db.addDocToChangeEntry(minEntry, options)
+				}
+
+				// Update the low sequence on the entry we're going to send
+				minEntry.Seq.LowSeq = lowSequence
+
+				// Send the entry, and repeat the loop:
+				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
+				select {
+				case <-options.Terminator:
+					return
+				case output <- minEntry:
+				}
+
+				// disable de-dup
+				// changesTracker.CurrentSent = append(changesTracker.CurrentSent, minEntry.Seq.Seq)
+				sentSomething = true
+
+				// Stop when we hit the limit (if any):
+				if options.Limit > 0 {
+					options.Limit--
+					if options.Limit == 0 {
+						break outer
 					}
 				}
+				// disable de-dup
+				// }
 
 			}
 
@@ -416,18 +432,21 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 
 			// Update changesTracker (moves currentSent to lastSent)
-			changesTracker.endIteration()
-			options.Since.Seq = changesTracker.nextSince()
-
+			/*
+				changesTracker.endIteration()
+				options.Since.Seq = changesTracker.nextSince()
+			*/
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
-			for channel, lateFeed := range lateSequenceFeeds {
-				if !lateFeed.active {
-					db.closeLateFeed(lateFeed)
-					lateSequenceFeeds[channel] = nil
-				} else {
-					lateFeed.active = false
+			/*
+				for channel, lateFeed := range lateSequenceFeeds {
+					if !lateFeed.active {
+						db.closeLateFeed(lateFeed)
+						lateSequenceFeeds[channel] = nil
+					} else {
+						lateFeed.active = false
+					}
 				}
-			}
+			*/
 		}
 	}()
 

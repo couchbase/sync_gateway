@@ -447,17 +447,20 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		wasSkipped := false
-		if c.RemoveSkipped(sequence) != nil {
-			// Error removing from skipped sequences
-			dbExpvars.Add("late_find_fail", 1)
-			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
-		} else {
-			dbExpvars.Add("late_find_success", 1)
-			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
-			wasSkipped = true
-		}
-		changedChannels = c._addToCache(change, wasSkipped)
+		// disable skipped handling
+		/*
+			wasSkipped := false
+			if c.RemoveSkipped(sequence) != nil {
+				// Error removing from skipped sequences
+				dbExpvars.Add("late_find_fail", 1)
+				base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
+			} else {
+				dbExpvars.Add("late_find_success", 1)
+				base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
+				wasSkipped = true
+			}
+			changedChannels = c._addToCache(change, wasSkipped)
+		*/
 		exitType = "skipped"
 	}
 

@@ -237,6 +237,7 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
 
+/*
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
@@ -385,7 +386,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	close(options.Terminator)
 }
+*/
 
+/*
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
@@ -626,6 +629,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	close(options.Terminator)
 }
+*/
 
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
 // in the main changes.go iteration loop, without a lock on the underlying channel caches.  The following
