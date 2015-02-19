@@ -383,13 +383,16 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	timeEntered := time.Now()
-
 	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
-	changeCacheLockTime := time.Now()
 	c.lock.Lock()
 
+	lag := time.Since(timeEntered)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("processEntry-lock-time-%05dms", lagMs), 1)
+
+	processStart := time.Now()
 	lockAcquireDelta := time.Since(timeEntered)
-	dbExpvars.Add("process-entry-lock-acuire-cumulative-ns", int64(lockAcquireDelta))
+	dbExpvars.Add("process-entry-lock-acquire-cumulative-ns", int64(lockAcquireDelta))
 	highWatermarkLockAcquire.CasUpdate(int64(lockAcquireDelta))
 
 	defer func() {
@@ -399,12 +402,12 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		delta := time.Since(timeEntered)
 		dbExpvars.Add("process-entry-cumulative-ns", int64(delta))
 		highWatermark.CasUpdate(int64(delta))
+		executionTime := time.Since(processStart)
+		changeCacheExpvars.Add("processEntry-execution-cumulative", int64(executionTime))
+		changeCacheExpvars.Add("processEntry-execution-count", 1)
+		lagMs := int(lag/(10*time.Millisecond)) * 10
+		changeCacheExpvars.Add(fmt.Sprintf("processEntry-execution-time-%05dms", lagMs), 1)
 	}()
-
-	lag := time.Since(changeCacheLockTime)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-cache-lock-processEntry-%05dms", lagMs), 1)
-	changeCacheExpvars.Add("processEntry-tracker-got-lock", 1)
 
 	if c.logsDisabled {
 		return nil
@@ -413,6 +416,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	sequence := change.Sequence
 	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
+		changeCacheExpvars.Add("processEntry-exit-duplicate", 1)
 		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
@@ -420,13 +424,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
 	var changedChannels base.Set
+	var exitType string
 	if sequence == nextSequence || nextSequence == 0 {
-		changeCacheExpvars.Add("processEntry-tracker-next", 1)
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change, false)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
-		changeCacheExpvars.Add("processEntry-tracker-next_done", 1)
+
+		exitType = "next"
 	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		changeCacheExpvars.Add("processEntry-tracker-pending", 1)
@@ -440,9 +445,8 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			dbExpvars.Add("pending_cache_full", 1)
 			changedChannels = c._addPendingLogs()
 		}
-		changeCacheExpvars.Add("processEntry-tracker-pending-done", 1)
+		exitType = "pending"
 	} else if sequence > c.initialSequence {
-		changeCacheExpvars.Add("processEntry-tracker-skipped", 1)
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
 		wasSkipped := false
@@ -455,12 +459,13 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			wasSkipped = true
 		}
-
-		changeCacheExpvars.Add("processEntry-tracker-skipped-removed", 1)
 		changedChannels = c._addToCache(change, wasSkipped)
-		changeCacheExpvars.Add("processEntry-tracker-skipped-done", 1)
-
+		changeCacheExpvars.Add("processEntry-exit-skipped", 1)
+		exitType = "skipped"
 	}
+
+	changeCacheExpvars.Add(fmt.Sprintf("processEntry-exit-%s", exitType), 1)
+
 	return changedChannels
 }
 
