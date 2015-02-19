@@ -531,7 +531,7 @@ func TestOpenRevs(t *testing.T) {
 	response = rt.sendRequestWithHeaders("GET", `/db/or1?open_revs=["12-abc","10-ten"]`, "", reqHeaders)
 	assertStatus(t, response, 200)
 	assert.Equals(t, response.Body.String(), `[
-{"_id":"or1","_rev":"12-abc","_revisions":{"ids":["abc","eleven","ten","nine"],"start":12},"n":1}
+{"ok":{"_id":"or1","_rev":"12-abc","_revisions":{"ids":["abc","eleven","ten","nine"],"start":12},"n":1}}
 ,{"missing":"10-ten"}
 ]`)
 }
