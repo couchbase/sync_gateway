@@ -33,12 +33,11 @@ func TestSkippedSequenceQueue(t *testing.T) {
 
 	var skipQueue SkippedSequenceQueue
 	//Push values
-	skipQueue.Push(SkippedSequence{4, time.Now()})
-	skipQueue.Push(SkippedSequence{7, time.Now()})
-	skipQueue.Push(SkippedSequence{8, time.Now()})
-	skipQueue.Push(SkippedSequence{12, time.Now()})
-	skipQueue.Push(SkippedSequence{18, time.Now()})
-
+	skipQueue.Push(&SkippedSequence{4, time.Now()})
+	skipQueue.Push(&SkippedSequence{7, time.Now()})
+	skipQueue.Push(&SkippedSequence{8, time.Now()})
+	skipQueue.Push(&SkippedSequence{12, time.Now()})
+	skipQueue.Push(&SkippedSequence{18, time.Now()})
 	assert.True(t, verifySkippedSequences(skipQueue, []uint64{4, 7, 8, 12, 18}))
 
 	// Retrieval of low value
@@ -63,6 +62,18 @@ func TestSkippedSequenceQueue(t *testing.T) {
 	err = skipQueue.Remove(18)
 	assert.True(t, err == nil)
 	assert.True(t, verifySkippedSequences(skipQueue, []uint64{7}))
+
+	// Removal of non-existent returns error
+	err = skipQueue.Remove(25)
+	assert.True(t, err != nil)
+	assert.True(t, verifySkippedSequences(skipQueue, []uint64{7}))
+
+	// Add an out-of-sequence entry (make sure bad sequencing doesn't throw us into an infinite loop)
+	err = skipQueue.Push(&SkippedSequence{6, time.Now()})
+	assert.True(t, err != nil)
+	skipQueue.Push(&SkippedSequence{9, time.Now()})
+	assert.True(t, err != nil)
+	assert.True(t, verifySkippedSequences(skipQueue, []uint64{7, 9}))
 }
 
 func TestLateSequenceHandling(t *testing.T) {
