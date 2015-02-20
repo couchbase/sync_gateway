@@ -113,11 +113,13 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 	}()
 
 	// Start a background task for SkippedSequenceQueue housekeeping:
-	go func() {
-		for c.CleanSkippedSequenceQueue() {
-			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
-		}
-	}()
+	/*
+		go func() {
+			for c.CleanSkippedSequenceQueue() {
+				time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
+			}
+		}()
+	*/
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
@@ -470,7 +472,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Set {
 
-	sentToCache := time.Now()
+	//sentToCache := time.Now()
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
@@ -497,21 +499,22 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 		addedTo = append(addedTo, channels.UserStarChannel)
 	}
 
-	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.TimeSaved)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%05dms", lagMs), 1)
+	/*
+		// Record a histogram of the overall lag from the time the doc was saved:
+		lag := time.Since(change.TimeSaved)
+		lagMs := int(lag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("lag-total-%05dms", lagMs), 1)
 
-	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.TimeReceived)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%05dms", lagMs), 1)
+		// ...and from the time the doc was received from Tap:
+		lag = time.Since(change.TimeReceived)
+		lagMs = int(lag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%05dms", lagMs), 1)
 
-	// ...and from the time the doc was sent for caching:
-	lag = time.Since(sentToCache)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-caching-%05dms", lagMs), 1)
-
+		// ...and from the time the doc was sent for caching:
+		lag = time.Since(sentToCache)
+		lagMs = int(lag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("lag-caching-%05dms", lagMs), 1)
+	*/
 	return base.SetFromArray(addedTo)
 }
 
