@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/couchbaselabs/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway/channels"
@@ -203,13 +204,90 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.ForEachDocID(writeDoc, options); err != nil {
-			return err
+		if availableChannels != nil {
+			//generate document list from _changes feed as this likely
+			//to be more efficient
+			var options db.ChangesOptions
+			options.Limit = 0
+			options.Conflicts = true
+			options.IncludeDocs = true
+
+			userChannels := channels.SetOf(channels.AllChannelWildcard)
+			if err := h.sendAllDocsFromChanges(writeDoc, userChannels, options); err != nil {
+				return err
+			}
+		} else {
+			if err := h.db.ForEachDocID(writeDoc, options); err != nil {
+				return err
+			}
 		}
 	}
 
 	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
 		totalRows, lastSeq)))
+	return nil
+}
+
+func (h *handler) sendAllDocsFromChanges(callback db.ForEachDocIDFunc, channels base.Set, options db.ChangesOptions) error {
+
+	var first bool = true
+	feed, err := h.db.MultiChangesFeed(channels, options)
+	if err != nil {
+		return err
+	}
+
+	h.setHeader("Content-Type", "application/json")
+	if options.Wait {
+		h.flush()
+	}
+	message := "OK"
+	if feed != nil {
+		var heartbeat, timeout <-chan time.Time
+		if options.Wait {
+			// Set up heartbeat/timeout
+			if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
+				ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+				defer ticker.Stop()
+				heartbeat = ticker.C
+			} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
+				timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+				defer timer.Stop()
+				timeout = timer.C
+			}
+		}
+
+		encoder := json.NewEncoder(h.response)
+	loop:
+		for {
+			select {
+			case entry, ok := <-feed:
+				if !ok {
+					break loop // end of feed
+				}
+				if nil != entry {
+					if first {
+						first = false
+					} else {
+						h.response.Write([]byte(","))
+					}
+					encoder.Encode(entry)
+				}
+
+			case <-heartbeat:
+				_, err = h.response.Write([]byte("\n"))
+				h.flush()
+			case <-timeout:
+				message = "OK (timeout)"
+				break loop
+			}
+			if err != nil {
+				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
+				return nil // error is probably because the client closed the connection
+			}
+		}
+	}
+
+	h.logStatus(http.StatusOK, message)
 	return nil
 }
 
