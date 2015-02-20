@@ -334,12 +334,22 @@ func (tree RevTree) pruneRevisions(maxDepth uint32) (pruned int) {
 
 //////// HELPERS:
 
-// Parses a CouchDB _revisions property into a list of revision IDs
+// Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 	revisions, ok := body["_revisions"].(map[string]interface{})
 	if !ok {
-		return nil
+		revid, ok := body["_rev"].(string)
+		if !ok {
+			return nil
+		}
+		gen, _ := parseRevID(revid)
+		if gen < 1 {
+			return nil
+		}
+		oneRev := make([]string, 0, 1)
+		oneRev = append(oneRev, revid)
+		return oneRev
 	}
 	var start int
 	if startf, ok := revisions["start"].(float64); ok {

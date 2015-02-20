@@ -176,12 +176,16 @@ func TestParseRevisions(t *testing.T) {
 			[]string{"5-huey", "4-dewey", "3-louie"}},
 		{`{"_revisions": {"start": 3, "ids": ["huey"]}}`,
 			[]string{"3-huey"}},
+		{`{"_rev": "3-huey"}`,
+			[]string{"3-huey"}},
 		{`{"_revisions": {"start": 2, "ids": ["huey", "dewey", "louie"]}}`, nil},
 		{`{"_revisions": {"ids": ["huey", "dewey", "louie"]}}`, nil},
 		{`{"_revisions": {"ids": "bogus"}}`, nil},
 		{`{"_revisions": {"start": 2}}`, nil},
 		{`{"_revisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
 		{`{"_revisions": 3.14159}`, nil},
+		{`{"_rev": 3.14159}`, nil},
+		{`{"_rev": "x-14159"}`, nil},
 		{`{"_Xrevisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
 	}
 	for _, c := range cases {
