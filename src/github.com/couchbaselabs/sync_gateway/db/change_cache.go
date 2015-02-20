@@ -489,7 +489,9 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 			channelCache.addToCache(change, removal != nil)
 			addedTo = append(addedTo, channelName)
 			if isLateSequence {
-				channelCache.AddLateSequence(change)
+				// Don't block processEntry handling for late sequences - subsequent late entries will be
+				// synchronized by lateLogLock
+				go channelCache.AddLateSequence(change)
 			}
 		}
 	}

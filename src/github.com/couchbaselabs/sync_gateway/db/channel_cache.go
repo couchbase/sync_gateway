@@ -425,23 +425,20 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 		arrived:       time.Now(),
 		listenerCount: 0,
 	}
-	// Don't block processEntry handling to add late sequence - subsequent entries will be
-	// synchronized by lateLogLock
-	go func() {
-		c.lateLogLock.Lock()
-		defer c.lateLogLock.Unlock()
-		c.lateLogs = append(c.lateLogs, lateEntry)
-		c.lastLateSequence = change.Sequence
-		// Currently we're only purging on add.  Could also consider a timed purge to handle the case
-		// where all the listeners get caught up, but there aren't any subsequent late entries.  Not
-		// a high priority, as the memory overhead for the late entries should be trivial, and probably
-		// doesn't merit
 
-		// Reduce purge churn
-		if time.Since(c.lateLogs[0].arrived) > 30*time.Second {
-			c._purgeLateLogEntries()
-		}
-	}()
+	c.lateLogLock.Lock()
+	defer c.lateLogLock.Unlock()
+	c.lateLogs = append(c.lateLogs, lateEntry)
+	c.lastLateSequence = change.Sequence
+	// Currently we're only purging on add.  Could also consider a timed purge to handle the case
+	// where all the listeners get caught up, but there aren't any subsequent late entries.  Not
+	// a high priority, as the memory overhead for the late entries should be trivial, and probably
+	// doesn't merit
+
+	// Reduce purge churn
+	if time.Since(c.lateLogs[0].arrived) > 30*time.Second {
+		c._purgeLateLogEntries()
+	}
 
 }
 
