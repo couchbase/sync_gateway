@@ -106,12 +106,19 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 	heap.Init(&c.pendingLogs)
 
-	// Start a background task for periodic housekeeping:
+	// Start a background task to push pending to skipped if the feed goes quiet:
 	go func() {
-		for c.CleanUp() {
+		for c.CheckPending() {
+			time.Sleep(c.options.CachePendingSeqMaxWait / 2)
+		}
+	}()
+
+	// Start a background task for channel cache pruning:
+	go func() {
+		for c.PruneChannelCaches() {
 			//time.Sleep(c.options.CachePendingSeqMaxWait / 2)
 			// TODO: track last cleanup similar to skipped handling
-			time.Sleep(3 * time.Minute)
+			time.Sleep(1 * time.Minute)
 		}
 	}()
 
@@ -155,27 +162,41 @@ func (c *changeCache) EnableChannelLogs(enable bool) {
 // Inserts pending entries that have been waiting too long.
 // Removes entries older than MaxChannelLogCacheAge from the cache.
 // Returns false if the changeCache has been closed.
-func (c *changeCache) CleanUp() bool {
+func (c *changeCache) CheckPending() bool {
 
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	if c.channelCaches == nil {
 		return false
 	}
 
 	// If entries have been pending too long, add them to the cache:
 	if time.Since(c.lastPendingCheck) > c.options.CachePendingSeqMaxWait {
-		changedChannels := c._addPendingLogs()
-		if c.onChange != nil && len(changedChannels) > 0 {
-			c.onChange(changedChannels)
-		}
-	}
-	// Todo: separate process for channel cleanup and pending logs cleanup
-	// Remove old cache entries:
-	for channelName, _ := range c.channelCaches {
-		c._getChannelCache(channelName).pruneCache()
+		func() {
+			c.lock.Lock()
+			defer c.lock.Unlock()
+			cleanStart := time.Now()
+			changedChannels := c._addPendingLogs()
+			if c.onChange != nil && len(changedChannels) > 0 {
+				c.onChange(changedChannels)
+			}
+			lag := time.Since(cleanStart)
+			lagMs := int(lag/(100*time.Millisecond)) * 100
+			changeCacheExpvars.Add(fmt.Sprintf("CleanUp-execution-time-%05dms", lagMs), 1)
+		}()
 	}
 
+	return true
+}
+
+func (c *changeCache) PruneChannelCaches() bool {
+
+	if c.channelCaches == nil {
+		return false
+	}
+	// Doesn't need c.lock - each channel cache will lock during prune
+	// Remove old cache entries:
+	for _, channelCache := range c.channelCaches {
+		channelCache.pruneCache()
+	}
 	return true
 }
 

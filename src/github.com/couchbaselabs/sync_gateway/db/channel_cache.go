@@ -26,11 +26,13 @@ type channelCache struct {
 	lateLogs         []*lateLogEntry  // Late arriving LogEntries, stored in the order they were received
 	lastLateSequence uint64           // Used for fast check of whether listener has the latest
 	lateLogLock      sync.RWMutex     // Controls access to lateLogs
+	lastPruned       time.Time        // manages frequency of pruning
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
 	cache := &channelCache{context: context, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
+	cache.lastPruned = time.Now()
 	return cache
 }
 
@@ -56,21 +58,27 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
-	pruned := 0
-	for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
-		c.validFrom = c.logs[0].Sequence + 1
-		c.logs = c.logs[1:]
-		pruned++
-	}
-	if pruned > 0 {
-		base.LogTo("Cache", "Pruned %d old entries from channel %q", pruned, c.channelName)
+
+	if time.Since(c.lastPruned) > ChannelCacheAge/2 {
+		pruned := 0
+		for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
+			c.validFrom = c.logs[0].Sequence + 1
+			c.logs = c.logs[1:]
+			pruned++
+		}
+		if pruned > 0 {
+			base.LogTo("Cache", "Pruned %d old entries from channel %q", pruned, c.channelName)
+		}
+		c.lastPruned = time.Now()
 	}
 }
 
 func (c *channelCache) pruneCache() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c._pruneCache()
+	if time.Since(c.lastPruned) > ChannelCacheAge/2 {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+		c._pruneCache()
+	}
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
