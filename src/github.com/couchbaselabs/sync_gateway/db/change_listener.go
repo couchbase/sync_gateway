@@ -46,7 +46,6 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 				close(listener.DocChannel)
 			}
 		}()
-		dbExpvars.Add("tapFeed-listeners", 1)
 		for event := range tapFeed.Events() {
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
@@ -59,7 +58,6 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
 					if listener.OnDocChanged != nil {
 						dbExpvars.Add("tapFeed-onDocChanged", 1)
-						base.LogTo("Feed", "tap got key: %s", key)
 						listener.OnDocChanged(key, event.Value)
 					}
 					listener.DocChannel <- event
