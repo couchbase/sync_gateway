@@ -168,6 +168,22 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle(kDebugURLPathPrefix,
 		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
 
+	// Debugging handlers
+	r.Handle("/_debug/pprof/goroutine",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofGoroutine)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/cmdline",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofCmdline)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/symbol",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofSymbol)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/heap",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofHeap)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/profile",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofProfile)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/block",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofBlock)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/threadcreate",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
+
 	// Database-relative handlers:
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
