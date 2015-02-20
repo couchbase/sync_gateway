@@ -48,6 +48,18 @@ func (h *handler) handleAllDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
+	} else if h.rq.Method == "GET" {
+		keys := h.getQuery("keys")
+		if len(keys) > 0 {
+			var queryKeys []string
+			err := json.Unmarshal([]byte(keys), &queryKeys)
+			if err != nil {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad keys")
+			}
+			if len(queryKeys) > 0 {
+				explicitDocIDs = queryKeys
+			}
+		}
 	}
 
 	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
