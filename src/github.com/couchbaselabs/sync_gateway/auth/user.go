@@ -206,15 +206,25 @@ func (user *userImpl) Authenticate(password string) bool {
 
 // Changes a user's password to the given string.
 func (user *userImpl) SetPassword(password string) {
-	if password == "" {
+
+	// this password is "special" because the sync gateway will accept it as-is
+	// and skip the bcrypt hashing, which is expensive.
+	// see https://github.com/couchbase/sync_gateway/issues/666#issuecomment-75341656
+	magicTestPasswordHashed := "$2a$10$X4GR359A4j9f.Lmq3oooGOzSRaCq6wgRXbM4zdPsqv9a4xbXkJN8C"
+
+	switch password {
+	case "":
 		user.PasswordHash_ = nil
-	} else {
+	case magicTestPasswordHashed:
+		user.PasswordHash_ = []byte(magicTestPasswordHashed)
+	default:
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), kBcryptCostFactor)
 		if err != nil {
 			panic(fmt.Sprintf("Error hashing password: %v", err))
 		}
 		user.PasswordHash_ = hash
 	}
+
 }
 
 //////// CHANNEL ACCESS:
