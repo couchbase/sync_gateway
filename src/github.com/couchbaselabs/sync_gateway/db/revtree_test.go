@@ -69,9 +69,9 @@ func TestRevTreeGetHistory(t *testing.T) {
 }
 
 func TestRevTreeGetLeaves(t *testing.T) {
-	leaves := testmap.getLeaves()
+	leaves := testmap.GetLeaves()
 	assert.DeepEquals(t, leaves, []string{"3-three"})
-	leaves = branchymap.getLeaves()
+	leaves = branchymap.GetLeaves()
 	sort.Strings(leaves)
 	assert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
 }
