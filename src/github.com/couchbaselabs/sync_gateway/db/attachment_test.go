@@ -51,7 +51,7 @@ func TestAttachments(t *testing.T) {
 
 	log.Printf("Retrieve doc...")
 	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
-	gotbody, err := db.GetRev("doc1", "", false, []string{})
+	gotbody, err := db.GetRevWithAttachments("doc1", "", false, []string{}, false)
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev1output)
 
@@ -66,13 +66,13 @@ func TestAttachments(t *testing.T) {
 
 	log.Printf("Retrieve doc...")
 	rev2output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
-	gotbody, err = db.GetRev("doc1", "", false, []string{})
+	gotbody, err = db.GetRevWithAttachments("doc1", "", false, []string{}, false)
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev2output)
 
 	log.Printf("Retrieve doc with atts_since...")
 	rev2Aoutput := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
-	gotbody, err = db.GetRev("doc1", "", false, []string{"1-54f3a105fb903018c160712ffddb74dc", "1-foo", "993-bar"})
+	gotbody, err = db.GetRevWithAttachments("doc1", "", false, []string{"1-54f3a105fb903018c160712ffddb74dc", "1-foo", "993-bar"}, false)
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev2Aoutput)
 
@@ -87,7 +87,7 @@ func TestAttachments(t *testing.T) {
 
 	log.Printf("Retrieve doc...")
 	rev3output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2}},"_id":"doc1","_rev":"3-252b9fa1f306930bffc07e7d75b77faf"}`
-	gotbody, err = db.GetRev("doc1", "", false, []string{})
+	gotbody, err = db.GetRevWithAttachments("doc1", "", false, []string{}, false)
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev3output)
 
@@ -100,4 +100,41 @@ func TestAttachments(t *testing.T) {
 	assertNoError(t, err, "bad JSON")
 	err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id})
 	assertNoError(t, err, "Couldn't update document")
+}
+
+func TestAttachmentDeltas(t *testing.T) {
+	context, err := NewDatabaseContext("db", testBucket(), false)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+
+	// Rev 1:
+	log.Printf("Create rev 1...")
+	rev1input := `{"_attachments": {"bye.txt": {"data":"VGhpcyBpcyBhIHN0cmluZyBmb3IgdXNlIGluIHRlc3RpbmcgZGVsdGEgY29tcHJlc3Npb24K"}}}`
+	var body Body
+	json.Unmarshal([]byte(rev1input), &body)
+	revid, err := db.Put("doc1", unjson(rev1input))
+	assertNoError(t, err, "Couldn't create document")
+	assert.Equals(t, revid, "1-c0c61706d3f3692aacc0ec0a91425a65")
+
+	log.Printf("Create rev 2...")
+	rev2str := `{"_attachments": {"bye.txt": {"data": "VGhpcyBpcyBhIHRlc3QuIFRoaXMgaXMgb25seSBhIHRlc3QuCg=="}}}`
+	var body2 Body
+	json.Unmarshal([]byte(rev2str), &body2)
+	body2["_rev"] = revid
+	revid, err = db.Put("doc1", body2)
+	assertNoError(t, err, "Couldn't update document")
+
+	log.Printf("Retrieve doc with delta-encoded attachment...")
+	rev2output := `{"_attachments":{"bye.txt":{"data":"ddOrAncoWekSVIHD9u3a9KRKQ4Hu8QxT","deltasrc":"sha1-l5fhr3wrVdXDCNkamTn8KypCswQ=","digest":"sha1-TQ2UKLk7BtEA2lUatosI4xl9xb8=","encoding":"zdelta","length":37,"revpos":2}},"_id":"doc1","_rev":"2-f134cabf4d9d26b0a5c8a3b566f2c80f"}`
+	gotbody, err := db.GetRevWithAttachments("doc1", "", false, []string{"1-c0c61706d3f3692aacc0ec0a91425a65", "1-foo", "993-bar"}, true)
+	assertNoError(t, err, "Couldn't get document")
+	assert.Equals(t, tojson(gotbody), rev2output)
+
+	log.Printf("Retrieve doc without delta-encoded attachment...")
+	rev2Boutput := `{"_attachments":{"bye.txt":{"data":"VGhpcyBpcyBhIHRlc3QuIFRoaXMgaXMgb25seSBhIHRlc3QuCg==","digest":"sha1-TQ2UKLk7BtEA2lUatosI4xl9xb8=","length":37,"revpos":2}},"_id":"doc1","_rev":"2-f134cabf4d9d26b0a5c8a3b566f2c80f"}`
+	gotbody, err = db.GetRevWithAttachments("doc1", "", false, []string{"1-c0c61706d3f3692aacc0ec0a91425a65", "1-foo", "993-bar"}, false)
+	assertNoError(t, err, "Couldn't get document")
+	assert.Equals(t, tojson(gotbody), rev2Boutput)
 }

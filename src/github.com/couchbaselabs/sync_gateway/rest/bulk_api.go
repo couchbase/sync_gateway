@@ -297,6 +297,7 @@ func (h *handler) handleDumpChannel() error {
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
+	sendDeltas := h.getBoolQuery("deltas")
 	canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 	body, err := h.readJSON()
 	if err != nil {
@@ -341,7 +342,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.db.GetRev(docid, revid, includeRevs, attsSince)
+				body, err = h.db.GetRevWithAttachments(docid, revid, includeRevs, attsSince, sendDeltas)
 			}
 
 			if err != nil {

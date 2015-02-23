@@ -73,12 +73,11 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRev(docid, "", false, nil)
+	return db.GetRev(docid, "", false)
 }
 
-// Returns the body of a revision of a document. Uses the revision cache.
-// revid may be "", meaning the current revision.
-func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
+// Common subroutine of GetRev and GetRevWithAttachments
+func (db *Database) getRev(docid, revid string, listRevisions bool) (Body, *document, error) {
 	var doc *document
 	var body Body
 	var revisions Body
@@ -93,16 +92,16 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 			if err == nil {
 				err = base.HTTPErrorf(404, "missing")
 			}
-			return nil, err
+			return nil, nil, err
 		}
 	} else {
 		// No rev ID given, so load doc and get its current revision:
 		if doc, err = db.GetDoc(docid); doc == nil {
-			return nil, err
+			return nil, nil, err
 		}
 		revid = doc.CurrentRev
 		if body, err = db.getRevision(doc, revid); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if doc.hasFlag(channels.Deleted) {
 			body["_deleted"] = true
@@ -115,7 +114,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	if db.user != nil {
 		if err := db.user.AuthorizeAnyChannel(inChannels); err != nil {
 			if !revIDGiven {
-				return nil, base.HTTPErrorf(403, "forbidden")
+				return nil, nil, base.HTTPErrorf(403, "forbidden")
 			}
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
@@ -130,13 +129,13 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 			if listRevisions {
 				redactedBody["_revisions"] = revisions
 			}
-			return redactedBody, nil
+			return redactedBody, doc, nil
 		}
 	}
 
 	if !revIDGiven {
 		if deleted, _ := body["_deleted"].(bool); deleted {
-			return nil, base.HTTPErrorf(404, "deleted")
+			return nil, nil, base.HTTPErrorf(404, "deleted")
 		}
 	}
 
@@ -144,26 +143,57 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	if listRevisions {
 		body["_revisions"] = revisions
 	}
+	return body, doc, nil
+}
 
-	// Add attachment bodies:
-	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
-		minRevpos := 1
-		if len(attachmentsSince) > 0 {
-			if doc == nil { // if rev was in the cache, we don't have the document struct yet
-				if doc, err = db.GetDoc(docid); doc == nil {
-					return nil, err
+// Returns the body of a revision of a document. Uses the revision cache.
+// revid may be "", meaning the current revision.
+// If listRevisions is true, a "_revisions" property will be added containing the revision history.
+func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error) {
+	body, _, err := db.getRev(docid, revid, listRevisions)
+	return body, err
+}
+
+// Returns the body of a revision of a document, including attachments. Based on GetRev.
+// If attachmentsSince is non-nil, attachment bodies ("data" properties) will be added for all
+// revisions newer than the revIDs in attachmentsSince.
+// If useDeltas is true, attachments will be delta-compressed based on the versions of the
+// attachments in the attachmentsSince revisions.
+func (db *Database) GetRevWithAttachments(docid, revid string, listRevisions bool, attachmentsSince []string, useDeltas bool) (Body, error) {
+	body, doc, err := db.getRev(docid, revid, listRevisions)
+	if err != nil || attachmentsSince == nil || len(BodyAttachments(body)) == 0 {
+		return body, err
+	}
+
+	if revid == "" {
+		revid = body["_rev"].(string)
+	}
+
+	// Figure out the min revpos to get bodies of, and the available delta sources:
+	minRevpos := 1                            // Don't include atts whose revpos is < this
+	var deltaSrcKeys map[string]AttachmentKey // Old versions to use as delta srcs
+	if len(attachmentsSince) > 0 {
+		if doc == nil { // if rev was in the cache, we don't have the document struct yet
+			if doc, err = db.GetDoc(docid); doc == nil {
+				return nil, err
+			}
+		}
+		ancestorRevID := doc.History.findAncestorFromSet(revid, attachmentsSince)
+		if ancestorRevID != "" {
+			minRevpos, _ = parseRevID(ancestorRevID)
+			minRevpos++
+			// Now load the ancestor rev's body to get the attachment digests:
+			if useDeltas {
+				if ancestorBody, _ := db.getRevision(doc, ancestorRevID); ancestorBody != nil {
+					deltaSrcKeys = db.getAttachmentDigests(ancestorBody)
 				}
 			}
-			ancestor := doc.History.findAncestorFromSet(revid, attachmentsSince)
-			if ancestor != "" {
-				minRevpos, _ = parseRevID(ancestor)
-				minRevpos++
-			}
 		}
-		body, err = db.loadBodyAttachments(body, minRevpos)
-		if err != nil {
-			return nil, err
-		}
+	}
+	// Add attachment bodies:
+	body, err = db.loadBodyAttachments(body, minRevpos, deltaSrcKeys)
+	if err != nil {
+		return nil, err
 	}
 	return body, nil
 }

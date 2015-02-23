@@ -25,11 +25,12 @@ import (
 	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/snej/zdelta-go"
 )
 
 // Attachments shorter than this will be left in the JSON as base64 rather than being a separate
 // MIME part.
-const kMaxInlineAttachmentSize = 200
+var MaxInlineAttachmentSize = 200
 
 // JSON bodies smaller than this won't be GZip-encoded.
 const kMinCompressedJSONSize = 300
@@ -113,28 +114,78 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // marshaler will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
-func (db *Database) loadBodyAttachments(body Body, minRevpos int) (Body, error) {
-
+func (db *Database) loadBodyAttachments(body Body, minRevpos int, deltaSrcKeys map[string]AttachmentKey) (Body, error) {
 	body = body.ImmutableAttachmentsCopy()
-	for _, value := range BodyAttachments(body) {
+	for name, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
 			key := AttachmentKey(meta["digest"].(string))
-			data, err := db.GetAttachment(key)
+			var sourceKeys []AttachmentKey
+			if _, ok := meta["encoding"].(string); !ok { // leave encoded attachment alone
+				if srcKey, ok := deltaSrcKeys[name]; ok {
+					sourceKeys = []AttachmentKey{srcKey}
+				}
+			}
+			data, srcKey, err := db.GetAttachmentMaybeAsDelta(key, sourceKeys)
 			if err != nil {
 				return nil, err
 			}
 			meta["data"] = data
 			delete(meta, "stub")
+			if srcKey != "" {
+				meta["encoding"] = "zdelta"
+				meta["deltasrc"] = srcKey
+			}
 		}
 	}
 	return body, nil
 }
 
-// Retrieves an attachment, base64-encoded, given its key.
+// Retrieves an attachment's body given its key.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 	return db.Bucket.GetRaw(attachmentKeyToString(key))
+}
+
+// Retrieves an attachment's body, preferably as a delta from one of the versions specified
+// in `sourceKeys`
+func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []AttachmentKey) (result []byte, sourceKey AttachmentKey, err error) {
+	target, err := db.GetAttachment(key)
+	if err != nil {
+		return
+	}
+	for _, sourceKey = range sourceKeys {
+		var src []byte
+		src, err = db.Bucket.GetRaw(attachmentKeyToString(sourceKey))
+		if err == nil {
+			//OPT: Cache deltas. For now, this just computes the delta every time.
+			result, err = zdelta.CreateDelta(src, target)
+			if err == nil && len(result) < len(target) {
+				base.LogTo("Attach", "Generated zdelta {%s --> %s} (%d%%)",
+					sourceKey, key, len(result)*100/len(target))
+				return
+			}
+		}
+		if !base.IsDocNotFoundError(err) {
+			base.Warn("GetAttachmentAsDelta: Error for %q-->%q: %v", sourceKey, key, err)
+		}
+	}
+	// No delta available so return entire attachment:
+	result = target
+	sourceKey = ""
+	return
+}
+
+// Returns the digests of all attachments in a Body, as a map of attachment names to keys.
+func (db *Database) getAttachmentDigests(body Body) map[string]AttachmentKey {
+	keys := map[string]AttachmentKey{}
+	for name, value := range BodyAttachments(body) {
+		meta := value.(map[string]interface{})
+		if key := AttachmentKey(meta["digest"].(string)); key != "" {
+			keys[name] = key
+		}
+	}
+	return keys
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
@@ -176,12 +227,6 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 	return nil
 }
 
-type attInfo struct {
-	name        string
-	contentType string
-	data        []byte
-}
-
 func writeJSONPart(writer *multipart.Writer, contentType string, body Body, compressed bool) (err error) {
 	bytes, err := json.Marshal(body)
 	if err != nil {
@@ -213,6 +258,12 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body Body, comp
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
 func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, compress bool) {
+	type attInfo struct {
+		name string
+		data []byte
+		meta map[string]interface{}
+	}
+
 	// First extract the attachments that should follow:
 	following := []attInfo{}
 	for name, value := range BodyAttachments(body) {
@@ -220,14 +271,14 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 		if meta["stub"] != true {
 			var err error
 			var info attInfo
-			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
 				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
 				meta["stub"] = true
 				delete(meta, "data")
-			} else if len(info.data) > kMaxInlineAttachmentSize {
+			} else if len(info.data) > MaxInlineAttachmentSize {
 				info.name = name
+				info.meta = meta
 				following = append(following, info)
 				meta["follows"] = true
 				delete(meta, "data")
@@ -241,8 +292,10 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 	// Write the following attachments
 	for _, info := range following {
 		partHeaders := textproto.MIMEHeader{}
-		if info.contentType != "" {
-			partHeaders.Set("Content-Type", info.contentType)
+		if contentType, ok := info.meta["content_type"].(string); ok {
+			if info.meta["encoding"] == nil {
+				partHeaders.Set("Content-Type", contentType)
+			}
 		}
 		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
 		part, _ := writer.CreatePart(partHeaders)

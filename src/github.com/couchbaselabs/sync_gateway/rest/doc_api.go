@@ -28,6 +28,7 @@ func (h *handler) handleGetDoc() error {
 
 	// What attachment bodies should be included?
 	var attachmentsSince []string = nil
+	sendDeltas := false
 	if h.getBoolQuery("attachments") {
 		atts := h.getQuery("atts_since")
 		if atts != "" {
@@ -38,11 +39,12 @@ func (h *handler) handleGetDoc() error {
 		} else {
 			attachmentsSince = []string{}
 		}
+		sendDeltas = h.getBoolQuery("deltas")
 	}
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+		value, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
 		if err != nil {
 			return err
 		}
@@ -86,7 +88,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+					revBody, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
@@ -101,7 +103,7 @@ func (h *handler) handleGetDoc() error {
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+				revBody, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				} else {
@@ -122,7 +124,7 @@ func (h *handler) handleGetAttachment() error {
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
-	body, err := h.db.GetRev(docid, revid, false, nil)
+	body, err := h.db.GetRev(docid, revid, false)
 	if err != nil {
 		return err
 	}
@@ -134,18 +136,35 @@ func (h *handler) handleGetAttachment() error {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
-	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
+
+	var deltaSourceKeys []db.AttachmentKey
+	if deltasQ := h.getQuery("deltas"); deltasQ != "" {
+		// The query '?deltas=XXX,YYY' indicates that the client has attachments with
+		// digests XXX and YYY and prefers to receive the response as a delta from one of them.
+		deltaStrs := strings.Split(deltasQ, ",")
+		deltaSourceKeys = make([]db.AttachmentKey, len(deltaStrs))
+		for i, d := range deltaStrs {
+			deltaSourceKeys[i] = db.AttachmentKey(d)
+		}
+	}
+
+	data, deltaSource, err := h.db.GetAttachmentMaybeAsDelta(db.AttachmentKey(digest), deltaSourceKeys)
 	if err != nil {
 		return err
 	}
 
-	h.setHeader("Etag", digest)
 	if contentType, ok := meta["content_type"].(string); ok {
 		h.setHeader("Content-Type", contentType)
 	}
-	if encoding, ok := meta["encoding"].(string); ok {
+
+	if deltaSource != "" {
+		h.setHeader("Content-Encoding", "zdelta")
+		h.setHeader("X-Delta-Source", string(deltaSource))
+	} else if encoding, ok := meta["encoding"].(string); ok {
 		h.setHeader("Content-Encoding", encoding)
 	}
+
+	h.setHeader("Etag", digest)
 	h.response.Write(data)
 	return nil
 }
@@ -167,7 +186,7 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.db.GetRev(docid, revid, false, nil)
+	body, err := h.db.GetRev(docid, revid, false)
 	if err != nil && base.IsDocNotFoundError(err) {
 		// couchdb creates empty body on attachment PUT
 		// for non-existant doc id

@@ -92,22 +92,22 @@ func TestDatabase(t *testing.T) {
 	assert.DeepEquals(t, gotbody, body)
 
 	log.Printf("Retrieve rev 1...")
-	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
+	gotbody, err = db.GetRev("doc1", rev1id, false)
 	assertNoError(t, err, "Couldn't get document with rev 1")
 	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234, "_id": "doc1", "_rev": rev1id})
 
 	log.Printf("Retrieve rev 2...")
-	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
+	gotbody, err = db.GetRev("doc1", rev2id, false)
 	assertNoError(t, err, "Couldn't get document with rev")
 	assert.DeepEquals(t, gotbody, body)
 
-	gotbody, err = db.GetRev("doc1", "bogusrev", false, nil)
+	gotbody, err = db.GetRev("doc1", "bogusrev", false)
 	status, _ := base.ErrorAsHTTPStatus(err)
 	assert.Equals(t, status, 404)
 
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
-	gotbody, err = db.GetRev("doc1", rev2id, true, nil)
+	gotbody, err = db.GetRev("doc1", rev2id, true)
 	revisions := gotbody["_revisions"].(Body)
 	assert.Equals(t, revisions["start"], 2)
 	assert.DeepEquals(t, revisions["ids"],
@@ -169,7 +169,7 @@ func TestGetDeleted(t *testing.T) {
 	assertNoError(t, err, "DeleteDoc")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
-	body, err = db.GetRev("doc1", rev2id, true, nil)
+	body, err = db.GetRev("doc1", rev2id, true)
 	assertNoError(t, err, "GetRev")
 	expectedResult := Body{
 		"_id":        "doc1",
@@ -185,7 +185,7 @@ func TestGetDeleted(t *testing.T) {
 	assertNoError(t, err, "GetUser")
 	db.user.SetExplicitChannels(nil)
 
-	body, err = db.GetRev("doc1", rev2id, true, nil)
+	body, err = db.GetRev("doc1", rev2id, true)
 	assertNoError(t, err, "GetRev")
 	assert.DeepEquals(t, body, expectedResult)
 }
@@ -403,10 +403,10 @@ func TestConflicts(t *testing.T) {
 		"channels": []interface{}{"all", "2b"}})
 
 	// Verify we can still get the other two revisions:
-	gotBody, err = db.GetRev("doc", "1-a", false, nil)
+	gotBody, err = db.GetRev("doc", "1-a", false)
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": 1,
 		"channels": []string{"all", "1"}})
-	gotBody, err = db.GetRev("doc", "2-a", false, nil)
+	gotBody, err = db.GetRev("doc", "2-a", false)
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
 		"channels": []string{"all", "2a"}})
 

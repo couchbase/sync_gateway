@@ -12,13 +12,19 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/snej/zdelta-go"
+	"io/ioutil"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,6 +161,14 @@ func assertStatus(t *testing.T, response *testResponse, expectedStatus int) {
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
 			response.Code, expectedStatus, response.rq.Method, response.rq.URL, response.Body)
 	}
+}
+
+func readMultipartResponse(response *testResponse) *multipart.Reader {
+	contentType, attrs, _ := mime.ParseMediaType(response.HeaderMap.Get("Content-Type"))
+	if !strings.HasPrefix(contentType, "multipart/") {
+		panic("Error: response type is " + contentType + ", not multipart")
+	}
+	return multipart.NewReader(response.Body, attrs["boundary"])
 }
 
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {
@@ -1664,4 +1678,99 @@ func TestCreateTarget(t *testing.T) {
 	//Attempt to create new target DB on public API
 	response = rt.sendRequest("PUT", "/foo/", "")
 	assertStatus(t, response, 403)
+}
+
+func TestGetAttachmentAsDelta(t *testing.T) {
+	var rt restTester
+
+	putDocAttach1 := func(queries string, attachmentBody string) string {
+		response := rt.sendRequest("PUT", "/db/doc1/attach1"+queries, attachmentBody)
+		assertStatus(t, response, 201)
+		var body db.Body
+		json.Unmarshal(response.Body.Bytes(), &body)
+		revID := body["rev"].(string)
+		assert.True(t, revID != "")
+		return revID
+	}
+	getDocAttach1 := func(queries string) map[string]interface{} {
+		headers := map[string]string{"Accept": "application/json"}
+		response := rt.sendRequestWithHeaders("GET", "/db/doc1"+queries, "", headers)
+		assertStatus(t, response, 200)
+		var body db.Body
+		json.Unmarshal(response.Body.Bytes(), &body)
+		attachments := body["_attachments"].(map[string]interface{})
+		return attachments["attach1"].(map[string]interface{})
+	}
+
+	// Create 1st rev of doc with attachment:
+	attachmentBody := "This is a string for use in testing delta compression. This is only a string. It has two ends."
+	revID1 := putDocAttach1("", attachmentBody)
+	attach1 := getDocAttach1("")
+	digest1 := attach1["digest"].(string)
+
+	// Update doc attachment:
+	attachmentBody2 := "This is test. This is only a test. The test ends."
+	putDocAttach1("?rev="+revID1, attachmentBody2)
+
+	// Get the doc without deltas enabled, in JSON format:
+	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]")
+	assert.Equals(t, attach1["data"], base64.StdEncoding.EncodeToString([]byte(attachmentBody2)))
+	assert.Equals(t, attach1["encoding"], nil)
+	assert.Equals(t, attach1["deltasrc"], nil)
+
+	// Get the doc with deltas enabled, in JSON format:
+	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
+	assert.Equals(t, attach1["encoding"], "zdelta")
+	assert.Equals(t, attach1["deltasrc"], digest1)
+	delta, err := base64.StdEncoding.DecodeString(attach1["data"].(string))
+	assert.Equals(t, err, nil)
+
+	// Decode the delta:
+	result, err := zdelta.ApplyDelta([]byte(attachmentBody), delta)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(result), attachmentBody2)
+
+	// Get the doc with deltas enabled, in MIME multipart format:
+	oldMax := db.MaxInlineAttachmentSize
+	db.MaxInlineAttachmentSize = 0 // Force all attachments to be MIME parts
+	defer func() { db.MaxInlineAttachmentSize = oldMax }()
+	headers := map[string]string{"Accept": "multipart/*"}
+	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
+	response := rt.sendRequestWithHeaders("GET", "/db/doc1?attachments=true&atts_since=[\""+revID1+"\"]&deltas=true", "", headers)
+	assertStatus(t, response, 200)
+	mp := readMultipartResponse(response)
+	// Check the JSON part:
+	part, err := mp.NextPart()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, part.Header["Content-Type"][0], "application/json")
+	decoder := json.NewDecoder(part)
+	var body db.Body
+	decoder.Decode(&body)
+	attachments := body["_attachments"].(map[string]interface{})
+	attach1 = attachments["attach1"].(map[string]interface{})
+	assert.Equals(t, attach1["encoding"], "zdelta")
+	assert.Equals(t, attach1["deltasrc"], digest1)
+	assert.Equals(t, attach1["follows"], true)
+	assert.Equals(t, attach1["data"], nil)
+	// Check the attachment part:
+	part, err = mp.NextPart()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, part.FileName(), "attach1")
+	assert.DeepEquals(t, part.Header["Content-Type"], []string(nil))
+	delta, err = ioutil.ReadAll(part)
+	assert.Equals(t, err, nil)
+	// Decode the delta:
+	result, err = zdelta.ApplyDelta([]byte(attachmentBody), delta)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(result), attachmentBody2)
+
+	// Now get the attachment on its own, as a delta:
+	response = rt.sendRequest("GET", "/db/doc1/attach1?deltas="+digest1, "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, response.HeaderMap.Get("Content-Encoding"), "zdelta")
+	delta, err = ioutil.ReadAll(response.Body)
+	assert.Equals(t, err, nil)
+	result, err = zdelta.ApplyDelta([]byte(attachmentBody), delta)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(result), attachmentBody2)
 }
