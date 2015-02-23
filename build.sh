@@ -1,4 +1,4 @@
-#!/bin/sh -exv
+#!/bin/sh -e
 
 # This script builds the sync gateway. You can't just run "go install"
 # directly, because we need to tell the Go compiler how to find the
