@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"strconv"
 
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
@@ -222,6 +223,14 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
 		fixQuotedSlashes(rq)
 		var match mux.RouteMatch
+
+ 		// Inject CORS if enabled
+ 		if sc.config.CORS != nil {
+ 			response.Header().Add("Access-Control-Allow-Origin", strings.Join(sc.config.CORS.Origin, ", "))
+ 			response.Header().Add("Access-Control-Allow-Credentials", "true")
+ 			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.config.CORS.Headers, ", "))
+ 		}
+
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
 		} else {
@@ -240,6 +249,10 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
+ 				if sc.config.CORS != nil {
+ 					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.CORS.MaxAge))
+ 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
+ 				}
 				if rq.Method != "OPTIONS" {
 					h.writeStatus(http.StatusMethodNotAllowed, "")
 				} else {
