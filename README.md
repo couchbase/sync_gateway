@@ -65,12 +65,11 @@ Apache 2 license.
 
 
 [COUCHBASE_LITE]: https://github.com/couchbase/couchbase-lite-ios
-[TOUCHDB]: https://github.com/couchbaselabs/TouchDB-iOS
 [COUCHDB]: http://couchdb.apache.org
 [COUCHDB_API]: http://wiki.apache.org/couchdb/Complete_HTTP_API_Reference
 [COUCHBASE_SERVER]: http://www.couchbase.com/couchbase-server/overview
 [WALRUS]: https://github.com/couchbaselabs/walrus
 [HTTPIE]: http://httpie.org
 [MAILING_LIST]: https://groups.google.com/forum/?fromgroups#!forum/mobile-couchbase
-[ISSUE_TRACKER]: https://github.com/couchbaselabs/sync_gateway/issues?state=open
+[ISSUE_TRACKER]: https://github.com/couchbase/sync_gateway/issues?state=open
 [MAC_STABLE_BUILD]: http://cbfs-ext.hq.couchbase.com/mobile/SyncGateway/SyncGateway-Mac.zip
