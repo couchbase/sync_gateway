@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestUserAPI(t *testing.T) {

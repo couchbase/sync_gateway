@@ -43,6 +43,7 @@ type DatabaseContext struct {
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
 	changeCache        changeCache             //
 	EventMgr           *EventManager           // Manages notification events
+	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 }
 
 const DefaultRevsLimit = 1000
