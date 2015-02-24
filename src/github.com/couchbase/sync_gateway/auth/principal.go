@@ -102,5 +102,13 @@ type User interface {
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
 
+	// Is this user allowed to have an empty password?  This will be true if it was set
+	// to true in the database config
+	AllowEmptyPassword() bool
+
+	// Toggle's this user's ability to have an empty password.  Intended to be controlled
+	// by the database config
+	SetAllowEmptyPassword(bool)
+
 	setRolesSince(ch.TimedSet)
 }
