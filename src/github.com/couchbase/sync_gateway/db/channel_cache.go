@@ -50,6 +50,10 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		removalChange.Flags |= channels.Removed
 		c._appendChange(&removalChange)
 	}
+
+	if change.Skipped {
+		c.AddLateSequence(change)
+	}
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 }

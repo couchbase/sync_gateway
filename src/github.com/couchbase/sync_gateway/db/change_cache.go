@@ -46,7 +46,17 @@ type changeCache struct {
 	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
 	lock            sync.RWMutex             // Coordinates access to struct fields
 	options         CacheOptions             // Cache config
+
+	incomingDocChannel   chan IncomingDoc // channel for pending incoming changes from feed
+	activeProcessChannel chan bool        // tracks number of active go routines processing incoming changes
 }
+
+type IncomingDoc struct {
+	id   string
+	json *[]byte
+}
+
+type processEntryCallback func(base.Set) error
 
 type LogEntry channels.LogEntry
 
@@ -104,6 +114,25 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 	base.LogTo("Cache", "Initializing changes cache with options %v", c.options)
 
 	heap.Init(&c.pendingLogs)
+
+	maxProcesses := 25000
+
+	// incomingDocChannel stores the incoming entries from the tap feed.
+	c.incomingDocChannel = make(chan IncomingDoc, 3*maxProcesses)
+
+	// activeProcessChannel limits the number of concurrent goroutines
+	c.activeProcessChannel = make(chan bool, maxProcesses)
+
+	// Start task to work the incoming event queue and spawn a capped number of goroutines
+	go func() {
+		for doc := range c.incomingDocChannel {
+			c.activeProcessChannel <- true
+			go func(doc IncomingDoc) {
+				defer func() { <-c.activeProcessChannel }()
+				c.ProcessDoc(doc.id, *doc.json)
+			}(doc)
+		}
+	}()
 
 	// Start a background task for periodic housekeeping:
 	go func() {
@@ -282,70 +311,74 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(docID string, docJSON []byte) {
+func (c *changeCache) ProcessDoc(docID string, docJSON []byte) {
 	entryTime := time.Now()
-	// ** This method does not directly access any state of c, so it doesn't lock.
-	go func() {
-		// Is this a user/role doc?
-		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-			c.processPrincipalDoc(docID, docJSON, true)
-			return
-		} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-			c.processPrincipalDoc(docID, docJSON, false)
-			return
-		}
+	// Is this a user/role doc?
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
+		c.processPrincipalDoc(docID, docJSON, true)
+		return
+	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+		c.processPrincipalDoc(docID, docJSON, false)
+		return
+	}
 
-		// First unmarshal the doc (just its metadata, to save time/memory):
-		doc, err := unmarshalDocumentSyncData(docJSON, false)
-		if err != nil || !doc.hasValidSyncData() {
-			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
-			return
-		}
+	// First unmarshal the doc (just its metadata, to save time/memory):
+	doc, err := unmarshalDocumentSyncData(docJSON, false)
+	if err != nil || !doc.hasValidSyncData() {
+		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		return
+	}
 
-		if doc.Sequence <= c.initialSequence {
-			return // Tap is sending us an old value from before I started up; ignore it
-		}
+	if doc.Sequence <= c.initialSequence {
+		return // Tap is sending us an old value from before I started up; ignore it
+	}
 
-		// Record a histogram of the Tap feed's lag:
-		tapLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
-		lagMs := int(tapLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
+	// Record a histogram of the Tap feed's lag:
+	tapLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
+	lagMs := int(tapLag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
 
-		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
-		for _, seq := range doc.UnusedSequences {
-			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
-			change := &LogEntry{
-				Sequence:     seq,
-				TimeReceived: time.Now(),
-				TimeSaved:    time.Now(),
-			}
-			changeCacheExpvars.Add("processEntry-count-UnusedSequences", 1)
-			c.processEntry(change)
-		}
-
-		if doc.TimeSaved.IsZero() {
-			base.Warn("Found doc with zero timeSaved, docID=%s", docID)
-		}
-
-		// Now add the entry for the new doc revision:
+	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
+	for _, seq := range doc.UnusedSequences {
+		base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
 		change := &LogEntry{
-			Sequence:     doc.Sequence,
-			DocID:        docID,
-			RevID:        doc.CurrentRev,
-			Flags:        doc.Flags,
+			Sequence:     seq,
 			TimeReceived: time.Now(),
-			TimeSaved:    doc.TimeSaved,
-			Channels:     doc.Channels,
+			TimeSaved:    time.Now(),
 		}
-		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
+		changeCacheExpvars.Add("processEntry-count-UnusedSequences", 1)
+		c.processEntry(change)
+	}
 
-		changeCacheExpvars.Add("processEntry-count-DocChanged", 1)
-		changedChannels := c.processEntry(change)
+	if doc.TimeSaved.IsZero() {
+		base.Warn("Found doc with zero timeSaved, docID=%s", docID)
+	}
 
-		if c.onChange != nil && len(changedChannels) > 0 {
-			c.onChange(changedChannels)
-		}
-	}()
+	// Now add the entry for the new doc revision:
+	change := &LogEntry{
+		Sequence:     doc.Sequence,
+		DocID:        docID,
+		RevID:        doc.CurrentRev,
+		Flags:        doc.Flags,
+		TimeReceived: time.Now(),
+		TimeSaved:    doc.TimeSaved,
+		Channels:     doc.Channels,
+	}
+	base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
+
+	changeCacheExpvars.Add("processEntry-count-DocChanged", 1)
+	changedChannels := c.processEntry(change)
+
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
+	}
+}
+
+func (c *changeCache) DocChanged(docID string, docJSON []byte) {
+
+	// add doc to the pending doc queue
+	c.incomingDocChannel <- IncomingDoc{id: docID, json: &docJSON}
+
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
@@ -378,6 +411,10 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	changeCacheExpvars.Add("processEntry-count-processPrincipalDoc", 1)
 	c.processEntry(change)
+}
+
+func (c *changeCache) queueEntry(change *LogEntry, callback processEntryCallback) {
+
 }
 
 // Handles a newly-arrived LogEntry.
@@ -427,7 +464,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	var changedChannels base.Set
 	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		changedChannels = c._addToCache(change, false)
+		changedChannels = c._addToCache(change)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
 		exitType = "next"
@@ -447,7 +484,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		wasSkipped := false
 		if c.RemoveSkipped(sequence) != nil {
 			// Error removing from skipped sequences
 			dbExpvars.Add("late_find_fail", 1)
@@ -455,9 +491,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		} else {
 			dbExpvars.Add("late_find_success", 1)
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
-			wasSkipped = true
+			change.Skipped = true
 		}
-		changedChannels = c._addToCache(change, wasSkipped)
+		changedChannels = c._addToCache(change)
 		exitType = "skipped"
 	}
 
@@ -468,7 +504,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Set {
+func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 
 	sentToCache := time.Now()
 	if change.Sequence >= c.nextSequence {
@@ -481,16 +517,20 @@ func (c *changeCache) _addToCache(change *LogEntry, isLateSequence bool) base.Se
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
+	var w sync.WaitGroup
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
-			channelCache := c._getChannelCache(channelName)
-			channelCache.addToCache(change, removal != nil)
 			addedTo = append(addedTo, channelName)
-			if isLateSequence {
-				channelCache.AddLateSequence(change)
-			}
+			channelCache := c._getChannelCache(channelName)
+			isRemoval := removal != nil
+			go func() {
+				w.Add(1)
+				defer w.Done()
+				channelCache.addToCache(change, isRemoval)
+			}()
 		}
 	}
+	w.Wait()
 
 	if EnableStarChannelLog {
 		c._getChannelCache(channels.UserStarChannel).addToCache(change, false)
@@ -525,7 +565,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			changedChannels = changedChannels.Union(c._addToCache(change, false))
+			changedChannels = changedChannels.Union(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			base.LogTo("Cache", "Adding #%d to skipped", c.nextSequence)
 			changeCacheExpvars.Add("outOfOrder", 1)
