@@ -23,6 +23,23 @@ type PrincipalConfig struct {
 	RoleNames         []string `json:"roles,omitempty"`
 }
 
+// Check if the password in this PrincipalConfig is valid.  Only allow
+// empty passwords if allowEmptyPass is true.
+func (p PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
+
+	if allowEmptyPass {
+		// allow any password, skip validation
+		return true, ""
+	}
+
+	if p.Password != nil && len(*p.Password) < 3 {
+		return false, "Passwords must be at least three 3 characters"
+	}
+
+	return true, ""
+
+}
+
 func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *PrincipalConfig, err error) {
 	var princ auth.Principal
 	if isUser {
@@ -55,11 +72,15 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	var user auth.User
 	authenticator := dbc.Authenticator()
 	if isUser {
-		if newInfo.Password != nil && len(*(newInfo.Password)) < 3 {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Passwords must be at least three 3 characters")
+		isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+		if !isValid {
+			err = base.HTTPErrorf(http.StatusBadRequest, reason)
 			return
 		}
 		user, err = authenticator.GetUser(*newInfo.Name)
+		if dbc.AllowEmptyPassword {
+			user.SetAllowEmptyPassword(true)
+		}
 		princ = user
 	} else {
 		princ, err = authenticator.GetRole(*newInfo.Name)
