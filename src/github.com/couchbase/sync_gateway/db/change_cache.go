@@ -146,7 +146,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 		for c.PruneChannelCaches() {
 			//time.Sleep(c.options.CachePendingSeqMaxWait / 2)
 			// TODO: track last cleanup similar to skipped handling
-			time.Sleep(1 * time.Minute)
+			time.Sleep(5 * time.Minute)
 		}
 	}()
 

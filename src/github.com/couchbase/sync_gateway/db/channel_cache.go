@@ -233,8 +233,21 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 // sequence, we skip the insert.  If the docId is already present in an earlier sequence,
 // we remove the earlier sequence.
 func insertChange(log *LogEntries, change *LogEntry) {
-
+	insertStart := time.Now()
+	// ...and from the time the doc was received from Tap:
+	defer func() {
+		lag := time.Since(insertStart)
+		if lag < 100*time.Millisecond {
+			lagMs := int(lag/(10*time.Millisecond)) * 10
+			changeCacheExpvars.Add(fmt.Sprintf("insertChange-execution-%05dms", lagMs), 1)
+		} else {
+			lagMs := int(lag/(100*time.Millisecond)) * 100
+			changeCacheExpvars.Add(fmt.Sprintf("insertChange-execution-%05dms", lagMs), 1)
+		}
+	}()
 	end := len(*log) - 1
+	size := int(len(*log)/(100)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("insertChange-cachesize-%05d", size), 1)
 	insertAfterIndex := -1
 	for i := end; i >= 0; i-- {
 		currLog := (*log)[i]
@@ -260,6 +273,15 @@ func insertChange(log *LogEntries, change *LogEntry) {
 				}
 			}
 		}
+	}
+
+	lag := time.Since(insertStart)
+	if lag < 100*time.Millisecond {
+		lagMs := int(lag/(10*time.Millisecond)) * 10
+		changeCacheExpvars.Add(fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs), 1)
+	} else {
+		lagMs := int(lag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs), 1)
 	}
 	// We didn't find a match for DocID, so standard insert.
 	*log = append(*log, nil)
