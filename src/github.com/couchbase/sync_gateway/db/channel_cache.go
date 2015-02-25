@@ -42,6 +42,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	channelLockTime := time.Now()
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	base.WriteHistogram(changeCacheExpvars, "lag-channel-lock-addToCache", channelLockTime)
 	lag := time.Since(channelLockTime)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-channel-lock-addToCache-%05dms", lagMs), 1)
@@ -59,6 +60,12 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	}
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+
+	if change.Skipped {
+		base.WriteHistogram(changeCacheExpvars, "channel-addToCache-skipped", channelLockTime)
+	} else {
+		base.WriteHistogram(changeCacheExpvars, "channel-addToCache", channelLockTime)
+	}
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.

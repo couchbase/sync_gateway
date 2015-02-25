@@ -563,19 +563,17 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}
 
 	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.TimeSaved)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%05dms", lagMs), 1)
+	base.WriteHistogram(changeCacheExpvars, "lag-total", change.TimeSaved)
 
 	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.TimeReceived)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%05dms", lagMs), 1)
+	base.WriteHistogram(changeCacheExpvars, "lag-queue", change.TimeReceived)
 
 	// ...and from the time the doc was sent for caching:
-	lag = time.Since(sentToCache)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-caching-%05dms", lagMs), 1)
+	if change.Skipped {
+		base.WriteHistogram(changeCacheExpvars, "lag-caching-", sentToCache)
+	} else {
+		base.WriteHistogram(changeCacheExpvars, "lag-caching-skipped", sentToCache)
+	}
 
 	return base.SetFromArray(addedTo)
 }
@@ -695,6 +693,8 @@ func (h *LogPriorityQueue) Pop() interface{} {
 //////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
+	start := time.Now()
+	defer base.WriteHistogram(changeCacheExpvars, "remove-skipped", start)
 	c.skippedSeqLock.Lock()
 	defer c.skippedSeqLock.Unlock()
 	return c.skippedSeqs.Remove(x)
