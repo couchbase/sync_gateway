@@ -18,7 +18,7 @@ import (
 var DefaultMaxChannelLogPendingCount = 10000              // Max number of waiting sequences
 var DefaultMaxChannelLogPendingWaitTime = 5 * time.Second // Max time we'll wait for a pending sequence before sending to missed queue
 
-var DefaultMaxChannelLogSkippedWaitTime = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
+var DefaultMaxChannelLogSkippedWaitTime = 30 * time.Minute // Max time we'll wait for an entry in the missing before purging
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
@@ -115,7 +115,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 	heap.Init(&c.pendingLogs)
 
-	maxProcesses := 25000
+	maxProcesses := 50000
 
 	// incomingDocChannel stores the incoming entries from the tap feed.
 	c.incomingDocChannel = make(chan IncomingDoc, 3*maxProcesses)
@@ -611,9 +611,18 @@ func (c *changeCache) _addPendingLogs() base.Set {
 }
 
 func (c *changeCache) getChannelCache(channelName string) *channelCache {
-	c.cacheLock.Lock()
-	defer c.cacheLock.Unlock()
-	return c._getChannelCache(channelName)
+	cache := c.channelCaches[channelName]
+	if cache == nil {
+		c.cacheLock.Lock()
+		// check if it was created while we waited for the lock
+		cache = c.channelCaches[channelName]
+		if cache == nil {
+			cache = newChannelCache(c.context, channelName, c.initialSequence+1)
+			c.channelCaches[channelName] = cache
+		}
+		c.cacheLock.Unlock()
+	}
+	return cache
 }
 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
@@ -631,7 +640,7 @@ func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOpt
 	if c.stopped {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c._getChannelCache(channelName).GetChanges(options)
+	return c.getChannelCache(channelName).GetChanges(options)
 }
 
 // Returns the sequence number the cache is up-to-date with.
