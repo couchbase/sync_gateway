@@ -197,12 +197,6 @@ func (c *changeCache) CheckPending() bool {
 		return false
 	}
 
-	// If entries have been pending too long, add them to the cache:
-	changedChannels := c._addPendingLogs()
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
-	}
-
 	if time.Since(c.lastPendingCheck) > c.options.CachePendingSeqMaxWait {
 		func() {
 			c.cacheLock.Lock()
@@ -595,6 +589,10 @@ func (c *changeCache) _addPendingLogs() base.Set {
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
+		if change.Sequence < c.nextSequence {
+			changeCacheExpvars.Add("pending_sequence_error", 1)
+			changeCacheExpvars.Add(fmt.Sprintf("pending_sequence:%d", change.Sequence), 1)
+		}
 		if isNext {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Union(c._addToCache(change))
