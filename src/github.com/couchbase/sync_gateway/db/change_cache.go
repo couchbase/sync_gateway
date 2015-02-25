@@ -414,7 +414,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 
 	// add doc to the pending doc queue
 	c.incomingDocChannel <- IncomingDoc{id: docID, json: &docJSON}
-
+	changeCacheExpvars.Add("docChanged-addedToChannel", 1)
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
