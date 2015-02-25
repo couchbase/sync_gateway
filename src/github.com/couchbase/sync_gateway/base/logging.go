@@ -10,12 +10,14 @@
 package base
 
 import (
+	"expvar"
 	"fmt"
 	"log"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
@@ -314,4 +316,16 @@ func LogColor() {
 	bgMagenta = "\x1b[45m"
 	bgCyan = "\x1b[46m"
 	bgWhite = "\x1b[47m"
+}
+
+// expvar helpers
+func WriteHistogram(target *expvar.Map, name string, since time.Time) {
+	lag := time.Since(since)
+	if lag < 100*time.Millisecond {
+		lagMs := int(lag/(10*time.Millisecond)) * 10
+		target.Add(fmt.Sprintf("%s-%05dms", name, lagMs), 1)
+	} else {
+		lagMs := int(lag/(100*time.Millisecond)) * 100
+		target.Add(fmt.Sprintf("%s-%05dms", name, lagMs), 1)
+	}
 }

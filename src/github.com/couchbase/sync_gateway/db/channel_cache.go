@@ -27,6 +27,7 @@ type channelCache struct {
 	lastLateSequence uint64           // Used for fast check of whether listener has the latest
 	lateLogLock      sync.RWMutex     // Controls access to lateLogs
 	lastPruned       time.Time        // manages frequency of pruning
+	cachedDocIDs     map[string]struct{}
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
@@ -62,19 +63,16 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
-
-	if time.Since(c.lastPruned) > ChannelCacheAge/2 {
-		pruned := 0
-		for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
-			c.validFrom = c.logs[0].Sequence + 1
-			c.logs = c.logs[1:]
-			pruned++
-		}
-		if pruned > 0 {
-			base.LogTo("Cache", "Pruned %d old entries from channel %q", pruned, c.channelName)
-		}
-		c.lastPruned = time.Now()
+	pruned := 0
+	for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
+		c.validFrom = c.logs[0].Sequence + 1
+		c.logs = c.logs[1:]
+		pruned++
 	}
+	if pruned > 0 {
+		base.LogTo("Cache", "Pruned %d old entries from channel %q", pruned, c.channelName)
+	}
+	c.lastPruned = time.Now()
 }
 
 func (c *channelCache) pruneCache() {
@@ -453,6 +451,8 @@ func (c *channelCache) ReleaseLateSequenceClient(sequence uint64) error {
 
 // Receive new late sequence
 func (c *channelCache) AddLateSequence(change *LogEntry) {
+
+	start := time.Now()
 	// Add to lateLogs.
 	lateEntry := &lateLogEntry{
 		logEntry:      change,
@@ -468,6 +468,7 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 	// a high priority, as the memory overhead for the late entries should be trivial, and probably
 	// doesn't merit
 	c._purgeLateLogEntries()
+	base.WriteHistogram(changeCacheExpvars, "add-late-sequence", start)
 }
 
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
