@@ -17,6 +17,10 @@
 		{
 			"follow_symlinks": true,
 			"path": "vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui"
+		},
+		{
+			"follow_symlinks": true,
+			"path": "src/github.com/couchbaselabs/walrus"
 		}
 	],
 	"settings":

@@ -154,48 +154,65 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool) (Body, error
 	return body, err
 }
 
+func (db *Database) GetRevJSON(docid, revid string) ([]byte, error) {
+	doc, err := db.GetDoc(docid)
+	if doc == nil {
+		return nil, err
+	}
+	return db.getRevisionJSON(doc, revid)
+}
+
+// Result of GetRevWithAttachments.
+type RevResponse struct {
+	Body       Body   // The parsed doc body
+	OldRevJSON []byte // The JSON source of the old revision, to use for a delta
+	OldRevID   string // The revID of the old revision
+}
+
 // Returns the body of a revision of a document, including attachments. Based on GetRev.
-// If attachmentsSince is non-nil, attachment bodies ("data" properties) will be added for all
-// revisions newer than the revIDs in attachmentsSince.
+// If knownRevIDs is non-nil, attachment bodies ("data" properties) will be added for all
+// revisions newer than the revIDs in knownRevIDs.
 // If useDeltas is true, attachments will be delta-compressed based on the versions of the
-// attachments in the attachmentsSince revisions.
-func (db *Database) GetRevWithAttachments(docid, revid string, listRevisions bool, attachmentsSince []string, useDeltas bool) (Body, error) {
-	body, doc, err := db.getRev(docid, revid, listRevisions)
-	if err != nil || attachmentsSince == nil || len(BodyAttachments(body)) == 0 {
-		return body, err
+// attachments in the knownRevIDs revisions.
+func (db *Database) GetRevWithAttachments(docid, revid string, listRevisions bool, knownRevIDs []string, useDeltas bool) (r RevResponse, err error) {
+	var doc *document
+	r.Body, doc, err = db.getRev(docid, revid, listRevisions)
+	if err != nil || knownRevIDs == nil || (!useDeltas && len(BodyAttachments(r.Body)) == 0) {
+		return
 	}
 
 	if revid == "" {
-		revid = body["_rev"].(string)
+		revid = r.Body["_rev"].(string)
 	}
 
 	// Figure out the min revpos to get bodies of, and the available delta sources:
 	minRevpos := 1                            // Don't include atts whose revpos is < this
 	var deltaSrcKeys map[string]AttachmentKey // Old versions to use as delta srcs
-	if len(attachmentsSince) > 0 {
+	if len(knownRevIDs) > 0 {
 		if doc == nil { // if rev was in the cache, we don't have the document struct yet
 			if doc, err = db.GetDoc(docid); doc == nil {
-				return nil, err
+				r.Body = nil
+				return
 			}
 		}
-		ancestorRevID := doc.History.findAncestorFromSet(revid, attachmentsSince)
-		if ancestorRevID != "" {
-			minRevpos, _ = parseRevID(ancestorRevID)
+		r.OldRevID = doc.History.findAncestorFromSet(revid, knownRevIDs)
+		if r.OldRevID != "" {
+			minRevpos, _ = parseRevID(r.OldRevID)
 			minRevpos++
-			// Now load the ancestor rev's body to get the attachment digests:
 			if useDeltas {
-				if ancestorBody, _ := db.getRevision(doc, ancestorRevID); ancestorBody != nil {
-					deltaSrcKeys = db.getAttachmentDigests(ancestorBody)
+				// Now load the ancestor rev's JSON and its attachment digests:
+				// The JSON is in canonical form with no _id, _rev or _deleted properties
+				if r.OldRevJSON, _ = db.getRevisionJSON(doc, r.OldRevID); r.OldRevJSON != nil {
+					var deltaSrcBody Body
+					json.Unmarshal(r.OldRevJSON, &deltaSrcBody)
+					deltaSrcKeys = db.getAttachmentDigests(deltaSrcBody)
 				}
 			}
 		}
 	}
 	// Add attachment bodies:
-	body, err = db.loadBodyAttachments(body, minRevpos, deltaSrcKeys)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
+	r.Body, err = db.loadBodyAttachments(r.Body, minRevpos, deltaSrcKeys)
+	return
 }
 
 // Returns the body of a revision of a document, as well as the document's current channels

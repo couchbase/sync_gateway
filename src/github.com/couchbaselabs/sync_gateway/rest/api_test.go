@@ -1687,17 +1687,21 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 		response := rt.sendRequest("PUT", "/db/doc1/attach1"+queries, attachmentBody)
 		assertStatus(t, response, 201)
 		var body db.Body
-		json.Unmarshal(response.Body.Bytes(), &body)
+		assert.Equals(t, json.Unmarshal(response.Body.Bytes(), &body), nil)
 		revID := body["rev"].(string)
 		assert.True(t, revID != "")
 		return revID
 	}
-	getDocAttach1 := func(queries string) map[string]interface{} {
+	getDoc := func(queries string) []byte {
 		headers := map[string]string{"Accept": "application/json"}
 		response := rt.sendRequestWithHeaders("GET", "/db/doc1"+queries, "", headers)
 		assertStatus(t, response, 200)
+		return response.Body.Bytes()
+	}
+	getDocAttach1 := func(queries string) map[string]interface{} {
+		response := getDoc(queries)
 		var body db.Body
-		json.Unmarshal(response.Body.Bytes(), &body)
+		assert.Equals(t, json.Unmarshal(response, &body), nil)
 		attachments := body["_attachments"].(map[string]interface{})
 		return attachments["attach1"].(map[string]interface{})
 	}
@@ -1705,6 +1709,7 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	// Create 1st rev of doc with attachment:
 	attachmentBody := "This is a string for use in testing delta compression. This is only a string. It has two ends."
 	revID1 := putDocAttach1("", attachmentBody)
+	bodyData1 := getDoc("")
 	attach1 := getDocAttach1("")
 	digest1 := attach1["digest"].(string)
 
@@ -1718,7 +1723,8 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	assert.Equals(t, attach1["encoding"], nil)
 	assert.Equals(t, attach1["deltasrc"], nil)
 
-	// Get the doc with deltas enabled, in JSON format:
+	// Get the doc with deltas enabled, in JSON format. The JSON itself will not be delta-
+	// compressed since it has to contain the delta-compressed attachments.
 	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
 	assert.Equals(t, attach1["encoding"], "zdelta")
 	assert.Equals(t, attach1["deltasrc"], digest1)
@@ -1732,26 +1738,36 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 
 	// Get the doc with deltas enabled, in MIME multipart format:
 	oldMax := db.MaxInlineAttachmentSize
-	db.MaxInlineAttachmentSize = 0 // Force all attachments to be MIME parts
+	db.MaxInlineAttachmentSize = 0 // Temporarily force all attachments to be MIME parts
 	defer func() { db.MaxInlineAttachmentSize = oldMax }()
 	headers := map[string]string{"Accept": "multipart/*"}
 	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
 	response := rt.sendRequestWithHeaders("GET", "/db/doc1?attachments=true&atts_since=[\""+revID1+"\"]&deltas=true", "", headers)
 	assertStatus(t, response, 200)
 	mp := readMultipartResponse(response)
-	// Check the JSON part:
+
+	// Check the (delta-encoded) JSON part:
 	part, err := mp.NextPart()
 	assert.Equals(t, err, nil)
-	assert.Equals(t, part.Header["Content-Type"][0], "application/json")
-	decoder := json.NewDecoder(part)
+	assert.Equals(t, part.Header.Get("Content-Type"), "application/json")
+	assert.Equals(t, part.Header.Get("Content-Encoding"), "zdelta")
+	assert.Equals(t, part.Header.Get("X-Delta-Source"), revID1)
+	// Decode the delta:
+	base.Log("Decoding delta with source: %s", bodyData1)
+	delta, _ = ioutil.ReadAll(part)
+	bodyData2, err := zdelta.ApplyDelta(bodyData1, delta)
+	assert.Equals(t, err, nil)
+	base.Log("Decoded delta: %s", bodyData2)
+	// Decode the JSON:
 	var body db.Body
-	decoder.Decode(&body)
+	assert.Equals(t, json.Unmarshal(bodyData2, &body), nil)
 	attachments := body["_attachments"].(map[string]interface{})
 	attach1 = attachments["attach1"].(map[string]interface{})
 	assert.Equals(t, attach1["encoding"], "zdelta")
 	assert.Equals(t, attach1["deltasrc"], digest1)
 	assert.Equals(t, attach1["follows"], true)
 	assert.Equals(t, attach1["data"], nil)
+
 	// Check the attachment part:
 	part, err = mp.NextPart()
 	assert.Equals(t, err, nil)

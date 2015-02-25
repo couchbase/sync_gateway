@@ -11,6 +11,7 @@ package rest
 
 import (
 	"encoding/json"
+	"github.com/snej/zdelta-go"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -44,24 +45,31 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
+		responseInfo, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
 		if err != nil {
 			return err
 		}
-		if value == nil {
+		if responseInfo.Body == nil {
 			return kNotFoundError
 		}
-		h.setHeader("Etag", value["_rev"].(string))
+		h.setHeader("Etag", responseInfo.Body["_rev"].(string))
 
-		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
+		hasBodies := (attachmentsSince != nil && responseInfo.Body["_attachments"] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				h.db.WriteMultipartDocument(value, writer, canCompress)
+				h.db.WriteMultipartDocument(responseInfo, writer, canCompress)
 				return nil
 			})
+		} else if responseInfo.OldRevJSON != nil && !hasBodies {
+			h.setHeader("Content-Type", "application/json")
+			h.setHeader("Content-Encoding", "zdelta")
+			h.setHeader("X-Delta-Source", responseInfo.OldRevID)
+			target, _ := json.Marshal(responseInfo.Body)
+			var cmp zdelta.Compressor
+			cmp.WriteDelta(responseInfo.OldRevJSON, target, h.response)
 		} else {
-			h.writeJSON(value)
+			h.writeJSON(responseInfo.Body)
 		}
 	} else {
 		var revids []string
@@ -88,11 +96,11 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
+					responseInfo, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
 					if err != nil {
-						revBody = db.Body{"missing": revid} //TODO: More specific error
+						responseInfo.Body = db.Body{"missing": revid} //TODO: More specific error
 					}
-					h.db.WriteRevisionAsPart(revBody, err != nil, false, writer)
+					h.db.WriteRevisionAsPart(responseInfo, err != nil, false, writer)
 				}
 				return nil
 			})
@@ -103,15 +111,15 @@ func (h *handler) handleGetDoc() error {
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, sendDeltas)
+				responseInfo, err := h.db.GetRevWithAttachments(docid, revid, includeRevs, attachmentsSince, false)
 				if err != nil {
-					revBody = db.Body{"missing": revid} //TODO: More specific error
+					responseInfo.Body = db.Body{"missing": revid} //TODO: More specific error
 				} else {
-					revBody = db.Body{"ok": revBody}
+					responseInfo.Body = db.Body{"ok": responseInfo.Body}
 				}
 				h.response.Write(separator)
 				separator = []byte(",")
-				h.addJSON(revBody)
+				h.addJSON(responseInfo.Body)
 			}
 			h.response.Write([]byte(`]`))
 		}

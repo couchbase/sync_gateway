@@ -190,7 +190,7 @@ func (db *Database) getAttachmentDigests(body Body) map[string]AttachmentKey {
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
-	key := AttachmentKey(sha1DigestKey(attachment))
+	key := AttachmentKey(SHA1DigestKey(attachment))
 	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
 	if err == nil {
 		base.LogTo("Attach", "\tAdded attachment %q", key)
@@ -227,17 +227,28 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 	return nil
 }
 
-func writeJSONPart(writer *multipart.Writer, contentType string, body Body, compressed bool) (err error) {
-	bytes, err := json.Marshal(body)
+func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, compressed bool) (err error) {
+	bytes, err := json.Marshal(r.Body)
 	if err != nil {
 		return err
-	}
-	if len(bytes) < kMinCompressedJSONSize {
-		compressed = false
 	}
 
 	partHeaders := textproto.MIMEHeader{}
 	partHeaders.Set("Content-Type", contentType)
+
+	if len(bytes) < kMinCompressedJSONSize {
+		compressed = false
+	}
+	if r.OldRevJSON != nil {
+		delta, err := zdelta.CreateDelta(r.OldRevJSON, bytes)
+		if err == nil && len(delta) < len(bytes) {
+			bytes = delta
+			compressed = false
+			partHeaders.Set("Content-Encoding", "zdelta")
+			partHeaders.Set("X-Delta-Source", r.OldRevID)
+		}
+	}
+
 	if compressed {
 		partHeaders.Set("Content-Encoding", "gzip")
 	}
@@ -257,7 +268,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body Body, comp
 }
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, compress bool) {
+func (db *Database) WriteMultipartDocument(r RevResponse, writer *multipart.Writer, compress bool) {
 	type attInfo struct {
 		name string
 		data []byte
@@ -266,14 +277,14 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 
 	// First extract the attachments that should follow:
 	following := []attInfo{}
-	for name, value := range BodyAttachments(body) {
+	for name, value := range BodyAttachments(r.Body) {
 		meta := value.(map[string]interface{})
 		if meta["stub"] != true {
 			var err error
 			var info attInfo
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
-				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
+				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, r.Body["_id"], err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > MaxInlineAttachmentSize {
@@ -287,7 +298,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 	}
 
 	// Write the main JSON body:
-	writeJSONPart(writer, "application/json", body, compress)
+	writeJSONPart(writer, "application/json", r, compress)
 
 	// Write the following attachments
 	for _, info := range following {
@@ -305,16 +316,16 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 
 // Adds a new part to the given multipart writer, containing the given revision.
 // The revision will be written as a nested multipart body if it has attachments.
-func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress bool, writer *multipart.Writer) error {
+func (db *Database) WriteRevisionAsPart(r RevResponse, isError bool, compress bool, writer *multipart.Writer) error {
 	partHeaders := textproto.MIMEHeader{}
-	docID, _ := revBody["_id"].(string)
-	revID, _ := revBody["_rev"].(string)
+	docID, _ := r.Body["_id"].(string)
+	revID, _ := r.Body["_rev"].(string)
 	if len(docID) > 0 {
 		partHeaders.Set("X-Doc-ID", docID)
 		partHeaders.Set("X-Rev-ID", revID)
 	}
 
-	if hasInlineAttachments(revBody) {
+	if hasInlineAttachments(r.Body) {
 		// Write as multipart, including attachments:
 		// OPT: Find a way to do this w/o having to buffer the MIME body in memory!
 		var buffer bytes.Buffer
@@ -322,7 +333,7 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress boo
 		contentType := fmt.Sprintf("multipart/related; boundary=%q",
 			docWriter.Boundary())
 		partHeaders.Set("Content-Type", contentType)
-		db.WriteMultipartDocument(revBody, docWriter, compress)
+		db.WriteMultipartDocument(r, docWriter, compress)
 		docWriter.Close()
 		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
 
@@ -337,7 +348,7 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress boo
 		if isError {
 			contentType += `; error="true"`
 		}
-		return writeJSONPart(writer, contentType, revBody, compress)
+		return writeJSONPart(writer, contentType, r, compress)
 	}
 }
 
@@ -394,7 +405,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 
 		// Look up the attachment by its digest:
-		digest := sha1DigestKey(data)
+		digest := SHA1DigestKey(data)
 		name, meta := findFollowingAttachment(digest)
 		if meta == nil {
 			name, meta = findFollowingAttachment(md5DigestKey(data))
@@ -434,7 +445,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 
 //////// HELPERS:
 
-func sha1DigestKey(data []byte) string {
+func SHA1DigestKey(data []byte) string {
 	digester := sha1.New()
 	digester.Write(data)
 	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))

@@ -341,21 +341,23 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
+			var responseInfo db.RevResponse
 			if err == nil {
-				body, err = h.db.GetRevWithAttachments(docid, revid, includeRevs, attsSince, sendDeltas)
+				responseInfo, err = h.db.GetRevWithAttachments(docid, revid, includeRevs, attsSince, sendDeltas)
 			}
 
 			if err != nil {
 				// Report error in the response for this doc:
 				status, reason := base.ErrorAsHTTPStatus(err)
 				errStr := base.CouchHTTPErrorName(status)
-				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
+				responseInfo.Body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
+				responseInfo.OldRevJSON = nil
 				if revid != "" {
 					body["rev"] = revid
 				}
 			}
 
-			h.db.WriteRevisionAsPart(body, err != nil, canCompress, writer)
+			h.db.WriteRevisionAsPart(responseInfo, err != nil, canCompress, writer)
 		}
 		return nil
 	})
