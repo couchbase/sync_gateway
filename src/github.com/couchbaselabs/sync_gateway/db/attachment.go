@@ -249,12 +249,9 @@ func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, 
 	partHeaders := textproto.MIMEHeader{}
 	partHeaders.Set("Content-Type", contentType)
 
-	if len(bytes) < kMinCompressedJSONSize {
-		gzipCompress = false
-	}
-	if r.OldRevJSON != nil {
+	if r.OldRevJSON != nil && len(bytes) > MinDeltaSavings {
 		delta, err := zdelta.CreateDelta(r.OldRevJSON, bytes)
-		if err == nil && len(delta) < len(bytes) {
+		if err == nil && len(delta)+MinDeltaSavings < len(bytes) {
 			bytes = delta
 			gzipCompress = false
 			partHeaders.Set("Content-Encoding", "zdelta")
@@ -263,8 +260,13 @@ func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, 
 	}
 
 	if gzipCompress {
-		partHeaders.Set("Content-Encoding", "gzip")
+		if len(bytes) < kMinCompressedJSONSize {
+			gzipCompress = false
+		} else {
+			partHeaders.Set("Content-Encoding", "gzip")
+		}
 	}
+
 	part, err := writer.CreatePart(partHeaders)
 	if err != nil {
 		return err

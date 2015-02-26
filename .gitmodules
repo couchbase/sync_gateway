@@ -16,6 +16,9 @@
 [submodule "src/github.com/gorilla/context"]
 	path = src/github.com/gorilla/context
 	url = https://github.com/gorilla/context
+[submodule "src/github.com/snej/zdelta-go"]
+	path = src/github.com/snej/zdelta-go
+	url = https://github.com/snej/zdelta-go.git
 [submodule "src/github.com/tleyden/fakehttp"]
 	path = src/github.com/tleyden/fakehttp
 	url = https://github.com/tleyden/fakehttp.git
