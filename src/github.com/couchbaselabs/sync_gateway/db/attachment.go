@@ -150,27 +150,40 @@ func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 // Retrieves an attachment's body, preferably as a delta from one of the versions specified
 // in `sourceKeys`
 func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []AttachmentKey) (result []byte, sourceKey AttachmentKey, err error) {
+	// First, attempt to reuse a cached delta without even having to load the attachment:
+	for _, sourceKey = range sourceKeys {
+		if result = db.getCachedAttachmentZDelta(sourceKey, key); result != nil {
+			// Found a cached delta
+			if len(result) == 0 {
+				// ... but it's not worth using
+				sourceKey = ""
+				result, err = db.GetAttachment(key)
+			}
+			return
+		}
+	}
+
+	// No cached deltas, so create one:
 	target, err := db.GetAttachment(key)
 	if err != nil {
 		return
 	}
+
 	for _, sourceKey = range sourceKeys {
-		var src []byte
-		src, err = db.Bucket.GetRaw(attachmentKeyToString(sourceKey))
-		if err == nil {
-			//OPT: Cache deltas. For now, this just computes the delta every time.
-			result, err = zdelta.CreateDelta(src, target)
-			if err == nil && len(result) < len(target) {
-				base.LogTo("Attach", "Generated zdelta {%s --> %s} (%d%%)",
-					sourceKey, key, len(result)*100/len(target))
+		if src, _ := db.Bucket.GetRaw(attachmentKeyToString(sourceKey)); src != nil {
+			// Found a previous revision; generate a delta:
+			result = db.generateAttachmentZDelta(src, target, sourceKey, key)
+			if result != nil {
+				if len(result) == 0 {
+					// ... but it's not worth using
+					break
+				}
 				return
 			}
 		}
-		if !base.IsDocNotFoundError(err) {
-			base.Warn("GetAttachmentAsDelta: Error for %q-->%q: %v", sourceKey, key, err)
-		}
 	}
-	// No delta available so return entire attachment:
+
+	// No previous attachments available so return entire body:
 	result = target
 	sourceKey = ""
 	return
@@ -227,7 +240,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 	return nil
 }
 
-func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, compressed bool) (err error) {
+func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, gzipCompress bool) (err error) {
 	bytes, err := json.Marshal(r.Body)
 	if err != nil {
 		return err
@@ -237,19 +250,19 @@ func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, 
 	partHeaders.Set("Content-Type", contentType)
 
 	if len(bytes) < kMinCompressedJSONSize {
-		compressed = false
+		gzipCompress = false
 	}
 	if r.OldRevJSON != nil {
 		delta, err := zdelta.CreateDelta(r.OldRevJSON, bytes)
 		if err == nil && len(delta) < len(bytes) {
 			bytes = delta
-			compressed = false
+			gzipCompress = false
 			partHeaders.Set("Content-Encoding", "zdelta")
 			partHeaders.Set("X-Delta-Source", r.OldRevID)
 		}
 	}
 
-	if compressed {
+	if gzipCompress {
 		partHeaders.Set("Content-Encoding", "gzip")
 	}
 	part, err := writer.CreatePart(partHeaders)
@@ -257,7 +270,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, 
 		return err
 	}
 
-	if compressed {
+	if gzipCompress {
 		gz := gzip.NewWriter(part)
 		_, err = gz.Write(bytes)
 		gz.Close()

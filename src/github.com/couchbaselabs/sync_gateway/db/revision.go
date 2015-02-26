@@ -17,6 +17,11 @@ import (
 	"github.com/couchbaselabs/sync_gateway/base"
 )
 
+// How long before old revisions expire. Larger values consume more disk space, of course, but
+// save replication bandwidth by allowing clients to download revs as deltas.
+// Future enhancement to make this a config setting might be appropriate.
+const kOldRevisionExpiration = 12 * 60 * 60
+
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
@@ -68,10 +73,7 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
 	base.LogTo("CRUD+", "Saving old revision %q / %q (%d bytes)", docid, revid, len(body))
-
-	// Set old revisions to expire after 5 minutes.  Future enhancement to make this a config
-	// setting might be appropriate.
-	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 300, body)
+	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), kOldRevisionExpiration, body)
 }
 
 //////// UTILITY FUNCTIONS:

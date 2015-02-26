@@ -10,6 +10,7 @@
 package db
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -109,6 +110,11 @@ func TestAttachmentDeltas(t *testing.T) {
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
 
+	// For this test, ensure delta will be used even if it's not much smaller:
+	oldSavings := MinDeltaSavings
+	MinDeltaSavings = 0
+	defer func() { MinDeltaSavings = oldSavings }()
+
 	// Rev 1:
 	log.Printf("Create rev 1...")
 	rev1input := `{"_attachments": {"bye.txt": {"data":"VGhpcyBpcyBhIHN0cmluZyBmb3IgdXNlIGluIHRlc3RpbmcgZGVsdGEgY29tcHJlc3Npb24K"}}}`
@@ -137,4 +143,10 @@ func TestAttachmentDeltas(t *testing.T) {
 	response, err = db.GetRevWithAttachments("doc1", "", false, []string{"1-c0c61706d3f3692aacc0ec0a91425a65", "1-foo", "993-bar"}, false)
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(response.Body), rev2Boutput)
+
+	// Verify contents of delta cache:
+	cached := db.getCachedAttachmentZDelta(AttachmentKey("sha1-l5fhr3wrVdXDCNkamTn8KypCswQ="),
+		AttachmentKey("sha1-TQ2UKLk7BtEA2lUatosI4xl9xb8="))
+	rawDelta, _ := base64.StdEncoding.DecodeString("ddOrAncoWekSVIHD9u3a9KRKQ4Hu8QxT")
+	assert.DeepEquals(t, cached, rawDelta)
 }
