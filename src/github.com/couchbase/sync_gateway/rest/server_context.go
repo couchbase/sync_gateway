@@ -226,6 +226,8 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		dbcontext.RevsLimit = *config.RevsLimit
 	}
 
+	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
+
 	if dbcontext.ChannelMapper == nil {
 		base.Logf("Using default sync function 'channel(doc.channels)' for database %q", dbName)
 	}
