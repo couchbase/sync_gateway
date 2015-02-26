@@ -34,6 +34,7 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 	cache := &channelCache{context: context, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
 	cache.lastPruned = time.Now()
+	cache.cachedDocIDs = make(map[string]struct{})
 	return cache
 }
 
@@ -79,6 +80,7 @@ func (c *channelCache) _pruneCache() {
 	pruned := 0
 	for (len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge) || len(c.logs) > ChannelCacheMaxLength {
 		c.validFrom = c.logs[0].Sequence + 1
+		delete(c.cachedDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
 		pruned++
 	}
@@ -221,31 +223,35 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 			base.LogTo("Cache", "LogEntries.appendChange: out-of-order sequence #%d (last is #%d) - handling as insert",
 				change.Sequence, log[end].Sequence)
 			// insert the change in the array, ensuring the docID isn't already present
-			insertChange(&c.logs, change)
+			c.insertChange(&c.logs, change)
 			return
 		}
 		// If entry with DocID already exists, remove it.
-		for i := end; i >= 0; i-- {
-			if log[i].DocID == change.DocID {
-				copy(log[i:], log[i+1:])
-				log[end] = change
-				return
+		if _, found := c.cachedDocIDs[change.DocID]; found {
+			for i := end; i >= 0; i-- {
+				if log[i].DocID == change.DocID {
+					copy(log[i:], log[i+1:])
+					log[end] = change
+					return
+				}
 			}
 		}
 	} else {
 		c._adjustFirstSeq(change)
 	}
 	c.logs = append(log, change)
+	c.cachedDocIDs[change.DocID] = struct{}{}
 }
 
 // Insert out-of-sequence entry into the cache.  If the docId is already present in a later
 // sequence, we skip the insert.  If the docId is already present in an earlier sequence,
 // we remove the earlier sequence.
-func insertChange(log *LogEntries, change *LogEntry) {
+func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 	insertStart := time.Now()
 	// ...and from the time the doc was received from Tap:
 	defer func() {
 		base.WriteHistogram(changeCacheExpvars, "insertChange-execution", insertStart)
+		c.cachedDocIDs[change.DocID] = struct{}{}
 	}()
 	callback := func() {
 		size := int(len(*log)/(100)) * 100
@@ -254,40 +260,38 @@ func insertChange(log *LogEntries, change *LogEntry) {
 	base.WriteCustomExpvar(callback)
 	end := len(*log) - 1
 	insertAfterIndex := -1
+	_, docIDExists := c.cachedDocIDs[change.DocID]
 	for i := end; i >= 0; i-- {
 		currLog := (*log)[i]
 		if insertAfterIndex == -1 && currLog.Sequence < change.Sequence {
 			insertAfterIndex = i
+			if !docIDExists {
+				break
+			}
 		}
-		if currLog.DocID == change.DocID {
-			if currLog.Sequence >= change.Sequence {
-				// we've already cached a later revision of this document, can ignore update
-				return
-			} else {
-				// found existing prior to insert position
-				if i == insertAfterIndex {
-					// The sequence is adjacent to another with the same docId - replace it
-					// instead of inserting
-					(*log)[i] = change
+		if docIDExists {
+			if currLog.DocID == change.DocID {
+				if currLog.Sequence >= change.Sequence {
+					// we've already cached a later revision of this document, can ignore update
 					return
 				} else {
-					// Shift and insert to remove the old entry and add the new one
-					copy((*log)[i:insertAfterIndex], (*log)[i+1:insertAfterIndex+1])
-					(*log)[insertAfterIndex] = change
-					return
+					// found existing prior to insert position
+					if i == insertAfterIndex {
+						// The sequence is adjacent to another with the same docId - replace it
+						// instead of inserting
+						(*log)[i] = change
+						return
+					} else {
+						// Shift and insert to remove the old entry and add the new one
+						copy((*log)[i:insertAfterIndex], (*log)[i+1:insertAfterIndex+1])
+						(*log)[insertAfterIndex] = change
+						return
+					}
 				}
 			}
 		}
 	}
 
-	lag := time.Since(insertStart)
-	if lag < 100*time.Millisecond {
-		lagMs := int(lag/(10*time.Millisecond)) * 10
-		base.IncrementExpvar(changeCacheExpvars, fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs))
-	} else {
-		lagMs := int(lag/(100*time.Millisecond)) * 100
-		base.IncrementExpvar(changeCacheExpvars, fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs))
-	}
 	// We didn't find a match for DocID, so standard insert.
 	*log = append(*log, nil)
 	copy((*log)[insertAfterIndex+2:], (*log)[insertAfterIndex+1:])
@@ -321,6 +325,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 				c.channelName, len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
 		}
 		c.validFrom = changesValidFrom
+		c.addDocIDs(changes)
 		return len(changes)
 
 	} else if len(changes) == 0 {
@@ -343,10 +348,12 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 					if i > 0 {
 						newLog := make(LogEntries, 0, i+len(log))
 						newLog = append(newLog, changes[0:i]...)
+						c.addDocIDs(newLog)
 						newLog = append(newLog, log...)
 						c.logs = newLog
 						base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
 							i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
+
 					}
 					c.validFrom = changesValidFrom
 					return i
@@ -354,6 +361,12 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 			}
 		}
 		return 0
+	}
+}
+
+func (c *channelCache) addDocIDs(changes LogEntries) {
+	for _, change := range changes {
+		c.cachedDocIDs[change.DocID] = struct{}{}
 	}
 }
 
