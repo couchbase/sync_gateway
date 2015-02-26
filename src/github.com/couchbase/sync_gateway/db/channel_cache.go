@@ -472,23 +472,32 @@ func (c *channelCache) ReleaseLateSequenceClient(sequence uint64) error {
 // Receive new late sequence
 func (c *channelCache) AddLateSequence(change *LogEntry) {
 
-	start := time.Now()
-	// Add to lateLogs.
-	lateEntry := &lateLogEntry{
-		logEntry:      change,
-		arrived:       time.Now(),
-		listenerCount: 0,
-	}
-	c.lateLogLock.Lock()
-	defer c.lateLogLock.Unlock()
-	c.lateLogs = append(c.lateLogs, lateEntry)
-	c.lastLateSequence = change.Sequence
-	// Currently we're only purging on add.  Could also consider a timed purge to handle the case
-	// where all the listeners get caught up, but there aren't any subsequent late entries.  Not
-	// a high priority, as the memory overhead for the late entries should be trivial, and probably
-	// doesn't merit
-	c._purgeLateLogEntries()
-	base.WriteHistogram(changeCacheExpvars, "add-late-sequence", start)
+	// Don't block processEntry handling to add late sequence - subsequent entries will be
+	// synchronized by c.lateLogLock.Lock()
+	go func() {
+		start := time.Now()
+		// Add to lateLogs.
+		lateEntry := &lateLogEntry{
+			logEntry:      change,
+			arrived:       time.Now(),
+			listenerCount: 0,
+		}
+		c.lateLogLock.Lock()
+		defer c.lateLogLock.Unlock()
+		c.lateLogs = append(c.lateLogs, lateEntry)
+		c.lastLateSequence = change.Sequence
+		// Currently we're only purging on add.  Could also consider a timed purge to handle the case
+		// where all the listeners get caught up, but there aren't any subsequent late entries.  Not
+		// a high priority, as the memory overhead for the late entries should be trivial, and probably
+		// doesn't merit
+
+		// Reduce purge churn
+		if time.Since(c.lateLogs[0].arrived) > 30*time.Second {
+			c._purgeLateLogEntries()
+		}
+
+		base.WriteHistogram(changeCacheExpvars, "add-late-sequence", start)
+	}()
 }
 
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients

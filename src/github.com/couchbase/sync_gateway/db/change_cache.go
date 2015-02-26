@@ -115,7 +115,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 	heap.Init(&c.pendingLogs)
 
-	maxProcesses := 50000
+	maxProcesses := 100000
 
 	// incomingDocChannel stores the incoming entries from the tap feed.
 	c.incomingDocChannel = make(chan IncomingDoc, 3*maxProcesses)
@@ -128,7 +128,9 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 		for doc := range c.incomingDocChannel {
 			c.activeProcessChannel <- true
 			go func(doc IncomingDoc) {
-				defer func() { <-c.activeProcessChannel }()
+				defer func() {
+					<-c.activeProcessChannel
+				}()
 				c.ProcessDoc(doc.id, *doc.json)
 			}(doc)
 		}

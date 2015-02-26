@@ -250,7 +250,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				names = append(names, name)
 
 				// Late sequence handling - for out-of-order sequences prior to options.Since that
-				// have arrived in the channel cache since this changes request started.  Only need for
+				// have arrived in the cache since this _changes request started.  Only needed for
 				// continuous feeds - one-off changes requests only need the standard channel cache.
 				if options.Continuous {
 					lateSequenceFeedHandler := lateSequenceFeeds[name]
@@ -349,37 +349,39 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				// Check whether the sequence was already sent by this feed
-				if _, found := changesTracker.LastSent[minSeq.Seq]; found {
-					if minSeq.Seq > changesTracker.MaxDuplicateSeq {
-						changesTracker.MaxDuplicateSeq = minSeq.Seq
-					}
-				} else {
-					// Add the doc body or the conflicting rev IDs, if those options are set:
-					if options.IncludeDocs || options.Conflicts {
-						db.addDocToChangeEntry(minEntry, options)
-					}
-
-					// Update the low sequence on the entry we're going to send
-					minEntry.Seq.LowSeq = lowSequence
-
-					// Send the entry, and repeat the loop:
-					base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
-					select {
-					case <-options.Terminator:
-						return
-					case output <- minEntry:
-					}
-					changesTracker.CurrentSent = append(changesTracker.CurrentSent, minEntry.Seq.Seq)
-					sentSomething = true
-
-					// Stop when we hit the limit (if any):
-					if options.Limit > 0 {
-						options.Limit--
-						if options.Limit == 0 {
-							break outer
+				/*
+					if _, found := changesTracker.LastSent[minSeq.Seq]; found {
+						if minSeq.Seq > changesTracker.MaxDuplicateSeq {
+							changesTracker.MaxDuplicateSeq = minSeq.Seq
 						}
+					} else {
+				*/
+				// Add the doc body or the conflicting rev IDs, if those options are set:
+				if options.IncludeDocs || options.Conflicts {
+					db.addDocToChangeEntry(minEntry, options)
+				}
+
+				// Update the low sequence on the entry we're going to send
+				minEntry.Seq.LowSeq = lowSequence
+
+				// Send the entry, and repeat the loop:
+				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
+				select {
+				case <-options.Terminator:
+					return
+				case output <- minEntry:
+				}
+				//changesTracker.CurrentSent = append(changesTracker.CurrentSent, minEntry.Seq.Seq)
+				sentSomething = true
+
+				// Stop when we hit the limit (if any):
+				if options.Limit > 0 {
+					options.Limit--
+					if options.Limit == 0 {
+						break outer
 					}
 				}
+				//}
 
 			}
 
@@ -416,7 +418,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 
 			// Update changesTracker (moves currentSent to lastSent)
-			changesTracker.endIteration()
+			//changesTracker.endIteration()
 			options.Since.Seq = changesTracker.nextSince()
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
@@ -562,9 +564,11 @@ func (ct *ChangesTracker) nextSince() uint64 {
 	// If there is a duplicate higher than this since value, can safely use it.
 	// Duplicate guarantees that we've asked every channel for everything up to the duplicate
 	// at least once.
-	if ct.MaxDuplicateSeq > since {
-		since = ct.MaxDuplicateSeq
-	}
+	/*
+		if ct.MaxDuplicateSeq > since {
+			since = ct.MaxDuplicateSeq
+		}
+	*/
 	if base.LogEnabled("Changes+") {
 		base.LogTo("Changes+", "nextSince: %v", since)
 	}
