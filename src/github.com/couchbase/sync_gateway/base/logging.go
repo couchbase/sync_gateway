@@ -141,6 +141,12 @@ func LogTo(key string, format string, args ...interface{}) {
 	}
 }
 
+func LogEnabled(key string) bool {
+	logLock.RLock()
+	defer logLock.RUnlock()
+	return LogKeys[key]
+}
+
 // Logs a message to the console.
 func Log(message string) {
 	logLock.RLock()
