@@ -1706,12 +1706,12 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 		return attachments["attach1"].(map[string]interface{})
 	}
 
-	oldMax := db.MaxInlineAttachmentSize
+	oldMax := MaxInlineAttachmentSize
 	oldMinDeltaSavings := db.MinDeltaSavings
-	db.MaxInlineAttachmentSize = 0 // Temporarily force all attachments to be MIME parts
+	MaxInlineAttachmentSize = 0 // Temporarily force all attachments to be MIME parts
 	db.MinDeltaSavings = 0
 	defer func() {
-		db.MaxInlineAttachmentSize = oldMax
+		MaxInlineAttachmentSize = oldMax
 		db.MinDeltaSavings = oldMinDeltaSavings
 	}()
 

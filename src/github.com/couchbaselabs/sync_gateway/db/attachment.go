@@ -10,32 +10,14 @@
 package db
 
 import (
-	"bytes"
-	"compress/gzip"
-	"crypto/md5"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"io"
-	"io/ioutil"
-	"mime/multipart"
-	"net/http"
-	"net/textproto"
-	"strings"
 
 	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/snej/zdelta-go"
 )
 
-// Attachments shorter than this will be left in the JSON as base64 rather than being a separate
-// MIME part.
-var MaxInlineAttachmentSize = 200
-
-// JSON bodies smaller than this won't be GZip-encoded.
-const kMinCompressedJSONSize = 300
-
 // Key for retrieving an attachment from Couchbase.
+// In practice it's "sha1-" followed by a hex SHA-1 digest.
 type AttachmentKey string
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
@@ -55,7 +37,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 		data, exists := meta["data"]
 		if exists {
 			// Attachment contains data, so store it in the db:
-			attachment, err := decodeAttachment(data)
+			attachment, err := DecodeAttachment(data)
 			if err != nil {
 				return err
 			}
@@ -144,7 +126,7 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int, deltaSrcKeys m
 
 // Retrieves an attachment's body given its key.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
-	return db.Bucket.GetRaw(attachmentKeyToString(key))
+	return db.Bucket.GetRaw(attachmentKeyToDocKey(key))
 }
 
 // Retrieves an attachment's body, preferably as a delta from one of the versions specified
@@ -170,7 +152,7 @@ func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []At
 	}
 
 	for _, sourceKey = range sourceKeys {
-		if src, _ := db.Bucket.GetRaw(attachmentKeyToString(sourceKey)); src != nil {
+		if src, _ := db.Bucket.GetRaw(attachmentKeyToDocKey(sourceKey)); src != nil {
 			// Found a previous revision; generate a delta:
 			result = db.generateAttachmentZDelta(src, target, sourceKey, key)
 			if result != nil {
@@ -190,7 +172,7 @@ func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []At
 }
 
 // Returns the digests of all attachments in a Body, as a map of attachment names to keys.
-func (db *Database) getAttachmentDigests(body Body) map[string]AttachmentKey {
+func getAttachmentDigests(body Body) map[string]AttachmentKey {
 	keys := map[string]AttachmentKey{}
 	for name, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
@@ -203,294 +185,36 @@ func (db *Database) getAttachmentDigests(body Body) map[string]AttachmentKey {
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
-	key := AttachmentKey(SHA1DigestKey(attachment))
-	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
+	key := SHA1DigestKey(attachment)
+	_, err := db.Bucket.AddRaw(attachmentKeyToDocKey(key), 0, attachment)
 	if err == nil {
 		base.LogTo("Attach", "\tAdded attachment %q", key)
 	}
 	return key, err
 }
 
-//////// MIME MULTIPART:
-
-// Parses a JSON MIME body, unmarshaling it into "into".
-func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) error {
-	contentType := headers.Get("Content-Type")
-	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
-	}
-
-	switch headers.Get("Content-Encoding") {
-	case "gzip":
-		var err error
-		if input, err = gzip.NewReader(input); err != nil {
-			return err
-		}
-	case "":
-		break
-	default:
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
-	}
-
-	decoder := json.NewDecoder(input)
-	if err := decoder.Decode(into); err != nil {
-		base.Warn("Couldn't parse JSON in HTTP request: %v", err)
-		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
-	}
-	return nil
-}
-
-func writeJSONPart(writer *multipart.Writer, contentType string, r RevResponse, gzipCompress bool) (err error) {
-	bytes, err := json.Marshal(r.Body)
-	if err != nil {
-		return err
-	}
-
-	partHeaders := textproto.MIMEHeader{}
-	partHeaders.Set("Content-Type", contentType)
-
-	if r.OldRevJSON != nil && len(bytes) > MinDeltaSavings {
-		delta, err := zdelta.CreateDelta(r.OldRevJSON, bytes)
-		if err == nil && len(delta)+MinDeltaSavings < len(bytes) {
-			bytes = delta
-			gzipCompress = false
-			partHeaders.Set("Content-Encoding", "zdelta")
-			partHeaders.Set("X-Delta-Source", r.OldRevID)
-		}
-	}
-
-	if gzipCompress {
-		if len(bytes) < kMinCompressedJSONSize {
-			gzipCompress = false
-		} else {
-			partHeaders.Set("Content-Encoding", "gzip")
-		}
-	}
-
-	part, err := writer.CreatePart(partHeaders)
-	if err != nil {
-		return err
-	}
-
-	if gzipCompress {
-		gz := gzip.NewWriter(part)
-		_, err = gz.Write(bytes)
-		gz.Close()
-	} else {
-		_, err = part.Write(bytes)
-	}
-	return
-}
-
-// Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func (db *Database) WriteMultipartDocument(r RevResponse, writer *multipart.Writer, compress bool) {
-	type attInfo struct {
-		name string
-		data []byte
-		meta map[string]interface{}
-	}
-
-	// First extract the attachments that should follow:
-	following := []attInfo{}
-	for name, value := range BodyAttachments(r.Body) {
-		meta := value.(map[string]interface{})
-		if meta["stub"] != true {
-			var err error
-			var info attInfo
-			info.data, err = decodeAttachment(meta["data"])
-			if info.data == nil {
-				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, r.Body["_id"], err)
-				meta["stub"] = true
-				delete(meta, "data")
-			} else if len(info.data) > MaxInlineAttachmentSize {
-				info.name = name
-				info.meta = meta
-				following = append(following, info)
-				meta["follows"] = true
-				delete(meta, "data")
-			}
-		}
-	}
-
-	// Write the main JSON body:
-	writeJSONPart(writer, "application/json", r, compress)
-
-	// Write the following attachments
-	for _, info := range following {
-		partHeaders := textproto.MIMEHeader{}
-		if contentType, ok := info.meta["content_type"].(string); ok {
-			if info.meta["encoding"] == nil {
-				partHeaders.Set("Content-Type", contentType)
-			}
-		}
-		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
-		part, _ := writer.CreatePart(partHeaders)
-		part.Write(info.data)
-	}
-}
-
-// Adds a new part to the given multipart writer, containing the given revision.
-// The revision will be written as a nested multipart body if it has attachments.
-func (db *Database) WriteRevisionAsPart(r RevResponse, isError bool, compress bool, writer *multipart.Writer) error {
-	partHeaders := textproto.MIMEHeader{}
-	docID, _ := r.Body["_id"].(string)
-	revID, _ := r.Body["_rev"].(string)
-	if len(docID) > 0 {
-		partHeaders.Set("X-Doc-ID", docID)
-		partHeaders.Set("X-Rev-ID", revID)
-	}
-
-	if hasInlineAttachments(r.Body) {
-		// Write as multipart, including attachments:
-		// OPT: Find a way to do this w/o having to buffer the MIME body in memory!
-		var buffer bytes.Buffer
-		docWriter := multipart.NewWriter(&buffer)
-		contentType := fmt.Sprintf("multipart/related; boundary=%q",
-			docWriter.Boundary())
-		partHeaders.Set("Content-Type", contentType)
-		db.WriteMultipartDocument(r, docWriter, compress)
-		docWriter.Close()
-		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
-
-		part, err := writer.CreatePart(partHeaders)
-		if err == nil {
-			_, err = part.Write(content)
-		}
-		return err
-	} else {
-		// Write as JSON:
-		contentType := "application/json"
-		if isError {
-			contentType += `; error="true"`
-		}
-		return writeJSONPart(writer, contentType, r, compress)
-	}
-}
-
-func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
-	// First read the main JSON document body:
-	mainPart, err := reader.NextPart()
-	if err != nil {
-		return nil, err
-	}
-	var body Body
-	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
-	mainPart.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	// Collect the attachments with a "follows" property, which will appear as MIME parts:
-	followingAttachments := map[string]map[string]interface{}{}
-	for name, value := range BodyAttachments(body) {
-		if meta := value.(map[string]interface{}); meta["follows"] == true {
-			followingAttachments[name] = meta
-		}
-	}
-
-	// Subroutine to look up a following attachment given its digest. (I used to precompute a
-	// map from digest->name, which was faster, but that broke down if there were multiple
-	// attachments with the same contents! See #96)
-	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
-		for name, meta := range followingAttachments {
-			if meta["follows"] == true {
-				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
-					return name, meta
-				}
-			}
-		}
-		return "", nil
-	}
-
-	// Read the parts one by one:
-	for i := 0; i < len(followingAttachments); i++ {
-		part, err := reader.NextPart()
-		if err != nil {
-			if err == io.EOF {
-				err = base.HTTPErrorf(http.StatusBadRequest,
-					"Too few MIME parts: expected %d attachments, got %d",
-					len(followingAttachments), i)
-			}
-			return nil, err
-		}
-		data, err := ioutil.ReadAll(part)
-		part.Close()
-		if err != nil {
-			return nil, err
-		}
-
-		// Look up the attachment by its digest:
-		digest := SHA1DigestKey(data)
-		name, meta := findFollowingAttachment(digest)
-		if meta == nil {
-			name, meta = findFollowingAttachment(md5DigestKey(data))
-			if meta == nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest,
-					"MIME part #%d doesn't match any attachment", i+2)
-			}
-		}
-
-		length, ok := base.ToInt64(meta["encoded_length"])
-		if !ok {
-			length, ok = base.ToInt64(meta["length"])
-		}
-		if ok {
-			if length != int64(len(data)) {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)
-			}
-		}
-
-		// Stuff the data into the attachment metadata and remove the "follows" property:
-		delete(meta, "follows")
-		meta["data"] = data
-		meta["digest"] = digest
-	}
-
-	// Make sure there are no unused MIME parts:
-	if _, err = reader.NextPart(); err != io.EOF {
-		if err == nil {
-			err = base.HTTPErrorf(http.StatusBadRequest,
-				"Too many MIME parts (expected %d)", len(followingAttachments)+1)
-		}
-		return nil, err
-	}
-
-	return body, nil
-}
-
 //////// HELPERS:
 
-func SHA1DigestKey(data []byte) string {
+// Returns an AttachmentKey for an attachment body, based on its SHA-1 digest.
+func SHA1DigestKey(data []byte) AttachmentKey {
 	digester := sha1.New()
 	digester.Write(data)
-	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+	return AttachmentKey("sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil)))
 }
 
-func md5DigestKey(data []byte) string {
-	digester := md5.New()
-	digester.Write(data)
-	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-}
-
+// Returns the "_attachments" property as a map.
 func BodyAttachments(body Body) map[string]interface{} {
 	atts, _ := body["_attachments"].(map[string]interface{})
 	return atts
 }
 
-func hasInlineAttachments(body Body) bool {
-	for _, value := range BodyAttachments(body) {
-		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func attachmentKeyToString(key AttachmentKey) string {
+// The Couchbase bucket key under which to store an attachment
+func attachmentKeyToDocKey(key AttachmentKey) string {
 	return "_sync:att:" + string(key)
 }
 
-func decodeAttachment(att interface{}) ([]byte, error) {
+// Base64-encodes an attachment if it's present as a raw byte array
+func DecodeAttachment(att interface{}) ([]byte, error) {
 	switch att := att.(type) {
 	case []byte:
 		return att, nil

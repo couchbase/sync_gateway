@@ -205,7 +205,7 @@ func (db *Database) GetRevWithAttachments(docid, revid string, listRevisions boo
 				if r.OldRevJSON, _ = db.getRevisionJSON(doc, r.OldRevID); r.OldRevJSON != nil {
 					var deltaSrcBody Body
 					json.Unmarshal(r.OldRevJSON, &deltaSrcBody)
-					deltaSrcKeys = db.getAttachmentDigests(deltaSrcBody)
+					deltaSrcKeys = getAttachmentDigests(deltaSrcBody)
 				}
 			}
 		}

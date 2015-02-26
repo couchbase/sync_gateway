@@ -58,7 +58,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				h.db.WriteMultipartDocument(responseInfo, writer, canCompress)
+				WriteMultipartDocument(responseInfo, writer, canCompress)
 				return nil
 			})
 		} else if responseInfo.OldRevJSON != nil && !hasBodies {
@@ -100,7 +100,7 @@ func (h *handler) handleGetDoc() error {
 					if err != nil {
 						responseInfo.Body = db.Body{"missing": revid} //TODO: More specific error
 					}
-					h.db.WriteRevisionAsPart(responseInfo, err != nil, false, writer)
+					WriteRevisionAsPart(responseInfo, err != nil, false, writer)
 				}
 				return nil
 			})

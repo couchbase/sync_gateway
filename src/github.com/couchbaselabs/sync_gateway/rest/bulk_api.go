@@ -357,7 +357,7 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			h.db.WriteRevisionAsPart(responseInfo, err != nil, canCompress, writer)
+			WriteRevisionAsPart(responseInfo, err != nil, canCompress, writer)
 		}
 		return nil
 	})
