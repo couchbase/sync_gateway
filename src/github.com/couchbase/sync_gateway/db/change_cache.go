@@ -485,6 +485,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	sequence := change.Sequence
 	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
+		changeCacheExpvars.Add("processEntry-c-step1-duplicate", int64(time.Since(processStart)))
 		changeCacheExpvars.Add("processEntry-exit-duplicate", 1)
 		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
 		return nil
@@ -492,6 +493,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	c.receivedSeqs[sequence] = struct{}{}
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
+	changeCacheExpvars.Add("processEntry-c-step1-non-duplicate", int64(time.Since(processStart)))
 	var changedChannels base.Set
 	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
@@ -526,10 +528,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			change.Skipped = true
 		}
+
+		changeCacheExpvars.Add("processEntry-c-step2", int64(time.Since(processStart)))
 		changedChannels = c._addToCache(change)
+		changeCacheExpvars.Add("processEntry-c-step3", int64(time.Since(processStart)))
 		exitType = "skipped"
 	}
 
+	changeCacheExpvars.Add(fmt.Sprintf("processEntry-c-step4-%s", exitType), int64(time.Since(processStart)))
 	changeCacheExpvars.Add(fmt.Sprintf("processEntry-exit-%s", exitType), 1)
 
 	return changedChannels
