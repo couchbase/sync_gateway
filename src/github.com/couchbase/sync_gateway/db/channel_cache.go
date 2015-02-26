@@ -46,7 +46,8 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	lag := time.Since(channelLockTime)
 	lagMs := int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-channel-lock-addToCache-%05dms", lagMs), 1)
-
+	changeCacheExpvars.Add("channel-addToCache-c-lock", int64(time.Since(channelLockTime)))
+	running := time.Now()
 	if !isRemoval {
 		c._appendChange(change)
 	} else {
@@ -55,10 +56,16 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 
+	changeCacheExpvars.Add("channel-addToCache-c-appendChange", int64(time.Since(running)))
+	running = time.Now()
 	if change.Skipped {
 		c.AddLateSequence(change)
 	}
+	changeCacheExpvars.Add("channel-addToCache-c-addLateSequence", int64(time.Since(running)))
+	running = time.Now()
 	c._pruneCache()
+	changeCacheExpvars.Add("channel-addToCache-c-pruneCache", int64(time.Since(running)))
+	running = time.Now()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 
 	if change.Skipped {
@@ -66,12 +73,14 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	} else {
 		base.WriteHistogram(changeCacheExpvars, "channel-addToCache", channelLockTime)
 	}
+
+	changeCacheExpvars.Add("channel-addToCache-c-exit", int64(time.Since(running)))
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
 	pruned := 0
-	for len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge {
+	for (len(c.logs) > ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > ChannelCacheAge) || len(c.logs) > ChannelCacheMaxLength {
 		c.validFrom = c.logs[0].Sequence + 1
 		c.logs = c.logs[1:]
 		pruned++
@@ -241,14 +250,8 @@ func insertChange(log *LogEntries, change *LogEntry) {
 	insertStart := time.Now()
 	// ...and from the time the doc was received from Tap:
 	defer func() {
-		lag := time.Since(insertStart)
-		if lag < 100*time.Millisecond {
-			lagMs := int(lag/(10*time.Millisecond)) * 10
-			changeCacheExpvars.Add(fmt.Sprintf("insertChange-execution-%05dms", lagMs), 1)
-		} else {
-			lagMs := int(lag/(100*time.Millisecond)) * 100
-			changeCacheExpvars.Add(fmt.Sprintf("insertChange-execution-%05dms", lagMs), 1)
-		}
+		base.WriteHistogram(changeCacheExpvars, "insertChange-execution", insertStart)
+		changeCacheExpvars.Add("insertChange-c-execution", int64(time.Since(insertStart)))
 	}()
 	end := len(*log) - 1
 	size := int(len(*log)/(100)) * 100
@@ -476,6 +479,7 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 	// doesn't merit
 	c._purgeLateLogEntries()
 	base.WriteHistogram(changeCacheExpvars, "add-late-sequence", start)
+	changeCacheExpvars.Add("add-late-sequence-c", int64(time.Since(start)))
 }
 
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
