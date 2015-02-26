@@ -35,6 +35,8 @@ var logger *log.Logger
 
 var logFile *os.File
 
+var diagnostics bool = false
+
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", log.Lmicroseconds)
@@ -320,12 +322,38 @@ func LogColor() {
 
 // expvar helpers
 func WriteHistogram(target *expvar.Map, name string, since time.Time) {
-	lag := time.Since(since)
-	if lag < 100*time.Millisecond {
-		lagMs := int(lag/(10*time.Millisecond)) * 10
-		target.Add(fmt.Sprintf("%s-%05dms", name, lagMs), 1)
-	} else {
-		lagMs := int(lag/(100*time.Millisecond)) * 100
-		target.Add(fmt.Sprintf("%s-%05dms", name, lagMs), 1)
+	if diagnostics {
+		lag := time.Since(since)
+		if lag < 100*time.Millisecond {
+			lagMs := int(lag/(10*time.Millisecond)) * 10
+			target.Add(fmt.Sprintf("%s-%05dms", name, lagMs), 1)
+		} else {
+			lagMs := int(lag/(100*time.Millisecond)) * 100
+			target.Add(fmt.Sprintf("%s-%05dms", name, lagMs), 1)
+		}
+
+		AddExpvarTime(target, fmt.Sprintf("%s-c", name), lag)
+	}
+}
+
+func AddExpvarTime(target *expvar.Map, name string, value time.Duration) {
+	AddExpvar(target, name, int64(value))
+}
+
+func AddExpvar(target *expvar.Map, name string, value int64) {
+	if diagnostics {
+		target.Add(name, value)
+	}
+}
+
+func IncrementExpvar(target *expvar.Map, name string) {
+	if diagnostics {
+		target.Add(name, 1)
+	}
+}
+
+func WriteCustomExpvar(callback func()) {
+	if diagnostics {
+		callback()
 	}
 }

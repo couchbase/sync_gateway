@@ -43,10 +43,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	base.WriteHistogram(changeCacheExpvars, "lag-channel-lock-addToCache", channelLockTime)
-	lag := time.Since(channelLockTime)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-channel-lock-addToCache-%05dms", lagMs), 1)
-	changeCacheExpvars.Add("channel-addToCache-c-lock", int64(time.Since(channelLockTime)))
+	base.AddExpvarTime(changeCacheExpvars, "channel-addToCache-c-lock", time.Since(channelLockTime))
 	running := time.Now()
 	if !isRemoval {
 		c._appendChange(change)
@@ -56,15 +53,15 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 
-	changeCacheExpvars.Add("channel-addToCache-c-appendChange", int64(time.Since(running)))
+	base.AddExpvarTime(changeCacheExpvars, "channel-addToCache-c-appendChange", time.Since(running))
 	running = time.Now()
 	if change.Skipped {
 		c.AddLateSequence(change)
 	}
-	changeCacheExpvars.Add("channel-addToCache-c-addLateSequence", int64(time.Since(running)))
+	base.AddExpvarTime(changeCacheExpvars, "channel-addToCache-c-addLateSequence", time.Since(running))
 	running = time.Now()
 	c._pruneCache()
-	changeCacheExpvars.Add("channel-addToCache-c-pruneCache", int64(time.Since(running)))
+	base.AddExpvarTime(changeCacheExpvars, "channel-addToCache-c-pruneCache", time.Since(running))
 	running = time.Now()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 
@@ -74,7 +71,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		base.WriteHistogram(changeCacheExpvars, "channel-addToCache", channelLockTime)
 	}
 
-	changeCacheExpvars.Add("channel-addToCache-c-exit", int64(time.Since(running)))
+	base.AddExpvarTime(changeCacheExpvars, "channel-addToCache-c-exit", time.Since(running))
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
@@ -107,9 +104,7 @@ func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint6
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	lag := time.Since(channelCacheLockTime)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-channelcache-rlock-getCachedChanges-%05dms", lagMs), 1)
+	base.WriteHistogram(changeCacheExpvars, "lag-channelcache-rlock-getCachedChanges", channelCacheLockTime)
 	return c._getCachedChanges(options)
 }
 
@@ -251,11 +246,13 @@ func insertChange(log *LogEntries, change *LogEntry) {
 	// ...and from the time the doc was received from Tap:
 	defer func() {
 		base.WriteHistogram(changeCacheExpvars, "insertChange-execution", insertStart)
-		changeCacheExpvars.Add("insertChange-c-execution", int64(time.Since(insertStart)))
 	}()
+	callback := func() {
+		size := int(len(*log)/(100)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("insertChange-cachesize-%05d", size), 1)
+	}
+	base.WriteCustomExpvar(callback)
 	end := len(*log) - 1
-	size := int(len(*log)/(100)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("insertChange-cachesize-%05d", size), 1)
 	insertAfterIndex := -1
 	for i := end; i >= 0; i-- {
 		currLog := (*log)[i]
@@ -286,10 +283,10 @@ func insertChange(log *LogEntries, change *LogEntry) {
 	lag := time.Since(insertStart)
 	if lag < 100*time.Millisecond {
 		lagMs := int(lag/(10*time.Millisecond)) * 10
-		changeCacheExpvars.Add(fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs), 1)
+		base.IncrementExpvar(changeCacheExpvars, fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs))
 	} else {
 		lagMs := int(lag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs), 1)
+		base.IncrementExpvar(changeCacheExpvars, fmt.Sprintf("insertChange-DocSearch-%05dms", lagMs))
 	}
 	// We didn't find a match for DocID, so standard insert.
 	*log = append(*log, nil)
@@ -479,7 +476,6 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 	// doesn't merit
 	c._purgeLateLogEntries()
 	base.WriteHistogram(changeCacheExpvars, "add-late-sequence", start)
-	changeCacheExpvars.Add("add-late-sequence-c", int64(time.Since(start)))
 }
 
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients

@@ -206,9 +206,7 @@ func (c *changeCache) CheckPending() bool {
 			if c.onChange != nil && len(changedChannels) > 0 {
 				c.onChange(changedChannels)
 			}
-			lag := time.Since(cleanStart)
-			lagMs := int(lag/(100*time.Millisecond)) * 100
-			changeCacheExpvars.Add(fmt.Sprintf("CleanUp-execution-time-%05dms", lagMs), 1)
+			base.WriteHistogram(changeCacheExpvars, "CleanUp-execution-time", cleanStart)
 		}()
 	}
 
@@ -235,34 +233,33 @@ func (c *changeCache) PruneChannelCaches() bool {
 func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
-		dbExpvars.Add("cleanskipped_waitForLock", 1)
+		base.IncrementExpvar(dbExpvars, "cleanskipped_waitForLock")
 		c.skippedSeqLock.Lock()
-		dbExpvars.Add("cleanSkipped_hasLock", 1)
+		base.IncrementExpvar(dbExpvars, "cleanSkipped_hasLock")
 		defer func() {
 			c.skippedSeqLock.Unlock()
-			dbExpvars.Add("cleanskipped_unlock", 1)
+			base.IncrementExpvar(dbExpvars, "cleanskipped_unlock")
 		}()
 		var foundEntries []*LogEntry
 		var pendingDeletes []uint64
 
-		dbExpvars.Add("cleanskipped_count", int64(len(c.skippedSeqs)))
+		base.AddExpvar(dbExpvars, "cleanskipped_count", int64(len(c.skippedSeqs)))
 		for _, skippedSeq := range c.skippedSeqs {
 			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-				dbExpvars.Add("cleanskipped_expiredCount", 1)
+				base.IncrementExpvar(dbExpvars, "cleanskipped_expiredCount")
 				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
 				queryStart := time.Now()
 				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-				lag := time.Since(queryStart)
-				lagMs := int(lag/(100*time.Millisecond)) * 100
-				dbExpvars.Add(fmt.Sprintf("cleanskipped_query-total-%05dms", lagMs), 1)
+
+				base.WriteHistogram(dbExpvars, "cleanskipped_query-total", queryStart)
 				if err != nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					foundEntries = append(foundEntries, entries[0])
-					dbExpvars.Add("skip_purge_view_hit", 1)
+					base.IncrementExpvar(dbExpvars, "skip_purge_view_hit")
 				} else {
 					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
 					pendingDeletes = append(pendingDeletes, skippedSeq.seq)
-					dbExpvars.Add("skip_purge_view_miss", 1)
+					base.IncrementExpvar(dbExpvars, "skip_purge_view_miss")
 				}
 			} else {
 				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
@@ -275,21 +272,22 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Add found entries
 
-	dbExpvars.Add("cleanskipped_addingFound", int64(len(foundEntries)))
+	base.AddExpvar(dbExpvars, "cleanskipped_addingFound", int64(len(foundEntries)))
 	for _, entry := range foundEntries {
-		changeCacheExpvars.Add("processEntry-count-CleanSkipped", 1)
+
+		base.IncrementExpvar(changeCacheExpvars, "processEntry-count-CleanSkipped")
 		c.processEntry(entry)
 	}
 
 	// Purge pending deletes
-	dbExpvars.Add("cleanskipped_pendingDeletes", int64(len(pendingDeletes)))
+	base.AddExpvar(dbExpvars, "cleanskipped_pendingDeletes", int64(len(pendingDeletes)))
 	for _, sequence := range pendingDeletes {
 		err := c.RemoveSkipped(sequence)
-		dbExpvars.Add("cleanskipped_removedSkipped", 1)
+		base.IncrementExpvar(dbExpvars, "cleanskipped_removedSkipped")
 		if err != nil {
 			base.Warn("Error purging skipped sequence %d from skipped sequence queue, %v", sequence, err)
 		} else {
-			dbExpvars.Add("abandoned_seqs", 1)
+			base.IncrementExpvar(dbExpvars, "abandoned_seqs")
 		}
 	}
 
@@ -376,7 +374,7 @@ func (c *changeCache) ProcessDoc(docID string, docJSON []byte) {
 			TimeReceived: time.Now(),
 			TimeSaved:    time.Now(),
 		}
-		changeCacheExpvars.Add("processEntry-count-UnusedSequences", 1)
+		base.IncrementExpvar(changeCacheExpvars, "processEntry-count-UnusedSequences")
 		c.processEntry(change)
 	}
 
@@ -396,7 +394,7 @@ func (c *changeCache) ProcessDoc(docID string, docJSON []byte) {
 	}
 	base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
-	changeCacheExpvars.Add("processEntry-count-DocChanged", 1)
+	base.IncrementExpvar(changeCacheExpvars, "processEntry-count-DocChanged")
 	changedChannels := c.processEntry(change)
 
 	if c.onChange != nil && len(changedChannels) > 0 {
@@ -408,7 +406,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 
 	// add doc to the pending doc queue
 	c.incomingDocChannel <- IncomingDoc{id: docID, json: &docJSON}
-	changeCacheExpvars.Add("docChanged-addedToChannel", 1)
+	base.IncrementExpvar(changeCacheExpvars, "docChanged-addedToChannel")
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
@@ -439,7 +437,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
 
-	changeCacheExpvars.Add("processEntry-count-processPrincipalDoc", 1)
+	base.IncrementExpvar(changeCacheExpvars, "processEntry-count-processPrincipalDoc")
 	c.processEntry(change)
 }
 
@@ -451,31 +449,27 @@ func (c *changeCache) queueEntry(change *LogEntry, callback processEntryCallback
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	timeEntered := time.Now()
-	changeCacheExpvars.Add("processEntry-tracker-entry", 1)
+	base.IncrementExpvar(changeCacheExpvars, "processEntry-tracker-entry")
 	c.cacheLock.Lock()
 
-	changeCacheExpvars.Add("processEntry-tracker-hasLock", 1)
-	lag := time.Since(timeEntered)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("processEntry-lock-time-%05dms", lagMs), 1)
+	base.IncrementExpvar(changeCacheExpvars, "processEntry-tracker-hasLock")
+	base.WriteHistogram(changeCacheExpvars, "processEntry-lock-time", timeEntered)
 
 	processStart := time.Now()
-	lockAcquireDelta := time.Since(timeEntered)
-	dbExpvars.Add("process-entry-lock-acquire-cumulative-ns", int64(lockAcquireDelta))
-	highWatermarkLockAcquire.CasUpdate(int64(lockAcquireDelta))
+	//lockAcquireDelta := time.Since(timeEntered)
+	//base.AddExpvar(dbExpvars, "process-entry-lock-acquire-cumulative-ns", int64(lockAcquireDelta))
+	//highWatermarkLockAcquire.CasUpdate(int64(lockAcquireDelta))
 
 	var exitType string
 	defer func() {
-		changeCacheExpvars.Add("processEntry-tracker-defer-exit", 1)
+		base.IncrementExpvar(changeCacheExpvars, "processEntry-tracker-defer-exit")
 		c.cacheLock.Unlock()
 		delta := time.Since(timeEntered)
-		dbExpvars.Add("process-entry-cumulative-ns", int64(delta))
+		base.AddExpvar(dbExpvars, "process-entry-cumulative-ns", int64(delta))
 		highWatermark.CasUpdate(int64(delta))
-		executionTime := time.Since(processStart)
-		changeCacheExpvars.Add("processEntry-execution-cumulative", int64(executionTime))
-		changeCacheExpvars.Add("processEntry-execution-count", 1)
-		lagMs := int(executionTime/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("processEntry-execution-time-%s-%05dms", exitType, lagMs), 1)
+		base.AddExpvar(changeCacheExpvars, "processEntry-execution-cumulative", int64(time.Since(processStart)))
+		base.IncrementExpvar(changeCacheExpvars, "processEntry-execution-count")
+		base.WriteHistogram(changeCacheExpvars, fmt.Sprintf("processEntry-execution-time-%s", exitType), processStart)
 	}()
 
 	if c.logsDisabled {
@@ -485,15 +479,15 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	sequence := change.Sequence
 	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
-		changeCacheExpvars.Add("processEntry-c-step1-duplicate", int64(time.Since(processStart)))
-		changeCacheExpvars.Add("processEntry-exit-duplicate", 1)
+		base.AddExpvarTime(changeCacheExpvars, "processEntry-c-step1-duplicate", time.Since(processStart))
+		base.IncrementExpvar(changeCacheExpvars, "processEntry-exit-duplicate")
 		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
-	changeCacheExpvars.Add("processEntry-c-step1-non-duplicate", int64(time.Since(processStart)))
+	base.AddExpvarTime(changeCacheExpvars, "processEntry-c-step1-non-duplicate", time.Since(processStart))
 	var changedChannels base.Set
 	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
@@ -510,7 +504,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
-			dbExpvars.Add("pending_cache_full", 1)
+			base.IncrementExpvar(dbExpvars, "pending_cache_full")
 			changedChannels = c._addPendingLogs()
 		} else if time.Since(c.lastPendingCheck) > c.options.CachePendingSeqMaxWait {
 			changedChannels = c._addPendingLogs()
@@ -521,22 +515,22 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Remove from skipped sequence queue
 		if c.RemoveSkipped(sequence) != nil {
 			// Error removing from skipped sequences
-			dbExpvars.Add("late_find_fail", 1)
+			base.IncrementExpvar(dbExpvars, "late_find_fail")
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
-			dbExpvars.Add("late_find_success", 1)
+			base.IncrementExpvar(dbExpvars, "late_find_success")
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			change.Skipped = true
 		}
 
-		changeCacheExpvars.Add("processEntry-c-step2", int64(time.Since(processStart)))
+		base.AddExpvarTime(changeCacheExpvars, "processEntry-c-step2", time.Since(processStart))
 		changedChannels = c._addToCache(change)
-		changeCacheExpvars.Add("processEntry-c-step3", int64(time.Since(processStart)))
+		base.AddExpvarTime(changeCacheExpvars, "processEntry-c-step3", time.Since(processStart))
 		exitType = "skipped"
 	}
 
-	changeCacheExpvars.Add(fmt.Sprintf("processEntry-c-step4-%s", exitType), int64(time.Since(processStart)))
-	changeCacheExpvars.Add(fmt.Sprintf("processEntry-exit-%s", exitType), 1)
+	base.AddExpvarTime(changeCacheExpvars, fmt.Sprintf("processEntry-c-step4-%s", exitType), time.Since(processStart))
+	base.IncrementExpvar(changeCacheExpvars, fmt.Sprintf("processEntry-exit-%s", exitType))
 
 	return changedChannels
 }
@@ -594,15 +588,15 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
 		if change.Sequence < c.nextSequence {
-			changeCacheExpvars.Add("pending_sequence_error", 1)
-			changeCacheExpvars.Add(fmt.Sprintf("pending_sequence:%d", change.Sequence), 1)
+			base.IncrementExpvar(changeCacheExpvars, "pending_sequence_error")
+			base.IncrementExpvar(changeCacheExpvars, fmt.Sprintf("pending_sequence:%d", change.Sequence))
 		}
 		if isNext {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Union(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			base.LogTo("Cache", "Adding #%d to skipped", c.nextSequence)
-			changeCacheExpvars.Add("outOfOrder", 1)
+			base.IncrementExpvar(changeCacheExpvars, "outOfOrder")
 			c.addToSkipped(c.nextSequence)
 			c.nextSequence++
 		} else {
@@ -664,7 +658,7 @@ func (c *changeCache) _allChannels() base.Set {
 
 func (c *changeCache) addToSkipped(sequence uint64) {
 
-	dbExpvars.Add("skipped_sequences", 1)
+	base.IncrementExpvar(dbExpvars, "skipped_sequences")
 	c.PushSkipped(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
 }
 
