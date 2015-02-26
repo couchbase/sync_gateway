@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbaselabs/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/snej/zdelta-go"
 )
 

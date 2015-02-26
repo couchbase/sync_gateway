@@ -14,8 +14,8 @@ import (
 	"net/textproto"
 	"strings"
 
-	"github.com/couchbaselabs/sync_gateway/base"
-	"github.com/couchbaselabs/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/snej/zdelta-go"
 )
 
