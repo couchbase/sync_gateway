@@ -4,7 +4,7 @@
 		{
 			"follow_symlinks": true,
 			"name": "sync_gateway",
-			"path": "src/github.com/couchbaselabs/sync_gateway"
+			"path": "src/github.com/couchbase/sync_gateway"
 		},
 		{
 			"follow_symlinks": true,

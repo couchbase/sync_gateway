@@ -1,4 +1,5 @@
 {
+    "log":["REST", "Shadow", "CRUD", "CRUD+", "HTTP", "HTTP+", "Access", "Changes", "Changes+","Auth", "SSL"],
     "facebook" : {
         "register" : true
     },
