@@ -24,6 +24,7 @@ import (
 )
 
 const TapFeedType = "tap"
+const DcpFeedType = "dcp"
 
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
@@ -86,11 +87,8 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 }
 
 func (bucket CouchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
-	// Use tap only when it's explicitly requested, or if DCP isn't supported
-	if bucket.spec.FeedType == TapFeedType {
-		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
-		return bucket.StartCouchbaseTapFeed(args)
-	} else {
+	// Uses tap by default, unless DCP is explicitly specified
+	if bucket.spec.FeedType == DcpFeedType {
 		feed, err := bucket.StartDCPFeed(args)
 		if err != nil {
 			Warn("Unable to start DCP feed - reverting to using TAP feed: %s", err)
@@ -98,7 +96,9 @@ func (bucket CouchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 		}
 		LogTo("Feed", "Using DCP feed for bucket: %q", bucket.GetName())
 		return feed, nil
-
+	} else {
+		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
+		return bucket.StartCouchbaseTapFeed(args)
 	}
 }
 
