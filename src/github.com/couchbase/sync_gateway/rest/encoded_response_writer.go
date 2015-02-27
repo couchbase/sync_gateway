@@ -2,19 +2,13 @@ package rest
 
 import (
 	"compress/gzip"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
-
-const kZipperCacheCapacity = 20
-
-var zipperCache chan *gzip.Writer
-
-func init() {
-	zipperCache = make(chan *gzip.Writer, kZipperCacheCapacity)
-}
 
 // An implementation of http.ResponseWriter that wraps another instance and transparently applies
 // GZip compression when appropriate.
@@ -79,13 +73,7 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Del("Content-Length") // length is unknown due to compression
 
-	// Get a gzip writer from the cache, or create a new one if it's empty:
-	select {
-	case w.gz = <-zipperCache:
-		w.gz.Reset(w.ResponseWriter)
-	default:
-		w.gz = gzip.NewWriter(w.ResponseWriter)
-	}
+	w.gz = GetGZipWriter(w.ResponseWriter)
 }
 
 // Flushes the GZip encoder buffer, and if possible flushes output to the network.
@@ -102,14 +90,27 @@ func (w *EncodedResponseWriter) Flush() {
 // The writer should be closed when output is complete, to flush the GZip encoder buffer.
 func (w *EncodedResponseWriter) Close() {
 	if w.gz != nil {
-		w.gz.Close()
-
-		// Return the gzip writer to the cache, or discard it if the cache is full:
-		select {
-		case zipperCache <- w.gz:
-		default:
-		}
-
+		ReturnGZipWriter(w.gz)
 		w.gz = nil
 	}
+}
+
+//////// GZIP WRITER CACHE:
+
+var zipperCache sync.Pool
+
+// Gets a gzip writer from the pool, or creates a new one if the pool is empty:
+func GetGZipWriter(writer io.Writer) *gzip.Writer {
+	if gz, ok := zipperCache.Get().(*gzip.Writer); ok {
+		gz.Reset(writer)
+		return gz
+	} else {
+		return gzip.NewWriter(writer)
+	}
+}
+
+// Closes a gzip writer and returns it to the pool:
+func ReturnGZipWriter(gz *gzip.Writer) {
+	gz.Close()
+	zipperCache.Put(gz)
 }
