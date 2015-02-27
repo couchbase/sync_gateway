@@ -12,6 +12,7 @@ package db
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"regexp"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -104,7 +105,7 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int, deltaSrcKeys m
 		if ok && revpos >= int64(minRevpos) {
 			key := AttachmentKey(meta["digest"].(string))
 			var sourceKeys []AttachmentKey
-			if _, ok := meta["encoding"].(string); !ok { // leave encoded attachment alone
+			if mayCompressAttachment(name, meta) {
 				if srcKey, ok := deltaSrcKeys[name]; ok {
 					sourceKeys = []AttachmentKey{srcKey}
 				}
@@ -223,4 +224,34 @@ func DecodeAttachment(att interface{}) ([]byte, error) {
 	default:
 		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
 	}
+}
+
+var kCompressedTypes, kGoodTypes, kBadTypes, kBadFilenames *regexp.Regexp
+
+func init() {
+	// MIME types that explicitly indicate they're compressed:
+	kCompressedTypes, _ = regexp.Compile(`(?i)\bg?zip\b`)
+	// MIME types that are compressible:
+	kGoodTypes, _ = regexp.Compile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
+	// ... or generally uncompressible:
+	kBadTypes, _ = regexp.Compile(`(?i)^(audio|image|video)/`)
+	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
+	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
+
+	// Filename extensions of uncompressible types:
+	kBadFilenames, _ = regexp.Compile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
+}
+
+// Returns true if this attachment is worth trying to compress.
+func mayCompressAttachment(filename string, meta map[string]interface{}) bool {
+	if _, ok := meta["encoding"].(string); ok {
+		return false // leave encoded attachment alone
+	} else if kBadFilenames.MatchString(filename) {
+		return false
+	} else if contentType, ok := meta["content_type"].(string); ok {
+		return !kCompressedTypes.MatchString(contentType) &&
+			(kGoodTypes.MatchString(contentType) ||
+				!kBadTypes.MatchString(contentType))
+	}
+	return true // be optimistic by default
 }

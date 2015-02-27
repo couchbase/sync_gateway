@@ -150,3 +150,26 @@ func TestAttachmentDeltas(t *testing.T) {
 	rawDelta, _ := base64.StdEncoding.DecodeString("ddOrAncoWekSVIHD9u3a9KRKQ4Hu8QxT")
 	assert.DeepEquals(t, cached, rawDelta)
 }
+
+func TestMayCompress(t *testing.T) {
+	meta := map[string]interface{}{}
+	assert.True(t, mayCompressAttachment("foo", meta))
+	assert.True(t, mayCompressAttachment("foo.bar", meta))
+	assert.True(t, mayCompressAttachment("foo.html", meta))
+	assert.False(t, mayCompressAttachment("foo.jpg", meta))
+	assert.False(t, mayCompressAttachment("foo.MP3", meta))
+	assert.True(t, mayCompressAttachment("a.zippy.movie.txt", meta))
+
+	meta["content_type"] = "application/json"
+	assert.True(t, mayCompressAttachment("foo", meta))
+	meta["content_type"] = "audio/tincan"
+	assert.False(t, mayCompressAttachment("foo", meta))
+	meta["content_type"] = "image/svg+xml"
+	assert.True(t, mayCompressAttachment("foo", meta)) // tricky!
+	meta["content_type"] = "application/json+zip"
+	assert.False(t, mayCompressAttachment("foo", meta)) // also tricky!
+
+	meta["content_type"] = "application/json"
+	meta["encoding"] = "gzip"
+	assert.False(t, mayCompressAttachment("foo", meta))
+}
