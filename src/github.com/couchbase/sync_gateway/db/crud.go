@@ -164,9 +164,10 @@ func (db *Database) GetRevJSON(docid, revid string) ([]byte, error) {
 
 // Result of GetRevWithAttachments.
 type RevResponse struct {
-	Body       Body   // The parsed doc body
-	OldRevJSON []byte // The JSON source of the old revision, to use for a delta
-	OldRevID   string // The revID of the old revision
+	Body        Body          // The parsed doc body
+	Attachments []*Attachment // Attachments whose data will be sent
+	OldRevJSON  []byte        // The JSON source of the old revision, to use for a delta
+	OldRevID    string        // The revID of the old revision
 }
 
 // Returns the body of a revision of a document, including attachments. Based on GetRev.
@@ -177,7 +178,7 @@ type RevResponse struct {
 func (db *Database) GetRevWithAttachments(docid, revid string, listRevisions bool, knownRevIDs []string, useDeltas bool) (r RevResponse, err error) {
 	var doc *document
 	r.Body, doc, err = db.getRev(docid, revid, listRevisions)
-	if err != nil || knownRevIDs == nil || (!useDeltas && len(BodyAttachments(r.Body)) == 0) {
+	if err != nil || knownRevIDs == nil || (!useDeltas && len(r.Body.Attachments()) == 0) {
 		return
 	}
 
@@ -205,14 +206,23 @@ func (db *Database) GetRevWithAttachments(docid, revid string, listRevisions boo
 				if r.OldRevJSON, _ = db.getRevisionJSON(doc, r.OldRevID); r.OldRevJSON != nil {
 					var deltaSrcBody Body
 					json.Unmarshal(r.OldRevJSON, &deltaSrcBody)
-					deltaSrcKeys = getAttachmentDigests(deltaSrcBody)
+					deltaSrcKeys = deltaSrcBody.AttachmentDigests()
 				}
 			}
 		}
 	}
 	// Add attachment bodies:
-	r.Body, err = db.loadBodyAttachments(r.Body, minRevpos, deltaSrcKeys)
+	r.Body, r.Attachments = db.findAttachments(r.Body, minRevpos, deltaSrcKeys)
 	return
+}
+
+func (r *RevResponse) LoadAttachmentsInline(deltaOK bool) error {
+	for _, att := range r.Attachments {
+		if _, err := att.LoadData(deltaOK); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Returns the body of a revision of a document, as well as the document's current channels

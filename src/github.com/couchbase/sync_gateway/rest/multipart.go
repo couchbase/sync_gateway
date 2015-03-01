@@ -29,50 +29,34 @@ var MinCompressedJSONSize = 300
 //////// WRITING:
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress bool) {
-	type attInfo struct {
-		name string
-		data []byte
-		meta map[string]interface{}
-	}
-
+func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress bool) error {
 	// First extract the attachments that should follow:
-	following := []attInfo{}
-	for name, value := range db.BodyAttachments(r.Body) {
-		meta := value.(map[string]interface{})
-		if meta["stub"] != true {
-			var err error
-			var info attInfo
-			info.data, err = db.DecodeAttachment(meta["data"])
-			if info.data == nil {
-				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, r.Body["_id"], err)
-				meta["stub"] = true
-				delete(meta, "data")
-			} else if len(info.data) > MaxInlineAttachmentSize {
-				info.name = name
-				info.meta = meta
-				following = append(following, info)
-				meta["follows"] = true
-				delete(meta, "data")
-			}
+	for _, att := range r.Attachments {
+		if data, err := att.LoadData(true); err != nil {
+			return err
+		} else if len(data) > MaxInlineAttachmentSize {
+			att.SetFollows()
 		}
 	}
 
 	// Write the main JSON body:
-	writeJSONPart(r, "application/json", compress, writer)
+	if err := writeJSONPart(r, "application/json", compress, writer); err != nil {
+		return err
+	}
 
 	// Write the following attachments
-	for _, info := range following {
-		partHeaders := textproto.MIMEHeader{}
-		if contentType, ok := info.meta["content_type"].(string); ok {
-			if info.meta["encoding"] == nil {
-				partHeaders.Set("Content-Type", contentType)
+	for _, att := range r.Attachments {
+		if att.Follows() {
+			part, err := writer.CreatePart(att.Headers(false))
+			if err == nil {
+				_, err = part.Write(att.Data())
+			}
+			if err != nil {
+				return err
 			}
 		}
-		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
-		part, _ := writer.CreatePart(partHeaders)
-		part.Write(info.data)
 	}
+	return nil
 }
 
 // Adds a new part to the given multipart writer, containing the given revision.
@@ -90,8 +74,10 @@ func WriteRevisionAsPart(r db.RevResponse, isError bool, compress bool, writer *
 		// Write doc as multipart, including attachments:
 		docWriter, err := createNestedMultipart(writer, "related", partHeaders)
 		if err == nil {
-			WriteMultipartDocument(r, docWriter, compress)
-			err = docWriter.Close()
+			err = WriteMultipartDocument(r, docWriter, compress)
+			if err == nil {
+				err = docWriter.Close()
+			}
 		}
 		return err
 	} else {
@@ -194,7 +180,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
 	followingAttachments := map[string]map[string]interface{}{}
-	for name, value := range db.BodyAttachments(body) {
+	for name, value := range body.Attachments() {
 		if meta := value.(map[string]interface{}); meta["follows"] == true {
 			followingAttachments[name] = meta
 		}
@@ -281,7 +267,7 @@ func md5DigestKey(data []byte) string {
 
 // Does this Body contain any attachments with a "data" property?
 func hasInlineAttachments(body db.Body) bool {
-	for _, value := range db.BodyAttachments(body) {
+	for _, value := range body.Attachments() {
 		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
 			return true
 		}

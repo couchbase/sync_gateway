@@ -58,8 +58,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(responseInfo, writer, canCompress)
-				return nil
+				return WriteMultipartDocument(responseInfo, writer, canCompress)
 			})
 		} else if responseInfo.OldRevJSON != nil && !hasBodies {
 			h.setHeader("Content-Type", "application/json")
@@ -69,6 +68,9 @@ func (h *handler) handleGetDoc() error {
 			var cmp zdelta.Compressor
 			cmp.WriteDelta(responseInfo.OldRevJSON, target, h.response)
 		} else {
+			if err := responseInfo.LoadAttachmentsInline(false); err != nil {
+				return err
+			}
 			h.writeJSON(responseInfo.Body)
 		}
 	} else {
@@ -139,7 +141,7 @@ func (h *handler) handleGetAttachment() error {
 	if body == nil {
 		return kNotFoundError
 	}
-	meta, ok := db.BodyAttachments(body)[attachmentName].(map[string]interface{})
+	meta, ok := body.Attachments()[attachmentName].(map[string]interface{})
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
@@ -207,7 +209,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 
 	// find attachment (if it existed)
-	attachments := db.BodyAttachments(body)
+	attachments := body.Attachments()
 	if attachments == nil {
 		attachments = make(map[string]interface{})
 	}

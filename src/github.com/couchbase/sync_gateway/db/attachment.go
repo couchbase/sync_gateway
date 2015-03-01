@@ -12,6 +12,8 @@ package db
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"fmt"
+	"net/textproto"
 	"regexp"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -21,108 +23,149 @@ import (
 // In practice it's "sha1-" followed by a hex SHA-1 digest.
 type AttachmentKey string
 
-// Given a CouchDB document body about to be stored in the database, goes through the _attachments
-// dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
-// the bodies with the 'digest' attributes which are the keys to retrieving them.
-func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
-	var parentAttachments map[string]interface{}
-	atts := BodyAttachments(body)
-	if atts == nil && body["_attachments"] != nil {
-		return base.HTTPErrorf(400, "Invalid _attachments")
-	}
-	for name, value := range atts {
-		meta, ok := value.(map[string]interface{})
-		if !ok {
-			return base.HTTPErrorf(400, "Invalid _attachments")
-		}
-		data, exists := meta["data"]
-		if exists {
-			// Attachment contains data, so store it in the db:
-			attachment, err := DecodeAttachment(data)
-			if err != nil {
-				return err
-			}
-			key, err := db.setAttachment(attachment)
-			if err != nil {
-				return err
-			}
-
-			newMeta := map[string]interface{}{
-				"stub":   true,
-				"digest": string(key),
-				"revpos": generation,
-			}
-			if contentType, ok := meta["content_type"].(string); ok {
-				newMeta["content_type"] = contentType
-			}
-			if encoding := meta["encoding"]; encoding != nil {
-				newMeta["encoding"] = encoding
-				newMeta["encoded_length"] = len(attachment)
-				if length, ok := meta["length"].(float64); ok {
-					newMeta["length"] = length
-				}
-			} else {
-				newMeta["length"] = len(attachment)
-			}
-			atts[name] = newMeta
-
-		} else {
-			// Attachment must be a stub that repeats a parent attachment
-			if meta["stub"] != true {
-				return base.HTTPErrorf(400, "Missing data of attachment %q", name)
-			}
-			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
-				return base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
-			}
-			// Try to look up the attachment in the parent revision:
-			if parentAttachments == nil {
-				if parent, _ := db.getAvailableRev(doc, parentRev); parent != nil {
-					parentAttachments, _ = parent["_attachments"].(map[string]interface{})
-				}
-			}
-			if parentAttachments != nil {
-				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
-					atts[name] = parentAttachment
-				}
-			} else if meta["digest"] == nil {
-				return base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
-			}
-		}
-	}
-	return nil
+// Represents an attachment. Contains a references to the metadata map in the Body, and can
+// change it as needed.
+type Attachment struct {
+	Name          string                 // Filename (key in _attachments map)
+	followingData []byte                 // Data to appear in MIME part
+	deltaSource   AttachmentKey          // If data is a delta, this is the source attachment
+	meta          map[string]interface{} // Points at the map inside the Body's _attachments map
+	db            *Database              // Database to load the data from
 }
 
-// Goes through a revisions '_attachments' map, loads attachments (by their 'digest' properties)
-// and adds 'data' properties containing the data. The data is added as raw []byte; the JSON
-// marshaler will convert that to base64.
+// The MIME content type of the attachment, or an empty string if not set
+func (a *Attachment) ContentType() string {
+	value, _ := a.meta["content_type"].(string)
+	return value
+}
+
+// The attachment digest as stored in the "digest" metadata property.
+func (a *Attachment) Key() AttachmentKey {
+	key, _ := a.meta["digest"].(string)
+	return AttachmentKey(key)
+}
+
+// The attachment's MIME headers. If `full` is true, adds headers appropriate for a top-level
+// MIME body, else adds ones appropriate for a nested part.
+func (a *Attachment) Headers(full bool) textproto.MIMEHeader {
+	h := textproto.MIMEHeader{}
+	if a.deltaSource != "" {
+		h.Set("Content-Encoding", "zdelta")
+		h.Set("X-Delta-Source", string(a.deltaSource))
+	} else if encoding, _ := a.meta["encoding"].(string); encoding != "" {
+		h.Set("Content-Encoding", encoding)
+	}
+	if full {
+		if contentType := a.ContentType(); contentType != "" {
+			h.Set("Content-Type", contentType)
+		}
+	} else {
+		h.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", a.Name))
+	}
+	return h
+}
+
+// The raw data of the attachment, if already loaded. May be gzipped, may be a delta.
+func (a *Attachment) Data() []byte {
+	data := a.followingData
+	if data == nil {
+		data, _ = a.meta["data"].([]byte)
+	}
+	return data
+}
+
+// Loads the data of an attachment (inline).
+// If `deltaOK` is true, and a.deltaSource is set, may load a delta.
+func (a *Attachment) LoadData(deltaOK bool) ([]byte, error) {
+	data := a.Data()
+	var err error
+	if data == nil {
+		var sourceKeys []AttachmentKey
+		if deltaOK && a.deltaSource != "" && a.Compressible() {
+			sourceKeys = []AttachmentKey{a.deltaSource}
+		}
+		var deltaSource AttachmentKey
+		data, deltaSource, err = a.db.GetAttachmentMaybeAsDelta(a.Key(), sourceKeys)
+		if err == nil {
+			a.meta["data"] = data
+			a.deltaSource = deltaSource
+			if deltaSource != "" {
+				a.meta["zdeltasrc"] = string(deltaSource)
+			}
+			delete(a.meta, "stub")
+		}
+	}
+	return data, err
+}
+
+// Is an attachment's data to be stored outside the JSON body (i.e. in a MIME part)?
+func (a *Attachment) Follows() bool {
+	return a.meta["follows"] == true
+}
+
+// Converts an attachment from inline to following
+func (a *Attachment) SetFollows() {
+	data := a.meta["data"]
+	if data != nil {
+		a.followingData, _ = decodeData(data)
+		delete(a.meta, "data")
+		delete(a.meta, "zdeltasrc")
+		a.meta["follows"] = true
+	}
+}
+
+var kCompressedTypes, kGoodTypes, kBadTypes, kBadFilenames *regexp.Regexp
+
+func init() {
+	// MIME types that explicitly indicate they're compressed:
+	kCompressedTypes, _ = regexp.Compile(`(?i)\bg?zip\b`)
+	// MIME types that are compressible:
+	kGoodTypes, _ = regexp.Compile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
+	// ... or generally uncompressible:
+	kBadTypes, _ = regexp.Compile(`(?i)^(audio|image|video)/`)
+	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
+	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
+
+	// Filename extensions of uncompressible types:
+	kBadFilenames, _ = regexp.Compile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
+}
+
+// Returns true if this attachment is worth trying to compress.
+func (a *Attachment) Compressible() bool {
+	if _, ok := a.meta["encoding"].(string); ok {
+		return false // leave encoded attachment alone
+	} else if kBadFilenames.MatchString(a.Name) {
+		return false
+	} else if contentType := a.ContentType(); contentType != "" {
+		return !kCompressedTypes.MatchString(contentType) &&
+			(kGoodTypes.MatchString(contentType) ||
+				!kBadTypes.MatchString(contentType))
+	}
+	return true // be optimistic by default
+}
+
+//////// LOADING ATTACHMENTS:
+
+// Goes through a revisions '_attachments' map and creates an Attachment object for each
+// attachment. Also updates the Body to be safely mutable.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
-// generation or later are loaded.
-func (db *Database) loadBodyAttachments(body Body, minRevpos int, deltaSrcKeys map[string]AttachmentKey) (Body, error) {
+// generation or later are returned.
+func (db *Database) findAttachments(body Body, minRevpos int, deltaSrcKeys map[string]AttachmentKey) (Body, []*Attachment) {
 	body = body.ImmutableAttachmentsCopy()
-	for name, value := range BodyAttachments(body) {
+	var attachments []*Attachment
+	for name, value := range body.Attachments() {
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
-			key := AttachmentKey(meta["digest"].(string))
-			var sourceKeys []AttachmentKey
-			if mayCompressAttachment(name, meta) {
-				if srcKey, ok := deltaSrcKeys[name]; ok {
-					sourceKeys = []AttachmentKey{srcKey}
-				}
-			}
-			data, srcKey, err := db.GetAttachmentMaybeAsDelta(key, sourceKeys)
-			if err != nil {
-				return nil, err
-			}
-			meta["data"] = data
-			delete(meta, "stub")
-			if srcKey != "" {
-				meta["encoding"] = "zdelta"
-				meta["deltasrc"] = srcKey
-			}
+			attachments = append(attachments, &Attachment{
+				Name:        name,
+				meta:        meta,
+				db:          db,
+				deltaSource: deltaSrcKeys[name],
+			})
 		}
 	}
-	return body, nil
+	return body, attachments
 }
 
 // Retrieves an attachment's body given its key.
@@ -172,20 +215,81 @@ func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []At
 	return
 }
 
-// Returns the digests of all attachments in a Body, as a map of attachment names to keys.
-func getAttachmentDigests(body Body) map[string]AttachmentKey {
-	keys := map[string]AttachmentKey{}
-	for name, value := range BodyAttachments(body) {
-		meta := value.(map[string]interface{})
-		if key := AttachmentKey(meta["digest"].(string)); key != "" {
-			keys[name] = key
+//////// STORING ATTACHMENTS:
+
+// Given a CouchDB document body about to be stored in the database, goes through the _attachments
+// dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
+// the bodies with the 'digest' attributes which are the keys to retrieving them.
+func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
+	var parentAttachments map[string]interface{}
+	atts := body.Attachments()
+	if atts == nil && body["_attachments"] != nil {
+		return base.HTTPErrorf(400, "Invalid _attachments")
+	}
+	for name, value := range atts {
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return base.HTTPErrorf(400, "Invalid _attachments")
+		}
+		data, exists := meta["data"]
+		if exists {
+			// Attachment contains data, so store it in the db:
+			attachment, err := decodeData(data)
+			if err != nil {
+				return err
+			}
+			key, err := db.storeAttachment(attachment)
+			if err != nil {
+				return err
+			}
+
+			newMeta := map[string]interface{}{
+				"stub":   true,
+				"digest": string(key),
+				"revpos": generation,
+			}
+			if contentType, ok := meta["content_type"].(string); ok {
+				newMeta["content_type"] = contentType
+			}
+			if encoding := meta["encoding"]; encoding != nil {
+				newMeta["encoding"] = encoding
+				newMeta["encoded_length"] = len(attachment)
+				if length, ok := meta["length"].(float64); ok {
+					newMeta["length"] = length
+				}
+			} else {
+				newMeta["length"] = len(attachment)
+			}
+			atts[name] = newMeta
+
+		} else {
+			// Attachment must be a stub that repeats a parent attachment
+			if meta["stub"] != true {
+				return base.HTTPErrorf(400, "Missing data of attachment %q", name)
+			}
+			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
+				return base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
+			}
+			// Try to look up the attachment in the parent revision:
+			if parentAttachments == nil {
+				if parent, _ := db.getAvailableRev(doc, parentRev); parent != nil {
+					parentAttachments, _ = parent["_attachments"].(map[string]interface{})
+				}
+			}
+			if parentAttachments != nil {
+				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
+					atts[name] = parentAttachment
+				}
+			} else if meta["digest"] == nil {
+				return base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
+			}
 		}
 	}
-	return keys
+	return nil
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
-func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
+func (db *Database) storeAttachment(attachment []byte) (AttachmentKey, error) {
 	key := SHA1DigestKey(attachment)
 	_, err := db.Bucket.AddRaw(attachmentKeyToDocKey(key), 0, attachment)
 	if err == nil {
@@ -204,9 +308,21 @@ func SHA1DigestKey(data []byte) AttachmentKey {
 }
 
 // Returns the "_attachments" property as a map.
-func BodyAttachments(body Body) map[string]interface{} {
+func (body Body) Attachments() map[string]interface{} {
 	atts, _ := body["_attachments"].(map[string]interface{})
 	return atts
+}
+
+// Returns the digests of all attachments in a Body, as a map of attachment names to keys.
+func (body Body) AttachmentDigests() map[string]AttachmentKey {
+	keys := map[string]AttachmentKey{}
+	for name, value := range body.Attachments() {
+		meta := value.(map[string]interface{})
+		if key := AttachmentKey(meta["digest"].(string)); key != "" {
+			keys[name] = key
+		}
+	}
+	return keys
 }
 
 // The Couchbase bucket key under which to store an attachment
@@ -214,44 +330,14 @@ func attachmentKeyToDocKey(key AttachmentKey) string {
 	return "_sync:att:" + string(key)
 }
 
-// Base64-encodes an attachment if it's present as a raw byte array
-func DecodeAttachment(att interface{}) ([]byte, error) {
-	switch att := att.(type) {
+// Base64-decodes attachment data if it's present as a string
+func decodeData(data interface{}) ([]byte, error) {
+	switch data := data.(type) {
 	case []byte:
-		return att, nil
+		return data, nil
 	case string:
-		return base64.StdEncoding.DecodeString(att)
+		return base64.StdEncoding.DecodeString(data)
 	default:
-		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
+		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", data)
 	}
-}
-
-var kCompressedTypes, kGoodTypes, kBadTypes, kBadFilenames *regexp.Regexp
-
-func init() {
-	// MIME types that explicitly indicate they're compressed:
-	kCompressedTypes, _ = regexp.Compile(`(?i)\bg?zip\b`)
-	// MIME types that are compressible:
-	kGoodTypes, _ = regexp.Compile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
-	// ... or generally uncompressible:
-	kBadTypes, _ = regexp.Compile(`(?i)^(audio|image|video)/`)
-	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
-	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
-
-	// Filename extensions of uncompressible types:
-	kBadFilenames, _ = regexp.Compile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
-}
-
-// Returns true if this attachment is worth trying to compress.
-func mayCompressAttachment(filename string, meta map[string]interface{}) bool {
-	if _, ok := meta["encoding"].(string); ok {
-		return false // leave encoded attachment alone
-	} else if kBadFilenames.MatchString(filename) {
-		return false
-	} else if contentType, ok := meta["content_type"].(string); ok {
-		return !kCompressedTypes.MatchString(contentType) &&
-			(kGoodTypes.MatchString(contentType) ||
-				!kBadTypes.MatchString(contentType))
-	}
-	return true // be optimistic by default
 }

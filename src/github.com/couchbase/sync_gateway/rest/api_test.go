@@ -1734,16 +1734,17 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 
 	// Get the doc with deltas enabled, in JSON format. The JSON itself will not be delta-
 	// compressed since it has to contain the delta-compressed attachments.
+	/* (not supported currently)
 	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
 	assert.Equals(t, attach1["encoding"], "zdelta")
 	assert.Equals(t, attach1["deltasrc"], digest1)
 	delta, err := base64.StdEncoding.DecodeString(attach1["data"].(string))
 	assert.Equals(t, err, nil)
-
 	// Decode the delta:
 	result, err := zdelta.ApplyDelta([]byte(attachmentBody), delta)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(result), attachmentBody2)
+	*/
 
 	// Get the doc with deltas enabled, in MIME multipart format:
 	headers := map[string]string{"Accept": "multipart/*"}
@@ -1760,7 +1761,7 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	assert.Equals(t, part.Header.Get("X-Delta-Source"), revID1)
 	// Decode the delta:
 	log.Printf("Decoding delta with source: %s", bodyData1)
-	delta, _ = ioutil.ReadAll(part)
+	delta, _ := ioutil.ReadAll(part)
 	bodyData2, err := zdelta.ApplyDelta(bodyData1, delta)
 	assert.Equals(t, err, nil)
 	log.Printf("Decoded delta: %s", bodyData2)
@@ -1769,8 +1770,6 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	assert.Equals(t, json.Unmarshal(bodyData2, &body), nil)
 	attachments := body["_attachments"].(map[string]interface{})
 	attach1 = attachments["attach1"].(map[string]interface{})
-	assert.Equals(t, attach1["encoding"], "zdelta")
-	assert.Equals(t, attach1["deltasrc"], digest1)
 	assert.Equals(t, attach1["follows"], true)
 	assert.Equals(t, attach1["data"], nil)
 
@@ -1779,10 +1778,13 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, part.FileName(), "attach1")
 	assert.DeepEquals(t, part.Header["Content-Type"], []string(nil))
+	assert.Equals(t, part.Header.Get("Content-Encoding"), "zdelta")
+	assert.Equals(t, part.Header.Get("X-Delta-Source"), digest1)
+	assert.Equals(t, part.Header.Get("Content-Disposition"), "attachment; filename=\"attach1\"")
 	delta, err = ioutil.ReadAll(part)
 	assert.Equals(t, err, nil)
 	// Decode the delta:
-	result, err = zdelta.ApplyDelta([]byte(attachmentBody), delta)
+	result, err := zdelta.ApplyDelta([]byte(attachmentBody), delta)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(result), attachmentBody2)
 
@@ -1790,6 +1792,7 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	response = rt.sendRequest("GET", "/db/doc1/attach1?deltas="+digest1, "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, response.HeaderMap.Get("Content-Encoding"), "zdelta")
+	assert.Equals(t, response.HeaderMap.Get("X-Delta-Source"), digest1)
 	delta, err = ioutil.ReadAll(response.Body)
 	assert.Equals(t, err, nil)
 	result, err = zdelta.ApplyDelta([]byte(attachmentBody), delta)
