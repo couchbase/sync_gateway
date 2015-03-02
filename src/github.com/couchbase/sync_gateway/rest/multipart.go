@@ -23,8 +23,8 @@ import (
 // MIME part.
 var MaxInlineAttachmentSize = 200
 
-// JSON bodies smaller than this won't be GZip-encoded.
-var MinCompressedJSONSize = 300
+// MIME parts (JSON bodies or attachments) smaller than this won't be GZip-encoded.
+var MinCompressiblePartSize = 300
 
 //////// WRITING:
 
@@ -47,10 +47,7 @@ func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress
 	// Write the following attachments
 	for _, att := range r.Attachments {
 		if att.Follows() {
-			part, err := writer.CreatePart(att.Headers(false))
-			if err == nil {
-				_, err = part.Write(att.Data())
-			}
+			err := writePart(att.Data(), compress && att.Compressible(), att.Headers(false), writer)
 			if err != nil {
 				return err
 			}
@@ -93,7 +90,7 @@ func WriteRevisionAsPart(r db.RevResponse, isError bool, compress bool, writer *
 }
 
 // Writes the JSON body of a revision as a part to a multipart writer.
-func writeJSONPart(r db.RevResponse, contentType string, gzipCompress bool, writer *multipart.Writer) (err error) {
+func writeJSONPart(r db.RevResponse, contentType string, gzipCompress bool, writer *multipart.Writer) error {
 	bytes, err := json.Marshal(r.Body)
 	if err != nil {
 		return err
@@ -103,17 +100,20 @@ func writeJSONPart(r db.RevResponse, contentType string, gzipCompress bool, writ
 	partHeaders.Set("Content-Type", contentType)
 
 	if r.OldRevJSON != nil && len(bytes) > db.MinDeltaSavings {
+		gzipCompress = false
 		delta, err := zdelta.CreateDelta(r.OldRevJSON, bytes)
 		if err == nil && len(delta)+db.MinDeltaSavings < len(bytes) {
 			bytes = delta
-			gzipCompress = false
 			partHeaders.Set("Content-Encoding", "zdelta")
 			partHeaders.Set("X-Delta-Source", r.OldRevID)
 		}
 	}
+	return writePart(bytes, gzipCompress, partHeaders, writer)
+}
 
+func writePart(bytes []byte, gzipCompress bool, partHeaders textproto.MIMEHeader, writer *multipart.Writer) error {
 	if gzipCompress {
-		if len(bytes) < MinCompressedJSONSize {
+		if len(bytes) < MinCompressiblePartSize {
 			gzipCompress = false
 		} else {
 			partHeaders.Set("Content-Encoding", "gzip")
@@ -132,7 +132,7 @@ func writeJSONPart(r db.RevResponse, contentType string, gzipCompress bool, writ
 	} else {
 		_, err = part.Write(bytes)
 	}
-	return
+	return err
 }
 
 //////// READING:

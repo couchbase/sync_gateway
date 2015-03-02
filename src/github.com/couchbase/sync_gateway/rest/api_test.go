@@ -1698,6 +1698,12 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 		assertStatus(t, response, 200)
 		return response.Body.Bytes()
 	}
+	getDocAsMultipart := func(queries string) *multipart.Reader {
+		headers := map[string]string{"Accept": "multipart/*", "X-Accept-Part-Encoding": "gzip"}
+		response := rt.sendRequestWithHeaders("GET", "/db/doc1"+queries, "", headers)
+		assertStatus(t, response, 200)
+		return readMultipartResponse(response)
+	}
 	getDocAttach1 := func(queries string) map[string]interface{} {
 		response := getDoc(queries)
 		var body db.Body
@@ -1706,11 +1712,14 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 		return attachments["attach1"].(map[string]interface{})
 	}
 
+	oldMin := MinCompressiblePartSize
 	oldMax := MaxInlineAttachmentSize
 	oldMinDeltaSavings := db.MinDeltaSavings
+	MinCompressiblePartSize = 0 // Temporarily make all MIME parts gzippable
 	MaxInlineAttachmentSize = 0 // Temporarily force all attachments to be MIME parts
-	db.MinDeltaSavings = 0
+	db.MinDeltaSavings = 0      // Temporarily use deltas regardless of size savings
 	defer func() {
+		MinCompressiblePartSize = oldMin
 		MaxInlineAttachmentSize = oldMax
 		db.MinDeltaSavings = oldMinDeltaSavings
 	}()
@@ -1721,6 +1730,17 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	bodyData1 := getDoc("")
 	attach1 := getDocAttach1("")
 	digest1 := attach1["digest"].(string)
+
+	// Get the doc in MIME multipart format and make sure the parts are gzipped:
+	mp := getDocAsMultipart("?attachments=true")
+	part, err := mp.NextPart()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, part.Header.Get("Content-Type"), "application/json")
+	assert.Equals(t, part.Header.Get("Content-Encoding"), "gzip")
+	part, err = mp.NextPart()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, part.FileName(), "attach1")
+	assert.Equals(t, part.Header.Get("Content-Encoding"), "gzip")
 
 	// Update doc attachment:
 	attachmentBody2 := "This is test. This is only a test. The test ends."
@@ -1747,14 +1767,9 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	*/
 
 	// Get the doc with deltas enabled, in MIME multipart format:
-	headers := map[string]string{"Accept": "multipart/*"}
-	attach1 = getDocAttach1("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
-	response := rt.sendRequestWithHeaders("GET", "/db/doc1?attachments=true&atts_since=[\""+revID1+"\"]&deltas=true", "", headers)
-	assertStatus(t, response, 200)
-	mp := readMultipartResponse(response)
-
+	mp = getDocAsMultipart("?attachments=true&atts_since=[\"" + revID1 + "\"]&deltas=true")
 	// Check the (delta-encoded) JSON part:
-	part, err := mp.NextPart()
+	part, err = mp.NextPart()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, part.Header.Get("Content-Type"), "application/json")
 	assert.Equals(t, part.Header.Get("Content-Encoding"), "zdelta")
@@ -1780,7 +1795,6 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	assert.DeepEquals(t, part.Header["Content-Type"], []string(nil))
 	assert.Equals(t, part.Header.Get("Content-Encoding"), "zdelta")
 	assert.Equals(t, part.Header.Get("X-Delta-Source"), digest1)
-	assert.Equals(t, part.Header.Get("Content-Disposition"), "attachment; filename=\"attach1\"")
 	delta, err = ioutil.ReadAll(part)
 	assert.Equals(t, err, nil)
 	// Decode the delta:
@@ -1789,7 +1803,7 @@ func TestGetAttachmentAsDelta(t *testing.T) {
 	assert.Equals(t, string(result), attachmentBody2)
 
 	// Now get the attachment on its own, as a delta:
-	response = rt.sendRequest("GET", "/db/doc1/attach1?deltas="+digest1, "")
+	response := rt.sendRequest("GET", "/db/doc1/attach1?deltas="+digest1, "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, response.HeaderMap.Get("Content-Encoding"), "zdelta")
 	assert.Equals(t, response.HeaderMap.Get("X-Delta-Source"), digest1)

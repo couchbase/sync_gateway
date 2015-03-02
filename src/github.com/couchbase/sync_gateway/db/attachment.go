@@ -26,11 +26,12 @@ type AttachmentKey string
 // Represents an attachment. Contains a references to the metadata map in the Body, and can
 // change it as needed.
 type Attachment struct {
-	Name          string                 // Filename (key in _attachments map)
-	followingData []byte                 // Data to appear in MIME part
-	deltaSource   AttachmentKey          // If data is a delta, this is the source attachment
-	meta          map[string]interface{} // Points at the map inside the Body's _attachments map
-	db            *Database              // Database to load the data from
+	Name                 string                 // Filename (key in _attachments map)
+	followingData        []byte                 // Data to appear in MIME part
+	possibleDeltaSources []AttachmentKey        // Possible attachments to use as delta source
+	deltaSource          AttachmentKey          // Delta source attachment ID
+	meta                 map[string]interface{} // Points at the map inside the Body's _attachments map
+	db                   *Database              // Database to load the data from
 }
 
 // The MIME content type of the attachment, or an empty string if not set
@@ -75,19 +76,21 @@ func (a *Attachment) Data() []byte {
 }
 
 // Loads the data of an attachment (inline).
-// If `deltaOK` is true, and a.deltaSource is set, may load a delta.
+// If `deltaOK` is true, and a.possibleDeltaSources is set, may load a delta.
 func (a *Attachment) LoadData(deltaOK bool) ([]byte, error) {
 	data := a.Data()
 	var err error
 	if data == nil {
 		var sourceKeys []AttachmentKey
-		if deltaOK && a.deltaSource != "" && a.Compressible() {
-			sourceKeys = []AttachmentKey{a.deltaSource}
+		if deltaOK && a.possibleDeltaSources != nil && a.Compressible() {
+			sourceKeys = a.possibleDeltaSources
 		}
+
 		var deltaSource AttachmentKey
 		data, deltaSource, err = a.db.GetAttachmentMaybeAsDelta(a.Key(), sourceKeys)
 		if err == nil {
 			a.meta["data"] = data
+			a.possibleDeltaSources = nil
 			a.deltaSource = deltaSource
 			if deltaSource != "" {
 				a.meta["zdeltasrc"] = string(deltaSource)
@@ -132,8 +135,8 @@ func init() {
 
 // Returns true if this attachment is worth trying to compress.
 func (a *Attachment) Compressible() bool {
-	if _, ok := a.meta["encoding"].(string); ok {
-		return false // leave encoded attachment alone
+	if _, ok := a.meta["encoding"].(string); ok || a.deltaSource != "" {
+		return false // leave encoded/delta'd attachment alone
 	} else if kBadFilenames.MatchString(a.Name) {
 		return false
 	} else if contentType := a.ContentType(); contentType != "" {
@@ -157,11 +160,15 @@ func (db *Database) findAttachments(body Body, minRevpos int, deltaSrcKeys map[s
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
+			var possibleDeltas []AttachmentKey
+			if src, ok := deltaSrcKeys[name]; ok {
+				possibleDeltas = []AttachmentKey{src}
+			}
 			attachments = append(attachments, &Attachment{
-				Name:        name,
-				meta:        meta,
-				db:          db,
-				deltaSource: deltaSrcKeys[name],
+				Name:                 name,
+				meta:                 meta,
+				db:                   db,
+				possibleDeltaSources: possibleDeltas,
 			})
 		}
 	}
