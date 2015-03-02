@@ -107,7 +107,7 @@ type ShadowConfig struct {
 	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
 	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
-	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults to TAP
 }
 
 type EventHandlerConfig struct {
