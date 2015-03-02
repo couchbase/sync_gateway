@@ -369,6 +369,39 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		Changes: []ChangeRev{{"rev": revid}}})
 }
 
+// Unit test for bug #673
+func TestUpdatePrincipal(t *testing.T) {
+	base.LogKeys["Cache"] = true
+	base.LogKeys["Changes"] = true
+	base.LogKeys["Changes+"] = true
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	authenticator.Save(user)
+
+	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
+	userInfo, err := db.GetPrincipal("naomi", true)
+	userInfo.ExplicitChannels = base.SetOf("ABC")
+	_, err = db.UpdatePrincipal(*userInfo, true, true)
+	assertNoError(t, err, "Unable to update principal")
+
+	nextSeq, err := db.sequences.nextSequence()
+	assert.Equals(t, nextSeq, uint64(1))
+
+	// Validate that a call to UpdatePrincipals with changes to the user does allocate a sequence
+	userInfo, err = db.GetPrincipal("naomi", true)
+	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+	_, err = db.UpdatePrincipal(*userInfo, true, true)
+	assertNoError(t, err, "Unable to update principal")
+
+	nextSeq, err = db.sequences.nextSequence()
+	assert.Equals(t, nextSeq, uint64(3))
+}
+
 func TestConflicts(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)

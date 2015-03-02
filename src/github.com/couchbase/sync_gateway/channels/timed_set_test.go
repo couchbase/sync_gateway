@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -81,4 +82,20 @@ func TestEncodeSequenceID(t *testing.T) {
 	assert.DeepEquals(t, TimedSetFromString(",ABC:17"), TimedSet(nil))
 	assert.DeepEquals(t, TimedSetFromString("ABC:17,,NBC:12"), TimedSet(nil))
 	assert.DeepEquals(t, TimedSetFromString("ABC:17,ABC:12"), TimedSet(nil))
+}
+
+func TestEqualsWithEqualSet(t *testing.T) {
+	set1 := TimedSet{"ABC": 17, "CBS": 23, "BBC": 1}
+	set2 := base.SetFromArray([]string{"ABC", "CBS", "BBC"})
+	assert.True(t, set1.Equals(set2))
+
+}
+
+func TestEqualsWithUnequalSet(t *testing.T) {
+	set1 := TimedSet{"ABC": 17, "CBS": 23, "BBC": 1}
+	set2 := base.SetFromArray([]string{"ABC", "BBC"})
+	assert.True(t, !set1.Equals(set2))
+	set3 := base.SetFromArray([]string{"ABC", "BBC", "CBS", "FOO"})
+	assert.True(t, !set1.Equals(set3))
+
 }

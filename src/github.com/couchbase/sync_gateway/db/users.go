@@ -110,22 +110,15 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		return
 	}
 
-	// Update the persistent sequence number of this principal:
-	nextSeq, err := dbc.sequences.nextSequence()
-	if err != nil {
-		return
-	}
-	princ.SetSequence(nextSeq)
-
-	// Now update the Principal object from the properties in the request, first the channels:
 	updatedChannels := princ.ExplicitChannels()
 	if updatedChannels == nil {
 		updatedChannels = ch.TimedSet{}
 	}
-	if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
-		princ.SetExplicitChannels(updatedChannels)
+	if !updatedChannels.Equals(newInfo.ExplicitChannels) {
 		changed = true
 	}
+
+	var updatedRoles ch.TimedSet
 
 	// Then the user-specific fields like roles:
 	if isUser {
@@ -142,18 +135,35 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 			changed = true
 		}
 
-		updatedRoles := user.ExplicitRoles()
+		updatedRoles = user.ExplicitRoles()
 		if updatedRoles == nil {
 			updatedRoles = ch.TimedSet{}
 		}
-		if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
-			user.SetExplicitRoles(updatedRoles)
+		if !updatedRoles.Equals(base.SetFromArray(newInfo.ExplicitRoleNames)) {
 			changed = true
 		}
+
 	}
 
 	// And finally save the Principal:
 	if changed {
+		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
+		nextSeq, err := dbc.sequences.nextSequence()
+		if err != nil {
+			return replaced, err
+		}
+		princ.SetSequence(nextSeq)
+
+		// Now update the Principal object from the properties in the request, first the channels:
+		if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
+			princ.SetExplicitChannels(updatedChannels)
+		}
+
+		if isUser {
+			if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
+				user.SetExplicitRoles(updatedRoles)
+			}
+		}
 		err = authenticator.Save(princ)
 	}
 	return
