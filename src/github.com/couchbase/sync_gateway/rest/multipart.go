@@ -34,7 +34,7 @@ func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress
 	for _, att := range r.Attachments {
 		if data, err := att.LoadData(true); err != nil {
 			return err
-		} else if len(data) > MaxInlineAttachmentSize {
+		} else if len(data) > MaxInlineAttachmentSize || att.IsDelta() {
 			att.SetFollows()
 		}
 	}

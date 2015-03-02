@@ -50,7 +50,7 @@ func (a *Attachment) Key() AttachmentKey {
 // MIME body, else adds ones appropriate for a nested part.
 func (a *Attachment) Headers(full bool) textproto.MIMEHeader {
 	h := textproto.MIMEHeader{}
-	if a.deltaSource != "" {
+	if a.IsDelta() {
 		h.Set("Content-Encoding", "zdelta")
 		h.Set("X-Delta-Source", string(a.deltaSource))
 	} else if encoding, _ := a.meta["encoding"].(string); encoding != "" {
@@ -73,6 +73,10 @@ func (a *Attachment) Data() []byte {
 		data, _ = a.meta["data"].([]byte)
 	}
 	return data
+}
+
+func (a *Attachment) IsDelta() bool {
+	return a.deltaSource != ""
 }
 
 // Loads the data of an attachment (inline).
@@ -135,7 +139,7 @@ func init() {
 
 // Returns true if this attachment is worth trying to compress.
 func (a *Attachment) Compressible() bool {
-	if _, ok := a.meta["encoding"].(string); ok || a.deltaSource != "" {
+	if _, ok := a.meta["encoding"].(string); ok || a.IsDelta() {
 		return false // leave encoded/delta'd attachment alone
 	} else if kBadFilenames.MatchString(a.Name) {
 		return false

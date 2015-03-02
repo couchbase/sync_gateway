@@ -54,24 +54,28 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", responseInfo.Body["_rev"].(string))
 
-		hasBodies := (attachmentsSince != nil && responseInfo.Body["_attachments"] != nil)
+		hasBodies := (attachmentsSince != nil && len(responseInfo.Attachments) > 0)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
+			// Multipart response:
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
 				return WriteMultipartDocument(responseInfo, writer, canCompress)
 			})
-		} else if responseInfo.OldRevJSON != nil && !hasBodies {
-			h.setHeader("Content-Type", "application/json")
-			h.setHeader("Content-Encoding", "zdelta")
-			h.setHeader("X-Delta-Source", responseInfo.OldRevID)
-			target, _ := json.Marshal(responseInfo.Body)
-			var cmp zdelta.Compressor
-			cmp.WriteDelta(responseInfo.OldRevJSON, target, h.response)
 		} else {
+			// JSON response:
 			if err := responseInfo.LoadAttachmentsInline(false); err != nil {
 				return err
 			}
-			h.writeJSON(responseInfo.Body)
+			if responseInfo.OldRevJSON != nil && !hasBodies {
+				h.setHeader("Content-Type", "application/json")
+				h.setHeader("Content-Encoding", "zdelta")
+				h.setHeader("X-Delta-Source", responseInfo.OldRevID)
+				target, _ := json.Marshal(responseInfo.Body)
+				var cmp zdelta.Compressor
+				cmp.WriteDelta(responseInfo.OldRevJSON, target, h.response)
+			} else {
+				h.writeJSON(responseInfo.Body)
+			}
 		}
 	} else {
 		var revids []string
