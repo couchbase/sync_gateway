@@ -93,6 +93,22 @@ func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 	return changed
 }
 
+// Check for matching entry names, ignoring sequence
+func (set TimedSet) Equals(other base.Set) bool {
+
+	for name, _ := range set {
+		if !other.Contains(name) {
+			return false
+		}
+	}
+	for name, _ := range other {
+		if !set.Contains(name) {
+			return false
+		}
+	}
+	return true
+}
+
 func (set TimedSet) AddChannel(channelName string, atSequence uint64) bool {
 	if atSequence > 0 {
 		if oldSequence := set[channelName]; oldSequence == 0 || atSequence < oldSequence {
