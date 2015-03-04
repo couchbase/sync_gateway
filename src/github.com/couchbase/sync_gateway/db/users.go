@@ -23,6 +23,28 @@ type PrincipalConfig struct {
 	RoleNames         []string `json:"roles,omitempty"`
 }
 
+// Check if the password in this PrincipalConfig is valid.  Only allow
+// empty passwords if allowEmptyPass is true.
+func (p PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
+
+	// if it's an anon user, they should not have a password
+	if p.Name == nil && p.Password != nil {
+		return false, "Anonymous users should not have a password"
+	}
+
+	if allowEmptyPass {
+		// allow any password, skip validation
+		return true, ""
+	}
+
+	if p.Password != nil && len(*p.Password) < 3 {
+		return false, "Passwords must be at least three 3 characters"
+	}
+
+	return true, ""
+
+}
+
 func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *PrincipalConfig, err error) {
 	var princ auth.Principal
 	if isUser {
@@ -55,8 +77,9 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	var user auth.User
 	authenticator := dbc.Authenticator()
 	if isUser {
-		if newInfo.Password != nil && len(*(newInfo.Password)) < 3 {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Passwords must be at least three 3 characters")
+		isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+		if !isValid {
+			err = base.HTTPErrorf(http.StatusBadRequest, reason)
 			return
 		}
 		user, err = authenticator.GetUser(*newInfo.Name)
@@ -87,22 +110,15 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		return
 	}
 
-	// Update the persistent sequence number of this principal:
-	nextSeq, err := dbc.sequences.nextSequence()
-	if err != nil {
-		return
-	}
-	princ.SetSequence(nextSeq)
-
-	// Now update the Principal object from the properties in the request, first the channels:
 	updatedChannels := princ.ExplicitChannels()
 	if updatedChannels == nil {
 		updatedChannels = ch.TimedSet{}
 	}
-	if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
-		princ.SetExplicitChannels(updatedChannels)
+	if !updatedChannels.Equals(newInfo.ExplicitChannels) {
 		changed = true
 	}
+
+	var updatedRoles ch.TimedSet
 
 	// Then the user-specific fields like roles:
 	if isUser {
@@ -119,18 +135,35 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 			changed = true
 		}
 
-		updatedRoles := user.ExplicitRoles()
+		updatedRoles = user.ExplicitRoles()
 		if updatedRoles == nil {
 			updatedRoles = ch.TimedSet{}
 		}
-		if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
-			user.SetExplicitRoles(updatedRoles)
+		if !updatedRoles.Equals(base.SetFromArray(newInfo.ExplicitRoleNames)) {
 			changed = true
 		}
+
 	}
 
 	// And finally save the Principal:
 	if changed {
+		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
+		nextSeq, err := dbc.sequences.nextSequence()
+		if err != nil {
+			return replaced, err
+		}
+		princ.SetSequence(nextSeq)
+
+		// Now update the Principal object from the properties in the request, first the channels:
+		if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
+			princ.SetExplicitChannels(updatedChannels)
+		}
+
+		if isUser {
+			if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
+				user.SetExplicitRoles(updatedRoles)
+			}
+		}
 		err = authenticator.Save(princ)
 	}
 	return

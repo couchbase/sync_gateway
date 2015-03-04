@@ -121,9 +121,6 @@ func (user *userImpl) validate() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid email address")
 	} else if user.OldPasswordHash_ != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Obsolete password hash present")
-	} else if (user.Name_ == "") != (user.PasswordHash_ == nil) {
-		// Real user must have a password; anon user must not have a password
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid password")
 	}
 	for roleName, _ := range user.ExplicitRoles_ {
 		if !IsValidPrincipalName(roleName) {

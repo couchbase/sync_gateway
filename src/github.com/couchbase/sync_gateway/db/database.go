@@ -42,6 +42,7 @@ type DatabaseContext struct {
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
 	changeCache        changeCache             //
 	EventMgr           *EventManager           // Manages notification events
+	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 }
 
 const DefaultRevsLimit = 1000
@@ -83,7 +84,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool) (*Da
 	}
 	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
 		context.tapListener.Notify(changedChannels)
-	})
+	}, cacheOptions)
 	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
 	if err = context.tapListener.Start(bucket, true); err != nil {

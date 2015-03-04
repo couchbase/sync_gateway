@@ -72,20 +72,22 @@ type ServerConfig struct {
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	Name          string                         `json:"name"`                     // Database name in REST API (stored as key in JSON)
-	Server        *string                        `json:"server"`                   // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username      string                         `json:"username,omitempty"`       // Username for authenticating to server
-	Password      string                         `json:"password,omitempty"`       // Password for authenticating to server
-	Bucket        *string                        `json:"bucket"`                   // Bucket name on server; defaults to same as 'name'
-	Pool          *string                        `json:"pool"`                     // Couchbase pool name, default "default"
-	Sync          *string                        `json:"sync"`                     // Sync function defines which users can see which data
-	Users         map[string]*db.PrincipalConfig `json:"users,omitempty"`          // Initial user accounts
-	Roles         map[string]*db.PrincipalConfig `json:"roles,omitempty"`          // Initial roles
-	RevsLimit     *uint32                        `json:"revs_limit,omitempty"`     // Max depth a document's revision tree can grow to
-	ImportDocs    interface{}                    `json:"import_docs,omitempty"`    // false, true, or "continuous"
-	Shadow        *ShadowConfig                  `json:"shadow,omitempty"`         // External bucket to shadow
-	EventHandlers *EventHandlerConfig            `json:"event_handlers,omitempty"` // Event handlers (webhook)
-	FeedType      string                         `json:"feed_type,omitempty"`      // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	Name               string                         `json:"name"`                           // Database name in REST API (stored as key in JSON)
+	Server             *string                        `json:"server"`                         // Couchbase (or Walrus) server URL, default "http://localhost:8091"
+	Username           string                         `json:"username,omitempty"`             // Username for authenticating to server
+	Password           string                         `json:"password,omitempty"`             // Password for authenticating to server
+	Bucket             *string                        `json:"bucket"`                         // Bucket name on server; defaults to same as 'name'
+	Pool               *string                        `json:"pool"`                           // Couchbase pool name, default "default"
+	Sync               *string                        `json:"sync"`                           // Sync function defines which users can see which data
+	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
+	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
+	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
+	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
+	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
+	EventHandlers      *EventHandlerConfig            `json:"event_handlers,omitempty"`       // Event handlers (webhook)
+	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
+	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -106,7 +108,7 @@ type ShadowConfig struct {
 	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
 	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
-	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults to TAP
 }
 
 type EventHandlerConfig struct {
@@ -120,6 +122,12 @@ type EventConfig struct {
 	Url         string `json:"url,omitempty"`     // Url (webhook)
 	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
 	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+}
+
+type CacheConfig struct {
+	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
+	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
+	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
