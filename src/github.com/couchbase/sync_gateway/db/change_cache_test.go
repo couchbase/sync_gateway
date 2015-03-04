@@ -23,9 +23,10 @@ import (
 
 func e(seq uint64, docid string, revid string) *LogEntry {
 	return &LogEntry{
-		Sequence: seq,
-		DocID:    docid,
-		RevID:    revid,
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: time.Now(),
 	}
 }
 

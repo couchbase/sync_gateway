@@ -10,7 +10,9 @@
 package db
 
 import (
+	"fmt"
 	"log"
+	"math/rand"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -224,4 +226,139 @@ func writeEntries(entries []*LogEntry) {
 	for index, entry := range entries {
 		log.Printf("%d:seq=%d, docID=%s, revID=%s", index, entry.Sequence, entry.DocID, entry.RevID)
 	}
+}
+
+func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
+
+	base.SetLogLevel(2) // disables logging
+	//base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate doc IDs
+	docIDs := make([]string, b.N)
+	for i := 0; i < b.N; i++ {
+		docIDs[i] = fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", i)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(e(uint64(i), docIDs[i], "1-a"), false)
+	}
+}
+
+func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
+
+	base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate doc IDs
+
+	docIDs, revStrings := generateDocs(5.0, b.N)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(e(uint64(i), docIDs[i], revStrings[i]), false)
+	}
+}
+
+func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
+
+	//base.LogKeys["Cache+"] = true
+	base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate doc IDs
+
+	docIDs, revStrings := generateDocs(20.0, b.N)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(e(uint64(i), docIDs[i], revStrings[i]), false)
+	}
+}
+
+func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
+
+	base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate doc IDs
+
+	docIDs, revStrings := generateDocs(50.0, b.N)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(e(uint64(i), docIDs[i], revStrings[i]), false)
+	}
+}
+
+func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
+
+	base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate doc IDs
+
+	docIDs, revStrings := generateDocs(80.0, b.N)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(e(uint64(i), docIDs[i], revStrings[i]), false)
+	}
+}
+
+func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
+
+	base.LogKeys["CacheTest"] = true
+	//base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate doc IDs
+
+	docIDs, revStrings := generateDocs(95.0, b.N)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(e(uint64(i), docIDs[i], revStrings[i]), false)
+	}
+}
+
+func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
+
+	base.SetLogLevel(2) // disables logging
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	cache := newChannelCache(context, "Benchmark", 0)
+	// generate docs
+	docs := make([]*LogEntry, b.N)
+	r := rand.New(rand.NewSource(99))
+	for i := 0; i < b.N; i++ {
+		docs[i] = e(uint64(i), fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", i), "1-a")
+	}
+	// shuffle sequences
+	for i := b.N - 1; i >= 0; i-- {
+		j := int(r.Float64() * float64(b.N))
+		oldSeq := docs[i].Sequence
+		docs[i].Sequence = docs[j].Sequence
+		docs[j].Sequence = oldSeq
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		cache.addToCache(docs[i], false)
+	}
+}
+
+func generateDocs(percentInsert float64, N int) ([]string, []string) {
+
+	docIDs := make([]string, N)
+	revStrings := make([]string, N)
+	revCount := make(map[int]int)
+	r := rand.New(rand.NewSource(99))
+	uniqueDocs := percentInsert / 100 * float64(N)
+	maxRevCount := 0
+	for i := 0; i < N; i++ {
+		docIndex := int(r.Float64() * uniqueDocs)
+		docIDs[i] = fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", docIndex)
+		revCount[docIndex]++
+		revStrings[i] = fmt.Sprintf("rev-%d", revCount[docIndex])
+		if revCount[docIndex] > maxRevCount {
+			maxRevCount = revCount[docIndex]
+		}
+	}
+	return docIDs, revStrings
 }

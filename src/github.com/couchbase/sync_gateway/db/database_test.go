@@ -224,9 +224,9 @@ func TestAllDocs(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	// Lower the log expiration time to zero so no more than 50 items will be kept.
-	oldChannelCacheAge := ChannelCacheAge
-	ChannelCacheAge = 0
-	defer func() { ChannelCacheAge = oldChannelCacheAge }()
+	oldChannelCacheAge := DefaultChannelCacheAge
+	DefaultChannelCacheAge = 0
+	defer func() { DefaultChannelCacheAge = oldChannelCacheAge }()
 
 	/*
 		base.LogKeys["Changes"] = true
