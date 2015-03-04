@@ -2,10 +2,8 @@ package rest
 
 import (
 	"compress/gzip"
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -73,7 +71,7 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Del("Content-Length") // length is unknown due to compression
 
-	w.gz = GetGZipWriter(w.ResponseWriter)
+	w.gz = base.GetGZipWriter(w.ResponseWriter)
 }
 
 // Flushes the GZip encoder buffer, and if possible flushes output to the network.
@@ -90,27 +88,7 @@ func (w *EncodedResponseWriter) Flush() {
 // The writer should be closed when output is complete, to flush the GZip encoder buffer.
 func (w *EncodedResponseWriter) Close() {
 	if w.gz != nil {
-		ReturnGZipWriter(w.gz)
+		base.ReturnGZipWriter(w.gz)
 		w.gz = nil
 	}
-}
-
-//////// GZIP WRITER CACHE:
-
-var zipperCache sync.Pool
-
-// Gets a gzip writer from the pool, or creates a new one if the pool is empty:
-func GetGZipWriter(writer io.Writer) *gzip.Writer {
-	if gz, ok := zipperCache.Get().(*gzip.Writer); ok {
-		gz.Reset(writer)
-		return gz
-	} else {
-		return gzip.NewWriter(writer)
-	}
-}
-
-// Closes a gzip writer and returns it to the pool:
-func ReturnGZipWriter(gz *gzip.Writer) {
-	gz.Close()
-	zipperCache.Put(gz)
 }

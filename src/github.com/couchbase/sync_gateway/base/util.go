@@ -10,12 +10,13 @@
 package base
 
 import (
-	"strconv"
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -142,4 +143,24 @@ func (v *IntMax) SetIfMax(value int64) {
 	if value > v.i {
 		v.i = value
 	}
+}
+
+//////// GZIP WRITER CACHE:
+
+var zipperCache sync.Pool
+
+// Gets a gzip writer from the pool, or creates a new one if the pool is empty:
+func GetGZipWriter(writer io.Writer) *gzip.Writer {
+	if gz, ok := zipperCache.Get().(*gzip.Writer); ok {
+		gz.Reset(writer)
+		return gz
+	} else {
+		return gzip.NewWriter(writer)
+	}
+}
+
+// Closes a gzip writer and returns it to the pool:
+func ReturnGZipWriter(gz *gzip.Writer) {
+	gz.Close()
+	zipperCache.Put(gz)
 }

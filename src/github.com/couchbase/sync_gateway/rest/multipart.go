@@ -126,9 +126,9 @@ func writePart(bytes []byte, gzipCompress bool, partHeaders textproto.MIMEHeader
 	}
 
 	if gzipCompress {
-		gz := gzip.NewWriter(part)
+		gz := base.GetGZipWriter(part)
 		_, err = gz.Write(bytes)
-		gz.Close()
+		base.ReturnGZipWriter(gz)
 	} else {
 		_, err = part.Write(bytes)
 	}
