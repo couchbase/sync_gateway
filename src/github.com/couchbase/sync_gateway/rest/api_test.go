@@ -58,7 +58,15 @@ func (rt *restTester) bucket() base.Bucket {
 			syncFnPtr = &rt.syncFn
 		}
 
-		rt._sc = NewServerContext(&ServerConfig{})
+		corsConfig := &CORSConfig{
+			Origin:  []string{"http://example.com", "*", "http://staging.example.com"},
+			Headers: []string{},
+			MaxAge:  1728000,
+		}
+
+		rt._sc = NewServerContext(&ServerConfig{
+			CORS: corsConfig,
+		})
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
 			Server: &server,
@@ -244,6 +252,30 @@ func TestFunkyDocIDs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.sendRequest("GET", "/db/foo+bar%2Bmoo+car3", "")
 	assertStatus(t, response, 200)
+}
+
+func TestCORSOrigin(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+	response := rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header()["Access-Control-Allow-Origin"][0], "http://example.com")
+
+	// now test a non-listed origin
+	// b/c * is in config we get *
+	reqHeaders = map[string]string{
+		"Origin": "http://hack0r.com",
+	}
+	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header()["Access-Control-Allow-Origin"][0], "*")
+
+	// now test another origin in config
+	reqHeaders = map[string]string{
+		"Origin": "http://staging.example.com",
+	}
+	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header()["Access-Control-Allow-Origin"][0], "http://staging.example.com")
 }
 
 func TestManualAttachment(t *testing.T) {
