@@ -47,7 +47,10 @@ func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress
 	// Write the following attachments
 	for _, att := range r.Attachments {
 		if att.Follows() {
-			err := writePart(att.Data(), compress && att.Compressible(), att.Headers(false), writer)
+			err := writePart(att.RawData(),
+				compress && !att.IsEncoded() && att.Compressible(),
+				att.Headers(false),
+				writer)
 			if err != nil {
 				return err
 			}
@@ -218,7 +221,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 		}
 
 		// Look up the attachment by its digest:
-		digest := string(db.SHA1DigestKey(data))
+		digest := db.SHA1DigestKey(data).Digest
 		name, meta := findFollowingAttachment(digest)
 		if meta == nil {
 			name, meta = findFollowingAttachment(md5DigestKey(data)) // CouchDB uses MD5 :-p

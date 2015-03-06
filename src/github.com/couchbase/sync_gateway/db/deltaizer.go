@@ -18,13 +18,13 @@ var MinDeltaSavings = 100
 // If the delta is not worth using (not enough space savings), returns an empty array.
 // If no delta is cached, returns nil.
 func (db *Database) getCachedAttachmentZDelta(srcKey, dstKey AttachmentKey) []byte {
-	return db._getCachedZDelta("att", string(srcKey), string(dstKey))
+	return db._getCachedZDelta("att", srcKey.EncodedString(), dstKey.EncodedString())
 }
 
-// Computes & caches the delta between two attachments.
+// Computes & caches the delta between two attachments given their data.
 // If the delta is not worth using (not enough space savings), returns an empty array.
 func (db *Database) generateAttachmentZDelta(src, dst []byte, srcKey, dstKey AttachmentKey) []byte {
-	return db._generateZDelta(src, dst, "att", string(srcKey), string(dstKey))
+	return db._generateZDelta(src, dst, "att", srcKey.EncodedString(), dstKey.EncodedString())
 }
 
 // INTERNAL:
@@ -44,6 +44,7 @@ func (db *Database) _generateZDelta(src, dst []byte, idType, srcID, dstID string
 	if delta == nil {
 		return nil
 	}
+	base.TEMP("ZDELTA: Created %x", delta)
 	base.LogTo("Delta", "Computed zdelta %s %s --> %s: saved %d bytes",
 		idType, srcID, dstID, int64(len(dst))-int64(len(delta)))
 	if len(delta)+MinDeltaSavings > len(dst) {

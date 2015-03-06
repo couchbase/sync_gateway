@@ -151,8 +151,60 @@ func TestAttachmentDeltas(t *testing.T) {
 	assert.Equals(t, tojson(response.Body), rev2Boutput)
 
 	// Verify contents of delta cache:
-	cached := db.getCachedAttachmentZDelta(AttachmentKey("sha1-l5fhr3wrVdXDCNkamTn8KypCswQ="),
-		AttachmentKey("sha1-TQ2UKLk7BtEA2lUatosI4xl9xb8="))
+	cached := db.getCachedAttachmentZDelta(AttachmentKey{Digest: "sha1-l5fhr3wrVdXDCNkamTn8KypCswQ="},
+		AttachmentKey{Digest: "sha1-TQ2UKLk7BtEA2lUatosI4xl9xb8="})
+	rawDelta, _ := base64.StdEncoding.DecodeString("ddOrAncoWekSVIHD9u3a9KRKQ4Hu8QxT")
+	assert.DeepEquals(t, cached, rawDelta)
+}
+
+// Just like the above except the attachment is stored gzip-encoded.
+// We want to test that it can be sent as a delta even though it's encoded.
+func TestEncodedAttachmentDeltas(t *testing.T) {
+	context, err := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+
+	// For this test, ensure delta will be used even if it's not much smaller:
+	oldSavings := MinDeltaSavings
+	MinDeltaSavings = 0
+	defer func() { MinDeltaSavings = oldSavings }()
+
+	// Rev 1:
+	log.Printf("Create rev 1...")
+	rev1input := `{"_attachments": {"bye.txt": {"data":"H4sIAIJ491QAAwvJyCxWAKJEheKSosy8dIW0/CKF0uJUhcw8hZLU4hKQUEpqTkmiQnJ+bkFRanFxZn4eFwAY3suFNgAAAA==","encoding":"gzip","length":54}}}`
+	var body Body
+	json.Unmarshal([]byte(rev1input), &body)
+	revid, err := db.Put("doc1", unjson(rev1input))
+	assertNoError(t, err, "Couldn't create document")
+	assert.Equals(t, revid, "1-07e61f284791d24abd54d0e1b500d95d")
+
+	log.Printf("Create rev 2...")
+	rev2str := `{"_attachments": {"bye.txt": {"data": "H4sIAMN491QAAwvJyCxWAKJEhZLU4hI9hRAoPz8vpxImyAUAxIC6BiUAAAA=","encoding":"gzip","length":37}}}`
+	var body2 Body
+	json.Unmarshal([]byte(rev2str), &body2)
+	body2["_rev"] = revid
+	revid, err = db.Put("doc1", body2)
+	assertNoError(t, err, "Couldn't update document")
+
+	log.Printf("Retrieve doc with delta-encoded attachment...")
+	rev2output := `{"_attachments":{"bye.txt":{"data":"ddOrAncoWekSVIHD9u3a9KRKQ4Hu8QxT","digest":"sha1-gLw2yxdL4jSP/dAPx865sGY0O8E=","encoding":"gzip","length":37,"revpos":2,"zdeltasrc":"sha1-LFTCiZninzFf4GJoOfTmlmey9OE="}},"_id":"doc1","_rev":"2-f6ffdc7f35597c04eb62da3b2a42710b"}`
+	response, err := db.GetRevWithAttachments("doc1", "", false, []string{"1-07e61f284791d24abd54d0e1b500d95d", "1-foo", "993-bar"}, true)
+	assertNoError(t, err, "Couldn't get document")
+	response.LoadAttachmentsInline(true)
+	assert.Equals(t, tojson(response.Body), rev2output)
+
+	log.Printf("Retrieve doc without delta-encoded attachment...")
+	rev2Boutput := `{"_attachments":{"bye.txt":{"data":"H4sIAMN491QAAwvJyCxWAKJEhZLU4hI9hRAoPz8vpxImyAUAxIC6BiUAAAA=","digest":"sha1-gLw2yxdL4jSP/dAPx865sGY0O8E=","encoding":"gzip","length":37,"revpos":2}},"_id":"doc1","_rev":"2-f6ffdc7f35597c04eb62da3b2a42710b"}`
+	response, err = db.GetRevWithAttachments("doc1", "", false, []string{"1-c0c61706d3f3692aacc0ec0a91425a65", "1-foo", "993-bar"}, false)
+	assertNoError(t, err, "Couldn't get document")
+	response.LoadAttachmentsInline(true)
+	assert.Equals(t, tojson(response.Body), rev2Boutput)
+
+	// Verify contents of delta cache:
+	cached := db.getCachedAttachmentZDelta(AttachmentKey{Digest: "sha1-LFTCiZninzFf4GJoOfTmlmey9OE=", Encoding: "gzip"},
+		AttachmentKey{Digest: "sha1-gLw2yxdL4jSP/dAPx865sGY0O8E=", Encoding: "gzip"})
 	rawDelta, _ := base64.StdEncoding.DecodeString("ddOrAncoWekSVIHD9u3a9KRKQ4Hu8QxT")
 	assert.DeepEquals(t, cached, rawDelta)
 }
@@ -177,7 +229,7 @@ func TestMayCompress(t *testing.T) {
 
 	meta["content_type"] = "application/json"
 	meta["encoding"] = "gzip"
-	assert.False(t, mayCompressAttachment("foo", meta))
+	assert.True(t, mayCompressAttachment("foo", meta))
 }
 
 func mayCompressAttachment(name string, meta map[string]interface{}) bool {

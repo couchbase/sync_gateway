@@ -158,11 +158,11 @@ func (h *handler) handleGetAttachment() error {
 		deltaStrs := strings.Split(deltasQ, ",")
 		deltaSourceKeys = make([]db.AttachmentKey, len(deltaStrs))
 		for i, d := range deltaStrs {
-			deltaSourceKeys[i] = db.AttachmentKey(d)
+			deltaSourceKeys[i] = db.AttachmentKey{Digest: d}
 		}
 	}
 
-	data, deltaSource, err := h.db.GetAttachmentMaybeAsDelta(db.AttachmentKey(digest), deltaSourceKeys)
+	data, deltaSource, err := h.db.GetAttachmentMaybeAsDelta(db.AttachmentKey{Digest: digest}, deltaSourceKeys)
 	if err != nil {
 		return err
 	}
@@ -171,9 +171,9 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Type", contentType)
 	}
 
-	if deltaSource != "" {
+	if deltaSource != nil {
 		h.setHeader("Content-Encoding", "zdelta")
-		h.setHeader("X-Delta-Source", string(deltaSource))
+		h.setHeader("X-Delta-Source", deltaSource.Digest)
 	} else if encoding, ok := meta["encoding"].(string); ok {
 		h.setHeader("Content-Encoding", encoding)
 	}

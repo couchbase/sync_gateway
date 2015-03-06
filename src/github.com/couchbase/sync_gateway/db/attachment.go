@@ -10,9 +10,12 @@
 package db
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"net/textproto"
 	"regexp"
 
@@ -20,8 +23,40 @@ import (
 )
 
 // Key for retrieving an attachment from Couchbase.
-// In practice it's "sha1-" followed by a hex SHA-1 digest.
-type AttachmentKey string
+type AttachmentKey struct {
+	Digest   string // "sha1-" followed by a hex SHA-1 digest.
+	Encoding string // empty or "gzip"
+}
+
+func attachmentKeyFromMeta(meta map[string]interface{}) AttachmentKey {
+	digest, _ := meta["digest"].(string)
+	encoding, _ := meta["encoding"].(string)
+	return AttachmentKey{Digest: digest, Encoding: encoding}
+}
+
+// Returns an AttachmentKey for an attachment body, based on its SHA-1 digest.
+func SHA1DigestKey(data []byte) AttachmentKey {
+	digester := sha1.New()
+	digester.Write(data)
+	return AttachmentKey{Digest: "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))}
+}
+
+func (key *AttachmentKey) HasGZipEncoding() bool {
+	return key.Encoding == "gzip"
+}
+
+func (key *AttachmentKey) EncodedString() string {
+	if key.HasGZipEncoding() {
+		return "Z" + key.Digest
+	} else {
+		return "-" + key.Digest
+	}
+}
+
+// The Couchbase bucket key under which to store an attachment
+func (key *AttachmentKey) bucketKey() string {
+	return "_sync:att:" + key.Digest
+}
 
 // Represents an attachment. Contains a references to the metadata map in the Body, and can
 // change it as needed.
@@ -29,8 +64,8 @@ type Attachment struct {
 	Name                 string                 // Filename (key in _attachments map)
 	followingData        []byte                 // Data to appear in MIME part
 	possibleDeltaSources []AttachmentKey        // Possible attachments to use as delta source
-	deltaSource          AttachmentKey          // Delta source attachment ID
-	meta                 map[string]interface{} // Points at the map inside the Body's _attachments map
+	deltaSource          *AttachmentKey         // Delta source attachment ID
+	meta                 map[string]interface{} // Points inside the Body's _attachments map
 	db                   *Database              // Database to load the data from
 }
 
@@ -40,10 +75,13 @@ func (a *Attachment) ContentType() string {
 	return value
 }
 
+func (a *Attachment) IsEncoded() bool {
+	return a.meta["encoding"] != nil
+}
+
 // The attachment digest as stored in the "digest" metadata property.
 func (a *Attachment) Key() AttachmentKey {
-	key, _ := a.meta["digest"].(string)
-	return AttachmentKey(key)
+	return attachmentKeyFromMeta(a.meta)
 }
 
 // The attachment's MIME headers. If `full` is true, adds headers appropriate for a top-level
@@ -52,7 +90,7 @@ func (a *Attachment) Headers(full bool) textproto.MIMEHeader {
 	h := textproto.MIMEHeader{}
 	if a.IsDelta() {
 		h.Set("Content-Encoding", "zdelta")
-		h.Set("X-Delta-Source", string(a.deltaSource))
+		h.Set("X-Delta-Source", string(a.deltaSource.Digest))
 	} else if encoding, _ := a.meta["encoding"].(string); encoding != "" {
 		h.Set("Content-Encoding", encoding)
 	}
@@ -67,7 +105,7 @@ func (a *Attachment) Headers(full bool) textproto.MIMEHeader {
 }
 
 // The raw data of the attachment, if already loaded. May be gzipped, may be a delta.
-func (a *Attachment) Data() []byte {
+func (a *Attachment) RawData() []byte {
 	data := a.followingData
 	if data == nil {
 		data, _ = a.meta["data"].([]byte)
@@ -76,13 +114,13 @@ func (a *Attachment) Data() []byte {
 }
 
 func (a *Attachment) IsDelta() bool {
-	return a.deltaSource != ""
+	return a.deltaSource != nil
 }
 
 // Loads the data of an attachment (inline).
 // If `deltaOK` is true, and a.possibleDeltaSources is set, may load a delta.
 func (a *Attachment) LoadData(deltaOK bool) ([]byte, error) {
-	data := a.Data()
+	data := a.RawData()
 	var err error
 	if data == nil {
 		var sourceKeys []AttachmentKey
@@ -90,16 +128,17 @@ func (a *Attachment) LoadData(deltaOK bool) ([]byte, error) {
 			sourceKeys = a.possibleDeltaSources
 		}
 
-		var deltaSource AttachmentKey
+		var deltaSource *AttachmentKey
 		data, deltaSource, err = a.db.GetAttachmentMaybeAsDelta(a.Key(), sourceKeys)
 		if err == nil {
 			a.meta["data"] = data
 			a.possibleDeltaSources = nil
 			a.deltaSource = deltaSource
-			if deltaSource != "" {
-				a.meta["zdeltasrc"] = string(deltaSource)
+			if deltaSource != nil {
+				a.meta["zdeltasrc"] = deltaSource.Digest
 			}
 			delete(a.meta, "stub")
+			delete(a.meta, "encoded_length")
 		}
 	}
 	return data, err
@@ -114,7 +153,7 @@ func (a *Attachment) Follows() bool {
 func (a *Attachment) SetFollows() {
 	data := a.meta["data"]
 	if data != nil {
-		a.followingData, _ = decodeData(data)
+		a.followingData, _ = decodeIfBase64(data)
 		delete(a.meta, "data")
 		delete(a.meta, "zdeltasrc")
 		a.meta["follows"] = true
@@ -139,8 +178,8 @@ func init() {
 
 // Returns true if this attachment is worth trying to compress.
 func (a *Attachment) Compressible() bool {
-	if _, ok := a.meta["encoding"].(string); ok || a.IsDelta() {
-		return false // leave encoded/delta'd attachment alone
+	if a.IsDelta() {
+		return false // leave delta'd attachment alone
 	} else if kBadFilenames.MatchString(a.Name) {
 		return false
 	} else if contentType := a.ContentType(); contentType != "" {
@@ -179,50 +218,82 @@ func (db *Database) findAttachments(body Body, minRevpos int, deltaSrcKeys map[s
 	return body, attachments
 }
 
-// Retrieves an attachment's body given its key.
+// Retrieves an attachment's body given its key. Does not decode GZip-encoded attachments.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
-	return db.Bucket.GetRaw(attachmentKeyToDocKey(key))
+	return db.Bucket.GetRaw(key.bucketKey())
+}
+
+func unzip(input []byte) (data []byte, err error) {
+	reader := bytes.NewReader(input)
+	var gz *gzip.Reader
+	if gz, err = gzip.NewReader(reader); err != nil {
+		return nil, err
+	}
+	return ioutil.ReadAll(gz)
 }
 
 // Retrieves an attachment's body, preferably as a delta from one of the versions specified
 // in `sourceKeys`
-func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []AttachmentKey) (result []byte, sourceKey AttachmentKey, err error) {
+func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []AttachmentKey) (result []byte, sourceKey *AttachmentKey, err error) {
+	base.TEMP("GetAttachmentMaybeAsDelta: key=%v, sourceKeys=%v", key, sourceKeys)
 	// First, attempt to reuse a cached delta without even having to load the attachment:
-	for _, sourceKey = range sourceKeys {
-		if result = db.getCachedAttachmentZDelta(sourceKey, key); result != nil {
+	for _, possibleSourceKey := range sourceKeys {
+		if result = db.getCachedAttachmentZDelta(possibleSourceKey, key); result != nil {
 			// Found a cached delta
-			if len(result) == 0 {
+			if len(result) > 0 {
+				sourceKey = &possibleSourceKey
+			} else {
 				// ... but it's not worth using
-				sourceKey = ""
 				result, err = db.GetAttachment(key)
 			}
 			return
 		}
 	}
 
-	// No cached deltas, so create one:
+	// No cached deltas. First get the current attachment:
 	target, err := db.GetAttachment(key)
 	if err != nil {
 		return
 	}
 
-	for _, sourceKey = range sourceKeys {
-		if src, _ := db.Bucket.GetRaw(attachmentKeyToDocKey(sourceKey)); src != nil {
-			// Found a previous revision; generate a delta:
-			result = db.generateAttachmentZDelta(src, target, sourceKey, key)
-			if result != nil {
-				if len(result) == 0 {
-					// ... but it's not worth using
-					break
+	if len(sourceKeys) > 0 {
+		// Going to find a source version to delta it with, but first decode it if needed:
+		decodedTarget := target
+		if key.HasGZipEncoding() {
+			if decodedTarget, _ = unzip(target); decodedTarget == nil {
+				base.Warn("GetAttachmentMaybeAsDelta: Couldn't decode gzip-encoded target attachment %s",
+					key.Digest)
+				return target, nil, nil // Won't decode; just give up & return raw
+			}
+		}
+
+		for _, possibleSourceKey := range sourceKeys {
+			if src, _ := db.Bucket.GetRaw(possibleSourceKey.bucketKey()); src != nil {
+				// Found a previous revision; generate a delta:
+				if possibleSourceKey.HasGZipEncoding() {
+					if src, err = unzip(src); err != nil {
+						base.Warn("GetAttachmentMaybeAsDelta: Couldn't decode gzip-encoded source attachment %s",
+							possibleSourceKey.Digest)
+						continue
+					}
 				}
-				return
+				result = db.generateAttachmentZDelta(src, decodedTarget, possibleSourceKey, key)
+				base.TEMP("Generated delta: %x", result)
+				if result != nil {
+					if len(result) > 0 {
+						sourceKey = &possibleSourceKey
+						return
+					} else {
+						// ... but it's not worth using
+						break
+					}
+				}
 			}
 		}
 	}
 
-	// No previous attachments available so return entire body:
+	// No previous attachments available so return entire (maybe-encoded) body:
 	result = target
-	sourceKey = ""
 	return
 }
 
@@ -245,7 +316,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 		data, exists := meta["data"]
 		if exists {
 			// Attachment contains data, so store it in the db:
-			attachment, err := decodeData(data)
+			attachment, err := decodeIfBase64(data)
 			if err != nil {
 				return err
 			}
@@ -256,7 +327,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 
 			newMeta := map[string]interface{}{
 				"stub":   true,
-				"digest": string(key),
+				"digest": key.Digest,
 				"revpos": generation,
 			}
 			if contentType, ok := meta["content_type"].(string); ok {
@@ -302,7 +373,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) storeAttachment(attachment []byte) (AttachmentKey, error) {
 	key := SHA1DigestKey(attachment)
-	_, err := db.Bucket.AddRaw(attachmentKeyToDocKey(key), 0, attachment)
+	_, err := db.Bucket.AddRaw(key.bucketKey(), 0, attachment)
 	if err == nil {
 		base.LogTo("Attach", "\tAdded attachment %q", key)
 	}
@@ -310,13 +381,6 @@ func (db *Database) storeAttachment(attachment []byte) (AttachmentKey, error) {
 }
 
 //////// HELPERS:
-
-// Returns an AttachmentKey for an attachment body, based on its SHA-1 digest.
-func SHA1DigestKey(data []byte) AttachmentKey {
-	digester := sha1.New()
-	digester.Write(data)
-	return AttachmentKey("sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil)))
-}
 
 // Returns the "_attachments" property as a map.
 func (body Body) Attachments() map[string]interface{} {
@@ -328,21 +392,16 @@ func (body Body) Attachments() map[string]interface{} {
 func (body Body) AttachmentDigests() map[string]AttachmentKey {
 	keys := map[string]AttachmentKey{}
 	for name, value := range body.Attachments() {
-		meta := value.(map[string]interface{})
-		if key := AttachmentKey(meta["digest"].(string)); key != "" {
+		meta, _ := value.(map[string]interface{})
+		if key := attachmentKeyFromMeta(meta); key.Digest != "" {
 			keys[name] = key
 		}
 	}
 	return keys
 }
 
-// The Couchbase bucket key under which to store an attachment
-func attachmentKeyToDocKey(key AttachmentKey) string {
-	return "_sync:att:" + string(key)
-}
-
 // Base64-decodes attachment data if it's present as a string
-func decodeData(data interface{}) ([]byte, error) {
+func decodeIfBase64(data interface{}) ([]byte, error) {
 	switch data := data.(type) {
 	case []byte:
 		return data, nil
