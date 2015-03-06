@@ -362,12 +362,22 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	// Check whether sequence has already been processed
 	sequence := change.Sequence
-	if _, found := c.receivedSeqs[sequence]; found {
-		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+
+	alreadyProcessed := func() bool {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+		if _, found := c.receivedSeqs[sequence]; found {
+			base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+			return true
+		}
+		// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
+		c.receivedSeqs[sequence] = struct{}{}
+		return false
+	}()
+
+	if alreadyProcessed {
 		return nil
 	}
-	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
-	c.receivedSeqs[sequence] = struct{}{}
 
 	if c.logsDisabled {
 		return nil
