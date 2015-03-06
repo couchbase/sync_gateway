@@ -33,6 +33,8 @@ var logger *log.Logger
 
 var logFile *os.File
 
+var logStar bool // enabling log key "*" enables all key-based logging
+
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", log.Lmicroseconds)
@@ -83,6 +85,9 @@ func ParseLogFlags(flags []string) {
 			LogNoTime()
 		default:
 			LogKeys[key] = true
+			if key == "*" {
+				logStar = true
+			}
 			for strings.HasSuffix(key, "+") {
 				key = key[0 : len(key)-1]
 				LogKeys[key] = true // "foo+" also enables "foo"
@@ -111,7 +116,11 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	}
 	for k, v := range keys {
 		LogKeys[k] = v
+		if k == "*" {
+			logStar = v
+		}
 	}
+
 }
 
 // Returns a string identifying a function on the call stack.
@@ -134,7 +143,7 @@ func GetCallersName(depth int) string {
 func LogTo(key string, format string, args ...interface{}) {
 	logLock.RLock()
 	defer logLock.RUnlock()
-	ok := logLevel <= 1 && LogKeys[key]
+	ok := logLevel <= 1 && (logStar || LogKeys[key])
 
 	if ok {
 		logger.Printf(fgYellow+key+": "+reset+format, args...)
