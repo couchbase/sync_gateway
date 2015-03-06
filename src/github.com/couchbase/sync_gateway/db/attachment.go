@@ -278,7 +278,6 @@ func (db *Database) GetAttachmentMaybeAsDelta(key AttachmentKey, sourceKeys []At
 					}
 				}
 				result = db.generateAttachmentZDelta(src, decodedTarget, possibleSourceKey, key)
-				base.TEMP("Generated delta: %x", result)
 				if result != nil {
 					if len(result) > 0 {
 						sourceKey = &possibleSourceKey

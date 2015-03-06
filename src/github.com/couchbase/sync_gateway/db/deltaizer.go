@@ -44,7 +44,6 @@ func (db *Database) _generateZDelta(src, dst []byte, idType, srcID, dstID string
 	if delta == nil {
 		return nil
 	}
-	base.TEMP("ZDELTA: Created %x", delta)
 	base.LogTo("Delta", "Computed zdelta %s %s --> %s: saved %d bytes",
 		idType, srcID, dstID, int64(len(dst))-int64(len(delta)))
 	if len(delta)+MinDeltaSavings > len(dst) {

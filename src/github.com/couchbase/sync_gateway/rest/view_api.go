@@ -14,7 +14,6 @@ import (
 // HTTP handler for GET _design/$ddoc
 func (h *handler) handleGetDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	base.TEMP("GetDesignDoc %q", ddocID)
 	var result interface{}
 	if ddocID == "sync_gateway" {
 		// we serve this content here so that CouchDB 1.2 has something to
