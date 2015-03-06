@@ -387,7 +387,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	nextSequence := c.nextSequence
 	if sequence == nextSequence || nextSequence == 0 {
-		base.LogTo("Cache+", "  processEntry - NEXT - #%d", sequence)
 		// Also add any pending sequences that are now contiguous:
 		// TODO: pending needs to track changedChannels
 		c.nextSequence = sequence + 1
@@ -397,7 +396,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
-		base.LogTo("Cache+", "  processEntry - PENDING - #%d", sequence)
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
@@ -410,7 +408,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		base.LogTo("Cache+", "  processEntry - SKIPPED - #%d", sequence)
 		if c.RemoveSkipped(sequence) != nil {
 			// Error removing from skipped sequences
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
