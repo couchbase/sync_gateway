@@ -1471,6 +1471,7 @@ func TestStarAccess(t *testing.T) {
 	var rt restTester
 
 	base.LogKeys["Changes+"] = true
+
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	var changes struct {
 		Results []db.ChangeEntry
@@ -1486,8 +1487,8 @@ func TestStarAccess(t *testing.T) {
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc3", `{"channels":["!"]}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc4", `{"channels":["gifts"]}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc5", `{"channels":["!"]}`), 201)
-	// document added to "*" channel should only end up available to users with * access
-	assertStatus(t, rt.sendRequest("PUT", "/db/doc6", `{"channels":["*"]}`), 201)
+	// document added to no channel should only end up available to users with * access
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc6", `{"channels":[]}`), 201)
 
 	guest.SetDisabled(true)
 	err = a.Save(guest)

@@ -166,7 +166,7 @@ func (c *changeCache) CleanUp() bool {
 
 	// Remove old cache entries:
 	for channelName, _ := range c.channelCaches {
-		c._getChannelCache(channelName).pruneCache()
+		c._getChannelCache(channelName).pruneCacheToSequence(c.nextSequence)
 	}
 	return true
 }
@@ -357,30 +357,47 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+
+	var changedChannels base.Set
+
+	// Check whether sequence has already been processed
+	sequence := change.Sequence
+	if _, found := c.receivedSeqs[sequence]; found {
+		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+		return nil
+	}
+	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
+	c.receivedSeqs[sequence] = struct{}{}
 
 	if c.logsDisabled {
 		return nil
 	}
 
-	sequence := change.Sequence
-	nextSequence := c.nextSequence
-	if _, found := c.receivedSeqs[sequence]; found {
-		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
-		return nil
-	}
-	c.receivedSeqs[sequence] = struct{}{}
-	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
+	base.LogTo("Cache+", "  processEntry starting for #%d", sequence)
+	// Modifying processEntry to work as follows
+	//   1. Add to channel caches - doesn't lock, can be run in parallel by multiple calls to processEntry
+	//   2. Sequence processing - locks, does sequence buffering
+	//   3. Activate entry in cache - doesn't lock, does any channel cache processing that depends on (2)
 
-	var changedChannels base.Set
+	// 1. Add to channel caches
+	changedChannels = c._addToCache(change)
+
+	// 2. Sequence processing
+	c.lock.Lock()
+
+	nextSequence := c.nextSequence
 	if sequence == nextSequence || nextSequence == 0 {
-		// This is the expected next sequence so we can add it now:
-		changedChannels = c._addToCache(change)
+		base.LogTo("Cache+", "  processEntry - NEXT - #%d", sequence)
 		// Also add any pending sequences that are now contiguous:
+		// TODO: pending needs to track changedChannels
+		c.nextSequence = sequence + 1
+		// _activateInCache shouldn't block
+		go c._activateInCache(change)
 		changedChannels = changedChannels.Union(c._addPendingLogs())
+
 	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
+		base.LogTo("Cache+", "  processEntry - PENDING - #%d", sequence)
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
@@ -393,26 +410,40 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
+		base.LogTo("Cache+", "  processEntry - SKIPPED - #%d", sequence)
 		if c.RemoveSkipped(sequence) != nil {
 			// Error removing from skipped sequences
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
-			change.Skipped = true
+			c._addLateSequence(change)
 		}
-
-		changedChannels = c._addToCache(change)
-
 	}
+	c.lock.Unlock()
+
 	return changedChannels
 }
 
-// Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
-// flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(change *LogEntry) base.Set {
-	if change.Sequence >= c.nextSequence {
-		c.nextSequence = change.Sequence + 1
+func (c *changeCache) _addLateSequence(change *LogEntry) {
+
+	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
+	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
+	// twice)
+	c.lateSeqLock.Lock()
+	defer c.lateSeqLock.Unlock()
+	for channelName, removal := range change.Channels {
+		if removal == nil || removal.Seq == change.Sequence {
+			c._getChannelCache(channelName).AddLateSequence(change)
+		}
 	}
+	if EnableStarChannelLog {
+		c._getChannelCache(channels.UserStarChannel).AddLateSequence(change)
+	}
+
+}
+
+// Adds an entry to the appropriate channels' caches, returning the affected channels.
+func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.DocID == "" {
 		return nil // this was a placeholder for an unused sequence
 	}
@@ -420,30 +451,16 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
-	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
-	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
-	// twice)
-	func() {
-		if change.Skipped {
-			c.lateSeqLock.Lock()
-			defer c.lateSeqLock.Unlock()
+	for channelName, removal := range ch {
+		if removal == nil || removal.Seq == change.Sequence {
+			channelCache := c._getChannelCache(channelName)
+			channelCache.addToCache(change, removal != nil)
+			addedTo = append(addedTo, channelName)
 		}
-
-		for channelName, removal := range ch {
-			if removal == nil || removal.Seq == change.Sequence {
-				channelCache := c._getChannelCache(channelName)
-				channelCache.addToCache(change, removal != nil)
-				addedTo = append(addedTo, channelName)
-				if change.Skipped {
-					channelCache.AddLateSequence(change)
-				}
-			}
-		}
-
-	}()
-
+	}
 	if EnableStarChannelLog {
-		c._getChannelCache(channels.UserStarChannel).addToCache(change, false)
+		starChannelCache := c._getChannelCache(channels.UserStarChannel)
+		starChannelCache.addToCache(change, false)
 		addedTo = append(addedTo, channels.UserStarChannel)
 	}
 
@@ -456,7 +473,22 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	lagMs = int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
 
-	return base.SetFromArray(addedTo)
+	addedToSet := base.SetFromArray(addedTo)
+	change.AddedTo = addedToSet
+	return addedToSet
+}
+
+// Does post-processing in channel caches - currently sequence deduplication and update of ID map
+func (c *changeCache) _activateInCache(change *LogEntry) {
+
+	if change.DocID == "" {
+		return // this was a placeholder for an unused sequence
+	}
+
+	for channelName := range change.AddedTo {
+		channelCache := c._getChannelCache(channelName)
+		channelCache.activateInCache(change)
+	}
 }
 
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
@@ -469,7 +501,9 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			changedChannels = changedChannels.Union(c._addToCache(change))
+			go c._activateInCache(change)
+			changedChannels = changedChannels.Union(change.AddedTo)
+			c.nextSequence++
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			changeCacheExpvars.Add("outOfOrder", 1)
 			c.PushSkipped(c.nextSequence)
@@ -593,4 +627,9 @@ func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
 // Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
 func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
+}
+
+// LogEntries version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73.
+func SearchLogEntries(a LogEntries, x uint64) int {
+	return sort.Search(len(a), func(i int) bool { return a[i].Sequence >= x })
 }

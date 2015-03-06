@@ -26,9 +26,21 @@ func TestDuplicateDocID(t *testing.T) {
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
-	cache.addToCache(e(1, "doc1", "1-a"), false)
-	cache.addToCache(e(2, "doc3", "3-a"), false)
-	cache.addToCache(e(3, "doc5", "5-a"), false)
+	testEntries := []*LogEntry{
+		e(1, "doc1", "1-a"),
+		e(2, "doc3", "3-a"),
+		e(3, "doc5", "5-a"),
+		e(4, "doc3", "3-b"),
+		e(5, "doc1", "1-b"),
+		e(6, "doc1", "1-c"),
+	}
+	cache.addToCache(testEntries[0], false)
+	cache.addToCache(testEntries[1], false)
+	cache.addToCache(testEntries[2], false)
+
+	cache.activateInCache(testEntries[0])
+	cache.activateInCache(testEntries[1])
+	cache.activateInCache(testEntries[2])
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 3)
@@ -37,15 +49,19 @@ func TestDuplicateDocID(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a new revision matching mid-list
-	cache.addToCache(e(4, "doc3", "3-b"), false)
+	cache.addToCache(testEntries[3], false)
+	cache.activateInCache(testEntries[3])
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 3)
+
+	log.Printf("entries : %+v, %+v, %+v", entries[0], entries[1], entries[2])
 	assert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 4}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc5", "doc3"}))
 	assert.True(t, err == nil)
 
 	// Add a new revision matching first
-	cache.addToCache(e(5, "doc1", "1-b"), false)
+	cache.addToCache(testEntries[4], false)
+	cache.activateInCache(testEntries[4])
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 5}))
@@ -53,7 +69,8 @@ func TestDuplicateDocID(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a new revision matching last
-	cache.addToCache(e(6, "doc1", "1-c"), false)
+	cache.addToCache(testEntries[5], false)
+	cache.activateInCache(testEntries[5])
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 6}))
@@ -125,12 +142,25 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	base.LogKeys["Cache"] = true
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Test1", 0)
+	testEntries := []*LogEntry{
+		e(10, "doc1", "1-a"),
+		e(20, "doc2", "2-a"),
+		e(30, "doc3", "3-a"),
+		e(40, "doc4", "4-a"),
+		e(25, "doc1", "1-c"),
+		e(15, "doc1", "1-b"),
+	}
 
 	// Add some entries to cache
-	cache.addToCache(e(10, "doc1", "1-a"), false)
-	cache.addToCache(e(20, "doc2", "2-a"), false)
-	cache.addToCache(e(30, "doc3", "3-a"), false)
-	cache.addToCache(e(40, "doc4", "4-a"), false)
+	cache.addToCache(testEntries[0], false)
+	cache.addToCache(testEntries[1], false)
+	cache.addToCache(testEntries[2], false)
+	cache.addToCache(testEntries[3], false)
+
+	cache.activateInCache(testEntries[0])
+	cache.activateInCache(testEntries[1])
+	cache.activateInCache(testEntries[2])
+	cache.activateInCache(testEntries[3])
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 4)
@@ -139,8 +169,10 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence that should replace earlier sequence
-	cache.AddLateSequence(e(25, "doc1", "1-c"))
-	cache.addToCache(e(25, "doc1", "1-c"), false)
+	nextEntry := e(25, "doc1", "1-c")
+	cache.AddLateSequence(nextEntry)
+	cache.addToCache(nextEntry, false)
+	cache.activateInCache(nextEntry)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 4)
 	writeEntries(entries)
@@ -149,8 +181,10 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence that should be ignored (later sequence exists for that docID)
-	cache.AddLateSequence(e(15, "doc1", "1-b"))
-	cache.addToCache(e(15, "doc1", "1-b"), false)
+	nextEntry = e(15, "doc1", "1-b")
+	cache.AddLateSequence(nextEntry)
+	cache.addToCache(nextEntry, false)
+	cache.activateInCache(nextEntry)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 4)
 	writeEntries(entries)
@@ -159,8 +193,10 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence adjacent to same ID (cache inserts differently)
-	cache.AddLateSequence(e(27, "doc1", "1-d"))
-	cache.addToCache(e(27, "doc1", "1-d"), false)
+	nextEntry = e(27, "doc1", "1-d")
+	cache.AddLateSequence(nextEntry)
+	cache.addToCache(nextEntry, false)
+	cache.activateInCache(nextEntry)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 4)
 	writeEntries(entries)
@@ -169,8 +205,10 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence adjacent to same ID (cache inserts differently)
-	cache.AddLateSequence(e(41, "doc4", "4-b"))
-	cache.addToCache(e(41, "doc4", "4-b"), false)
+	nextEntry = e(41, "doc4", "4-b")
+	cache.AddLateSequence(nextEntry)
+	cache.addToCache(nextEntry, false)
+	cache.activateInCache(nextEntry)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 4)
 	writeEntries(entries)
@@ -179,8 +217,10 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add late arriving that's duplicate of oldest in cache
-	cache.AddLateSequence(e(45, "doc2", "2-b"))
-	cache.addToCache(e(45, "doc2", "2-b"), false)
+	nextEntry = e(45, "doc2", "2-b")
+	cache.AddLateSequence(nextEntry)
+	cache.addToCache(nextEntry, false)
+	cache.activateInCache(nextEntry)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 4)
 	writeEntries(entries)
@@ -228,6 +268,7 @@ func writeEntries(entries []*LogEntry) {
 	}
 }
 
+// Benchmarks
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	base.SetLogLevel(2) // disables logging

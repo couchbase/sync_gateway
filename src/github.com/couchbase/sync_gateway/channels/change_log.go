@@ -16,7 +16,7 @@ type LogEntry struct {
 	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
 	TimeReceived time.Time  // Time received from tap feed
 	Channels     ChannelMap // Channels this entry is in or was removed from
-	Skipped      bool       // Late arriving entry
+	AddedTo      base.Set   // List of channels this entry was added to
 }
 
 type ChannelMap map[string]*ChannelRemoval

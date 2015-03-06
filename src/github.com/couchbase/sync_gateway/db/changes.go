@@ -168,6 +168,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		var changeWaiter *changeWaiter
 		var userChangeCount uint64
 		var lowSequence uint64
+		var highSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
 
 		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
@@ -219,6 +220,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			} else {
 				lowSequence = 0
 			}
+
+			// Don't send any cache entries higher than nextSequence
+			highSequence = db.changeCache.nextSequence
 
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
@@ -315,6 +319,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 				if minEntry == nil {
 					break // Exit the loop when there are no more entries
+				}
+
+				if minSeq.Seq >= highSequence {
+					break // Exit the loop when we've sent all entries prior to highSequence
 				}
 
 				// Clear the current entries for the sequence just sent:

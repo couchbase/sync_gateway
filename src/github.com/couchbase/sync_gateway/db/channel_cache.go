@@ -28,13 +28,13 @@ type channelCache struct {
 	lastLateSequence uint64               // Used for fast check of whether listener has the latest
 	lateLogLock      sync.RWMutex         // Controls access to lateLogs
 	options          *ChannelCacheOptions // Cache size/expiry settings
-	cachedDocIDs     map[string]struct{}
+	activeDocIDs     map[string]uint64    // Map of sequences for cached DocIDs that have been activated
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
 	cache := &channelCache{context: context, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
-	cache.cachedDocIDs = make(map[string]struct{})
+	cache.activeDocIDs = make(map[string]uint64)
 	cache.options = &ChannelCacheOptions{
 		channelCacheMinLength: DefaultChannelCacheMinLength,
 		channelCacheMaxLength: DefaultChannelCacheMaxLength,
@@ -76,15 +76,66 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 }
 
+// An entry is activated when the main changeCache.nextSequence is greater than the entry sequence.
+func (c *channelCache) activateInCache(change *LogEntry) {
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// When an entry is active (it will be retrieved by changes feeds), we want to remove any prior
+	// cache entries with the same document ID.
+
+	// TODO: generally we expect the new change to have been recently added when activating - could
+	// evaluate using a linear search from the end of the cache here.
+	changeIndex, err := c.getIndexForSequence(change.Sequence)
+	if err != nil {
+		base.Warn("Can't find sequence to be activated in channel cache: ", c.channelName, change.Sequence)
+		return
+	}
+
+	// Check if entry with DocID already exists.
+	if sequence, found := c.activeDocIDs[change.DocID]; found {
+
+		// If the duplicate is newer, keep it and remove the one we're activating (skipped insert case)
+		if sequence > change.Sequence {
+			c.deleteEntryAtIndex(changeIndex)
+		} else if sequence < change.Sequence {
+			// If the duplicate is older, find and delete
+			previousIndex, err := c.getIndexForSequence(sequence)
+			if err == nil {
+				c.deleteEntryAtIndex(previousIndex)
+				c.activeDocIDs[change.DocID] = change.Sequence
+			} else {
+				base.Warn("Error retrieving entry that was present in activeDocID map, sequence:", sequence)
+			}
+		}
+	} else {
+		// No duplicate found - add the new entry to activeDocIDs
+		c.activeDocIDs[change.DocID] = change.Sequence
+	}
+
+}
+
+// Utility function for use by unit tests
+func (c *channelCache) addToCacheAndActivate(change *LogEntry, isRemoval bool) {
+	c.addToCache(change, isRemoval)
+	c.activateInCache(change)
+}
+
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
+
+	if len(c.logs) < c.options.channelCacheMinLength {
+		return
+	}
+
 	pruned := 0
 
 	// If we are over max length, prune it down to max length
 	if len(c.logs) > c.options.channelCacheMaxLength {
 		pruned = len(c.logs) - c.options.channelCacheMaxLength
 		for i := 0; i < pruned; i++ {
-			delete(c.cachedDocIDs, c.logs[i].DocID)
+			delete(c.activeDocIDs, c.logs[i].DocID)
 		}
 		c.validFrom = c.logs[pruned-1].Sequence + 1
 		c.logs = c.logs[pruned:]
@@ -94,7 +145,49 @@ func (c *channelCache) _pruneCache() {
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
 	for len(c.logs) > c.options.channelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.channelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
-		delete(c.cachedDocIDs, c.logs[0].DocID)
+		delete(c.activeDocIDs, c.logs[0].DocID)
+		c.logs = c.logs[1:]
+		pruned++
+	}
+	if pruned > 0 {
+		base.LogTo("Cache+", "Pruned %d old entries from channel %q", pruned, c.channelName)
+	}
+}
+
+// Internal helper that prunes a single channel's cache up to a specific sequence. Caller MUST be holding the lock.
+func (c *channelCache) _pruneCacheToSequence(currentSequence uint64) {
+
+	if len(c.logs) < c.options.channelCacheMinLength {
+		return
+	}
+
+	pruned := 0
+	currentSequenceIndex, _ := c.getIndexForRecentSequence(currentSequence)
+	seqsHigherThanCurrent := len(c.logs) - currentSequenceIndex
+
+	// If there aren't any higher than current, fall back to default prune algorithm
+	if seqsHigherThanCurrent <= 0 {
+		c._pruneCache()
+		return
+	}
+
+	cacheSizePriorToCurrent := len(c.logs) - seqsHigherThanCurrent
+
+	// If we are over max length, prune it down to max length
+	if cacheSizePriorToCurrent > c.options.channelCacheMaxLength {
+		pruned = cacheSizePriorToCurrent - c.options.channelCacheMaxLength
+		for i := 0; i < pruned; i++ {
+			delete(c.activeDocIDs, c.logs[i].DocID)
+		}
+		c.validFrom = c.logs[pruned-1].Sequence + 1
+		c.logs = c.logs[pruned:]
+	}
+
+	// Remove all entries who've been in the cache longer than channelCacheAge, except
+	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
+	for len(c.logs) > (c.options.channelCacheMinLength+seqsHigherThanCurrent) && time.Since(c.logs[0].TimeReceived) > c.options.channelCacheAge {
+		c.validFrom = c.logs[0].Sequence + 1
+		delete(c.activeDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
 		pruned++
 	}
@@ -109,6 +202,12 @@ func (c *channelCache) pruneCache() {
 	c.lock.Unlock()
 }
 
+func (c *channelCache) pruneCacheToSequence(sequence uint64) {
+	c.lock.Lock()
+	c._pruneCacheToSequence(sequence)
+	c.lock.Unlock()
+}
+
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
 func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
@@ -120,6 +219,7 @@ func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint6
 func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
+	base.LogTo("Cache", "Channel=%s, GetCachedChanges, length=%d, validFrom=%d", c.channelName, len(log), c.validFrom)
 	if len(log) == 0 {
 		validFrom = c.validFrom
 		return // Return nil if nothing is cached
@@ -233,22 +333,10 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 			c.insertChange(&c.logs, change)
 			return
 		}
-		// If entry with DocID already exists, remove it.
-		if _, found := c.cachedDocIDs[change.DocID]; found {
-			for i := end; i >= 0; i-- {
-				if log[i].DocID == change.DocID {
-					copy(log[i:], log[i+1:])
-					log[end] = change
-					return
-				}
-			}
-		}
-
 	} else {
 		c._adjustFirstSeq(change)
 	}
 	c.logs = append(log, change)
-	c.cachedDocIDs[change.DocID] = struct{}{}
 }
 
 // Insert out-of-sequence entry into the cache.  If the docId is already present in a later
@@ -256,15 +344,9 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 // we remove the earlier sequence.
 func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 
-	defer func() {
-		c.cachedDocIDs[change.DocID] = struct{}{}
-	}()
-
 	end := len(*log) - 1
 
 	insertAtIndex := 0
-
-	_, docIDExists := c.cachedDocIDs[change.DocID]
 
 	// Walk log backwards until we find the point where we should insert this change.
 	// (recall that logentries is sorted in ascending sequence order)
@@ -272,27 +354,6 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 		currLog := (*log)[i]
 		if insertAtIndex == 0 && change.Sequence > currLog.Sequence {
 			insertAtIndex = i + 1
-		}
-		if docIDExists {
-			if currLog.DocID == change.DocID {
-				if currLog.Sequence >= change.Sequence {
-					// we've already cached a later revision of this document, can ignore update
-					return
-				} else {
-					// found existing prior to insert position
-					if i == insertAtIndex-1 {
-						// The sequence is adjacent to another with the same docId - replace it
-						// instead of inserting
-						(*log)[i] = change
-						return
-					} else {
-						// Shift and insert to remove the old entry and add the new one
-						copy((*log)[i:insertAtIndex-1], (*log)[i+1:insertAtIndex])
-						(*log)[insertAtIndex-1] = change
-						return
-					}
-				}
-			}
 		}
 	}
 
@@ -515,6 +576,34 @@ func (c *channelCache) mostRecentLateLog() *lateLogEntry {
 
 func (c *channelCache) addDocIDs(changes LogEntries) {
 	for _, change := range changes {
-		c.cachedDocIDs[change.DocID] = struct{}{}
+		c.activeDocIDs[change.DocID] = change.Sequence
 	}
+}
+
+// Finds index with sequence, when we suspect the sequence may have just arrived
+func (c *channelCache) getIndexForRecentSequence(sequence uint64) (index int, err error) {
+
+	lastIndex := len(c.logs) - 1
+	if c.logs[lastIndex].Sequence == sequence {
+		return lastIndex, nil
+	} else {
+		return c.getIndexForSequence(sequence)
+	}
+}
+
+func (c *channelCache) getIndexForSequence(sequence uint64) (index int, err error) {
+
+	index = SearchLogEntries(c.logs, sequence)
+	if index < len(c.logs) && c.logs[index].Sequence == sequence {
+		return index, nil
+	} else {
+		// return index with error if not a match, for use as comparison
+		return index, errors.New("Not Found")
+	}
+}
+
+func (c *channelCache) deleteEntryAtIndex(index int) {
+	// Does a basic slice delete without memory leak, based on https://github.com/golang/go/wiki/SliceTricks
+	c.logs[index] = nil
+	c.logs = append(c.logs[:index], c.logs[index+1:]...)
 }
