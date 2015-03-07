@@ -80,7 +80,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeed(channel string, options ChangesOptions, done chan bool) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
 	if err != nil {
@@ -119,7 +119,10 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 			select {
 			case <-options.Terminator:
-				base.LogTo("Changes+", "Aborting changesFeed")
+				base.LogTo("Changes+", "Aborting changesFeed on main feed terminator")
+				return
+			case <-done:
+				base.LogTo("Changes+", "Aborting changesFeed on iteration terminator")
 				return
 			case feed <- &change:
 			}
@@ -228,17 +231,19 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
 
+			feedTerminator := make(chan bool)
 			// Get read lock for late-arriving sequences, to avoid sending the same late arrival in
 			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
 			// could be written to channel X during one iteration, and channel Y during another.  Users
 			// with access to both channels would see two versions on the feed.
+
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
 				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
 					// Newly added channel so send all of it to user:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				}
-				feed, err := db.changesFeed(name, chanOpts)
+				feed, err := db.changesFeed(name, chanOpts, feedTerminator)
 				if err != nil {
 					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 					return
@@ -322,6 +327,8 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				}
 
 				if minSeq.Seq >= highSequence {
+					// close feeds
+					close(feedTerminator)
 					break // Exit the loop when we've sent all entries prior to highSequence
 				}
 
@@ -381,6 +388,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// First notify the reader that we're waiting by sending a nil.
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
+
 			if !changeWaiter.Wait() {
 				break
 			}
@@ -489,6 +497,7 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
+
 		// Write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range logs {
 			// We don't need TriggeredBy handling here, because when backfilling from a

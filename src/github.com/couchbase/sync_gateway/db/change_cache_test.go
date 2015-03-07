@@ -12,6 +12,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -238,7 +239,6 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
 
-/*
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
@@ -304,9 +304,6 @@ func TestChannelCacheBackfill(t *testing.T) {
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
 
-	base.LogKeys["Sequences"] = true
-	//base.LogKeys["Cache"] = true
-	//base.LogKeys["Changes"] = true
 	base.LogKeys["Changes+"] = true
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -387,9 +384,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	close(options.Terminator)
 }
-*/
 
-/*
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
@@ -630,7 +625,6 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	close(options.Terminator)
 }
-*/
 
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
 // in the main changes.go iteration loop, without a lock on the underlying channel caches.  The following
@@ -787,4 +781,58 @@ func verifyChangesSequences(changes []*ChangeEntry, sequences []string) bool {
 		}
 	}
 	return true
+}
+
+// Benchmarks
+func TestProcessCache(t *testing.T) {
+
+	//base.SetLogLevel(2) // disables logging
+
+	base.LogKeys["Cache"] = true
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	db, _ := CreateDatabase(context)
+	count := 10000
+	// generate doc IDs
+	docIDs := make([]string, count)
+	for i := 0; i < count; i++ {
+		docIDs[i] = fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", i)
+	}
+	/*
+		for i := count - 1; i >= 0; i-- {
+			db.changeCache.processEntry(e(uint64(i), docIDs[i], "1-a"))
+		}
+	*/
+	for k := 0; k < count/100; k++ {
+		var wg sync.WaitGroup
+		for j := 99; j >= 0; j-- {
+			i := k*100 + j
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				db.changeCache.processEntry(e(uint64(i), docIDs[i], "1-a"))
+			}()
+		}
+		wg.Wait()
+	}
+}
+
+// Benchmarks
+func BenchmarkProcessCache(b *testing.B) {
+
+	//base.SetLogLevel(2)
+
+	base.LogKeys["Cache"] = true
+
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	db, _ := CreateDatabase(context)
+
+	// generate doc IDs
+	docIDs := make([]string, b.N)
+	for i := 0; i < b.N; i++ {
+		docIDs[i] = fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", i)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		db.changeCache.processEntry(e(uint64(i), docIDs[i], "1-a"))
+	}
 }

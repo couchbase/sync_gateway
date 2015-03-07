@@ -206,7 +206,10 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Add found entries
 	for _, entry := range foundEntries {
-		c.processEntry(entry)
+		changedChannels := c.processEntry(entry)
+		if c.onChange != nil && len(changedChannels) > 0 {
+			c.onChange(changedChannels)
+		}
 	}
 
 	// Purge pending deletes
@@ -438,15 +441,9 @@ func (c *changeCache) _addLateSequence(change *LogEntry) {
 	// twice)
 	c.lateSeqLock.Lock()
 	defer c.lateSeqLock.Unlock()
-	for channelName, removal := range change.Channels {
-		if removal == nil || removal.Seq == change.Sequence {
-			c._getChannelCache(channelName).AddLateSequence(change)
-		}
+	for channelName := range change.AddedTo {
+		c._getChannelCache(channelName).AddLateSequence(change)
 	}
-	if EnableStarChannelLog {
-		c._getChannelCache(channels.UserStarChannel).AddLateSequence(change)
-	}
-
 }
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.
@@ -523,9 +520,17 @@ func (c *changeCache) _addPendingLogs() base.Set {
 }
 
 func (c *changeCache) getChannelCache(channelName string) *channelCache {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return c._getChannelCache(channelName)
+
+	cache := c.channelCaches[channelName]
+	if cache == nil {
+		func() {
+			c.lock.Lock()
+			defer c.lock.Unlock()
+			cache = newChannelCache(c.context, channelName, c.initialSequence+1)
+			c.channelCaches[channelName] = cache
+		}()
+	}
+	return cache
 }
 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
