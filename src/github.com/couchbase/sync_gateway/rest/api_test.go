@@ -422,7 +422,7 @@ func TestBulkDocs(t *testing.T) {
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
-	base.LogKeys["Access"] = true
+	base.ParseLogFlag("Access")
 
 	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1062,9 +1062,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 }
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
-	base.LogKeys["Access"] = true
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes+"] = true
+	base.ParseLogFlags([]string{"Access", "CRUD", "Changes+"})
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1106,9 +1104,8 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 }
 
 func TestRoleAccessChanges(t *testing.T) {
-	base.LogKeys["Access"] = true
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes+"] = true
+
+	base.ParseLogFlags([]string{"Access", "CRUD", "Changes+"})
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1190,21 +1187,20 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Cache"] = true
+	base.ParseLogFlag("Changes")
+	base.ParseLogFlag("Cache")
 	response = rt.send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "g1")
-	base.LogKeys["Cache"] = false
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {
 	// See https://github.com/couchbase/couchbase-lite-ios/issues/59
-	// base.LogKeys["Changes"] = true
-	// base.LogKeys["Cache"] = true
+	// base.ParseLogFlag("Changes")
+	// base.ParseLogFlag("Cache")
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1359,7 +1355,6 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 //Test for regression of issue #447
 func TestAttachmentsNoCrossTalk(t *testing.T) {
-	base.LogKeys["ANDY"] = true
 	var rt restTester
 
 	doc1revId := rt.createDoc(t, "doc1")
@@ -1470,7 +1465,7 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	var rt restTester
 
-	base.LogKeys["Changes+"] = true
+	base.ParseLogFlag("Changes+")
 
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	var changes struct {

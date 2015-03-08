@@ -21,7 +21,7 @@ import (
 
 func TestDuplicateDocID(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	base.ParseLogFlag("Cache")
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -81,7 +81,7 @@ func TestDuplicateDocID(t *testing.T) {
 
 func TestLateArrivingSequence(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	base.ParseLogFlag("Cache")
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -110,7 +110,7 @@ func TestLateArrivingSequence(t *testing.T) {
 
 func TestLateSequenceAsFirst(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	base.ParseLogFlag("Cache")
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -139,7 +139,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 func TestDuplicateLateArrivingSequence(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	base.ParseLogFlag("Cache")
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Test1", 0)
 	testEntries := []*LogEntry{
@@ -302,7 +302,6 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
-	//base.LogKeys["Cache+"] = true
 	base.SetLogLevel(2) // disables logging
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Benchmark", 0)
@@ -345,8 +344,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	base.LogKeys["CacheTest"] = true
-	//base.SetLogLevel(2) // disables logging
+	base.SetLogLevel(2) // disables logging
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs

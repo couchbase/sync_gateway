@@ -75,7 +75,6 @@ func TestShadowerPull(t *testing.T) {
 }
 
 func TestShadowerPush(t *testing.T) {
-	//base.LogKeys["Shadow"] = true
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 
@@ -112,8 +111,7 @@ func TestShadowerPush(t *testing.T) {
 // Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
 // shadower as a different revision.
 func TestShadowerPushEchoCancellation(t *testing.T) {
-	base.LogKeys["Shadow"] = true
-	base.LogKeys["Shadow+"] = true
+	base.ParseLogFlags([]string{"Shadow", "Shadow+"})
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 

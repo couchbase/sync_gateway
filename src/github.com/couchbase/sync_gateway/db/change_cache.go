@@ -34,20 +34,22 @@ func init() {
 
 // Manages a cache of the recent change history of all channels.
 type changeCache struct {
-	context         *DatabaseContext
-	logsDisabled    bool                     // If true, ignore incoming tap changes
-	nextSequence    uint64                   // Next consecutive sequence number to add
-	initialSequence uint64                   // DB's current sequence at startup time
-	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
-	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
-	channelCaches   map[string]*channelCache // A cache of changes for each channel
-	onChange        func(base.Set)           // Client callback that notifies of channel changes
-	stopped         bool                     // Set by the Stop method
-	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
-	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
-	lock            sync.RWMutex             // Coordinates access to struct fields
-	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
-	options         CacheOptions             // Cache config
+	context          *DatabaseContext
+	logsDisabled     bool                     // If true, ignore incoming tap changes
+	disabledLock     sync.RWMutex             // Coordinates access to logsDisabled
+	nextSequence     uint64                   // Next consecutive sequence number to add
+	initialSequence  uint64                   // DB's current sequence at startup time
+	receivedSeqs     map[uint64]struct{}      // Set of all sequences received
+	pendingLogs      LogPriorityQueue         // Out-of-sequence entries waiting to be cached
+	channelCaches    map[string]*channelCache // A cache of changes for each channel
+	channelCacheLock sync.RWMutex             // Coordinates access to late sequence caches
+	onChange         func(base.Set)           // Client callback that notifies of channel changes
+	stopped          bool                     // Set by the Stop method
+	skippedSeqs      SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
+	skippedSeqLock   sync.RWMutex             // Coordinates access to skippedSeqs queue
+	lock             sync.RWMutex             // Coordinates access to struct fields
+	lateSeqLock      sync.RWMutex             // Coordinates access to late sequence caches
+	options          CacheOptions             // Cache config
 }
 
 type LogEntry channels.LogEntry
@@ -124,27 +126,43 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
+	defer func() {
+		c.disabledLock.Unlock()
+		c.lock.Unlock()
+	}()
 	c.lock.Lock()
+	c.disabledLock.Lock()
+
 	c.stopped = true
 	c.logsDisabled = true
-	c.lock.Unlock()
 }
 
 // Forgets all cached changes for all channels.
 func (c *changeCache) ClearLogs() {
+	defer func() {
+		c.lock.Unlock()
+		c.channelCacheLock.Unlock()
+	}()
 	c.lock.Lock()
+	c.channelCacheLock.Lock()
 	c.initialSequence, _ = c.context.LastSequence()
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
-	c.lock.Unlock()
 }
 
 // If set to false, DocChanged() becomes a no-op.
 func (c *changeCache) EnableChannelLogs(enable bool) {
-	c.lock.Lock()
+	c.disabledLock.Lock()
+	defer c.disabledLock.Unlock()
 	c.logsDisabled = !enable
-	c.lock.Unlock()
+}
+
+// If set to false, DocChanged() becomes a no-op.
+func (c *changeCache) getLogsDisabled() bool {
+	c.disabledLock.RLock()
+	defer c.disabledLock.RUnlock()
+	return c.logsDisabled
 }
 
 // Cleanup function, invoked periodically.
@@ -165,9 +183,13 @@ func (c *changeCache) CleanUp() bool {
 	}
 
 	// Remove old cache entries:
-	for channelName, _ := range c.channelCaches {
-		c._getChannelCache(channelName).pruneCacheToSequence(c.nextSequence)
-	}
+	func() {
+		c.channelCacheLock.RLock()
+		defer c.channelCacheLock.RUnlock()
+		for _, chanCache := range c.channelCaches {
+			chanCache.pruneCacheToSequence(c.nextSequence)
+		}
+	}()
 	return true
 }
 
@@ -382,7 +404,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		return nil
 	}
 
-	if c.logsDisabled {
+	if c.getLogsDisabled() {
 		return nil
 	}
 
@@ -393,7 +415,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	//   3. Activate entry in cache - doesn't lock, does any channel cache processing that depends on (2)
 
 	// 1. Add to channel caches
-	changedChannels = c._addToCache(change)
+	changedChannels = c.addToCache(change)
 
 	// 2. Sequence processing
 	c.lock.Lock()
@@ -403,8 +425,8 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Also add any pending sequences that are now contiguous:
 		// TODO: pending needs to track changedChannels
 		c.nextSequence = sequence + 1
-		// _activateInCache shouldn't block
-		go c._activateInCache(change)
+		// activateInCache shouldn't block
+		go c.activateInCache(change)
 		changedChannels = changedChannels.Union(c._addPendingLogs())
 
 	} else if sequence > nextSequence {
@@ -442,12 +464,12 @@ func (c *changeCache) _addLateSequence(change *LogEntry) {
 	c.lateSeqLock.Lock()
 	defer c.lateSeqLock.Unlock()
 	for channelName := range change.AddedTo {
-		c._getChannelCache(channelName).AddLateSequence(change)
+		c.getChannelCache(channelName).AddLateSequence(change)
 	}
 }
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.
-func (c *changeCache) _addToCache(change *LogEntry) base.Set {
+func (c *changeCache) addToCache(change *LogEntry) base.Set {
 	if change.DocID == "" {
 		return nil // this was a placeholder for an unused sequence
 	}
@@ -457,13 +479,13 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
-			channelCache := c._getChannelCache(channelName)
+			channelCache := c.getChannelCache(channelName)
 			channelCache.addToCache(change, removal != nil)
 			addedTo = append(addedTo, channelName)
 		}
 	}
 	if EnableStarChannelLog {
-		starChannelCache := c._getChannelCache(channels.UserStarChannel)
+		starChannelCache := c.getChannelCache(channels.UserStarChannel)
 		starChannelCache.addToCache(change, false)
 		addedTo = append(addedTo, channels.UserStarChannel)
 	}
@@ -483,14 +505,14 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 }
 
 // Does post-processing in channel caches - currently sequence deduplication and update of ID map
-func (c *changeCache) _activateInCache(change *LogEntry) {
+func (c *changeCache) activateInCache(change *LogEntry) {
 
 	if change.DocID == "" {
 		return // this was a placeholder for an unused sequence
 	}
 
 	for channelName := range change.AddedTo {
-		channelCache := c._getChannelCache(channelName)
+		channelCache := c.getChannelCache(channelName)
 		channelCache.activateInCache(change)
 	}
 }
@@ -505,7 +527,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			go c._activateInCache(change)
+			go c.activateInCache(change)
 			changedChannels = changedChannels.Union(change.AddedTo)
 			c.nextSequence++
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
@@ -521,11 +543,13 @@ func (c *changeCache) _addPendingLogs() base.Set {
 
 func (c *changeCache) getChannelCache(channelName string) *channelCache {
 
+	c.channelCacheLock.RLock()
 	cache := c.channelCaches[channelName]
+	c.channelCacheLock.RUnlock()
 	if cache == nil {
 		func() {
-			c.lock.Lock()
-			defer c.lock.Unlock()
+			c.channelCacheLock.Lock()
+			defer c.channelCacheLock.Unlock()
 			cache = newChannelCache(c.context, channelName, c.initialSequence+1)
 			c.channelCaches[channelName] = cache
 		}()
@@ -533,6 +557,7 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	return cache
 }
 
+/*
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
@@ -541,6 +566,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	}
 	return cache
 }
+*/
 
 //////// CHANGE ACCESS:
 

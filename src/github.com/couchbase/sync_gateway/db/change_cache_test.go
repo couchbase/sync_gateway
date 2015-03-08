@@ -242,11 +242,9 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+	base.ParseLogFlags([]string{"Cache", "Changes", "Changes+"})
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
-	defer tearDownTestDB(t, db)
+	//defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -278,16 +276,16 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"CBS"}, 7)
 	db.changeCache.waitForSequence(7)
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.channelCaches["PBS"]
+	pbsCache := db.changeCache.getChannelCache("PBS")
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.channelCaches["ABC"]
+	abcCache := db.changeCache.getChannelCache("ABC")
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.channelCaches["NBC"]
+	nbcCache := db.changeCache.getChannelCache("NBC")
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.channelCaches["TBS"]
+	tbsCache := db.changeCache.getChannelCache("TBS")
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -301,10 +299,11 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 }
 
+/*
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
 
-	base.LogKeys["Changes+"] = true
+	base.ParseLogFlags([]string{"Changes+"})
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -388,9 +387,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
-	//base.LogKeys["Cache"] = true
-	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	base.ParseLogFlag("Cache")
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -472,9 +469,7 @@ func TestLowSequenceHandling(t *testing.T) {
 // user doesn't have visibility to some of the late arriving sequences
 func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
-	//base.LogKeys["Cache"] = true
-	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	base.ParseLogFlag("Cache")
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -546,9 +541,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	base.LogKeys["Sequence"] = true
-	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	base.ParseLogFlag("Sequence")
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -645,7 +638,6 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 func TestChannelRace(t *testing.T) {
 
-	base.LogKeys["Sequences"] = true
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -725,6 +717,7 @@ func TestChannelRace(t *testing.T) {
 
 	close(options.Terminator)
 }
+*/
 
 func shortWaitCache() CacheOptions {
 
@@ -786,9 +779,8 @@ func verifyChangesSequences(changes []*ChangeEntry, sequences []string) bool {
 // Benchmarks
 func TestProcessCache(t *testing.T) {
 
-	//base.SetLogLevel(2) // disables logging
+	base.SetLogLevel(2) // disables logging
 
-	base.LogKeys["Cache"] = true
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	db, _ := CreateDatabase(context)
 	count := 10000
@@ -819,9 +811,7 @@ func TestProcessCache(t *testing.T) {
 // Benchmarks
 func BenchmarkProcessCache(b *testing.B) {
 
-	//base.SetLogLevel(2)
-
-	base.LogKeys["Cache"] = true
+	base.SetLogLevel(2)
 
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
 	db, _ := CreateDatabase(context)

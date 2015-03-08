@@ -28,8 +28,6 @@ const kTestURL = "walrus:"
 
 func init() {
 	base.LogNoColor()
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["CRUD+"] = true
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
@@ -218,8 +216,7 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 }
 
 func TestAllDocs(t *testing.T) {
-	// base.LogKeys["Cache"] = true
-	// base.LogKeys["Changes"] = true
+	// base.ParseLogFlag("Cache")
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
@@ -227,16 +224,6 @@ func TestAllDocs(t *testing.T) {
 	oldChannelCacheAge := DefaultChannelCacheAge
 	DefaultChannelCacheAge = 0
 	defer func() { DefaultChannelCacheAge = oldChannelCacheAge }()
-
-	/*
-		base.LogKeys["Changes"] = true
-		base.LogKeys["Changes+"] = true
-		defer func() {
-			base.LogKeys["Changes"] = false
-			base.LogKeys["Changes+"] = false
-		}()
-	*/
-
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	ids := make([]AllDocsEntry, 100)
@@ -319,9 +306,7 @@ func TestAllDocs(t *testing.T) {
 
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+	base.ParseLogFlags([]string{"Cache", "Changes", "Changes+"})
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -371,13 +356,12 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		Seq:     SequenceID{Seq: 3},
 		ID:      "doc2",
 		Changes: []ChangeRev{{"rev": revid}}})
+
 }
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+	base.ParseLogFlags([]string{"Cache", "Changes", "Changes+"})
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -411,9 +395,7 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	//base.LogKeys["Cache"] = true
-	// base.LogKeys["CRUD"] = true
-	// base.LogKeys["Changes"] = true
+	base.ParseLogFlags([]string{"Cache", "CRUD", "Changes+"})
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -575,8 +557,6 @@ func TestAccessFunctionValidation(t *testing.T) {
 }
 
 func TestAccessFunction(t *testing.T) {
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["Access"] = true
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)

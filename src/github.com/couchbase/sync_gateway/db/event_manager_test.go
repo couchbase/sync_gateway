@@ -3,8 +3,8 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -92,7 +92,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 	em := NewEventManager()
 	em.Start(0, -1)
 
-	base.LogKeys["Events"] = true
+	base.ParseLogFlag("Events")
 
 	ids := make([]string, 20)
 	for i := 0; i < 20; i++ {
