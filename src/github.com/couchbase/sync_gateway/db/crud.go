@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
@@ -640,6 +641,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
+
+	// Record a histogram of the Write latency (time between issuing write and write request completing):
+	writeLag := time.Since(doc.TimeSaved)
+	lagMs := int(writeLag/(100*time.Millisecond)) * 100
+	dbExpvars.Add(fmt.Sprintf("lag-write-%04dms", lagMs), 1)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
