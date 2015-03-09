@@ -244,7 +244,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	base.ParseLogFlags([]string{"Cache", "Changes", "Changes+"})
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
-	//defer tearDownTestDB(t, db)
+	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -335,6 +335,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	// Go-routine to work the feed channel and write to an array for use by assertions
 	var changes = make([]*ChangeEntry, 0, 50)
+	var changeLock sync.RWMutex
 	go func() {
 		for feedClosed == false {
 			select {
@@ -343,7 +344,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 					// feed sends nil after each continuous iteration
 					if entry != nil {
 						log.Println("Changes entry:", entry.Seq)
+						changeLock.Lock()
 						changes = append(changes, entry)
+						changeLock.Unlock()
 					}
 				} else {
 					log.Println("Closing feed")
@@ -355,11 +358,16 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 	// Validate the initial sequences arrive as expected
-	assert.Equals(t, len(changes), 4)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+	func() {
+		changeLock.RLock()
+		defer changeLock.RUnlock()
+		assert.Equals(t, len(changes), 4)
+		assert.DeepEquals(t, changes[0], &ChangeEntry{
+			Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
+			ID:      "doc-1",
+			Changes: []ChangeRev{{"rev": "1-a"}}})
+
+	}()
 
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
@@ -367,9 +375,13 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	db.changeCache.waitForSequence(12)
 
 	time.Sleep(50 * time.Millisecond)
-	assert.Equals(t, len(changes), 6)
-	assert.True(t, verifyChangesSequences(changes, []string{
-		"1", "2", "2::5", "2::6", "3", "3::12"}))
+	func() {
+		changeLock.RLock()
+		defer changeLock.RUnlock()
+		assert.Equals(t, len(changes), 6)
+		assert.True(t, verifyChangesSequences(changes, []string{
+			"1", "2", "2::5", "2::6", "3", "3::12"}))
+	}()
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
@@ -377,13 +389,17 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
 	db.changeCache.waitForSequence(13)
 
-	assert.Equals(t, len(changes), 10)
-	assert.True(t, verifyChangesSequences(changes, []string{
-		"1", "2", "2::5", "2::6", "3", "3::12", "4", "7", "8", "8::13"}))
-
+	func() {
+		changeLock.RLock()
+		defer changeLock.RUnlock()
+		assert.Equals(t, len(changes), 10)
+		assert.True(t, verifyChangesSequences(changes, []string{
+			"1", "2", "2::5", "2::6", "3", "3::12", "4", "7", "8", "8::13"}))
+	}()
 	close(options.Terminator)
 }
 
+/*
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
@@ -718,7 +734,6 @@ func TestChannelRace(t *testing.T) {
 	close(options.Terminator)
 }
 */
-
 func shortWaitCache() CacheOptions {
 
 	return CacheOptions{

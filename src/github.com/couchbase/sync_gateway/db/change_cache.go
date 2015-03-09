@@ -383,14 +383,16 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	var changedChannels base.Set
 
 	// Check whether sequence has already been processed
 	sequence := change.Sequence
 
 	alreadyProcessed := func() bool {
-		c.lock.Lock()
-		defer c.lock.Unlock()
+		//c.lock.Lock()
+		//defer c.lock.Unlock()
 		if _, found := c.receivedSeqs[sequence]; found {
 			base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
 			return true
@@ -418,7 +420,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	changedChannels = c.addToCache(change)
 
 	// 2. Sequence processing
-	c.lock.Lock()
 
 	nextSequence := c.nextSequence
 	if sequence == nextSequence || nextSequence == 0 {
@@ -451,7 +452,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			c._addLateSequence(change)
 		}
 	}
-	c.lock.Unlock()
+	//c.lock.Unlock()
 
 	return changedChannels
 }
