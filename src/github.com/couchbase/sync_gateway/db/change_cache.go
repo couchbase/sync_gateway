@@ -427,7 +427,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// TODO: pending needs to track changedChannels
 		c.nextSequence = sequence + 1
 		// activateInCache shouldn't block
-		go c.activateInCache(change)
+		c.activateInCache(change)
 		changedChannels = changedChannels.Union(c._addPendingLogs())
 
 	} else if sequence > nextSequence {
@@ -528,11 +528,14 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			go c.activateInCache(change)
+			c.activateInCache(change)
 			changedChannels = changedChannels.Union(change.AddedTo)
 			c.nextSequence++
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			changeCacheExpvars.Add("outOfOrder", 1)
+			if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum {
+				changeCacheExpvars.Add("cacheFull", 1)
+			}
 			c.PushSkipped(c.nextSequence)
 			c.nextSequence++
 		} else {
