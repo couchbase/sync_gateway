@@ -72,7 +72,6 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		removalChange.Flags |= channels.Removed
 		c._appendChange(&removalChange)
 	}
-	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 }
 
@@ -90,6 +89,7 @@ func (c *channelCache) activateInCache(change *LogEntry) {
 	changeIndex, err := c.getIndexForSequence(change.Sequence)
 	if err != nil {
 		base.Warn("Can't find sequence to be activated in channel cache: ", c.channelName, change.Sequence)
+		changeCacheExpvars.Add("cache_activate_missing", 1)
 		return
 	}
 
@@ -107,12 +107,14 @@ func (c *channelCache) activateInCache(change *LogEntry) {
 				c.activeDocIDs[change.DocID] = change.Sequence
 			} else {
 				base.Warn("Error retrieving entry that was present in activeDocID map, sequence:", sequence)
+				changeCacheExpvars.Add("cache_delete_missing", 1)
 			}
 		}
 	} else {
 		// No duplicate found - add the new entry to activeDocIDs
 		c.activeDocIDs[change.DocID] = change.Sequence
 	}
+	c._pruneCache()
 
 }
 
@@ -125,15 +127,18 @@ func (c *channelCache) addToCacheAndActivate(change *LogEntry, isRemoval bool) {
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
 
-	if len(c.logs) < c.options.channelCacheMinLength {
+	// want to do length calculations based on activeDocs, not all docs in cache
+	activeCount := len(c.activeDocIDs)
+
+	if activeCount < c.options.channelCacheMinLength {
 		return
 	}
 
 	pruned := 0
 
 	// If we are over max length, prune it down to max length
-	if len(c.logs) > c.options.channelCacheMaxLength {
-		pruned = len(c.logs) - c.options.channelCacheMaxLength
+	if activeCount > c.options.channelCacheMaxLength {
+		pruned = activeCount - c.options.channelCacheMaxLength
 		for i := 0; i < pruned; i++ {
 			delete(c.activeDocIDs, c.logs[i].DocID)
 		}
@@ -143,49 +148,7 @@ func (c *channelCache) _pruneCache() {
 
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
-	for len(c.logs) > c.options.channelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.channelCacheAge {
-		c.validFrom = c.logs[0].Sequence + 1
-		delete(c.activeDocIDs, c.logs[0].DocID)
-		c.logs = c.logs[1:]
-		pruned++
-	}
-	if pruned > 0 {
-		base.LogTo("Cache+", "Pruned %d old entries from channel %q", pruned, c.channelName)
-	}
-}
-
-// Internal helper that prunes a single channel's cache up to a specific sequence. Caller MUST be holding the lock.
-func (c *channelCache) _pruneCacheToSequence(currentSequence uint64) {
-
-	if len(c.logs) < c.options.channelCacheMinLength {
-		return
-	}
-
-	pruned := 0
-	currentSequenceIndex, _ := c.getIndexForRecentSequence(currentSequence)
-	seqsHigherThanCurrent := len(c.logs) - currentSequenceIndex
-
-	// If there aren't any higher than current, fall back to default prune algorithm
-	if seqsHigherThanCurrent <= 0 {
-		c._pruneCache()
-		return
-	}
-
-	cacheSizePriorToCurrent := len(c.logs) - seqsHigherThanCurrent
-
-	// If we are over max length, prune it down to max length
-	if cacheSizePriorToCurrent > c.options.channelCacheMaxLength {
-		pruned = cacheSizePriorToCurrent - c.options.channelCacheMaxLength
-		for i := 0; i < pruned; i++ {
-			delete(c.activeDocIDs, c.logs[i].DocID)
-		}
-		c.validFrom = c.logs[pruned-1].Sequence + 1
-		c.logs = c.logs[pruned:]
-	}
-
-	// Remove all entries who've been in the cache longer than channelCacheAge, except
-	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
-	for len(c.logs) > (c.options.channelCacheMinLength+seqsHigherThanCurrent) && time.Since(c.logs[0].TimeReceived) > c.options.channelCacheAge {
+	for len(c.activeDocIDs) > c.options.channelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.channelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
 		delete(c.activeDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
@@ -198,14 +161,8 @@ func (c *channelCache) _pruneCacheToSequence(currentSequence uint64) {
 
 func (c *channelCache) pruneCache() {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	c._pruneCache()
-	c.lock.Unlock()
-}
-
-func (c *channelCache) pruneCacheToSequence(sequence uint64) {
-	c.lock.Lock()
-	c._pruneCacheToSequence(sequence)
-	c.lock.Unlock()
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
@@ -581,13 +538,15 @@ func (c *channelCache) addDocIDs(changes LogEntries) {
 }
 
 // Finds index with sequence, when we suspect the sequence may have just arrived
-func (c *channelCache) getIndexForRecentSequence(sequence uint64) (index int, err error) {
+func (c *channelCache) getIndexForRecentSequence(sequence uint64) (index int) {
 
 	lastIndex := len(c.logs) - 1
-	if c.logs[lastIndex].Sequence == sequence {
-		return lastIndex, nil
+	if c.logs[lastIndex].Sequence <= sequence {
+		return lastIndex
 	} else {
-		return c.getIndexForSequence(sequence)
+		// ignores error intentionally here - returns position the sequence would be inserted at
+		index, _ := c.getIndexForSequence(sequence)
+		return index
 	}
 }
 

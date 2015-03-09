@@ -187,7 +187,7 @@ func (c *changeCache) CleanUp() bool {
 		c.channelCacheLock.RLock()
 		defer c.channelCacheLock.RUnlock()
 		for _, chanCache := range c.channelCaches {
-			chanCache.pruneCacheToSequence(c.nextSequence)
+			chanCache.pruneCache()
 		}
 	}()
 	return true
