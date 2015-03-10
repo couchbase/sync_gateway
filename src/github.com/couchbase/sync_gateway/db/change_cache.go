@@ -383,16 +383,14 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	var changedChannels base.Set
 
 	// Check whether sequence has already been processed
 	sequence := change.Sequence
 
 	alreadyProcessed := func() bool {
-		//c.lock.Lock()
-		//defer c.lock.Unlock()
+		c.lock.Lock()
+		defer c.lock.Unlock()
 		if _, found := c.receivedSeqs[sequence]; found {
 			base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
 			return true
@@ -412,14 +410,16 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	base.LogTo("Cache+", "  processEntry starting for #%d", sequence)
 	// Modifying processEntry to work as follows
-	//   1. Add to channel caches - doesn't lock, can be run in parallel by multiple calls to processEntry
+	//   1. Add to channel caches - doesn't lock change cache, can be run in parallel by multiple calls to processEntry
 	//   2. Sequence processing - locks, does sequence buffering
 	//   3. Activate entry in cache - doesn't lock, does any channel cache processing that depends on (2)
 
 	// 1. Add to channel caches
 	c.addToCache(change)
 
-	// 2. Sequence processing
+	// 2. Sequence processing, and cache activation
+
+	c.lock.Lock()
 
 	nextSequence := c.nextSequence
 	if sequence == nextSequence || nextSequence == 0 {
@@ -453,7 +453,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			changedChannels = change.AddedTo
 		}
 	}
-	//c.lock.Unlock()
+	c.lock.Unlock()
 
 	return changedChannels
 }
@@ -515,7 +515,8 @@ func (c *changeCache) activateInCache(change *LogEntry) base.Set {
 
 	for channelName := range change.AddedTo {
 		channelCache := c.getChannelCache(channelName)
-		channelCache.activateInCache(change)
+		// activateInCache is just doing DocID deduplication, so doesn't need to block
+		go channelCache.activateInCache(change)
 	}
 	return change.AddedTo
 }
