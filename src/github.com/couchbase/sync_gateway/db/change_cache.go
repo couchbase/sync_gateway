@@ -418,42 +418,42 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	c.addToCache(change)
 
 	// 2. Sequence processing, and cache activation
+	func() {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+		nextSequence := c.nextSequence
+		if sequence == nextSequence || nextSequence == 0 {
+			// Also add any pending sequences that are now contiguous:
+			// TODO: pending needs to track changedChannels
+			c.nextSequence = sequence + 1
+			// activateInCache shouldn't block
+			changedChannels = c.activateInCache(change)
+			changedChannels = changedChannels.Union(c._addPendingLogs())
 
-	c.lock.Lock()
-
-	nextSequence := c.nextSequence
-	if sequence == nextSequence || nextSequence == 0 {
-		// Also add any pending sequences that are now contiguous:
-		// TODO: pending needs to track changedChannels
-		c.nextSequence = sequence + 1
-		// activateInCache shouldn't block
-		changedChannels = c.activateInCache(change)
-		changedChannels = changedChannels.Union(c._addPendingLogs())
-
-	} else if sequence > nextSequence {
-		// There's a missing sequence (or several), so put this one on ice until it arrives:
-		heap.Push(&c.pendingLogs, change)
-		numPending := len(c.pendingLogs)
-		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
-			sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
-		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
-		if numPending > c.options.CachePendingSeqMaxNum {
-			// Too many pending; add the oldest one:
-			changedChannels = c._addPendingLogs()
+		} else if sequence > nextSequence {
+			// There's a missing sequence (or several), so put this one on ice until it arrives:
+			heap.Push(&c.pendingLogs, change)
+			numPending := len(c.pendingLogs)
+			base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
+				sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
+			changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
+			if numPending > c.options.CachePendingSeqMaxNum {
+				// Too many pending; add the oldest one:
+				changedChannels = c._addPendingLogs()
+			}
+		} else if sequence > c.initialSequence {
+			// Out-of-order sequence received!
+			// Remove from skipped sequence queue
+			if c.RemoveSkipped(sequence) != nil {
+				// Error removing from skipped sequences
+				base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
+			} else {
+				base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
+				c._addLateSequence(change)
+				changedChannels = change.AddedTo
+			}
 		}
-	} else if sequence > c.initialSequence {
-		// Out-of-order sequence received!
-		// Remove from skipped sequence queue
-		if c.RemoveSkipped(sequence) != nil {
-			// Error removing from skipped sequences
-			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
-		} else {
-			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
-			c._addLateSequence(change)
-			changedChannels = change.AddedTo
-		}
-	}
-	c.lock.Unlock()
+	}()
 
 	return changedChannels
 }
@@ -492,15 +492,6 @@ func (c *changeCache) addToCache(change *LogEntry) base.Set {
 		addedTo = append(addedTo, channels.UserStarChannel)
 	}
 
-	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.TimeSaved)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
-	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.TimeReceived)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
-
 	addedToSet := base.SetFromArray(addedTo)
 	change.AddedTo = addedToSet
 	return addedToSet
@@ -518,6 +509,16 @@ func (c *changeCache) activateInCache(change *LogEntry) base.Set {
 		// activateInCache is just doing DocID deduplication, so doesn't need to block
 		go channelCache.activateInCache(change)
 	}
+
+	// Record a histogram of the overall lag from the time the doc was saved:
+	lag := time.Since(change.TimeSaved)
+	lagMs := int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
+	// ...and from the time the doc was received from Tap:
+	lag = time.Since(change.TimeReceived)
+	lagMs = int(lag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
+
 	return change.AddedTo
 }
 
