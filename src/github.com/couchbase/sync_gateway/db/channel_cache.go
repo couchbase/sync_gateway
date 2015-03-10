@@ -176,7 +176,7 @@ func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint6
 func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
-	base.LogTo("Cache", "Channel=%s, GetCachedChanges, length=%d, validFrom=%d", c.channelName, len(log), c.validFrom)
+	//base.LogTo("Cache", "Channel=%s, GetCachedChanges, length=%d, validFrom=%d", c.channelName, len(log), c.validFrom)
 	if len(log) == 0 {
 		validFrom = c.validFrom
 		return // Return nil if nothing is cached

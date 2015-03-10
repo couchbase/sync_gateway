@@ -417,7 +417,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	//   3. Activate entry in cache - doesn't lock, does any channel cache processing that depends on (2)
 
 	// 1. Add to channel caches
-	changedChannels = c.addToCache(change)
+	c.addToCache(change)
 
 	// 2. Sequence processing
 
@@ -427,7 +427,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// TODO: pending needs to track changedChannels
 		c.nextSequence = sequence + 1
 		// activateInCache shouldn't block
-		c.activateInCache(change)
+		changedChannels = c.activateInCache(change)
 		changedChannels = changedChannels.Union(c._addPendingLogs())
 
 	} else if sequence > nextSequence {
@@ -450,6 +450,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		} else {
 			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			c._addLateSequence(change)
+			changedChannels = change.AddedTo
 		}
 	}
 	//c.lock.Unlock()
@@ -506,16 +507,17 @@ func (c *changeCache) addToCache(change *LogEntry) base.Set {
 }
 
 // Does post-processing in channel caches - currently sequence deduplication and update of ID map
-func (c *changeCache) activateInCache(change *LogEntry) {
+func (c *changeCache) activateInCache(change *LogEntry) base.Set {
 
 	if change.DocID == "" {
-		return // this was a placeholder for an unused sequence
+		return nil // this was a placeholder for an unused sequence
 	}
 
 	for channelName := range change.AddedTo {
 		channelCache := c.getChannelCache(channelName)
 		channelCache.activateInCache(change)
 	}
+	return change.AddedTo
 }
 
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
@@ -528,8 +530,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			c.activateInCache(change)
-			changedChannels = changedChannels.Union(change.AddedTo)
+			changedChannels = changedChannels.Union(c.activateInCache(change))
 			c.nextSequence++
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			changeCacheExpvars.Add("outOfOrder", 1)

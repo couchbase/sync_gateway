@@ -81,7 +81,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions, done chan bool) (<-chan *ChangeEntry, error) {
-	dbExpvars.Add("channelChangesFeeds", 1)
+	//dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
 	if err != nil {
 		return nil, err

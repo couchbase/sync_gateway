@@ -299,6 +299,80 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 }
 
+// Test high sequence handling in changes feed
+func TestContinuousHighSequence(t *testing.T) {
+
+	base.ParseLogFlags([]string{"ChangesDebug"})
+	db := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	authenticator.Save(user)
+
+	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
+	WriteDirect(db, []string{"ABC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC"}, 5)
+	WriteDirect(db, []string{"ABC"}, 6)
+
+	time.Sleep(1000 * time.Millisecond)
+	//db.changeCache.waitForSequence(6)
+	db.user, _ = authenticator.GetUser("naomi")
+
+	// Start changes feed
+
+	var options ChangesOptions
+	options.Since = SequenceID{Seq: 0}
+	options.Terminator = make(chan bool)
+	options.Continuous = true
+	options.Wait = true
+	feed, err := db.MultiChangesFeed(base.SetOf("ABC"), options)
+	assert.True(t, err == nil)
+	feedClosed := false
+
+	// Go-routine to work the feed channel and write to an array for use by assertions
+	var changes = make([]*ChangeEntry, 0, 50)
+	var changeLock sync.RWMutex
+	go func() {
+		for feedClosed == false {
+			select {
+			case entry, ok := <-feed:
+				if ok {
+					// feed sends nil after each continuous iteration
+					if entry != nil {
+						log.Println("Changes entry:", entry.Seq)
+						changeLock.Lock()
+						changes = append(changes, entry)
+						changeLock.Unlock()
+					}
+				} else {
+					log.Println("Closing feed")
+					feedClosed = true
+				}
+			}
+		}
+	}()
+
+	time.Sleep(1000 * time.Millisecond)
+
+	WriteDirect(db, []string{"ABC"}, 7)
+	time.Sleep(1000 * time.Millisecond)
+	WriteDirect(db, []string{"PBS"}, 8)
+	time.Sleep(1000 * time.Millisecond)
+	WriteDirect(db, []string{"ABC"}, 9)
+	time.Sleep(1000 * time.Millisecond)
+	WriteDirect(db, []string{"ABC"}, 3)
+	time.Sleep(1000 * time.Millisecond)
+
+	WriteDirect(db, []string{"ABC"}, 4)
+	time.Sleep(1000 * time.Millisecond)
+
+	close(options.Terminator)
+}
+
 /*
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
