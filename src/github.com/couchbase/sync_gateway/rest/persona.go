@@ -66,6 +66,8 @@ func (h *handler) PersonaEnabled() bool {
 // POST /_persona creates a browserID-based login session and sets its cookie.
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
 func (h *handler) handlePersonaPOST() error {
+	base.Logf("Persona: headers %v", h.response.Header().Get("Access-Control-Allow-Origin"))
+
 	var params struct {
 		Assertion string `json:"assertion"`
 	}

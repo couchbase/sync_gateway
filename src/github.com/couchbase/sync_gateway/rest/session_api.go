@@ -37,6 +37,7 @@ func (h *handler) handleSessionGET() error {
 
 // POST /_session creates a login session and sets its cookie
 func (h *handler) handleSessionPOST() error {
+	base.Logf("handleSessionPOST %v", h.response.Header().Get("Access-Control-Allow-Origin"))
 	var params struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`

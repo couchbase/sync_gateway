@@ -275,9 +275,6 @@ func TestCORSOrigin(t *testing.T) {
 	response := rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
 	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://example.com")
 
-	// no cors on _session POST?
-
-
 	// now test a non-listed origin
 	// b/c * is in config we get *
 	reqHeaders = map[string]string{
@@ -301,6 +298,19 @@ func TestCORSOrigin(t *testing.T) {
 	}
 	response = rt.sendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
 	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+}
+
+func TestNoCORSOriginOnSessionPost(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+	// response := rt.sendRequestWithHeaders("POST", "/db/_persona", "", reqHeaders)
+	// assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+
 }
 
 func TestManualAttachment(t *testing.T) {
