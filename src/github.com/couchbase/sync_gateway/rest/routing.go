@@ -223,8 +223,8 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 		fixQuotedSlashes(rq)
 		var match mux.RouteMatch
 
-		// Inject CORS if enabled
-		if sc.config.CORS != nil {
+		// Inject CORS if enabled and not admin port
+		if privs != adminPrivs && sc.config.CORS != nil {
 			origin := matchedOrigin(sc.config.CORS.Origin, rq.Header["Origin"])
 			response.Header().Add("Access-Control-Allow-Origin", origin)
 			response.Header().Add("Access-Control-Allow-Credentials", "true")
@@ -249,7 +249,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if sc.config.CORS != nil {
+				if privs != adminPrivs && sc.config.CORS != nil {
 					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.CORS.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
