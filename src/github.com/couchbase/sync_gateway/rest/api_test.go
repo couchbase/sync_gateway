@@ -142,6 +142,19 @@ func (rt *restTester) sendAdminRequest(method, resource string, body string) *te
 	return response
 }
 
+func (rt *restTester) sendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+	input := bytes.NewBufferString(body)
+	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	response := &testResponse{httptest.NewRecorder(), request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+
+	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
+	return response
+}
+
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
@@ -260,7 +273,10 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://example.com",
 	}
 	response := rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header()["Access-Control-Allow-Origin"][0], "http://example.com")
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://example.com")
+
+	// no cors on _session POST?
+
 
 	// now test a non-listed origin
 	// b/c * is in config we get *
@@ -268,14 +284,23 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://hack0r.com",
 	}
 	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header()["Access-Control-Allow-Origin"][0], "*")
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "*")
 
 	// now test another origin in config
 	reqHeaders = map[string]string{
 		"Origin": "http://staging.example.com",
 	}
 	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header()["Access-Control-Allow-Origin"][0], "http://staging.example.com")
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://staging.example.com")
+
+	// todo test with a config without * should reject non-matches
+
+	// test no header on _admin apis
+	reqHeaders = map[string]string{
+		"Origin": "http://example.com",
+	}
+	response = rt.sendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
 }
 
 func TestManualAttachment(t *testing.T) {
