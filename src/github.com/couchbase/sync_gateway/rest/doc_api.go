@@ -11,12 +11,12 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"mime/multipart"
 	"net/http"
 	"strings"
-
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 // HTTP handler for a GET of a document
@@ -145,6 +145,9 @@ func (h *handler) handleGetAttachment() error {
 	}
 	if encoding, ok := meta["encoding"].(string); ok {
 		h.setHeader("Content-Encoding", encoding)
+	}
+	if h.privs == adminPrivs { // #720
+		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
 	}
 	h.response.Write(data)
 	return nil

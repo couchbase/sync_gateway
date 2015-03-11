@@ -286,6 +286,15 @@ func TestManualAttachment(t *testing.T) {
 	response = rt.sendRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// retrieve attachment as admin should have
+	// Content-disposition: attachment
+	response = rt.sendAdminRequest("GET", "/db/doc1/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == `attachment; filename="attach1"`)
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// try to overwrite that attachment
