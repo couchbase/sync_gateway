@@ -266,8 +266,8 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 }
 
 func matchedOrigin(allowOrigins []string, rqOrigins []string) string {
-	for _, av := range allowOrigins {
-		for _, rv := range rqOrigins {
+	for _, rv := range rqOrigins {
+		for _, av := range allowOrigins {
 			if rv == av {
 				return av
 			}

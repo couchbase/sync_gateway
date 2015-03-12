@@ -103,9 +103,9 @@ type FacebookConfig struct {
 }
 
 type CORSConfig struct {
-	Origin []string  // List of allowed origins, use ["*"] to allow access from everywhere
+	Origin  []string // List of allowed origins, use ["*"] to allow access from everywhere
 	Headers []string // List of allowed headers
-	MaxAge int       // Maximum age of the CORS Options request
+	MaxAge  int      // Maximum age of the CORS Options request
 }
 
 type ShadowConfig struct {
@@ -285,9 +285,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.Facebook == nil {
 		self.Facebook = other.Facebook
 	}
-  if self.CORS == nil {
-  	self.CORS = other.CORS
-  }
+	if self.CORS == nil {
+		self.CORS = other.CORS
+	}
 	for _, flag := range other.Log {
 		self.Log = append(self.Log, flag)
 	}
