@@ -244,12 +244,6 @@ func (h *handler) assertAdminOnly() {
 	}
 }
 
-func (h *handler) assertNotCors() {
-	if h.response.Header().Get("Access-Control-Allow-Origin") != "" {
-		
-	}
-}
-
 func (h *handler) PathVar(name string) string {
 	v := mux.Vars(h.rq)[name]
 
