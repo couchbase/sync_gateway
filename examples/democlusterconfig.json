@@ -1,0 +1,191 @@
+{
+    "log":["REST", "Shadow", "CRUD", "CRUD+", "HTTP", "HTTP+", "Access", "Changes", "Changes+","Auth", "SSL"],
+    "facebook" : {
+        "register" : true
+    },
+	"databases": {
+    "officeradar": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"officeradar",
+      "users": {
+        "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
+      }
+    },
+    "gaggle": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"gaggle",
+      "users": {
+        "GUEST": {"disabled": false, "admin_channels": ["*"]} 
+      }
+    },
+    "chess-park": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"chess-park",
+      "sync":`
+	function(doc, oldDoc){
+		log("sync function enter as log")
+		if (doc.type == "match") {
+			log("processing match");
+			if (doc._deleted) {
+				// only owners can delete
+				requireUser(oldDoc.ownerId);
+			} else {
+				if (doc.status == "active") {
+					requireUser([doc.ownerId, doc.opponentId]);
+					channel("games-" + doc.ownerId);
+					channel("games-" + doc.opponentId);
+				} else if (doc.status == "waiting") {
+					channel("games-waiting");
+				}
+			}
+		} else if (doc.type == "userProfile") {
+			log("processing user profile");
+			// only users can update their user profile
+			requireUser(doc.userId);
+
+			// for now, only users can see their profiles (no friend support)
+			channel("userprofile-" + doc.userId);
+
+			// if a profile is present, grant them access to their own games channel
+			access(doc.userId, "userprofile-" + doc.userId);
+			access(doc.userId, "games-" + doc.userId);
+			access(doc.userId, "games-waiting");
+		} else {
+			channel(doc.channels);
+		}
+	}
+	` 
+    },
+    "connect2014": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"connect2014",
+      "users": {
+        "GUEST": {"disabled": true} 
+      },
+      "sync":
+        `
+	function(doc, oldDoc){
+
+        if (doc.type == "contact") {
+            // Users can't assign their contact document to another user.
+            if (oldDoc != null && oldDoc.userId != doc.userId) throw({forbidden: "Can't change userId."});            
+            // Users can only change their own contact.
+            requireUser(oldDoc == null ? doc.userId : oldDoc.userId);
+
+        } else if (doc.type == "contactexchange") {
+            // Can't modify a contact exchange document.
+            if (oldDoc != null) throw({forbidden: "Can't modify a contact exchange document."});                      
+            // Issuing user must be the local user.
+            requireUser(doc.localUserId);
+
+        } else if (doc.type == "surveyresult") {
+            // Can't modify a conference survey document.
+            if (oldDoc != null) throw({forbidden: "Can't modify a conference survey document."});                      
+            // Extract the userId from the document _id (the format of _id is "surveyresult-USER-ID").
+            var userId = doc._id.substring(13);
+            // Users can only create their own conference survey.
+            requireUser(userId);
+
+        } else if (doc.type == "ratingresult") {
+            // Extract the userId from the document _id (the format of _id is "sessionrating-session-XXXX-USER-ID").
+            var userId = doc._id.substring(27);
+            // Users can only change their own session ratings.
+            requireUser(userId);
+
+        } else if (doc.type == "scavengerhuntcapture") {
+            // Extract the userId from the document _id (the format of _id is "scavenger-hunt-item-XXX-USER-ID").
+            var userId = doc._id.substring(24);
+            // Users can only change their own scavenger hunt pictures.
+            requireUser(userId);
+
+        } else if (doc.type == "agenda") {
+            // Extract the userId from the document _id (the format of _id is "agenda-USER-ID").
+            var userId = doc._id.substring(7);
+            // Users can only change their own agenda.
+            requireUser(userId);
+
+        } else {
+            // The 'admin' user can change any document.
+            requireUser("admin");
+        }
+
+        if (doc.type == "contact") {
+          // give user access to it's contact channel
+          access(doc.userId, "contact-" + doc.userId);
+          // add doc to user's contact channel
+          channel("contact-" + doc.userId);
+        }
+
+        if (doc.type == "contactexchange") {
+          // trade access to each user's contact channel
+          access(doc.userId, "contact-" + doc.localUserId);
+          access(doc.localUserId, "contact-" + doc.userId);
+        }
+
+        if (doc.type == "session" || 
+            doc.type == "speaker" || 
+            doc.type == "schedule" || 
+            doc.type == "appconfig" ||
+            doc.type == "scavengerhuntitem" ) {
+
+          // everyone can sync these documents
+          channel("public")
+        }
+      }
+        `
+    },
+    "grocery-sync": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"grocery-sync",
+      "users": {
+        "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]} 
+      }
+    },
+    "todolite": {
+      "server":"http://172.23.121.42:8091",
+      "bucket":"todolite",
+      "users": {
+        "GUEST": {"disabled": true}
+      },
+      "sync": 
+  	`
+      function(doc, oldDoc) {
+        // NOTE this function is the same across the iOS, Android, and PhoneGap versions.
+        if (doc.type == "task") {
+          if (!doc.list_id) {
+            throw({forbidden : "Items must have a list_id"})
+          }
+          channel("list-"+doc.list_id);
+        } else if (doc.type == "list") {
+          channel("list-"+doc._id);
+          if (!doc.owner) {
+            throw({forbidden : "List must have an owner"})
+          }
+          if (oldDoc) {
+            var oldOwnerName = oldDoc.owner.substring(oldDoc.owner.indexOf(":")+1);
+            requireUser(oldOwnerName)
+          }
+          var ownerName = doc.owner.substring(doc.owner.indexOf(":")+1);
+          access(ownerName, "list-"+doc._id);
+          if (Array.isArray(doc.members)) {
+            var memberNames = [];
+            for (var i = doc.members.length - 1; i >= 0; i--) {
+              memberNames.push(doc.members[i].substring(doc.members[i].indexOf(":")+1))
+            };
+            access(memberNames, "list-"+doc._id);
+          }
+        } else if (doc.type == "profile") {
+          channel("profiles");
+          var user = doc._id.substring(doc._id.indexOf(":")+1);
+
+          if (user !== doc.user_id) {
+            throw({forbidden : "Profile user_id must match docid : " + user + " : " + doc.user_id})
+          }
+          requireUser(user);
+          access(user, "profiles"); // TODO this should use roles
+        }
+      }
+    `
+    }
+  }
+}

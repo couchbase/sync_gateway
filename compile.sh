@@ -12,7 +12,7 @@ FAILS=0
 echo .....................windows-amd64
 DEST_DIR=${WORKSPACE}/bin/windows-amd64
 mkdir -p ${DEST_DIR}
-GOOS=windows GOARCH=amd64 go build -v github.com/couchbaselabs/sync_gateway
+GOOS=windows GOARCH=amd64 go build -v github.com/couchbase/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway.exe ]]
   then
     mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
@@ -25,7 +25,7 @@ fi
 echo .....................windows-386
 DEST_DIR=${WORKSPACE}/bin/windows-386
 mkdir -p ${DEST_DIR}
-GOOS=windows GOARCH=386   go build -v github.com/couchbaselabs/sync_gateway
+GOOS=windows GOARCH=386   go build -v github.com/couchbase/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway.exe ]]
   then
     mv   ${WORKSPACE}/sync_gateway.exe  ${DEST_DIR}
@@ -38,7 +38,7 @@ fi
 echo .....................linux-386
 DEST_DIR=${WORKSPACE}/bin/linux-386
 mkdir -p ${DEST_DIR}
-GOOS=linux   GOARCH=386   go build -v github.com/couchbaselabs/sync_gateway
+GOOS=linux   GOARCH=386   go build -v github.com/couchbase/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway ]]
   then
     mv   ${WORKSPACE}/sync_gateway      ${DEST_DIR}
@@ -51,7 +51,7 @@ fi
 echo .....................linux-amd64
 DEST_DIR=${WORKSPACE}/bin/linux-amd64
 mkdir -p ${DEST_DIR}
-GOOS=linux   GOARCH=amd64 go build -v github.com/couchbaselabs/sync_gateway
+GOOS=linux   GOARCH=amd64 go build -v github.com/couchbase/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway ]]
   then
     mv   ${WORKSPACE}/sync_gateway      ${DEST_DIR}
@@ -64,7 +64,7 @@ fi
 echo .....................darwin-amd64
 DEST_DIR=${WORKSPACE}/bin/darwin-amd64
 mkdir -p ${DEST_DIR}
-GOOS=darwin  GOARCH=amd64 go build -v github.com/couchbaselabs/sync_gateway
+GOOS=darwin  GOARCH=amd64 go build -v github.com/couchbase/sync_gateway
 if [[ -e ${WORKSPACE}/sync_gateway ]]
   then
     mv   ${WORKSPACE}/sync_gateway      ${DEST_DIR}

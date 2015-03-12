@@ -12,7 +12,7 @@ env LOGS=${LOGS_TEMPLATE_VAR}
 env NAME=${SERVICE_NAME}
 
 # Keep the server running on crash or machine reboot
-start on started mountall
+start on started
 stop on shutdown
 respawn
 
@@ -29,7 +29,7 @@ script
   # Keep a pid around
   echo \$\$ > \$PIDFILE
   cd \$RUNBASE
-  exec su -c \"\$GATEWAY \$CONFIG >> \${LOGS}/\${NAME}_access.log 2>> \${LOGS}/\${NAME}_error.log\" \$RUNAS
+  su --session-command \"\$GATEWAY \$CONFIG >> \${LOGS}/\${NAME}_access.log 2>> \${LOGS}/\${NAME}_error.log\" \$RUNAS
 end script
  
 # Remove pid file when we stop the server
