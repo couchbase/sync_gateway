@@ -223,9 +223,10 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 		fixQuotedSlashes(rq)
 		var match mux.RouteMatch
 
-		// Inject CORS if enabled and not admin port
-		if privs != adminPrivs && sc.config.CORS != nil {
-			origin := matchedOrigin(sc.config.CORS.Origin, rq.Header["Origin"])
+		// Inject CORS if enabled and requested and not admin port
+		originHeader := rq.Header["Origin"]
+		if privs != adminPrivs && sc.config.CORS != nil && len(originHeader) > 0 {
+			origin := matchedOrigin(sc.config.CORS.Origin, originHeader)
 			response.Header().Add("Access-Control-Allow-Origin", origin)
 			response.Header().Add("Access-Control-Allow-Credentials", "true")
 			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.config.CORS.Headers, ", "))
@@ -249,7 +250,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if privs != adminPrivs && sc.config.CORS != nil {
+				if privs != adminPrivs && sc.config.CORS != nil && len(originHeader) > 0 {
 					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.CORS.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}

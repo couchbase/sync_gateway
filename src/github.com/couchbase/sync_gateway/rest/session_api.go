@@ -37,7 +37,10 @@ func (h *handler) handleSessionGET() error {
 
 // POST /_session creates a login session and sets its cookie
 func (h *handler) handleSessionPOST() error {
-	base.Logf("handleSessionPOST %v", h.response.Header().Get("Access-Control-Allow-Origin"))
+	if len(h.rq.Header["Origin"]) > 0 {
+		// CORS not allowed for login #115
+		return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+	}
 	var params struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
@@ -60,6 +63,10 @@ func (h *handler) handleSessionPOST() error {
 
 // DELETE /_session logs out the current session
 func (h *handler) handleSessionDELETE() error {
+	if len(h.rq.Header["Origin"]) > 0 {
+		// CORS not allowed for login #115
+		return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+	}
 	cookie := h.db.Authenticator().DeleteSessionForCookie(h.rq)
 	if cookie == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no session")

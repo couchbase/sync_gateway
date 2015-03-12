@@ -65,7 +65,9 @@ func (rt *restTester) bucket() base.Bucket {
 		}
 
 		rt._sc = NewServerContext(&ServerConfig{
-			CORS: corsConfig,
+			CORS:     corsConfig,
+			Facebook: &FacebookConfig{},
+			Persona:  &PersonaConfig{},
 		})
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
@@ -305,12 +307,15 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
-	// response := rt.sendRequestWithHeaders("POST", "/db/_persona", "", reqHeaders)
-	// assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
 
 	response := rt.sendRequestWithHeaders("POST", "/db/_session", "", reqHeaders)
-	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+	assertStatus(t, response, 400)
 
+	response = rt.sendRequestWithHeaders("POST", "/db/_persona", "", reqHeaders)
+	assertStatus(t, response, 400)
+
+	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", "", reqHeaders)
+	assertStatus(t, response, 400)
 }
 
 func TestManualAttachment(t *testing.T) {
