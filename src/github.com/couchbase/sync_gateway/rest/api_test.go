@@ -292,14 +292,24 @@ func TestCORSOrigin(t *testing.T) {
 	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
 	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://staging.example.com")
 
-	// todo test with a config without * should reject non-matches
-
 	// test no header on _admin apis
 	reqHeaders = map[string]string{
 		"Origin": "http://example.com",
 	}
 	response = rt.sendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
 	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+
+	// test with a config without * should reject non-matches
+	sc := rt.ServerContext()
+	sc.config.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+	// now test a non-listed origin
+	// b/c * is in config we get *
+	reqHeaders = map[string]string{
+		"Origin": "http://hack0r.com",
+	}
+	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
