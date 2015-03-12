@@ -58,7 +58,17 @@ func (rt *restTester) bucket() base.Bucket {
 			syncFnPtr = &rt.syncFn
 		}
 
-		rt._sc = NewServerContext(&ServerConfig{})
+		corsConfig := &CORSConfig{
+			Origin:  []string{"http://example.com", "*", "http://staging.example.com"},
+			Headers: []string{},
+			MaxAge:  1728000,
+		}
+
+		rt._sc = NewServerContext(&ServerConfig{
+			CORS:     corsConfig,
+			Facebook: &FacebookConfig{},
+			Persona:  &PersonaConfig{},
+		})
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
 			Server: &server,
@@ -127,6 +137,19 @@ func (rt *restTester) send(request *http.Request) *testResponse {
 func (rt *restTester) sendAdminRequest(method, resource string, body string) *testResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	response := &testResponse{httptest.NewRecorder(), request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+
+	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
+	return response
+}
+
+func (rt *restTester) sendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+	input := bytes.NewBufferString(body)
+	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
@@ -244,6 +267,65 @@ func TestFunkyDocIDs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.sendRequest("GET", "/db/foo+bar%2Bmoo+car3", "")
 	assertStatus(t, response, 200)
+}
+
+func TestCORSOrigin(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+	response := rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://example.com")
+
+	// now test a non-listed origin
+	// b/c * is in config we get *
+	reqHeaders = map[string]string{
+		"Origin": "http://hack0r.com",
+	}
+	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "*")
+
+	// now test another origin in config
+	reqHeaders = map[string]string{
+		"Origin": "http://staging.example.com",
+	}
+	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://staging.example.com")
+
+	// test no header on _admin apis
+	reqHeaders = map[string]string{
+		"Origin": "http://example.com",
+	}
+	response = rt.sendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+
+	// test with a config without * should reject non-matches
+	sc := rt.ServerContext()
+	sc.config.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+	// now test a non-listed origin
+	// b/c * is in config we get *
+	reqHeaders = map[string]string{
+		"Origin": "http://hack0r.com",
+	}
+	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+
+}
+
+func TestNoCORSOriginOnSessionPost(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", "", reqHeaders)
+	assertStatus(t, response, 400)
+
+	response = rt.sendRequestWithHeaders("POST", "/db/_persona", "", reqHeaders)
+	assertStatus(t, response, 400)
+
+	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", "", reqHeaders)
+	assertStatus(t, response, 400)
 }
 
 func TestManualAttachment(t *testing.T) {
