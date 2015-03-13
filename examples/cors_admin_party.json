@@ -2,7 +2,7 @@
 	"log": ["HTTP+"],
   "CORS": {
     "Origin":["http://localhost:8000"],
-    "Headers":["Keep-Alive","User-Agent","If-Modified-Since","Cache-Control","Content-Type"],
+    "Headers":["Content-Type"],
     "MaxAge": 1728000
  },
 	"databases": {
