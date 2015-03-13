@@ -8,6 +8,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
@@ -188,4 +189,18 @@ func (waiter *changeWaiter) CurrentUserCount() uint64 {
 		return 0
 	}
 	return waiter.listener.CurrentCount(waiter.userKeys)
+}
+
+// Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
+func (waiter *changeWaiter) UpdateChannels(chans channels.TimedSet) {
+	initialCapacity := len(chans) + len(waiter.userKeys)
+	updatedKeys := make([]string, 0, initialCapacity)
+	for channel, _ := range chans {
+		updatedKeys = append(updatedKeys, channel)
+	}
+	if len(waiter.userKeys) > 0 {
+		updatedKeys = append(updatedKeys, waiter.userKeys...)
+	}
+	waiter.keys = updatedKeys
+
 }

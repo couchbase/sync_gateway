@@ -198,10 +198,6 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	if config.Username != "" {
 		spec.Auth = config
 	}
-	bucket, err := db.ConnectToBucket(spec)
-	if err != nil {
-		return nil, err
-	}
 
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
@@ -215,6 +211,15 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if config.CacheConfig.CacheSkippedSeqMaxWait != nil && *config.CacheConfig.CacheSkippedSeqMaxWait > 0 {
 			cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.CacheSkippedSeqMaxWait) * time.Millisecond
 		}
+		// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
+		if config.CacheConfig.EnableStarChannel != nil {
+			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
+		}
+	}
+
+	bucket, err := db.ConnectToBucket(spec)
+	if err != nil {
+		return nil, err
 	}
 
 	// Remote cache definition, if present
