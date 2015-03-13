@@ -1,0 +1,16 @@
+{
+	"log": ["HTTP+"],
+  "CORS": {
+    "Origin":["http://localhost:8000"],
+    "Headers":["Keep-Alive","User-Agent","If-Modified-Since","Cache-Control","Content-Type"],
+    "MaxAge": 1728000
+ },
+	"databases": {
+		"db": {
+			"server": "walrus:",
+			"users": {
+				"GUEST": {"disabled": false, "admin_channels": ["*"] }
+			}
+		}
+	}
+}
