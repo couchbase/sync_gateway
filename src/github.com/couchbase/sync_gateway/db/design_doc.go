@@ -111,7 +111,9 @@ func filterViewResult(input walrus.ViewResult, user auth.User) (result walrus.Vi
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*walrus.ViewRow, 0, len(input.Rows)/2)
+	base.LogTo("HTTP", "input.Rows: %+v", input.Rows)
 	for _, row := range input.Rows {
+		base.LogTo("HTTP", "row.Value type: %T", row.Value)
 		value := row.Value.([]interface{})
 		// value[0] is the array of channels; value[1] is the actual value
 		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
