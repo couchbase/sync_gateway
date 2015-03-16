@@ -11,6 +11,8 @@ package rest
 
 import (
 	"encoding/json"
+	"github.com/couchbase/sync_gateway/channels"
+	"net/http"
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
@@ -72,4 +74,53 @@ func TestViewQuery(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
+}
+
+func TestUserViewQuery(t *testing.T) {
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	// Create a view:
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
+	assertStatus(t, response, 201)
+	// Create docs:
+	response = rt.sendRequest("PUT", "/db/doc1", `{"key":10, "value":"ten", "channel":"W"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven", "channel":"Q"}`)
+	assertStatus(t, response, 201)
+	// Create a user:
+	quinn, _ := a.NewUser("quinn", "123456", channels.SetOf("Q", "q"))
+	a.Save(quinn)
+
+	// Have the user query the view:
+	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?include_docs=true", nil)
+	request.SetBasicAuth("quinn", "123456")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	var result walrus.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 1)
+	row := result.Rows[0]
+	assert.Equals(t, row.Key, float64(7))
+	assert.Equals(t, row.Value, "seven")
+	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+
+	// Admin should see both rows:
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 2)
+	row = result.Rows[0]
+	assert.Equals(t, row.Key, float64(7))
+	assert.Equals(t, row.Value, "seven")
+	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+	row = result.Rows[1]
+	assert.Equals(t, row.Key, float64(10))
+	assert.Equals(t, row.Value, "ten")
+	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"})
+
+	// Make sure users are not allowed to query internal views:
+	request, _ = http.NewRequest("GET", "/db/_design/sync_gateway/_view/access", nil)
+	request.SetBasicAuth("quinn", "123456")
+	response = rt.send(request)
+	assertStatus(t, response, 403)
 }
