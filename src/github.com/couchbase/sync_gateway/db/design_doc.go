@@ -112,6 +112,11 @@ func filterViewResult(input walrus.ViewResult, user auth.User) (result walrus.Vi
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*walrus.ViewRow, 0, len(input.Rows)/2)
 	base.LogTo("HTTP", "input.Rows: %+v", input.Rows)
+	if user == nil {
+		// admin user
+		result = input
+		return
+	}
 	for _, row := range input.Rows {
 		base.LogTo("HTTP", "row.Value type: %T val: %v", row.Value, row.Value)
 		value := row.Value.([]interface{})
