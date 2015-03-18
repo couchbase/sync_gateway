@@ -12,6 +12,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -159,12 +160,15 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		var heartbeat, timeout <-chan time.Time
 		if options.Wait {
 			// Set up heartbeat/timeout
-			if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
-				ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
-				defer ticker.Stop()
-				heartbeat = ticker.C
-			} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
+			ms := 5000
+			log.Printf("setup ticker (heartbeat) every %v ms", ms)
+			ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+			defer ticker.Stop()
+			heartbeat = ticker.C
+
+			if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
 				timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+				log.Printf("setup ticker (timeout) every %v ms", ms)
 				defer timer.Stop()
 				timeout = timer.C
 			}
@@ -173,8 +177,10 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		encoder := json.NewEncoder(h.response)
 	loop:
 		for {
+			log.Printf("sendSimpleChanges for loop")
 			select {
 			case entry, ok := <-feed:
+				log.Printf("got new entry from feed")
 				if !ok {
 					break loop // end of feed
 				}
@@ -189,13 +195,16 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				}
 
 			case <-heartbeat:
+				log.Printf("got heartbeat")
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
 			case <-timeout:
+				log.Printf("got timeout")
 				message = "OK (timeout)"
 				break loop
 			}
 			if err != nil {
+				log.Printf("err != nil")
 				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
 				return nil // error is probably because the client closed the connection
 			}
