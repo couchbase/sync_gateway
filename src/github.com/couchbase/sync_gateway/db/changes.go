@@ -427,7 +427,7 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
 	options := ChangesOptions{Since: SequenceID{Seq: afterSeq}}
-	_, log := db.changeCache.getChannelCache(channelName).getCachedChanges(options)
+	_, log := db.changeCache.entryCache.GetCachedChanges(channelName, options)
 	return log
 }
 
@@ -452,13 +452,12 @@ type lateSequenceFeed struct {
 // skipped) sequences that have been sent to the channel cache.  The lateSequenceFeed stores the last (late)
 // sequence seen by this particular _changes feed to support continuous changes.
 func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
-	chanCache := db.changeCache.channelCaches[channelName]
-	if chanCache == nil {
+	if db.changeCache.entryCache == nil {
 		return nil
 	}
 	lsf := &lateSequenceFeed{
 		active:       true,
-		lastSequence: chanCache.InitLateSequenceClient(),
+		lastSequence: db.changeCache.entryCache.InitLateSequenceClient(channelName),
 		channelName:  channelName,
 	}
 	return lsf
@@ -467,7 +466,7 @@ func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.
 func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEntry, error) {
 
-	logs, lastSequence, err := db.changeCache.getChannelCache(feedHandler.channelName).GetLateSequencesSince(feedHandler.lastSequence)
+	logs, lastSequence, err := db.changeCache.entryCache.GetLateSequencesSince(feedHandler.channelName, feedHandler.lastSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -499,5 +498,5 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 }
 
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
-	db.changeCache.getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
+	db.changeCache.entryCache.ReleaseLateSequenceClient(feedHandler.channelName, feedHandler.lastSequence)
 }
