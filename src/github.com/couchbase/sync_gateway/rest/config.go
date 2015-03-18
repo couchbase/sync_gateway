@@ -135,6 +135,7 @@ type CacheConfig struct {
 	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
+	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

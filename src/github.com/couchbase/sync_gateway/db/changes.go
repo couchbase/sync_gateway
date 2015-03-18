@@ -209,6 +209,11 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			} else {
 				channelsSince = channels.AtSequence(chans, 0)
 			}
+
+			// Updates the changeWaiter to the current set of available channels
+			if changeWaiter != nil {
+				changeWaiter.UpdateChannels(channelsSince)
+			}
 			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
