@@ -265,7 +265,15 @@ func (h *handler) getQuery(query string) string {
 }
 
 func (h *handler) getBoolQuery(query string) bool {
-	return h.getQuery(query) == "true"
+	return h.getOptBoolQuery(query, false)
+}
+
+func (h *handler) getOptBoolQuery(query string, defaultValue bool) bool {
+	q := h.getQuery(query)
+	if q == "" {
+		return defaultValue
+	}
+	return q == "true"
 }
 
 // Returns the integer value of a URL query, defaulting to 0 if unparseable
@@ -290,6 +298,14 @@ func (h *handler) getRestrictedIntQuery(query string, defaultValue, minValue, ma
 		}
 	}
 	return value
+}
+
+func (h *handler) getJSONQuery(query string) (value interface{}, err error) {
+	valueJSON := h.getQuery(query)
+	if valueJSON != "" {
+		err = json.Unmarshal([]byte(valueJSON), &value)
+	}
+	return
 }
 
 func (h *handler) userAgentIs(agent string) bool {
@@ -389,7 +405,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 
 	jsonOut, err := json.Marshal(value)
 	if err != nil {
-		base.Warn("Couldn't serialize JSON for %v", value)
+		base.Warn("Couldn't serialize JSON for %v : %s", value, err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
@@ -423,7 +439,7 @@ func (h *handler) addJSON(value interface{}) {
 	encoder := json.NewEncoder(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
-		base.Warn("Couldn't serialize JSON for %v", value)
+		base.Warn("Couldn't serialize JSON for %v : %s", value, err)
 		panic("JSON serialization failed")
 	}
 }

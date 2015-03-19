@@ -7,6 +7,30 @@
 			"path": "src/github.com/couchbase/sync_gateway"
 		},
 		{
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "src/github.com/couchbaselabs/go-couchbase"
+		},
+		{
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "src/github.com/couchbase/gomemcached"
+		},
+		{
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "src/github.com/couchbaselabs/walrus"
+		},
+		{
 			"follow_symlinks": true,
 			"path": "utils"
 		},
@@ -16,11 +40,7 @@
 		},
 		{
 			"follow_symlinks": true,
-			"path": "vendor/src/github.com/couchbaselabs/sync_gateway_admin_ui"
-		},
-		{
-			"follow_symlinks": true,
-			"path": "src/github.com/couchbaselabs/walrus"
+			"path": "src/github.com/couchbaselabs/sync_gateway_admin_ui"
 		}
 	],
 	"settings":
@@ -29,7 +49,7 @@
 		{
 			"env":
 			{
-				"GOPATH": "/Couchbase/sync_gateway:/Couchbase/sync_gateway/vendor"
+				"GOPATH": "/Couchbase/sync_gateway"
 			}
 		},
 		"rulers":

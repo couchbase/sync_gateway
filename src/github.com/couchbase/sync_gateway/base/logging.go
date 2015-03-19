@@ -37,7 +37,7 @@ var logStar bool // enabling log key "*" enables all key-based logging
 
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
-	logger = log.New(os.Stderr, "", log.Lmicroseconds)
+	logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds)
 	LogKeys = make(map[string]bool)
 }
 

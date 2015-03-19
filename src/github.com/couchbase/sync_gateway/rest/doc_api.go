@@ -11,10 +11,12 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/snej/zdelta-go"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"strings"
+
+	"github.com/snej/zdelta-go"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -179,6 +181,9 @@ func (h *handler) handleGetAttachment() error {
 	}
 
 	h.setHeader("Etag", digest)
+	if h.privs == adminPrivs { // #720
+		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
+	}
 	h.response.Write(data)
 	return nil
 }

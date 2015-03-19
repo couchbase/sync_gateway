@@ -56,6 +56,7 @@ type ServerConfig struct {
 	ConfigServer                   *string         // URL of config server (for dynamic db discovery)
 	Persona                        *PersonaConfig  // Configuration for Mozilla Persona validation
 	Facebook                       *FacebookConfig // Configuration for Facebook validation
+	CORS                           *CORSConfig     // Configuration for allowing CORS
 	Log                            []string        // Log keywords to enable
 	LogFilePath                    *string         // Path to log file, if missing write to stderr
 	Pretty                         bool            // Pretty-print JSON responses?
@@ -101,6 +102,12 @@ type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
 }
 
+type CORSConfig struct {
+	Origin  []string // List of allowed origins, use ["*"] to allow access from everywhere
+	Headers []string // List of allowed headers
+	MaxAge  int      // Maximum age of the CORS Options request
+}
+
 type ShadowConfig struct {
 	Server       *string `json:"server"`                 // Couchbase server URL
 	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name, default "default"
@@ -128,6 +135,7 @@ type CacheConfig struct {
 	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
+	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -277,6 +285,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	}
 	if self.Facebook == nil {
 		self.Facebook = other.Facebook
+	}
+	if self.CORS == nil {
+		self.CORS = other.CORS
 	}
 	for _, flag := range other.Log {
 		self.Log = append(self.Log, flag)

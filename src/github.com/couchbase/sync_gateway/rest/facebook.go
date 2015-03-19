@@ -26,7 +26,10 @@ type FacebookResponse struct {
 
 // POST /_facebook creates a facebook-based login session and sets its cookie.
 func (h *handler) handleFacebookPOST() error {
-
+	if len(h.rq.Header["Origin"]) > 0 {
+		// CORS not allowed for login #115
+		return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+	}
 	var params struct {
 		AccessToken string `json:"access_token"`
 	}
