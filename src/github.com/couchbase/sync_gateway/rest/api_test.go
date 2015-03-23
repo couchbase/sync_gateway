@@ -726,11 +726,12 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	feed, options, filter, channelsArray, err := readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
-	assert.DeepEquals(t, options, db.ChangesOptions{
-		Since:       db.SequenceID{Seq: 78, TriggeredBy: 123456},
-		Limit:       123,
-		Conflicts:   true,
-		IncludeDocs: true})
+
+	assert.Equals(t, options.Since, db.SequenceID{Seq: 78, TriggeredBy: 123456})
+	assert.Equals(t, options.Limit, 123)
+	assert.Equals(t, options.Conflicts, true)
+	assert.Equals(t, options.IncludeDocs, true)
+
 	assert.Equals(t, filter, "Melitta")
 	assert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
 }

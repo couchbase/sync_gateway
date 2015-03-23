@@ -26,6 +26,8 @@ type ChangesOptions struct {
 	Wait        bool       // Wait for results, instead of immediately returning empty result?
 	Continuous  bool       // Run continuously until terminated?
 	Terminator  chan bool  // Caller can close this channel to terminate the feed
+	HeartbeatMs uint64     // How often to send a heartbeat to the client
+	TimeoutMs   uint64     // After this amount of time, close the longpoll connection
 }
 
 // A changes entry; Database.GetChanges returns an array of these.

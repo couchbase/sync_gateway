@@ -88,6 +88,10 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
+
+		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", 0, kMinHeartbeatMS, 0)
+		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS)
+
 	} else {
 		// POST request has parameters in JSON body:
 		body, err := h.readBody()
@@ -159,12 +163,12 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		var heartbeat, timeout <-chan time.Time
 		if options.Wait {
 			// Set up heartbeat/timeout
-			if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
-				ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+			if options.HeartbeatMs > 0 {
+				ticker := time.NewTicker(time.Duration(options.HeartbeatMs) * time.Millisecond)
 				defer ticker.Stop()
 				heartbeat = ticker.C
-			} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
-				timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+			} else if options.TimeoutMs > 0 {
+				timer := time.NewTimer(time.Duration(options.TimeoutMs) * time.Millisecond)
 				defer timer.Stop()
 				timeout = timer.C
 			}
@@ -216,12 +220,12 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	var timeoutInterval time.Duration
 	var timer *time.Timer
 	var heartbeat <-chan time.Time
-	if ms := h.getRestrictedIntQuery("heartbeat", 0, kMinHeartbeatMS, 0); ms > 0 {
-		ticker := time.NewTicker(time.Duration(ms) * time.Millisecond)
+	if options.HeartbeatMs > 0 {
+		ticker := time.NewTicker(time.Duration(options.HeartbeatMs) * time.Millisecond)
 		defer ticker.Stop()
 		heartbeat = ticker.C
-	} else if ms := h.getRestrictedIntQuery("timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS); ms > 0 {
-		timeoutInterval = time.Duration(ms) * time.Millisecond
+	} else if options.TimeoutMs > 0 {
+		timeoutInterval = time.Duration(options.TimeoutMs) * time.Millisecond
 		defer func() {
 			if timer != nil {
 				timer.Stop()
@@ -403,6 +407,8 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		IncludeDocs bool          `json:"include_docs"`
 		Filter      string        `json:"filter"`
 		Channels    string        `json:"channels"` // a filter query param, so it has to be a string
+		HeartbeatMs uint64        `json:"heartbeat"`
+		TimeoutMs   uint64        `json:"timeout"`
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
@@ -417,6 +423,21 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 	if input.Channels != "" {
 		channelsArray = strings.Split(input.Channels, ",")
 	}
+
+	options.HeartbeatMs = getRestrictedInt(
+		input.HeartbeatMs,
+		0,
+		kMinHeartbeatMS,
+		0,
+	)
+
+	options.TimeoutMs = getRestrictedInt(
+		input.TimeoutMs,
+		kDefaultTimeoutMS,
+		0,
+		kMaxTimeoutMS,
+	)
+
 	return
 }
 
