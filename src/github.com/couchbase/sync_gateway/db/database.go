@@ -287,34 +287,36 @@ func installViews(bucket base.Bucket) error {
 	                    }
 	               }`
 
-	ddoc := walrus.DesignDoc{
+	designDocMap := map[string]walrus.DesignDoc{}
+
+	designDocMap[DesignDocSyncGateway] = walrus.DesignDoc{
 		Views: walrus.ViewMap{
-			"principals":  walrus.ViewDef{Map: principals_map},
-			"channels":    walrus.ViewDef{Map: channels_map},
-			"access":      walrus.ViewDef{Map: access_map},
-			"role_access": walrus.ViewDef{Map: roleAccess_map},
+			ViewPrincipals: walrus.ViewDef{Map: principals_map},
+			ViewChannels:   walrus.ViewDef{Map: channels_map},
+			ViewAccess:     walrus.ViewDef{Map: access_map},
+			ViewRoleAccess: walrus.ViewDef{Map: roleAccess_map},
 		},
 	}
-	err := bucket.PutDDoc("sync_gateway", ddoc)
-	if err != nil {
-		base.Warn("Error installing Couchbase design doc: %v", err)
-	}
 
-	ddoc = walrus.DesignDoc{
+	designDocMap[DesignDocSyncHousekeeping] = walrus.DesignDoc{
 		Views: walrus.ViewMap{
-			"all_bits": walrus.ViewDef{Map: allbits_map},
-			"all_docs": walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
-			"import":   walrus.ViewDef{Map: import_map, Reduce: "_count"},
-			"old_revs": walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
-			"sessions": walrus.ViewDef{Map: sessions_map},
+			ViewAllBits:  walrus.ViewDef{Map: allbits_map},
+			ViewAllDocs:  walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			ViewImport:   walrus.ViewDef{Map: import_map, Reduce: "_count"},
+			ViewOldRevs:  walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
+			ViewSessions: walrus.ViewDef{Map: sessions_map},
 		},
 	}
-	err = bucket.PutDDoc("sync_housekeeping", ddoc)
-	if err != nil {
-		base.Warn("Error installing Couchbase design doc: %v", err)
+
+	// add all design docs from map into bucket
+	for designDocName, designDoc := range designDocMap {
+		if err := bucket.PutDDoc(designDocName, designDoc); err != nil {
+			base.Warn("Error installing Couchbase design doc: %v", err)
+			return err
+		}
 	}
 
-	return err
+	return nil
 }
 
 type IDAndRev struct {
@@ -355,7 +357,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 		opts["endkey"] = resultsOpts.Endkey
 	}
 
-	err := db.Bucket.ViewCustom("sync_housekeeping", "all_docs", opts, &vres)
+	err := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, &vres)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 		return err
@@ -378,7 +380,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View("sync_gateway", "principals", Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}
@@ -399,7 +401,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 
 func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.Bucket.View("sync_housekeeping", "all_docs", opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewAllDocs, opts)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 	}
@@ -416,7 +418,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 		opts["endkey"] = "_sync:" + docType + "~"
 		opts["inclusive_end"] = false
 	}
-	vres, err := db.Bucket.View("sync_housekeeping", "all_bits", opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewAllBits, opts)
 	if err != nil {
 		base.Warn("all_bits view returned %v", err)
 		return err
@@ -438,7 +440,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	opts := Body{"stale": false}
 	opts["startkey"] = userName
 	opts["endkey"] = userName
-	vres, err := db.Bucket.View("sync_housekeeping", "sessions", opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewSessions, opts)
 	if err != nil {
 		base.Warn("sessions view returned %v", err)
 		return err
@@ -457,7 +459,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // Deletes old revisions that have been moved to individual docs
 func (db *Database) Compact() (int, error) {
 	opts := Body{"stale": false, "reduce": false}
-	vres, err := db.Bucket.View("sync_housekeeping", "old_revs", opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewOldRevs, opts)
 	if err != nil {
 		base.Warn("old_revs view returned %v", err)
 		return 0, err
@@ -548,7 +550,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}
-	vres, err := db.Bucket.View("sync_housekeeping", "import", options)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
 	if err != nil {
 		return 0, err
 	}

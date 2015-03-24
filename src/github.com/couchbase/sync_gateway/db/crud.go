@@ -11,10 +11,11 @@ package db
 
 import (
 	"encoding/json"
-	"github.com/couchbaselabs/walrus"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -812,7 +813,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	channelSet := channels.TimedSet{}
@@ -832,7 +833,7 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.Ti
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	// Merge the TimedSets from the view result:
