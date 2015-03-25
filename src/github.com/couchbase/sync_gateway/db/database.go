@@ -378,6 +378,8 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
+
+	base.LogTo("Views", "principals")
 	vres, err := db.Bucket.View("sync_gateway", "principals", Body{"stale": false})
 	if err != nil {
 		return

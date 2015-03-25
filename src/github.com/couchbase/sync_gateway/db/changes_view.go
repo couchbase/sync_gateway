@@ -52,7 +52,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			Flags:        row.Value.Flags,
 			TimeReceived: time.Now(),
 		}
-		// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
+		base.LogTo("Sequences", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
 		entries = append(entries, entry)
 	}
 

@@ -652,6 +652,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 func TestChannelRace(t *testing.T) {
 
 	base.LogKeys["Sequences"] = true
+	base.LogKeys["DCache"] = true
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()

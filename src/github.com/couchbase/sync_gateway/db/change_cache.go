@@ -27,6 +27,9 @@ var EnableStarChannelLog = true
 
 var changeCacheExpvars *expvar.Map
 
+//var cacheType = "local"
+var cacheType = "distributed"
+
 func init() {
 	changeCacheExpvars = expvar.NewMap("syncGateway_changeCache")
 	changeCacheExpvars.Set("maxPending", new(base.IntMax))
@@ -71,6 +74,8 @@ type EntryCache interface {
 	InitLateSequenceClient(channelName string) uint64
 	GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error)
 	ReleaseLateSequenceClient(channelName string, sequence uint64) error
+
+	SetNotifier(onChange func(base.Set))
 }
 
 type LogEntry channels.LogEntry
@@ -103,7 +108,6 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 	c.context = context
 	c.initialSequence = lastSequence
 	c.nextSequence = lastSequence + 1
-	c.onChange = onChange
 	c.receivedSeqs = make(map[uint64]struct{})
 
 	// init cache options
@@ -125,9 +129,28 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 		c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
 	}
 
-	c.entryCache = &localCache{
-		context: c.context,
+	switch cacheType {
+	case "local":
+		c.onChange = onChange
+		c.entryCache = &localCache{
+			context: c.context,
+		}
+	case "distributed":
+		// for distributed cache, no onChange during cacheWrite
+		bucketName := fmt.Sprintf("distributed_cache_%d", time.Now())
+		cacheBucket, err := ConnectToBucket(base.BucketSpec{
+			Server:     "walrus:",
+			BucketName: bucketName})
+		if err != nil {
+			base.LogPanic("Couldn't connect to cache bucket: %v", err)
+		}
+		c.entryCache = &kvCache{
+			storage: cacheBucket,
+		}
+		// Start polling cache notifier
+		c.entryCache.SetNotifier(onChange)
 	}
+
 	c.entryCache.Init(c.initialSequence)
 
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)

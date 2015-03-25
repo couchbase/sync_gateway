@@ -110,10 +110,13 @@ func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 		listener.bucket.GetName(), counter)
 	for {
 		curCounter := listener._currentCount(keys)
+		base.LogTo("Changes+", "Listener comparing curcounter, counter %d,%d", curCounter, counter)
 		if curCounter != counter {
 			return curCounter
 		}
 		listener.tapNotifier.Wait()
+		base.LogTo("Changes+", "Listener woke up")
+
 	}
 }
 

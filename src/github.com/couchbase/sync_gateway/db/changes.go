@@ -288,7 +288,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
-
 			// This loop reads the available entries from all the feeds in parallel, merges them,
 			// and writes them to the output channel:
 			var sentSomething bool
@@ -372,10 +371,12 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
+			base.LogTo("DCache", "MultiChangesFeed waiting with Since=%d", options.Since.Seq)
 			output <- nil
 			if !changeWaiter.Wait() {
 				break
 			}
+			base.LogTo("DCache", "MultiChangesFeed waking up with Since=%d", options.Since.Seq)
 
 			// Check whether I was terminated while waiting for a change:
 			select {
