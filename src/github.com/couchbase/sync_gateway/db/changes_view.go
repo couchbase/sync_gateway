@@ -33,7 +33,8 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	optMap := changesViewOptions(channelName, endSeq, options)
 	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 	vres := channelsViewResult{}
-	err := dbc.Bucket.ViewCustom(DesignDocSyncGateway, ViewChannels, optMap, &vres)
+	designDoc := ViewToDesignDoc[ViewChannels]
+	err := dbc.Bucket.ViewCustom(designDoc, ViewChannels, optMap, &vres)
 	if err != nil {
 		base.Logf("Error from 'channels' view: %v", err)
 		return nil, err

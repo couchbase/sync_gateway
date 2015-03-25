@@ -11,9 +11,10 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/channels"
 	"net/http"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbaselabs/walrus"
@@ -40,9 +41,9 @@ func TestDesignDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 	response = rt.sendAdminRequest("DELETE", "/db/_design/foo", "")
 	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
+	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway_channels", "{}")
 	assertStatus(t, response, 403)
-	response = rt.sendAdminRequest("GET", "/db/_design/sync_gateway", "")
+	response = rt.sendAdminRequest("GET", "/db/_design/sync_gateway_channels", "")
 	assertStatus(t, response, 200)
 }
 

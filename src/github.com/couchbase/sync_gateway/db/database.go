@@ -289,10 +289,20 @@ func installViews(bucket base.Bucket) error {
 
 	designDocMap := map[string]walrus.DesignDoc{}
 
-	designDocMap[DesignDocSyncGateway] = walrus.DesignDoc{
+	designDocMap[DesignDocSyncGatewayPrincipals] = walrus.DesignDoc{
 		Views: walrus.ViewMap{
 			ViewPrincipals: walrus.ViewDef{Map: principals_map},
-			ViewChannels:   walrus.ViewDef{Map: channels_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayChannels] = walrus.DesignDoc{
+		Views: walrus.ViewMap{
+			ViewChannels: walrus.ViewDef{Map: channels_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayAccess] = walrus.DesignDoc{
+		Views: walrus.ViewMap{
 			ViewAccess:     walrus.ViewDef{Map: access_map},
 			ViewRoleAccess: walrus.ViewDef{Map: roleAccess_map},
 		},
@@ -380,7 +390,8 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
+	designDoc := ViewToDesignDoc[ViewPrincipals]
+	vres, err := db.Bucket.View(designDoc, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}

@@ -16,7 +16,9 @@ func (h *handler) handleGetDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
 	base.TEMP("GetDesignDoc %q", ddocID)
 	var result interface{}
-	if ddocID == DesignDocSyncGateway {
+	if ddocID == db.DesignDocSyncGatewayPrincipals ||
+		ddocID == db.DesignDocSyncGatewayChannels ||
+		ddocID == db.DesignDocSyncGatewayAccess {
 		// we serve this content here so that CouchDB 1.2 has something to
 		// hash into the replication-id, to correspond to our filter.
 		filter := "ok"
@@ -61,10 +63,11 @@ func (h *handler) handleView() error {
 	// Couchbase Server view API:
 	// http://docs.couchbase.com/admin/admin/REST/rest-views-get.html
 	ddocName := h.PathVar("ddoc")
-	if ddocName == "" {
-		ddocName = DesignDocSyncGateway
-	}
 	viewName := h.PathVar("view")
+	if ddocName == "" {
+		ddocName = db.ViewToDesignDoc[viewName]
+	}
+
 	opts := db.Body{}
 
 	// Boolean options:

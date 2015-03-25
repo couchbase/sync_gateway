@@ -13,18 +13,37 @@ import (
 type DesignDoc walrus.DesignDoc
 
 const (
-	DesignDocSyncGateway      = "sync_gateway"
-	DesignDocSyncHousekeeping = "sync_housekeeping"
-	ViewPrincipals            = "principals"
-	ViewChannels              = "channels"
-	ViewAccess                = "access"
-	ViewRoleAccess            = "role_access"
-	ViewAllBits               = "all_bits"
-	ViewAllDocs               = "all_docs"
-	ViewImport                = "import"
-	ViewOldRevs               = "old_revs"
-	ViewSessions              = "sessions"
+	DesignDocSyncGatewayPrincipals = "sync_gateway_principals"
+	DesignDocSyncGatewayChannels   = "sync_gateway_channels"
+	DesignDocSyncGatewayAccess     = "sync_gateway_access"
+	DesignDocSyncHousekeeping      = "sync_housekeeping"
+	ViewPrincipals                 = "principals"
+	ViewChannels                   = "channels"
+	ViewAccess                     = "access"
+	ViewRoleAccess                 = "role_access"
+	ViewAllBits                    = "all_bits"
+	ViewAllDocs                    = "all_docs"
+	ViewImport                     = "import"
+	ViewOldRevs                    = "old_revs"
+	ViewSessions                   = "sessions"
 )
+
+// ViewName -> DesignDocName
+var ViewToDesignDoc map[string]string
+
+func init() {
+	ViewToDesignDoc = map[string]string{
+		ViewPrincipals: DesignDocSyncGatewayPrincipals,
+		ViewChannels:   DesignDocSyncGatewayChannels,
+		ViewAccess:     DesignDocSyncGatewayAccess,
+		ViewRoleAccess: DesignDocSyncGatewayAccess,
+		ViewAllBits:    DesignDocSyncHousekeeping,
+		ViewAllDocs:    DesignDocSyncHousekeeping,
+		ViewImport:     DesignDocSyncHousekeeping,
+		ViewOldRevs:    DesignDocSyncHousekeeping,
+		ViewSessions:   DesignDocSyncHousekeeping,
+	}
+}
 
 func isInternalDDoc(ddocName string) bool {
 	return strings.HasPrefix(ddocName, "sync_")
