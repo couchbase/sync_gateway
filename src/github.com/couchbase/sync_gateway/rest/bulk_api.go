@@ -230,7 +230,7 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.LogTo("HTTP", "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
-	result, err := h.db.Bucket.View("sync_gateway", viewName, opts)
+	result, err := h.db.Bucket.View(db.DesignDocSyncGateway, viewName, opts)
 	if err != nil {
 		return err
 	}
