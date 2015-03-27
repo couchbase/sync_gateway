@@ -217,7 +217,48 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions)
+	// Remote cache definition, if present
+	remoteCacheOptions := &db.RemoteCacheOptions{}
+	if config.RemoteCache != nil {
+		cacheServer := "http://localhost:8091"
+		cachePool := "default"
+		cacheBucketName := ""
+
+		if config.RemoteCache.Server != nil {
+			cacheServer = *config.RemoteCache.Server
+		}
+		if config.RemoteCache.Pool != nil {
+			cachePool = *config.RemoteCache.Pool
+		}
+		if config.RemoteCache.Bucket != "" {
+			cacheBucketName = config.RemoteCache.Bucket
+		}
+		cacheSpec := base.BucketSpec{
+			Server:     cacheServer,
+			PoolName:   cachePool,
+			BucketName: cacheBucketName,
+		}
+		if config.RemoteCache.Username != "" {
+			cacheSpec.Auth = config.RemoteCache
+		}
+		base.Logf("Opening cache bucket %q, pool %q, server <%s>",
+			cacheBucketName, cachePool, cacheServer)
+
+		remoteCacheOptions.Bucket, err = db.ConnectToBucket(cacheSpec)
+		if err != nil {
+			base.Logf("error Opening cache bucket %q, pool %q, server <%s>",
+				cacheBucketName, cachePool, cacheServer)
+			// TODO: revert to local cache?
+			return nil, err
+		}
+		base.Logf("Opened cache bucket successfully, writer=%v", config.RemoteCache.CacheWriter)
+
+		remoteCacheOptions.CacheWriter = config.RemoteCache.CacheWriter
+	} else {
+		remoteCacheOptions = nil
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions, remoteCacheOptions)
 	if err != nil {
 		return nil, err
 	}

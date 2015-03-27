@@ -27,9 +27,6 @@ var EnableStarChannelLog = true
 
 var changeCacheExpvars *expvar.Map
 
-//var cacheType = "local"
-var cacheType = "distributed"
-
 func init() {
 	changeCacheExpvars = expvar.NewMap("syncGateway_changeCache")
 	changeCacheExpvars.Set("maxPending", new(base.IntMax))
@@ -99,12 +96,17 @@ type CacheOptions struct {
 	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
 }
 
+type RemoteCacheOptions struct {
+	Bucket      base.Bucket // Caching bucket
+	CacheWriter bool        // Whether this sync gateway node is a cache writer
+}
+
 //////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set), options CacheOptions) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set), options CacheOptions, remoteCache *RemoteCacheOptions) {
 	c.context = context
 	c.initialSequence = lastSequence
 	c.nextSequence = lastSequence + 1
@@ -129,26 +131,19 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 		c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
 	}
 
-	switch cacheType {
-	case "local":
+	if remoteCache != nil {
+		// Distributed cache
+		c.entryCache = &kvCache{
+			storage: remoteCache.Bucket,
+		}
+		// Start polling cache notifier
+		c.entryCache.SetNotifier(onChange)
+	} else {
+		// local cache
 		c.onChange = onChange
 		c.entryCache = &localCache{
 			context: c.context,
 		}
-	case "distributed":
-		// for distributed cache, no onChange during cacheWrite
-		bucketName := fmt.Sprintf("distributed_cache_%d", time.Now())
-		cacheBucket, err := ConnectToBucket(base.BucketSpec{
-			Server:     "walrus:",
-			BucketName: bucketName})
-		if err != nil {
-			base.LogPanic("Couldn't connect to cache bucket: %v", err)
-		}
-		c.entryCache = &kvCache{
-			storage: cacheBucket,
-		}
-		// Start polling cache notifier
-		c.entryCache.SetNotifier(onChange)
 	}
 
 	c.entryCache.Init(c.initialSequence)

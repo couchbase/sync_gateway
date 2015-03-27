@@ -48,7 +48,7 @@ func setupTestDB(t *testing.T) *Database {
 }
 
 func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
-	context, err := NewDatabaseContext("db", testBucket(), false, options)
+	context, err := NewDatabaseContext("db", testBucket(), false, options, nil)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -759,7 +759,7 @@ func BenchmarkDatabase(b *testing.B) {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
 			BucketName: fmt.Sprintf("b-%d", i)})
-		context, _ := NewDatabaseContext("db", bucket, false, CacheOptions{})
+		context, _ := NewDatabaseContext("db", bucket, false, CacheOptions{}, nil)
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

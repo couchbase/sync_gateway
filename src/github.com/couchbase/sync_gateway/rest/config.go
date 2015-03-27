@@ -89,6 +89,7 @@ type DbConfig struct {
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
+	RemoteCache        *RemoteCacheConfig             `json:"remote_cache,omitempty"`         // Cache settings
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -108,12 +109,16 @@ type CORSConfig struct {
 	MaxAge  int      // Maximum age of the CORS Options request
 }
 
+type BucketConfig struct {
+	Server   *string `json:"server"`             // Couchbase server URL
+	Pool     *string `json:"pool,omitempty"`     // Couchbase pool name, default "default"
+	Bucket   string  `json:"bucket"`             // Bucket name
+	Username string  `json:"username,omitempty"` // Username for authenticating to server
+	Password string  `json:"password,omitempty"` // Password for authenticating to server
+}
+
 type ShadowConfig struct {
-	Server       *string `json:"server"`                 // Couchbase server URL
-	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name, default "default"
-	Bucket       string  `json:"bucket"`                 // Bucket name
-	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
-	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
+	BucketConfig
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
 	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults to TAP
 }
@@ -135,6 +140,11 @@ type CacheConfig struct {
 	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
+}
+
+type RemoteCacheConfig struct {
+	BucketConfig
+	CacheWriter bool `json:"writer,omitempty"` // Max wait for pending sequence before skipping
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -163,6 +173,24 @@ func (dbConfig *DbConfig) setup(name string) error {
 		url.User = nil
 		urlStr := url.String()
 		dbConfig.Server = &urlStr
+	}
+
+	if dbConfig.RemoteCache != nil {
+		url, err = url.Parse(*dbConfig.RemoteCache.Server)
+		if err == nil && url.User != nil {
+			// Remove credentials from shadow URL and put them into the DbConfig.Shadow.Username and .Password:
+			if dbConfig.RemoteCache.Username == "" {
+				dbConfig.RemoteCache.Username = url.User.Username()
+			}
+			if dbConfig.RemoteCache.Password == "" {
+				if password, exists := url.User.Password(); exists {
+					dbConfig.RemoteCache.Password = password
+				}
+			}
+			url.User = nil
+			urlStr := url.String()
+			dbConfig.RemoteCache.Server = &urlStr
+		}
 	}
 
 	if dbConfig.Shadow != nil {
@@ -194,6 +222,11 @@ func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 // Implementation of AuthHandler interface for ShadowConfig
 func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
 	return shadowConfig.Username, shadowConfig.Password, shadowConfig.Bucket
+}
+
+// Implementation of AuthHandler interface for RemoteCacheConfig
+func (remoteCacheConfig *RemoteCacheConfig) GetCredentials() (string, string, string) {
+	return remoteCacheConfig.Username, remoteCacheConfig.Password, remoteCacheConfig.Bucket
 }
 
 // Reads a ServerConfig from raw data
