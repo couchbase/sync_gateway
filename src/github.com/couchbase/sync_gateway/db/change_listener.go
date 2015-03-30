@@ -93,7 +93,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 		listener.keyCounts[key] = listener.counter
 	}
 	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
-		listener.bucket.GetName(), keys, listener.counter)
+		listener.getBucketName(), keys, listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -112,7 +112,7 @@ func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
-		listener.bucket.GetName(), counter)
+		listener.getBucketName(), counter)
 	for {
 		curCounter := listener._currentCount(keys)
 		base.LogTo("Changes+", "Listener comparing curcounter, counter %d,%d", curCounter, counter)
@@ -140,6 +140,14 @@ func (listener *changeListener) _currentCount(keys []string) uint64 {
 		}
 	}
 	return max
+}
+
+func (listener *changeListener) getBucketName() string {
+	if listener.bucket != nil {
+		return listener.bucket.GetName()
+	} else {
+		return ""
+	}
 }
 
 //////// CHANGE WAITER
