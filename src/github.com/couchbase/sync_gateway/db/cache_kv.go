@@ -159,22 +159,33 @@ func (b *kvCache) addLateSequence(channelName string, change *LogEntry) error {
 	return nil
 }
 
-func (b *kvCache) updateCacheClock(channelName string, change *LogEntry) {
+func (b *kvCache) updateCacheClock(channelName string, change *LogEntry) error {
 
 	key := getCacheCountKey(channelName)
 
-	newValue := change.Sequence
+	//newValue := change.Sequence
 	// increment cache clock if new sequence is higher than clock
 	// TODO: review whether we should use
-	byteValue, err := b.storage.GetRaw(key)
+	/*
+		byteValue, err := b.storage.GetRaw(key)
+		if err != nil {
+			b.storage.SetRaw(key, 0, uint64ToByte(newValue))
+			return
+		}
+		value := byteToUint64(byteValue)
+		if value < newValue {
+			b.storage.SetRaw(key, 0, uint64ToByte(newValue))
+		}
+	*/
+
+	_, err := b.storage.Incr(key, 1, 1, 0)
 	if err != nil {
-		b.storage.SetRaw(key, 0, uint64ToByte(newValue))
-		return
+		base.Warn("Error from Incr in updateCacheClock(%s): %v", key, err)
+		return err
 	}
-	value := byteToUint64(byteValue)
-	if value < newValue {
-		b.storage.SetRaw(key, 0, uint64ToByte(newValue))
-	}
+
+	return nil
+
 }
 
 // Writes a single doc to the cache for the entry.

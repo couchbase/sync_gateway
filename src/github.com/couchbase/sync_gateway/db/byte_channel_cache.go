@@ -24,6 +24,7 @@ const kSequenceOffsetLength = 0 // disabled until we actually need it
 type distributedChannelCache struct {
 	channelName         string
 	lastSequence        uint64
+	lastCounter         uint64
 	notifyRunning       bool
 	notifyLock          sync.Mutex
 	lastNotifiedChanges []*LogEntry
@@ -66,15 +67,15 @@ func (dcc *distributedChannelCache) startNotify() {
 func (dcc *distributedChannelCache) pollForChanges() bool {
 
 	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.storage)
-	currentSequence, err := cacheHelper.getCacheClock()
+	currentCounter, err := cacheHelper.getCacheClock()
 	if err != nil {
 		return false
 	}
 
 	// If there's an update, cache the recent changes in memory, as we'll expect all
 	// all connected clients to request these changes
-	if currentSequence > dcc.lastSequence {
-		dcc.UpdateRecentCache(cacheHelper, currentSequence)
+	if currentCounter > dcc.lastCounter {
+		dcc.UpdateRecentCache(cacheHelper, currentCounter)
 	}
 
 	return true
@@ -90,19 +91,20 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	//
 }
 
-func (dcc *distributedChannelCache) UpdateRecentCache(cacheHelper byteCacheHelper, currentSequence uint64) {
+func (dcc *distributedChannelCache) UpdateRecentCache(cacheHelper byteCacheHelper, currentCounter uint64) {
 	dcc.notifyLock.Lock()
 	defer dcc.notifyLock.Unlock()
 
-	// Compare sequence again, in case someone has already cached while we waited for the lock
-	if currentSequence > dcc.lastSequence {
+	// Compare counter again, in case someone has already updated cache while we waited for the lock
+	if currentCounter > dcc.lastCounter {
 		options := ChangesOptions{Since: SequenceID{Seq: dcc.lastSequence}}
 		_, dcc.lastNotifiedChanges = cacheHelper.getCachedChanges(options)
-		dcc.lastNotifiedSince = dcc.lastSequence
 		if len(dcc.lastNotifiedChanges) > 0 {
+			dcc.lastNotifiedSince = dcc.lastSequence
 			dcc.lastSequence = dcc.lastNotifiedChanges[len(dcc.lastNotifiedChanges)-1].Sequence
+			dcc.lastCounter = currentCounter
 		} else {
-			base.Warn("pollForChanges: channel clock changed, but no changes found in cache")
+			base.Warn("pollForChanges: channel [%s] clock changed to %d (from %d), but no changes found in cache", dcc.channelName, currentCounter, dcc.lastCounter)
 		}
 		base.LogTo("DCache", "Calling notify for channel %s", dcc.channelName)
 		if dcc.cache.onChange != nil {
