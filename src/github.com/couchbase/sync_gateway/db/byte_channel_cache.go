@@ -74,7 +74,7 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	// If there's an update, cache the recent changes in memory, as we'll expect all
 	// all connected clients to request these changes
 	if currentSequence > dcc.lastSequence {
-		dcc.UpdateRecentCache(currentSequence)
+		dcc.UpdateRecentCache(cacheHelper, currentSequence)
 	}
 
 	return true
@@ -90,7 +90,7 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	//
 }
 
-func (dcc *distributedChannelCache) UpdateRecentCache(currentSequence uint64) {
+func (dcc *distributedChannelCache) UpdateRecentCache(cacheHelper byteCacheHelper, currentSequence uint64) {
 	dcc.notifyLock.Lock()
 	defer dcc.notifyLock.Unlock()
 
