@@ -71,18 +71,10 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 		return false
 	}
 
+	// If there's an update, cache the recent changes in memory, as we'll expect all
+	// all connected clients to request these changes
 	if currentSequence > dcc.lastSequence {
-		dcc.notifyLock.Lock()
-		// found changes - cache latest to minimize overhead if multiple readers waiting
-		options := ChangesOptions{Since: SequenceID{Seq: dcc.lastSequence}}
-		_, dcc.lastNotifiedChanges = cacheHelper.getCachedChanges(options)
-		dcc.lastNotifiedSince = dcc.lastSequence
-		dcc.lastSequence = dcc.lastNotifiedChanges[len(dcc.lastNotifiedChanges)-1].Sequence
-		base.LogTo("DCache", "Calling notify for channel %s", dcc.channelName)
-		if dcc.cache.onChange != nil {
-			dcc.cache.onChange(base.SetOf(dcc.channelName))
-		}
-		dcc.notifyLock.Unlock()
+		dcc.UpdateRecentCache(currentSequence)
 	}
 
 	return true
@@ -96,6 +88,27 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	// else
 	//   return false
 	//
+}
+
+func (dcc *distributedChannelCache) UpdateRecentCache(currentSequence uint64) {
+	dcc.notifyLock.Lock()
+	defer dcc.notifyLock.Unlock()
+
+	// Compare sequence again, in case someone has already cached while we waited for the lock
+	if currentSequence > dcc.lastSequence {
+		options := ChangesOptions{Since: SequenceID{Seq: dcc.lastSequence}}
+		_, dcc.lastNotifiedChanges = cacheHelper.getCachedChanges(options)
+		dcc.lastNotifiedSince = dcc.lastSequence
+		if len(dcc.lastNotifiedChanges) > 0 {
+			dcc.lastSequence = dcc.lastNotifiedChanges[len(dcc.lastNotifiedChanges)-1].Sequence
+		} else {
+			base.Warn("pollForChanges: channel clock changed, but no changes found in cache")
+		}
+		base.LogTo("DCache", "Calling notify for channel %s", dcc.channelName)
+		if dcc.cache.onChange != nil {
+			dcc.cache.onChange(base.SetOf(dcc.channelName))
+		}
+	}
 }
 
 func (dcc *distributedChannelCache) getCachedChanges(options ChangesOptions) (uint64, []*LogEntry) {

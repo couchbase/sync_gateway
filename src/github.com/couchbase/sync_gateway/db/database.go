@@ -124,6 +124,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 			return nil, err
 		}
 		go context.watchDocChanges()
+	} else {
+		// Initialize the notify handling in the tapListener (used by cache readers)
+		// TODO: Better decoupling of notification from tap listening
+		context.tapListener.InitNotify()
 	}
 
 	return context, nil

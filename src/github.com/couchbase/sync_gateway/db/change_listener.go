@@ -23,6 +23,12 @@ type changeListener struct {
 	OnDocChanged func(docID string, jsonData []byte)
 }
 
+func (listener *changeListener) InitNotify() {
+	listener.counter = 1
+	listener.keyCounts = map[string]uint64{}
+	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
+}
+
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error {
 	listener.bucket = bucket
@@ -32,9 +38,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 	}
 
 	listener.tapFeed = tapFeed
-	listener.counter = 1
-	listener.keyCounts = map[string]uint64{}
-	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
+	listener.InitNotify()
 	if trackDocs {
 		listener.DocChannel = make(chan walrus.TapEvent, 100)
 	}
