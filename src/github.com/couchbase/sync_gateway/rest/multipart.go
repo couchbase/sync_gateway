@@ -28,17 +28,29 @@ var MinCompressiblePartSize = 300
 
 //////// WRITING:
 
-// Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress bool) error {
-	// First extract the attachments that should follow:
+// Loads the bodies of the Attachment objects in the response, and indicates whether the
+// response should be sent as multipart.
+func loadAttachments(r db.RevResponse) (useMultipart bool, err error) {
 	for _, att := range r.Attachments {
 		if data, err := att.LoadData(true); err != nil {
-			return err
+			return false, err
 		} else if len(data) > MaxInlineAttachmentSize || att.IsDelta() {
 			att.SetFollows()
+			useMultipart = true
 		}
 	}
+	return
+}
 
+// Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
+func WriteMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress bool) error {
+	if _, err := loadAttachments(r); err != nil {
+		return err
+	}
+	return writeLoadedMultipartDocument(r, writer, compress)
+}
+
+func writeLoadedMultipartDocument(r db.RevResponse, writer *multipart.Writer, compress bool) error {
 	// Write the main JSON body:
 	if err := writeJSONPart(r, "application/json", compress, writer); err != nil {
 		return err
@@ -70,11 +82,13 @@ func WriteRevisionAsPart(r db.RevResponse, isError bool, compress bool, writer *
 		partHeaders.Set("X-Rev-ID", revID)
 	}
 
-	if hasInlineAttachments(r.Body) {
+	if useMultipart, err := loadAttachments(r); err != nil {
+		return err
+	} else if useMultipart {
 		// Write doc as multipart, including attachments:
 		docWriter, err := createNestedMultipart(writer, "related", partHeaders)
 		if err == nil {
-			err = WriteMultipartDocument(r, docWriter, compress)
+			err = writeLoadedMultipartDocument(r, docWriter, compress)
 			if err == nil {
 				err = docWriter.Close()
 			}
@@ -266,16 +280,6 @@ func md5DigestKey(data []byte) string {
 	digester := md5.New()
 	digester.Write(data)
 	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-}
-
-// Does this Body contain any attachments with a "data" property?
-func hasInlineAttachments(body db.Body) bool {
-	for _, value := range body.Attachments() {
-		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
-			return true
-		}
-	}
-	return false
 }
 
 // Creates a multipart writer as a nested part in another writer.

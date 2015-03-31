@@ -304,8 +304,13 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
+	docs, ok := body["docs"].([]interface{})
+	if !ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'docs' property in request body")
+	}
+
 	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
-		for _, item := range body["docs"].([]interface{}) {
+		for _, item := range docs {
 			var body db.Body
 			var attsSince []string
 			var err error
