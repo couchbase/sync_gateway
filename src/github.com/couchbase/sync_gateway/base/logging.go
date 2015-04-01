@@ -42,7 +42,7 @@ var timestampPattern string
 func init() {
     logger = log.New(os.Stderr, "", 0)
 	LogKeys = make(map[string]bool)
-    timestampPattern = "2006-01-02T15:04:05.999Z07:00" //ISO 8601
+    timestampPattern = "2006-01-02T15:04:05.000Z07:00" //ISO 8601
     logNoTime = false
 }
 
