@@ -36,10 +36,13 @@ var logFile *os.File
 
 var logStar bool // enabling log key "*" enables all key-based logging
 
+var timestampPattern string
+
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
     logger = log.New(os.Stderr, "", 0)
 	LogKeys = make(map[string]bool)
+    timestampPattern = "2006-01-02T15:04:05.999Z07:00" //ISO 8601
     logNoTime = false
 }
 
@@ -245,7 +248,7 @@ func Printf(format string, args ...interface{}) {
 
     if ok {
         if !logNoTime {
-            timestamp := time.Now().Format(time.RFC3339Nano) //"2006-01-02T15:04:05.999999999Z07:00"
+            timestamp := time.Now().Format(timestampPattern)
             var tsarg []interface{}
             args = append(append(tsarg, timestamp), args...)
             logger.Printf("%s "+format, args...)
