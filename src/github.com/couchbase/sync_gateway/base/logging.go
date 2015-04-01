@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+    "time"
 )
 
 // 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
@@ -37,8 +38,9 @@ var logStar bool // enabling log key "*" enables all key-based logging
 
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
-	logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds)
+    logger = log.New(os.Stderr, "", 0)
 	LogKeys = make(map[string]bool)
+    logNoTime = false
 }
 
 func LogLevel() int {
@@ -59,7 +61,8 @@ func LogNoColor() {
 func LogNoTime() {
 	logLock.RLock()
 	defer logLock.RUnlock()
-	logger.SetFlags(logger.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
+    //Disable timestamp for default logger, this may be used by other packages
+    log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
 	logNoTime = true
 }
 
@@ -146,7 +149,7 @@ func LogTo(key string, format string, args ...interface{}) {
 	ok := logLevel <= 1 && (logStar || LogKeys[key])
 
 	if ok {
-		logger.Printf(fgYellow+key+": "+reset+format, args...)
+		Printf(fgYellow+key+": "+reset+format, args...)
 	}
 }
 
@@ -157,7 +160,7 @@ func Log(message string) {
 	ok := logLevel <= 1
 
 	if ok {
-		logger.Printf(message)
+		Print(message)
 	}
 }
 
@@ -168,7 +171,7 @@ func Logf(format string, args ...interface{}) {
 	ok := logLevel <= 1
 
 	if ok {
-		logger.Printf(format, args...)
+		Printf(format, args...)
 	}
 }
 
@@ -221,8 +224,35 @@ func logWithCaller(color string, prefix string, format string, args ...interface
 	message := fmt.Sprintf(format, args...)
 	logLock.RLock()
 	defer logLock.RUnlock()
-	logger.Print(color, prefix, ": ", message, reset,
+	Print(color, prefix, ": ", message, reset,
 		dim, " -- ", GetCallersName(2), reset)
+}
+
+// Simple wrapper that converts Print to Printf
+func Print(args ...interface{}) {
+    ok := logLevel <= 1
+
+    if ok {
+        Printf("%s", fmt.Sprint(args...))
+    }
+}
+
+// Logs a formatted message to the underlying logger
+func Printf(format string, args ...interface{}) {
+    logLock.RLock()
+    defer logLock.RUnlock()
+    ok := logLevel <= 1
+
+    if ok {
+        if !logNoTime {
+            timestamp := time.Now().Format(time.RFC3339Nano) //"2006-01-02T15:04:05.999999999Z07:00"
+            var tsarg []interface{}
+            args = append(append(tsarg, timestamp), args...)
+            logger.Printf("%s "+format, args...)
+        } else {
+            logger.Printf(format, args...)
+        }
+    }
 }
 
 func lastComponent(path string) string {
