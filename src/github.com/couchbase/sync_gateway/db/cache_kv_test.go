@@ -165,6 +165,39 @@ func TestKvCacheMultiBlock(t *testing.T) {
 	assert.Equals(t, len(results), 5)
 
 }
+
+func TestKvCacheEmptyBlock(t *testing.T) {
+
+	base.LogKeys["DCache"] = true
+	cache, bucket := testKvCache("TestKvCacheEmptyBlock")
+
+	// Add entry to cache
+	cache.AddToCache(channelEntry(10, "foo1", "1-a", []string{"ABC"}))
+
+	// Add entry in later block
+	// default cache block size is 10000
+	cache.AddToCache(channelEntry(30010, "foo30010", "1-a", []string{"ABC"}))
+
+	// wait for add
+	time.Sleep(50 * time.Millisecond)
+	// Verify entries from bucket directly
+	sequenceEntry, err := bucket.GetRaw("_cache:seq:10")
+	assert.True(t, len(sequenceEntry) > 0)
+	assert.True(t, err == nil)
+
+	sequenceEntry, err = bucket.GetRaw("_cache:seq:30010")
+	assert.True(t, len(sequenceEntry) > 0)
+	assert.True(t, err == nil)
+
+	// wait for add
+	time.Sleep(50 * time.Millisecond)
+
+	// Validate changes traverses blocks3
+	options := ChangesOptions{Since: SequenceID{Seq: 0}}
+	_, results := cache.GetCachedChanges("ABC", options)
+	assert.Equals(t, len(results), 2)
+
+}
 func TestDistributedNotify(t *testing.T) {
 
 	base.LogKeys["DCache"] = true

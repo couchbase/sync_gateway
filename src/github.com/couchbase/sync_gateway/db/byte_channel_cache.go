@@ -263,30 +263,34 @@ func (b *byteCacheHelper) getCachedChanges(options ChangesOptions, stableSequenc
 	// Iterate over blocks
 	moreChanges := true
 
-	for block != nil && moreChanges {
-		for i := startIndex; i < byteCacheBlockCapacity; i++ {
-			sequence := i + offset
-			if sequence > stableSequence {
-				moreChanges = false
-				break
-			}
-			if block.value[i] > 0 {
-				entry, err := readCacheEntry(sequence, b.bucket)
-				if err != nil {
-					// error reading cache entry - return changes to this point
+	for moreChanges {
+		if block != nil {
+			for i := startIndex; i < byteCacheBlockCapacity; i++ {
+				sequence := i + offset
+				if sequence > stableSequence {
 					moreChanges = false
 					break
 				}
-				if block.value[i] == 2 {
-					// deleted
-					entry.Flags |= channels.Removed
+				if block.value[i] > 0 {
+					entry, err := readCacheEntry(sequence, b.bucket)
+					if err != nil {
+						// error reading cache entry - return changes to this point
+						moreChanges = false
+						break
+					}
+					if block.value[i] == 2 {
+						// deleted
+						entry.Flags |= channels.Removed
+					}
+					cacheContents = append(cacheContents, entry)
 				}
-				cacheContents = append(cacheContents, entry)
 			}
 		}
-
 		// Init for next block
 		blockIndex++
+		if uint64(blockIndex)*byteCacheBlockCapacity > stableSequence {
+			moreChanges = false
+		}
 		block = b.readCacheBlock(blockIndex)
 		startIndex = 0
 		offset = uint64(blockIndex) * byteCacheBlockCapacity
