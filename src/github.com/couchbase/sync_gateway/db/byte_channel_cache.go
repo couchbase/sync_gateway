@@ -10,10 +10,12 @@
 package db
 
 import (
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
+	"errors"
 	"sync"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 var byteCacheBlockCapacity = uint64(10000)
@@ -30,18 +32,28 @@ type distributedChannelCache struct {
 	lastNotifiedChanges []*LogEntry
 	lastNotifiedSince   uint64
 	cache               *kvCache
+	stableSequence      uint64
 }
 
 func NewDistributedChannelCache(channelName string, cache *kvCache) *distributedChannelCache {
-	return &distributedChannelCache{
+
+	channelCache := &distributedChannelCache{
 		channelName: channelName,
 		cache:       cache,
 	}
+
+	// Init stable sequence
+	stableSequence, err := cache.getStableSequence()
+	if err != nil {
+		stableSequence = 0
+	}
+	channelCache.stableSequence = stableSequence
+	return channelCache
+
 }
 
 func (dcc *distributedChannelCache) startNotify() {
 	if !dcc.notifyRunning {
-		base.LogTo("DCache", "Starting notify for channel %s", dcc.channelName)
 		dcc.notifyLock.Lock()
 		defer dcc.notifyLock.Unlock()
 		// ensure someone else didn't already start while we were waiting
@@ -66,7 +78,24 @@ func (dcc *distributedChannelCache) startNotify() {
 
 func (dcc *distributedChannelCache) pollForChanges() bool {
 
-	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.storage)
+	// check stable sequence first
+	// TODO: move this up out of the channel cache so that we're only doing it once (not once per channel), and have that process call the registered
+	// channel caches
+
+	stableSequence, err := dcc.cache.getStableSequence()
+	if err != nil {
+		stableSequence = 0
+	}
+
+	if stableSequence <= dcc.stableSequence {
+		return false
+	}
+
+	dcc.stableSequence = stableSequence
+
+	base.LogTo("DCache", "Updating stable sequence to: %d (%s)", dcc.stableSequence, dcc.channelName)
+
+	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.bucket)
 	currentCounter, err := cacheHelper.getCacheClock()
 	if err != nil {
 		return false
@@ -74,6 +103,7 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 
 	// If there's an update, cache the recent changes in memory, as we'll expect all
 	// all connected clients to request these changes
+	base.LogTo("DCache", "poll for changes on channel %s: (current, last) (%d, %d)", dcc.channelName, currentCounter, dcc.lastCounter)
 	if currentCounter > dcc.lastCounter {
 		dcc.UpdateRecentCache(cacheHelper, currentCounter)
 	}
@@ -98,7 +128,7 @@ func (dcc *distributedChannelCache) UpdateRecentCache(cacheHelper byteCacheHelpe
 	// Compare counter again, in case someone has already updated cache while we waited for the lock
 	if currentCounter > dcc.lastCounter {
 		options := ChangesOptions{Since: SequenceID{Seq: dcc.lastSequence}}
-		_, dcc.lastNotifiedChanges = cacheHelper.getCachedChanges(options)
+		_, dcc.lastNotifiedChanges = cacheHelper.getCachedChanges(options, dcc.stableSequence)
 		if len(dcc.lastNotifiedChanges) > 0 {
 			dcc.lastNotifiedSince = dcc.lastSequence
 			dcc.lastSequence = dcc.lastNotifiedChanges[len(dcc.lastNotifiedChanges)-1].Sequence
@@ -106,7 +136,6 @@ func (dcc *distributedChannelCache) UpdateRecentCache(cacheHelper byteCacheHelpe
 		} else {
 			base.Warn("pollForChanges: channel [%s] clock changed to %d (from %d), but no changes found in cache", dcc.channelName, currentCounter, dcc.lastCounter)
 		}
-		base.LogTo("DCache", "Calling notify for channel %s", dcc.channelName)
 		if dcc.cache.onChange != nil {
 			dcc.cache.onChange(base.SetOf(dcc.channelName))
 		}
@@ -117,54 +146,105 @@ func (dcc *distributedChannelCache) getCachedChanges(options ChangesOptions) (ui
 
 	// Check whether we can use the cached results from the latest poll
 
-	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.storage)
-	base.LogTo("DCache", "Comparing with dcc.lastSince=%d", dcc.lastNotifiedSince)
+	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.bucket)
+	base.LogTo("DCache+", "Comparing with dcc.lastSince=%d", dcc.lastNotifiedSince)
 	if dcc.lastNotifiedSince > 0 && options.Since.SafeSequence() == dcc.lastNotifiedSince {
-		base.LogTo("DCache", "Returning cached poll results")
 		return uint64(0), dcc.lastNotifiedChanges
 	}
 
 	// If not, retrieve from cache
-	return cacheHelper.getCachedChanges(options)
+
+	base.LogTo("DCache", "getCachedChanges - stable sequence: %d", dcc.stableSequence)
+	return cacheHelper.getCachedChanges(options, dcc.stableSequence)
 
 }
 
 type byteCacheHelper struct {
 	channelName string
-	storage     base.Bucket
+	bucket      base.Bucket
 	lastChanges []*LogEntry
 	lastSince   uint64
 }
 
-func NewByteCacheHelper(channel string, storage base.Bucket) byteCacheHelper {
+func NewByteCacheHelper(channel string, bucket base.Bucket) byteCacheHelper {
 	return byteCacheHelper{
 		channelName: channel,
-		storage:     storage,
+		bucket:      bucket,
 	}
 }
 
 func (b *byteCacheHelper) Add(change *LogEntry, isRemoval bool) error {
 	// Update the sequence in the appropriate cache block
+	base.LogTo("DCache+", "Add to channel cache %s, isRemoval:%v", b.channelName, isRemoval)
+	return b.addCacheEntry(change.Sequence, isRemoval)
+}
 
-	base.LogTo("DCache", "Add to channel cache %s, isRemoval:%v", b.channelName, isRemoval)
+func (b *byteCacheHelper) AddSet(entries []kvCacheEntry) error {
 
-	cacheBlock := b.readCacheBlockForSequence(change.Sequence)
-	if cacheBlock == nil {
-		base.LogTo("DCache", "creating new cache block for sequence %d", change.Sequence)
-		cacheBlock, _ = b.newCacheBlock(change.Sequence)
+	base.LogTo("DCache", "enter AddSet for channel %s, %+v", b.channelName, entries)
+	// Update the sequences in the appropriate cache block
+	if len(entries) == 0 {
+		return nil
 	}
-	cacheBlock.addSequence(change.Sequence, isRemoval)
-	b.writeCacheBlock(cacheBlock)
+
+	// get cache block for first sequence
+	cacheBlock := b.readOrCreateCacheBlockForSequence(entries[0].sequence)
+	lowSequence := uint64(entries[0].sequence/byteCacheBlockCapacity) * byteCacheBlockCapacity
+	highSequence := lowSequence + byteCacheBlockCapacity
+
+	base.LogTo("DCache", "highSequence: %d", highSequence)
+	var nextBlock *ByteCacheBlock
+	for _, entry := range entries {
+		var addError error
+		if entry.sequence >= highSequence {
+			base.LogTo("DCache", "next block handling for sequence : %d", entry.sequence)
+			if nextBlock == nil {
+				nextBlock = b.readOrCreateCacheBlockForSequence(entry.sequence)
+			}
+			addError = nextBlock.addSequence(entry.sequence, entry.removal)
+		} else {
+			addError = cacheBlock.addSequence(entry.sequence, entry.removal)
+		}
+
+		if addError != nil {
+			base.Warn("Error adding sequence to block - adding individually")
+			b.addCacheEntry(entry.sequence, entry.removal)
+		}
+
+	}
+
+	err := b.writeCacheBlock(cacheBlock)
+	if err != nil {
+		return err
+	}
+
+	if nextBlock != nil {
+		err = b.writeCacheBlock(nextBlock)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func (b *byteCacheHelper) getCachedChanges(options ChangesOptions) (uint64, []*LogEntry) {
+func (b *byteCacheHelper) addCacheEntry(sequence uint64, isRemoval bool) error {
+	cacheBlock := b.readCacheBlockForSequence(sequence)
+	if cacheBlock == nil {
+		cacheBlock, _ = b.newCacheBlock(sequence)
+	}
+	cacheBlock.addSequence(sequence, isRemoval)
+	err := b.writeCacheBlock(cacheBlock)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *byteCacheHelper) getCachedChanges(options ChangesOptions, stableSequence uint64) (uint64, []*LogEntry) {
 
 	var cacheContents []*LogEntry
 	since := options.Since.SafeSequence()
-
-	base.LogTo("DCache", "Starting getCachedChanges for channel %s, Since=%d", b.channelName, options.Since.Seq)
 
 	// Byte channel cache is separated into docs of (byteCacheBlockCapacity) sequences.
 	blockIndex := b.getCacheBlockIndex(since)
@@ -172,18 +252,28 @@ func (b *byteCacheHelper) getCachedChanges(options ChangesOptions) (uint64, []*L
 	// Get index of sequence within block
 	offset := uint64(blockIndex) * byteCacheBlockCapacity
 	startIndex := (since + 1) - offset
+
 	// Iterate over blocks
-	for block != nil {
+	moreChanges := true
+
+	for block != nil && moreChanges {
 		for i := startIndex; i < byteCacheBlockCapacity; i++ {
+			sequence := i + offset
+			if sequence > stableSequence {
+				moreChanges = false
+				break
+			}
 			if block.value[i] > 0 {
-				sequence := i + offset
-				entry := readCacheEntry(sequence, b.storage)
+				entry, err := readCacheEntry(sequence, b.bucket)
+				if err != nil {
+					// error reading cache entry - return changes to this point
+					moreChanges = false
+					break
+				}
 				if block.value[i] == 2 {
 					// deleted
 					entry.Flags |= channels.Removed
 				}
-
-				base.LogTo("DCache", "appending entry for sequence %d: %+v", sequence, entry)
 				cacheContents = append(cacheContents, entry)
 			}
 		}
@@ -228,13 +318,13 @@ func (b *byteCacheHelper) getCachedChanges(options ChangesOptions) (uint64, []*L
 
 func (b *byteCacheHelper) getCacheClock() (uint64, error) {
 	key := getCacheCountKey(b.channelName)
-	byteValue, err := b.storage.GetRaw(key)
+	var intValue uint64
+	err := b.bucket.Get(key, &intValue)
 	if err != nil {
-		return 0, err
+		// return nil here - cache clock may not have been initialized yet
+		return 0, nil
 	}
-
-	return byteToUint64(byteValue), nil
-
+	return intValue, nil
 }
 
 func (b *byteCacheHelper) newCacheBlock(sequence uint64) (*ByteCacheBlock, error) {
@@ -243,7 +333,7 @@ func (b *byteCacheHelper) newCacheBlock(sequence uint64) (*ByteCacheBlock, error
 	blockIndex := b.getCacheBlockIndex(sequence)
 	key := getCacheBlockKey(b.channelName, blockIndex)
 
-	// Initialize the byte[] storage
+	// Initialize the byte[] bucket
 	cacheValue := make([]byte, byteCacheBlockCapacity+kSequenceOffsetLength)
 	sequenceOffset := uint64(sequence/byteCacheBlockCapacity) * byteCacheBlockCapacity
 	// Write the sequence Offset first (8 bytes for uint64)
@@ -262,6 +352,15 @@ func (b *byteCacheHelper) newCacheBlock(sequence uint64) (*ByteCacheBlock, error
 
 }
 
+func (b *byteCacheHelper) readOrCreateCacheBlockForSequence(sequence uint64) *ByteCacheBlock {
+
+	cacheBlock := b.readCacheBlockForSequence(sequence)
+	if cacheBlock == nil {
+		cacheBlock, _ = b.newCacheBlock(sequence)
+	}
+	return cacheBlock
+}
+
 // Loads the cache block associated with the sequence
 func (b *byteCacheHelper) readCacheBlockForSequence(sequence uint64) *ByteCacheBlock {
 	// Determine which cache block should be used for the sequence, and read that block
@@ -272,7 +371,7 @@ func (b *byteCacheHelper) readCacheBlockForSequence(sequence uint64) *ByteCacheB
 func (b *byteCacheHelper) readCacheBlock(blockIndex uint16) *ByteCacheBlock {
 
 	docID := getCacheBlockKey(b.channelName, blockIndex)
-	cacheBlockDoc, err := b.storage.GetRaw(docID)
+	cacheBlockDoc, err := b.bucket.GetRaw(docID)
 	// Not found
 	if err != nil {
 		return nil
@@ -288,12 +387,13 @@ func (b *byteCacheHelper) readCacheBlock(blockIndex uint16) *ByteCacheBlock {
 
 // Determine the cache block index for a sequence
 func (b *byteCacheHelper) getCacheBlockIndex(sequence uint64) uint16 {
+	base.LogTo("DCache", "block index for sequence %d is %d", sequence, uint16(sequence/byteCacheBlockCapacity))
 	return uint16(sequence / byteCacheBlockCapacity)
 }
 
 // Writes the cache block associated with the sequence
 func (b *byteCacheHelper) writeCacheBlock(block *ByteCacheBlock) error {
-	return b.storage.SetRaw(block.key, 0, block.value)
+	return b.bucket.SetRaw(block.key, 0, block.value)
 }
 
 ///////// ByteCacheBlock - management of a single channel cache block (one doc)
@@ -337,6 +437,10 @@ func (c *ByteCacheBlock) addSequence(sequence uint64, isRemoval bool) error {
 	//   1 : sequence is in channel
 	//   2 : sequence triggers removal from channel
 	index := c.getIndexForSequence(sequence)
+	if index < 0 || index >= uint64(len(c.value)) {
+		base.LogTo("DCache", "CACHE ERROR CACHE ERROR KLAXON KLAXON")
+		return errors.New("Sequence out of range of block")
+	}
 	if isRemoval {
 		c.value[index] = 2
 	} else {
@@ -346,9 +450,11 @@ func (c *ByteCacheBlock) addSequence(sequence uint64, isRemoval bool) error {
 }
 
 func (c *ByteCacheBlock) hasSequence(sequence uint64) bool {
+	base.LogTo("DCache", "hasSequence? %d ", sequence)
 	return c.value[c.getIndexForSequence(sequence)] > 0
 }
 
 func (c *ByteCacheBlock) getIndexForSequence(sequence uint64) uint64 {
+	base.LogTo("DCache", "GetIndexForSequence %d: %d", sequence, sequence-c.minSequence+kSequenceOffsetLength)
 	return sequence - c.minSequence + kSequenceOffsetLength
 }

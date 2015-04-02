@@ -249,7 +249,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		base.Logf("Opening cache bucket %q, pool %q, server <%s>",
 			cacheBucketName, cachePool, cacheServer)
 
-		remoteCacheOptions.Bucket, err = db.ConnectToBucket(cacheSpec)
+		remoteCacheOptions.Bucket, err = base.GetBucket(cacheSpec)
 		if err != nil {
 			base.Logf("error Opening cache bucket %q, pool %q, server <%s>",
 				cacheBucketName, cachePool, cacheServer)

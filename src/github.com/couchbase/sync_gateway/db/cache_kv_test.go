@@ -19,15 +19,15 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-func testKvCache() (*kvCache, base.Bucket) {
+func testKvCache(bucketname string) (*kvCache, base.Bucket) {
 	cacheBucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: "distributed_cache_test"})
+		BucketName: bucketname})
 	if err != nil {
 		log.Fatal("Couldn't connect to cache bucket")
 	}
 	cache := &kvCache{
-		storage: cacheBucket,
+		bucket: cacheBucket,
 	}
 	cache.Init(uint64(0))
 	return cache, cacheBucket
@@ -49,15 +49,17 @@ func channelEntry(seq uint64, docid string, revid string, channelNames []string)
 	}
 }
 
-func TestKvCache(t *testing.T) {
+func TestKvCacheBasic(t *testing.T) {
 
-	base.LogKeys["DCache"] = true
-	cache, bucket := testKvCache()
+	base.LogKeys["DCacheSelect"] = true
+	base.LogKeys["DCacheChanges"] = true
+	cache, bucket := testKvCache("TestKvCacheBasic")
 
 	// Add entry to cache
-	addedTo := cache.AddToCache(channelEntry(1, "foo1", "1-a", []string{"ABC", "CBS"}))
-	log.Println("addedTo:", addedTo)
-	assert.Equals(t, len(addedTo), 3)
+	cache.AddToCache(channelEntry(1, "foo1", "1-a", []string{"ABC", "CBS"}))
+
+	// wait for add
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify entry from bucket directly
 	sequenceEntry, err := bucket.GetRaw("_cache:seq:1")
@@ -65,10 +67,11 @@ func TestKvCache(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Verify read of entry
-	entry := readCacheEntry(1, bucket)
+	entry, err := readCacheEntry(1, bucket)
 	assert.Equals(t, entry.Sequence, uint64(1))
 	assert.Equals(t, entry.DocID, "foo1")
 	assert.Equals(t, entry.RevID, "1-a")
+	assertNoError(t, err, "Cache Read")
 
 	// Validate cache entry for channels
 	cacheHelper := cache.getCacheHelper("ABC")
@@ -83,24 +86,27 @@ func TestKvCache(t *testing.T) {
 
 	cache.AddToCache(channelEntry(100, "foo2", "1-a", []string{"ABC", "CBS"}))
 	cache.AddToCache(channelEntry(500, "foo3", "1-a", []string{"CBS"}))
-
+	cache.AddToCache(channelEntry(501, "foo4", "1-a", []string{"CBS"}))
+	cache.AddToCache(channelEntry(502, "foo5", "1-a", []string{"CBS"}))
+	cache.AddToCache(channelEntry(503, "foo6", "1-a", []string{"CBS"}))
+	cache.AddToCache(channelEntry(504, "foo7", "1-a", []string{"ABC"}))
+	time.Sleep(50 * time.Millisecond)
 	// Validate retrieval (GetCachedChanges)
 	options := ChangesOptions{Since: SequenceID{Seq: 0}}
 	_, results := cache.GetCachedChanges("ABC", options)
-	assert.Equals(t, len(results), 2)
+	assert.Equals(t, len(results), 3)
 	assert.Equals(t, results[0].Sequence, uint64(1))
 	assert.Equals(t, results[0].DocID, "foo1")
 	assert.Equals(t, results[0].RevID, "1-a")
 
 	options = ChangesOptions{Since: SequenceID{Seq: 50}}
 	_, results = cache.GetCachedChanges("ABC", options)
-	assert.Equals(t, len(results), 1)
+	assert.Equals(t, len(results), 2)
 
 	// Validate retrieval (GetChanges)
-
 	options = ChangesOptions{Since: SequenceID{Seq: 0}}
 	results, _ = cache.GetChanges("ABC", options)
-	assert.Equals(t, len(results), 2)
+	assert.Equals(t, len(results), 3)
 	assert.Equals(t, results[0].Sequence, uint64(1))
 	assert.Equals(t, results[0].DocID, "foo1")
 	assert.Equals(t, results[0].RevID, "1-a")
@@ -110,17 +116,17 @@ func TestKvCache(t *testing.T) {
 func TestKvCacheMultiBlock(t *testing.T) {
 
 	base.LogKeys["DCache"] = true
-	cache, bucket := testKvCache()
+	cache, bucket := testKvCache("TestKvCacheMultiBlock")
 
 	// Add entry to cache
-	addedTo := cache.AddToCache(channelEntry(10, "foo1", "1-a", []string{"ABC"}))
-	assert.Equals(t, len(addedTo), 2)
+	cache.AddToCache(channelEntry(10, "foo1", "1-a", []string{"ABC"}))
 
 	// Add entry in later block
 	// default cache block size is 10000
-	addedTo = cache.AddToCache(channelEntry(10010, "foo1", "1-a", []string{"ABC"}))
-	assert.Equals(t, len(addedTo), 2)
+	cache.AddToCache(channelEntry(10010, "foo10010", "1-a", []string{"ABC"}))
 
+	// wait for add
+	time.Sleep(50 * time.Millisecond)
 	// Verify entries from bucket directly
 	sequenceEntry, err := bucket.GetRaw("_cache:seq:10")
 	assert.True(t, len(sequenceEntry) > 0)
@@ -138,19 +144,25 @@ func TestKvCacheMultiBlock(t *testing.T) {
 	assert.Equals(t, block.hasSequence(10010), true)
 
 	// Validate border entries
-	addedTo = cache.AddToCache(channelEntry(9999, "foo9999", "1-a", []string{"ABC"}))
-	addedTo = cache.AddToCache(channelEntry(10000, "foo10000", "1-a", []string{"ABC"}))
+	cache.AddToCache(channelEntry(19999, "foo19999", "1-a", []string{"ABC"}))
+	cache.AddToCache(channelEntry(20000, "foo20000", "1-a", []string{"ABC"}))
+	cache.AddToCache(channelEntry(20001, "foo20001", "1-a", []string{"ABC"}))
+	time.Sleep(50 * time.Millisecond)
 	cacheHelper = cache.getCacheHelper("ABC")
-	block = cacheHelper.readCacheBlockForSequence(uint64(9999))
-	assert.Equals(t, block.hasSequence(9999), true)
-	block = cacheHelper.readCacheBlockForSequence(uint64(10000))
-	assert.Equals(t, block.hasSequence(10000), true)
+	block = cacheHelper.readCacheBlockForSequence(uint64(19999))
+	assert.Equals(t, block.hasSequence(19999), true)
+	block = cacheHelper.readCacheBlockForSequence(uint64(20000))
+	assert.Equals(t, block.hasSequence(20000), true)
+	block = cacheHelper.readCacheBlockForSequence(uint64(20001))
+	assert.Equals(t, block.hasSequence(20001), true)
 
+	// wait for add
+	time.Sleep(50 * time.Millisecond)
 	// Validate changes traverses blocks
 
 	options := ChangesOptions{Since: SequenceID{Seq: 0}}
 	_, results := cache.GetCachedChanges("ABC", options)
-	assert.Equals(t, len(results), 4)
+	assert.Equals(t, len(results), 5)
 
 }
 func TestDistributedNotify(t *testing.T) {
@@ -243,4 +255,21 @@ func TestDistributedNotify(t *testing.T) {
 		"1", "2", "3", "5"}))
 
 	close(options.Terminator)
+}
+
+func TestCacheClock(t *testing.T) {
+
+	base.LogKeys["DCache"] = true
+	cache, _ := testKvCache("TestCacheClock")
+
+	// Add entry to cache
+	cache.AddToCache(channelEntry(1, "foo1", "1-a", []string{"ABC", "CBS"}))
+	time.Sleep(50 * time.Millisecond)
+
+	cacheHelper := cache.getCacheHelper("ABC")
+	clock, err := cacheHelper.getCacheClock()
+
+	assert.Equals(t, clock, uint64(1))
+	assert.True(t, err == nil)
+
 }

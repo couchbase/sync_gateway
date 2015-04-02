@@ -134,7 +134,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 	if remoteCache != nil {
 		// Distributed cache
 		c.entryCache = &kvCache{
-			storage: remoteCache.Bucket,
+			bucket: remoteCache.Bucket,
 		}
 		// Start polling cache notifier
 		c.entryCache.SetNotifier(onChange)
@@ -409,7 +409,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	sequence := change.Sequence
 	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
-		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+		base.LogTo("Cache+", "  Ignoring duplicate of #%d, id=%s", sequence, change.DocID)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
@@ -459,6 +459,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		return nil // this was a placeholder for an unused sequence
 	}
 
+	cacheStart := time.Now()
 	addedTo := c.entryCache.AddToCache(change)
 
 	// Record a histogram of the overall lag from the time the doc was saved:
@@ -469,6 +470,9 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	lag = time.Since(change.TimeReceived)
 	lagMs = int(lag/(100*time.Millisecond)) * 100
 	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
+	lag = time.Since(cacheStart)
+	lagMs = int(lag / (1 * time.Millisecond))
+	changeCacheExpvars.Add(fmt.Sprintf("lag-cache-%06dms", lagMs), 1)
 
 	return addedTo
 }
@@ -486,6 +490,15 @@ func (c *changeCache) _addPendingLogs() base.Set {
 			changedChannels = changedChannels.Union(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			changeCacheExpvars.Add("outOfOrder", 1)
+			if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum {
+				changeCacheExpvars.Add("outOfOrder_num", 1)
+			}
+
+			if time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
+				changeCacheExpvars.Add("outOfOrder_time", 1)
+			}
+
+			base.LogTo("Cache+", "  Pushing sequence #%d to skipped", c.nextSequence)
 			c.PushSkipped(c.nextSequence)
 			c.nextSequence++
 		} else {
