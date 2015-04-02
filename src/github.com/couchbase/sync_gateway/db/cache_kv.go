@@ -335,6 +335,7 @@ func (b *kvCache) getStableSequence() (uint64, error) {
 		// return nil here - cache clock may not have been initialized yet
 		return 0, nil
 	}
+	base.LogTo("StableSeq", "getStableSequence - returning %d", intValue)
 	return intValue, nil
 }
 
@@ -377,13 +378,13 @@ func readCacheEntry(sequence uint64, bucket base.Bucket) (*LogEntry, error) {
 	key := getEntryKey(sequence)
 	value, err := bucket.GetRaw(key)
 	if err != nil {
-		base.LogTo("DCache", "Error retrieving entry from bucket for sequence %d", sequence)
+		base.Warn("DCache", "Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
 		return nil, err
 	}
 
 	err = json.Unmarshal(value, &cacheEntry)
 	if err != nil {
-		base.LogTo("DCache", "Error unmarshalling entry for sequence %d", sequence)
+		base.Warn("DCache", "Error unmarshalling entry for sequence %d, key %s", sequence, key)
 		return nil, err
 	}
 	// TODO: the cache write/read loses information from the original LogEntry (timing).  re-confirm it's not needed by readers

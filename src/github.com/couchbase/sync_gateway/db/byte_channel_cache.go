@@ -82,23 +82,24 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	// TODO: move this up out of the channel cache so that we're only doing it once (not once per channel), and have that process call the registered
 	// channel caches
 
+	base.LogTo("StableSeq", "Poll for Changes!")
 	stableSequence, err := dcc.cache.getStableSequence()
 	if err != nil {
 		stableSequence = 0
 	}
 
 	if stableSequence <= dcc.stableSequence {
-		return false
+		return true
 	}
 
 	dcc.stableSequence = stableSequence
 
-	base.LogTo("DCache", "Updating stable sequence to: %d (%s)", dcc.stableSequence, dcc.channelName)
+	base.LogTo("DCacheDebug", "Updating stable sequence to: %d (%s)", dcc.stableSequence, dcc.channelName)
 
 	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.bucket)
 	currentCounter, err := cacheHelper.getCacheClock()
 	if err != nil {
-		return false
+		return true
 	}
 
 	// If there's an update, cache the recent changes in memory, as we'll expect all
@@ -128,13 +129,15 @@ func (dcc *distributedChannelCache) UpdateRecentCache(cacheHelper byteCacheHelpe
 	// Compare counter again, in case someone has already updated cache while we waited for the lock
 	if currentCounter > dcc.lastCounter {
 		options := ChangesOptions{Since: SequenceID{Seq: dcc.lastSequence}}
-		_, dcc.lastNotifiedChanges = cacheHelper.getCachedChanges(options, dcc.stableSequence)
-		if len(dcc.lastNotifiedChanges) > 0 {
+		_, recentChanges := cacheHelper.getCachedChanges(options, dcc.stableSequence)
+		if len(recentChanges) > 0 {
+			dcc.lastNotifiedChanges = recentChanges
 			dcc.lastNotifiedSince = dcc.lastSequence
 			dcc.lastSequence = dcc.lastNotifiedChanges[len(dcc.lastNotifiedChanges)-1].Sequence
 			dcc.lastCounter = currentCounter
 		} else {
-			base.Warn("pollForChanges: channel [%s] clock changed to %d (from %d), but no changes found in cache", dcc.channelName, currentCounter, dcc.lastCounter)
+			base.Warn("pollForChanges: channel [%s] clock changed to %d (from %d), but no changes found in cache since #%d", dcc.channelName, currentCounter, dcc.lastCounter, dcc.lastSequence)
+			return
 		}
 		if dcc.cache.onChange != nil {
 			dcc.cache.onChange(base.SetOf(dcc.channelName))
@@ -147,14 +150,13 @@ func (dcc *distributedChannelCache) getCachedChanges(options ChangesOptions) (ui
 	// Check whether we can use the cached results from the latest poll
 
 	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.bucket)
-	base.LogTo("DCache+", "Comparing with dcc.lastSince=%d", dcc.lastNotifiedSince)
+	base.LogTo("DCacheDebug", "Comparing since=%d with dcc.lastSince=%d", options.Since.SafeSequence(), dcc.lastNotifiedSince)
 	if dcc.lastNotifiedSince > 0 && options.Since.SafeSequence() == dcc.lastNotifiedSince {
 		return uint64(0), dcc.lastNotifiedChanges
 	}
 
 	// If not, retrieve from cache
-
-	base.LogTo("DCache", "getCachedChanges - stable sequence: %d", dcc.stableSequence)
+	base.LogTo("DCacheDebug", "getCachedChanges - since=%d, stable sequence: %d", options.Since.Seq, dcc.stableSequence)
 	return cacheHelper.getCachedChanges(options, dcc.stableSequence)
 
 }
@@ -285,6 +287,7 @@ func (b *byteCacheHelper) getCachedChanges(options ChangesOptions, stableSequenc
 		offset = uint64(blockIndex) * byteCacheBlockCapacity
 	}
 
+	base.LogTo("DCacheDebug", "getCachedChanges: found %d changes for channel %s, since %d", len(cacheContents), b.channelName, options.Since.Seq)
 	// TODO: is there a way to deduplicate doc IDs without a second iteration and the slice copying?
 	// Possibly work the cache in reverse, starting from the high sequence of the channel (if that's available
 	// in metadata)?  We've got two competing goals here:
@@ -310,7 +313,7 @@ func (b *byteCacheHelper) getCachedChanges(options ChangesOptions, stableSequenc
 
 	}
 
-	base.LogTo("DCache", " getCachedChanges returning %d changes", len(result))
+	base.LogTo("DCacheDebug", " getCachedChanges returning %d changes", len(result))
 
 	//TODO: correct validFrom
 	return uint64(0), result
