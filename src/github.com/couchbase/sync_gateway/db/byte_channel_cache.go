@@ -11,6 +11,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -82,7 +83,7 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	// TODO: move this up out of the channel cache so that we're only doing it once (not once per channel), and have that process call the registered
 	// channel caches
 
-	base.LogTo("StableSeq", "Poll for Changes!")
+	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", dcc.channelName), 1)
 	stableSequence, err := dcc.cache.getStableSequence()
 	if err != nil {
 		stableSequence = 0
@@ -95,6 +96,10 @@ func (dcc *distributedChannelCache) pollForChanges() bool {
 	dcc.stableSequence = stableSequence
 
 	base.LogTo("DCacheDebug", "Updating stable sequence to: %d (%s)", dcc.stableSequence, dcc.channelName)
+
+	sequenceAsVar := &base.IntMax{}
+	sequenceAsVar.SetIfMax(int64(dcc.stableSequence))
+	changeCacheExpvars.Set(fmt.Sprintf("stableSequence-%s", dcc.channelName), sequenceAsVar)
 
 	cacheHelper := NewByteCacheHelper(dcc.channelName, dcc.cache.bucket)
 	currentCounter, err := cacheHelper.getCacheClock()
