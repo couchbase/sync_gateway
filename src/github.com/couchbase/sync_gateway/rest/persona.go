@@ -66,9 +66,13 @@ func (h *handler) PersonaEnabled() bool {
 // POST /_persona creates a browserID-based login session and sets its cookie.
 // It's API-compatible with the CouchDB plugin: <https://github.com/iriscouch/browserid_couchdb/>
 func (h *handler) handlePersonaPOST() error {
-	if len(h.rq.Header["Origin"]) > 0 {
-		// CORS not allowed for login #115
-		return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+	// CORS not allowed for login #115 #762
+	originHeader := h.rq.Header["Origin"]
+	if len(originHeader) > 0 {
+		matched := matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		if matched == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+		}
 	}
 	var params struct {
 		Assertion string `json:"assertion"`

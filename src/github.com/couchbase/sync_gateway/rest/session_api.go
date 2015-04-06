@@ -37,10 +37,15 @@ func (h *handler) handleSessionGET() error {
 
 // POST /_session creates a login session and sets its cookie
 func (h *handler) handleSessionPOST() error {
-	if len(h.rq.Header["Origin"]) > 0 {
-		// CORS not allowed for login #115
-		return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+	// CORS not allowed for login #115 #762
+	originHeader := h.rq.Header["Origin"]
+	if len(originHeader) > 0 {
+		matched := matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		if matched == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+		}
 	}
+
 	var params struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
@@ -55,7 +60,7 @@ func (h *handler) handleSessionPOST() error {
 		return err
 	}
 
-	if !user.Authenticate(params.Password) {
+	if user != nil && !user.Authenticate(params.Password) {
 		user = nil
 	}
 	return h.makeSession(user)
