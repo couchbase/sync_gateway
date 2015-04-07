@@ -59,9 +59,10 @@ func (rt *restTester) bucket() base.Bucket {
 		}
 
 		corsConfig := &CORSConfig{
-			Origin:  []string{"http://example.com", "*", "http://staging.example.com"},
-			Headers: []string{},
-			MaxAge:  1728000,
+			Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+			LoginOrigin: []string{"http://example.com"},
+			Headers:     []string{},
+			MaxAge:      1728000,
 		}
 
 		rt._sc = NewServerContext(&ServerConfig{
@@ -309,22 +310,37 @@ func TestCORSOrigin(t *testing.T) {
 	}
 	response = rt.sendRequestWithHeaders("GET", "/db/", "", reqHeaders)
 	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
-
 }
 
-func TestNoCORSOriginOnSessionPost(t *testing.T) {
+func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	var rt restTester
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
 
-	response := rt.sendRequestWithHeaders("POST", "/db/_session", "", reqHeaders)
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
+	assertStatus(t, response, 401)
+
+	response = rt.sendRequestWithHeaders("POST", "/db/_persona", `{"ok":true}`, reqHeaders)
+	assertStatus(t, response, 500)
+
+	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
+	assertStatus(t, response, 401)
+}
+
+func TestNoCORSOriginOnSessionPost(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://staging.example.com",
+	}
+
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
 	assertStatus(t, response, 400)
 
-	response = rt.sendRequestWithHeaders("POST", "/db/_persona", "", reqHeaders)
+	response = rt.sendRequestWithHeaders("POST", "/db/_persona", `{"ok":true}`, reqHeaders)
 	assertStatus(t, response, 400)
 
-	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", "", reqHeaders)
+	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertStatus(t, response, 400)
 }
 
