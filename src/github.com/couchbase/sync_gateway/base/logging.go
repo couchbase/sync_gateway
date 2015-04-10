@@ -248,10 +248,8 @@ func Printf(format string, args ...interface{}) {
 
     if ok {
         if !logNoTime {
-            timestamp := time.Now().Format(timestampPattern)
-            var tsarg []interface{}
-            args = append(append(tsarg, timestamp), args...)
-            logger.Printf("%s "+format, args...)
+            timestampedFormat := strings.Join([]string{time.Now().Format(timestampPattern),format}, " ")
+            logger.Printf(timestampedFormat, args...)
         } else {
             logger.Printf(format, args...)
         }
