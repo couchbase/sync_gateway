@@ -152,7 +152,7 @@ func LogTo(key string, format string, args ...interface{}) {
 	ok := logLevel <= 1 && (logStar || LogKeys[key])
 
 	if ok {
-		Printf(fgYellow+key+": "+reset+format, args...)
+		printf(fgYellow+key+": "+reset+format, args...)
 	}
 }
 
@@ -163,7 +163,7 @@ func Log(message string) {
 	ok := logLevel <= 1
 
 	if ok {
-		Print(message)
+		print(message)
 	}
 }
 
@@ -174,7 +174,7 @@ func Logf(format string, args ...interface{}) {
 	ok := logLevel <= 1
 
 	if ok {
-		Printf(format, args...)
+		printf(format, args...)
 	}
 }
 
@@ -227,21 +227,21 @@ func logWithCaller(color string, prefix string, format string, args ...interface
 	message := fmt.Sprintf(format, args...)
 	logLock.RLock()
 	defer logLock.RUnlock()
-	Print(color, prefix, ": ", message, reset,
+	print(color, prefix, ": ", message, reset,
 		dim, " -- ", GetCallersName(2), reset)
 }
 
 // Simple wrapper that converts Print to Printf
-func Print(args ...interface{}) {
+func print(args ...interface{}) {
     ok := logLevel <= 1
 
     if ok {
-        Printf("%s", fmt.Sprint(args...))
+        printf("%s", fmt.Sprint(args...))
     }
 }
 
 // Logs a formatted message to the underlying logger
-func Printf(format string, args ...interface{}) {
+func printf(format string, args ...interface{}) {
     logLock.RLock()
     defer logLock.RUnlock()
     ok := logLevel <= 1
