@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
+	"github.com/couchbaselabs/forestdb-bucket"
 	"github.com/couchbaselabs/go-couchbase"
 	"github.com/couchbaselabs/go-couchbase/cbdatasource"
 	"github.com/couchbaselabs/walrus"
@@ -31,6 +32,14 @@ func init() {
 	// arriving in a tap feed. (see issues #210, #333, #342)
 	gomemcached.MaxBodyLen = int(20 * 1024 * 1024)
 }
+
+type BucketType int
+
+const (
+	CouchbaseBucketType BucketType = iota
+	WalrusBucketType
+	ForestDbBucketType
+)
 
 type Bucket walrus.Bucket
 type TapArguments walrus.TapArguments
@@ -303,6 +312,21 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 	return
 }
 
+// Discover the type of bucket for this BucketSpec
+func (spec BucketSpec) BucketType() BucketType {
+
+	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
+		return WalrusBucketType
+	}
+
+	if isForestDb, _ := regexp.MatchString(`^(forestdb:)`, spec.Server); isForestDb {
+		return ForestDbBucketType
+	}
+
+	return CouchbaseBucketType
+
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
@@ -326,11 +350,9 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 }
 
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
-	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
-		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
-		walrus.Logging = LogKeys["Walrus"]
-		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
-	} else {
+
+	switch spec.BucketType() {
+	case CouchbaseBucketType:
 		suffix := ""
 		if spec.Auth != nil {
 			username, _, _ := spec.Auth.GetCredentials()
@@ -338,6 +360,14 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 		Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
 		bucket, err = GetCouchbaseBucket(spec)
+
+	case WalrusBucketType:
+		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
+		walrus.Logging = LogKeys["Walrus"]
+		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+	case ForestDbBucketType:
+		Logf("Opening ForestDB database %s on <%s>", spec.BucketName, spec.Server)
+		bucket, err = forestbucket.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 	}
 
 	if LogKeys["Bucket"] {
