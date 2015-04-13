@@ -43,3 +43,12 @@
 [submodule "src/golang.org/x/text"]
 	path = src/golang.org/x/text
 	url = https://go.googlesource.com/text
+[submodule "src/github.com/couchbaselabs/forestdb-bucket"]
+	path = src/github.com/couchbaselabs/forestdb-bucket
+	url = https://github.com/couchbaselabs/forestdb-bucket.git
+[submodule "src/github.com/couchbaselabs/go-safe-dstruct"]
+	path = src/github.com/couchbaselabs/go-safe-dstruct
+	url = https://github.com/couchbaselabs/go-safe-dstruct.git
+[submodule "src/github.com/couchbaselabs/goforestdb"]
+	path = src/github.com/couchbaselabs/goforestdb
+	url = https://github.com/couchbaselabs/goforestdb.git
