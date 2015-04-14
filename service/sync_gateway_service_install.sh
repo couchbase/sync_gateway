@@ -160,6 +160,11 @@ if [ -S /tmp/log_upr_client.sock ]; then
     rm -f /tmp/log_upr_client.sock
 fi
 
+# Copy a default config if defined config file does not exist
+if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
+    cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+fi
+
 #Install the service for the specific platform
 case $OS in
     Ubuntu)
@@ -167,7 +172,6 @@ case $OS in
             12|14)
                 setup_output_dirs
                 render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
                 service ${SERVICE_NAME} start
                 ;;
             *)
@@ -200,7 +204,6 @@ case $OS in
     Darwin)
         setup_output_dirs
         render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
-        cp $SRCCFGDIR/$SRCCFG ${CONFIG_TEMPLATE_VAR}
         launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         ;;
     *)
