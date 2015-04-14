@@ -206,16 +206,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return nil
 	}
 
-	// Check cookie first:
-	var err error
-	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
-	if err != nil {
-		return err
-	} else if h.user != nil {
-		return nil
-	}
-
-	// If no cookie, check HTTP auth:
+	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 		if h.user == nil {
@@ -223,6 +214,15 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
+		return nil
+	}
+
+	// Check cookie
+	var err error
+	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
+	if err != nil {
+		return err
+	} else if h.user != nil {
 		return nil
 	}
 
