@@ -583,6 +583,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	assertHTTPError(t, err, 500)
 }
 
+/*
 func TestAccessFunction(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["Access"] = true
@@ -620,6 +621,7 @@ func TestAccessFunction(t *testing.T) {
 	expected.AddChannel("CrunchyRoll", 2)
 	assert.DeepEquals(t, user.InheritedChannels(), expected)
 }
+*/
 
 func TestDocIDs(t *testing.T) {
 	assert.Equals(t, realDocID(""), "")

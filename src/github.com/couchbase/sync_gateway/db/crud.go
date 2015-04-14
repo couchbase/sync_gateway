@@ -812,7 +812,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 	}
 
 	base.LogTo("Views", "access")
-	opts := map[string]interface{}{"stale": false, "key": key}
+	opts := map[string]interface{}{"key": key}
 	if verr := context.Bucket.ViewCustom("sync_gateway", "access", opts, &vres); verr != nil {
 		return nil, verr
 	}
@@ -833,7 +833,7 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.Ti
 	}
 
 	base.LogTo("Views", "role_access")
-	opts := map[string]interface{}{"stale": false, "key": user.Name()}
+	opts := map[string]interface{}{"key": user.Name()}
 	if verr := context.Bucket.ViewCustom("sync_gateway", "role_access", opts, &vres); verr != nil {
 		return nil, verr
 	}
