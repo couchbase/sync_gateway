@@ -14,7 +14,8 @@ import (
 
 func makeExternalBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     "walrus:",
+		// Server: "walrus:",
+		Server:     "forestdb:data",
 		BucketName: "external_bucket"})
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)

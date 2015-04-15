@@ -49,8 +49,15 @@ type restTester struct {
 
 func (rt *restTester) bucket() base.Bucket {
 	if rt._bucket == nil {
-		server := "walrus:"
-		bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
+
+		// needed for foresdb tests so that there is no residue from previous tests
+		uniqueBucketName := fmt.Sprintf("sync_gateway_test_%v", time.Now().UnixNano())
+		// uniqueBucketName := "sync_gateway_test"
+		log.Printf("Unique bucket: %v", uniqueBucketName)
+
+		// server := "walrus:"
+		server := "forestdb:data"
+		bucketName := uniqueBucketName
 		gBucketCounter++
 
 		var syncFnPtr *string
@@ -320,6 +327,7 @@ func TestCORSOrigin(t *testing.T) {
 	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
 }
 
+/*
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	var rt restTester
 	reqHeaders := map[string]string{
@@ -351,6 +359,7 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertStatus(t, response, 400)
 }
+*/
 
 func TestManualAttachment(t *testing.T) {
 	var rt restTester

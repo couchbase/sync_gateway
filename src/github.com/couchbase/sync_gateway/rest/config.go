@@ -29,7 +29,9 @@ import _ "net/http/pprof"
 
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
-var DefaultServer = "walrus:"
+// var DefaultServer = "walrus:"
+
+var DefaultServer = "forestdb:data"
 var DefaultPool = "default"
 
 var config *ServerConfig

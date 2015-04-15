@@ -24,7 +24,9 @@ import (
 )
 
 //const kTestURL = "http://localhost:8091"
-const kTestURL = "walrus:"
+// const kTestURL = "walrus:"
+
+const kTestURL = "forestdb:data"
 
 func init() {
 	base.LogNoColor()
@@ -34,9 +36,15 @@ func init() {
 }
 
 func testBucket() base.Bucket {
+
+	// needed for foresdb tests so that there is no residue from previous tests
+	uniqueBucketName := fmt.Sprintf("sync_gateway_tests_%v", time.Now().UnixNano())
+	// uniqueBucketName := "sync_gateway_tests"
+	log.Printf("Unique bucket: %v", uniqueBucketName)
+
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"})
+		BucketName: uniqueBucketName})
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

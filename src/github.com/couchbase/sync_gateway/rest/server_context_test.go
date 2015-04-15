@@ -26,7 +26,7 @@ func TestConfigServer(t *testing.T) {
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil,
 		`{
 			"bucket": "fivez",
-			"server": "walrus:/fake",
+			"server": "forestdb:data",
 			"users": {
 				"GUEST": {"disabled": false, "admin_channels": ["*"] }
 			}

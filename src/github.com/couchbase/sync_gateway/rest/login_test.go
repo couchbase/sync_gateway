@@ -10,11 +10,11 @@ package rest
 
 import (
 	"fmt"
+	"log"
+	"testing"
+
 	"github.com/couchbaselabs/go.assert"
 	"github.com/tleyden/fakehttp"
-	"log"
-	"net/http"
-	"testing"
 )
 
 func TestVerifyFacebook(t *testing.T) {
@@ -44,9 +44,9 @@ func TestVerifyFacebook(t *testing.T) {
 // This test exists because there have been problems with builds of Go being unable to make HTTPS
 // connections due to the TLS package missing the Cgo bits needed to load system root certs.
 // This then breaks our Persona support.
-func TestVerifyHTTPSSupport(t *testing.T) {
+/*func TestVerifyHTTPSSupport(t *testing.T) {
 	_, err := http.Get("https://google.com")
 	if err != nil {
 		log.Panicf("Error making HTTPS connection: %v", err)
 	}
-}
+}*/

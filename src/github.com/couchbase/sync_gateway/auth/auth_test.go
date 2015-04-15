@@ -23,7 +23,9 @@ import (
 )
 
 //const kTestURL = "http://localhost:8091"
-const kTestURL = "walrus:"
+// const kTestURL = "walrus:"
+
+const kTestURL = "forestdb:data"
 
 var gTestBucket base.Bucket
 
