@@ -11,6 +11,7 @@ package auth
 
 import (
 	"encoding/json"
+	"log"
 
 	"github.com/couchbaselabs/go-couchbase"
 
@@ -66,8 +67,10 @@ func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, er
 // By default the guest User has access to everything, i.e. Admin Party! This can
 // be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(name string) (User, error) {
+	// log.Printf("GetUser() called with %v.  Calling getPrincipal", name)
 	princ, err := auth.getPrincipal(docIDForUser(name), func() Principal { return &userImpl{} })
 	if err != nil {
+		log.Printf("getPrincipal called with %v but returned error: %v", name, err)
 		return nil, err
 	} else if princ == nil {
 		if name == "" {
@@ -90,15 +93,17 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 // Common implementation of GetUser and GetRole. factory() parameter returns a new empty instance.
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
-
+	// log.Printf("getPrincipal called with docId: %v", docID)
 	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
+			log.Printf("currentValue is nil for %v", docID)
 			return nil, couchbase.UpdateCancel
 		}
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
+			log.Printf("could not unmarshal %v", docID)
 			return nil, err
 		}
 		changed := false
