@@ -2,7 +2,6 @@
 	"folders":
 	[
 		{
-			"follow_symlinks": true,
 			"name": "sync_gateway",
 			"path": "src/github.com/couchbase/sync_gateway"
 		},
@@ -11,7 +10,6 @@
 			[
 				".*"
 			],
-			"follow_symlinks": true,
 			"path": "src/github.com/couchbaselabs/go-couchbase"
 		},
 		{
@@ -19,7 +17,6 @@
 			[
 				".*"
 			],
-			"follow_symlinks": true,
 			"path": "src/github.com/couchbase/gomemcached"
 		},
 		{
@@ -27,20 +24,19 @@
 			[
 				".*"
 			],
-			"follow_symlinks": true,
 			"path": "src/github.com/couchbaselabs/walrus"
 		},
 		{
-			"follow_symlinks": true,
 			"path": "utils"
 		},
 		{
-			"follow_symlinks": true,
 			"path": "examples"
 		},
 		{
-			"follow_symlinks": true,
 			"path": "src/github.com/couchbaselabs/sync_gateway_admin_ui"
+		},
+		{
+			"path": "src/github.com/snej/go-blip"
 		}
 	],
 	"settings":

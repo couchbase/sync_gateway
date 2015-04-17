@@ -216,6 +216,12 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
 // a periodic heartbeat while waiting.
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) error {
+	err := generateContinuousChanges(h.db, inChannels, options, send)
+	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	return err
+}
+
+func generateContinuousChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) error {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -247,10 +253,10 @@ loop:
 			if lastSeq.Seq > 0 { // start after end of last feed
 				options.Since = lastSeq
 			}
-			if h.db.IsClosed() {
+			if database.IsClosed() {
 				break loop
 			}
-			feed, err = h.db.MultiChangesFeed(inChannels, options)
+			feed, err = database.MultiChangesFeed(inChannels, options)
 			if err != nil || feed == nil {
 				return err
 			}
@@ -316,11 +322,10 @@ loop:
 		}
 
 		if err != nil {
-			h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
+			//h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
 			return nil // error is probably because the client closed the connection
 		}
 	}
-	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return nil
 }
 

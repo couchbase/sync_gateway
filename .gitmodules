@@ -43,3 +43,6 @@
 [submodule "src/golang.org/x/text"]
 	path = src/golang.org/x/text
 	url = https://go.googlesource.com/text
+[submodule "src/github.com/snej/go-blip"]
+	path = src/github.com/snej/go-blip
+	url = https://github.com/snej/go-blip

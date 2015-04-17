@@ -82,6 +82,8 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 			(*handler).handleFacebookPOST)).Methods("POST")
 	}
 
+	dbr.Handle("/_blipsync", makeHandler(sc, publicPrivs, (*handler).handleBLIPSync)).Methods("GET")
+
 	return r, dbr
 }
 
