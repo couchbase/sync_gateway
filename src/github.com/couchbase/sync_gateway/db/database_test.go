@@ -43,6 +43,12 @@ func testBucket() base.Bucket {
 	return bucket
 }
 
+func testLeakyBucket() base.Bucket {
+	testBucket := testBucket()
+	leakyBucket := base.NewLeakyBucket(testBucket)
+	return leakyBucket
+}
+
 func setupTestDB(t *testing.T) *Database {
 	return setupTestDBWithCacheOptions(t, CacheOptions{})
 }
@@ -740,6 +746,14 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	assert.True(t, doc.CurrentRev == rev1id)
 	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
 
+}
+
+func TestIncrRetry(t *testing.T) {
+	leakyBucket := testLeakyBucket()
+	defer leakyBucket.Close()
+	seqAllocator, _ := newSequenceAllocator(leakyBucket)
+	err := seqAllocator.reserveSequences(1)
+	assert.True(t, err == nil)
 }
 
 //////// BENCHMARKS

@@ -11,8 +11,13 @@ package db
 
 import (
 	"sync"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+)
+
+const (
+	kMaxIncrRetries = 3
 )
 
 type sequenceAllocator struct {
@@ -29,7 +34,7 @@ func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	dbExpvars.Add("sequence_gets", 1)
-	last, err := s.bucket.Incr("_sync:seq", 0, 0, 0)
+	last, err := s.incrWithRetry("_sync:seq", 0)
 	if err != nil {
 		base.Warn("Error from Incr in lastSequence(): %v", err)
 	}
@@ -54,7 +59,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 		//OPT: Could remember multiple discontiguous ranges of free sequences
 	}
 	dbExpvars.Add("sequence_reserves", 1)
-	max, err := s.bucket.Incr("_sync:seq", numToReserve, numToReserve, 0)
+	max, err := s.incrWithRetry("_sync:seq", numToReserve)
 	if err != nil {
 		base.Warn("Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err
@@ -68,4 +73,22 @@ func (s *sequenceAllocator) reserveSequences(numToReserve uint64) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s._reserveSequences(numToReserve)
+}
+
+func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint64, error) {
+
+	var err error
+	retries := 0
+	for retries < kMaxIncrRetries {
+		max, err := s.bucket.Incr(key, numToReserve, numToReserve, 0)
+		if err != nil {
+			retries++
+			base.Warn("Error from Incr in sequence allocator (%d) - attempt (%d/%d): %v", numToReserve, retries, kMaxIncrRetries, err)
+			time.Sleep(10 * time.Millisecond)
+		} else {
+			return max, err
+		}
+	}
+	base.Warn("Too many failed Incr in sequence allocator - failing (%d): %v", numToReserve, err)
+	return 0, err
 }
