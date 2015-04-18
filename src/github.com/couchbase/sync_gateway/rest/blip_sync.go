@@ -62,13 +62,15 @@ func (h *handler) handleBLIPSync() error {
 func (bh *blipHandler) addHandler(profile string, handler func(*blip.Message) error) {
 	bh.context.HandlerForProfile[profile] = func(rq *blip.Message) {
 		bh.sender = rq.Sender
-		base.LogTo("Sync", "%s", profile)
+		base.LogTo("Sync", "%s %q", rq, profile)
 		if err := handler(rq); err != nil {
 			status, msg := base.ErrorAsHTTPStatus(err)
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			base.LogTo("Sync", "    --> %d %s", status, msg)
+			base.LogTo("Sync", "%s    --> %d %s", rq, status, msg)
+		} else {
+			base.LogTo("Sync+", "%s    --> OK", rq)
 		}
 	}
 }
@@ -141,7 +143,7 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 	channelSet := channels.SetOf(channels.AllChannelWildcard)
 
 	generateContinuousChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
-		base.LogTo("Sync", "    Sending %d changes", len(changes))
+		base.LogTo("Sync+", "    Sending %d changes", len(changes))
 		rq := blip.NewRequest()
 		rq.SetProfile("changes")
 
@@ -259,6 +261,21 @@ func (bh *blipHandler) sendRevision(seq string, docID string, revID string, know
 	bh.sender.Send(rq)
 }
 
+func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
+	digest := rq.Properties["digest"]
+	if digest == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
+	}
+	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
+	if err != nil {
+		return err
+	}
+	base.LogTo("Sync", "Sending attachment digest=%q (%dkb)", digest, len(attachment)/1024)
+	response := rq.Response()
+	response.SetBody(attachment)
+	return nil
+}
+
 func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
@@ -269,23 +286,19 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing doc _id")
 	}
 	history := strings.Split(rq.Properties["history"], ",")
-	err := bh.db.PutExistingRev(docID, body, history)
-	if err == nil {
-		base.LogTo("Sync", "Inserted rev %q %s", docID, body["_rev"])
-	}
-	return err
-}
+	base.LogTo("Sync", "Inserting rev %q %s", docID, body["_rev"])
 
-func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
-	digest := rq.Properties["digest"]
-	if digest == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
-	}
-	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
+	// Check for any attachments I don't have yet, and request them:
+	err := bh.db.ForEachUnknownAttachment(body, func(name string, digest string, meta map[string]interface{}) ([]byte, error) {
+		base.LogTo("Sync+", "    Asking for attachment %q (digest %s)...", name, digest)
+		rq := blip.NewRequest()
+		rq.Properties = map[string]string{"Profile": "getattach", "digest": digest}
+		bh.sender.Send(rq)
+		return rq.Response().Body()
+	})
 	if err != nil {
 		return err
 	}
-	response := rq.Response()
-	response.SetBody(attachment)
-	return nil
+
+	return bh.db.PutExistingRev(docID, body, history)
 }

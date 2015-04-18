@@ -132,9 +132,21 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) (Body, error) 
 	return body, nil
 }
 
-// Retrieves an attachment, base64-encoded, given its key.
+// Retrieves an attachment given its key.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 	return db.Bucket.GetRaw(attachmentKeyToString(key))
+}
+
+// Tells whether an attachment exists (given its digest)
+// The returned error will be nil unless something went wrong (not just if the att is missing)
+func (db *Database) HasAttachment(key AttachmentKey) (bool, error) {
+	//FIX: Is it possible to ask the db server whether a key exists without getting the value?
+	_, err := db.GetAttachment(key)
+	if base.IsDocNotFoundError(err) {
+		return false, nil
+	} else {
+		return err == nil, err
+	}
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
@@ -377,6 +389,44 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	}
 
 	return body, nil
+}
+
+type AttachmentCallback func(name string, digest string, meta map[string]interface{}) ([]byte, error)
+
+// Given a document body, invokes the callback once for each attachment that doesn't include
+// its data, and which doesn't in the database according to its digest. The callback can
+// is passed the attachment's `meta` map and can modify it in place to add the data.
+func (db *Database) ForEachUnknownAttachment(body Body, callback AttachmentCallback) error {
+	atts := BodyAttachments(body)
+	if atts == nil && body["_attachments"] != nil {
+		return base.HTTPErrorf(400, "Invalid _attachments")
+	}
+	for name, value := range atts {
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return base.HTTPErrorf(400, "Invalid attachment")
+		}
+		if meta["data"] == nil {
+			digest, ok := meta["digest"].(string)
+			if !ok {
+				return base.HTTPErrorf(400, "Invalid attachment")
+			}
+			has, err := db.HasAttachment(AttachmentKey(digest))
+			if err != nil {
+				return err
+			} else if !has {
+				// Don't have an attachment with this digest -- invoke the callback:
+				if data, err := callback(name, digest, meta); err != nil {
+					return err
+				} else if data != nil {
+					meta["data"] = data
+					delete(meta, "stub")
+					delete(meta, "follows")
+				}
+			}
+		}
+	}
+	return nil
 }
 
 //////// HELPERS:
