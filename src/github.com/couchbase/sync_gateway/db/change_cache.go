@@ -393,7 +393,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		if c.RemoveSkipped(sequence) != nil {
+		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
@@ -402,7 +402,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		}
 
 		changedChannels = c._addToCache(change)
-
+		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
+		// in cache
+		c.RemoveSkipped(sequence)
 	}
 	return changedChannels
 }
@@ -426,6 +428,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	func() {
 		if change.Skipped {
 			c.lateSeqLock.Lock()
+			base.LogTo("Sequences", "Acquired late sequence lock for %d", change.Sequence)
 			defer c.lateSeqLock.Unlock()
 		}
 
@@ -440,12 +443,15 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 			}
 		}
 
+		if EnableStarChannelLog {
+			channelCache := c._getChannelCache(channels.UserStarChannel)
+			channelCache.addToCache(change, false)
+			addedTo = append(addedTo, channels.UserStarChannel)
+			if change.Skipped {
+				channelCache.AddLateSequence(change)
+			}
+		}
 	}()
-
-	if EnableStarChannelLog {
-		c._getChannelCache(channels.UserStarChannel).addToCache(change, false)
-		addedTo = append(addedTo, channels.UserStarChannel)
-	}
 
 	// Record a histogram of the overall lag from the time the doc was saved:
 	lag := time.Since(change.TimeSaved)
@@ -526,6 +532,7 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	c.skippedSeqLock.RLock()
 	defer c.skippedSeqLock.RUnlock()
 	if len(c.skippedSeqs) > 0 {
+		base.LogTo("Sequences", "get oldest, returning: %d", c.skippedSeqs[0].seq)
 		return c.skippedSeqs[0].seq
 	} else {
 		return uint64(0)
@@ -558,6 +565,13 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	return c.skippedSeqs.Remove(x)
 }
 
+func (c *changeCache) WasSkipped(x uint64) bool {
+	c.skippedSeqLock.RLock()
+	defer c.skippedSeqLock.RUnlock()
+
+	return c.skippedSeqs.Contains(x)
+}
+
 func (c *changeCache) PushSkipped(sequence uint64) {
 
 	c.skippedSeqLock.Lock()
@@ -574,6 +588,18 @@ func (h *SkippedSequenceQueue) Remove(x uint64) error {
 		return nil
 	} else {
 		return errors.New("Value not found")
+	}
+
+}
+
+// Remove does a simple binary search to find and remove.
+func (h *SkippedSequenceQueue) Contains(x uint64) bool {
+
+	i := SearchSequenceQueue(*h, x)
+	if i < len(*h) && (*h)[i].seq == x {
+		return true
+	} else {
+		return false
 	}
 
 }

@@ -10,6 +10,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"testing"
@@ -238,7 +239,6 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
 
-/*
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
@@ -305,7 +305,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 func TestContinuousChangesBackfill(t *testing.T) {
 
 	base.LogKeys["Sequences"] = true
-	//base.LogKeys["Cache"] = true
+	base.LogKeys["Cache"] = true
 	//base.LogKeys["Changes"] = true
 	base.LogKeys["Changes+"] = true
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -335,30 +335,15 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
-	feedClosed := false
 
-	// Go-routine to work the feed channel and write to an array for use by assertions
+	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
-	go func() {
-		for feedClosed == false {
-			select {
-			case entry, ok := <-feed:
-				if ok {
-					// feed sends nil after each continuous iteration
-					if entry != nil {
-						log.Println("Changes entry:", entry.Seq)
-						changes = append(changes, entry)
-					}
-				} else {
-					log.Println("Closing feed")
-					feedClosed = true
-				}
-			}
-		}
-	}()
 
 	time.Sleep(50 * time.Millisecond)
+
 	// Validate the initial sequences arrive as expected
+	err = appendFromFeed(&changes, feed, 4)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 4)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
@@ -369,10 +354,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 12)
 
 	db.changeCache.waitForSequence(12)
-
 	time.Sleep(50 * time.Millisecond)
+	err = appendFromFeed(&changes, feed, 2)
+
 	assert.Equals(t, len(changes), 6)
-	assert.True(t, verifyChangesSequences(changes, []string{
+	assert.True(t, verifyChangesFullSequences(changes, []string{
 		"1", "2", "2::5", "2::6", "3", "3::12"}))
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
@@ -380,16 +366,24 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
 	db.changeCache.waitForSequence(13)
+	time.Sleep(50 * time.Millisecond)
 
+	err = appendFromFeed(&changes, feed, 4)
 	assert.Equals(t, len(changes), 10)
-	assert.True(t, verifyChangesSequences(changes, []string{
-		"1", "2", "2::5", "2::6", "3", "3::12", "4", "7", "8", "8::13"}))
+	// We can't guarantee how compound sequences will be generated in a multi-core test - will
+	// depend on timing of arrival in late sequence logs.  e.g. could come through as any one of
+	// the following (where all are valid), depending on timing:
+	//  ..."4","7","8","8::13"
+	//  ..."4", "6::7", "6::8", "6::13"
+	//  ..."3::4", "3::7", "3::8", "3::13"
+	// For this reason, we're just verifying that the expected sequences come through (ignoring
+	// prefix)
+	assert.True(t, verifyChangesSequences(changes, []uint64{
+		1, 2, 5, 6, 3, 12, 4, 7, 8, 13}))
 
 	close(options.Terminator)
 }
-*/
 
-/*
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
@@ -423,30 +417,15 @@ func TestLowSequenceHandling(t *testing.T) {
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
-	feedClosed := false
 
-	// Go-routine to work the feed channel and write to an array for use by assertions
+	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
-	go func() {
-		for feedClosed == false {
-			select {
-			case entry, ok := <-feed:
-				if ok {
-					// feed sends nil after each continuous iteration
-					if entry != nil {
-						log.Println("Changes entry:", entry.Seq)
-						changes = append(changes, entry)
-					}
-				} else {
-					log.Println("Closing Feed")
-					feedClosed = true
-				}
-			}
-		}
-	}()
 
 	time.Sleep(50 * time.Millisecond)
+	err = appendFromFeed(&changes, feed, 4)
+
 	// Validate the initial sequences arrive as expected
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 4)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
@@ -460,15 +439,19 @@ func TestLowSequenceHandling(t *testing.T) {
 	db.changeCache.waitForSequenceWithMissing(4)
 
 	time.Sleep(50 * time.Millisecond)
+	err = appendFromFeed(&changes, feed, 2)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "2::5", "2::6", "3", "4"}))
+	assert.True(t, verifyChangesSequences(changes, []uint64{1, 2, 5, 6, 3, 4}))
 
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	db.changeCache.waitForSequence(9)
+	err = appendFromFeed(&changes, feed, 3)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 9)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "2::5", "2::6", "3", "4", "7", "8", "9"}))
+	assert.True(t, verifyChangesSequences(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 	close(options.Terminator)
 }
@@ -507,32 +490,17 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
-	feedClosed := false
 
 	// Go-routine to work the feed channel and write to an array for use by assertions
 	var changes = make([]*ChangeEntry, 0, 50)
-	go func() {
-		for feedClosed == false {
-			select {
-			case entry, ok := <-feed:
-				if ok {
-					// feed sends nil after each continuous iteration
-					if entry != nil {
-						log.Println("Changes entry:", entry.Seq)
-						changes = append(changes, entry)
-					}
-				} else {
-					log.Println("Closing Feed")
-					feedClosed = true
-				}
-			}
-		}
-	}()
 
 	time.Sleep(50 * time.Millisecond)
+	err = appendFromFeed(&changes, feed, 3)
+
 	// Validate the initial sequences arrive as expected
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 3)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "2::6"}))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
 	// Test backfill of sequence the user doesn't have visibility to
 	WriteDirect(db, []string{"PBS"}, 3)
@@ -541,8 +509,9 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	db.changeCache.waitForSequenceWithMissing(9)
 
 	time.Sleep(50 * time.Millisecond)
+	err = appendFromFeed(&changes, feed, 1)
 	assert.Equals(t, len(changes), 4)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "2::6", "3::9"}))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "3::9"}))
 
 	close(options.Terminator)
 }
@@ -581,32 +550,17 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
-	feedClosed := false
 
 	// Go-routine to work the feed channel and write to an array for use by assertions
 	var changes = make([]*ChangeEntry, 0, 50)
-	go func() {
-		for feedClosed == false {
-			select {
-			case entry, ok := <-feed:
-				if ok {
-					// feed sends nil after each continuous iteration
-					if entry != nil {
-						log.Println("Changes entry:", entry.Seq)
-						changes = append(changes, entry)
-					}
-				} else {
-					log.Println("Closing Feed")
-					feedClosed = true
-				}
-			}
-		}
-	}()
 
 	time.Sleep(50 * time.Millisecond)
+
 	// Validate the initial sequences arrive as expected
+	err = appendFromFeed(&changes, feed, 3)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 3)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "2::6"}))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
 	db.Bucket.Incr("_sync:seq", 7, 0, 0)
 	// Modify user to have access to both channels (sequence 2):
@@ -621,8 +575,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	db.changeCache.waitForSequence(9)
 
 	time.Sleep(50 * time.Millisecond)
+	err = appendFromFeed(&changes, feed, 4)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 7)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
 	// Notes:
 	// 1. 2::8 is the user sequence
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
@@ -630,7 +586,6 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	close(options.Terminator)
 }
-*/
 
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
 // in the main changes.go iteration loop, without a lock on the underlying channel caches.  The following
@@ -722,7 +677,7 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(db, []string{"Odd"}, 9)
 	time.Sleep(750 * time.Millisecond)
 	assert.Equals(t, len(changes), 9)
-	assert.True(t, verifyChangesSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
 	changesString := ""
 	for _, change := range changes {
 		changesString = fmt.Sprintf("%s%d, ", changesString, change.Seq.Seq)
@@ -773,18 +728,71 @@ func verifyCacheSequences(cache *channelCache, sequences []uint64) bool {
 	return true
 }
 
-func verifyChangesSequences(changes []*ChangeEntry, sequences []string) bool {
+// verifyChangesFullSequences compares for a full match on sequence, including compound elements)
+func verifyChangesFullSequences(changes []*ChangeEntry, sequences []string) bool {
+	if len(changes) != len(sequences) {
+		log.Printf("verifyChangesFullSequences: changes size (%v) not equals to sequences size (%v)",
+			len(changes), len(sequences))
+		return false
+	}
+	for index, seq := range sequences {
+		if changes[index].Seq.String() != seq {
+			log.Printf("verifyChangesFullSequences: sequence mismatch at index %v, changes=%s, sequences=%s",
+				index, changes[index].Seq.String(), seq)
+			return false
+		}
+	}
+	return true
+}
+
+// verifyChangesSequences compares for a match on sequence number only
+func verifyChangesSequences(changes []*ChangeEntry, sequences []uint64) bool {
 	if len(changes) != len(sequences) {
 		log.Printf("verifyChangesSequences: changes size (%v) not equals to sequences size (%v)",
 			len(changes), len(sequences))
 		return false
 	}
 	for index, seq := range sequences {
-		if changes[index].Seq.String() != seq {
-			log.Printf("verifyChangesSequences: sequence mismatch at index %v, changes=%s, sequences=%s",
-				index, changes[index].Seq.String(), seq)
+		if changes[index].Seq.Seq != seq {
+			log.Printf("verifyChangesSequences: sequence mismatch at index %v, changes=%d, sequences=%d",
+				index, changes[index].Seq.Seq, seq)
 			return false
 		}
 	}
 	return true
+}
+
+func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int) error {
+
+	log.Println("Feed retrieving ", feed, numEntries)
+	count := 0
+	timeout := false
+	for !timeout {
+		select {
+		case entry, ok := <-feed:
+			if ok {
+				if entry != nil {
+					log.Println("Changes entry:", entry)
+					*changes = append(*changes, entry)
+					count++
+				}
+			} else {
+				log.Println("Non-entry error")
+				return errors.New("Non-entry returned on feed.")
+			}
+			if count == numEntries {
+				log.Println("returned numEntries - returning")
+				return nil
+			}
+		case <-time.After(time.Millisecond * 100):
+			timeout = true
+		}
+	}
+	if count != numEntries {
+		log.Println("Miscount")
+		return errors.New("Unable to return the requested number of entries")
+	}
+	log.Println("standard completion")
+	return nil
+
 }

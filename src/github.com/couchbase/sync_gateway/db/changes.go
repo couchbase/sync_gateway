@@ -12,6 +12,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -304,9 +305,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				for i, cur := range current {
 					if cur == nil && feeds[i] != nil {
 						var ok bool
-						current[i], ok = <-feeds[i]
-						if !ok {
-							feeds[i] = nil
+						// Add select to ensure we don't skip feeds that are non-closed but still
+						// processing the channel update.
+						select {
+						case current[i], ok = <-feeds[i]:
+							if !ok {
+								feeds[i] = nil
+							}
 						}
 					}
 				}
@@ -320,6 +325,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 						minEntry = cur
 					}
 				}
+
 				if minEntry == nil {
 					break // Exit the loop when there are no more entries
 				}
@@ -474,6 +480,8 @@ func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.
 func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEntry, error) {
 
+	// Use LogPriorityQueue for late entries, to utilize the existing Len/Less/Swap methods on LogPriorityQueue for sort
+	var logs LogPriorityQueue
 	logs, lastSequence, err := db.changeCache.getChannelCache(feedHandler.channelName).GetLateSequencesSince(feedHandler.lastSequence)
 	if err != nil {
 		return nil, err
@@ -484,6 +492,10 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 		close(feed)
 		return feed, nil
 	}
+
+	// Sort late sequences, to ensure duplicates aren't sent in a single continuous _changes iteration when multiple
+	// channels have late arrivals
+	sort.Sort(logs)
 
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
