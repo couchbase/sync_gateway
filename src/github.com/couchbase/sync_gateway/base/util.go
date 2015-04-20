@@ -10,12 +10,12 @@
 package base
 
 import (
-	"strconv"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -29,7 +29,7 @@ func GenerateRandomSecret() string {
 	return fmt.Sprintf("%x", randomBytes)
 }
 
-// Returns a cryptographically-random 160-bit number encoded as a hex string.
+// Returns a cryptographically-random 128-bit number encoded as a hex string.
 func CreateUUID() string {
 	bytes := make([]byte, 16)
 	n, err := rand.Read(bytes)
