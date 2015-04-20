@@ -15,41 +15,59 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-type blipHandler struct {
-	context *blip.Context
+// Represents one BLIP connection (socket) opened by a client.
+// This connection remains open until the client closes it, and can receive any number of requests.
+type blipSyncContext struct {
+	blipContext *blip.Context
 	sender  *blip.Sender
-	db      *db.Database
+	dbc         *db.DatabaseContext
+	username    string
 
 	batchSize  uint
 	continuous bool
 }
 
 // HTTP handler for incoming BLIP sync connection (/db/_blipsync)
+type blipHandler struct {
+	*blipSyncContext
+	db *db.Database
+}
+
+// Maps the profile (verb) of an incoming request to the method that handles it.
+var kHandlersByProfile = map[string]func(*blipHandler, *blip.Message) error{
+	"getcheckpoint": (*blipHandler).handleGetCheckpoint,
+	"setcheckpoint": (*blipHandler).handleSetCheckpoint,
+	"getchanges":    (*blipHandler).handleGetChanges,
+	"changes":       (*blipHandler).handlePushedChanges,
+	"rev":           (*blipHandler).handleAddRevision,
+	"getattach":     (*blipHandler).handleGetAttachment,
+}
+
 func (h *handler) handleBLIPSync() error {
-	bh := blipHandler{
-		context: blip.NewContext(),
-		db:      h.db,
+	ctx := blipSyncContext{
+		blipContext: blip.NewContext(),
+		dbc:         h.db.DatabaseContext,
+		username:    h.user.Name(),
 	}
-	bh.addHandler("getcheckpoint", bh.handleGetCheckpoint)
-	bh.addHandler("setcheckpoint", bh.handleSetCheckpoint)
-	bh.addHandler("getchanges", bh.handleGetChanges)
-	bh.addHandler("changes", bh.handlePushedChanges)
-	bh.addHandler("rev", bh.handleAddRevision)
-	bh.addHandler("getattach", bh.handleGetAttachment)
-	bh.context.DefaultHandler = bh.notFound
-	bh.context.Logger = func(fmt string, params ...interface{}) {
+	ctx.blipContext.DefaultHandler = ctx.notFound
+	for profile, handlerFn := range kHandlersByProfile {
+		ctx.register(profile, handlerFn)
+	}
+
+	ctx.blipContext.Logger = func(fmt string, params ...interface{}) {
 		base.LogTo("BLIP", fmt, params...)
 	}
-	bh.context.LogMessages = base.LogKeys["BLIP+"]
-	bh.context.LogFrames = base.LogKeys["BLIP++"]
+	ctx.blipContext.LogMessages = base.LogKeys["BLIP+"]
+	ctx.blipContext.LogFrames = base.LogKeys["BLIP++"]
 
+	// Start a WebSocket client and connect it to the BLIP handler:
 	wsHandler := func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to BLIP+WebSocket protocol")
 		defer func() {
 			conn.Close()
-			base.LogTo("HTTP+", "#%03d:     --> BLIP+WebSocket closed", h.serialNumber)
+			base.LogTo("HTTP", "#%03d:     --> BLIP+WebSocket closed", h.serialNumber)
 		}()
-		bh.context.WebSocketHandler()(conn)
+		ctx.blipContext.WebSocketHandler()(conn)
 	}
 	server := websocket.Server{
 		Handshake: func(*websocket.Config, *http.Request) error { return nil },
@@ -59,11 +77,28 @@ func (h *handler) handleBLIPSync() error {
 	return nil
 }
 
-func (bh *blipHandler) addHandler(profile string, handler func(*blip.Message) error) {
-	bh.context.HandlerForProfile[profile] = func(rq *blip.Message) {
-		bh.sender = rq.Sender
+// Registers a BLIP handler including the outer-level work of logging & error handling.
+// Includes the outer handler as a nested function.
+func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
+	ctx.blipContext.HandlerForProfile[profile] = func(rq *blip.Message) {
+		ctx.sender = rq.Sender
 		base.LogTo("Sync", "%s %q", rq, profile)
-		if err := handler(rq); err != nil {
+
+		// Look up the User from the name -- necessary because (a) the user's properties may have
+		// changed, and (b) User objects aren't thread-safe so each handler needs its own instance.
+		user, err := ctx.dbc.Authenticator().GetUser(ctx.username)
+		if err != nil {
+			// Apparently the user account was deleted?
+			base.LogTo("Sync", "%s    --> can't find user: %s", rq, err)
+			rq.Sender.Close()
+		}
+		db, _ := db.GetDatabase(ctx.dbc, user)
+		handler := blipHandler{
+			blipSyncContext: ctx,
+			db:              db,
+		}
+
+		if err := handlerFn(&handler, rq); err != nil {
 			status, msg := base.ErrorAsHTTPStatus(err)
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
@@ -75,8 +110,9 @@ func (bh *blipHandler) addHandler(profile string, handler func(*blip.Message) er
 	}
 }
 
-func (bh *blipHandler) notFound(rq *blip.Message) {
-	base.LogTo("Sync", "%s --> 404 Unknown profile", rq.Profile())
+func (ctx *blipSyncContext) notFound(rq *blip.Message) {
+	base.LogTo("Sync", "%s %q", rq, rq.Profile())
+	base.LogTo("Sync", "%s    --> 404 Unknown profile", rq)
 	blip.Unhandled(rq)
 }
 
