@@ -306,6 +306,24 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			c.processEntry(change)
 		}
 
+		// If the recent sequence history includes any sequences earlier than the current sequence, and
+		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries.
+		currentSequence := doc.Sequence
+		if len(doc.UnusedSequences) > 0 {
+			currentSequence = doc.UnusedSequences[0]
+		}
+
+		for _, seq := range doc.RecentSequences {
+			if seq >= c.nextSequence && seq < currentSequence {
+				base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+				change := &LogEntry{
+					Sequence:     seq,
+					TimeReceived: time.Now(),
+				}
+				c.processEntry(change)
+			}
+		}
+
 		// Now add the entry for the new doc revision:
 		change := &LogEntry{
 			Sequence:     doc.Sequence,

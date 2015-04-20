@@ -27,6 +27,7 @@ type syncData struct {
 	Flags           uint8               `json:"flags,omitempty"`
 	Sequence        uint64              `json:"sequence"`
 	UnusedSequences []uint64            `json:"unused_sequences,omitempty"`
+	RecentSequences []uint64            `json:"recent_sequences,omitempty"`
 	History         RevTree             `json:"history"`
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
 	Access          UserAccessMap       `json:"access,omitempty"`

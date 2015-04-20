@@ -541,10 +541,40 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return
 			}
-			// base.TEMP("Allocated seq #%d for (%q / %q)", docSequence, docid, newRevID)
 		}
 		doc.Sequence = docSequence
 		doc.UnusedSequences = unusedSequences
+
+		// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
+		// the same mutation queue processing window. This results in missing sequences on the change listener.
+		// To account for this, we track the recent sequence numbers for the document.
+		if doc.RecentSequences != nil {
+			// Prune existing recent sequences that are earlier than the nextSequence.  The dedup window
+			// on the feed is small - typically sub-second, so we usually shouldn't care about more than
+			// 5 recent sequences.
+			if len(doc.RecentSequences) > 5 {
+				count := 0
+				for _, seq := range doc.RecentSequences {
+					// Only remove sequences if they are higher than a sequence that's been seen on the
+					// feed. This is valid across SG nodes (which could each have a different nextSequence),
+					// as the deduplication is consistent across feeds, so those feeds will eventually get
+					// the same events this node has already seen.
+					if seq < db.changeCache.nextSequence {
+						count++
+					} else {
+						break
+					}
+				}
+				if count > 0 {
+					doc.RecentSequences = doc.RecentSequences[count:]
+				}
+			}
+		} else {
+			doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
+		}
+		// Append current sequence and unused sequences to recent sequence history
+		doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
+		doc.RecentSequences = append(doc.RecentSequences, docSequence)
 
 		if doc.CurrentRev != prevCurrentRev {
 			// Most of the time this update will change the doc's current rev. (The exception is
