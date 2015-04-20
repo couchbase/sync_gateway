@@ -276,29 +276,61 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	return nil
 }
 
+// Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
 		return err
 	}
 	docID, found := body["_id"].(string)
-	if !found {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing doc _id")
+	revID, rfound := body["_rev"].(string)
+	if !found || !rfound {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing doc _id or _rev")
 	}
 	history := strings.Split(rq.Properties["history"], ",")
-	base.LogTo("Sync", "Inserting rev %q %s", docID, body["_rev"])
+	base.LogTo("Sync", "Inserting rev %q %s", docID, revID)
+
+	// Look at attachments with revpos > the last common ancestor's
+	minRevpos := 1
+	if len(history) > 0 {
+		minRevpos, _ := db.ParseRevID(history[len(history)-1])
+		minRevpos++
+	}
 
 	// Check for any attachments I don't have yet, and request them:
-	err := bh.db.ForEachUnknownAttachment(body, func(name string, digest string, meta map[string]interface{}) ([]byte, error) {
+	err := bh.db.ForEachStubAttachment(body, minRevpos,
+		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+			if knownData != nil {
+				// If I have the attachment already I don't need the client to send it, but for
+				// security purposes I do need the client to _prove_ it has the data, otherwise if
+				// it knew the digest it could acquire the data by uploading a document with the
+				// claimed attachment, then downloading it.
+				base.LogTo("Sync+", "    Verifying attachment %q (digest %s)...", name, digest)
+				nonce, proof := db.GenerateProofOfAttachment(knownData)
+				rq := blip.NewRequest()
+				rq.Properties = map[string]string{"Profile": "proveattach", "digest": digest}
+				rq.SetBody(nonce)
+				bh.sender.Send(rq)
+				if body, err := rq.Response().Body(); err != nil {
+					return nil, err
+				} else if string(body) != proof {
+					base.LogTo("Sync+", "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, nonce, proof, body)
+					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
+				}
+				return nil, nil
+			} else {
+				// If I don't have the attachment, I will request it from the client:
 		base.LogTo("Sync+", "    Asking for attachment %q (digest %s)...", name, digest)
 		rq := blip.NewRequest()
 		rq.Properties = map[string]string{"Profile": "getattach", "digest": digest}
 		bh.sender.Send(rq)
 		return rq.Response().Body()
+			}
 	})
 	if err != nil {
 		return err
 	}
 
+	// Finally, save the revision (with the new attachments inline)
 	return bh.db.PutExistingRev(docID, body, history)
 }
