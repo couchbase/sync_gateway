@@ -128,6 +128,14 @@ func (rt *restTester) sendRequestWithHeaders(method, resource string, body strin
 	return rt.send(req)
 }
 
+func (rt *restTester) sendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *testResponse {
+	req := request(method, resource, body)
+	req.SetBasicAuth(username, password)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return rt.send(req)
+}
 func (rt *restTester) send(request *http.Request) *testResponse {
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
@@ -1772,4 +1780,47 @@ func TestCreateTarget(t *testing.T) {
 	//Attempt to create new target DB on public API
 	response = rt.sendRequest("PUT", "/foo/", "")
 	assertStatus(t, response, 403)
+}
+
+// Test for issue 758 - basic auth with stale session cookie
+func TestBasicAuthWithSessionCookie(t *testing.T) {
+
+	var rt restTester
+
+	// Create two users
+	response := rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein","admin_channels":["manny"]}`)
+	assertStatus(t, response, 201)
+
+	// Create a session for the first user
+	response = rt.send(requestByUser("POST", "/db/_session", `{"name":"bernard", "password":"letmein"}`, "bernard"))
+	log.Println("response.Header()", response.Header())
+	assert.True(t, response.Header().Get("Set-Cookie") != "")
+
+	cookie := response.Header().Get("Set-Cookie")
+
+	// Create a doc as the first user, with session auth, channel-restricted to first user
+	reqHeaders := map[string]string{
+		"Cookie": cookie,
+	}
+	response = rt.sendRequestWithHeaders("PUT", "/db/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
+	assertStatus(t, response, 201)
+	response = rt.sendRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders)
+	assertStatus(t, response, 200)
+
+	// Create a doc as the second user, with basic auth, channel-restricted to the second user
+	response = rt.send(requestByUser("PUT", "/db/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny"))
+	assertStatus(t, response, 201)
+	response = rt.send(requestByUser("GET", "/db/mannyDoc", "", "manny"))
+	assertStatus(t, response, 200)
+	response = rt.send(requestByUser("GET", "/db/bernardDoc", "", "manny"))
+	assertStatus(t, response, 403)
+
+	// Attempt to retrieve the docs with the first user's cookie, second user's basic auth credentials.  Basic Auth should take precedence
+	response = rt.sendUserRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders, "manny", "letmein")
+	assertStatus(t, response, 403)
+	response = rt.sendUserRequestWithHeaders("GET", "/db/mannyDoc", "", reqHeaders, "manny", "letmein")
+	assertStatus(t, response, 200)
+
 }
