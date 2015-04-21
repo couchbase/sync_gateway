@@ -87,7 +87,12 @@ func ParseSequenceComponent(component string, allowEmpty bool) (uint64, error) {
 	}
 	value, err := strconv.ParseUint(component, 10, 64)
 	return value, err
+}
 
+func ParseSequenceIDFromJSON(data []byte) (SequenceID, error) {
+	var seq SequenceID
+	err := json.Unmarshal(data, &seq)
+	return seq, err
 }
 
 func (s SequenceID) MarshalJSON() ([]byte, error) {

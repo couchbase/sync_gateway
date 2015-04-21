@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -36,12 +37,12 @@ type blipHandler struct {
 
 // Maps the profile (verb) of an incoming request to the method that handles it.
 var kHandlersByProfile = map[string]func(*blipHandler, *blip.Message) error{
-	"getcheckpoint": (*blipHandler).handleGetCheckpoint,
-	"setcheckpoint": (*blipHandler).handleSetCheckpoint,
-	"getchanges":    (*blipHandler).handleGetChanges,
+	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
+	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
+	"subChanges":    (*blipHandler).handleSubscribeToChanges,
 	"changes":       (*blipHandler).handlePushedChanges,
 	"rev":           (*blipHandler).handleAddRevision,
-	"getattach":     (*blipHandler).handleGetAttachment,
+	"getAttachment": (*blipHandler).handleGetAttachment,
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -121,7 +122,7 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 
 //////// CHECKPOINTS
 
-// Received a "getcheckpoint" request
+// Received a "getCheckpoint" request
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	docID := "checkpoint/" + rq.Properties["client"]
 	response := rq.Response()
@@ -141,7 +142,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	return nil
 }
 
-// Received a "setcheckpoint" request
+// Received a "setCheckpoint" request
 func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	docID := "checkpoint/" + rq.Properties["client"]
 
@@ -155,13 +156,14 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 //////// CHANGES
 
-// Received a "getchanges" subscription request
-func (bh *blipHandler) handleGetChanges(rq *blip.Message) error {
+// Received a "subChanges" subscription request
+func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	var since db.SequenceID
 	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
-		if since, err = db.ParseSequenceID(sinceStr); err != nil {
-			return err
+		if since, err = db.ParseSequenceIDFromJSON([]byte(sinceStr)); err != nil {
+			base.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
+			since = db.SequenceID{}
 		}
 	}
 	bh.batchSize = uint(getRestrictedIntFromString(rq.Properties["batch"], 200, 10, math.MaxUint64))
@@ -187,31 +189,36 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 
 	generateContinuousChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
 		base.LogTo("Sync+", "    Sending %d changes", len(changes))
-		rq := blip.NewRequest()
-		rq.SetProfile("changes")
+		outrq := blip.NewRequest()
+		outrq.SetProfile("changes")
 
-		changeArray := make([][]string, 0, len(changes))
+		changeArray := make([][]interface{}, 0, len(changes))
 		for _, change := range changes {
-			seq := change.Seq.String()
 			for _, item := range change.Changes {
-				changeArray = append(changeArray, []string{seq, change.ID, item["rev"]})
+				changeArray = append(changeArray, []interface{}{change.Seq, change.ID, item["rev"]})
 			}
 		}
-		rq.SetJSONBody(changeArray)
+		outrq.SetJSONBody(changeArray)
 		if len(changeArray) > 0 {
 			// Spawn a goroutine to await the client's response:
-			bh.sender.Send(rq)
-			go bh.handleChangesResponse(rq.Response(), changeArray)
+			bh.sender.Send(outrq)
+			go bh.handleChangesResponse(outrq.Response(), changeArray)
 		} else {
-			rq.SetNoReply(true)
-			bh.sender.Send(rq)
+			outrq.SetNoReply(true)
+			bh.sender.Send(outrq)
 		}
 		return nil
 	})
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray [][]string) {
+func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray [][]interface{}) {
+	defer func() {
+		if panicked := recover(); panicked != nil {
+			base.Warn("*** PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
+		}
+	}()
+
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
 		base.LogTo("Sync", "Invalid response to 'changes' message")
@@ -221,9 +228,9 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 	// placeholder (probably 0). The item numbers match those of changeArray.
 	for i, item := range answer {
 		if item, ok := item.([]interface{}); ok {
-			seq := changeArray[i][0]
-			docID := changeArray[i][1]
-			revID := changeArray[i][2]
+			seq := changeArray[i][0].(db.SequenceID)
+			docID := changeArray[i][1].(string)
+			revID := changeArray[i][2].(string)
 			knownRevs := make([]string, len(item))
 			for i, rev := range item {
 				var ok bool
@@ -275,7 +282,7 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 //////// DOCUMENTS:
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(seq string, docID string, revID string, knownRevs []string) {
+func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs []string) {
 	base.LogTo("Sync", "Sending rev %q %s based on %v", docID, revID, knownRevs)
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
@@ -299,21 +306,22 @@ func (bh *blipHandler) sendRevision(seq string, docID string, revID string, know
 		}
 	}
 
-	rq := blip.NewRequest()
-	rq.SetProfile("rev")
-	rq.Properties["sequence"] = seq
+	outrq := blip.NewRequest()
+	outrq.SetProfile("rev")
+	seqJSON, _ := json.Marshal(seq)
+	outrq.Properties["sequence"] = string(seqJSON)
 	if len(history) > 0 {
-		rq.Properties["history"] = strings.Join(history, ",")
+		outrq.Properties["history"] = strings.Join(history, ",")
 	}
-	rq.SetJSONBody(body)
+	outrq.SetJSONBody(body)
 	if atts := db.BodyAttachments(body); atts != nil {
 		bh.addAllowedAttachments(atts)
 		defer bh.removeAllowedAttachments(atts)
-		bh.sender.Send(rq)
-		rq.Response() // blocks till reply is received
+		bh.sender.Send(outrq)
+		outrq.Response() // blocks till reply is received
 	} else {
-		rq.SetNoReply(true)
-		bh.sender.Send(rq)
+		outrq.SetNoReply(true)
+		bh.sender.Send(outrq)
 	}
 }
 
@@ -349,7 +357,7 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 
 //////// ATTACHMENTS:
 
-// Received a "getattach" request
+// Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	digest := rq.Properties["digest"]
 	if digest == "" {
@@ -380,11 +388,11 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) 
 				// claimed attachment, then downloading it.
 				base.LogTo("Sync+", "    Verifying attachment %q (digest %s)...", name, digest)
 				nonce, proof := db.GenerateProofOfAttachment(knownData)
-				rq := blip.NewRequest()
-				rq.Properties = map[string]string{"Profile": "proveattach", "digest": digest}
-				rq.SetBody(nonce)
-				bh.sender.Send(rq)
-				if body, err := rq.Response().Body(); err != nil {
+				outrq := blip.NewRequest()
+				outrq.Properties = map[string]string{"Profile": "proveAttachment", "digest": digest}
+				outrq.SetBody(nonce)
+				bh.sender.Send(outrq)
+				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
 					base.LogTo("Sync+", "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, nonce, proof, body)
@@ -394,10 +402,10 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) 
 			} else {
 				// If I don't have the attachment, I will request it from the client:
 				base.LogTo("Sync+", "    Asking for attachment %q (digest %s)...", name, digest)
-				rq := blip.NewRequest()
-				rq.Properties = map[string]string{"Profile": "getattach", "digest": digest}
-				bh.sender.Send(rq)
-				return rq.Response().Body()
+				outrq := blip.NewRequest()
+				outrq.Properties = map[string]string{"Profile": "getAttachment", "digest": digest}
+				bh.sender.Send(outrq)
+				return outrq.Response().Body()
 			}
 		})
 }
