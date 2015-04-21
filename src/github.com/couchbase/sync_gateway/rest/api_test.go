@@ -1804,23 +1804,23 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Cookie": cookie,
 	}
-	response = rt.sendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
+	response = rt.sendRequestWithHeaders("PUT", "/db/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
 	assertStatus(t, response, 201)
-	response = rt.sendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.sendRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders)
 	assertStatus(t, response, 200)
 
 	// Create a doc as the second user, with basic auth, channel-restricted to the second user
-	response = rt.send(requestByUser("PUT", "/db/doc2", `{"hi": "there", "channels":["manny"]}`, "manny"))
+	response = rt.send(requestByUser("PUT", "/db/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny"))
 	assertStatus(t, response, 201)
-	response = rt.send(requestByUser("GET", "/db/doc2", "", "manny"))
+	response = rt.send(requestByUser("GET", "/db/mannyDoc", "", "manny"))
 	assertStatus(t, response, 200)
-	response = rt.send(requestByUser("GET", "/db/doc1", "", "manny"))
+	response = rt.send(requestByUser("GET", "/db/bernardDoc", "", "manny"))
 	assertStatus(t, response, 403)
 
 	// Attempt to retrieve the docs with the first user's cookie, second user's basic auth credentials.  Basic Auth should take precedence
-	response = rt.sendUserRequestWithHeaders("GET", "/db/doc1", "", reqHeaders, "manny", "letmein")
+	response = rt.sendUserRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders, "manny", "letmein")
 	assertStatus(t, response, 403)
-	response = rt.sendUserRequestWithHeaders("GET", "/db/doc2", "", reqHeaders, "manny", "letmein")
+	response = rt.sendUserRequestWithHeaders("GET", "/db/mannyDoc", "", reqHeaders, "manny", "letmein")
 	assertStatus(t, response, 200)
 
 }
