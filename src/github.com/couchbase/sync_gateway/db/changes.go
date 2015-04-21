@@ -305,13 +305,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				for i, cur := range current {
 					if cur == nil && feeds[i] != nil {
 						var ok bool
-						// Add select to ensure we don't skip feeds that are non-closed but still
-						// processing the channel update.
-						select {
-						case current[i], ok = <-feeds[i]:
-							if !ok {
-								feeds[i] = nil
-							}
+						current[i], ok = <-feeds[i]
+						if !ok {
+							feeds[i] = nil
 						}
 					}
 				}

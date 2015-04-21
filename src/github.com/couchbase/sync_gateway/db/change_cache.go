@@ -592,11 +592,11 @@ func (h *SkippedSequenceQueue) Remove(x uint64) error {
 
 }
 
-// Remove does a simple binary search to find and remove.
-func (h *SkippedSequenceQueue) Contains(x uint64) bool {
+// Contains does a simple search to detect presence
+func (h SkippedSequenceQueue) Contains(x uint64) bool {
 
-	i := SearchSequenceQueue(*h, x)
-	if i < len(*h) && (*h)[i].seq == x {
+	i := SearchSequenceQueue(h, x)
+	if i < len(h) && h[i].seq == x {
 		return true
 	} else {
 		return false
