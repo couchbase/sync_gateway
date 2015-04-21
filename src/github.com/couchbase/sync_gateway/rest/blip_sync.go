@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/snej/go-blip"
 	"golang.org/x/net/websocket"
@@ -18,13 +19,14 @@ import (
 // Represents one BLIP connection (socket) opened by a client.
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
-	blipContext *blip.Context
-	sender      *blip.Sender
-	dbc         *db.DatabaseContext
-	username    string
-
-	batchSize  uint
-	continuous bool
+	blipContext        *blip.Context
+	sender             *blip.Sender
+	dbc                *db.DatabaseContext
+	username           string
+	batchSize          uint
+	continuous         bool
+	lock               sync.Mutex
+	allowedAttachments map[string]int
 }
 
 type blipHandler struct {
@@ -188,21 +190,21 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 		rq := blip.NewRequest()
 		rq.SetProfile("changes")
 
-		changeArray := make([][]string, len(changes))
-		for i, change := range changes {
-			changeArray[i] = []string{
-				change.Seq.String(),
-				change.ID,
-				change.Changes[0]["rev"],
-			} //FIX: Add all conflicts
+		changeArray := make([][]string, 0, len(changes))
+		for _, change := range changes {
+			seq := change.Seq.String()
+			for _, item := range change.Changes {
+				changeArray = append(changeArray, []string{seq, change.ID, item["rev"]})
+			}
 		}
 		rq.SetJSONBody(changeArray)
-		bh.sender.Send(rq)
 		if len(changeArray) > 0 {
 			// Spawn a goroutine to await the client's response:
+			bh.sender.Send(rq)
 			go bh.handleChangesResponse(rq.Response(), changeArray)
 		} else {
 			rq.SetNoReply(true)
+			bh.sender.Send(rq)
 		}
 		return nil
 	})
@@ -281,6 +283,7 @@ func (bh *blipHandler) sendRevision(seq string, docID string, revID string, know
 		return
 	}
 
+	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
 	delete(body, "_revisions")
 	if len(knownRevs) > 0 {
@@ -303,23 +306,15 @@ func (bh *blipHandler) sendRevision(seq string, docID string, revID string, know
 		rq.Properties["history"] = strings.Join(history, ",")
 	}
 	rq.SetJSONBody(body)
-	bh.sender.Send(rq)
-}
-
-// Received a "getattach" request
-func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
-	digest := rq.Properties["digest"]
-	if digest == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
+	if atts := db.BodyAttachments(body); atts != nil {
+		bh.addAllowedAttachments(atts)
+		defer bh.removeAllowedAttachments(atts)
+		bh.sender.Send(rq)
+		rq.Response() // blocks till reply is received
+	} else {
+		rq.SetNoReply(true)
+		bh.sender.Send(rq)
 	}
-	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
-	if err != nil {
-		return err
-	}
-	base.LogTo("Sync", "Sending attachment digest=%q (%dkb)", digest, len(attachment)/1024)
-	response := rq.Response()
-	response.SetBody(attachment)
-	return nil
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
@@ -344,7 +339,39 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	}
 
 	// Check for any attachments I don't have yet, and request them:
-	err := bh.db.ForEachStubAttachment(body, minRevpos,
+	if err := bh.downloadOrVerifyAttachments(body, minRevpos); err != nil {
+		return err
+	}
+
+	// Finally, save the revision (with the new attachments inline)
+	return bh.db.PutExistingRev(docID, body, history)
+}
+
+//////// ATTACHMENTS:
+
+// Received a "getattach" request
+func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
+	digest := rq.Properties["digest"]
+	if digest == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
+	}
+	if !bh.isAttachmentAllowed(digest) {
+		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
+	}
+	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
+	if err != nil {
+		return err
+	}
+	base.LogTo("Sync", "Sending attachment digest=%q (%dkb)", digest, len(attachment)/1024)
+	response := rq.Response()
+	response.SetBody(attachment)
+	return nil
+}
+
+// For each attachment in the revision, makes sure it's in the database, asking the client to
+// upload it if necessary. This method blocks until all the attachments have been processed.
+func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) error {
+	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
 				// If I have the attachment already I don't need the client to send it, but for
@@ -373,10 +400,37 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 				return rq.Response().Body()
 			}
 		})
-	if err != nil {
-		return err
-	}
+}
 
-	// Finally, save the revision (with the new attachments inline)
-	return bh.db.PutExistingRev(docID, body, history)
+func (ctx *blipSyncContext) addAllowedAttachments(atts map[string]interface{}) {
+	ctx.lock.Lock()
+	defer ctx.lock.Unlock()
+	if ctx.allowedAttachments == nil {
+		ctx.allowedAttachments = make(map[string]int, 100)
+	}
+	for _, meta := range atts {
+		if digest, ok := meta.(map[string]interface{})["digest"].(string); ok {
+			ctx.allowedAttachments[digest] = ctx.allowedAttachments[digest] + 1
+		}
+	}
+}
+
+func (ctx *blipSyncContext) removeAllowedAttachments(atts map[string]interface{}) {
+	ctx.lock.Lock()
+	defer ctx.lock.Unlock()
+	for _, meta := range atts {
+		if digest, ok := meta.(map[string]interface{})["digest"].(string); ok {
+			if n := ctx.allowedAttachments[digest]; n > 1 {
+				ctx.allowedAttachments[digest] = n - 1
+			} else {
+				delete(ctx.allowedAttachments, digest)
+			}
+		}
+	}
+}
+
+func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
+	ctx.lock.Lock()
+	defer ctx.lock.Unlock()
+	return ctx.allowedAttachments[digest] > 0
 }
