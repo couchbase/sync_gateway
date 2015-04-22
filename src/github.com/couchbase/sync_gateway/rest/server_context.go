@@ -352,8 +352,10 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		spec.Auth = shadow
 	}
 
-	bucket, err := db.ConnectToBucket(spec)
+	bucket, err := base.GetBucket(spec)
 	if err != nil {
+		err = base.HTTPErrorf(http.StatusBadGateway,
+			"Unable to connect to shadow bucket: %s", err)
 		return err
 	}
 	shadower, err := db.NewShadower(dbcontext, bucket, pattern)
