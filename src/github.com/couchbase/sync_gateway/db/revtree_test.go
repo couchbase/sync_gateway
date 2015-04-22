@@ -17,17 +17,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 )
 
 var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
-					"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
-					"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
+	"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
+	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
+
+// 1-one -- 2-two -- 3-three
+
 var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"2-two":  {ID: "2-two", Parent: "1-one"},
 	"1-one":  {ID: "1-one"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
+
+//               / 3-three
+// 1-one -- 2-two
+//               \ 3-drei
 
 const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
 
@@ -127,29 +134,12 @@ func TestRevTreeWinningRev(t *testing.T) {
 	assert.False(t, conflict)
 }
 
-func TestRevTreeDepths(t *testing.T) {
-	tempmap := testmap.copy()
-	tempmap.computeDepths()
-	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
-	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
-	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
-
-	tempmap = branchymap.copy()
-	tempmap.computeDepths()
-	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
-	assert.Equals(t, tempmap["3-drei"].depth, uint32(1))
-	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
-	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
-
+func TestPruneRevisions(t *testing.T) {
+	tempmap := branchymap.copy()
 	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei"}
-	tempmap.computeDepths()
-	assert.Equals(t, tempmap["4-vier"].depth, uint32(1))
-	assert.Equals(t, tempmap["3-drei"].depth, uint32(2))
-	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
-	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
-	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
-
-	// Prune:
+	//               / 3-three
+	// 1-one -- 2-two
+	//               \ 3-drei -- 4-vier
 	assert.Equals(t, tempmap.pruneRevisions(1000), 0)
 	assert.Equals(t, tempmap.pruneRevisions(3), 0)
 	assert.Equals(t, tempmap.pruneRevisions(2), 1)
@@ -157,13 +147,30 @@ func TestRevTreeDepths(t *testing.T) {
 	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
 	assert.Equals(t, tempmap["2-two"].Parent, "")
 
-	// Make sure leaves are never pruned:
-	assert.Equals(t, tempmap.pruneRevisions(1), 2)
-	assert.Equals(t, len(tempmap), 2)
+	// Make sure leaves are never pruned: (note: by now 1-one is already gone)
+	assert.Equals(t, tempmap.pruneRevisions(1), 1)
+	assert.Equals(t, len(tempmap), 3)
 	assert.True(t, tempmap["3-three"] != nil)
 	assert.Equals(t, tempmap["3-three"].Parent, "")
 	assert.True(t, tempmap["4-vier"] != nil)
-	assert.Equals(t, tempmap["4-vier"].Parent, "")
+	assert.Equals(t, tempmap["4-vier"].Parent, "3-drei")
+	assert.Equals(t, tempmap["3-drei"].Parent, "")
+
+	// Make sure old merged conflicts don't prevent pruning:
+	tempmap = branchymap.copy()
+	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei", Deleted: true}
+	tempmap["4-four"] = &RevInfo{ID: "4-four", Parent: "3-three"}
+	tempmap["5-five"] = &RevInfo{ID: "5-five", Parent: "4-four"}
+	tempmap["6-six"] = &RevInfo{ID: "6-six", Parent: "5-five"}
+	//               / 3-three -- 4-four -- 5-five -- 6-six
+	// 1-one -- 2-two
+	//               \ 3-drei -- [4-vier]
+	assert.Equals(t, tempmap.pruneRevisions(3), 4)
+	assert.Equals(t, len(tempmap), 4)
+	assert.Equals(t, tempmap.pruneRevisions(2), 2)
+	assert.Equals(t, len(tempmap), 2)
+	assert.Equals(t, tempmap["5-five"].Parent, "")
+	assert.Equals(t, tempmap["6-six"].Parent, "5-five")
 }
 
 func TestParseRevisions(t *testing.T) {
