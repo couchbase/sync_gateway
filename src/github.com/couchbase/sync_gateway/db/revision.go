@@ -96,6 +96,21 @@ func createRevID(generation int, parentRevID string, body Body) string {
 	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
 }
 
+// Returns the generation number (numeric prefix) of a revision ID.
+func genOfRevID(revid string) int {
+	if revid == "" {
+		return 0
+	}
+	var generation int
+	n, _ := fmt.Sscanf(revid, "%d-", &generation)
+	if n < 1 || generation < 1 {
+		base.Warn("genOfRevID failed on %q", revid)
+		return -1
+	}
+	return generation
+}
+
+// Splits a revision ID into generation number and hex digest.
 func parseRevID(revid string) (int, string) {
 	if revid == "" {
 		return 0, ""
