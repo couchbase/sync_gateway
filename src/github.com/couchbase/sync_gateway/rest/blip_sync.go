@@ -171,12 +171,18 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	if val, found := rq.Properties["continuous"]; found && val != "false" {
 		bh.continuous = true
 	}
-	bh.sendChanges(since)
+	go bh.sendChanges(since)
 	return nil
 }
 
 // Sends all changes since the given sequence
 func (bh *blipHandler) sendChanges(since db.SequenceID) {
+	defer func() {
+		if panicked := recover(); panicked != nil {
+			base.Warn("*** PANIC sending changes: %v\n%s", panicked, debug.Stack())
+		}
+	}()
+
 	base.LogTo("Sync", "Sending changes since %v", since)
 	options := db.ChangesOptions{
 		Since:      since,
