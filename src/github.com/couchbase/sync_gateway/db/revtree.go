@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -35,11 +36,12 @@ type RevTree map[string]*RevInfo
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs     []string   `json:"revs"`              // The revision IDs
-	Parents  []int      `json:"parents"`           // Index of parent of each revision (-1 if root)
-	Deleted  []int      `json:"deleted,omitempty"` // Indexes of revisions that are deletions
-	Bodies   []string   `json:"bodies,omitempty"`  // JSON of each revision
-	Channels []base.Set `json:"channels"`
+	Revs       []string          `json:"revs"`              // The revision IDs
+	Parents    []int             `json:"parents"`           // Index of parent of each revision (-1 if root)
+	Deleted    []int             `json:"deleted,omitempty"` // Indexes of revisions that are deletions
+	Bodies_Old []string          `json:"bodies,omitempty"`  // JSON of each revision (legacy)
+	BodyMap    map[string]string `json:"bodymap,omitempty"` // JSON of each revision
+	Channels   []base.Set        `json:"channels"`
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
@@ -47,7 +49,6 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	rep := revTreeList{
 		Revs:     make([]string, n),
 		Parents:  make([]int, n),
-		Bodies:   make([]string, n),
 		Channels: make([]base.Set, n),
 	}
 	revIndexes := map[string]int{"": -1}
@@ -56,7 +57,12 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	for _, info := range tree {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
-		rep.Bodies[i] = string(info.Body)
+		if info.Body != nil {
+			if rep.BodyMap == nil {
+				rep.BodyMap = make(map[string]string, 1)
+			}
+			rep.BodyMap[strconv.FormatInt(int64(i), 10)] = string(info.Body)
+		}
 		rep.Channels[i] = info.Channels
 		if info.Deleted {
 			if rep.Deleted == nil {
@@ -87,8 +93,12 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
-		if rep.Bodies != nil && len(rep.Bodies[i]) > 0 {
-			info.Body = []byte(rep.Bodies[i])
+		if rep.BodyMap != nil {
+			if body := rep.BodyMap[strconv.FormatInt(int64(i), 10)]; body != "" {
+				info.Body = []byte(body)
+			}
+		} else if rep.Bodies_Old != nil && len(rep.Bodies_Old[i]) > 0 {
+			info.Body = []byte(rep.Bodies_Old[i])
 		}
 		if rep.Channels != nil {
 			info.Channels = rep.Channels[i]

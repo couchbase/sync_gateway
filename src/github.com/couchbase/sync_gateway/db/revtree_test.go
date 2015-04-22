@@ -36,8 +36,6 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 // 1-one -- 2-two
 //               \ 3-drei
 
-const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
-
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
 	assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
@@ -45,7 +43,14 @@ func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	return gotmap
 }
 
+func TestRevTreeUnmarshalOldFormat(t *testing.T) {
+	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
+	gotmap := testUnmarshal(t, testJSON)
+	fmt.Printf("Unmarshaled to %v\n", gotmap)
+}
+
 func TestRevTreeUnmarshal(t *testing.T) {
+	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
 	gotmap := testUnmarshal(t, testJSON)
 	fmt.Printf("Unmarshaled to %v\n", gotmap)
 }
