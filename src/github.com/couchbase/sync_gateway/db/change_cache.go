@@ -313,14 +313,17 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			currentSequence = doc.UnusedSequences[0]
 		}
 
-		for _, seq := range doc.RecentSequences {
-			if seq >= c.nextSequence && seq < currentSequence {
-				base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
-				change := &LogEntry{
-					Sequence:     seq,
-					TimeReceived: time.Now(),
+		if len(doc.RecentSequences) > 0 {
+			nextSeq := c.getNextSequence()
+			for _, seq := range doc.RecentSequences {
+				if seq >= nextSeq && seq < currentSequence {
+					base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+					change := &LogEntry{
+						Sequence:     seq,
+						TimeReceived: time.Now(),
+					}
+					c.processEntry(change)
 				}
-				c.processEntry(change)
 			}
 		}
 
@@ -509,6 +512,12 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c._getChannelCache(channelName)
+}
+
+func (c *changeCache) getNextSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
 }
 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {

@@ -548,30 +548,33 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
 		// the same mutation queue processing window. This results in missing sequences on the change listener.
 		// To account for this, we track the recent sequence numbers for the document.
-		if doc.RecentSequences != nil {
-			// Prune existing recent sequences that are earlier than the nextSequence.  The dedup window
-			// on the feed is small - typically sub-second, so we usually shouldn't care about more than
-			// 5 recent sequences.
-			if len(doc.RecentSequences) > 5 {
-				count := 0
-				for _, seq := range doc.RecentSequences {
-					// Only remove sequences if they are higher than a sequence that's been seen on the
-					// feed. This is valid across SG nodes (which could each have a different nextSequence),
-					// as the deduplication is consistent across feeds, so those feeds will eventually get
-					// the same events this node has already seen.
-					if seq < db.changeCache.nextSequence {
-						count++
-					} else {
-						break
-					}
-				}
-				if count > 0 {
-					doc.RecentSequences = doc.RecentSequences[count:]
-				}
-			}
-		} else {
+		if doc.RecentSequences == nil {
 			doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
 		}
+
+		if len(doc.RecentSequences) > 20 {
+			// Prune recent sequences that are earlier than the nextSequence.  The dedup window
+			// on the feed is small - sub-second, so we usually shouldn't care about more than
+			// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
+			// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
+			stableSequence := db.changeCache.getNextSequence() - 1
+			count := 0
+			for _, seq := range doc.RecentSequences {
+				// Only remove sequences if they are higher than a sequence that's been seen on the
+				// feed. This is valid across SG nodes (which could each have a different nextSequence),
+				// as the mutations that this node used to rev nextSequence will at some point be delivered
+				// to each node.
+				if seq < stableSequence {
+					count++
+				} else {
+					break
+				}
+			}
+			if count > 0 {
+				doc.RecentSequences = doc.RecentSequences[count:]
+			}
+		}
+
 		// Append current sequence and unused sequences to recent sequence history
 		doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
 		doc.RecentSequences = append(doc.RecentSequences, docSequence)
