@@ -137,6 +137,9 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	if value == nil {
 		return base.HTTPErrorf(401, "Not found")
 	}
+	response.Properties["rev"] = value["_rev"].(string)
+	delete(value, "_rev")
+	delete(value, "_id")
 	value.FixJSONNumbers()
 	response.SetJSONBody(value)
 	return nil
@@ -147,11 +150,18 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	docID := "checkpoint/" + rq.Properties["client"]
 
 	var checkpoint db.Body
-	err := rq.ReadJSONBody(&checkpoint)
-	if err == nil {
-		_, err = bh.db.PutSpecial("local", docID, checkpoint)
+	if err := rq.ReadJSONBody(&checkpoint); err != nil {
+		return err
 	}
-	return err
+	if revID := rq.Properties["rev"]; revID != "" {
+		checkpoint["_rev"] = revID
+	}
+	revID, err := bh.db.PutSpecial("local", docID, checkpoint)
+	if err != nil {
+		return err
+	}
+	rq.Response().Properties["rev"] = revID
+	return nil
 }
 
 //////// CHANGES
