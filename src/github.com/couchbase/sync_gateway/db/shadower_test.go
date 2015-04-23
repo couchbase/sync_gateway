@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"testing"
@@ -13,10 +14,14 @@ import (
 )
 
 func makeExternalBucket() base.Bucket {
+
+	// needed for foresdb tests so that there is no residue from previous tests
+	uniqueBucketName := fmt.Sprintf("external_bucket_%v", time.Now().UnixNano())
+
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		// Server: "walrus:",
 		Server:     "forestdb:data",
-		BucketName: "external_bucket"})
+		BucketName: uniqueBucketName})
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
