@@ -24,7 +24,7 @@ type blipSyncContext struct {
 	sender             *blip.Sender
 	dbc                *db.DatabaseContext
 	username           string
-	batchSize          uint
+	batchSize          int
 	continuous         bool
 	lock               sync.Mutex
 	allowedAttachments map[string]int
@@ -68,7 +68,7 @@ func (h *handler) handleBLIPSync() error {
 		h.logStatus(101, "Upgraded to BLIP+WebSocket protocol")
 		defer func() {
 			conn.Close()
-			base.LogTo("HTTP", "#%03d:     --> BLIP+WebSocket closed", h.serialNumber)
+			base.LogTo("HTTP+", "#%03d:     --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
 		ctx.blipContext.WebSocketHandler()(conn)
 	}
@@ -166,7 +166,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 			since = db.SequenceID{}
 		}
 	}
-	bh.batchSize = uint(getRestrictedIntFromString(rq.Properties["batch"], 200, 10, math.MaxUint64))
+	bh.batchSize = int(getRestrictedIntFromString(rq.Properties["batch"], 200, 10, math.MaxUint64))
 	bh.continuous = false
 	if val, found := rq.Properties["continuous"]; found && val != "false" {
 		bh.continuous = true
@@ -192,29 +192,47 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 	defer close(options.Terminator)
 
 	channelSet := channels.SetOf(channels.AllChannelWildcard)
+	caughtUp := false
+	pendingChanges := make([][]interface{}, 0, bh.batchSize)
+	sendPendingChangesAt := func(minChanges int) {
+		if len(pendingChanges) >= minChanges {
+			bh.sendBatchOfChanges(pendingChanges)
+			pendingChanges = make([][]interface{}, 0, bh.batchSize)
+		}
+	}
 
 	generateContinuousChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
 		base.LogTo("Sync+", "    Sending %d changes", len(changes))
-		outrq := blip.NewRequest()
-		outrq.SetProfile("changes")
-
-		changeArray := make([][]interface{}, 0, len(changes))
 		for _, change := range changes {
 			for _, item := range change.Changes {
-				changeArray = append(changeArray, []interface{}{change.Seq, change.ID, item["rev"]})
+				pendingChanges = append(pendingChanges, []interface{}{change.Seq, change.ID, item["rev"]})
+				sendPendingChangesAt(bh.batchSize)
 			}
 		}
-		outrq.SetJSONBody(changeArray)
-		if len(changeArray) > 0 {
-			// Spawn a goroutine to await the client's response:
-			bh.sender.Send(outrq)
-			go bh.handleChangesResponse(outrq.Response(), changeArray)
-		} else {
-			outrq.SetNoReply(true)
-			bh.sender.Send(outrq)
+		if caughtUp || len(changes) == 0 {
+			sendPendingChangesAt(0)
+			if !caughtUp {
+				base.LogTo("Sync+", "    Caught up!")
+				caughtUp = true
+				bh.sendBatchOfChanges(nil)
+			}
 		}
 		return nil
 	})
+}
+
+func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}) {
+	outrq := blip.NewRequest()
+	outrq.SetProfile("changes")
+	outrq.SetJSONBody(changeArray)
+	if len(changeArray) > 0 {
+		// Spawn a goroutine to await the client's response:
+		bh.sender.Send(outrq)
+		go bh.handleChangesResponse(outrq.Response(), changeArray)
+	} else {
+		outrq.SetNoReply(true)
+		bh.sender.Send(outrq)
+	}
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
@@ -227,7 +245,7 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
-		base.LogTo("Sync", "Invalid response to 'changes' message")
+		base.LogTo("Sync", "Invalid response to 'changes' message: %s -- %s", response, err)
 		return
 	}
 	// `answer` is an array where each item is either an array of known rev IDs, or a non-array
