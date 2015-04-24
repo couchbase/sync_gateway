@@ -438,7 +438,7 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	db.changeCache.waitForSequenceWithMissing(4)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 2)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
