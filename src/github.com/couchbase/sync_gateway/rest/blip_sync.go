@@ -233,12 +233,12 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 		base.LogTo("Sync+", "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
-			for _, item := range change.Changes {
+				for _, item := range change.Changes {
 					pendingChanges = append(pendingChanges,
 						[]interface{}{change.Seq, change.ID, item["rev"]})
-				sendPendingChangesAt(bh.batchSize)
+					sendPendingChangesAt(bh.batchSize)
+				}
 			}
-		}
 		}
 		if caughtUp || len(changes) == 0 {
 			sendPendingChangesAt(0)
@@ -279,6 +279,10 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 		base.LogTo("Sync", "Invalid response to 'changes' message: %s -- %s", response, err)
 		return
 	}
+
+	// Maps docID --> a map containing true for revIDs known to the client
+	knownRevsByDoc := make(map[string]map[string]bool, len(answer))
+
 	// `answer` is an array where each item is either an array of known rev IDs, or a non-array
 	// placeholder (probably 0). The item numbers match those of changeArray.
 	for i, item := range answer {
@@ -286,10 +290,15 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 			seq := changeArray[i][0].(db.SequenceID)
 			docID := changeArray[i][1].(string)
 			revID := changeArray[i][2].(string)
-			knownRevs := make([]string, len(item))
-			for i, rev := range item {
-				var ok bool
-				if knownRevs[i], ok = rev.(string); !ok {
+			knownRevs := knownRevsByDoc[docID]
+			if knownRevs == nil {
+				knownRevs = make(map[string]bool, len(item))
+				knownRevsByDoc[docID] = knownRevs
+			}
+			for _, rev := range item {
+				if revID, ok := rev.(string); ok {
+					knownRevs[revID] = true
+				} else {
 					base.LogTo("Sync", "Invalid response to 'changes' message")
 					return
 				}
@@ -337,8 +346,8 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 //////// DOCUMENTS:
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs []string) {
-	base.LogTo("Sync", "Sending rev %q %s based on %v", docID, revID, knownRevs)
+func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs map[string]bool) {
+	base.LogTo("Sync+", "Sending rev %q %s based on %d known", docID, revID, len(knownRevs))
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
 		base.Warn("blipHandler can't get doc %q/%s: %v", docID, revID, err)
@@ -348,16 +357,12 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
 	delete(body, "_revisions")
-	if len(knownRevs) > 0 {
-		isKnown := map[string]bool{}
-		for _, rev := range knownRevs {
-			isKnown[rev] = true
-		}
-		for i, rev := range history {
-			if isKnown[rev] {
-				history = history[0 : i+1]
-				break
-			}
+	for i, rev := range history {
+		if knownRevs[rev] {
+			history = history[0 : i+1]
+			break
+		} else {
+			knownRevs[rev] = true
 		}
 	}
 
