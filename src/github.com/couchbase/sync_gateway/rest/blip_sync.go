@@ -26,6 +26,7 @@ type blipSyncContext struct {
 	username           string
 	batchSize          int
 	continuous         bool
+	channels           base.Set
 	lock               sync.Mutex
 	allowedAttachments map[string]int
 }
@@ -181,6 +182,22 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	if val, found := rq.Properties["continuous"]; found && val != "false" {
 		bh.continuous = true
 	}
+	if filter := rq.Properties["filter"]; filter == "sync_gateway/bychannel" {
+		if channelsParam, found := rq.Properties["channels"]; !found {
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
+		} else {
+			channelsArray := strings.Split(channelsParam, ",")
+			var err error
+			bh.channels, err = channels.SetFromArray(channelsArray, channels.ExpandStar)
+			if err != nil {
+				return err
+			} else if len(bh.channels) == 0 {
+				return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
+			}
+		}
+	} else if filter != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
+	}
 	go bh.sendChanges(since)
 	return nil
 }
@@ -196,6 +213,7 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 	base.LogTo("Sync", "Sending changes since %v", since)
 	options := db.ChangesOptions{
 		Since:      since,
+		Conflicts:  true,
 		Continuous: bh.continuous,
 		Terminator: make(chan bool),
 	}
@@ -214,10 +232,13 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 	generateContinuousChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
 		base.LogTo("Sync+", "    Sending %d changes", len(changes))
 		for _, change := range changes {
+			if !strings.HasPrefix(change.ID, "_") {
 			for _, item := range change.Changes {
-				pendingChanges = append(pendingChanges, []interface{}{change.Seq, change.ID, item["rev"]})
+					pendingChanges = append(pendingChanges,
+						[]interface{}{change.Seq, change.ID, item["rev"]})
 				sendPendingChangesAt(bh.batchSize)
 			}
+		}
 		}
 		if caughtUp || len(changes) == 0 {
 			sendPendingChangesAt(0)
@@ -371,7 +392,7 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing doc _id or _rev")
 	}
 	history := strings.Split(rq.Properties["history"], ",")
-	base.LogTo("Sync", "Inserting rev %q %s", docID, revID)
+	base.LogTo("Sync+", "Inserting rev %q %s", docID, revID)
 
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
@@ -404,7 +425,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if err != nil {
 		return err
 	}
-	base.LogTo("Sync", "Sending attachment digest=%q (%dkb)", digest, len(attachment)/1024)
+	base.LogTo("Sync+", "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
 	response := rq.Response()
 	response.SetBody(attachment)
 	return nil
