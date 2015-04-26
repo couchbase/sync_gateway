@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -345,6 +346,7 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
+	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 	return nil
 }
@@ -444,6 +446,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	base.LogTo("Sync+", "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
 	response := rq.Response()
 	response.SetBody(attachment)
+	response.SetCompressed(rq.Properties["compress"] == "true")
 	return nil
 }
 
@@ -475,6 +478,9 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) 
 				base.LogTo("Sync+", "    Asking for attachment %q (digest %s)...", name, digest)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "getAttachment", "digest": digest}
+				if isCompressible(name, meta) {
+					outrq.Properties["compress"] = "true"
+				}
 				bh.sender.Send(outrq)
 				return outrq.Response().Body()
 			}
@@ -512,4 +518,37 @@ func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 	return ctx.allowedAttachments[digest] > 0
+}
+
+// NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
+// 540b1c8. Once that branch is merged it can be replaced by a call to Attachment.Compressible().
+
+var kCompressedTypes, kGoodTypes, kBadTypes, kBadFilenames *regexp.Regexp
+
+func init() {
+	// MIME types that explicitly indicate they're compressed:
+	kCompressedTypes, _ = regexp.Compile(`(?i)\bg?zip\b`)
+	// MIME types that are compressible:
+	kGoodTypes, _ = regexp.Compile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
+	// ... or generally uncompressible:
+	kBadTypes, _ = regexp.Compile(`(?i)^(audio|image|video)/`)
+	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
+	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
+
+	// Filename extensions of uncompressible types:
+	kBadFilenames, _ = regexp.Compile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
+}
+
+// Returns true if this attachment is worth trying to compress.
+func isCompressible(filename string, meta map[string]interface{}) bool {
+	if meta["encoding"] != nil {
+		return false
+	} else if kBadFilenames.MatchString(filename) {
+		return false
+	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
+		return !kCompressedTypes.MatchString(mimeType) &&
+			(kGoodTypes.MatchString(mimeType) ||
+				!kBadTypes.MatchString(mimeType))
+	}
+	return true // be optimistic by default
 }
