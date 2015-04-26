@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -280,6 +281,11 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 		return
 	}
 
+	maxHistory := 0
+	if max, err := strconv.ParseUint(response.Properties["maxHistory"], 10, 64); err == nil {
+		maxHistory = int(max)
+	}
+
 	// Maps docID --> a map containing true for revIDs known to the client
 	knownRevsByDoc := make(map[string]map[string]bool, len(answer))
 
@@ -303,7 +309,7 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 					return
 				}
 			}
-			bh.sendRevision(seq, docID, revID, knownRevs)
+			bh.sendRevision(seq, docID, revID, knownRevs, maxHistory)
 		}
 	}
 }
@@ -346,7 +352,7 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 //////// DOCUMENTS:
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs map[string]bool) {
+func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 	base.LogTo("Sync+", "Sending rev %q %s based on %d known", docID, revID, len(knownRevs))
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
@@ -358,7 +364,7 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 	history := db.ParseRevisions(body)[1:]
 	delete(body, "_revisions")
 	for i, rev := range history {
-		if knownRevs[rev] {
+		if knownRevs[rev] || (maxHistory > 0 && i+1 >= maxHistory) {
 			history = history[0 : i+1]
 			break
 		} else {
@@ -391,13 +397,18 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	if err := rq.ReadJSONBody(&body); err != nil {
 		return err
 	}
+
 	docID, found := body["_id"].(string)
 	revID, rfound := body["_rev"].(string)
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing doc _id or _rev")
 	}
-	history := strings.Split(rq.Properties["history"], ",")
-	base.LogTo("Sync+", "Inserting rev %q %s", docID, revID)
+
+	history := []string{revID}
+	if historyStr := rq.Properties["history"]; historyStr != "" {
+		history = append(history, strings.Split(historyStr, ",")...)
+	}
+	base.LogTo("Sync+", "Inserting rev %q %s history=%q, array = %#v", docID, revID, rq.Properties["history"], history)
 
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
