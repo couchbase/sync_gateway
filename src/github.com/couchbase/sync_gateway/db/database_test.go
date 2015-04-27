@@ -754,6 +754,61 @@ func TestIncrRetry(t *testing.T) {
 	seqAllocator, _ := newSequenceAllocator(leakyBucket)
 	err := seqAllocator.reserveSequences(1)
 	assert.True(t, err == nil)
+
+}
+
+func TestRecentSequenceHistory(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Validate recent sequence is written
+	body := Body{"val": "one"}
+	revid, err := db.Put("doc1", body)
+
+	assert.True(t, revid != "")
+	doc, err := db.GetDoc("doc1")
+	assert.True(t, err == nil)
+	assert.DeepEquals(t, doc.RecentSequences, []uint64{1})
+
+	// Add a few revisions - validate they are retained when less than max (5)
+	for i := 0; i < 3; i++ {
+		revid, err = db.Put("doc1", body)
+	}
+
+	doc, err = db.GetDoc("doc1")
+	assert.True(t, err == nil)
+	assert.DeepEquals(t, doc.RecentSequences, []uint64{1, 2, 3, 4})
+
+	// Add many sequences to validate pruning when past max (20)
+	for i := 0; i < kMaxRecentSequences; i++ {
+		revid, err = db.Put("doc1", body)
+		// Sleep needed to ensure consistent results when running single-threaded vs. multi-threaded test:
+		// without it we can't predict the relative update times of nextSequence and RecentSequences
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	db.changeCache.waitForSequence(24)
+	time.Sleep(50 * time.Millisecond)
+	revid, err = db.Put("doc1", body)
+	doc, err = db.GetDoc("doc1")
+	assert.True(t, err == nil)
+	assert.DeepEquals(t, doc.RecentSequences, []uint64{21, 22, 23, 24, 25})
+
+	// Ensure pruning works when sequences aren't sequential
+	doc2Body := Body{"val": "two"}
+	for i := 0; i < kMaxRecentSequences; i++ {
+		revid, err = db.Put("doc1", body)
+		revid, err = db.Put("doc2", doc2Body)
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	db.changeCache.waitForSequence(14)
+	time.Sleep(50 * time.Millisecond)
+	revid, err = db.Put("doc1", body)
+	doc, err = db.GetDoc("doc1")
+	assert.True(t, err == nil)
+	assert.DeepEquals(t, doc.RecentSequences, []uint64{58, 60, 62, 64, 66})
+
 }
 
 //////// BENCHMARKS

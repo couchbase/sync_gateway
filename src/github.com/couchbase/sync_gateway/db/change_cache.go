@@ -306,6 +306,28 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			c.processEntry(change)
 		}
 
+		// If the recent sequence history includes any sequences earlier than the current sequence, and
+		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
+		// so that they are included in sequence buffering.
+		currentSequence := doc.Sequence
+		if len(doc.UnusedSequences) > 0 {
+			currentSequence = doc.UnusedSequences[0]
+		}
+
+		if len(doc.RecentSequences) > 0 {
+			nextSeq := c.getNextSequence()
+			for _, seq := range doc.RecentSequences {
+				if seq >= nextSeq && seq < currentSequence {
+					base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+					change := &LogEntry{
+						Sequence:     seq,
+						TimeReceived: time.Now(),
+					}
+					c.processEntry(change)
+				}
+			}
+		}
+
 		// Now add the entry for the new doc revision:
 		change := &LogEntry{
 			Sequence:     doc.Sequence,
@@ -491,6 +513,12 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c._getChannelCache(channelName)
+}
+
+func (c *changeCache) getNextSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
 }
 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
