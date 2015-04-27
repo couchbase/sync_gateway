@@ -307,7 +307,8 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 		}
 
 		// If the recent sequence history includes any sequences earlier than the current sequence, and
-		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries.
+		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
+		// so that they are included in sequence buffering.
 		currentSequence := doc.Sequence
 		if len(doc.UnusedSequences) > 0 {
 			currentSequence = doc.UnusedSequences[0]
