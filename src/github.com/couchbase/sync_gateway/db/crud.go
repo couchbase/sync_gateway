@@ -24,6 +24,10 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
+const (
+	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
+)
+
 //////// READING DOCUMENTS:
 
 func realDocID(docid string) string {

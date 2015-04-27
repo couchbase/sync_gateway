@@ -780,7 +780,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	assert.DeepEquals(t, doc.RecentSequences, []uint64{1, 2, 3, 4})
 
 	// Add many sequences to validate pruning when past max (20)
-	for i := 0; i < 20; i++ {
+	for i := 0; i < kMaxRecentSequences; i++ {
 		revid, err = db.Put("doc1", body)
 		// Sleep needed to ensure consistent results when running single-threaded vs. multi-threaded test:
 		// without it we can't predict the relative update times of nextSequence and RecentSequences
@@ -796,7 +796,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
-	for i := 0; i < 20; i++ {
+	for i := 0; i < kMaxRecentSequences; i++ {
 		revid, err = db.Put("doc1", body)
 		revid, err = db.Put("doc2", doc2Body)
 		time.Sleep(1 * time.Millisecond)
