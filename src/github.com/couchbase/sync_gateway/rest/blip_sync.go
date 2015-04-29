@@ -398,10 +398,13 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 	}
 	outrq.SetJSONBody(body)
 	if atts := db.BodyAttachments(body); atts != nil {
+		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(atts)
-		defer bh.removeAllowedAttachments(atts)
 		bh.sender.Send(outrq)
-		outrq.Response() // blocks till reply is received
+		go func() {
+			defer bh.removeAllowedAttachments(atts)
+			outrq.Response() // blocks till reply is received
+		}()
 	} else {
 		outrq.SetNoReply(true)
 		bh.sender.Send(outrq)
