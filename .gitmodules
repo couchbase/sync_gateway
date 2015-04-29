@@ -40,3 +40,6 @@
 [submodule "src/golang.org/x/text"]
 	path = src/golang.org/x/text
 	url = https://go.googlesource.com/text
+[submodule "src/github.com/couchbase/go-couchbase"]
+	path = src/github.com/couchbase/go-couchbase
+	url = https://github.com/couchbase/go-couchbase.git

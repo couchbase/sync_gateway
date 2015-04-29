@@ -13,8 +13,8 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbaselabs/go-couchbase/cbdatasource"
 	"github.com/couchbaselabs/walrus"
 )
 

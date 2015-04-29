@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
-	"github.com/couchbaselabs/go-couchbase"
-	"github.com/couchbaselabs/go-couchbase/cbdatasource"
 	"github.com/couchbaselabs/walrus"
 )
 
