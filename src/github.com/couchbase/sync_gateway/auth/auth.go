@@ -12,7 +12,7 @@ package auth
 import (
 	"encoding/json"
 
-	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"

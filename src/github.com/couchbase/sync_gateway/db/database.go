@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sync_gateway/auth"

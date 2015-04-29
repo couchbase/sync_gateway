@@ -1,7 +1,7 @@
 package db
 
 import (
-	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
 )

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/go-couchbase"
 	_ "github.com/couchbase/gomemcached/debug"
-	"github.com/couchbaselabs/go-couchbase"
 	"github.com/samuel/go-metrics/metrics"
 
 	"github.com/couchbase/sync_gateway/base"
