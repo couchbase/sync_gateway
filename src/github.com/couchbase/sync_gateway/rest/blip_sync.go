@@ -28,6 +28,7 @@ type blipSyncContext struct {
 	username           string
 	batchSize          int
 	continuous         bool
+	skipDeleted        bool
 	channels           base.Set
 	lock               sync.Mutex
 	allowedAttachments map[string]int
@@ -184,6 +185,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	if val, found := rq.Properties["continuous"]; found && val != "false" {
 		bh.continuous = true
 	}
+	bh.skipDeleted = rq.Properties["deleted"] == "false"
 	if filter := rq.Properties["filter"]; filter == "sync_gateway/bychannel" {
 		if channelsParam, found := rq.Properties["channels"]; !found {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
@@ -236,18 +238,24 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
-					pendingChanges = append(pendingChanges,
-						[]interface{}{change.Seq, change.ID, item["rev"]})
+					if bh.skipDeleted && change.Deleted {
+						continue
+					}
+					changeRow := []interface{}{change.Seq, change.ID, item["rev"], change.Deleted}
+					if !change.Deleted {
+						changeRow = changeRow[0:3]
+					}
+					pendingChanges = append(pendingChanges, changeRow)
 					sendPendingChangesAt(bh.batchSize)
 				}
 			}
 		}
 		if caughtUp || len(changes) == 0 {
-			sendPendingChangesAt(0)
+			sendPendingChangesAt(1)
 			if !caughtUp {
-				base.LogTo("Sync+", "    Caught up!")
 				caughtUp = true
-				bh.sendBatchOfChanges(nil)
+				bh.skipDeleted = false
+				bh.sendBatchOfChanges(nil) // Signal to client that it's caught up
 			}
 		}
 		return nil
@@ -265,6 +273,11 @@ func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}) {
 	} else {
 		outrq.SetNoReply(true)
 		bh.sender.Send(outrq)
+	}
+	if len(changeArray) > 0 {
+		base.LogTo("Sync", "Sent %d changes to client, from seq %v", len(changeArray), changeArray[0][0])
+	} else {
+		base.LogTo("Sync", "Sent all changes to client.")
 	}
 }
 
@@ -292,17 +305,18 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 
 	// `answer` is an array where each item is either an array of known rev IDs, or a non-array
 	// placeholder (probably 0). The item numbers match those of changeArray.
-	for i, item := range answer {
-		if item, ok := item.([]interface{}); ok {
+	for i, knownRevsArray := range answer {
+		if knownRevsArray, ok := knownRevsArray.([]interface{}); ok {
 			seq := changeArray[i][0].(db.SequenceID)
 			docID := changeArray[i][1].(string)
 			revID := changeArray[i][2].(string)
+			//deleted := changeArray[i][3].(bool)
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
-				knownRevs = make(map[string]bool, len(item))
+				knownRevs = make(map[string]bool, len(knownRevsArray))
 				knownRevsByDoc[docID] = knownRevs
 			}
-			for _, rev := range item {
+			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
 					knownRevs[revID] = true
 				} else {
@@ -321,6 +335,7 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
 	}
+	base.LogTo("Sync", "Received %d changes from client", len(changeList))
 	if len(changeList) == 0 {
 		return nil
 	}
