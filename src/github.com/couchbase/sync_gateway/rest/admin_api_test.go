@@ -171,31 +171,6 @@ func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
 	return changes, nil
 }
 
-// Test user deletion while that user has an active changes feed (see issue 809)
-func TestConcurrentUserDeleteDuringChanges(t *testing.T) {
-
-	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} }`}
-
-	response := rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
-	assertStatus(t, response, 201)
-
-	response = rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "HTTP":true}`)
-
-	log.Printf("logging response: %+v", response.Code)
-
-	go func() {
-		response = rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0", "", "bernard"))
-		log.Printf("//////// _changes for bernard looks like: %s", response.Body.Bytes())
-	}()
-	time.Sleep(1 * time.Second)
-	rt.sendAdminRequest("PUT", "/db/doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
-
-	response = rt.sendAdminRequest("DELETE", "/db/_user/bernard", "")
-	rt.sendAdminRequest("PUT", "/db/doc2", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
-	time.Sleep(1 * time.Second)
-
-}
-
 func TestRoleAPI(t *testing.T) {
 	var rt restTester
 	// PUT a role
