@@ -103,7 +103,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
 
-	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "HTTP":true}`)
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "Cache":true, "HTTP":true}`)
 
 	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
 	assertStatus(t, response, 201)
