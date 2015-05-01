@@ -639,7 +639,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		}
 
 		// Prune old revision history to limit the number of revisions:
-		if pruned := doc.History.pruneRevisions(db.RevsLimit); pruned > 0 {
+		if pruned := doc.History.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
 
