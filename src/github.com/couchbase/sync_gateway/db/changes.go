@@ -41,7 +41,7 @@ type ChangeEntry struct {
 	Removed  base.Set    `json:"removed,omitempty"`
 	Doc      Body        `json:"doc,omitempty"`
 	Changes  []ChangeRev `json:"changes"`
-	Err      error       // Used to notify feed consumer of errors
+	Err      error       `json:"err,omitempty"` // Used to notify feed consumer of errors
 	branched bool
 }
 
