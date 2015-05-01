@@ -389,7 +389,7 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 
 func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
 	for name, princ := range spec {
-		isGuest := name == "GUEST"
+		isGuest := name == base.GuestUsername
 		if isGuest {
 			internalName := ""
 			princ.Name = &internalName

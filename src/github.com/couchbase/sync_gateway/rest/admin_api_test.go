@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
@@ -211,22 +212,25 @@ func TestRoleAPI(t *testing.T) {
 }
 
 func TestGuestUser(t *testing.T) {
+
+	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
+
 	rt := restTester{noAdminParty: true}
-	response := rt.sendAdminRequest("GET", "/db/_user/GUEST", "")
+	response := rt.sendAdminRequest("GET", guestUserEndpoint, "")
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "GUEST")
+	assert.Equals(t, body["name"], base.GuestUsername)
 	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
 	assert.DeepEquals(t, body["admin_channels"], nil)
 
-	response = rt.sendAdminRequest("PUT", "/db/_user/GUEST", `{"disabled":true}`)
+	response = rt.sendAdminRequest("PUT", guestUserEndpoint, `{"disabled":true}`)
 	assertStatus(t, response, 200)
 
-	response = rt.sendAdminRequest("GET", "/db/_user/GUEST", "")
+	response = rt.sendAdminRequest("GET", guestUserEndpoint, "")
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "GUEST")
+	assert.Equals(t, body["name"], base.GuestUsername)
 	assert.DeepEquals(t, body["disabled"], true)
 
 	// Check that the actual User object is correct:
