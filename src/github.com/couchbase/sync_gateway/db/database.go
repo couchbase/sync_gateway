@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"net/http"
@@ -157,10 +158,15 @@ func (db *Database) ReloadUser() error {
 		return nil
 	}
 	user, err := db.Authenticator().GetUser(db.user.Name())
-	if err == nil {
-		db.user = user
+	if err != nil {
+		return err
 	}
-	return err
+	if user == nil {
+		return errors.New("User not found during reload")
+	} else {
+		db.user = user
+		return nil
+	}
 }
 
 //////// ALL DOCUMENTS:
