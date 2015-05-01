@@ -10,8 +10,11 @@
 package rest
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"testing"
 	"time"
@@ -93,6 +96,104 @@ func TestUserAPI(t *testing.T) {
 
 	// DELETE the user
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
+}
+
+// Test user delete while that user has an active changes feed (see issue 809)
+func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "HTTP":true}`)
+
+	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
+	assertStatus(t, response, 201)
+
+	changesClosed := false
+	go func() {
+		response = rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0", "", "bernard"))
+		// When testing single threaded, this reproduces the issue described in #809.
+		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
+		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
+		// 2. The _changes request gets processed before the DELETE: the changes response will be closed when the user is deleted
+		// 3. The DELETE is processed after the _changes auth completes, but before the MultiChangesFeed is instantiated.  The
+		//  changes feed doesn't have a trigger to attempt a reload of the user in this scenario, so will continue until disconnected
+		//  by the client.  This should be fixed more generally (to terminate all active user sessions when the user is deleted, not just
+		//  changes feeds) but that enhancement is too high risk to introduce at this time.
+		changesClosed = true
+		if response.Code == 401 {
+			// case 1 - ok
+		} else {
+			// case 2 - ensure no error processing the changes response.  Ensure no more than 2 entries
+			changes, err := readContinuousChanges(response)
+			assert.True(t, len(changes) <= 2)
+			assert.Equals(t, err, nil)
+		}
+	}()
+
+	rt.sendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
+	rt.sendAdminRequest("DELETE", "/db/_user/bernard", "")
+	rt.sendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
+	rt.sendAdminRequest("PUT", "/db/bernard_doc2", `{"type":"general", "channel":"foo"}`)
+
+	// case 3
+	for i := 0; i <= 5; i++ {
+		docId := fmt.Sprintf("/db/bernard_doc%d", i+3)
+		response = rt.sendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
+	}
+
+}
+
+// Reads continuous changes feed response into slice of ChangeEntry
+func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
+	var change db.ChangeEntry
+	changes := make([]db.ChangeEntry, 0)
+	reader := bufio.NewReader(response.Body)
+	for {
+		entry, readError := reader.ReadBytes('\n')
+		if readError == io.EOF {
+			// done
+			break
+		}
+		if readError != nil {
+			// unexpected read error
+			return changes, readError
+		}
+		entry = bytes.TrimSpace(entry)
+		if len(entry) > 0 {
+			err := json.Unmarshal(entry, &change)
+			if err != nil {
+				return changes, err
+			}
+			changes = append(changes, change)
+		}
+
+	}
+	return changes, nil
+}
+
+// Test user deletion while that user has an active changes feed (see issue 809)
+func TestConcurrentUserDeleteDuringChanges(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} }`}
+
+	response := rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
+	assertStatus(t, response, 201)
+
+	response = rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "HTTP":true}`)
+
+	log.Printf("logging response: %+v", response.Code)
+
+	go func() {
+		response = rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0", "", "bernard"))
+		log.Printf("//////// _changes for bernard looks like: %s", response.Body.Bytes())
+	}()
+	time.Sleep(1 * time.Second)
+	rt.sendAdminRequest("PUT", "/db/doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
+
+	response = rt.sendAdminRequest("DELETE", "/db/_user/bernard", "")
+	rt.sendAdminRequest("PUT", "/db/doc2", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
+	time.Sleep(1 * time.Second)
+
 }
 
 func TestRoleAPI(t *testing.T) {
