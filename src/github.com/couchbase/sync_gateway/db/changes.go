@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -40,6 +41,7 @@ type ChangeEntry struct {
 	Removed  base.Set    `json:"removed,omitempty"`
 	Doc      Body        `json:"doc,omitempty"`
 	Changes  []ChangeRev `json:"changes"`
+	Err      error       // Used to notify feed consumer of errors
 	branched bool
 }
 
@@ -141,6 +143,14 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = channels.SetOf(channelName)
+	}
+	return change
+}
+
+func makeErrorEntry(message string) ChangeEntry {
+
+	change := ChangeEntry{
+		Err: errors.New(message),
 	}
 	return change
 }
@@ -280,7 +290,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				if options.Since.Before(userSeq) {
 					name := db.user.Name()
 					if name == "" {
-						name = "GUEST"
+						name = base.GuestUsername
 					}
 					entry := ChangeEntry{
 						Seq:     userSeq,
@@ -396,10 +406,16 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
 			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
-				base.LogTo("Changes+", "MultiChangesFeed reloading user %q", db.user.Name())
+				base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
 				userChangeCount = newCount
+				isAdmin := db.user == nil
 				if err := db.ReloadUser(); err != nil {
 					base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+					if !isAdmin {
+						change := makeErrorEntry("User not found during reload - terminating changes feed")
+						base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
+						output <- &change
+					}
 					return
 				}
 			}

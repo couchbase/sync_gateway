@@ -10,13 +10,17 @@
 package rest
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
@@ -95,6 +99,81 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 }
 
+// Test user delete while that user has an active changes feed (see issue 809)
+func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "Cache":true, "HTTP":true}`)
+
+	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
+	assertStatus(t, response, 201)
+
+	changesClosed := false
+	go func() {
+		response = rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0", "", "bernard"))
+		// When testing single threaded, this reproduces the issue described in #809.
+		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
+		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
+		// 2. The _changes request gets processed before the DELETE: the changes response will be closed when the user is deleted
+		// 3. The DELETE is processed after the _changes auth completes, but before the MultiChangesFeed is instantiated.  The
+		//  changes feed doesn't have a trigger to attempt a reload of the user in this scenario, so will continue until disconnected
+		//  by the client.  This should be fixed more generally (to terminate all active user sessions when the user is deleted, not just
+		//  changes feeds) but that enhancement is too high risk to introduce at this time.
+		changesClosed = true
+		if response.Code == 401 {
+			// case 1 - ok
+		} else {
+			// case 2 - ensure no error processing the changes response.  Ensure no more than 2 entries
+			changes, err := readContinuousChanges(response)
+			assert.True(t, len(changes) <= 2)
+			assert.Equals(t, err, nil)
+		}
+	}()
+
+	// TODO: sleep required to ensure the changes feed iteration starts before the delete gets processed.
+	time.Sleep(100 * time.Millisecond)
+	rt.sendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
+	rt.sendAdminRequest("DELETE", "/db/_user/bernard", "")
+	rt.sendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
+	rt.sendAdminRequest("PUT", "/db/bernard_doc2", `{"type":"general", "channel":"foo"}`)
+
+	// case 3
+	for i := 0; i <= 5; i++ {
+		docId := fmt.Sprintf("/db/bernard_doc%d", i+3)
+		response = rt.sendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
+	}
+
+}
+
+// Reads continuous changes feed response into slice of ChangeEntry
+func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
+	var change db.ChangeEntry
+	changes := make([]db.ChangeEntry, 0)
+	reader := bufio.NewReader(response.Body)
+	for {
+		entry, readError := reader.ReadBytes('\n')
+		if readError == io.EOF {
+			// done
+			break
+		}
+		if readError != nil {
+			// unexpected read error
+			return changes, readError
+		}
+		entry = bytes.TrimSpace(entry)
+		if len(entry) > 0 {
+			err := json.Unmarshal(entry, &change)
+			if err != nil {
+				return changes, err
+			}
+			changes = append(changes, change)
+		}
+
+	}
+	return changes, nil
+}
+
 func TestRoleAPI(t *testing.T) {
 	var rt restTester
 	// PUT a role
@@ -133,22 +212,25 @@ func TestRoleAPI(t *testing.T) {
 }
 
 func TestGuestUser(t *testing.T) {
+
+	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
+
 	rt := restTester{noAdminParty: true}
-	response := rt.sendAdminRequest("GET", "/db/_user/GUEST", "")
+	response := rt.sendAdminRequest("GET", guestUserEndpoint, "")
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "GUEST")
+	assert.Equals(t, body["name"], base.GuestUsername)
 	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
 	assert.DeepEquals(t, body["admin_channels"], nil)
 
-	response = rt.sendAdminRequest("PUT", "/db/_user/GUEST", `{"disabled":true}`)
+	response = rt.sendAdminRequest("PUT", guestUserEndpoint, `{"disabled":true}`)
 	assertStatus(t, response, 200)
 
-	response = rt.sendAdminRequest("GET", "/db/_user/GUEST", "")
+	response = rt.sendAdminRequest("GET", guestUserEndpoint, "")
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "GUEST")
+	assert.Equals(t, body["name"], base.GuestUsername)
 	assert.DeepEquals(t, body["disabled"], true)
 
 	// Check that the actual User object is correct:

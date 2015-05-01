@@ -94,7 +94,7 @@ func (h *handler) handleSetLogging() error {
 //////// USERS & ROLES:
 
 func internalUserName(name string) string {
-	if name == "GUEST" {
+	if name == base.GuestUsername {
 		return ""
 	}
 	return name
@@ -102,7 +102,7 @@ func internalUserName(name string) string {
 
 func externalUserName(name string) string {
 	if name == "" {
-		return "GUEST"
+		return base.GuestUsername
 	}
 	return name
 }
