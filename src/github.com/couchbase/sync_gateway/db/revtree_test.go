@@ -140,15 +140,15 @@ func TestPruneRevisions(t *testing.T) {
 	//               / 3-three
 	// 1-one -- 2-two
 	//               \ 3-drei -- 4-vier
-	assert.Equals(t, tempmap.pruneRevisions(1000), 0)
-	assert.Equals(t, tempmap.pruneRevisions(3), 0)
-	assert.Equals(t, tempmap.pruneRevisions(2), 1)
+	assert.Equals(t, tempmap.pruneRevisions(1000, ""), 0)
+	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
+	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
 	assert.Equals(t, len(tempmap), 4)
 	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
 	assert.Equals(t, tempmap["2-two"].Parent, "")
 
 	// Make sure leaves are never pruned: (note: by now 1-one is already gone)
-	assert.Equals(t, tempmap.pruneRevisions(1), 1)
+	assert.Equals(t, tempmap.pruneRevisions(1, ""), 1)
 	assert.Equals(t, len(tempmap), 3)
 	assert.True(t, tempmap["3-three"] != nil)
 	assert.Equals(t, tempmap["3-three"].Parent, "")
@@ -165,12 +165,24 @@ func TestPruneRevisions(t *testing.T) {
 	//               / 3-three -- 4-four -- 5-five -- 6-six
 	// 1-one -- 2-two
 	//               \ 3-drei -- [4-vier]
-	assert.Equals(t, tempmap.pruneRevisions(3), 4)
+	assert.Equals(t, tempmap.pruneRevisions(3, "1-one"), 0)
+	assert.Equals(t, tempmap.pruneRevisions(3, "2-two"), 1)
+	assert.Equals(t, tempmap.pruneRevisions(3, ""), 3)
 	assert.Equals(t, len(tempmap), 4)
-	assert.Equals(t, tempmap.pruneRevisions(2), 2)
+	assert.Equals(t, tempmap.pruneRevisions(2, ""), 2)
 	assert.Equals(t, len(tempmap), 2)
 	assert.Equals(t, tempmap["5-five"].Parent, "")
 	assert.Equals(t, tempmap["6-six"].Parent, "5-five")
+
+	// Check what happens when all revs are deleted:
+	tempmap = branchymap.copy()
+	tempmap["3-three"].Deleted = true
+	tempmap["3-drei"].Deleted = true
+	//               / [3-three]
+	// 1-one -- 2-two
+	//               \ [3-drei]
+	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
+	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
 }
 
 func TestParseRevisions(t *testing.T) {

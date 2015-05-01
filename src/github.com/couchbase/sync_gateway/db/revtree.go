@@ -278,34 +278,47 @@ func (tree RevTree) copy() RevTree {
 }
 
 // Removes older ancestor nodes from the tree; if there are no conflicts, the tree's depth will be
-// <= maxDepth.
+// <= maxDepth. The revision named by `keepRev` will not be pruned (unless `keepRev` is empty.)
 // Returns the number of nodes pruned.
-func (tree RevTree) pruneRevisions(maxDepth uint32) (pruned int) {
+func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
 	if len(tree) <= int(maxDepth) {
 		return 0
 	}
 
 	// Find the minimum generation that has a non-deleted leaf:
 	minLeafGen := math.MaxUint32
+	maxDeletedLeafGen := 0
 	for _, revid := range tree.GetLeaves() {
-		if !tree[revid].Deleted {
-			if gen := genOfRevID(revid); gen > 0 && gen < minLeafGen {
-				minLeafGen = gen
+		gen := genOfRevID(revid)
+		if tree[revid].Deleted {
+			if gen > maxDeletedLeafGen {
+				maxDeletedLeafGen = gen
 			}
+		} else if gen > 0 && gen < minLeafGen {
+			minLeafGen = gen
 		}
 	}
-	minGenToKeep := minLeafGen - int(maxDepth) + 1
-	if minGenToKeep <= 1 {
-		return 0
+
+	if minLeafGen == math.MaxUint32 {
+		// If there are no non-deleted leaves, use the deepest leaf's generation
+		minLeafGen = maxDeletedLeafGen
+	}
+	minGenToKeep := int(minLeafGen) - int(maxDepth) + 1
+
+	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
+		// Make sure keepRev's generation isn't pruned
+		minGenToKeep = gen
 	}
 
 	// Delete nodes whose generation is less than minGenToKeep:
-	for revid, node := range tree {
-		if gen := genOfRevID(revid); gen < minGenToKeep {
-			delete(tree, revid)
-			pruned++
-		} else if gen == minGenToKeep {
-			node.Parent = ""
+	if minGenToKeep > 1 {
+		for revid, node := range tree {
+			if gen := genOfRevID(revid); gen < minGenToKeep {
+				delete(tree, revid)
+				pruned++
+			} else if gen == minGenToKeep {
+				node.Parent = ""
+			}
 		}
 	}
 	return
