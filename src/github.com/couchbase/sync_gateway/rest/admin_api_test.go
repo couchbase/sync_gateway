@@ -130,6 +130,8 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		}
 	}()
 
+	// TODO: sleep required to ensure the changes feed iteration starts before the delete gets processed.
+	time.Sleep(100 * time.Millisecond)
 	rt.sendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
 	rt.sendAdminRequest("DELETE", "/db/_user/bernard", "")
 	rt.sendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
