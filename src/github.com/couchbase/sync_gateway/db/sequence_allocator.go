@@ -42,7 +42,7 @@ func (s *sequenceAllocator) nextSequence() (uint64, error) {
 	startTimeLockAcquire := time.Now()
 
 	s.mutex.Lock()
-	delta = time.Since(startTimeLockAcquire)
+	delta := time.Since(startTimeLockAcquire)
 	if delta.Seconds() > 1 {
 		base.Logf("seqAlloc nextSequence() mutex.Lock() took %v seconds", delta.Seconds())
 	}
@@ -97,7 +97,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 	s.max = max
 	s.last = max - numToReserve
 
-	delta := time.Since(startTime)
+	delta = time.Since(startTime)
 	if delta.Seconds() > 1 {
 		base.Logf("seqAlloc _reserveSequences took %v seconds", delta.Seconds())
 	}
