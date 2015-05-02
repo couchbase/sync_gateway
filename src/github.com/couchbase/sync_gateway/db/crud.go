@@ -419,10 +419,12 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 		delta = time.Since(startTime)
 		if delta.Seconds() > 1 {
-			base.Logf("PutExistingRev updateDoc() was not called back for %v seconds", delta.Seconds())
+			base.Logf("PutExistingRev db.updateDoc() was not called back for %v seconds", delta.Seconds())
 		}
 
 		startTimeInner := time.Now()
+
+		startTimeInnerHistoryContains := time.Now()
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -434,7 +436,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 				break
 			}
 		}
-		delta = time.Since(startTimeInner)
+		delta = time.Since(startTimeInnerHistoryContains)
 		if delta.Seconds() > 1 {
 			base.Logf("PutExistingRev History.contains() took %v seconds", delta.Seconds())
 		}
@@ -444,7 +446,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
-		startTimeInner = time.Now()
+		startTimeAddRevision := time.Now()
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
 			doc.History.addRevision(RevInfo{
@@ -453,27 +455,32 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 				Deleted: (i == 0 && deleted)})
 			parent = docHistory[i]
 		}
-		delta = time.Since(startTimeInner)
+		delta = time.Since(startTimeAddRevision)
 		if delta.Seconds() > 1 {
 			base.Logf("PutExistingRev History.addRevision() took %v seconds", delta.Seconds())
 		}
 
-		startTimeInner = time.Now()
+		startTimeStoreAttachments := time.Now()
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
 		if err := db.storeAttachments(doc, body, generation, parentRevID); err != nil {
 			return nil, err
 		}
-		delta = time.Since(startTimeInner)
+		delta = time.Since(startTimeStoreAttachments)
 		if delta.Seconds() > 1 {
 			base.Logf("PutExistingRev storeAttachments() took %v seconds", delta.Seconds())
 		}
 
-		startTimeInner = time.Now()
+		startTimeInnerBodyRev := time.Now()
 		body["_rev"] = newRev
-		delta = time.Since(startTimeInner)
+		delta = time.Since(startTimeInnerBodyRev)
 		if delta.Seconds() > 1 {
 			base.Logf("PutExistingRev body[rev] took %v seconds", delta.Seconds())
+		}
+
+		delta = time.Since(startTimeInner)
+		if delta.Seconds() > 1 {
+			base.Logf("PutExistingRevision db.updateDoc() callback callback took %v seconds", delta.Seconds())
 		}
 
 		return body, nil
@@ -518,6 +525,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		}
 
 		startTimeInner := time.Now()
+		startTimeInnerUnmarshal := time.Now()
 
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
@@ -526,19 +534,34 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
+		delta = time.Since(startTimeInnerUnmarshal)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() unmarshalDocument took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerCallbackDoc := time.Now()
 		// Invoke the callback to update the document and return a new revision body:
 		body, err = callback(doc)
 		if err != nil {
 			return
 		}
+		delta = time.Since(startTimeInnerCallbackDoc)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() callback(doc) took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerSpecialProps := time.Now()
 		//Reject bodies containing user special properties for compatibility with CouchDB
 		if containsUserSpecialProperties(body) {
 			err = base.HTTPErrorf(400, "user defined top level properties beginning with '_' are not allowed in document body")
 			return
 		}
+		delta = time.Since(startTimeInnerSpecialProps)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() containsUserSpecialProperties took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerWinningRevision := time.Now()
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
 		parentRevID = doc.History[newRevID].Parent
@@ -554,7 +577,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			bodyJSON, _ := json.Marshal(doc.body)
 			doc.History.setRevisionBody(prevCurrentRev, bodyJSON)
 		}
+		delta = time.Since(startTimeInnerWinningRevision)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() winningRevision() took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerSetRevision := time.Now()
 		// Store the new revision body into the doc:
 		doc.setRevision(newRevID, body)
 
@@ -571,7 +599,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				doc.History.setRevisionBody(doc.CurrentRev, nil)
 			}
 		}
+		delta = time.Since(startTimeInnerSetRevision)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() setRevision() took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerGetChannels := time.Now()
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
 		channels, access, roles, err := db.getChannelsAndAccess(doc, body, newRevID)
@@ -581,10 +614,21 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		if len(channels) > 0 {
 			doc.History[newRevID].Channels = channels
 		}
+		delta = time.Since(startTimeInnerGetChannels)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() getChannelsAndAccess() took %v seconds", delta.Seconds())
+		}
+
+		startTimeInnerBackupAncestors := time.Now()
 
 		// Move the body of the replaced revision out of the document so it can be compacted later.
 		db.backupAncestorRevs(doc, newRevID)
+		delta = time.Since(startTimeInnerBackupAncestors)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() backupAncestors() took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerNextSeq := time.Now()
 		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
 		// But be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
@@ -603,7 +647,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		}
 		doc.Sequence = docSequence
 		doc.UnusedSequences = unusedSequences
+		delta = time.Since(startTimeInnerNextSeq)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() nextSequence() took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerCurrentVsPrevRev := time.Now()
 		if doc.CurrentRev != prevCurrentRev {
 			// Most of the time this update will change the doc's current rev. (The exception is
 			// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
@@ -658,17 +707,32 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
 				docid, newRevID, prevCurrentRev)
 		}
+		delta = time.Since(startTimeInnerCurrentVsPrevRev)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() currentVsPrevRev() took %v seconds", delta.Seconds())
+		}
 
+		startTimeInnerPruneRevs := time.Now()
 		// Prune old revision history to limit the number of revisions:
 		if pruned := doc.History.pruneRevisions(db.RevsLimit); pruned > 0 {
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
+		delta = time.Since(startTimeInnerPruneRevs)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() pruneRevs() took %v seconds", delta.Seconds())
+		}
 
 		doc.TimeSaved = time.Now()
 
+		startTimeInnerJsonMarshal := time.Now()
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
 		base.LogTo("Cache", "SAVING #%d", doc.Sequence) //TEMP?
+
+		delta = time.Since(startTimeInnerJsonMarshal)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() jsonMarshal() took %v seconds", delta.Seconds())
+		}
 
 		delta = time.Since(startTimeInner)
 		if delta.Seconds() > 1 {
