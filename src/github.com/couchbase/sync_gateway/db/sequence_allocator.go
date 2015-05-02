@@ -38,34 +38,54 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) nextSequence() (uint64, error) {
+	startTime := time.Now()
+	startTimeLockAcquire := time.Now()
+
 	s.mutex.Lock()
+	delta = time.Since(startTimeLockAcquire)
+	if delta.Seconds() > 1 {
+		base.Logf("seqAlloc nextSequence() mutex.Lock() took %v seconds", delta.Seconds())
+	}
 	defer s.mutex.Unlock()
+
+	startTimeReserveSequences := time.Now()
 	if s.last >= s.max {
 		if err := s._reserveSequences(1); err != nil {
 			return 0, err
 		}
 	}
 	s.last++
+	delta = time.Since(startTimeReserveSequences)
+	if delta.Seconds() > 1 {
+		base.Logf("seqAlloc nextSequence() _reserveSequences() took %v seconds", delta.Seconds())
+	}
+
+	delta = time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("seqAlloc nextSequence() took %v seconds", delta.Seconds())
+	}
+
 	return s.last, nil
 }
 
 func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 
 	startTime := time.Now()
+	startTimeAdd := time.Now()
 
 	if s.last < s.max {
 		return nil // Already have some sequences left; don't be greedy and waste them
 		//OPT: Could remember multiple discontiguous ranges of free sequences
 	}
 	dbExpvars.Add("sequence_reserves", 1)
-	delta := time.Since(startTime)
+	delta := time.Since(startTimeAdd)
 	if delta.Seconds() > 1 {
 		base.Logf("_reserveSequences expvars.Add() took %v seconds", delta.Seconds())
 	}
 
-	startTime = time.Now()
+	startTimeIncr := time.Now()
 	max, err := s.bucket.Incr("_sync:seq", numToReserve, numToReserve, 0)
-	delta = time.Since(startTime)
+	delta = time.Since(startTimeIncr)
 	if delta.Seconds() > 1 {
 		base.Logf("_reserveSequences bucket.Incr() took %v seconds", delta.Seconds())
 	}
@@ -76,6 +96,12 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 	}
 	s.max = max
 	s.last = max - numToReserve
+
+	delta := time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("seqAlloc _reserveSequences took %v seconds", delta.Seconds())
+	}
+
 	return nil
 }
 

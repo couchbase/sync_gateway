@@ -638,7 +638,14 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				// instead, but we add the unused one(s) to the document so when the changeCache
 				// reads the doc it won't freak out over the break in the sequence numbering.
 				base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
+
+				startTimeInnerAppendUnused := time.Now()
 				unusedSequences = append(unusedSequences, docSequence)
+				delta = time.Since(startTimeInnerAppendUnused)
+				if delta.Seconds() > 1 {
+					base.Logf("updateDoc WriteUpdate() append to unusedSequences took %v seconds", delta.Seconds())
+				}
+
 			}
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return
