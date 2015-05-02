@@ -401,13 +401,22 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 // This is equivalent to the "new_edits":false mode of CouchDB.
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
+	startTime := time.Now()
 	newRev := docHistory[0]
 	generation, _ := parseRevID(newRev)
+	delta := time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("PutExistingRev parseRevID() took %v seconds", delta.Seconds())
+	}
+
 	if generation < 0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
+
+	startTime = time.Now()
 	deleted, _ := body["_deleted"].(bool)
 	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
+		startTimeInner := time.Now()
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -419,11 +428,17 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 				break
 			}
 		}
+		delta = time.Since(startTimeInner)
+		if delta.Seconds() > 1 {
+			base.Logf("PutExistingRev History.contains() took %v seconds", delta.Seconds())
+		}
+
 		if currentRevIndex == 0 {
 			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
+		startTimeInner = time.Now()
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
 			doc.History.addRevision(RevInfo{
@@ -432,15 +447,36 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 				Deleted: (i == 0 && deleted)})
 			parent = docHistory[i]
 		}
+		delta = time.Since(startTimeInner)
+		if delta.Seconds() > 1 {
+			base.Logf("PutExistingRev History.addRevision() took %v seconds", delta.Seconds())
+		}
 
+		startTimeInner = time.Now()
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
 		if err := db.storeAttachments(doc, body, generation, parentRevID); err != nil {
 			return nil, err
 		}
+		delta = time.Since(startTimeInner)
+		if delta.Seconds() > 1 {
+			base.Logf("PutExistingRev storeAttachments() took %v seconds", delta.Seconds())
+		}
+
+		startTimeInner = time.Now()
 		body["_rev"] = newRev
+		delta = time.Since(startTimeInner)
+		if delta.Seconds() > 1 {
+			base.Logf("PutExistingRev body[rev] took %v seconds", delta.Seconds())
+		}
+
 		return body, nil
 	})
+	delta = time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("PutExistingRev updateDoc() took %v seconds", delta.Seconds())
+	}
+
 	return err
 }
 
