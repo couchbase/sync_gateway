@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -364,17 +365,30 @@ func (h *handler) handleBulkGet() error {
 
 // HTTP handler for a POST to _bulk_docs
 func (h *handler) handleBulkDocs() error {
+
+	startTime := time.Now()
+
 	body, err := h.readJSON()
 	if err != nil {
 		return err
 	}
+	delta := time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("handleBulkDocs readJson took %v seconds", delta.Seconds())
+	}
+
 	newEdits, ok := body["new_edits"].(bool)
 	if !ok {
 		newEdits = true
 	}
 
+	startTime = time.Now()
 	docs := body["docs"].([]interface{})
 	h.db.ReserveSequences(uint64(len(docs)))
+	delta = time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("handleBulkDocs ReserveSequences took %v seconds", delta.Seconds())
+	}
 
 	result := make([]db.Body, 0, len(docs))
 	for _, item := range docs {
@@ -384,17 +398,37 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
+				startTime = time.Now()
 				revid, err = h.db.Put(docid, doc)
+				if delta.Seconds() > 1 {
+					base.Logf("handleBulkDocs Put took %v seconds", delta.Seconds())
+				}
+
 			} else {
+				startTime = time.Now()
 				docid, revid, err = h.db.Post(doc)
+				if delta.Seconds() > 1 {
+					base.Logf("handleBulkDocs Post took %v seconds", delta.Seconds())
+				}
+
 			}
 		} else {
+			startTime = time.Now()
 			revisions := db.ParseRevisions(doc)
+			if delta.Seconds() > 1 {
+				base.Logf("handleBulkDocs ParseRevisions took %v seconds", delta.Seconds())
+			}
+
 			if revisions == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
+				startTime = time.Now()
 				err = h.db.PutExistingRev(docid, doc, revisions)
+				if delta.Seconds() > 1 {
+					base.Logf("handleBulkDocs PutExistingRev took %v seconds", delta.Seconds())
+				}
+
 			}
 		}
 
@@ -415,6 +449,11 @@ func (h *handler) handleBulkDocs() error {
 		result = append(result, status)
 	}
 
+	startTime = time.Now()
 	h.writeJSONStatus(http.StatusCreated, result)
+	if delta.Seconds() > 1 {
+		base.Logf("handleBulkDocs writeJSONStatus took %v seconds", delta.Seconds())
+	}
+
 	return nil
 }
