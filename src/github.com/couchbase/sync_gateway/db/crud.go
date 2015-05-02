@@ -416,6 +416,12 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	startTime = time.Now()
 	deleted, _ := body["_deleted"].(bool)
 	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
+
+		delta = time.Since(startTime)
+		if delta.Seconds() > 1 {
+			base.Logf("PutExistingRev updateDoc() was not called back for %v seconds", delta.Seconds())
+		}
+
 		startTimeInner := time.Now()
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
@@ -483,9 +489,16 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
+
+	startTime := time.Now()
 	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
+	}
+
+	delta := time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("updateDoc realDocID() took %v seconds", delta.Seconds())
 	}
 
 	var newRevID, parentRevID string
@@ -496,7 +509,16 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var docSequence uint64
 	var unusedSequences []uint64
 
+	startTime = time.Now()
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
+
+		delta = time.Since(startTime)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() was not called back for %v seconds", delta.Seconds())
+		}
+
+		startTimeInner := time.Now()
+
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
@@ -647,8 +669,19 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
 		base.LogTo("Cache", "SAVING #%d", doc.Sequence) //TEMP?
+
+		delta = time.Since(startTimeInner)
+		if delta.Seconds() > 1 {
+			base.Logf("updateDoc WriteUpdate() callback took %v seconds", delta.Seconds())
+		}
+
 		return
 	})
+
+	delta = time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("updateDoc WriteUpdate() took %v seconds", delta.Seconds())
+	}
 
 	if err == couchbase.UpdateCancel {
 		return "", nil
