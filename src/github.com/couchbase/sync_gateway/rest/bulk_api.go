@@ -400,6 +400,7 @@ func (h *handler) handleBulkDocs() error {
 			if docid != "" {
 				startTime = time.Now()
 				revid, err = h.db.Put(docid, doc)
+				delta = time.Since(startTime)
 				if delta.Seconds() > 1 {
 					base.Logf("handleBulkDocs Put took %v seconds", delta.Seconds())
 				}
@@ -407,6 +408,7 @@ func (h *handler) handleBulkDocs() error {
 			} else {
 				startTime = time.Now()
 				docid, revid, err = h.db.Post(doc)
+				delta = time.Since(startTime)
 				if delta.Seconds() > 1 {
 					base.Logf("handleBulkDocs Post took %v seconds", delta.Seconds())
 				}
@@ -415,6 +417,7 @@ func (h *handler) handleBulkDocs() error {
 		} else {
 			startTime = time.Now()
 			revisions := db.ParseRevisions(doc)
+			delta = time.Since(startTime)
 			if delta.Seconds() > 1 {
 				base.Logf("handleBulkDocs ParseRevisions took %v seconds", delta.Seconds())
 			}
@@ -425,6 +428,7 @@ func (h *handler) handleBulkDocs() error {
 				revid = revisions[0]
 				startTime = time.Now()
 				err = h.db.PutExistingRev(docid, doc, revisions)
+				delta = time.Since(startTime)
 				if delta.Seconds() > 1 {
 					base.Logf("handleBulkDocs PutExistingRev took %v seconds", delta.Seconds())
 				}
@@ -451,6 +455,7 @@ func (h *handler) handleBulkDocs() error {
 
 	startTime = time.Now()
 	h.writeJSONStatus(http.StatusCreated, result)
+	delta = time.Since(startTime)
 	if delta.Seconds() > 1 {
 		base.Logf("handleBulkDocs writeJSONStatus took %v seconds", delta.Seconds())
 	}

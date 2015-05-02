@@ -11,6 +11,7 @@ package db
 
 import (
 	"sync"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -49,12 +50,26 @@ func (s *sequenceAllocator) nextSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
+
+	startTime := time.Now()
+
 	if s.last < s.max {
 		return nil // Already have some sequences left; don't be greedy and waste them
 		//OPT: Could remember multiple discontiguous ranges of free sequences
 	}
 	dbExpvars.Add("sequence_reserves", 1)
+	delta := time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("_reserveSequences expvars.Add() took %v seconds", delta.Seconds())
+	}
+
+	startTime = time.Now()
 	max, err := s.bucket.Incr("_sync:seq", numToReserve, numToReserve, 0)
+	delta = time.Since(startTime)
+	if delta.Seconds() > 1 {
+		base.Logf("_reserveSequences bucket.Incr() took %v seconds", delta.Seconds())
+	}
+
 	if err != nil {
 		base.Warn("Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err
