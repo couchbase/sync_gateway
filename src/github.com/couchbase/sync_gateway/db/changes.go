@@ -290,7 +290,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				if options.Since.Before(userSeq) {
 					name := db.user.Name()
 					if name == "" {
-						name = "GUEST"
+						name = base.GuestUsername
 					}
 					entry := ChangeEntry{
 						Seq:     userSeq,
