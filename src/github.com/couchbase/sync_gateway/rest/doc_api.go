@@ -255,8 +255,8 @@ func (h *handler) handlePostDoc() error {
 	if err != nil {
 		return err
 	}
-	h.setHeader("Location", strconv.Quote(docid))
-	h.setHeader("Etag", newRev)
+	h.setHeader("Location", docid)
+	h.setHeader("Etag", strconv.Quote(newRev))
 	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
