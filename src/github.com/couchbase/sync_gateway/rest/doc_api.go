@@ -16,8 +16,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
-    "strconv"
 )
 
 // HTTP handler for a GET of a document
