@@ -17,6 +17,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+    "strconv"
 )
 
 // HTTP handler for a GET of a document
@@ -49,7 +50,7 @@ func (h *handler) handleGetDoc() error {
 		if value == nil {
 			return kNotFoundError
 		}
-		h.setHeader("Etag", value["_rev"].(string))
+		h.setHeader("Etag", strconv.Quote(value["_rev"].(string)))
 
 		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
@@ -139,7 +140,7 @@ func (h *handler) handleGetAttachment() error {
 		return err
 	}
 
-	h.setHeader("Etag", digest)
+	h.setHeader("Etag", strconv.Quote(digest))
 	if contentType, ok := meta["content_type"].(string); ok {
 		h.setHeader("Content-Type", contentType)
 	}
@@ -201,7 +202,7 @@ func (h *handler) handlePutAttachment() error {
 	if err != nil {
 		return err
 	}
-	h.setHeader("Etag", newRev)
+	h.setHeader("Etag", strconv.Quote(newRev))
 
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
@@ -227,7 +228,7 @@ func (h *handler) handlePutDoc() error {
 		if err != nil {
 			return err
 		}
-		h.setHeader("Etag", newRev)
+		h.setHeader("Etag", strconv.Quote(newRev))
 	} else {
 		// Replicator-style PUT with new_edits=false:
 		revisions := db.ParseRevisions(body)
@@ -255,7 +256,7 @@ func (h *handler) handlePostDoc() error {
 		return err
 	}
 	h.setHeader("Location", docid)
-	h.setHeader("Etag", newRev)
+	h.setHeader("Etag", strconv.Quote(newRev))
 	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
