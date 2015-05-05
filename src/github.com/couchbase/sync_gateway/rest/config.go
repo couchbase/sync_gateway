@@ -27,21 +27,23 @@ import (
 // Register profiling handlers (see Go docs)
 import _ "net/http/pprof"
 
-var DefaultInterface = ":4984"
+var DefaultInterface = "127.0.0.1:4984"      // Only accessible on localhost!
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
 var config *ServerConfig
 
-const DefaultMaxCouchbaseConnections = 16
-const DefaultMaxCouchbaseOverflowConnections = 0
+const (
+	DefaultMaxCouchbaseConnections         = 16
+	DefaultMaxCouchbaseOverflowConnections = 0
 
-// Default value of ServerConfig.MaxIncomingConnections
-const DefaultMaxIncomingConnections = 0
+	// Default value of ServerConfig.MaxIncomingConnections
+	DefaultMaxIncomingConnections = 0
 
-// Default value of ServerConfig.MaxFileDescriptors
-const DefaultMaxFileDescriptors uint64 = 5000
+	// Default value of ServerConfig.MaxFileDescriptors
+	DefaultMaxFileDescriptors uint64 = 5000
+)
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
@@ -126,10 +128,10 @@ type EventHandlerConfig struct {
 }
 
 type EventConfig struct {
-	HandlerType string `json:"handler"`           // Handler type
-	Url         string `json:"url,omitempty"`     // Url (webhook)
-	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+	HandlerType string  `json:"handler"`           // Handler type
+	Url         string  `json:"url,omitempty"`     // Url (webhook)
+	Filter      string  `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout (webhook)
 }
 
 type CacheConfig struct {
@@ -388,6 +390,12 @@ func ParseCommandLine() {
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,
+					Users: map[string]*db.PrincipalConfig{
+						base.GuestUsername: &db.PrincipalConfig{
+							Disabled:         false,
+							ExplicitChannels: base.SetFromArray([]string{"*"}),
+						},
+					},
 				},
 			},
 		}
