@@ -128,10 +128,10 @@ type EventHandlerConfig struct {
 }
 
 type EventConfig struct {
-	HandlerType string `json:"handler"`           // Handler type
-	Url         string `json:"url,omitempty"`     // Url (webhook)
-	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+	HandlerType string  `json:"handler"`           // Handler type
+	Url         string  `json:"url,omitempty"`     // Url (webhook)
+	Filter      string  `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout (webhook)
 }
 
 type CacheConfig struct {
