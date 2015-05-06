@@ -27,7 +27,7 @@ import (
 // Register profiling handlers (see Go docs)
 import _ "net/http/pprof"
 
-var DefaultInterface = "127.0.0.1:4984"      // Only accessible on localhost!
+var DefaultInterface = ":4984"
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
@@ -309,6 +309,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() {
+
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
@@ -364,12 +365,16 @@ func ParseCommandLine() {
 		if config.Log != nil {
 			base.ParseLogFlags(config.Log)
 		}
+
+		// If the interfaces were not specified in either the config file or
+		// on the command line, set them to the default values
 		if config.Interface == nil {
 			config.Interface = &DefaultInterface
 		}
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
 		}
+
 		if *logFilePath != "" {
 			config.LogFilePath = logFilePath
 		}
@@ -379,6 +384,16 @@ func ParseCommandLine() {
 		if *dbName == "" {
 			*dbName = *bucketName
 		}
+
+		// At this point the addr is either:
+		//   - A value provided by the user, in which case we want to leave it as is
+		//   - The default value (":4984"), which is actually _not_ the default value we
+		//     want for this case, since we are enabling insecure mode.  We want "localhost:4984" instead.
+		// See #708 for more details
+		if *addr == DefaultInterface {
+			*addr = "localhost:4984"
+		}
+
 		config = &ServerConfig{
 			Interface:        addr,
 			AdminInterface:   authAddr,
