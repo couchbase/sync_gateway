@@ -1,0 +1,10 @@
+{
+  "log": ["*"],
+  "databases": {
+    "db": {
+      "server": "http://localhost:8091",
+      "bucket": "default",
+      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "log": ["*"],
+  "configServer": "http://localhost:8001/",
+  "databases": {
+    "db": {
+      "server": "walrus:",
+      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+    }
+  }
+}
