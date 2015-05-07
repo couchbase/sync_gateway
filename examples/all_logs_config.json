@@ -1,9 +1,0 @@
-{
-   "log": ["CRUD", "CRUD+", "HTTP", "HTTP+", "Access", "Cache", "Shadow", "Shadow+", "Changes", "Changes+"],
-   "databases":{
- 		"db": {
- 			"server": "walrus:",
- 			"sync": `function(doc){channel(doc.channels);}`,
-     }
-   }
-}
