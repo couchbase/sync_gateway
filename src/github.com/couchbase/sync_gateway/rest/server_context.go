@@ -267,7 +267,21 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 	}
 
-	// Initialize event handlers, if any:
+	// Initialize event handlers
+	if err := sc.initEventHandlers(dbcontext, config); err != nil {
+		return nil, err
+	}
+
+	// Register it so HTTP handlers can find it:
+	sc.databases_[dbcontext.Name] = dbcontext
+
+	// Save the config
+	sc.config.Databases[config.Name] = config
+	return dbcontext, nil
+}
+
+// Initialize event handlers, if present
+func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) error {
 	if config.EventHandlers != nil {
 
 		// Temporary solution to do validation of invalid event types in config.EventHandlers.
@@ -281,25 +295,27 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		eventHandlers := &EventHandlerConfig{}
 		eventHandlersMap, ok := config.EventHandlers.(map[string]interface{})
 		if !ok {
-			return nil, errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbName))
+			return errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbcontext.Name))
 		}
 
 		// validate event-related keys
 		for k, _ := range eventHandlersMap {
 			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" {
-				return nil, errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbName))
+				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
 			}
 		}
 
 		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
-		err = json.Unmarshal(eventHandlersJSON, eventHandlers)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		if err := json.Unmarshal(eventHandlersJSON, eventHandlers); err != nil {
+			return err
 		}
 
 		// Process document commit event handlers
 		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
-			return nil, err
+			return err
 		}
 		// WaitForProcess uses string, to support both omitempty and zero values
 		customWaitTime := int64(-1)
@@ -313,13 +329,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
 
 	}
-
-	// Register it so HTTP handlers can find it:
-	sc.databases_[dbcontext.Name] = dbcontext
-
-	// Save the config
-	sc.config.Databases[config.Name] = config
-	return dbcontext, nil
+	return nil
 }
 
 // Adds a database to the ServerContext given its configuration.  If an existing config is found

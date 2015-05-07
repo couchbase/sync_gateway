@@ -1,0 +1,30 @@
+{
+   "log":["CRUD+","Events+"],
+   "databases": {
+      "db": {
+        "server": "walrus:",
+        "event_handlers": {
+          "max_processes" : 500,
+          "wait_for_process" : "100",
+          "document_changed": [
+            {"handler": "webhook",
+             "url": "http://localhost:8081/my_webhook_target",
+             "timeout": 0,
+             "filter": `function(doc) {
+                  if (doc._id.indexOf('webhooktest') >= 0) {
+                    return true;
+                  }
+                  return false;
+                }`
+            }
+          ]
+        }
+      }
+    }
+}
+
+
+
+
+
+
