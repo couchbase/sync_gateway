@@ -269,20 +269,49 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	// Initialize event handlers, if any:
 	if config.EventHandlers != nil {
+
+		// Temporary solution to do validation of invalid event types in config.EventHandlers.
+		// config.EventHandlers is originally unmarshalled as interface{} so that we retain any
+		// invalid keys during the original config unmarshalling.  We validate the expected entries
+		// manually and throw an error for any invalid keys.  Then remarshal and
+		// unmarshal as EventHandlerConfig (considered manual reflection, but was too painful).  Comes with
+		// some overhead, but will only happen on startup/new config.
+		// Should be replaced when we implement full schema validation on config.
+
+		eventHandlers := &EventHandlerConfig{}
+		eventHandlersMap, ok := config.EventHandlers.(map[string]interface{})
+		if !ok {
+			return nil, errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbName))
+		}
+
+		// validate event-related keys
+		for k, _ := range eventHandlersMap {
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" {
+				return nil, errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbName))
+			}
+		}
+
+		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
+		err = json.Unmarshal(eventHandlersJSON, eventHandlers)
+		if err != nil {
+			return nil, err
+		}
+
 		// Process document commit event handlers
-		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
 			return nil, err
 		}
 		// WaitForProcess uses string, to support both omitempty and zero values
 		customWaitTime := int64(-1)
-		if config.EventHandlers.WaitForProcess != "" {
-			customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
+		if eventHandlers.WaitForProcess != "" {
+			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
 			if err != nil {
 				customWaitTime = -1
 				base.Warn("Error parsing wait_for_process from config, using default %s", err)
 			}
 		}
-		dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
+
 	}
 
 	// Register it so HTTP handlers can find it:

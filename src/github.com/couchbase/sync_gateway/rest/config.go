@@ -87,7 +87,7 @@ type DbConfig struct {
 	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
 	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
-	EventHandlers      *EventHandlerConfig            `json:"event_handlers,omitempty"`       // Event handlers (webhook)
+	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
