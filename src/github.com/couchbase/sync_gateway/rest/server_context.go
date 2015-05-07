@@ -269,22 +269,9 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 	}
 
-	// Initialize event handlers, if any:
-	if config.EventHandlers != nil {
-		// Process document commit event handlers
-		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
-			return nil, err
-		}
-		// WaitForProcess uses string, to support both omitempty and zero values
-		customWaitTime := int64(-1)
-		if config.EventHandlers.WaitForProcess != "" {
-			customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
-			if err != nil {
-				customWaitTime = -1
-				base.Warn("Error parsing wait_for_process from config, using default %s", err)
-			}
-		}
-		dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+	// Initialize event handlers
+	if err := sc.initEventHandlers(dbcontext, config); err != nil {
+		return nil, err
 	}
 
 	// Register it so HTTP handlers can find it:
@@ -293,6 +280,58 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	// Save the config
 	sc.config.Databases[config.Name] = config
 	return dbcontext, nil
+}
+
+// Initialize event handlers, if present
+func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) error {
+	if config.EventHandlers != nil {
+
+		// Temporary solution to do validation of invalid event types in config.EventHandlers.
+		// config.EventHandlers is originally unmarshalled as interface{} so that we retain any
+		// invalid keys during the original config unmarshalling.  We validate the expected entries
+		// manually and throw an error for any invalid keys.  Then remarshal and
+		// unmarshal as EventHandlerConfig (considered manual reflection, but was too painful).  Comes with
+		// some overhead, but will only happen on startup/new config.
+		// Should be replaced when we implement full schema validation on config.
+
+		eventHandlers := &EventHandlerConfig{}
+		eventHandlersMap, ok := config.EventHandlers.(map[string]interface{})
+		if !ok {
+			return errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbcontext.Name))
+		}
+
+		// validate event-related keys
+		for k, _ := range eventHandlersMap {
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" {
+				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
+			}
+		}
+
+		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(eventHandlersJSON, eventHandlers); err != nil {
+			return err
+		}
+
+		// Process document commit event handlers
+		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+			return err
+		}
+		// WaitForProcess uses string, to support both omitempty and zero values
+		customWaitTime := int64(-1)
+		if eventHandlers.WaitForProcess != "" {
+			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
+			if err != nil {
+				customWaitTime = -1
+				base.Warn("Error parsing wait_for_process from config, using default %s", err)
+			}
+		}
+		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
+
+	}
+	return nil
 }
 
 // Adds a database to the ServerContext given its configuration.  If an existing config is found

@@ -1894,3 +1894,64 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	assertStatus(t, response, 200)
 
 }
+
+func TestEventConfigValidationSuccess(t *testing.T) {
+
+	sc := NewServerContext(&ServerConfig{})
+
+	// Valid config
+	configJSON := `{"name": "default",
+        			"server": "walrus:",
+        			"bucket": "default",
+			        "event_handlers": {
+			          "max_processes" : 1000,
+			          "wait_for_process" : "15",
+			          "document_changed": [
+			            {"handler": "webhook",
+			             "url": "http://localhost:8081/filtered",
+			             "timeout": 0,
+			             "filter": "function(doc){ return true }"
+			            }
+			          ]
+			        }
+      			   }`
+
+	var dbConfig DbConfig
+	err := json.Unmarshal([]byte(configJSON), &dbConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&dbConfig)
+	assert.True(t, err == nil)
+
+	sc.Close()
+
+}
+func TestEventConfigValidationFailure(t *testing.T) {
+
+	sc := NewServerContext(&ServerConfig{})
+	configJSON := `{"name": "invalid",
+        			"server": "walrus:",
+        			"bucket": "invalid",
+			        "event_handlers": {
+			          "max_processes" : 1000,
+			          "wait_for_process" : "15",
+			          "document_scribbled_on": [
+			            {"handler": "webhook",
+			             "url": "http://localhost:8081/filtered",
+			             "timeout": 0,
+			             "filter": "function(doc){ return true }"
+			            }
+			          ]
+			        }
+      			   }`
+
+	var dbConfig DbConfig
+	err := json.Unmarshal([]byte(configJSON), &dbConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&dbConfig)
+	assert.True(t, err != nil)
+	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
+
+	sc.Close()
+}
