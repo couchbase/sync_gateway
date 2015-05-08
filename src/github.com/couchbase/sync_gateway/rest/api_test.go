@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -237,6 +238,75 @@ func TestDocLifecycle(t *testing.T) {
 
 	response := rt.sendRequest("DELETE", "/db/doc?rev="+revid, "")
 	assertStatus(t, response, 200)
+}
+
+//Validate that Etag header value is surrounded with double quotes, see issue #808
+func TestDocEtag(t *testing.T) {
+	var rt restTester
+
+	response := rt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revid := body["rev"].(string)
+	if revid == "" {
+		t.Fatalf("No revid in response for PUT doc")
+	}
+
+	//Validate Etag returned on doc creation
+	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+
+	response = rt.sendRequest("GET", "/db/doc", "")
+	assertStatus(t, response, 200)
+
+	//Validate Etag returned when retrieving doc
+	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+
+	//Validate Etag returned when updating doc
+	response = rt.sendRequest("PUT", "/db/doc?rev="+revid, `{"prop":false}`)
+	revid = body["rev"].(string)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revid = body["rev"].(string)
+	if revid == "" {
+		t.Fatalf("No revid in response for PUT doc")
+	}
+
+	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+
+	//Test Attachments
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+	assert.True(t, revIdAfterAttachment != revid)
+
+	//validate Etag returned from adding an attachment
+	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revIdAfterAttachment))
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	//Validate Etag returned from retrieving an attachment
+	assert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
+
 }
 
 func TestFunkyDocIDs(t *testing.T) {
@@ -1823,4 +1893,65 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	response = rt.sendUserRequestWithHeaders("GET", "/db/mannyDoc", "", reqHeaders, "manny", "letmein")
 	assertStatus(t, response, 200)
 
+}
+
+func TestEventConfigValidationSuccess(t *testing.T) {
+
+	sc := NewServerContext(&ServerConfig{})
+
+	// Valid config
+	configJSON := `{"name": "default",
+        			"server": "walrus:",
+        			"bucket": "default",
+			        "event_handlers": {
+			          "max_processes" : 1000,
+			          "wait_for_process" : "15",
+			          "document_changed": [
+			            {"handler": "webhook",
+			             "url": "http://localhost:8081/filtered",
+			             "timeout": 0,
+			             "filter": "function(doc){ return true }"
+			            }
+			          ]
+			        }
+      			   }`
+
+	var dbConfig DbConfig
+	err := json.Unmarshal([]byte(configJSON), &dbConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&dbConfig)
+	assert.True(t, err == nil)
+
+	sc.Close()
+
+}
+func TestEventConfigValidationFailure(t *testing.T) {
+
+	sc := NewServerContext(&ServerConfig{})
+	configJSON := `{"name": "invalid",
+        			"server": "walrus:",
+        			"bucket": "invalid",
+			        "event_handlers": {
+			          "max_processes" : 1000,
+			          "wait_for_process" : "15",
+			          "document_scribbled_on": [
+			            {"handler": "webhook",
+			             "url": "http://localhost:8081/filtered",
+			             "timeout": 0,
+			             "filter": "function(doc){ return true }"
+			            }
+			          ]
+			        }
+      			   }`
+
+	var dbConfig DbConfig
+	err := json.Unmarshal([]byte(configJSON), &dbConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&dbConfig)
+	assert.True(t, err != nil)
+	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
+
+	sc.Close()
 }

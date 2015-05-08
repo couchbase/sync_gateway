@@ -3,8 +3,8 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -230,6 +230,16 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 			counter++
 			fmt.Fprintf(w, "OK")
 		})
+		http.HandleFunc("/slow_2s", func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(2 * time.Second)
+			counter++
+			fmt.Fprintf(w, "OK")
+		})
+		http.HandleFunc("/slow_5s", func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(5 * time.Second)
+			counter++
+			fmt.Fprintf(w, "OK")
+		})
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			r.ParseForm()
 
@@ -276,6 +286,7 @@ func TestWebhook(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
+	time.Sleep(1 * time.Second)
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
 			"_id":   ids[i],
@@ -293,7 +304,7 @@ func TestWebhook(t *testing.T) {
 	// Test basic webhook
 	em := NewEventManager()
 	em.Start(0, -1)
-	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", 0)
+	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
@@ -303,6 +314,7 @@ func TestWebhook(t *testing.T) {
 	assert.Equals(t, *count, 10)
 
 	// Test webhook filter function
+	log.Println("Test filter function")
 	*count, *sum = 0, 0.0
 	em = NewEventManager()
 	em.Start(0, -1)
@@ -313,7 +325,7 @@ func TestWebhook(t *testing.T) {
 								return true;
 							}
 							}`
-	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, 0)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
@@ -323,11 +335,10 @@ func TestWebhook(t *testing.T) {
 	assert.Equals(t, *count, 4)
 
 	// Validate payload
-	fmt.Println("RESET HERE")
 	*count, *sum, *payloads = 0, 0.0, nil
 	em = NewEventManager()
 	em.Start(0, -1)
-	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", 0)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	body, channels := eventForTest(0)
 	em.RaiseDocumentChangeEvent(body, channels)
@@ -341,21 +352,23 @@ func TestWebhook(t *testing.T) {
 	*count, *sum = 0, 0.0
 	em = NewEventManager()
 	em.Start(5, -1)
-	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", 0)
+	timeout := uint64(60)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, channels := eventForTest(i % 10)
 		em.RaiseDocumentChangeEvent(body, channels)
 	}
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	assert.Equals(t, *count, 100)
 
 	// Test queue full, slow webhook.  Drops events
+	log.Println("Test queue full, slow webhook")
 	*count, *sum = 0, 0.0
 	errCount := 0
 	em = NewEventManager()
 	em.Start(5, -1)
-	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", 0)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, channels := eventForTest(i)
@@ -372,10 +385,11 @@ func TestWebhook(t *testing.T) {
 	assert.Equals(t, errCount, 79)
 
 	// Test queue full, slow webhook, long wait time.  Throttles events
+	log.Println("Test queue full, slow webhook, long wait")
 	*count, *sum = 0, 0.0
 	em = NewEventManager()
 	em.Start(5, 1100)
-	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", 0)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, channels := eventForTest(i % 10)
@@ -383,6 +397,113 @@ func TestWebhook(t *testing.T) {
 	}
 	time.Sleep(5 * time.Second)
 	assert.Equals(t, *count, 100)
+
+}
+
+func TestWebhookTimeout(t *testing.T) {
+
+	if !testLiveHTTP {
+		return
+	}
+	base.LogKeys["Events+"] = true
+	count, sum, _ := InitWebhookTest()
+	ids := make([]string, 200)
+	for i := 0; i < 200; i++ {
+		ids[i] = fmt.Sprintf("%d", i)
+	}
+
+	time.Sleep(1 * time.Second)
+	eventForTest := func(i int) (Body, base.Set) {
+		testBody := Body{
+			"_id":   ids[i],
+			"value": i,
+		}
+		var channelSet base.Set
+		if i%2 == 0 {
+			channelSet = base.SetFromArray([]string{"Even"})
+		} else {
+			channelSet = base.SetFromArray([]string{"Odd"})
+		}
+		return testBody, channelSet
+	}
+
+	// Test fast execution, short timeout.  All events processed
+	log.Println("Test fast webhook, short timeout")
+	em := NewEventManager()
+	em.Start(0, -1)
+	timeout := uint64(2)
+	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", &timeout)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 10)
+
+	// Test slow webhook, short timeout, numProcess=1, waitForProcess > timeout.  All events should get processed.
+	log.Println("Test slow webhook, short timeout")
+	*count, *sum = 0, 0.0
+	errCount := 0
+	em = NewEventManager()
+	em.Start(1, 1100)
+	timeout = uint64(1)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow_2s", "", &timeout)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		err := em.RaiseDocumentChangeEvent(body, channels)
+		time.Sleep(2 * time.Millisecond)
+		if err != nil {
+			errCount++
+		}
+	}
+	time.Sleep(15 * time.Second)
+	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
+	assert.Equals(t, *count, 10)
+
+	// Test slow webhook, short timeout, numProcess=1, waitForProcess << timeout.  Events that don't fit in queues
+	// should get dropped (1 immediately processed, 1 in normal queue, 3 in overflow queue, 5 dropped)
+	log.Println("Test very slow webhook, short timeout")
+	*count, *sum = 0, 0.0
+	errCount = 0
+	em = NewEventManager()
+	em.Start(1, 100)
+	timeout = uint64(9)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow_5s", "", &timeout)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		err := em.RaiseDocumentChangeEvent(body, channels)
+		time.Sleep(2 * time.Millisecond)
+		if err != nil {
+			errCount++
+		}
+	}
+	// wait for slow webhook to finish processing
+	time.Sleep(25 * time.Second)
+	assert.Equals(t, *count, 5)
+
+	// Test slow webhook, no timeout, numProcess=1, waitForProcess=1s.  All events should complete.
+	log.Println("Test slow webhook, no timeout, wait for process ")
+	*count, *sum = 0, 0.0
+	errCount = 0
+	em = NewEventManager()
+	em.Start(1, 1100)
+	timeout = uint64(0)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", &timeout)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		err := em.RaiseDocumentChangeEvent(body, channels)
+		time.Sleep(2 * time.Millisecond)
+		if err != nil {
+			errCount++
+		}
+	}
+	// wait for slow webhook to finish processing
+	time.Sleep(15 * time.Second)
+	assert.Equals(t, *count, 10)
 
 }
 
@@ -410,7 +531,7 @@ func TestUnavailableWebhook(t *testing.T) {
 	// Test unreachable webhook
 	em := NewEventManager()
 	em.Start(0, -1)
-	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", 0)
+	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)

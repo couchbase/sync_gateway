@@ -1,0 +1,18 @@
+{
+  "log": ["*"],
+  "databases": {
+    "db": {
+      "server": "walrus:",
+      "users": {
+        "pupshaw": {
+          "admin_channels": ["*"],
+          "admin_roles": ["froods"],
+          "password": "foo"
+        }
+      },
+      "roles": { "froods": { "admin_channels": ["hoopy"] } }
+    }
+  }
+}
+
+

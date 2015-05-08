@@ -34,14 +34,16 @@ var DefaultPool = "default"
 
 var config *ServerConfig
 
-const DefaultMaxCouchbaseConnections = 16
-const DefaultMaxCouchbaseOverflowConnections = 0
+const (
+	DefaultMaxCouchbaseConnections         = 16
+	DefaultMaxCouchbaseOverflowConnections = 0
 
-// Default value of ServerConfig.MaxIncomingConnections
-const DefaultMaxIncomingConnections = 0
+	// Default value of ServerConfig.MaxIncomingConnections
+	DefaultMaxIncomingConnections = 0
 
-// Default value of ServerConfig.MaxFileDescriptors
-const DefaultMaxFileDescriptors uint64 = 5000
+	// Default value of ServerConfig.MaxFileDescriptors
+	DefaultMaxFileDescriptors uint64 = 5000
+)
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
@@ -85,7 +87,7 @@ type DbConfig struct {
 	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
 	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
-	EventHandlers      *EventHandlerConfig            `json:"event_handlers,omitempty"`       // Event handlers (webhook)
+	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
@@ -126,10 +128,10 @@ type EventHandlerConfig struct {
 }
 
 type EventConfig struct {
-	HandlerType string `json:"handler"`           // Handler type
-	Url         string `json:"url,omitempty"`     // Url (webhook)
-	Filter      string `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+	HandlerType string  `json:"handler"`           // Handler type
+	Url         string  `json:"url,omitempty"`     // Url (webhook)
+	Filter      string  `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout (webhook)
 }
 
 type CacheConfig struct {
@@ -307,6 +309,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() {
+
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
@@ -362,12 +365,16 @@ func ParseCommandLine() {
 		if config.Log != nil {
 			base.ParseLogFlags(config.Log)
 		}
+
+		// If the interfaces were not specified in either the config file or
+		// on the command line, set them to the default values
 		if config.Interface == nil {
 			config.Interface = &DefaultInterface
 		}
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
 		}
+
 		if *logFilePath != "" {
 			config.LogFilePath = logFilePath
 		}
@@ -377,6 +384,16 @@ func ParseCommandLine() {
 		if *dbName == "" {
 			*dbName = *bucketName
 		}
+
+		// At this point the addr is either:
+		//   - A value provided by the user, in which case we want to leave it as is
+		//   - The default value (":4984"), which is actually _not_ the default value we
+		//     want for this case, since we are enabling insecure mode.  We want "localhost:4984" instead.
+		// See #708 for more details
+		if *addr == DefaultInterface {
+			*addr = "localhost:4984"
+		}
+
 		config = &ServerConfig{
 			Interface:        addr,
 			AdminInterface:   authAddr,
@@ -388,6 +405,12 @@ func ParseCommandLine() {
 					Server: couchbaseURL,
 					Bucket: bucketName,
 					Pool:   poolName,
+					Users: map[string]*db.PrincipalConfig{
+						base.GuestUsername: &db.PrincipalConfig{
+							Disabled:         false,
+							ExplicitChannels: base.SetFromArray([]string{"*"}),
+						},
+					},
 				},
 			},
 		}

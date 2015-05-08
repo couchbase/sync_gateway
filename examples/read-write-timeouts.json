@@ -1,0 +1,11 @@
+{
+  "ServerReadTimeout": 200,
+  "ServerWriteTimeout": 200,
+  "log": ["*"],
+  "databases": {
+    "db": {
+      "server": "walrus:",
+      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "log": ["*"],
+  "databases": {
+    "db": {
+      "server": "walrus:.",
+      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+    }
+  }
+}
