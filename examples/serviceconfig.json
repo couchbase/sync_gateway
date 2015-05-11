@@ -1,0 +1,14 @@
+{
+	"log": ["HTTP+"],
+	"adminInterface": "127.0.0.1:4985",
+	"interface": "0.0.0.0:4984",
+	"databases": {
+		"db": {
+			"server": "walrus:data",
+			"users": {
+				"GUEST": {"disabled": false, "admin_channels": ["*"] }
+			}
+		}
+	}
+}
+
