@@ -43,9 +43,9 @@ func testBucket() base.Bucket {
 	return bucket
 }
 
-func testLeakyBucket() base.Bucket {
+func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	testBucket := testBucket()
-	leakyBucket := base.NewLeakyBucket(testBucket)
+	leakyBucket := base.NewLeakyBucket(testBucket, config)
 	return leakyBucket
 }
 
@@ -749,7 +749,10 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 }
 
 func TestIncrRetry(t *testing.T) {
-	leakyBucket := testLeakyBucket()
+	leakyBucketConfig := base.LeakyBucketConfig{
+		IncrTemporaryFail: true,
+	}
+	leakyBucket := testLeakyBucket(leakyBucketConfig)
 	defer leakyBucket.Close()
 	seqAllocator, _ := newSequenceAllocator(leakyBucket)
 	err := seqAllocator.reserveSequences(1)
