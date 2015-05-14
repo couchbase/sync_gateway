@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbase/sg-bucket"
 )
 
 const (
@@ -64,13 +64,13 @@ func (b *LeakyBucket) SetRaw(k string, exp int, v []byte) error {
 func (b *LeakyBucket) Delete(k string) error {
 	return b.bucket.Delete(k)
 }
-func (b *LeakyBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) error {
+func (b *LeakyBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
-func (b *LeakyBucket) Update(k string, exp int, callback walrus.UpdateFunc) (err error) {
+func (b *LeakyBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LeakyBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) (err error) {
+func (b *LeakyBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) (err error) {
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
@@ -95,21 +95,21 @@ func (b *LeakyBucket) PutDDoc(docname string, value interface{}) error {
 func (b *LeakyBucket) DeleteDDoc(docname string) error {
 	return b.bucket.DeleteDDoc(docname)
 }
-func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
+func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	return b.bucket.View(ddoc, name, params)
 }
 func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
-func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
 	if !b.config.TapFeedDeDupliation {
 		return b.bucket.StartTapFeed(args)
 	}
 
 	// create an output channel
-	// start a goroutine which reads off the walrus tap feed
+	// start a goroutine which reads off the sgbucket tap feed
 	//   - de-duplicate certain events
 	//   - puts them to output channel
 
@@ -120,16 +120,16 @@ func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, er
 	// the dedupe buffer has not filled up yet.
 	deDuplicationTimeoutMs := time.Millisecond * 1000
 
-	// kick off the wrapped walrus tap feed
+	// kick off the wrapped sgbucket tap feed
 	walrusTapFeed, err := b.bucket.StartTapFeed(args)
 	if err != nil {
 		return walrusTapFeed, err
 	}
 
 	// create an output channel for de-duplicated events
-	channel := make(chan walrus.TapEvent, 10)
+	channel := make(chan sgbucket.TapEvent, 10)
 
-	// this is the walrus.TapFeed impl we'll return to callers, which
+	// this is the sgbucket.TapFeed impl we'll return to callers, which
 	// will reead from the de-duplicated events channel
 	dupeTapFeed := &deDuplicatorTapFeedImpl{
 		channel:        channel,
@@ -139,7 +139,7 @@ func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, er
 	go func() {
 
 		// the buffer to hold tap events that are candidates for de-duplication
-		deDupeBuffer := []walrus.TapEvent{}
+		deDupeBuffer := []sgbucket.TapEvent{}
 
 		for {
 			select {
@@ -148,7 +148,7 @@ func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, er
 					// channel closed, goroutine is done
 					// dedupe and send what we currently have
 					dedupeAndForward(deDupeBuffer, channel)
-					deDupeBuffer = []walrus.TapEvent{}
+					deDupeBuffer = []sgbucket.TapEvent{}
 					return
 				}
 				deDupeBuffer = append(deDupeBuffer, tapEvent)
@@ -157,7 +157,7 @@ func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, er
 				// and reset buffer.
 				if len(deDupeBuffer) >= deDuplicationWindowSize {
 					dedupeAndForward(deDupeBuffer, channel)
-					deDupeBuffer = []walrus.TapEvent{}
+					deDupeBuffer = []sgbucket.TapEvent{}
 				}
 
 			case <-time.After(deDuplicationTimeoutMs):
@@ -165,7 +165,7 @@ func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, er
 				// give up on waiting for the buffer to fill up,
 				// de-dupe and send what we currently have
 				dedupeAndForward(deDupeBuffer, channel)
-				deDupeBuffer = []walrus.TapEvent{}
+				deDupeBuffer = []sgbucket.TapEvent{}
 
 			}
 		}
@@ -186,23 +186,23 @@ func (b *LeakyBucket) VBHash(docID string) uint32 {
 	return b.bucket.VBHash(docID)
 }
 
-// An implementation of a walrus tap feed that wraps and de-duplicates
+// An implementation of a sgbucket tap feed that wraps and de-duplicates
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
 type deDuplicatorTapFeedImpl struct {
-	channel        chan walrus.TapEvent
-	wrappedTapFeed walrus.TapFeed
+	channel        chan sgbucket.TapEvent
+	wrappedTapFeed sgbucket.TapFeed
 }
 
 func (feed *deDuplicatorTapFeedImpl) Close() error {
 	return feed.wrappedTapFeed.Close()
 }
 
-func (feed *deDuplicatorTapFeedImpl) Events() <-chan walrus.TapEvent {
+func (feed *deDuplicatorTapFeedImpl) Events() <-chan sgbucket.TapEvent {
 	return feed.channel
 }
 
-func dedupeAndForward(tapEvents []walrus.TapEvent, destChannel chan<- walrus.TapEvent) {
+func dedupeAndForward(tapEvents []sgbucket.TapEvent, destChannel chan<- sgbucket.TapEvent) {
 
 	deduped := dedupeTapEvents(tapEvents)
 
@@ -212,13 +212,13 @@ func dedupeAndForward(tapEvents []walrus.TapEvent, destChannel chan<- walrus.Tap
 
 }
 
-func dedupeTapEvents(tapEvents []walrus.TapEvent) []walrus.TapEvent {
+func dedupeTapEvents(tapEvents []sgbucket.TapEvent) []sgbucket.TapEvent {
 
 	// For each document key, keep track of the latest seen tapEvent
 	// doc1 -> tapEvent with Seq=1
 	// doc2 -> tapEvent with Seq=5
 	// (if tapEvent with Seq=7 comes in for doc1, it will clobber existing)
-	latestTapEventPerKey := map[string]walrus.TapEvent{}
+	latestTapEventPerKey := map[string]sgbucket.TapEvent{}
 
 	for _, tapEvent := range tapEvents {
 		key := string(tapEvent.Key)
@@ -229,7 +229,7 @@ func dedupeTapEvents(tapEvents []walrus.TapEvent) []walrus.TapEvent {
 	// is in latestTapEventPerKey, and discard all previous mutations
 	// of that doc.  This will preserve the original
 	// sequence order as read off the feed.
-	deduped := []walrus.TapEvent{}
+	deduped := []sgbucket.TapEvent{}
 	for _, tapEvent := range tapEvents {
 		key := string(tapEvent.Key)
 		latestTapEventForKey := latestTapEventPerKey[key]

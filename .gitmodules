@@ -43,3 +43,6 @@
 [submodule "src/github.com/couchbase/go-couchbase"]
 	path = src/github.com/couchbase/go-couchbase
 	url = https://github.com/couchbase/go-couchbase.git
+[submodule "src/github.com/couchbase/sg-bucket"]
+	path = src/github.com/couchbase/sg-bucket
+	url = https://github.com/couchbase/sg-bucket.git

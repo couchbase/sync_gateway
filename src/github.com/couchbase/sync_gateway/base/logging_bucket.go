@@ -1,8 +1,9 @@
 package base
 
 import (
-	"github.com/couchbaselabs/walrus"
 	"time"
+
+	"github.com/couchbase/sg-bucket"
 )
 
 // A wrapper around a Bucket that transparently adds logging of all the API calls.
@@ -54,17 +55,17 @@ func (b *LoggingBucket) Delete(k string) error {
 	defer func() { LogTo("Bucket", "Delete(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.Delete(k)
 }
-func (b *LoggingBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) error {
+func (b *LoggingBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Write(%q, 0x%x, %d, ..., 0x%x) [%v]", k, flags, exp, opt, time.Since(start)) }()
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
-func (b *LoggingBucket) Update(k string, exp int, callback walrus.UpdateFunc) (err error) {
+func (b *LoggingBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Update(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LoggingBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) (err error) {
+func (b *LoggingBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) (err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)
@@ -89,7 +90,7 @@ func (b *LoggingBucket) DeleteDDoc(docname string) error {
 	defer func() { LogTo("Bucket", "DeleteDDoc(%q, ...) [%v]", docname, time.Since(start)) }()
 	return b.bucket.DeleteDDoc(docname)
 }
-func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
+func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "View(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
 	return b.bucket.View(ddoc, name, params)
@@ -99,7 +100,7 @@ func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interfac
 	defer func() { LogTo("Bucket", "ViewCustom(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
-func (b *LoggingBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "StartTapFeed(...) [%v]", time.Since(start)) }()
 	return b.bucket.StartTapFeed(args)

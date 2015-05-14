@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto"
 	_ "github.com/robertkrimen/otto/underscore"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -95,11 +95,11 @@ const funcWrapper = `
 
 // An object that runs a specific JS sync() function. Not thread-safe!
 type SyncRunner struct {
-	walrus.JSRunner                      // "Superclass"
-	output          *ChannelMapperOutput // Results being accumulated while the JS fn runs
-	channels        []string
-	access          map[string][]string // channels granted to users via access() callback
-	roles           map[string][]string // roles granted to users via role() callback
+	sgbucket.JSRunner                      // "Superclass"
+	output            *ChannelMapperOutput // Results being accumulated while the JS fn runs
+	channels          []string
+	access            map[string][]string // channels granted to users via access() callback
+	roles             map[string][]string // roles granted to users via role() callback
 }
 
 func NewSyncRunner(funcSource string) (*SyncRunner, error) {

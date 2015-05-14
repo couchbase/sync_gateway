@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/walrus"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -405,7 +406,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	return
 }
 
-func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
+func (db *Database) queryAllDocs(reduce bool) (sgbucket.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewAllDocs, opts)
 	if err != nil {

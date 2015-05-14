@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/couchbaselabs/walrus"
 	"github.com/couchbase/gomemcached"
+	"github.com/couchbase/sg-bucket"
 )
 
 // Simple error implementation wrapping an HTTP response status.
@@ -55,7 +55,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(err.Body), err.Status.String())
 		}
-	case walrus.MissingError:
+	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
 	case *json.SyntaxError, *json.UnmarshalTypeError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", err)
@@ -94,7 +94,7 @@ func IsDocNotFoundError(err error) bool {
 	switch err := err.(type) {
 	case *gomemcached.MCResponse:
 		return err.Status == gomemcached.KEY_ENOENT || err.Status == gomemcached.NOT_STORED
-	case walrus.MissingError:
+	case sgbucket.MissingError:
 		return true
 	case *HTTPError:
 		return err.Status == http.StatusNotFound
