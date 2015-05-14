@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -26,7 +27,6 @@ type RevInfo struct {
 	Deleted  bool
 	Body     []byte
 	Channels base.Set
-	depth    uint32
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
@@ -36,11 +36,12 @@ type RevTree map[string]*RevInfo
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs     []string   `json:"revs"`              // The revision IDs
-	Parents  []int      `json:"parents"`           // Index of parent of each revision (-1 if root)
-	Deleted  []int      `json:"deleted,omitempty"` // Indexes of revisions that are deletions
-	Bodies   []string   `json:"bodies,omitempty"`  // JSON of each revision
-	Channels []base.Set `json:"channels"`
+	Revs       []string          `json:"revs"`              // The revision IDs
+	Parents    []int             `json:"parents"`           // Index of parent of each revision (-1 if root)
+	Deleted    []int             `json:"deleted,omitempty"` // Indexes of revisions that are deletions
+	Bodies_Old []string          `json:"bodies,omitempty"`  // JSON of each revision (legacy)
+	BodyMap    map[string]string `json:"bodymap,omitempty"` // JSON of each revision
+	Channels   []base.Set        `json:"channels"`
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
@@ -48,7 +49,6 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	rep := revTreeList{
 		Revs:     make([]string, n),
 		Parents:  make([]int, n),
-		Bodies:   make([]string, n),
 		Channels: make([]base.Set, n),
 	}
 	revIndexes := map[string]int{"": -1}
@@ -57,7 +57,12 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	for _, info := range tree {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
-		rep.Bodies[i] = string(info.Body)
+		if info.Body != nil {
+			if rep.BodyMap == nil {
+				rep.BodyMap = make(map[string]string, 1)
+			}
+			rep.BodyMap[strconv.FormatInt(int64(i), 10)] = string(info.Body)
+		}
 		rep.Channels[i] = info.Channels
 		if info.Deleted {
 			if rep.Deleted == nil {
@@ -88,8 +93,12 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
-		if rep.Bodies != nil && len(rep.Bodies[i]) > 0 {
-			info.Body = []byte(rep.Bodies[i])
+		if rep.BodyMap != nil {
+			if body := rep.BodyMap[strconv.FormatInt(int64(i), 10)]; body != "" {
+				info.Body = []byte(body)
+			}
+		} else if rep.Bodies_Old != nil && len(rep.Bodies_Old[i]) > 0 {
+			info.Body = []byte(rep.Bodies_Old[i])
 		}
 		if rep.Channels != nil {
 			info.Channels = rep.Channels[i]
@@ -268,64 +277,57 @@ func (tree RevTree) getParsedRevisionBody(revid string) Body {
 	return body
 }
 
-// Copies a RevTree.
+// Deep-copies a RevTree.
 func (tree RevTree) copy() RevTree {
 	result := RevTree{}
 	for rev, info := range tree {
-		result[rev] = info
+		copiedInfo := *info
+		result[rev] = &copiedInfo
 	}
 	return result
 }
 
-//////// PRUNING THE TREE (REVS_LIMIT)
-
-// Initializes the depth field of every tree node, computed as the distance to the closest leaf.
-func (tree RevTree) computeDepths() (maxDepth uint32) {
-	// TODO: Should deleted leaves be penalized since they're not very useful?
-	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
-	for _, info := range tree {
-		info.depth = math.MaxUint32
-	}
-	// Walk from each leaf to its root, assigning ancestors consecutive depths,
-	// but stopping if we'd increase an already-visited ancestor's depth:
-	for _, revid := range tree.GetLeaves() {
-		var depth uint32 = 1
-		for node := tree[revid]; node != nil; node = tree[node.Parent] {
-			if node.depth <= depth {
-				break // This hierarchy already has a shorter path to another leaf
-			}
-			node.depth = depth
-			if depth > maxDepth {
-				maxDepth = depth
-			}
-			depth++
-		}
-	}
-	return
-}
-
-// Removes older ancestor nodes from the tree so that no node's depth is greater than maxDepth.
+// Removes older ancestor nodes from the tree; if there are no conflicts, the tree's depth will be
+// <= maxDepth. The revision named by `keepRev` will not be pruned (unless `keepRev` is empty.)
 // Returns the number of nodes pruned.
-func (tree RevTree) pruneRevisions(maxDepth uint32) (pruned int) {
-	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
-		return
+func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
+	if len(tree) <= int(maxDepth) {
+		return 0
 	}
 
-	// Delete nodes whose depth is greater than maxDepth:
-	for revid, node := range tree {
-		if node.depth > maxDepth {
-			delete(tree, revid)
-			pruned++
+	// Find the minimum generation that has a non-deleted leaf:
+	minLeafGen := math.MaxUint32
+	maxDeletedLeafGen := 0
+	for _, revid := range tree.GetLeaves() {
+		gen := genOfRevID(revid)
+		if tree[revid].Deleted {
+			if gen > maxDeletedLeafGen {
+				maxDeletedLeafGen = gen
+			}
+		} else if gen > 0 && gen < minLeafGen {
+			minLeafGen = gen
 		}
 	}
 
-	// Finally, snip dangling Parent links:
-	if pruned > 0 {
-		for _, node := range tree {
-			if node.Parent != "" {
-				if _, found := tree[node.Parent]; !found {
-					node.Parent = ""
-				}
+	if minLeafGen == math.MaxUint32 {
+		// If there are no non-deleted leaves, use the deepest leaf's generation
+		minLeafGen = maxDeletedLeafGen
+	}
+	minGenToKeep := int(minLeafGen) - int(maxDepth) + 1
+
+	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
+		// Make sure keepRev's generation isn't pruned
+		minGenToKeep = gen
+	}
+
+	// Delete nodes whose generation is less than minGenToKeep:
+	if minGenToKeep > 1 {
+		for revid, node := range tree {
+			if gen := genOfRevID(revid); gen < minGenToKeep {
+				delete(tree, revid)
+				pruned++
+			} else if gen == minGenToKeep {
+				node.Parent = ""
 			}
 		}
 	}
@@ -343,8 +345,7 @@ func ParseRevisions(body Body) []string {
 		if !ok {
 			return nil
 		}
-		gen, _ := parseRevID(revid)
-		if gen < 1 {
+		if genOfRevID(revid) < 1 {
 			return nil
 		}
 		oneRev := make([]string, 0, 1)

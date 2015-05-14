@@ -306,6 +306,28 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 			c.processEntry(change)
 		}
 
+		// If the recent sequence history includes any sequences earlier than the current sequence, and
+		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
+		// so that they are included in sequence buffering.
+		currentSequence := doc.Sequence
+		if len(doc.UnusedSequences) > 0 {
+			currentSequence = doc.UnusedSequences[0]
+		}
+
+		if len(doc.RecentSequences) > 0 {
+			nextSeq := c.getNextSequence()
+			for _, seq := range doc.RecentSequences {
+				if seq >= nextSeq && seq < currentSequence {
+					base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+					change := &LogEntry{
+						Sequence:     seq,
+						TimeReceived: time.Now(),
+					}
+					c.processEntry(change)
+				}
+			}
+		}
+
 		// Now add the entry for the new doc revision:
 		change := &LogEntry{
 			Sequence:     doc.Sequence,
@@ -393,7 +415,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
-		if c.RemoveSkipped(sequence) != nil {
+		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
 			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
@@ -402,7 +424,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		}
 
 		changedChannels = c._addToCache(change)
-
+		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
+		// in cache
+		c.RemoveSkipped(sequence)
 	}
 	return changedChannels
 }
@@ -426,6 +450,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	func() {
 		if change.Skipped {
 			c.lateSeqLock.Lock()
+			base.LogTo("Sequences", "Acquired late sequence lock for %d", change.Sequence)
 			defer c.lateSeqLock.Unlock()
 		}
 
@@ -440,12 +465,15 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 			}
 		}
 
+		if EnableStarChannelLog {
+			channelCache := c._getChannelCache(channels.UserStarChannel)
+			channelCache.addToCache(change, false)
+			addedTo = append(addedTo, channels.UserStarChannel)
+			if change.Skipped {
+				channelCache.AddLateSequence(change)
+			}
+		}
 	}()
-
-	if EnableStarChannelLog {
-		c._getChannelCache(channels.UserStarChannel).addToCache(change, false)
-		addedTo = append(addedTo, channels.UserStarChannel)
-	}
 
 	// Record a histogram of the overall lag from the time the doc was saved:
 	lag := time.Since(change.TimeSaved)
@@ -487,6 +515,12 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	return c._getChannelCache(channelName)
 }
 
+func (c *changeCache) getNextSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
+}
+
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
@@ -526,6 +560,7 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	c.skippedSeqLock.RLock()
 	defer c.skippedSeqLock.RUnlock()
 	if len(c.skippedSeqs) > 0 {
+		base.LogTo("Sequences", "get oldest, returning: %d", c.skippedSeqs[0].seq)
 		return c.skippedSeqs[0].seq
 	} else {
 		return uint64(0)
@@ -558,6 +593,13 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	return c.skippedSeqs.Remove(x)
 }
 
+func (c *changeCache) WasSkipped(x uint64) bool {
+	c.skippedSeqLock.RLock()
+	defer c.skippedSeqLock.RUnlock()
+
+	return c.skippedSeqs.Contains(x)
+}
+
 func (c *changeCache) PushSkipped(sequence uint64) {
 
 	c.skippedSeqLock.Lock()
@@ -574,6 +616,18 @@ func (h *SkippedSequenceQueue) Remove(x uint64) error {
 		return nil
 	} else {
 		return errors.New("Value not found")
+	}
+
+}
+
+// Contains does a simple search to detect presence
+func (h SkippedSequenceQueue) Contains(x uint64) bool {
+
+	i := SearchSequenceQueue(h, x)
+	if i < len(h) && h[i].seq == x {
+		return true
+	} else {
+		return false
 	}
 
 }

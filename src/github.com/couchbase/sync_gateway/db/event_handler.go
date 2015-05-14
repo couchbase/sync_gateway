@@ -30,7 +30,7 @@ type Webhook struct {
 const kDefaultWebhookTimeout = 60
 
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(url string, filterFnString string, timeout uint64) (*Webhook, error) {
+func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, error) {
 
 	var err error
 
@@ -46,8 +46,8 @@ func NewWebhook(url string, filterFnString string, timeout uint64) (*Webhook, er
 		wh.filter = NewJSEventFunction(filterFnString)
 	}
 
-	if timeout != 0 {
-		wh.timeout = time.Duration(timeout) * time.Second
+	if timeout != nil {
+		wh.timeout = time.Duration(*timeout) * time.Second
 	} else {
 		wh.timeout = time.Duration(kDefaultWebhookTimeout) * time.Second
 	}
@@ -90,16 +90,23 @@ func (wh *Webhook) HandleEvent(event Event) {
 		base.Warn("Webhook invoked for unsupported event type.")
 		return
 	}
+	func() {
+		client := http.Client{Timeout: wh.timeout}
+		resp, err := client.Post(wh.url, contentType, payload)
+		defer func() {
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
+			}
+		}()
 
-	client := http.Client{Timeout: wh.timeout}
-	resp, err := client.Post(wh.url, contentType, payload)
-	if err != nil {
-		base.Warn("Error attempting to post to url %s: %s", wh.url, err)
-		return
-	}
+		if err != nil {
+			base.Warn("Error attempting to post to url %s: %s -- %+v", wh.url, err)
+			return
+		}
 
-	base.LogTo("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-		payload, wh.url, resp.Status)
+		base.LogTo("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
+			payload, wh.url, resp.Status)
+	}()
 
 }
 

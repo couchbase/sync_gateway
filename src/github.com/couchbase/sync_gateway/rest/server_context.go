@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -259,6 +259,8 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
+	emitAccessRelatedWarnings(config, dbcontext)
+
 	// Install bucket-shadower if any:
 	if shadow := config.Shadow; shadow != nil {
 		if err := sc.startShadowing(dbcontext, shadow); err != nil {
@@ -267,22 +269,9 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 	}
 
-	// Initialize event handlers, if any:
-	if config.EventHandlers != nil {
-		// Process document commit event handlers
-		if err = sc.processEventHandlersForEvent(config.EventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
-			return nil, err
-		}
-		// WaitForProcess uses string, to support both omitempty and zero values
-		customWaitTime := int64(-1)
-		if config.EventHandlers.WaitForProcess != "" {
-			customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
-			if err != nil {
-				customWaitTime = -1
-				base.Warn("Error parsing wait_for_process from config, using default %s", err)
-			}
-		}
-		dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+	// Initialize event handlers
+	if err := sc.initEventHandlers(dbcontext, config); err != nil {
+		return nil, err
 	}
 
 	// Register it so HTTP handlers can find it:
@@ -291,6 +280,58 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	// Save the config
 	sc.config.Databases[config.Name] = config
 	return dbcontext, nil
+}
+
+// Initialize event handlers, if present
+func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) error {
+	if config.EventHandlers != nil {
+
+		// Temporary solution to do validation of invalid event types in config.EventHandlers.
+		// config.EventHandlers is originally unmarshalled as interface{} so that we retain any
+		// invalid keys during the original config unmarshalling.  We validate the expected entries
+		// manually and throw an error for any invalid keys.  Then remarshal and
+		// unmarshal as EventHandlerConfig (considered manual reflection, but was too painful).  Comes with
+		// some overhead, but will only happen on startup/new config.
+		// Should be replaced when we implement full schema validation on config.
+
+		eventHandlers := &EventHandlerConfig{}
+		eventHandlersMap, ok := config.EventHandlers.(map[string]interface{})
+		if !ok {
+			return errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbcontext.Name))
+		}
+
+		// validate event-related keys
+		for k, _ := range eventHandlersMap {
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" {
+				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
+			}
+		}
+
+		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(eventHandlersJSON, eventHandlers); err != nil {
+			return err
+		}
+
+		// Process document commit event handlers
+		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+			return err
+		}
+		// WaitForProcess uses string, to support both omitempty and zero values
+		customWaitTime := int64(-1)
+		if eventHandlers.WaitForProcess != "" {
+			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
+			if err != nil {
+				customWaitTime = -1
+				base.Warn("Error parsing wait_for_process from config, using default %s", err)
+			}
+		}
+		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
+
+	}
+	return nil
 }
 
 // Adds a database to the ServerContext given its configuration.  If an existing config is found
@@ -352,8 +393,10 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		spec.Auth = shadow
 	}
 
-	bucket, err := db.ConnectToBucket(spec)
+	bucket, err := base.GetBucket(spec)
 	if err != nil {
+		err = base.HTTPErrorf(http.StatusBadGateway,
+			"Unable to connect to shadow bucket: %s", err)
 		return err
 	}
 	shadower, err := db.NewShadower(dbcontext, bucket, pattern)
@@ -387,7 +430,7 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 
 func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
 	for name, princ := range spec {
-		isGuest := name == "GUEST"
+		isGuest := name == base.GuestUsername
 		if isGuest {
 			internalName := ""
 			princ.Name = &internalName
@@ -508,4 +551,70 @@ func (sc *ServerContext) Stats() map[string]interface{} {
 		"deploymentID": *sc.config.DeploymentID,
 		"databases":    stats,
 	}
+}
+
+///////// ACCESS WARNINGS
+
+// If no users defined (config or bucket), issue a warning + give tips to fix
+// If guest user defined, but has no access to channels .. issue warning + tips to fix
+func emitAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext) {
+	for _, warning := range collectAccessRelatedWarnings(config, context) {
+		base.Warn("%v", warning)
+	}
+
+}
+
+func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext) []string {
+
+	currentDb, err := db.GetDatabase(context, nil)
+	if err != nil {
+		base.Warn("Could not get database, skipping access related warnings")
+	}
+
+	numUsersInDb := 0
+
+	// If no users defined in config, and no users were returned from the view, add warning.
+	// NOTE: currently ignoring the fact that the config could contain only disabled=true users.
+	if len(config.Users) == 0 {
+
+		// There are no users in the config, but there might be users in the db.  Find out
+		// by querying the "view principals" view which will return users and roles.  We only want to
+		// find out if there is at least one user (or role) defined, so set limit == 1 to minimize
+		// performance hit of query.
+		viewOptions := db.Body{
+			"stale": false,
+			"limit": 1,
+		}
+		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway, db.ViewPrincipals, viewOptions)
+		if err != nil {
+			base.Warn("Error trying to query ViewPrincipals: %v", err)
+			return []string{}
+		}
+
+		numUsersInDb = len(vres.Rows)
+
+		if len(vres.Rows) == 0 {
+			noUsersWarning := fmt.Sprintf("No users have been defined in the '%v' database, which means that you will not be able to get useful data out of the sync gateway over the standard port.  FIX: define users in the configuration json or via the REST API on the admin port, and grant users to channels via the admin_channels parameter.", currentDb.Name)
+
+			return []string{noUsersWarning}
+
+		}
+
+	}
+
+	// If the GUEST user is the *only* user defined, but it is disabled or has no access to channels, add warning
+	guestUser, ok := config.Users[base.GuestUsername]
+	if ok == true {
+		// Do we have any other users?  If so, we're done.
+		if len(config.Users) > 1 || numUsersInDb > 1 {
+			return []string{}
+		}
+		if guestUser.Disabled == true || len(guestUser.ExplicitChannels) == 0 {
+			noGuestChannelsWarning := fmt.Sprintf("The GUEST user is the only user defined in the '%v' database, but is either disabled or has no access to any channels.  This means that you will not be able to get useful data out of the sync gateway over the standard port.  FIX: enable and/or grant access to the GUEST user to channels via the admin_channels parameter.", currentDb.Name)
+			return []string{noGuestChannelsWarning}
+		}
+	}
+
+	return []string{}
+
 }

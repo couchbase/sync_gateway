@@ -1,0 +1,60 @@
+package base
+
+import (
+	"testing"
+
+	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbaselabs/walrus"
+)
+
+func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
+
+	tapEvents := []walrus.TapEvent{
+		walrus.TapEvent{
+			Opcode:   walrus.TapMutation,
+			Key:      []byte("doc1"),
+			Value:    []byte(`".."`),
+			Sequence: 1,
+		},
+		walrus.TapEvent{
+			Opcode:   walrus.TapMutation,
+			Key:      []byte("doc1"),
+			Value:    []byte(`".."`),
+			Sequence: 2,
+		},
+	}
+
+	deduped := dedupeTapEvents(tapEvents)
+
+	// make sure that one was deduped
+	assert.Equals(t, len(deduped), 1)
+
+	// make sure the earlier event was deduped
+	dedupedEvent := deduped[0]
+	assert.True(t, dedupedEvent.Sequence == 2)
+
+}
+
+func TestDedupeNoDedupeDifferentDocs(t *testing.T) {
+
+	tapEvents := []walrus.TapEvent{
+		walrus.TapEvent{
+			Opcode:   walrus.TapMutation,
+			Key:      []byte("doc1"),
+			Value:    []byte(`".."`),
+			Sequence: 1,
+		},
+		walrus.TapEvent{
+			Opcode:   walrus.TapMutation,
+			Key:      []byte("doc2"),
+			Value:    []byte(`".."`),
+			Sequence: 2,
+		},
+	}
+
+	deduped := dedupeTapEvents(tapEvents)
+
+	// make sure that nothing was deduped
+	assert.True(t, len(deduped) == 2)
+
+}

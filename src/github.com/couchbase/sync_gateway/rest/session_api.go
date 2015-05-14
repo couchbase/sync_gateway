@@ -181,7 +181,7 @@ func (h *handler) createUserSession() error {
 	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
-	} else if params.Name == "" || params.Name == "GUEST" || !auth.IsValidPrincipalName(params.Name) {
+	} else if params.Name == "" || params.Name == base.GuestUsername || !auth.IsValidPrincipalName(params.Name) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing user name")
 	} else if user, err := h.db.Authenticator().GetUser(params.Name); user == nil {
 		if err == nil {

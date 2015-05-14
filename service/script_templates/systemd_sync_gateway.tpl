@@ -4,6 +4,7 @@ After=syslog.target
 After=network.target
 
 [Service]
+LimitNOFILE=65535
 Environment=\"RUNBASE=${RUNBASE_TEMPLATE_VAR}\"
 Environment=\"GATEWAY=${GATEWAY_TEMPLATE_VAR}\"
 Environment=\"CONFIG=${CONFIG_TEMPLATE_VAR}\"

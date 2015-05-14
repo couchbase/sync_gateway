@@ -1,6 +1,3 @@
-[submodule "src/github.com/couchbaselabs/go-couchbase"]
-	path = src/github.com/couchbaselabs/go-couchbase
-	url = https://github.com/couchbaselabs/go-couchbase
 [submodule "src/github.com/couchbaselabs/go.assert"]
 	path = src/github.com/couchbaselabs/go.assert
 	url = https://github.com/couchbaselabs/go.assert
@@ -43,6 +40,9 @@
 [submodule "src/golang.org/x/text"]
 	path = src/golang.org/x/text
 	url = https://go.googlesource.com/text
+[submodule "src/github.com/couchbase/go-couchbase"]
+	path = src/github.com/couchbase/go-couchbase
+	url = https://github.com/couchbase/go-couchbase.git
 [submodule "src/github.com/snej/go-blip"]
 	path = src/github.com/snej/go-blip
 	url = https://github.com/snej/go-blip
