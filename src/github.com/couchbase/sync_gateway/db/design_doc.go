@@ -123,21 +123,42 @@ func filterViewResult(input walrus.ViewResult, user auth.User) (result walrus.Vi
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
 	}
+
+	invalidValueFormat := false
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*walrus.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		value := row.Value.([]interface{})
-		// value[0] is the array of channels; value[1] is the actual value
-		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
-			// Add this row:
+		value, ok := row.Value.([]interface{})
+		var rowValue interface{}
+
+		if ok {
+			// value[0] is the array of channels; value[1] is the actual value
+			if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+				rowValue = value[1]
+			}
+		} else {
+			// row.Value isn't []interface{} - could be a reduce view.
+			// If we don't care about channel filtering (i.e. admin or user with access to * channel), return the value as-is
+			if !checkChannels {
+				rowValue = row.Value
+			} else {
+				// otherwise set a flag to log a warning
+				invalidValueFormat = true
+			}
+		}
+
+		if rowValue != nil {
 			stripSyncProperty(row)
 			result.Rows = append(result.Rows, &walrus.ViewRow{
 				Key:   row.Key,
-				Value: value[1],
+				Value: rowValue,
 				ID:    row.ID,
 				Doc:   row.Doc,
 			})
 		}
+	}
+	if invalidValueFormat {
+		base.Warn("Unexpected format for viewResult value - may occur for public API view calls against views with a reduce function.")
 	}
 	return
 }
