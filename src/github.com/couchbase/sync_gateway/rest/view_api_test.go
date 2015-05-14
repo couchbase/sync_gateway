@@ -11,12 +11,13 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/channels"
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/channels"
+
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbaselabs/walrus"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -57,17 +58,17 @@ func TestViewQuery(t *testing.T) {
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
 	assertStatus(t, response, 200)
-	var result walrus.ViewResult
+	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &walrus.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
-	assert.DeepEquals(t, result.Rows[1], &walrus.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0], &walrus.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9&include_docs=true", ``)
 	assertStatus(t, response, 200)
@@ -96,7 +97,7 @@ func TestUserViewQuery(t *testing.T) {
 	request.SetBasicAuth("quinn", "123456")
 	response = rt.send(request)
 	assertStatus(t, response, 200)
-	var result walrus.ViewResult
+	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
 	row := result.Rows[0]

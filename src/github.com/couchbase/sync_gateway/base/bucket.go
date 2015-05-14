@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -32,9 +33,9 @@ func init() {
 	gomemcached.MaxBodyLen = int(20 * 1024 * 1024)
 }
 
-type Bucket walrus.Bucket
-type TapArguments walrus.TapArguments
-type TapFeed walrus.TapFeed
+type Bucket sgbucket.Bucket
+type TapArguments sgbucket.TapArguments
+type TapFeed sgbucket.TapFeed
 type AuthHandler couchbase.AuthHandler
 
 // Full specification of how to connect to a bucket
@@ -43,7 +44,7 @@ type BucketSpec struct {
 	Auth                                   AuthHandler
 }
 
-// Implementation of walrus.Bucket that talks to a Couchbase server
+// Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
 	*couchbase.Bucket
 	spec BucketSpec // keep a copy of the BucketSpec for DCP usage
@@ -51,12 +52,12 @@ type CouchbaseBucket struct {
 
 type couchbaseFeedImpl struct {
 	*couchbase.TapFeed
-	events <-chan walrus.TapEvent
+	events <-chan sgbucket.TapEvent
 }
 
 var versionString string
 
-func (feed *couchbaseFeedImpl) Events() <-chan walrus.TapEvent {
+func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.TapEvent {
 	return feed.events
 }
 
@@ -64,15 +65,15 @@ func (bucket CouchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
-func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt walrus.WriteOptions) (err error) {
+func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) (err error) {
 	return bucket.Bucket.Write(k, flags, exp, v, couchbase.WriteOptions(opt))
 }
 
-func (bucket CouchbaseBucket) Update(k string, exp int, callback walrus.UpdateFunc) error {
+func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
 }
 
-func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdateFunc) error {
+func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, err := callback(current)
 		opt = couchbase.WriteOptions(walrusOpt)
@@ -81,12 +82,12 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback walrus.Wri
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
-func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (walrus.ViewResult, error) {
-	vres := walrus.ViewResult{}
+func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+	vres := sgbucket.ViewResult{}
 	return vres, bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
 }
 
-func (bucket CouchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	// Uses tap by default, unless DCP is explicitly specified
 	if bucket.spec.FeedType == DcpFeedType {
 		feed, err := bucket.StartDCPFeed(args)
@@ -102,7 +103,7 @@ func (bucket CouchbaseBucket) StartTapFeed(args walrus.TapArguments) (walrus.Tap
 	}
 }
 
-func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	cbArgs := memcached.TapArguments{
 		Backfill: args.Backfill,
 		Dump:     args.Dump,
@@ -113,13 +114,13 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (w
 		return nil, err
 	}
 
-	// Create a bridge from the Couchbase tap feed to a Walrus tap feed:
-	events := make(chan walrus.TapEvent)
+	// Create a bridge from the Couchbase tap feed to a Sgbucket tap feed:
+	events := make(chan sgbucket.TapEvent)
 	tapFeed := couchbaseFeedImpl{cbFeed, events}
 	go func() {
 		for cbEvent := range cbFeed.C {
-			events <- walrus.TapEvent{
-				Opcode:   walrus.TapOpcode(cbEvent.Opcode),
+			events <- sgbucket.TapEvent{
+				Opcode:   sgbucket.TapOpcode(cbEvent.Opcode),
 				Expiry:   cbEvent.Expiry,
 				Flags:    cbEvent.Flags,
 				Key:      cbEvent.Key,
@@ -132,7 +133,7 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args walrus.TapArguments) (w
 }
 
 // Start cbdatasource-based DCP feed, using DCPReceiver.
-func (bucket CouchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
+func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
@@ -163,7 +164,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.Tap
 		return nil, errors.New("Error retrieving stats-vbseqno - DCP not supported")
 	}
 
-	if args.Backfill == walrus.TapNoBackfill {
+	if args.Backfill == sgbucket.TapNoBackfill {
 		// For non-backfill, use vbucket uuids, high sequence numbers
 		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
 		vbuuids = statsUuids
@@ -188,7 +189,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args walrus.TapArguments) (walrus.Tap
 		return nil, err
 	}
 
-	events := make(chan walrus.TapEvent)
+	events := make(chan sgbucket.TapEvent)
 	dcpFeed := couchbaseDCPFeedImpl{bds, events}
 
 	if err = bds.Start(); err != nil {
@@ -328,7 +329,7 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
-		walrus.Logging = LogKeys["Walrus"]
+		sgbucket.Logging = LogKeys["Walrus"]
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 	} else {
 		suffix := ""

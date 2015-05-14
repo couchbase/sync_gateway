@@ -3,21 +3,21 @@ package base
 import (
 	"testing"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbaselabs/walrus"
 )
 
 func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 
-	tapEvents := []walrus.TapEvent{
-		walrus.TapEvent{
-			Opcode:   walrus.TapMutation,
+	tapEvents := []sgbucket.TapEvent{
+		sgbucket.TapEvent{
+			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc1"),
 			Value:    []byte(`".."`),
 			Sequence: 1,
 		},
-		walrus.TapEvent{
-			Opcode:   walrus.TapMutation,
+		sgbucket.TapEvent{
+			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc1"),
 			Value:    []byte(`".."`),
 			Sequence: 2,
@@ -37,15 +37,15 @@ func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 
 func TestDedupeNoDedupeDifferentDocs(t *testing.T) {
 
-	tapEvents := []walrus.TapEvent{
-		walrus.TapEvent{
-			Opcode:   walrus.TapMutation,
+	tapEvents := []sgbucket.TapEvent{
+		sgbucket.TapEvent{
+			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc1"),
 			Value:    []byte(`".."`),
 			Sequence: 1,
 		},
-		walrus.TapEvent{
-			Opcode:   walrus.TapMutation,
+		sgbucket.TapEvent{
+			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc2"),
 			Value:    []byte(`".."`),
 			Sequence: 2,
