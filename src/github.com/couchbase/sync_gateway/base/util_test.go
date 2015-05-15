@@ -48,4 +48,8 @@ func TestBackQuotedStrings(t *testing.T) {
 	input = "{\"foo\": `bar\n`, \"baz\": `howdy`}"
 	output = ConvertBackQuotedStrings([]byte(input))
 	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "howdy"}`)
+
+	input = "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}"
+	output = ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
 }
