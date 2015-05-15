@@ -65,6 +65,10 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		couchbase.PoolOverflow = *config.MaxCouchbaseOverflow
 	}
 
+	if config.CouchbaseKeepaliveInterval != nil {
+		couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
+	}
+
 	slow := kDefaultSlowServerCallWarningThreshold
 	if config.SlowServerCallWarningThreshold != nil {
 		slow = *config.SlowServerCallWarningThreshold
