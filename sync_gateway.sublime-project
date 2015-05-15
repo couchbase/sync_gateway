@@ -12,7 +12,7 @@
 				".*"
 			],
 			"follow_symlinks": true,
-			"path": "src/github.com/couchbaselabs/go-couchbase"
+			"path": "src/github.com/couchbase/go-couchbase"
 		},
 		{
 			"file_exclude_patterns":
