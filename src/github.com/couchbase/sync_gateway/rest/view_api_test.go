@@ -11,9 +11,12 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/channels"
+	"fmt"
+	"log"
 	"net/http"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbaselabs/walrus"
@@ -95,21 +98,23 @@ func TestUserViewQuery(t *testing.T) {
 	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?include_docs=true", nil)
 	request.SetBasicAuth("quinn", "123456")
 	response = rt.send(request)
-	assertStatus(t, response, 200)
+
 	var result walrus.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 1)
-	row := result.Rows[0]
-	assert.Equals(t, row.Key, float64(7))
-	assert.Equals(t, row.Value, "seven")
-	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+
+	// For the 1.1 release, pass through view queries are not supported on port 4984.
+	// See https://github.com/couchbase/sync_gateway/issues/862
+	assertStatus(t, response, 403)
 
 	// Admin should see both rows:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?include_docs=true", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
+
+	log.Printf("result: %+v", result)
+
 	assert.Equals(t, len(result.Rows), 2)
-	row = result.Rows[0]
+	row := result.Rows[0]
+	log.Printf("row: %+v", row)
 	assert.Equals(t, row.Key, float64(7))
 	assert.Equals(t, row.Value, "seven")
 	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
@@ -123,4 +128,34 @@ func TestUserViewQuery(t *testing.T) {
 	request.SetBasicAuth("quinn", "123456")
 	response = rt.send(request)
 	assertStatus(t, response, 403)
+}
+
+func TestAdminReduceViewQuery(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+
+	// Create a view with a reduce:
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
+	assertStatus(t, response, 201)
+
+	for i := 0; i < 10; i++ {
+		// Create docs:
+		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":0, "value":"0", "channel":"W"}`)
+		assertStatus(t, response, 201)
+
+	}
+
+	var result walrus.ViewResult
+
+	// Admin view query:
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?include_docs=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// we should get 1 row with the reduce result
+	assert.Equals(t, len(result.Rows), 1)
+	row := result.Rows[0]
+	value := row.Value.(float64)
+	assert.True(t, value == 10)
+
 }
