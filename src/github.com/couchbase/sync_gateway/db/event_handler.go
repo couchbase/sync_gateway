@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/couchbase/sync_gateway/base"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
 )
@@ -24,6 +26,7 @@ type Webhook struct {
 	url     string
 	filter  *JSEventFunction
 	timeout time.Duration
+	client  *http.Client
 }
 
 // default HTTP post timeout
@@ -51,6 +54,10 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 	} else {
 		wh.timeout = time.Duration(kDefaultWebhookTimeout) * time.Second
 	}
+
+	// Initialize transport and client
+	transport := &http.Transport{DisableKeepAlives: false}
+	wh.client = &http.Client{Transport: transport, Timeout: wh.timeout}
 
 	return wh, err
 }
@@ -91,10 +98,11 @@ func (wh *Webhook) HandleEvent(event Event) {
 		return
 	}
 	func() {
-		client := http.Client{Timeout: wh.timeout}
-		resp, err := client.Post(wh.url, contentType, payload)
+		resp, err := wh.client.Post(wh.url, contentType, payload)
 		defer func() {
+			// Ensure we're closing the response, so it can be reused
 			if resp != nil && resp.Body != nil {
+				io.Copy(ioutil.Discard, resp.Body)
 				resp.Body.Close()
 			}
 		}()
