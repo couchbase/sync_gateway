@@ -42,7 +42,8 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) nextSequence() (uint64, error) {
-	s.mutex.Lock()
+	defer base.TraceExit(base.TraceEnter())
+	base.AcquireLockWithTracing(&s.mutex)
 	defer s.mutex.Unlock()
 	if s.last >= s.max {
 		if err := s._reserveSequences(1); err != nil {
@@ -54,6 +55,7 @@ func (s *sequenceAllocator) nextSequence() (uint64, error) {
 }
 
 func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
+	defer base.TraceExit(base.TraceEnter())
 	if s.last < s.max {
 		return nil // Already have some sequences left; don't be greedy and waste them
 		//OPT: Could remember multiple discontiguous ranges of free sequences
