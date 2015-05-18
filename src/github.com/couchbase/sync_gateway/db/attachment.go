@@ -41,6 +41,7 @@ type AttachmentKey string
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
+	defer base.TraceExit(base.TraceEnter())
 	var parentAttachments map[string]interface{}
 	atts := BodyAttachments(body)
 	if atts == nil && body["_attachments"] != nil {

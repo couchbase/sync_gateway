@@ -403,6 +403,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 // This is equivalent to the "new_edits":false mode of CouchDB.
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
+	defer base.TraceExit(base.TraceEnter())
 	newRev := docHistory[0]
 	generation, _ := parseRevID(newRev)
 	if generation < 0 {
@@ -410,6 +411,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	}
 	deleted, _ := body["_deleted"].(bool)
 	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
+		defer base.TraceExit(base.TraceEnter())
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -449,6 +451,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
+	defer base.TraceExit(base.TraceEnter())
 	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -463,6 +466,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var unusedSequences []uint64
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+		defer base.TraceExit(base.TraceEnter())
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
@@ -743,6 +747,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
 func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
+	defer base.TraceExit(base.TraceEnter())
 	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 
 	// Get the parent revision, to pass to the sync function:

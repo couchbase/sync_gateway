@@ -229,6 +229,7 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 
 // Records a revision in a RevTree.
 func (tree RevTree) addRevision(info RevInfo) {
+	defer base.TraceExit(base.TraceEnter())
 	revid := info.ID
 	if revid == "" {
 		panic("empty revid is illegal")
@@ -291,6 +292,7 @@ func (tree RevTree) copy() RevTree {
 // <= maxDepth. The revision named by `keepRev` will not be pruned (unless `keepRev` is empty.)
 // Returns the number of nodes pruned.
 func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
+	defer base.TraceExit(base.TraceEnter())
 	if len(tree) <= int(maxDepth) {
 		return 0
 	}
