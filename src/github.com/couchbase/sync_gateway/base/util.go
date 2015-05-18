@@ -10,15 +10,20 @@
 package base
 
 import (
-	"strconv"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
+
+// Regex to extract just the function name (and not the module path)
+var RE_stripFnPreamble = regexp.MustCompile(`^.*\.(.*)$`)
 
 func GenerateRandomSecret() string {
 	randomBytes := make([]byte, 20)
@@ -143,4 +148,54 @@ func (v *IntMax) SetIfMax(value int64) {
 	if value > v.i {
 		v.i = value
 	}
+}
+
+func AcquireLockWithTracing(mutex *sync.Mutex) {
+
+	startTimeLockAcquire := time.Now()
+
+	functionName := "<unknown>"
+	// Skip this function, and fetch the PC and file for its parent
+	pc, _, _, ok := runtime.Caller(1)
+	if ok {
+		functionName = RE_stripFnPreamble.ReplaceAllString(
+			runtime.FuncForPC(pc).Name(),
+			"$1",
+		)
+	}
+
+	defer func() {
+		delta := time.Since(startTimeLockAcquire)
+		if delta.Seconds() >= 1 {
+			Logf("%v mutex.Lock() took %v seconds", functionName, delta.Seconds())
+		}
+	}()
+
+	mutex.Lock()
+
+}
+
+func TraceEnter() (functionName string, timeEntered time.Time) {
+
+	functionName = "<unknown>"
+	// Skip this function, and fetch the PC and file for its parent
+	pc, _, _, ok := runtime.Caller(1)
+	if ok {
+		functionName = RE_stripFnPreamble.ReplaceAllString(
+			runtime.FuncForPC(pc).Name(),
+			"$1",
+		)
+	}
+
+	return functionName, time.Now()
+
+}
+
+func TraceExit(functionName string, timeEntered time.Time) {
+
+	delta := time.Since(timeEntered)
+	if delta.Seconds() >= 1 {
+		Logf("%v() took %v seconds", functionName, delta.Seconds())
+	}
+
 }
