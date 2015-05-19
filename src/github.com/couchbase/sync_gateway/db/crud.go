@@ -411,7 +411,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	}
 	deleted, _ := body["_deleted"].(bool)
 	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
-		defer base.TraceExit(base.TraceEnter())
+		defer base.TraceExit(base.TraceEnterExtra("update_doc_callback"))
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 
@@ -460,8 +460,12 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
-	defer base.TraceExit(base.TraceEnter())
+	defer base.TraceExit(base.TraceEnterExtra("db_update_doc"))
+
+	marker, enterTime := base.TraceEnterExtra("real_doc_id")
 	key := realDocID(docid)
+	base.TraceExit(marker, enterTime)
+
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
@@ -475,7 +479,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var unusedSequences []uint64
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
-		defer base.TraceExit(base.TraceEnter())
+		defer base.TraceExit(base.TraceEnterExtra("write_update_callback"))
+
+		marker, enterTime := base.TraceEnterExtra("unmarshal_document")
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
@@ -483,19 +489,25 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
+		base.TraceExit(marker, enterTime)
 
 		// Invoke the callback to update the document and return a new revision body:
+		marker, enterTime = base.TraceEnterExtra("write_update_callback_callback")
 		body, err = callback(doc)
+		base.TraceExit(marker, enterTime)
 		if err != nil {
 			return
 		}
 
+		marker, enterTime = base.TraceEnterExtra("contains_special_props")
 		//Reject bodies containing user special properties for compatibility with CouchDB
 		if containsUserSpecialProperties(body) {
 			err = base.HTTPErrorf(400, "user defined top level properties beginning with '_' are not allowed in document body")
 			return
 		}
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("determine_winning_rev")
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
 		parentRevID = doc.History[newRevID].Parent
@@ -505,7 +517,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
 		doc.setFlag(channels.Conflict, inConflict)
 		doc.setFlag(channels.Branched, branched)
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("set_rev_body")
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
 			bodyJSON, _ := json.Marshal(doc.body)
@@ -528,7 +542,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				doc.History.setRevisionBody(doc.CurrentRev, nil)
 			}
 		}
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("get_channels_and_access")
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
 		channels, access, roles, err := db.getChannelsAndAccess(doc, body, newRevID)
@@ -538,10 +554,14 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		if len(channels) > 0 {
 			doc.History[newRevID].Channels = channels
 		}
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("backup_ancestor_revs")
 		// Move the body of the replaced revision out of the document so it can be compacted later.
 		db.backupAncestorRevs(doc, newRevID)
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("next_sequence")
 		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
 		// But be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
@@ -559,7 +579,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		}
 		doc.Sequence = docSequence
 		doc.UnusedSequences = unusedSequences
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("change_cache_next_sequence")
 		// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
 		// the same mutation queue processing window. This results in missing sequences on the change listener.
 		// To account for this, we track the recent sequence numbers for the document.
@@ -589,7 +611,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				doc.RecentSequences = doc.RecentSequences[count:]
 			}
 		}
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("get_avail_rev_channels_access")
 		// Append current sequence and unused sequences to recent sequence history
 		doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
 		doc.RecentSequences = append(doc.RecentSequences, docSequence)
@@ -648,7 +672,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
 				docid, newRevID, prevCurrentRev)
 		}
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("prune_Revs")
 		// Prune old revision history to limit the number of revisions:
 		if pruned := doc.History.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
@@ -659,6 +685,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
 		base.LogTo("Cache", "SAVING #%d", doc.Sequence) //TEMP?
+		base.TraceExit(marker, enterTime)
+
 		return
 	})
 
