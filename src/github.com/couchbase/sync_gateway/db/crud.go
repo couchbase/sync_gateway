@@ -730,16 +730,21 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	if len(changedPrincipals) > 0 {
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
 		for _, name := range changedPrincipals {
+			marker, enterTime = base.TraceEnterExtra("invalid_user_or_role_channels")
 			db.invalUserOrRoleChannels(name)
+			base.TraceExit(marker, enterTime)
 			//If this is the current in memory db.user, reload to generate updated channels
 			if db.user != nil && db.user.Name() == name {
+				marker, enterTime = base.TraceEnterExtra("authenticator_get_user")
 				user, err := db.Authenticator().GetUser(db.user.Name())
+				base.TraceExit(marker, enterTime)
 				if err != nil {
 					base.Warn("Error reloading db.user[%s], channels list is out of date --> %+v", db.user.Name(), err)
 				} else {
 					db.user = user
 				}
 			}
+
 		}
 	}
 	base.TraceExit(marker, enterTime)

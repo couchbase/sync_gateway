@@ -66,7 +66,12 @@ func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, er
 // By default the guest User has access to everything, i.e. Admin Party! This can
 // be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(name string) (User, error) {
+	defer base.TraceExit(base.TraceEnter())
+
+	marker, enterTime := base.TraceEnterExtra("get_principal")
 	princ, err := auth.getPrincipal(docIDForUser(name), func() Principal { return &userImpl{} })
+	base.TraceExit(marker, enterTime)
+
 	if err != nil {
 		return nil, err
 	} else if princ == nil {
@@ -89,31 +94,47 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 
 // Common implementation of GetUser and GetRole. factory() parameter returns a new empty instance.
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
+
+	defer base.TraceExit(base.TraceEnter())
+
 	var princ Principal
 
+	markerUpdate, enterTimeUpdate := base.TraceEnterExtra("delta_invoke_update_and_callback_invocation")
 	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, error) {
+
+		defer base.TraceExit(base.TraceEnterExtra("get_principal_bucket_update_callback"))
+
+		base.TraceExit(markerUpdate, enterTimeUpdate)
+
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
 			return nil, couchbase.UpdateCancel
 		}
+		marker, enterTime := base.TraceEnterExtra("factory")
 		princ = factory()
+		base.TraceExit(marker, enterTime)
+
 		if err := json.Unmarshal(currentValue, princ); err != nil {
 			return nil, err
 		}
 		changed := false
 		if princ.Channels() == nil {
 			// Channel list has been invalidated by a doc update -- rebuild it:
+			marker, enterTime = base.TraceEnterExtra("rebuild_channels")
 			if err := auth.rebuildChannels(princ); err != nil {
 				return nil, err
 			}
+			base.TraceExit(marker, enterTime)
 			changed = true
 		}
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
+				marker, enterTime = base.TraceEnterExtra("rebuild_roles")
 				if err := auth.rebuildRoles(user); err != nil {
 					return nil, err
 				}
+				base.TraceExit(marker, enterTime)
 				changed = true
 			}
 		}
