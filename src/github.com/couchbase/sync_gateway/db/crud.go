@@ -705,6 +705,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	dbExpvars.Add("revs_added", 1)
 
+	marker, enterTime = base.TraceEnterExtra("store_new_revision_in_cache")
 	// Store the new revision in the cache
 	history := doc.History.getHistory(newRevID)
 	if doc.History[newRevID].Deleted {
@@ -712,15 +713,19 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	}
 	revChannels := doc.History[newRevID].Channels
 	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
+	base.TraceExit(marker, enterTime)
 
+	marker, enterTime = base.TraceEnterExtra("raise_doc_changed_event")
 	// Raise event
 	if db.EventMgr.HasHandlerForEvent(DocumentChange) {
 		db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
 	}
+	base.TraceExit(marker, enterTime)
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
 
+	marker, enterTime = base.TraceEnterExtra("mark_affected_users_roles")
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
@@ -737,7 +742,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			}
 		}
 	}
+	base.TraceExit(marker, enterTime)
 
+	marker, enterTime = base.TraceEnterExtra("reload_updated_roles")
 	if len(changedRoleUsers) > 0 {
 		base.LogTo("Access", "Rev %q/%q invalidates roles of %s", docid, newRevID, changedRoleUsers)
 		for _, name := range changedRoleUsers {
@@ -753,6 +760,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			}
 		}
 	}
+	base.TraceExit(marker, enterTime)
 
 	return newRevID, nil
 }
