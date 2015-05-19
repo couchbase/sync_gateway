@@ -175,7 +175,17 @@ func AcquireLockWithTracing(mutex *sync.Mutex) {
 
 }
 
+// Records the name of a function and the time of entry.  Intended to be used as:
+//   defer base.TraceExit(base.TraceEnter())
+// So that the base.TraceExit() -- which will be called when the calling function exits --
+// will get the function name and time it was entered, so it can calc the delta and log it.
 func TraceEnter() (functionName string, timeEntered time.Time) {
+	extraIdentifier := ""
+	return TraceEnterExtra(extraIdentifier)
+}
+
+// Like TraceEnter, but allows you to pass an extra identifier.
+func TraceEnterExtra(extraIdentifier string) (functionName string, timeEntered time.Time) {
 
 	functionName = "<unknown>"
 	// Skip this function, and fetch the PC and file for its parent
@@ -185,6 +195,11 @@ func TraceEnter() (functionName string, timeEntered time.Time) {
 			runtime.FuncForPC(pc).Name(),
 			"$1",
 		)
+	}
+
+	if extraIdentifier != "" {
+		// attach the extra identifier if there is one
+		functionName = fmt.Sprintf("%v-%v", functionName, extraIdentifier)
 	}
 
 	return functionName, time.Now()
