@@ -180,8 +180,19 @@ func AcquireLockWithTracing(mutex *sync.Mutex) {
 // So that the base.TraceExit() -- which will be called when the calling function exits --
 // will get the function name and time it was entered, so it can calc the delta and log it.
 func TraceEnter() (functionName string, timeEntered time.Time) {
-	extraIdentifier := ""
-	return TraceEnterExtra(extraIdentifier)
+
+	functionName = "<unknown>"
+	// Skip this function, and fetch the PC and file for its parent
+	pc, _, _, ok := runtime.Caller(1)
+	if ok {
+		functionName = RE_stripFnPreamble.ReplaceAllString(
+			runtime.FuncForPC(pc).Name(),
+			"$1",
+		)
+	}
+
+	return functionName, time.Now()
+
 }
 
 // Like TraceEnter, but allows you to pass an extra identifier.
