@@ -414,6 +414,8 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		defer base.TraceExit(base.TraceEnter())
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
+
+		marker, enterTime := base.TraceEnterExtra("find_doc_history_branch")
 		currentRevIndex := len(docHistory)
 		parent := ""
 		for i, revid := range docHistory {
@@ -423,11 +425,14 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 				break
 			}
 		}
+		base.TraceExit(marker, enterTime)
+
 		if currentRevIndex == 0 {
 			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			return nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
+		marker, enterTime = base.TraceEnterExtra("add_new_to_me_revs")
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
 			doc.History.addRevision(RevInfo{
@@ -436,13 +441,17 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 				Deleted: (i == 0 && deleted)})
 			parent = docHistory[i]
 		}
+		base.TraceExit(marker, enterTime)
 
+		marker, enterTime = base.TraceEnterExtra("process_attachments")
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
 		if err := db.storeAttachments(doc, body, generation, parentRevID); err != nil {
 			return nil, err
 		}
 		body["_rev"] = newRev
+		base.TraceExit(marker, enterTime)
+
 		return body, nil
 	})
 	return err
