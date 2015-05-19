@@ -478,8 +478,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var docSequence uint64
 	var unusedSequences []uint64
 
+	markerWriteUpdate, enterTimeWriteUpdate := base.TraceEnterExtra("delta_invoke_write_update_and_callback_invocation")
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 		defer base.TraceExit(base.TraceEnterExtra("write_update_callback"))
+
+		base.TraceExit(markerWriteUpdate, enterTimeWriteUpdate)
 
 		marker, enterTime := base.TraceEnterExtra("unmarshal_document")
 		// Be careful: this block can be invoked multiple times if there are races!
