@@ -35,7 +35,7 @@ func waitFor(t *testing.T, condition func() bool) bool {
 	return true
 }
 
-func TestShadowerPull(t *testing.T) {
+func DISTestShadowerPull(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 	bucket.Set("key1", 0, Body{"foo": 1})
@@ -74,7 +74,7 @@ func TestShadowerPull(t *testing.T) {
 	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
 }
 
-func TestShadowerPush(t *testing.T) {
+func DISTestShadowerPush(t *testing.T) {
 	//base.LogKeys["Shadow"] = true
 	bucket := makeExternalBucket()
 	defer bucket.Close()
@@ -111,7 +111,7 @@ func TestShadowerPush(t *testing.T) {
 
 // Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
 // shadower as a different revision.
-func TestShadowerPushEchoCancellation(t *testing.T) {
+func DISTestShadowerPushEchoCancellation(t *testing.T) {
 	base.LogKeys["Shadow"] = true
 	base.LogKeys["Shadow+"] = true
 	bucket := makeExternalBucket()
@@ -135,7 +135,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	assert.Equals(t, len(doc.History), 1)
 }
 
-func TestShadowerPattern(t *testing.T) {
+func DISTestShadowerPattern(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 	bucket.Set("key1", 0, Body{"foo": 1})
