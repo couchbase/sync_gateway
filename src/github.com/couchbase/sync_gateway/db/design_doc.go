@@ -52,7 +52,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 	                      return;
 	                    if ((sync.flags & 1) || sync.deleted)
 	                      return;
-	                    delete doc.sync;
+	                    delete doc._sync;
 	                    meta.rev = sync.rev;
 						(` + view.Map + `) (doc, meta); }`
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
