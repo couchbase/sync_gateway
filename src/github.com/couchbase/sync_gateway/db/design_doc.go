@@ -63,7 +63,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 									channels.push(name);
 							}
 						}
-	                    delete doc.sync;
+	                    delete doc._sync;
 	                    meta.rev = sync.rev;
 	                    meta.channels = channels;
 
