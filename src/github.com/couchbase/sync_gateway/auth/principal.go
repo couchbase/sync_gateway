@@ -102,5 +102,9 @@ type User interface {
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
 
+	// Returns a Set containing channels that the user has access to, that aren't present in the
+	// input set
+	GetAddedChannels(channels ch.TimedSet) base.Set
+
 	setRolesSince(ch.TimedSet)
 }
