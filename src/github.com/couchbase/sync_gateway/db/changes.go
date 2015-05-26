@@ -88,6 +88,8 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
+
+	base.LogTo("AccessRace", "Getting feed for %s since %v, found %d", channel, options.Since, len(log))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +114,9 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// we won't emit the doc at all because we already stopped emitting entries
 				// from the view before this point.
 			}
+			base.LogTo("AccessRace", "log entry sequence:%v", logEntry.Sequence)
 			if logEntry.Sequence >= options.Since.TriggeredBy {
+				base.LogTo("AccessRace", "Setting TriggeredBy to zero based on sequence %d in channel %s, ", logEntry.Sequence, channel)
 				options.Since.TriggeredBy = 0
 			}
 			seqID := SequenceID{
@@ -214,6 +218,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
+			base.LogTo("AccessRace", "================ Starting Iteration Loop - Since=%v  ======================", options.Since)
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
 			var channelsSince channels.TimedSet
@@ -248,8 +253,16 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// with access to both channels would see two versions on the feed.
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
-				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && options.Since.TriggeredBy == 0 {
-					// Newly added channel so send all of it to user:
+				// Triggered by handling:
+				//   1. options.Since.TriggeredBy == seqAddedAt : We're in the middle of backfill for this channel, based
+				//    on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill would be done in one
+				//    changes feed iteration, but this can be split over multiple iterations when 'limit' is used.
+				//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
+				//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
+				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
+				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && (options.Since.TriggeredBy == 0 || options.Since.TriggeredBy <= seqAddedAt) {
+					// Newly added channel so initiate backfill:
+					base.LogTo("AccessRace", "=== Doing Backfill for %s ===", name)
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				}
 				feed, err := db.changesFeed(name, chanOpts)
@@ -405,8 +418,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
+			base.LogTo("Changes+", "MultiChangesFeed checking for reload..................")
 			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
 				base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
+				base.LogTo("AccessRace", "=== Reloading User (newCount:%d, userChangeCount:%d) ===", newCount, userChangeCount)
 				userChangeCount = newCount
 				isAdmin := db.user == nil
 				if err := db.ReloadUser(); err != nil {
@@ -418,6 +433,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 					return
 				}
+			} else {
+
+				base.LogTo("AccessRace", "=== Changes woken up, but user hasn't changed ===")
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)

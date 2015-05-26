@@ -684,6 +684,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
 		for _, name := range changedPrincipals {
 			db.invalUserOrRoleChannels(name)
+			base.LogTo("AccessRace", "=== (CRUD) Invalidated User (%s) ===", name)
 			//If this is the current in memory db.user, reload to generate updated channels
 			if db.user != nil && db.user.Name() == name {
 				user, err := db.Authenticator().GetUser(db.user.Name())
@@ -692,6 +693,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				} else {
 					db.user = user
 				}
+				base.LogTo("AccessRace", "=== (CRUD) Get User (%s) ===", name)
 			}
 		}
 	}
