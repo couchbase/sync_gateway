@@ -89,7 +89,6 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChangesInChannel(channel, options)
 
-	base.LogTo("AccessRace", "Getting feed for %s since %v, found %d", channel, options.Since, len(log))
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +185,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		var userChangeCount uint64
 		var lowSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
+		var addedChannels *base.Set // Tracks channels added to the user during changes processing.
 
 		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 		// skipped sequences in a future iteration or request.
@@ -253,6 +253,14 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// with access to both channels would see two versions on the feed.
 			for name, seqAddedAt := range channelsSince {
 				chanOpts := options
+
+				// Check whether requires backfill based on addedChannels in this _changes feed
+				isNewChannel := false
+				if addedChannels != nil {
+					_, isNewChannel = (*addedChannels)[name]
+				}
+
+				// Check whether requires backfill based on current sequence, seqAddedAt
 				// Triggered by handling:
 				//   1. options.Since.TriggeredBy == seqAddedAt : We're in the middle of backfill for this channel, based
 				//    on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill would be done in one
@@ -260,7 +268,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
 				//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
 				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
-				if seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && (options.Since.TriggeredBy == 0 || options.Since.TriggeredBy <= seqAddedAt) {
+				requiresBackfill := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && (options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt)
+
+				if isNewChannel || requiresBackfill {
 					// Newly added channel so initiate backfill:
 					base.LogTo("AccessRace", "=== Doing Backfill for %s ===", name)
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
@@ -416,25 +426,33 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			default:
 			}
 
+			// Reset added channels
+			addedChannels = nil
+
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
 			base.LogTo("Changes+", "MultiChangesFeed checking for reload..................")
 			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
+				var previousChannels channels.TimedSet
 				base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
 				base.LogTo("AccessRace", "=== Reloading User (newCount:%d, userChangeCount:%d) ===", newCount, userChangeCount)
 				userChangeCount = newCount
-				isAdmin := db.user == nil
-				if err := db.ReloadUser(); err != nil {
-					base.Warn("Error reloading user %q: %v", db.user.Name(), err)
-					if !isAdmin {
+
+				if db.user != nil {
+					previousChannels = db.user.InheritedChannels()
+					if err := db.ReloadUser(); err != nil {
+						base.Warn("Error reloading user %q: %v", db.user.Name(), err)
 						change := makeErrorEntry("User not found during reload - terminating changes feed")
 						base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
 						output <- &change
+						return
 					}
-					return
+					// check whether channels have changed
+					addedChannels = db.user.GetAddedChannels(previousChannels)
+					base.LogTo("AccessRace", "---AddedChannels: %v", addedChannels)
 				}
-			} else {
 
+			} else {
 				base.LogTo("AccessRace", "=== Changes woken up, but user hasn't changed ===")
 			}
 

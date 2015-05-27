@@ -99,6 +99,91 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 }
 
+// Test user access grant while that user has an active changes feed
+func TestUserAccessRace(t *testing.T) {
+
+	syncFunction := `
+function(doc, oldDoc) {
+  // NOTE this function is the same across the iOS, Android, and PhoneGap versions.
+  if (doc.type == "task") {
+    if (!doc.list_id) {
+      throw({forbidden : "items must have a list_id"})
+    }
+    channel("list-"+doc.list_id);
+  } else if (doc.type == "list") {
+    channel("list-"+doc._id);
+  } else if (doc.type == "profile") {
+    channel("profiles");
+    var user = doc._id.substring(doc._id.indexOf(":")+1);
+    if (user !== doc.user_id) {
+      throw({forbidden : "profile user_id must match docid"})
+    }
+    requireUser(user);
+    access(user, "profiles"); // TODO this should use roles
+
+    channel('profile-'+user);
+
+  } else if (doc.type == "Want") {
+    var parts = doc._id.split("-");
+    var user = parts[1];
+    var i = parts[2];
+    requireUser(user);
+    channel('profile-'+user);
+    log('WANT GRANT: user: '+user+' i: '+i);
+    access(user, 'list-'+i);
+  }
+}
+
+`
+	//rt := restTester{syncFn: `function(doc) {if (doc.type == 'Want') { access(doc.owner, 'Place-'+doc.place);} else if (doc.type == 'Place') { channel('Place-'+doc._id);}}`}
+	rt := restTester{syncFn: syncFunction}
+
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"AccessRace":true}`)
+	//response := rt.sendAdminRequest("PUT", "/_logging", `{"Access":true, "Changes+":true, "Changes":true, "HTTP":true}`)
+	//response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "Cache":true, "Cache+":true, "HTTP":true}`)
+
+	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
+	assertStatus(t, response, 201)
+
+	// Create list docs
+	for i := 1; i <= 1000; i++ {
+		docName := fmt.Sprintf("/db/l_%d", i)
+		response = rt.send(request("PUT", docName, `{"type":"list"}`))
+	}
+
+	go func() {
+		changesResponse := rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=5000", "", "bernard"))
+		// Long timeout to allow us to dump changes after everything below has finished running
+		log.Printf("Finished")
+
+		changes, err := readContinuousChanges(changesResponse)
+		assert.Equals(t, err, nil)
+
+		log.Printf("Got %d change entries", len(changes))
+	}()
+
+	// Make 10 bulk docs calls
+	for j := 0; j < 10; j++ {
+		input := `{"docs": [`
+
+		for i := 1; i <= 100; i++ {
+			if i > 1 {
+				input = input + `,`
+			}
+			k := j*100 + i
+			docId := fmt.Sprintf("Want-bernard-l_%d", k)
+			input = input + fmt.Sprintf(`{"_id":"%s", "type":"Want", "owner":"bernard"}`, docId)
+		}
+		input = input + `]}`
+
+		//log.Printf("INPUT: %s", input)
+
+		response = rt.send(requestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+	}
+	time.Sleep(15 * time.Second)
+
+}
+
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
@@ -168,6 +253,7 @@ func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
 				return changes, err
 			}
 			changes = append(changes, change)
+			log.Printf("Got change ==> %v", change)
 		}
 
 	}
