@@ -36,7 +36,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/x86_64"
     Dir.chdir(src_dst[0]) do
         ["rpm.spec.tmpl", "manifest.txt.tmpl", "manifest.xml.tmpl"].each do |x|
             target = "#{src_dst[1]}/#{x.gsub('.tmpl', '')}"
-            sh %{sed -e s,@@VERSION@@,#{BLDNUM},g                    #{x} |
+            sh %{sed -e s,@@VERSION@@,#{PRODUCT_VERSION},g           #{x} |
                  sed -e s,@@PLATFORM@@,#{PLATFORM},g                      |
                  sed -e s,@@RELEASE@@,#{RELEASE},g                        |
                  sed -e s,@@REPO_SHA@@,#{REPO_SHA},g                      |
