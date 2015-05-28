@@ -184,7 +184,7 @@
 
         } else {
             // The 'admin' user can change any document.
-            //requireUser("admin");
+            requireUser("admin");
         }
 
         if (doc.type == "contact") {
