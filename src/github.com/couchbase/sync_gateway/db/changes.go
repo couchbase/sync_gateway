@@ -113,9 +113,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 				// we won't emit the doc at all because we already stopped emitting entries
 				// from the view before this point.
 			}
-			base.LogTo("AccessRace", "log entry sequence:%v", logEntry.Sequence)
 			if logEntry.Sequence >= options.Since.TriggeredBy {
-				base.LogTo("AccessRace", "Setting TriggeredBy to zero based on sequence %d in channel %s, ", logEntry.Sequence, channel)
 				options.Since.TriggeredBy = 0
 			}
 			seqID := SequenceID{
@@ -218,7 +216,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
-			base.LogTo("AccessRace", "================ Starting Iteration Loop - Since=%v  ======================", options.Since)
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
 			var channelsSince channels.TimedSet
@@ -272,7 +269,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 				if isNewChannel || requiresBackfill {
 					// Newly added channel so initiate backfill:
-					base.LogTo("AccessRace", "=== Doing Backfill for %s ===", name)
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				}
 				feed, err := db.changesFeed(name, chanOpts)
@@ -435,7 +431,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
 				var previousChannels channels.TimedSet
 				base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
-				base.LogTo("AccessRace", "=== Reloading User (newCount:%d, userChangeCount:%d) ===", newCount, userChangeCount)
 				userChangeCount = newCount
 
 				if db.user != nil {
@@ -449,11 +444,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 					// check whether channels have changed
 					addedChannels = db.user.GetAddedChannels(previousChannels)
-					base.LogTo("AccessRace", "---AddedChannels: %v", addedChannels)
+					base.LogTo("Changes+", "New channels found after user reload: %v", addedChannels)
 				}
 
-			} else {
-				base.LogTo("AccessRace", "=== Changes woken up, but user hasn't changed ===")
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
