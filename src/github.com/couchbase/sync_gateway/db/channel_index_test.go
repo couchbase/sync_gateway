@@ -18,6 +18,7 @@ import (
 	"math/rand"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
@@ -91,7 +92,7 @@ var suffixMap = []uint16{95, 105, 129, 131, 240, 258, 274, 496, 506, 532, 643, 6
 
 func testIndexBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     "http://10.0.1.24:8091",
+		Server:     "http://localhost:8091",
 		BucketName: "channel_index"})
 	/*
 		bucket, err := ConnectToBucket(base.BucketSpec{
@@ -133,6 +134,21 @@ func NewChannelIndex(vbNum int, sequenceGap int, name string) *channelIndexTest 
 	return index
 }
 
+func NewChannelIndexForBucket(vbNum int, sequenceGap int, name string, bucket base.Bucket) *channelIndexTest {
+	lastSeqs := make([]uint64, vbNum)
+
+	index := &channelIndexTest{
+		numVbuckets:   vbNum,
+		indexBucket:   bucket,
+		sequenceGap:   sequenceGap,
+		lastSequences: lastSeqs,
+		r:             rand.New(rand.NewSource(42)),
+		channelName:   name,
+	}
+	couchbase.PoolSize = 64
+	return index
+}
+
 func (c *channelIndexTest) seedData(format string) error {
 
 	// Check if the data has already been loaded
@@ -158,7 +174,7 @@ func (c *channelIndexTest) seedData(format string) error {
 	}
 
 	for vbNum, value := range vbucketBytes {
-		_, err = c.indexBucket.AddRaw(c.getDocName(vbNum), 0, value)
+		_, err = c.indexBucket.AddRaw(c.getIndexDocName(vbNum), 0, value)
 	}
 
 	// Write flag doc
@@ -167,7 +183,6 @@ func (c *channelIndexTest) seedData(format string) error {
 		log.Printf("Load error %v", err)
 		return err
 	}
-	log.Printf("Load complete")
 	return nil
 }
 
@@ -195,7 +210,7 @@ func (c *channelIndexTest) addToCache(vb int) error {
 }
 
 func (c *channelIndexTest) writeToCache(vb int, sequence uint64) error {
-	docName := c.getDocName(vb)
+	docName := c.getIndexDocName(vb)
 	sequenceBytes := getSequenceAsBytes(sequence)
 	err := c.indexBucket.Append(docName, sequenceBytes)
 	if err != nil {
@@ -220,7 +235,7 @@ func appendWrite(bucket base.Bucket, key string, vb int, sequence uint64) error 
 	return nil
 }
 
-func getIndexDocName(channelName string, vb int, blockNumber int) string {
+func getDocName(channelName string, vb int, blockNumber int) string {
 	return fmt.Sprintf("_index::%s::%d::%05d", channelName, blockNumber, suffixMap[vb])
 }
 
@@ -232,7 +247,7 @@ func (c *channelIndexTest) getIndexDocName(vb int) string {
 func (c *channelIndexTest) readIndexSingle() error {
 
 	for i := 0; i < c.numVbuckets; i++ {
-		key := c.getDocName(i)
+		key := c.getIndexDocName(i)
 		body, err := c.indexBucket.GetRaw(key)
 		if err != nil {
 			log.Printf("Error retrieving for key %s: %s", key, err)
@@ -253,7 +268,7 @@ func (c *channelIndexTest) readIndexSingleParallel() error {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			key := c.getDocName(i)
+			key := c.getIndexDocName(i)
 			body, err := c.indexBucket.GetRaw(key)
 			if err != nil {
 				log.Printf("Error retrieving for key %s: %s", key, err)
@@ -272,7 +287,7 @@ func (c *channelIndexTest) readIndexSingleParallel() error {
 func (c *channelIndexTest) readIndexBulk() error {
 	keys := make([]string, c.numVbuckets)
 	for i := 0; i < c.numVbuckets; i++ {
-		keys[i] = c.getDocName(i)
+		keys[i] = c.getIndexDocName(i)
 	}
 	couchbaseBucket, ok := c.indexBucket.(base.CouchbaseBucket)
 	if !ok {
@@ -411,6 +426,124 @@ func BenchmarkChannelIndexPartitionReadBulk(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkMultiChannelIndexSimpleGet_10(b *testing.B) {
+	MultiChannelIndexSimpleGet(b, 10)
+}
+
+func BenchmarkMultiChannelIndexSimpleGet_100(b *testing.B) {
+	MultiChannelIndexSimpleGet(b, 100)
+}
+
+func BenchmarkMultiChannelIndexSimpleGet_1000(b *testing.B) {
+	MultiChannelIndexSimpleGet(b, 1000)
+}
+
+func MultiChannelIndexSimpleGet(b *testing.B, numChannels int) {
+
+	// num vbuckets
+	vbCount := 1024
+
+	bucket := testIndexBucket()
+	indices := seedMultiChannelData(vbCount, bucket, numChannels)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		var wg sync.WaitGroup
+		for index := 0; index < numChannels; index++ {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				log.Printf("init %d", index)
+				err := indices[index].readIndexSingle()
+				log.Printf("done %d", index)
+				if err != nil {
+					log.Printf("Error reading index single: %v", err)
+				}
+			}(index)
+		}
+		wg.Wait()
+	}
+}
+
+func seedMultiChannelData(vbCount int, bucket base.Bucket, numChannels int) []*channelIndexTest {
+
+	indices := make([]*channelIndexTest, numChannels)
+	// seed data
+	for chanIndex := 0; chanIndex < numChannels; chanIndex++ {
+		channelName := fmt.Sprintf("channel_%d", chanIndex)
+		indices[chanIndex] = NewChannelIndexForBucket(vbCount, 0, channelName, bucket)
+		indices[chanIndex].seedData(channelName)
+	}
+
+	log.Printf("Load complete")
+	return indices
+}
+
+func BenchmarkMultiChannelIndexBulkGet_10(b *testing.B) {
+	MultiChannelIndexBulkGet(b, 10)
+}
+
+func BenchmarkMultiChannelIndexBulkGet_100(b *testing.B) {
+	MultiChannelIndexBulkGet(b, 100)
+}
+
+func BenchmarkMultiChannelIndexBulkGet_1000(b *testing.B) {
+	MultiChannelIndexBulkGet(b, 1000)
+}
+
+func MultiChannelIndexBulkGet(b *testing.B, numChannels int) {
+
+	// num vbuckets
+	vbCount := 1024
+
+	bucket := testIndexBucket()
+	indices := seedMultiChannelData(vbCount, bucket, numChannels)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		var wg sync.WaitGroup
+		for index := 0; index < numChannels; index++ {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				err := indices[index].readIndexBulk()
+				if err != nil {
+					log.Printf("Error reading index single: %v", err)
+				}
+			}(index)
+		}
+		wg.Wait()
+	}
+}
+
+func TestChannelIndexBulkGet10(t *testing.T) {
+
+	// num vbuckets
+	vbCount := 1024
+	numChannels := 10
+	bucket := testIndexBucket()
+	indices := seedMultiChannelData(vbCount, bucket, numChannels)
+
+	startTime := time.Now()
+
+	var wg sync.WaitGroup
+	for index := 0; index < numChannels; index++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			err := indices[index].readIndexBulk()
+			if err != nil {
+				log.Printf("Error reading index single: %v", err)
+			}
+		}(index)
+	}
+	wg.Wait()
+
+	log.Printf("test took %v", time.Since(startTime))
+}
+
 func TestChannelIndexSimpleReadSingle(t *testing.T) {
 
 	log.Printf("Test single...")
