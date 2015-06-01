@@ -3852,7 +3852,7 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I2">ISIconIndex</col>
 		<row><td>ARPPRODUCTICON.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
-		<row><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td/><td>C:\Program Files\InstallShield\2014\Redist\Language Independent\OS Independent\uninstall.ico</td><td>0</td></row>
+		<row><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 		<row><td>sync_gateway.exe_A642E39404584103A7318EFA7E2670FD.exe</td><td/><td>&lt;ISProductFolder&gt;\redist\Language Independent\OS Independent\GenericExe.ico</td><td>0</td></row>
 	</table>
 
