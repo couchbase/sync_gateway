@@ -1,5 +1,11 @@
 {
   "log": ["*"],
+  "CORS": {
+    "Origin":["http://localhost:8000"],
+    "LoginOrigin":["http://localhost:8000"],
+    "Headers":["Content-Type"],
+    "MaxAge": 1728000
+  },
   "databases": {
     "db": {
       "server": "walrus:",
