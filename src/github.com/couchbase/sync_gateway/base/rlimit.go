@@ -17,5 +17,12 @@ func SetMaxFileDescriptors(maxFDs uint64) (uint64, error) {
 	}
 	limits.Cur = maxFDs
 	limits.Max = maxFDs
-	return maxFDs, syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
+
+	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
+
+	if err == nil {
+		Logf("Configured process to allow %d open file descriptors", maxFDs)
+	}
+
+	return maxFDs, err
 }

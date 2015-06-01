@@ -437,11 +437,9 @@ func setMaxFileDescriptors(maxP *uint64) {
 	if maxP != nil {
 		maxFDs = *maxP
 	}
-	actualMax, err := base.SetMaxFileDescriptors(maxFDs)
+	_ , err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
 		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
-	} else if maxP != nil && actualMax > 0 { //Windows no support for setting max file descriptors, returns 0 actualMax
-		base.Logf("Configured process to allow %d open file descriptors", actualMax)
 	}
 }
 
