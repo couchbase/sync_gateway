@@ -16,9 +16,7 @@ import (
 	"time"
 
 	"github.com/couchbaselabs/walrus"
-
-	"github.com/couchbaselabs/go-couchbase"
-
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"

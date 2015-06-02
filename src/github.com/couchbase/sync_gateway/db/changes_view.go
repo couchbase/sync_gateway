@@ -3,7 +3,7 @@ package db
 import (
 	"time"
 
-	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
 )

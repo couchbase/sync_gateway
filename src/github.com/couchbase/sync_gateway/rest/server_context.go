@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbaselabs/go-couchbase"
+	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -63,6 +63,10 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	}
 	if config.MaxCouchbaseOverflow != nil {
 		couchbase.PoolOverflow = *config.MaxCouchbaseOverflow
+	}
+
+	if config.CouchbaseKeepaliveInterval != nil {
+		couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
 	}
 
 	slow := kDefaultSlowServerCallWarningThreshold
