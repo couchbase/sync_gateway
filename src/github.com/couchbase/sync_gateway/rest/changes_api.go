@@ -198,6 +198,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
+				base.LogTo("Changes", "sent heartbeat")
 			case <-timeout:
 				message = "OK (timeout)"
 				break loop
