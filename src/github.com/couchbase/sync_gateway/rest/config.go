@@ -66,6 +66,7 @@ type ServerConfig struct {
 	StatsReportInterval            *float64        // Optional stats report interval (0 to disable)
 	MaxCouchbaseConnections        *int            // Max # of sockets to open to a Couchbase Server node
 	MaxCouchbaseOverflow           *int            // Max # of overflow sockets to open
+	CouchbaseKeepaliveInterval     *int            // TCP keep-alive interval between SG and Couchbase server
 	SlowServerCallWarningThreshold *int            // Log warnings if database calls take this many ms
 	MaxIncomingConnections         *int            // Max # of incoming HTTP connections to accept
 	MaxFileDescriptors             *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
