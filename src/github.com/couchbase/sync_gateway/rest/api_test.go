@@ -815,9 +815,14 @@ func TestLogin(t *testing.T) {
 }
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
+
+	h := &handler{}
+	h.server = NewServerContext(&ServerConfig{})
+
+	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
 				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
-	feed, options, filter, channelsArray, err := readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, err := h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
 
@@ -825,9 +830,45 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equals(t, options.Limit, 123)
 	assert.Equals(t, options.Conflicts, true)
 	assert.Equals(t, options.IncludeDocs, true)
+	assert.Equals(t, options.HeartbeatMs, uint64(kDefaultHeartbeatMS))
+	assert.Equals(t, options.TimeoutMs, uint64(kDefaultTimeoutMS))
 
 	assert.Equals(t, filter, "Melitta")
 	assert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
+
+	// Attempt to set heartbeat, timeout to valid values
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(30000))
+	assert.Equals(t, options.TimeoutMs, uint64(60000))
+
+	// Attempt to set valid timeout, no heartbeat
+	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.TimeoutMs, uint64(2000))
+
+	// Disable heartbeat, timeout by explicitly setting to zero
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(0))
+	assert.Equals(t, options.TimeoutMs, uint64(0))
+
+	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
+	assert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
+
+	// Set max heartbeat in server context, attempt to set heartbeat greater than max
+	h.server.config.MaxHeartbeat = 60
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
 
 func TestAccessControl(t *testing.T) {

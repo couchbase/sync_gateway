@@ -278,7 +278,7 @@ func (h *handler) getOptBoolQuery(query string, defaultValue bool) bool {
 
 // Returns the integer value of a URL query, defaulting to 0 if unparseable
 func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
-	return getRestrictedIntQuery(h.rq.URL.Query(), query, defaultValue, 0, 0)
+	return getRestrictedIntQuery(h.rq.URL.Query(), query, defaultValue, 0, 0, false)
 }
 
 func (h *handler) getJSONQuery(query string) (value interface{}, err error) {
@@ -501,45 +501,55 @@ func (h *handler) writeStatus(status int, message string) {
 
 // Returns the integer value of a URL query, restricted to a min and max value,
 // but returning 0 if missing or unparseable
-func getRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64) uint64 {
+func getRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
 	return getRestrictedIntFromString(
 		values.Get(query),
 		defaultValue,
 		minValue,
 		maxValue,
+		allowZero,
 	)
 }
 
-func getRestrictedIntFromString(rawValue string, defaultValue, minValue, maxValue uint64) uint64 {
-	value := defaultValue
+func getRestrictedIntFromString(rawValue string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+	var value *uint64
 	if rawValue != "" {
-		var err error
-		value, err = strconv.ParseUint(rawValue, 10, 64)
+		intValue, err := strconv.ParseUint(rawValue, 10, 64)
 		if err != nil {
-			value = 0
+			value = nil
+		} else {
+			value = &intValue
 		}
-
-		return getRestrictedInt(
-			value,
-			defaultValue,
-			minValue,
-			maxValue,
-		)
-
 	}
-	return value
+
+	return getRestrictedInt(
+		value,
+		defaultValue,
+		minValue,
+		maxValue,
+		allowZero,
+	)
 }
 
-func getRestrictedInt(rawValue, defaultValue, minValue, maxValue uint64) uint64 {
+func getRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
 
-	value := defaultValue
+	var value uint64
 
-	if rawValue < minValue {
-		value = minValue
-	} else if rawValue > maxValue && maxValue > 0 {
-		value = maxValue
+	// Only use the defaultValue if rawValue isn't specified.
+	if rawValue == nil {
+		value = defaultValue
 	} else {
-		value = rawValue
+		value = *rawValue
+	}
+
+	// If value is zero and allowZero=true, we don't want to set to the minimum value
+	validZero := (value == 0 && allowZero)
+	if value < minValue && !validZero {
+		value = minValue
+	}
+
+	if value > maxValue && maxValue > 0 {
+		value = maxValue
 	}
 
 	return value
