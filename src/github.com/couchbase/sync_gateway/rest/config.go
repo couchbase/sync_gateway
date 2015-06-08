@@ -72,6 +72,7 @@ type ServerConfig struct {
 	MaxFileDescriptors             *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses              *bool           // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
+	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
