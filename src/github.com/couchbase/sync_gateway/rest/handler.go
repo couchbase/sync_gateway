@@ -500,7 +500,8 @@ func (h *handler) writeStatus(status int, message string) {
 }
 
 // Returns the integer value of a URL query, restricted to a min and max value,
-// but returning 0 if missing or unparseable
+// but returning 0 if missing or unparseable.  If allowZero is true, values coming in
+// as zero will stay zero, instead of being set to the minValue.
 func getRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
 	return getRestrictedIntFromString(
 		values.Get(query),
@@ -542,7 +543,7 @@ func getRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 		value = *rawValue
 	}
 
-	// If value is zero and allowZero=true, we don't want to set to the minimum value
+	// If value is zero and allowZero=true, leave value at zero rather than forcing it to the minimum value
 	validZero := (value == 0 && allowZero)
 	if value < minValue && !validZero {
 		value = minValue
