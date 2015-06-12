@@ -1,6 +1,7 @@
 package db
 
 import (
+	"log"
 	"strings"
 	"sync"
 
@@ -109,11 +110,16 @@ func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
 		listener.bucket.GetName(), counter)
 	for {
+		base.LogTo("Changes+", "getting curCounter for keys: %d", keys)
 		curCounter := listener._currentCount(keys)
+		base.LogTo("Changes+", "comparing curCounter, counter:%d, %d", curCounter, counter)
 		if curCounter != counter {
+			base.LogTo("Changes+", "returning curCounter: %d", curCounter)
 			return curCounter
 		}
+		base.LogTo("Changes+", "starting wait")
 		listener.tapNotifier.Wait()
+		base.LogTo("Changes+", "woke up from wait")
 	}
 }
 
@@ -121,6 +127,7 @@ func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 func (listener *changeListener) CurrentCount(keys []string) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
+	log.Println("current count with keys:%v ==> %d", keys, listener._currentCount(keys))
 	return listener._currentCount(keys)
 }
 

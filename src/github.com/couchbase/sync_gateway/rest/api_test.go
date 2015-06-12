@@ -1996,3 +1996,40 @@ func TestEventConfigValidationFailure(t *testing.T) {
 
 	sc.Close()
 }
+
+// See https://github.com/couchbase/sync_gateway/issues/916
+func TestLongpollWithWildcard(t *testing.T) {
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+	rt := restTester{}
+	a := rt.ServerContext().Database("db").Authenticator()
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+
+	// Create user:
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	response = rt.send(request("PUT", "/db/sherlock", `{"channels":["PBS"]}`))
+	response = rt.send(request("PUT", "/db/lost", `{"channels":["ABC"]}`))
+	assertStatus(t, response, 201)
+	time.Sleep(2 * time.Second)
+
+	response = rt.send(requestByUser("GET", "/db/_changes?feed=longpoll", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	since := changes.Last_Seq
+
+	// Create a doc not in PBS (that will also go to the * channel)
+	go func() {
+		changesJSON := fmt.Sprintf(`{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":%s}`, since.String())
+		response = rt.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		log.Println("second response: %v", response)
+		log.Printf("second _changes looks like: %s", response.Body.Bytes())
+	}()
+
+	time.Sleep(10 * time.Second)
+}

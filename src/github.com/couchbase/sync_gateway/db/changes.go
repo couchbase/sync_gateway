@@ -227,6 +227,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 			// Updates the changeWaiter to the current set of available channels
 			if changeWaiter != nil {
+				base.LogTo("Changes+", "Updating channels to: %v", channelsSince)
 				changeWaiter.UpdateChannels(channelsSince)
 			}
 			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
@@ -407,7 +408,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 				}
 			}
-
+			base.LogTo("Changes+", "options.Continuous=%v, sentSomething=%v, changeWaiter=%v", options.Continuous, sentSomething, changeWaiter)
 			if !options.Continuous && (sentSomething || changeWaiter == nil) {
 				break
 			}
@@ -420,6 +421,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 				break
 			}
 
+			base.LogTo("Changes+", "MultiChangesFeed back from wait... %s", to)
 			// Check whether I was terminated while waiting for a change:
 			select {
 			case <-options.Terminator:
