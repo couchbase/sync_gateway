@@ -133,6 +133,17 @@ func (context *DatabaseContext) IsClosed() bool {
 	return context.Bucket == nil
 }
 
+// For testing only!
+func (context *DatabaseContext) RestartListener() error {
+	context.tapListener.Stop()
+	// Delay needed to properly stop
+	time.Sleep(2 * time.Second)
+	if err := context.tapListener.Start(context.Bucket, true); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	return auth.NewAuthenticator(context.Bucket, context)
