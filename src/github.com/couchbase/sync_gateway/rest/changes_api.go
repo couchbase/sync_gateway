@@ -200,7 +200,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.LogTo("Heartbeat", "sent _changes heartbeat to [%s]", h.currentEffectiveUserName())
+				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 			case <-timeout:
 				message = "OK (timeout)"
 				break loop
@@ -321,7 +321,7 @@ loop:
 			}
 		case <-heartbeat:
 			err = send(nil)
-			base.LogTo("Heartbeat", "sent _changes heartbeat to [%s]", h.currentEffectiveUserName())
+			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 		case <-timeout:
 			break loop
 		}
