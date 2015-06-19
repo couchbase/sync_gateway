@@ -363,7 +363,6 @@ func (h *handler) currentEffectiveUserName() string {
 	if h.privs == adminPrivs {
 		effectiveName = " (as ADMIN)"
 	} else if h.user != nil {
-
 		if h.user.Name() != "" {
 			effectiveName = fmt.Sprintf(" (as %s)", h.user.Name())
 		} else {
