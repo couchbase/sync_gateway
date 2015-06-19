@@ -357,6 +357,19 @@ func (h *handler) getBasicAuth() (username string, password string) {
 	return
 }
 
+func (h *handler) currentEffectiveUserName() string {
+	var name string
+	if h.user != nil {
+		name = h.user.Name()
+		if name == "" {
+			name = "GUEST"
+		}
+	} else {
+		name = "Admin REST API"
+	}
+	return name;
+}
+
 //////// RESPONSES:
 
 func (h *handler) setHeader(name string, value string) {
