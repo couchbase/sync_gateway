@@ -359,7 +359,7 @@ func (h *handler) getBasicAuth() (username string, password string) {
 
 func (h *handler) currentEffectiveUserName() string {
 	var effectiveName string
-	
+
 	if h.privs == adminPrivs {
 		effectiveName = " (as ADMIN)"
 	} else if h.user != nil {
