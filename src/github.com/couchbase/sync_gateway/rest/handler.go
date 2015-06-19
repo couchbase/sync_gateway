@@ -358,16 +358,20 @@ func (h *handler) getBasicAuth() (username string, password string) {
 }
 
 func (h *handler) currentEffectiveUserName() string {
-	var name string
-	if h.user != nil {
-		name = h.user.Name()
-		if name == "" {
-			name = "GUEST"
+	var effectiveName string
+	
+	if h.privs == adminPrivs {
+		effectiveName = " (as ADMIN)"
+	} else if h.user != nil {
+
+		if h.user.Name() != "" {
+			effectiveName = fmt.Sprintf(" (as %s)", h.user.Name())
+		} else {
+			effectiveName = " (as GUEST)"
 		}
-	} else {
-		name = "Admin REST API"
 	}
-	return name;
+
+	return effectiveName;
 }
 
 //////// RESPONSES:
