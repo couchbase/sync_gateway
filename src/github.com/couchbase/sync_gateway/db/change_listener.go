@@ -4,8 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/couchbaselabs/walrus"
-
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -15,18 +14,18 @@ import (
 // changes.
 type changeListener struct {
 	bucket       base.Bucket
-	tapFeed      base.TapFeed         // Observes changes to bucket
-	tapNotifier  *sync.Cond           // Posts notifications when documents are updated
-	counter      uint64               // Event counter; increments on every doc update
-	keyCounts    map[string]uint64    // Latest count at which each doc key was updated
-	DocChannel   chan walrus.TapEvent // Passthru channel for doc mutations
+	tapFeed      base.TapFeed           // Observes changes to bucket
+	tapNotifier  *sync.Cond             // Posts notifications when documents are updated
+	counter      uint64                 // Event counter; increments on every doc update
+	keyCounts    map[string]uint64      // Latest count at which each doc key was updated
+	DocChannel   chan sgbucket.TapEvent // Passthru channel for doc mutations
 	OnDocChanged func(docID string, jsonData []byte)
 }
 
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error {
 	listener.bucket = bucket
-	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: walrus.TapNoBackfill})
+	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: sgbucket.TapNoBackfill})
 	if err != nil {
 		return err
 	}
@@ -36,7 +35,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	if trackDocs {
-		listener.DocChannel = make(chan walrus.TapEvent, 100)
+		listener.DocChannel = make(chan sgbucket.TapEvent, 100)
 	}
 
 	// Start a goroutine to broadcast to the tapNotifier whenever a channel or user/role changes:
@@ -48,7 +47,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 			}
 		}()
 		for event := range tapFeed.Events() {
-			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
+			if event.Opcode == sgbucket.TapMutation || event.Opcode == sgbucket.TapDeletion {
 				key := string(event.Key)
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {

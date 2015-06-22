@@ -291,6 +291,17 @@ func (user *userImpl) FilterToAvailableChannels(channels base.Set) ch.TimedSet {
 	return output
 }
 
+func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
+	output := base.Set{}
+	for userChannel, _ := range user.InheritedChannels() {
+		_, found := channels[userChannel]
+		if !found {
+			output[userChannel] = struct{}{}
+		}
+	}
+	return output
+}
+
 //////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current

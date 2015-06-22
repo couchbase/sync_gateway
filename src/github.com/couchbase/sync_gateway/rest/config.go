@@ -66,11 +66,13 @@ type ServerConfig struct {
 	StatsReportInterval            *float64        // Optional stats report interval (0 to disable)
 	MaxCouchbaseConnections        *int            // Max # of sockets to open to a Couchbase Server node
 	MaxCouchbaseOverflow           *int            // Max # of overflow sockets to open
+	CouchbaseKeepaliveInterval     *int            // TCP keep-alive interval between SG and Couchbase server
 	SlowServerCallWarningThreshold *int            // Log warnings if database calls take this many ms
 	MaxIncomingConnections         *int            // Max # of incoming HTTP connections to accept
 	MaxFileDescriptors             *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses              *bool           // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
+	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -437,11 +439,9 @@ func setMaxFileDescriptors(maxP *uint64) {
 	if maxP != nil {
 		maxFDs = *maxP
 	}
-	actualMax, err := base.SetMaxFileDescriptors(maxFDs)
+	_ , err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
 		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
-	} else if maxP != nil {
-		base.Logf("Configured process to allow %d open file descriptors", actualMax)
 	}
 }
 

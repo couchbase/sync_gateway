@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbaselabs/walrus"
 )
 
-type DesignDoc walrus.DesignDoc
+type DesignDoc sgbucket.DesignDoc
 
 const (
 	DesignDocSyncGateway      = "sync_gateway"
@@ -63,7 +63,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 									channels.push(name);
 							}
 						}
-	                    delete doc.sync;
+	                    delete doc._sync;
 	                    meta.rev = sync.rev;
 	                    meta.channels = channels;
 
@@ -91,7 +91,7 @@ func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
 	return
 }
 
-func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (*walrus.ViewResult, error) {
+func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
 	// Query has slightly different access control than checkDDocAccess():
 	// * Admins can query any design doc including the internal ones
 	// * Regular users can query non-internal design docs
@@ -116,7 +116,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
-func filterViewResult(input walrus.ViewResult, user auth.User) (result walrus.ViewResult) {
+func filterViewResult(input sgbucket.ViewResult, user auth.User) (result sgbucket.ViewResult) {
 	checkChannels := false
 	var visibleChannels ch.TimedSet
 	if user != nil {
@@ -124,14 +124,14 @@ func filterViewResult(input walrus.ViewResult, user auth.User) (result walrus.Vi
 		checkChannels = !visibleChannels.Contains("*")
 	}
 	result.TotalRows = input.TotalRows
-	result.Rows = make([]*walrus.ViewRow, 0, len(input.Rows)/2)
+	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
 		value := row.Value.([]interface{})
 		// value[0] is the array of channels; value[1] is the actual value
 		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
 			// Add this row:
 			stripSyncProperty(row)
-			result.Rows = append(result.Rows, &walrus.ViewRow{
+			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,
 				Value: value[1],
 				ID:    row.ID,
@@ -152,7 +152,7 @@ func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool
 	return false
 }
 
-func stripSyncProperty(row *walrus.ViewRow) {
+func stripSyncProperty(row *sgbucket.ViewRow) {
 	if doc := row.Doc; doc != nil {
 		delete((*doc).(map[string]interface{}), "_sync")
 	}

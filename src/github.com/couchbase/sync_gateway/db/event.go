@@ -3,10 +3,11 @@ package db
 import (
 	"errors"
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/walrus"
-	"github.com/robertkrimen/otto"
 	"strconv"
+
+	"github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/robertkrimen/otto"
 )
 
 // Event type
@@ -66,12 +67,12 @@ const (
 
 // A compiled JavaScript event function.
 type jsEventTask struct {
-	walrus.JSRunner
+	sgbucket.JSRunner
 	responseType ResponseType
 }
 
 // Compiles a JavaScript event function to a jsEventTask object.
-func newJsEventTask(funcSource string) (walrus.JSServerTask, error) {
+func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
 	err := eventTask.Init(funcSource)
 	if err != nil {
@@ -105,15 +106,15 @@ func newJsEventTask(funcSource string) (walrus.JSServerTask, error) {
 
 // A thread-safe wrapper around a jsEventTask, i.e. an event function.
 type JSEventFunction struct {
-	*walrus.JSServer
+	*sgbucket.JSServer
 }
 
 func NewJSEventFunction(fnSource string) *JSEventFunction {
 
 	base.LogTo("Events", "Creating new JSEventFunction")
 	return &JSEventFunction{
-		JSServer: walrus.NewJSServer(fnSource, kTaskCacheSize,
-			func(fnSource string) (walrus.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
+			func(fnSource string) (sgbucket.JSServerTask, error) {
 				return newJsEventTask(fnSource)
 			}),
 	}

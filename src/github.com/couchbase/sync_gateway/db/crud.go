@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbaselabs/walrus"
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -462,7 +462,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var docSequence uint64
 	var unusedSequences []uint64
 
-	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts walrus.WriteOptions, err error) {
+	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
@@ -621,13 +621,13 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 						// make sure the write blocks till
 						// the new value is indexable, otherwise when a User/Role updates (using a view) it
 						// might not incorporate the effects of this change.
-						writeOpts |= walrus.Indexable
+						writeOpts |= sgbucket.Indexable
 					}
 				} else {
 					// If this update affects user/role access privileges, make sure the write blocks till
 					// the new value is indexable, otherwise when a User/Role updates (using a view) it
 					// might not incorporate the effects of this change.
-					writeOpts |= walrus.Indexable
+					writeOpts |= sgbucket.Indexable
 				}
 			}
 

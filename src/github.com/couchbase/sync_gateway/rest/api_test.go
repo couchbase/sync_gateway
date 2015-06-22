@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -815,9 +816,14 @@ func TestLogin(t *testing.T) {
 }
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
+
+	h := &handler{}
+	h.server = NewServerContext(&ServerConfig{})
+
+	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
 				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
-	feed, options, filter, channelsArray, err := readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, err := h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
 
@@ -825,9 +831,45 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equals(t, options.Limit, 123)
 	assert.Equals(t, options.Conflicts, true)
 	assert.Equals(t, options.IncludeDocs, true)
+	assert.Equals(t, options.HeartbeatMs, uint64(kDefaultHeartbeatMS))
+	assert.Equals(t, options.TimeoutMs, uint64(kDefaultTimeoutMS))
 
 	assert.Equals(t, filter, "Melitta")
 	assert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
+
+	// Attempt to set heartbeat, timeout to valid values
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(30000))
+	assert.Equals(t, options.TimeoutMs, uint64(60000))
+
+	// Attempt to set valid timeout, no heartbeat
+	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.TimeoutMs, uint64(2000))
+
+	// Disable heartbeat, timeout by explicitly setting to zero
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(0))
+	assert.Equals(t, options.TimeoutMs, uint64(0))
+
+	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
+	assert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
+
+	// Set max heartbeat in server context, attempt to set heartbeat greater than max
+	h.server.config.MaxHeartbeat = 60
+	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
+	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
 
 func TestAccessControl(t *testing.T) {
@@ -1954,4 +1996,55 @@ func TestEventConfigValidationFailure(t *testing.T) {
 	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
 
 	sc.Close()
+}
+
+// Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
+// SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
+// once we add the ability to take a bucket offline/online.
+func DisabledTestLongpollWithWildcard(t *testing.T) {
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel);}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+
+	// Create user:
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
+	// triggers early termination of the changes loop.  This can only be reproduced if the feed is restarted after the user is created -
+	// otherwise the count for the user pseudo-channel will always be non-zero
+	db, _ := rt.ServerContext().GetDatabase("db")
+	err = db.RestartListener()
+	assert.True(t, err == nil)
+	// Put a document to increment the counter for the * channel
+	response = rt.send(request("PUT", "/db/lost", `{"channel":["ABC"]}`))
+	assertStatus(t, response, 201)
+
+	// Previous bug: changeWaiter was treating the implicit '*' wildcard in the _changes request as the '*' channel, so the wait counter
+	// was being initialized to 1 (the previous PUT).  Later the wildcard was resolved to actual channels (PBS, _sync:user:bernard), which
+	// has a wait counter of zero (no documents writted since the listener was restarted).
+	wg := sync.WaitGroup{}
+	// start changes request
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+		changesResponse := rt.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		log.Printf("_changes looks like: %s", changesResponse.Body.Bytes())
+		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+		// Checkthat the changes loop isn't returning an empty result immediately (the previous bug) - should
+		// be waiting until entry 'sherlock', created below, appears.
+		assert.True(t, len(changes.Results) > 0)
+	}()
+
+	// Send a doc that will properly close the longpoll response
+	time.Sleep(1 * time.Second)
+	response = rt.send(request("PUT", "/db/sherlock", `{"channel":["PBS"]}`))
+	wg.Wait()
 }

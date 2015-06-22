@@ -20,9 +20,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/walrus"
 )
 
 const ServerName = "Couchbase Sync Gateway"
@@ -93,7 +93,7 @@ func (h *handler) handleVacuum() error {
 }
 
 func (h *handler) handleFlush() error {
-	if bucket, ok := h.db.Bucket.(walrus.DeleteableBucket); ok {
+	if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(name)

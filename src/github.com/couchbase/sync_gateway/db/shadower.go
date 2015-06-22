@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbaselabs/walrus"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -28,7 +28,7 @@ type Shadower struct {
 
 // Creates a new Shadower.
 func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp) (*Shadower, error) {
-	tapFeed, err := bucket.StartTapFeed(walrus.TapArguments{Backfill: 0})
+	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: 0})
 	if err != nil {
 		return nil, err
 	}
@@ -59,18 +59,18 @@ func (s *Shadower) readTapFeed() {
 	vbucketsFilling := 0
 	for event := range s.tapFeed.Events() {
 		switch event.Opcode {
-		case walrus.TapBeginBackfill:
+		case sgbucket.TapBeginBackfill:
 			if vbucketsFilling == 0 {
 				base.LogTo("Shadow", "Reading history of external bucket")
 			}
 			vbucketsFilling++
 			//base.LogTo("Shadow", "Reading history of external bucket")
-		case walrus.TapMutation, walrus.TapDeletion:
+		case sgbucket.TapMutation, sgbucket.TapDeletion:
 			key := string(event.Key)
 			if !s.docIDMatches(key) {
 				break
 			}
-			isDeletion := event.Opcode == walrus.TapDeletion
+			isDeletion := event.Opcode == sgbucket.TapDeletion
 			if !isDeletion && event.Expiry > 0 {
 				break // ignore ephemeral documents
 			}
@@ -79,7 +79,7 @@ func (s *Shadower) readTapFeed() {
 				base.Warn("Error applying change from external bucket: %v", err)
 			}
 			atomic.AddUint64(&s.pullCount, 1)
-		case walrus.TapEndBackfill:
+		case sgbucket.TapEndBackfill:
 			if vbucketsFilling--; vbucketsFilling == 0 {
 				base.LogTo("Shadow", "Caught up with history of external bucket")
 			}

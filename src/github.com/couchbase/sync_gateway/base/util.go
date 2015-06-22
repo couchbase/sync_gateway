@@ -81,7 +81,8 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 	// Find backquote-delimited strings and replace them:
 	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(bytes []byte) []byte {
 		str := string(bytes)
-		// Escape newlines and double-quotes:
+		// Remove \r  and Escape newlines and double-quotes:
+		str = strings.Replace(str, "\r", "", -1)
 		str = strings.Replace(str, "\n", `\n`, -1)
 		str = strings.Replace(str, "\t", `\t`, -1)
 		str = strings.Replace(str, `"`, `\"`, -1)

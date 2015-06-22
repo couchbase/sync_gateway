@@ -10,9 +10,9 @@
 package channels
 
 import (
-	"github.com/couchbaselabs/walrus"
 	_ "github.com/robertkrimen/otto/underscore"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -25,7 +25,7 @@ type ChannelMapperOutput struct {
 }
 
 type ChannelMapper struct {
-	*walrus.JSServer // "Superclass"
+	*sgbucket.JSServer // "Superclass"
 }
 
 // Maps user names (or role names prefixed with "role:") to arrays of channel or role names
@@ -36,8 +36,8 @@ const kTaskCacheSize = 4
 
 func NewChannelMapper(fnSource string) *ChannelMapper {
 	return &ChannelMapper{
-		JSServer: walrus.NewJSServer(fnSource, kTaskCacheSize,
-			func(fnSource string) (walrus.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
+			func(fnSource string) (sgbucket.JSServerTask, error) {
 				return NewSyncRunner(fnSource)
 			}),
 	}
@@ -48,7 +48,7 @@ func NewDefaultChannelMapper() *ChannelMapper {
 }
 
 func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result1, err := mapper.Call(body, walrus.JSONString(oldBodyJSON), userCtx)
+	result1, err := mapper.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 }
 
 func (runner *SyncRunner) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result, err := runner.Call(body, walrus.JSONString(oldBodyJSON), userCtx)
+	result, err := runner.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err
 	}

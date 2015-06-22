@@ -15,15 +15,15 @@ import (
 
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbase/sg-bucket"
 )
 
 type couchbaseDCPFeedImpl struct {
 	bds    cbdatasource.BucketDataSource
-	events <-chan walrus.TapEvent
+	events <-chan sgbucket.TapEvent
 }
 
-func (feed *couchbaseDCPFeedImpl) Events() <-chan walrus.TapEvent {
+func (feed *couchbaseDCPFeedImpl) Events() <-chan sgbucket.TapEvent {
 	return feed.events
 }
 
@@ -55,9 +55,9 @@ func (a dcpAuth) GetCredentials() (string, string, string) {
 type Receiver interface {
 	cbdatasource.Receiver
 	SeedSeqnos(map[uint16]uint64, map[uint16]uint64)
-	GetEventFeed() <-chan walrus.TapEvent
-	SetEventFeed(chan walrus.TapEvent)
-	GetOutput() chan walrus.TapEvent
+	GetEventFeed() <-chan sgbucket.TapEvent
+	SetEventFeed(chan sgbucket.TapEvent)
+	GetOutput() chan sgbucket.TapEvent
 	updateSeq(vbucketId uint16, seq uint64)
 }
 
@@ -68,13 +68,13 @@ type DCPReceiver struct {
 	m         sync.Mutex
 	seqs      map[uint16]uint64 // To track max seq #'s we received per vbucketId.
 	meta      map[uint16][]byte // To track metadata blob's per vbucketId.
-	eventFeed <-chan walrus.TapEvent
-	output    chan walrus.TapEvent // Same as EventFeed but writeably-typed
+	eventFeed <-chan sgbucket.TapEvent
+	output    chan sgbucket.TapEvent // Same as EventFeed but writeably-typed
 }
 
 func NewDCPReceiver() Receiver {
 	r := &DCPReceiver{
-		output: make(chan walrus.TapEvent, 10),
+		output: make(chan sgbucket.TapEvent, 10),
 	}
 	r.eventFeed = r.output
 	//r.SetEventFeed(r.GetOutput())
@@ -87,15 +87,15 @@ func NewDCPReceiver() Receiver {
 	return r
 }
 
-func (r *DCPReceiver) SetEventFeed(c chan walrus.TapEvent) {
+func (r *DCPReceiver) SetEventFeed(c chan sgbucket.TapEvent) {
 	r.output = c
 }
 
-func (r *DCPReceiver) GetEventFeed() <-chan walrus.TapEvent {
+func (r *DCPReceiver) GetEventFeed() <-chan sgbucket.TapEvent {
 	return r.eventFeed
 }
 
-func (r *DCPReceiver) GetOutput() chan walrus.TapEvent {
+func (r *DCPReceiver) GetOutput() chan sgbucket.TapEvent {
 	return r.output
 }
 
@@ -106,22 +106,22 @@ func (r *DCPReceiver) OnError(err error) {
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	r.updateSeq(vbucketId, seq)
-	r.output <- makeFeedEvent(req, vbucketId, walrus.TapMutation)
+	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapMutation)
 	return nil
 }
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	r.updateSeq(vbucketId, seq)
-	r.output <- makeFeedEvent(req, vbucketId, walrus.TapDeletion)
+	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapDeletion)
 	return nil
 }
 
-func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode walrus.TapOpcode) walrus.TapEvent {
+func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.TapOpcode) sgbucket.TapEvent {
 	// not currently doing rq.Extras handling (as in gocouchbase/upr_feed, makeUprEvent) as SG doesn't use
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
 	// SnapshotStart, SnapshotEnd
-	event := walrus.TapEvent{
+	event := sgbucket.TapEvent{
 		Opcode:   opcode,
 		Key:      rq.Key,
 		Value:    rq.Body,
@@ -283,14 +283,14 @@ func (r *DCPLoggingReceiver) updateSeq(vbucketId uint16, seq uint64) {
 	r.rec.updateSeq(vbucketId, seq)
 }
 
-func (r *DCPLoggingReceiver) SetEventFeed(c chan walrus.TapEvent) {
+func (r *DCPLoggingReceiver) SetEventFeed(c chan sgbucket.TapEvent) {
 	r.rec.SetEventFeed(c)
 }
 
-func (r *DCPLoggingReceiver) GetEventFeed() <-chan walrus.TapEvent {
+func (r *DCPLoggingReceiver) GetEventFeed() <-chan sgbucket.TapEvent {
 	return r.rec.GetEventFeed()
 }
 
-func (r *DCPLoggingReceiver) GetOutput() chan walrus.TapEvent {
+func (r *DCPLoggingReceiver) GetOutput() chan sgbucket.TapEvent {
 	return r.rec.GetOutput()
 }

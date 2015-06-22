@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/walrus"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -133,6 +134,17 @@ func (context *DatabaseContext) IsClosed() bool {
 	return context.Bucket == nil
 }
 
+// For testing only!
+func (context *DatabaseContext) RestartListener() error {
+	context.tapListener.Stop()
+	// Delay needed to properly stop
+	time.Sleep(2 * time.Second)
+	if err := context.tapListener.Start(context.Bucket, true); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	return auth.NewAuthenticator(context.Bucket, context)
@@ -150,6 +162,10 @@ func CreateDatabase(context *DatabaseContext) (*Database, error) {
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
 		db.Bucket == otherdb.Bucket
+}
+
+func (db *Database) User() auth.User {
+	return db.user
 }
 
 // Reloads the database's User object, in case its persistent properties have been changed.
@@ -405,7 +421,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	return
 }
 
-func (db *Database) queryAllDocs(reduce bool) (walrus.ViewResult, error) {
+func (db *Database) queryAllDocs(reduce bool) (sgbucket.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewAllDocs, opts)
 	if err != nil {

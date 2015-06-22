@@ -27,6 +27,9 @@ import (
 // Minimum value of _changes?heartbeat property
 const kMinHeartbeatMS = 25 * 1000
 
+// Default value of _changes?heartbeat property
+const kDefaultHeartbeatMS = 0
+
 // Default value of _changes?timeout property
 const kDefaultTimeoutMS = 5 * 60 * 1000
 
@@ -88,9 +91,8 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
-
-		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", 0, kMinHeartbeatMS, 0)
-		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS)
+		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat*1000, true)
+		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS, true)
 
 	} else {
 		// POST request has parameters in JSON body:
@@ -98,7 +100,7 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-		feed, options, filter, channelsArray, err = readChangesOptionsFromJSON(body)
+		feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON(body)
 		if err != nil {
 			return err
 		}
@@ -198,6 +200,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
+				base.LogTo("Heartbeat", "sent _changes heartbeat to user [%s]",h.user.Name())
 			case <-timeout:
 				message = "OK (timeout)"
 				break loop
@@ -324,6 +327,7 @@ loop:
 			}
 		case <-heartbeat:
 			err = send(nil)
+			base.LogTo("Heartbeat", "sent _changes heartbeat to user [%s]",database.User().Name())
 		case <-timeout:
 			break loop
 		}
@@ -376,7 +380,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		} else {
 			var channelNames []string
 			var err error
-			if _, options, _, channelNames, err = readChangesOptionsFromJSON(msg); err != nil {
+			if _, options, _, channelNames, err = h.readChangesOptionsFromJSON(msg); err != nil {
 				return
 			}
 			if channelNames != nil {
@@ -410,7 +414,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 	return nil
 }
 
-func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
+func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
 	var input struct {
 		Feed        string        `json:"feed"`
 		Since       db.SequenceID `json:"since"`
@@ -419,8 +423,8 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		IncludeDocs bool          `json:"include_docs"`
 		Filter      string        `json:"filter"`
 		Channels    string        `json:"channels"` // a filter query param, so it has to be a string
-		HeartbeatMs uint64        `json:"heartbeat"`
-		TimeoutMs   uint64        `json:"timeout"`
+		HeartbeatMs *uint64       `json:"heartbeat"`
+		TimeoutMs   *uint64       `json:"timeout"`
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
@@ -438,9 +442,10 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 
 	options.HeartbeatMs = getRestrictedInt(
 		input.HeartbeatMs,
-		0,
+		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
-		0,
+		h.server.config.MaxHeartbeat*1000,
+		true,
 	)
 
 	options.TimeoutMs = getRestrictedInt(
@@ -448,6 +453,7 @@ func readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.Change
 		kDefaultTimeoutMS,
 		0,
 		kMaxTimeoutMS,
+		true,
 	)
 
 	return

@@ -275,7 +275,7 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 	return &counter, &sum, &payloads
 }
 
-func TestWebhook(t *testing.T) {
+func TestWebhookBasic(t *testing.T) {
 
 	if !testLiveHTTP {
 		return

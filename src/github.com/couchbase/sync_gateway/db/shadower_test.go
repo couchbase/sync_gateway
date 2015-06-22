@@ -3,6 +3,7 @@ package db
 import (
 	"log"
 	"regexp"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -127,7 +128,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	// Push an existing doc revision (the way a client's push replicator would)
 	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"})
 	waitFor(t, func() bool {
-		return db.Shadower.pullCount >= 1
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 1
 	})
 
 	// Make sure the echoed pull didn't create a new revision:

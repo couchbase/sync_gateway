@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -99,6 +100,88 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 }
 
+// Test user access grant while that user has an active changes feed.  (see issue #880)
+func TestUserAccessRace(t *testing.T) {
+
+	syncFunction := `
+function(doc, oldDoc) {
+  if (doc.type == "list") {
+    channel("list-"+doc._id);
+  } else if (doc.type == "profile") {
+    channel("profiles");
+    var user = doc._id.substring(doc._id.indexOf(":")+1);
+    if (user !== doc.user_id) {
+      throw({forbidden : "profile user_id must match docid"})
+    }
+    requireUser(user);
+    access(user, "profiles");
+    channel('profile-'+user);
+  } else if (doc.type == "Want") {
+    var parts = doc._id.split("-");
+    var user = parts[1];
+    var i = parts[2];
+    requireUser(user);
+    channel('profile-'+user);
+    access(user, 'list-'+i);
+  }
+}
+
+`
+	rt := restTester{syncFn: syncFunction}
+
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
+
+	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
+	assertStatus(t, response, 201)
+
+	// Create list docs
+	input := `{"docs": [`
+
+	for i := 1; i <= 100; i++ {
+		if i > 1 {
+			input = input + `,`
+		}
+		docId := fmt.Sprintf("l_%d", i)
+		input = input + fmt.Sprintf(`{"_id":"%s", "type":"list"}`, docId)
+	}
+	input = input + `]}`
+	response = rt.sendAdminRequest("POST", "/db/_bulk_docs", input)
+
+	// Start changes feed
+	var wg sync.WaitGroup
+	go func() {
+		defer wg.Done()
+		wg.Add(1)
+		// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
+		// ensure it doesn't terminate before the first change is sent.
+		changesResponse := rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=2000", "", "bernard"))
+
+		changes, err := readContinuousChanges(changesResponse)
+		assert.Equals(t, err, nil)
+
+		log.Printf("Got %d change entries", len(changes))
+		assert.Equals(t, len(changes), 201)
+	}()
+
+	// Make bulk docs calls, 100 docs each, all triggering access grants to the list docs.
+	for j := 0; j < 1; j++ {
+		input := `{"docs": [`
+		for i := 1; i <= 100; i++ {
+			if i > 1 {
+				input = input + `,`
+			}
+			k := j*100 + i
+			docId := fmt.Sprintf("Want-bernard-l_%d", k)
+			input = input + fmt.Sprintf(`{"_id":"%s", "type":"Want", "owner":"bernard"}`, docId)
+		}
+		input = input + `]}`
+		response = rt.send(requestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+	}
+
+	// wait for changes feed to complete (time out)
+	wg.Wait()
+}
+
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
@@ -168,6 +251,7 @@ func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
 				return changes, err
 			}
 			changes = append(changes, change)
+			log.Printf("Got change ==> %v", change)
 		}
 
 	}

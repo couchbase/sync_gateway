@@ -180,7 +180,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 			since = db.SequenceID{}
 		}
 	}
-	bh.batchSize = int(getRestrictedIntFromString(rq.Properties["batch"], 200, 10, math.MaxUint64))
+	bh.batchSize = int(getRestrictedIntFromString(rq.Properties["batch"], 200, 10, math.MaxUint64, true))
 	bh.continuous = false
 	if val, found := rq.Properties["continuous"]; found && val != "false" {
 		bh.continuous = true

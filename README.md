@@ -13,7 +13,7 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 [**Downloads**](http://www.couchbase.com/download#cb-mobile)
 
 ## Building From Source
-To build Sync Gateway from source, you must have Go 1.2 or later installed on your computer.
+To build Sync Gateway from source, you must have Go 1.4 or later installed on your computer.
 
 On Mac or Unix systems, you can build Sync Gateway from source as follows:
 

@@ -21,6 +21,19 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		defaultValue,
 		minValue,
 		maxValue,
+		false,
+	)
+	assert.Equals(t, restricted, defaultValue)
+
+	// make sure it returns default value when passed Values that doesn't contain key
+	values.Set("bar", "99")
+	restricted = getRestrictedIntQuery(
+		values,
+		"foo",
+		defaultValue,
+		minValue,
+		maxValue,
+		false,
 	)
 	assert.Equals(t, restricted, defaultValue)
 
@@ -32,6 +45,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		defaultValue,
 		minValue,
 		maxValue,
+		false,
 	)
 	assert.Equals(t, restricted, uint64(99))
 
@@ -43,6 +57,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		defaultValue,
 		minValue,
 		maxValue,
+		false,
 	)
 	assert.Equals(t, restricted, maxValue)
 
@@ -54,7 +69,31 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		defaultValue,
 		minValue,
 		maxValue,
+		false,
 	)
 	assert.Equals(t, restricted, minValue)
 
+	// Return zero when allowZero=true
+	values.Set("foo", "0")
+	restricted = getRestrictedIntQuery(
+		values,
+		"foo",
+		defaultValue,
+		minValue,
+		maxValue,
+		true,
+	)
+	assert.Equals(t, restricted, uint64(0))
+
+	// Return minValue when allowZero=false
+	values.Set("foo", "0")
+	restricted = getRestrictedIntQuery(
+		values,
+		"foo",
+		defaultValue,
+		minValue,
+		maxValue,
+		false,
+	)
+	assert.Equals(t, restricted, minValue)
 }
