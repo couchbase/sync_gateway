@@ -233,7 +233,7 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 		}
 	}
 
-	generateContinuousChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
+	generateContinuousChanges(bh.db, channelSet, options, nil, func(changes []*db.ChangeEntry) error {
 		base.LogTo("Sync+", "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
