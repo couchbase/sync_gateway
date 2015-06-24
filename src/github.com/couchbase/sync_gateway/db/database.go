@@ -110,6 +110,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 	if err != nil {
 		return nil, err
 	}
+
 	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
 		context.tapListener.Notify(changedChannels)
 	}, cacheOptions)

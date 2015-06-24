@@ -65,12 +65,6 @@ type SkippedSequence struct {
 	timeAdded time.Time
 }
 
-type CacheOptions struct {
-	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
-	CachePendingSeqMaxNum  int           // Max number of pending sequences before skipping
-	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
-}
-
 //////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
