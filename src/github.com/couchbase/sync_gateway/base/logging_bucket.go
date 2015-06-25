@@ -25,6 +25,11 @@ func (b *LoggingBucket) GetRaw(k string) ([]byte, error) {
 	defer func() { LogTo("Bucket", "GetRaw(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.GetRaw(k)
 }
+func (b *LoggingBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "GetBulkRaw(%q) [%v]", keys, time.Since(start)) }()
+	return b.bucket.GetBulkRaw(keys)
+}
 func (b *LoggingBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Add(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
