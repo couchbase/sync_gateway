@@ -662,12 +662,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	dbExpvars.Add("revs_added", 1)
 
 	// Store the new revision in the cache
-	history := doc.History.getHistory(newRevID)
+	//history := doc.History.getHistory(newRevID)
 	if doc.History[newRevID].Deleted {
 		body["_deleted"] = true
 	}
 	revChannels := doc.History[newRevID].Channels
-	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
+	//db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
 	// Raise event
 	if db.EventMgr.HasHandlerForEvent(DocumentChange) {
