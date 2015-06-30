@@ -88,7 +88,22 @@ func (rc *RevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Lock()
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
+
+		rc.cache[value.key] = nil
 		delete(rc.cache, value.key)
+
+		/*
+		compactcache := make([IDAndRev]*list.Element, len(rc.cache))
+		for key, value := range rc.cache {
+			compactcache[key] = value
+		}
+
+		rc.cache = compactcache;
+		*/
+
+
+		//Create a new copy of the cache and release the old one for GC
+
 	}
 	rc.lock.Unlock()
 }
@@ -123,7 +138,7 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Body
 func (value *revCacheValue) store(body Body, history Body, channels base.Set) {
 	value.lock.Lock()
 	if value.body == nil {
-		value.body = body.ShallowCopy() // Don't store a body the caller might later mutate
+		value.body = body //.ShallowCopy() // Don't store a body the caller might later mutate
 		value.history = history
 		value.channels = channels
 		value.err = nil
