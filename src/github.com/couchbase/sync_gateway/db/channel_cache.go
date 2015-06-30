@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	DefaultChannelCacheMinLength = 40             // Keep at least this many entries in cache
-	DefaultChannelCacheMaxLength = 50              // Don't put more than this many entries in cache
+	DefaultChannelCacheMinLength = 50             // Keep at least this many entries in cache
+	DefaultChannelCacheMaxLength = 500              // Don't put more than this many entries in cache
 	DefaultChannelCacheAge       = 60 * time.Second // Keep entries at least this long
 )
 

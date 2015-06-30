@@ -89,7 +89,7 @@ func (rc *RevisionCache) removeValue(value *revCacheValue) {
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
 
-		rc.cache[value.key] = nil
+		//rc.cache[value.key] = nil
 		delete(rc.cache, value.key)
 
 		/*
