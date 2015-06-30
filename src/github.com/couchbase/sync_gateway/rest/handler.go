@@ -296,6 +296,7 @@ func (h *handler) userAgentIs(agent string) bool {
 
 // Returns the request body as a raw byte array.
 func (h *handler) readBody() ([]byte, error) {
+	defer h.requestBody.Close();
 	return ioutil.ReadAll(h.requestBody)
 }
 
@@ -307,6 +308,7 @@ func (h *handler) readJSON() (db.Body, error) {
 
 // Parses a JSON request body into a custom structure.
 func (h *handler) readJSONInto(into interface{}) error {
+	defer h.requestBody.Close();
 	return db.ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
