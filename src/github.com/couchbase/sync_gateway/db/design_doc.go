@@ -123,6 +123,14 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	} else {
 		result = filterViewResult(result, db.user, options["reduce"] == true)
 	}
+	if options["into"] != nil {
+		// loop over results:
+			// value, err := h.db.GetRev(docid, "", false, nil)
+			// save the results into the database
+			// use this docid construction: https://github.com/couchbaselabs/razor/blob/da00fe1b289a3085bfa53ecddfff1d317bf4ee00/CBLEdgeReduce/CBLEdgeReduce.m#L31
+			// newRev, err = h.db.Put(docid, body) // or is there an update API
+
+	}
 	return &result, nil
 }
 
