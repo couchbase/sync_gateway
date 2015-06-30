@@ -124,7 +124,7 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 	response = rt.sendRequest("PUT", "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
 	assertStatus(t, response, 201)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -145,6 +145,87 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven" , Value: interface {}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten" , Value: interface {}(nil)})
+
+}
+func TestViewQuerySaveIntoDB(t *testing.T) {
+	var rt restTester
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {if (doc.name) emit(doc.name, doc.points);}", "reduce": "_count"}}}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc1", `{"points":10, "name":"jchris"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc2", `{"points":16 , "name":"adam"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc3", `{"points":12 , "name":"jchris"}`)
+	assertStatus(t, response, 201)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&into=true", ``)
+	assertStatus(t, response, 200)
+	var result sgbucket.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// assert on the response
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
+
+	// assert on the target database
+	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
+	assertStatus(t, response, 200)
+	var doc map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	assert.Equals(t, doc["value"], 3.0)
+
+	// test that repeats don't change the rev until the value changes
+	var rev string
+	rev = doc["_rev"].(string)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&into=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// assert on the response
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
+
+	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	assert.Equals(t, doc["_rev"], rev)
+
+	// change the value
+	response = rt.sendAdminRequest("GET", "/db/", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	var since = doc["update_seq"]
+	assert.Equals(t, since, 4.0)
+
+	response = rt.sendRequest("PUT", "/db/doc4", `{"points":9 , "name":"jchris"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc5", `{"points":22 , "name":"adam"}`)
+	assertStatus(t, response, 201)
+
+	// need to wait for changes?
+	response = rt.sendAdminRequest("GET", "/db/_changes?since=7", ``)
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&into=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// assert on the response
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 5.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
+
+	// need to wait for changes?
+	response = rt.sendAdminRequest("GET", "/db/_changes?since=8", ``)
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	assert.Equals(t, doc["value"], 5.0)
 }
 
 func TestUserViewQuery(t *testing.T) {
@@ -211,7 +292,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 		assertStatus(t, response, 201)
 
 	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
+	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"1", "channel":"W"}`)
 	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
@@ -338,4 +419,18 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	row := result.Rows[1]
 	value := row.Value.(float64)
 	assert.Equals(t, value, 99.0)
+
+	// test group=true
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+	
+	// we should get 2 rows with the reduce result
+	assert.Equals(t, len(result.Rows), 10)
+	row = result.Rows[0]
+	value = row.Value.(float64)
+	assert.True(t, value == 1)
+	row = result.Rows[1]
+	value = row.Value.(float64)
+	assert.True(t, value == 1)
 }

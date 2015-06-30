@@ -82,7 +82,7 @@ func (h *handler) handleView() error {
 	}
 
 	// String options:
-	for _, name := range []string{"startkey_docid", "endkey_docid", "stale"} {
+	for _, name := range []string{"startkey_docid", "endkey_docid", "stale", "into"} {
 		if val := h.getQuery(name); "" != val {
 			opts[name] = val
 		}

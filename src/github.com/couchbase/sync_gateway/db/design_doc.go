@@ -1,7 +1,10 @@
 package db
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/couchbase/sg-bucket"
@@ -107,7 +110,8 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	// Query has slightly different access control than checkDDocAccess():
 	// * Admins can query any design doc including the internal ones
 	// * Regular users can query non-internal design docs
-	if db.user != nil && isInternalDDoc(ddocName) {
+	// * Only admin can initiate an "into" query
+	if db.user != nil && (isInternalDDoc(ddocName) || options["into"] != nil) {
 		return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
 	}
 
@@ -122,47 +126,111 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			}
 		}
 	} else {
-		result = filterViewResult(result, db.user, options["reduce"] == true)
+		// don't filter when admin reduces
+		if !(db.user == nil && options["reduce"] == true) {
+			result = filterViewResult(result, db.user)
+		}
+	}
+	// refactor inside SaveRowsIntoTarget
+	if options["into"] != nil { // and user is admin
+		level := 0
+		if options["group"] == true {
+			level = -1
+		}
+		if options["group_level"] != nil {
+			level = options["group_level"].(int)
+		}
+		saveRowsIntoTarget(db, ddocName, viewName, level, result, options["into"].(string))
 	}
 	return &result, nil
 }
 
+func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
+	prefix := fmt.Sprintf("%s_%s_%d", ddocName, viewName, level)
+	// targetDb =
+
+	// ... load all docs with that prefix by docid, and remove them one by one as we work
+	// through the set
+	var allDocsOpts ForEachDocIDOptions
+	allDocsOpts.Startkey = prefix
+	allDocsOpts.Endkey = prefix + "*"
+	docids := map[string]int{}
+	db.ForEachDocID(func(doc IDAndRev, channels []string) bool {
+		docids[doc.DocID] = 1
+		return true
+	}, allDocsOpts)
+
+	for _, row := range result.Rows {
+		jsonKey, _ := json.Marshal(row.Key)
+		// error checking...
+		docid := fmt.Sprintf("r.%s.%s", prefix, jsonKey)
+		docids[docid] = 0
+		body, err := db.GetRev(docid, "", false, nil)
+		base.LogTo("HTTP", "View doc %q", docid)
+		if err != nil {
+			body = Body{}
+		}
+		// otherwise numbers are different types
+		bodyV, _ := jsonRound(body["value"])
+		viewV, _ := jsonRound(row.Value)
+		if !reflect.DeepEqual(bodyV, viewV) {
+			body["value"] = row.Value
+			body["key"] = row.Key
+			body["type"] = "reduction"
+			body["query"] = prefix
+			newRev, err2 := db.Put(docid, body)
+			base.LogTo("HTTP", "Save into %q - %v - %v %v", docid, newRev, body["value"], err2)
+		}
+	}
+	// removed rows weren't seen
+	for id := range docids {
+		if docids[id] == 1 {
+			body, err := db.GetRev(id, "", false, nil)
+			if err == nil {
+				newRev, err2 := db.DeleteDoc(id, body["_rev"].(string))
+				base.LogTo("HTTP", "Removed row %q %v %v", id, newRev, err2)
+			} else {
+				base.LogTo("HTTP", "Missing Removed row %q %v %v", id, err)
+			}
+		}
+	}
+}
+
+func jsonRound(input interface{}) (result interface{}, err error) {
+	toMarshal := make([]interface{}, 1)
+	toMarshal[0] = input
+	jsonValue, err := json.Marshal(toMarshal)
+	if err == nil {
+		var arrayResult []interface{}
+		err = json.Unmarshal(jsonValue, &arrayResult)
+		result = arrayResult[0]
+	}
+	return result, err
+}
+
 // Cleans up the Value property, and removes rows that aren't visible to the current user
-func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
+func filterViewResult(input sgbucket.ViewResult, user auth.User) (result sgbucket.ViewResult) {
 	checkChannels := false
 	var visibleChannels ch.TimedSet
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
-		if (reduce) {
-			return; // this is an error
-		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		if (reduce){
-			// Add the raw row:
+		value := row.Value.([]interface{})
+		// value[0] is the array of channels; value[1] is the actual value
+		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+			// Add this row:
+			stripSyncProperty(row)
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,
-				Value: row.Value,
+				Value: value[1],
 				ID:    row.ID,
+				Doc:   row.Doc,
 			})
-		} else {
-			value := row.Value.([]interface{})
-			// value[0] is the array of channels; value[1] is the actual value
-			if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
-				// Add this row:
-				stripSyncProperty(row)
-				result.Rows = append(result.Rows, &sgbucket.ViewRow{
-					Key:   row.Key,
-					Value: value[1],
-					ID:    row.ID,
-					Doc:   row.Doc,
-				})
-			}
 		}
-
 	}
 	return
 }
