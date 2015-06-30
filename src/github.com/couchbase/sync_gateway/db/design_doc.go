@@ -2,10 +2,10 @@ package db
 
 import (
 	"encoding/json"
-	"net/http"
-	"strings"
 	"fmt"
+	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -128,39 +128,33 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	}
 	if options["into"] != nil { // and user is admin
 		level := 0
-		if (options["group"] == true) {
+		if options["group"] == true {
 			level = -1
 		}
-		if (options["group_level"] != nil) {
+		if options["group_level"] != nil {
 			level = options["group_level"].(int)
 		}
 		saveRowsIntoTarget(db, ddocName, viewName, level, result, options["into"].(string))
-		// loop over results:
-			// value, err := h.db.GetRev(docid, "", false, nil)
-			// save the results into the database
-			// use this docid construction: https://github.com/couchbaselabs/razor/blob/da00fe1b289a3085bfa53ecddfff1d317bf4ee00/CBLEdgeReduce/CBLEdgeReduce.m#L31
-			// newRev, err = h.db.Put(docid, body) // or is there an update API
-
 	}
 	return &result, nil
 }
 
 func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
 	prefix := fmt.Sprintf("gate-%s-%s-%d", ddocName, viewName, level)
-	// targetDb = 
+	// targetDb =
 	for _, row := range result.Rows {
 		jsonKey, _ := json.Marshal(row.Key)
 		// error checking...
 		docid := fmt.Sprintf("%s-%s", prefix, jsonKey)
-		body, err:= db.GetRev(docid, "", false, nil)
+		body, err := db.GetRev(docid, "", false, nil)
 		base.LogTo("HTTP", "View doc %q", docid)
-		if (err != nil) {
+		if err != nil {
 			body = Body{}
 		}
 		// otherwise numbers are different types
 		bodyV, _ := jsonRound(body["value"])
 		viewV, _ := jsonRound(row.Value)
-		if (!reflect.DeepEqual(bodyV, viewV)) {
+		if !reflect.DeepEqual(bodyV, viewV) {
 			body["value"] = row.Value
 			body["key"] = row.Key
 			body["type"] = "reduction"
@@ -172,7 +166,7 @@ func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level in
 }
 
 func jsonRound(input interface{}) (result interface{}, err error) {
-	toMarshal := make([]interface{},1)
+	toMarshal := make([]interface{}, 1)
 	toMarshal[0] = input
 	jsonValue, err := json.Marshal(toMarshal)
 	if err == nil {
@@ -180,7 +174,7 @@ func jsonRound(input interface{}) (result interface{}, err error) {
 		err = json.Unmarshal(jsonValue, &arrayResult)
 		result = arrayResult[0]
 	}
-	return result, err;
+	return result, err
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
@@ -190,14 +184,14 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (r
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
-		if (reduce) {
-			return; // this is an error, only admin can reduce
+		if reduce {
+			return // this is an error, only admin can reduce
 		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		if (reduce){
+		if reduce {
 			// Add the raw row:
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,
