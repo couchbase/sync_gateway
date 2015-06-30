@@ -1,8 +1,10 @@
 package db
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
+	"fmt"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -112,7 +114,8 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	} else {
 		result = filterViewResult(result, db.user, options["reduce"] == true)
 	}
-	if options["into"] != nil {
+	if options["into"] != nil { // and user is admin
+		saveRowsIntoTarget(ddocName, viewName, options["group_level"].(int), result, options["into"].(string))
 		// loop over results:
 			// value, err := h.db.GetRev(docid, "", false, nil)
 			// save the results into the database
@@ -121,6 +124,19 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 
 	}
 	return &result, nil
+}
+
+func saveRowsIntoTarget(ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
+	prefix := fmt.Sprintf("gate-%s-%s-%d", ddocName, viewName, level)
+	for _, row := range result.Rows {
+		key := row.Key.([]interface{})
+		value := row.Value.([]interface{})
+		jsonKey, _ := json.Marshal(key)
+		// error checking...
+		docid := fmt.Sprintf("%s-%s", prefix, jsonKey)
+		base.LogTo("HTTP", "View into %q - %v - %q", docid, value, target)
+
+	}
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
