@@ -177,6 +177,19 @@ func jsonRound(input interface{}) (result interface{}, err error) {
 	return result, err
 }
 
+func saveRowsIntoTarget(ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
+	prefix := fmt.Sprintf("gate-%s-%s-%d", ddocName, viewName, level)
+	for _, row := range result.Rows {
+		key := row.Key.([]interface{})
+		value := row.Value.([]interface{})
+		jsonKey, _ := json.Marshal(key)
+		// error checking...
+		docid := fmt.Sprintf("%s-%s", prefix, jsonKey)
+		base.LogTo("HTTP", "View into %q - %v - %q", docid, value, target)
+
+	}
+}
+
 // Cleans up the Value property, and removes rows that aren't visible to the current user
 func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
 	checkChannels := false
