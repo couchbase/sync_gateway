@@ -139,12 +139,14 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
 	assertStatus(t, response, 201)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 9; i++ {
 		// Create docs:
 		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":0, "value":"0", "channel":"W"}`)
 		assertStatus(t, response, 201)
 
 	}
+	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
+	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
 
@@ -158,5 +160,19 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	row := result.Rows[0]
 	value := row.Value.(float64)
 	assert.True(t, value == 10)
+
+	// test group=true
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+	
+	// we should get 2 rows with the reduce result
+	assert.Equals(t, len(result.Rows), 2)
+	row = result.Rows[0]
+	value = row.Value.(float64)
+	assert.True(t, value == 9)
+	row = result.Rows[1]
+	value = row.Value.(float64)
+	assert.True(t, value == 1)
 
 }
