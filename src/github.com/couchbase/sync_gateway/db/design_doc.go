@@ -132,10 +132,22 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
 	prefix := fmt.Sprintf("gate-%s-%s-%d", ddocName, viewName, level)
 	// targetDb =
+	// ... load all docs with that prefix by docid, and remove them one by one as we work
+	// through the set
+	var allDocsOpts ForEachDocIDOptions
+	allDocsOpts.Startkey = prefix
+	allDocsOpts.Endkey = prefix + "*"
+	docids := map[string]int{}
+	db.ForEachDocID(func(doc IDAndRev, channels []string) bool {
+		docids[doc.DocID] = 1
+		return true
+	}, allDocsOpts)
+
 	for _, row := range result.Rows {
 		jsonKey, _ := json.Marshal(row.Key)
 		// error checking...
-		docid := fmt.Sprintf("%s-%s", prefix, jsonKey)
+		docid := fmt.Sprintf("%s.%s", prefix, jsonKey)
+		docids[docid] = 0
 		body, err := db.GetRev(docid, "", false, nil)
 		base.LogTo("HTTP", "View doc %q", docid)
 		if err != nil {
@@ -151,7 +163,18 @@ func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level in
 			newRev, err2 := db.Put(docid, body)
 			base.LogTo("HTTP", "Save into %q - %v - %v %v", docid, newRev, body["value"], err2)
 		}
-		// removed rows
+	}
+	// removed rows weren't seen
+	for id := range docids {
+		if docids[id] == 1 {
+			body, err := db.GetRev(id, "", false, nil)
+			if err == nil {
+				newRev, err2 := db.DeleteDoc(id, body["_rev"].(string))
+				base.LogTo("HTTP", "Removed row %q %v %v", id, newRev, err2)
+			} else {
+				base.LogTo("HTTP", "Missing Removed row %q %v %v", id, err)
+			}
+		}
 	}
 }
 
