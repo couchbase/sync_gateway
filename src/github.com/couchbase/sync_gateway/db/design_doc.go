@@ -109,7 +109,8 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	// Query has slightly different access control than checkDDocAccess():
 	// * Admins can query any design doc including the internal ones
 	// * Regular users can query non-internal design docs
-	if db.user != nil && isInternalDDoc(ddocName) {
+	// * Only admin can initiate an "into" query
+	if db.user != nil && (isInternalDDoc(ddocName) || options["into"] != nil) {
 		return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
 	}
 
