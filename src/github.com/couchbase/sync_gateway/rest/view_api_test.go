@@ -89,7 +89,7 @@ func FailingTestViewQuerySaveIntoDB(t *testing.T) {
 	response = rt.sendRequest("PUT", "/db/doc3", `{"points":12 , "name":"jchris"}`)
 	assertStatus(t, response, 201)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -178,7 +178,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 		assertStatus(t, response, 201)
 
 	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
+	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"1", "channel":"W"}`)
 	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
@@ -194,17 +194,17 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	value := row.Value.(float64)
 	assert.True(t, value == 10)
 
-	// todo support group reduce, see #955
-	// // test group=true
-	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
-	// assertStatus(t, response, 200)
-	// json.Unmarshal(response.Body.Bytes(), &result)
-	// // we should get 2 rows with the reduce result
-	// assert.Equals(t, len(result.Rows), 2)
-	// row = result.Rows[0]
-	// value = row.Value.(float64)
-	// assert.True(t, value == 9)
-	// row = result.Rows[1]
-	// value = row.Value.(float64)
-	// assert.True(t, value == 1)
+	// test group=true
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// we should get 2 rows with the reduce result
+	assert.Equals(t, len(result.Rows), 2)
+	row = result.Rows[0]
+	value = row.Value.(float64)
+	assert.True(t, value == 9)
+	row = result.Rows[1]
+	value = row.Value.(float64)
+	assert.True(t, value == 1)
 }

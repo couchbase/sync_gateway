@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"fmt"
+	"reflect"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -115,7 +116,14 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 		result = filterViewResult(result, db.user, options["reduce"] == true)
 	}
 	if options["into"] != nil { // and user is admin
-		saveRowsIntoTarget(ddocName, viewName, options["group_level"].(int), result, options["into"].(string))
+		level := 0
+		if (options["group"] == true) {
+			level = -1
+		}
+		if (options["group_level"] != nil) {
+			level = options["group_level"].(int)
+		}
+		saveRowsIntoTarget(db, ddocName, viewName, level, result, options["into"].(string))
 		// loop over results:
 			// value, err := h.db.GetRev(docid, "", false, nil)
 			// save the results into the database
@@ -126,17 +134,42 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	return &result, nil
 }
 
-func saveRowsIntoTarget(ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
+func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
 	prefix := fmt.Sprintf("gate-%s-%s-%d", ddocName, viewName, level)
+	// targetDb = 
 	for _, row := range result.Rows {
-		key := row.Key.([]interface{})
-		value := row.Value.([]interface{})
-		jsonKey, _ := json.Marshal(key)
+		jsonKey, _ := json.Marshal(row.Key)
 		// error checking...
 		docid := fmt.Sprintf("%s-%s", prefix, jsonKey)
-		base.LogTo("HTTP", "View into %q - %v - %q", docid, value, target)
-
+		body, err:= db.GetRev(docid, "", false, nil)
+		base.LogTo("HTTP", "View doc %q", docid)
+		if (err != nil) {
+			body = Body{}
+		}
+		// otherwise numbers are different types
+		bodyV, _ := jsonRound(body["value"])
+		viewV, _ := jsonRound(row.Value)
+		if (!reflect.DeepEqual(bodyV, viewV)) {
+			body["value"] = row.Value
+			body["key"] = row.Key
+			body["type"] = "reduction"
+			newRev, err2 := db.Put(docid, body)
+			base.LogTo("HTTP", "Save into %q - %v - %v %v", docid, newRev, body["value"], err2)
+		}
+		// removed rows
 	}
+}
+
+func jsonRound(input interface{}) (result interface{}, err error) {
+	toMarshal := make([]interface{},1)
+	toMarshal[0] = input
+	jsonValue, err := json.Marshal(toMarshal)
+	if err == nil {
+		var arrayResult []interface{}
+		err = json.Unmarshal(jsonValue, &arrayResult)
+		result = arrayResult[0]
+	}
+	return result, err;
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
