@@ -46,6 +46,9 @@ func (b *LeakyBucket) Get(k string, rv interface{}) error {
 func (b *LeakyBucket) GetRaw(k string) ([]byte, error) {
 	return b.bucket.GetRaw(k)
 }
+func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
+	return b.bucket.GetBulkRaw(keys)
+}
 func (b *LeakyBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
 	return b.bucket.Add(k, exp, v)
 }
