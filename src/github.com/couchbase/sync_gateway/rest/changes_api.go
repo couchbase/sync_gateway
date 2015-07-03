@@ -156,6 +156,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	}
 
 	h.setHeader("Content-Type", "application/json")
+	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.response.Write([]byte("{\"results\":[\r\n"))
 	if options.Wait {
 		h.flush()
@@ -340,6 +341,7 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 	// a real content-type from the response text, which can delay or prevent the client app from
 	// receiving the response.
 	h.setHeader("Content-Type", "application/octet-stream")
+	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.logStatus(http.StatusOK, "sending continuous feed")
 	return h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 		var err error
