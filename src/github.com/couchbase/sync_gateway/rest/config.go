@@ -75,14 +75,19 @@ type ServerConfig struct {
 	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
 }
 
+// Bucket configuration elements - used by db, shadow, index
+type BucketConfig struct {
+	Server   *string `json:"server"`             // Couchbase server URL
+	Pool     *string `json:"pool,omitempty"`     // Couchbase pool name, default "default"
+	Bucket   *string `json:"bucket"`             // Bucket name
+	Username string  `json:"username,omitempty"` // Username for authenticating to server
+	Password string  `json:"password,omitempty"` // Password for authenticating to server
+}
+
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
+	BucketConfig
 	Name               string                         `json:"name"`                           // Database name in REST API (stored as key in JSON)
-	Server             *string                        `json:"server"`                         // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username           string                         `json:"username,omitempty"`             // Username for authenticating to server
-	Password           string                         `json:"password,omitempty"`             // Password for authenticating to server
-	Bucket             *string                        `json:"bucket"`                         // Bucket name on server; defaults to same as 'name'
-	Pool               *string                        `json:"pool"`                           // Couchbase pool name, default "default"
 	Sync               *string                        `json:"sync"`                           // Sync function defines which users can see which data
 	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
 	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
@@ -93,6 +98,7 @@ type DbConfig struct {
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
+	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitEmpty"`        // Channel index settings
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -114,11 +120,7 @@ type CORSConfig struct {
 }
 
 type ShadowConfig struct {
-	Server       *string `json:"server"`                 // Couchbase server URL
-	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name, default "default"
-	Bucket       string  `json:"bucket"`                 // Bucket name
-	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
-	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
+	BucketConfig
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
 	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults to TAP
 }
@@ -141,6 +143,11 @@ type CacheConfig struct {
 	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
 	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
+}
+
+type ChannelIndexConfig struct {
+	BucketConfig
+	CacheWriter bool `json:"writer,omitempty"` // TODO: Partition information
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -189,6 +196,24 @@ func (dbConfig *DbConfig) setup(name string) error {
 		}
 	}
 
+	if dbConfig.ChannelIndex != nil {
+		url, err = url.Parse(*dbConfig.ChannelIndex.Server)
+		if err == nil && url.User != nil {
+			// Remove credentials from shadow URL and put them into the DbConfig.Shadow.Username and .Password:
+			if dbConfig.ChannelIndex.Username == "" {
+				dbConfig.ChannelIndex.Username = url.User.Username()
+			}
+			if dbConfig.ChannelIndex.Password == "" {
+				if password, exists := url.User.Password(); exists {
+					dbConfig.ChannelIndex.Password = password
+				}
+			}
+			url.User = nil
+			urlStr := url.String()
+			dbConfig.ChannelIndex.Server = &urlStr
+		}
+	}
+
 	return err
 }
 
@@ -199,7 +224,12 @@ func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 
 // Implementation of AuthHandler interface for ShadowConfig
 func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
-	return shadowConfig.Username, shadowConfig.Password, shadowConfig.Bucket
+	return shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket
+}
+
+// Implementation of AuthHandler interface for ChannelIndexConfig
+func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
+	return channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket
 }
 
 // Reads a ServerConfig from raw data
@@ -403,10 +433,12 @@ func ParseCommandLine() {
 			Pretty:           *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
-					Name:   *dbName,
-					Server: couchbaseURL,
-					Bucket: bucketName,
-					Pool:   poolName,
+					Name: *dbName,
+					BucketConfig: BucketConfig{
+						Server: couchbaseURL,
+						Bucket: bucketName,
+						Pool:   poolName,
+					},
 					Users: map[string]*db.PrincipalConfig{
 						base.GuestUsername: &db.PrincipalConfig{
 							Disabled:         false,
@@ -439,7 +471,7 @@ func setMaxFileDescriptors(maxP *uint64) {
 	if maxP != nil {
 		maxFDs = *maxP
 	}
-	_ , err := base.SetMaxFileDescriptors(maxFDs)
+	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
 		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 	}

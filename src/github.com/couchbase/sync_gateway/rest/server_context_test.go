@@ -107,8 +107,8 @@ func TestCollectAccessWarningsNoUsers(t *testing.T) {
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
-		Server: &dbServer,
-		Name:   "db",
+		BucketConfig: BucketConfig{Server: &dbServer},
+		Name:         "db",
 	}
 	_, err := sc.AddDatabaseFromConfig(dbConfig)
 	if err != nil {
@@ -127,8 +127,8 @@ func TestCollectAccessWarningsGuestNoChans(t *testing.T) {
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
-		Server: &dbServer,
-		Name:   "db",
+		BucketConfig: BucketConfig{Server: &dbServer},
+		Name:         "db",
 		Users: map[string]*db.PrincipalConfig{
 			base.GuestUsername: &db.PrincipalConfig{
 				Disabled: false,
@@ -152,8 +152,8 @@ func TestCollectAccessWarningsGuestWithChans(t *testing.T) {
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
-		Server: &dbServer,
-		Name:   "db",
+		BucketConfig: BucketConfig{Server: &dbServer},
+		Name:         "db",
 		Users: map[string]*db.PrincipalConfig{
 			base.GuestUsername: &db.PrincipalConfig{
 				Disabled:         false,
@@ -178,8 +178,8 @@ func TestCollectAccessWarningsUsersInDb(t *testing.T) {
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
-		Server: &dbServer,
-		Name:   "db",
+		BucketConfig: BucketConfig{Server: &dbServer},
+		Name:         "db",
 	}
 	_, err := sc.AddDatabaseFromConfig(dbConfig)
 	if err != nil {

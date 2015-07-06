@@ -108,7 +108,7 @@ func testIndexBucket() base.Bucket {
 	*/
 
 	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     "http://10.0.1.24:8091",
+		Server:     "http://localhost:8091",
 		BucketName: "channel_index"})
 
 	if err != nil {

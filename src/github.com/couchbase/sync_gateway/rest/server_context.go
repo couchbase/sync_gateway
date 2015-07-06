@@ -226,7 +226,45 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions)
+	// Channel index definition, if present
+	channelIndexOptions := &db.ChangeIndexOptions{}
+	if config.ChannelIndex != nil {
+		indexServer := "http://localhost:8091"
+		indexPool := "default"
+		indexBucketName := ""
+
+		if config.ChannelIndex.Server != nil {
+			indexServer = *config.ChannelIndex.Server
+		}
+		if config.ChannelIndex.Pool != nil {
+			indexPool = *config.ChannelIndex.Pool
+		}
+		if config.ChannelIndex.Bucket != nil {
+			indexBucketName = *config.ChannelIndex.Bucket
+		}
+		indexSpec := base.BucketSpec{
+			Server:     indexServer,
+			PoolName:   indexPool,
+			BucketName: indexBucketName,
+		}
+		if config.ChannelIndex.Username != "" {
+			indexSpec.Auth = config.ChannelIndex
+		}
+		base.Logf("Opening index bucket %q, pool %q, server <%s>",
+			indexBucketName, indexPool, indexServer)
+
+		channelIndexOptions.Bucket, err = base.GetBucket(indexSpec)
+		if err != nil {
+			base.Logf("error Opening index bucket %q, pool %q, server <%s>",
+				indexBucketName, indexPool, indexServer)
+			// TODO: revert to local index?
+			return nil, err
+		}
+	} else {
+		channelIndexOptions = nil
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions, channelIndexOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +425,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	spec := base.BucketSpec{
 		Server:     *shadow.Server,
 		PoolName:   "default",
-		BucketName: shadow.Bucket,
+		BucketName: *shadow.Bucket,
 		FeedType:   shadow.FeedType,
 	}
 	if shadow.Pool != nil {

@@ -42,7 +42,7 @@ type DatabaseContext struct {
 	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
-	changeCache        changeCache             //
+	changeCache        ChangeIndex             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 }
@@ -86,7 +86,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions, indexOptions *ChangeIndexOptions) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -111,10 +111,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		return nil, err
 	}
 
-	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
-		context.tapListener.Notify(changedChannels)
-	}, cacheOptions)
-	context.tapListener.OnDocChanged = context.changeCache.DocChanged
+	if indexOptions == nil {
+		// In-memory channel cache
+		context.changeCache = &changeCache{}
+		context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {
+			context.tapListener.Notify(changedChannels)
+		}, cacheOptions)
+		context.tapListener.OnDocChanged = context.changeCache.DocChanged
+	} else {
+		// KV channel index
+	}
 
 	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
@@ -576,9 +582,9 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 
 	// We are about to alter documents without updating their sequence numbers, which would
 	// really confuse the changeCache, so turn it off until we're done:
-	db.changeCache.EnableChannelLogs(false)
-	defer db.changeCache.EnableChannelLogs(true)
-	db.changeCache.ClearLogs()
+	db.changeCache.EnableChannelIndexing(false)
+	defer db.changeCache.EnableChannelIndexing(true)
+	db.changeCache.Clear()
 
 	base.Logf("Re-running sync function on all %d documents...", len(vres.Rows))
 	changeCount := 0

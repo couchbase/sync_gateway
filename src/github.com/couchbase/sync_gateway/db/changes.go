@@ -500,7 +500,7 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
 	if err == nil {
-		context.changeCache.waitForSequence(lastSequence)
+		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence})
 	}
 	return
 }
@@ -517,7 +517,7 @@ type lateSequenceFeed struct {
 // skipped) sequences that have been sent to the channel cache.  The lateSequenceFeed stores the last (late)
 // sequence seen by this particular _changes feed to support continuous changes.
 func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
-	chanCache := db.changeCache.channelCaches[channelName]
+	chanCache := db.changeCache.getChannelCache(channelName)
 	if chanCache == nil {
 		return nil
 	}

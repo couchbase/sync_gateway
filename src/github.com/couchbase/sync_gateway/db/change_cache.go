@@ -65,15 +65,21 @@ type SkippedSequence struct {
 	timeAdded time.Time
 }
 
+type CacheOptions struct {
+	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
+	CachePendingSeqMaxNum  int           // Max number of pending sequences before skipping
+	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
+}
+
 //////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set), options CacheOptions) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options CacheOptions) {
 	c.context = context
-	c.initialSequence = lastSequence
-	c.nextSequence = lastSequence + 1
+	c.initialSequence = lastSequence.Seq
+	c.nextSequence = lastSequence.Seq + 1
 	c.onChange = onChange
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
@@ -125,7 +131,7 @@ func (c *changeCache) Stop() {
 }
 
 // Forgets all cached changes for all channels.
-func (c *changeCache) ClearLogs() {
+func (c *changeCache) Clear() {
 	c.lock.Lock()
 	c.initialSequence, _ = c.context.LastSequence()
 	c.channelCaches = make(map[string]*channelCache, 10)
@@ -135,7 +141,7 @@ func (c *changeCache) ClearLogs() {
 }
 
 // If set to false, DocChanged() becomes a no-op.
-func (c *changeCache) EnableChannelLogs(enable bool) {
+func (c *changeCache) EnableChannelIndexing(enable bool) {
 	c.lock.Lock()
 	c.logsDisabled = !enable
 	c.lock.Unlock()
@@ -217,6 +223,10 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 }
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequenceID(sequence SequenceID) {
+	c.waitForSequence(sequence.Seq)
+}
+
 func (c *changeCache) waitForSequence(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
@@ -261,7 +271,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(docID string, docJSON []byte) {
+func (c *changeCache) DocChanged(docID string, docJSON []byte, vbNo uint64) {
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
@@ -513,6 +523,12 @@ func (c *changeCache) getNextSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.nextSequence
+}
+
+func (c *changeCache) GetStableSequence() SequenceID {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return SequenceID{Seq: c.nextSequence - 1}
 }
 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {

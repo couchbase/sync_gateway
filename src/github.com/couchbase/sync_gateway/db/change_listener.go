@@ -19,7 +19,7 @@ type changeListener struct {
 	counter      uint64                 // Event counter; increments on every doc update
 	keyCounts    map[string]uint64      // Latest count at which each doc key was updated
 	DocChannel   chan sgbucket.TapEvent // Passthru channel for doc mutations
-	OnDocChanged func(docID string, jsonData []byte)
+	OnDocChanged func(docID string, jsonData []byte, vbNo uint64)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -52,12 +52,12 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value)
+						listener.OnDocChanged(key, event.Value, 0)
 					}
 					listener.Notify(base.SetOf(key))
 				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value)
+						listener.OnDocChanged(key, event.Value, 0)
 					}
 					listener.DocChannel <- event
 				}

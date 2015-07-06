@@ -559,7 +559,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			// on the feed is small - sub-second, so we usually shouldn't care about more than
 			// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
 			// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
-			stableSequence := db.changeCache.getNextSequence() - 1
+			stableSequence := db.changeCache.GetStableSequence().Seq
 			count := 0
 			for _, seq := range doc.RecentSequences {
 				// Only remove sequences if they are higher than a sequence that's been seen on the

@@ -74,10 +74,11 @@ func (rt *restTester) bucket() base.Bucket {
 		})
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
-			Server: &server,
-			Bucket: &bucketName,
-			Name:   "db",
-			Sync:   syncFnPtr,
+			BucketConfig: BucketConfig{
+				Server: &server,
+				Bucket: &bucketName},
+			Name: "db",
+			Sync: syncFnPtr,
 		})
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
