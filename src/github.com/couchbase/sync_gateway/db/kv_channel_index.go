@@ -10,22 +10,21 @@
 package db
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 )
 
-var byteCacheBlockCapacity = uint64(10000)
 var ByteCachePollingTime = 1000 // initial polling time for notify, ms
 
 const kSequenceOffsetLength = 0 // disabled until we actually need it
 
 type kvChannelIndex struct {
-	context             *DatabaseContext // Database connection (used for connection queries)
+	context             *DatabaseContext  // Database connection (used for connection queries)
+	partitionMap        IndexPartitionMap // Index partition map
 	channelName         string
 	lastSequence        uint64
 	lastCounter         uint64
@@ -36,6 +35,8 @@ type kvChannelIndex struct {
 	stableSequence      uint64
 	stableSequenceCb    func() (uint64, error)
 	onChange            func(base.Set)
+	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
+	indexBlockCacheLock sync.Mutex
 }
 
 /*
@@ -56,21 +57,26 @@ func newKvIndexEntry(logEntry *LogEntry, isRemoval bool) kvIndexEntry {
 	return kvIndexEntry{sequence: logEntry.Sequence, removal: isRemoval}
 }
 
-func NewKvChannelIndex(channelName string, stableSequenceCallback func() (uint64, error), onChangeCallback func(base.Set)) *kvChannelIndex {
+func NewKvChannelIndex(channelName string, context *DatabaseContext, partitions IndexPartitionMap, stableSequenceCallback func() (uint64, error), onChangeCallback func(base.Set)) *kvChannelIndex {
 
-	channelCache := &kvChannelIndex{
+	channelIndex := &kvChannelIndex{
 		channelName:      channelName,
+		context:          context,
+		partitionMap:     partitions,
 		stableSequenceCb: stableSequenceCallback,
 		onChange:         onChangeCallback,
 	}
+
+	channelIndex.indexBlockCache = make(map[string]IndexBlock)
+
 	// Init stable sequence
-	stableSequence, err := channelCache.stableSequenceCb()
+	stableSequence, err := channelIndex.stableSequenceCb()
 	if err != nil {
 		stableSequence = 0
 	}
 
-	channelCache.stableSequence = stableSequence
-	return channelCache
+	channelIndex.stableSequence = stableSequence
+	return channelIndex
 
 }
 
@@ -81,7 +87,12 @@ func NewKvChannelIndex(channelName string, stableSequenceCallback func() (uint64
 func (k *kvChannelIndex) Add(entry kvIndexEntry) error {
 	// Update the sequence in the appropriate cache block
 	base.LogTo("DCache+", "Add to channel cache %s, isRemoval:%v", k.channelName, entry.removal)
-	return k.addIndexEntry(entry.sequence, entry.removal)
+	partition := k.partitionMap[entry.vbNo]
+	key := GenerateBlockKey(k.channelName, entry.sequence, partition)
+	entries := make([]kvIndexEntry, 0)
+	entries = append(entries, entry)
+	k.casUpdate(key, entries)
+	return nil
 }
 
 func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
@@ -92,60 +103,68 @@ func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 		return nil
 	}
 
-	// get cache block for first sequence
-	cacheBlock := k.readOrCreateIndexBlockForSequence(entries[0].sequence)
-	lowSequence := uint64(entries[0].sequence/byteCacheBlockCapacity) * byteCacheBlockCapacity
-	highSequence := lowSequence + byteCacheBlockCapacity
+	// Pending - break into partition sets and call AddPartitionSet
 
-	base.LogTo("DCache", "highSequence: %d", highSequence)
-	var nextBlock *IndexBlock
+	return nil
+}
+
+// Adds a set to a specified partition
+func (k *kvChannelIndex) AddPartitionSet(partition uint16, entries []kvIndexEntry) error {
+
+	base.LogTo("DCache", "enter AddSet for channel %s, %+v", k.channelName, entries)
+	// Update the sequences in the appropriate cache block
+	if len(entries) == 0 {
+		return nil
+	}
+
+	// The set of updates for a single partition may be distributed over multiple blocks, since
+	// a particular vbucket in the partition may have seen more revisions and rolled
+	// over to a new block.
+	// To support this, iterate over the set, and define groups of sequences by block
+	// TODO: this approach feels like it's generating a lot of GC work.  Considered an iterative
+	//       approach where a set update returvned a list of entries that weren't targeted at the
+	//       same block as the first entry in the list, but this would force sequential
+	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
+	blockSets := make(map[string][]kvIndexEntry)
 	for _, entry := range entries {
-		var addError error
-		if entry.sequence >= highSequence {
-			base.LogTo("DCache", "next block handling for sequence : %d", entry.sequence)
-			if nextBlock == nil {
-				nextBlock = k.readOrCreateIndexBlockForSequence(entry.sequence)
-			}
-			addError = nextBlock.addSequence(entry.sequence, entry.removal)
-		} else {
-			addError = cacheBlock.addSequence(entry.sequence, entry.removal)
+		blockKey := GenerateBlockKey(k.channelName, entry.sequence, partition)
+		if _, ok := blockSets[blockKey]; !ok {
+			blockSets[blockKey] = make([]kvIndexEntry, 0)
 		}
+		blockSets[blockKey] = append(blockSets[blockKey], entry)
+	}
 
-		if addError != nil {
-			base.Warn("Error adding sequence to block - adding individually")
-			k.addIndexEntry(entry.sequence, entry.removal)
-		}
+	for key, blockSet := range blockSets {
+		// Get an existing block if we've got one
+		k.casUpdate(key, blockSet)
 
 	}
 
-	err := k.writeIndexBlock(cacheBlock)
-	if err != nil {
-		return err
-	}
+	return nil
+}
 
-	if nextBlock != nil {
-		err = k.writeIndexBlock(nextBlock)
+func (k *kvChannelIndex) casUpdate(key string, entries []kvIndexEntry) {
+
+	casSuccess := false
+	block := k.getIndexBlock(key)
+	for casSuccess == false {
+		// apply updates
+
+		// Note: CasRaw doesn't support write options.  If we need to set indexable/persistence,
+		// we'll need to switch to using WriteCas directly
+		err := k.context.Bucket.Write(key, 0, 0, block.Marshal, sgbucket.Raw)
+		//err := k.context.Bucket.CasRaw(key, 0, block.Cas, block.Marshal())
 		if err != nil {
-			return err
+			// cas failure - reload and reapply the changes
+			err = k.loadIndexBlockFromBucket(key, block)
+		} else {
+			casSuccess = true
 		}
 	}
-
-	return nil
 }
 
-// Writes the index block
-func (k *kvChannelIndex) writeIndexBlock(block *IndexBlock) error {
-	return k.context.Bucket.SetRaw(block.key, 0, block.value)
-}
-
-func (k *kvChannelIndex) addIndexEntry(sequence uint64, isRemoval bool) error {
-	cacheBlock := k.readOrCreateIndexBlockForSequence(sequence)
-	cacheBlock.addSequence(sequence, isRemoval)
-	err := k.writeIndexBlock(cacheBlock)
-	if err != nil {
-		return err
-	}
-	return nil
+func (k *kvChannelIndex) Compact() {
+	// TODO: for each index block being stored, check whether expired
 }
 
 func (k *kvChannelIndex) startNotify() {
@@ -262,92 +281,94 @@ func (k *kvChannelIndex) UpdateRecentCache(currentCounter uint64) {
 
 func (k *kvChannelIndex) getCachedChanges(options ChangesOptions) (uint64, []*LogEntry) {
 
-	// Check whether we can use the cached results from the latest poll
-	base.LogTo("DCacheDebug", "Comparing since=%d with k.lastSince=%d", options.Since.SafeSequence(), k.lastNotifiedSince)
-	if k.lastNotifiedSince > 0 && options.Since.SafeSequence() == k.lastNotifiedSince {
-		return uint64(0), k.lastNotifiedChanges
-	}
+	/*
+		// Check whether we can use the cached results from the latest poll
+		base.LogTo("DCacheDebug", "Comparing since=%d with k.lastSince=%d", options.Since.SafeSequence(), k.lastNotifiedSince)
+		if k.lastNotifiedSince > 0 && options.Since.SafeSequence() == k.lastNotifiedSince {
+			return uint64(0), k.lastNotifiedChanges
+		}
 
-	// If not, retrieve from cache
-	stableSequence := k.stableSequence
-	base.LogTo("DCacheDebug", "getCachedChanges - since=%d, stable sequence: %d", options.Since.Seq, k.stableSequence)
+		// If not, retrieve from cache
+		stableSequence := k.stableSequence
+		base.LogTo("DCacheDebug", "getCachedChanges - since=%d, stable sequence: %d", options.Since.Seq, k.stableSequence)
 
-	var cacheContents []*LogEntry
-	since := options.Since.SafeSequence()
+		var cacheContents []*LogEntry
+		since := options.Since.SafeSequence()
 
-	// Byte channel cache is separated into docs of (byteCacheBlockCapacity) sequences.
-	blockIndex := k.getBlockIndex(since)
-	block := k.readIndexBlock(blockIndex)
-	// Get index of sequence within block
-	offset := uint64(blockIndex) * byteCacheBlockCapacity
-	startIndex := (since + 1) - offset
+		// Byte channel cache is separated into docs of (byteCacheBlockCapacity) sequences.
+		blockIndex := k.getBlockIndex(since)
+		block := k.readIndexBlock(blockIndex)
+		// Get index of sequence within block
+		offset := uint64(blockIndex) * byteCacheBlockCapacity
+		startIndex := (since + 1) - offset
 
-	// Iterate over blocks
-	moreChanges := true
+		// Iterate over blocks
+		moreChanges := true
 
-	for moreChanges {
-		if block != nil {
-			for i := startIndex; i < byteCacheBlockCapacity; i++ {
-				sequence := i + offset
-				if sequence > stableSequence {
-					moreChanges = false
-					break
-				}
-				if block.value[i] > 0 {
-					entry, err := readCacheEntry(sequence, k.context.Bucket)
-					if err != nil {
-						// error reading cache entry - return changes to this point
+		for moreChanges {
+			if block != nil {
+				for i := startIndex; i < byteCacheBlockCapacity; i++ {
+					sequence := i + offset
+					if sequence > stableSequence {
 						moreChanges = false
 						break
 					}
-					if block.value[i] == 2 {
-						// deleted
-						entry.Flags |= channels.Removed
+					if block.value[i] > 0 {
+						entry, err := readCacheEntry(sequence, k.context.Bucket)
+						if err != nil {
+							// error reading cache entry - return changes to this point
+							moreChanges = false
+							break
+						}
+						if block.value[i] == 2 {
+							// deleted
+							entry.Flags |= channels.Removed
+						}
+						cacheContents = append(cacheContents, entry)
 					}
-					cacheContents = append(cacheContents, entry)
 				}
 			}
-		}
-		// Init for next block
-		blockIndex++
-		if uint64(blockIndex)*byteCacheBlockCapacity > stableSequence {
-			moreChanges = false
-		}
-		block = k.readIndexBlock(blockIndex)
-		startIndex = 0
-		offset = uint64(blockIndex) * byteCacheBlockCapacity
-	}
-
-	base.LogTo("DCacheDebug", "getCachedChanges: found %d changes for channel %s, since %d", len(cacheContents), k.channelName, options.Since.Seq)
-	// TODO: is there a way to deduplicate doc IDs without a second iteration and the slice copying?
-	// Possibly work the cache in reverse, starting from the high sequence of the channel (if that's available
-	// in metadata)?  We've got two competing goals here:
-	//   - deduplicate Doc IDs, keeping the most recent
-	//   - only read to limit, from oldest
-	// - Reading oldest to the limit first means that DocID deduplication
-	// could result in smaller resultset than limit
-	// - Deduplicating first requires loading the entire set (could be much larger than limit)
-	result := make([]*LogEntry, 0, len(cacheContents))
-	count := len(cacheContents)
-	base.LogTo("DCache", "found contents with length %d", count)
-	docIDs := make(map[string]struct{}, options.Limit)
-	for i := count - 1; i >= 0; i-- {
-		entry := cacheContents[i]
-		docID := entry.DocID
-		if _, found := docIDs[docID]; !found {
-			// safe insert at 0
-			result = append(result, nil)
-			copy(result[1:], result[0:])
-			result[0] = entry
-			docIDs[docID] = struct{}{}
+			// Init for next block
+			blockIndex++
+			if uint64(blockIndex)*byteCacheBlockCapacity > stableSequence {
+				moreChanges = false
+			}
+			block = k.readIndexBlock(blockIndex)
+			startIndex = 0
+			offset = uint64(blockIndex) * byteCacheBlockCapacity
 		}
 
-	}
+		base.LogTo("DCacheDebug", "getCachedChanges: found %d changes for channel %s, since %d", len(cacheContents), k.channelName, options.Since.Seq)
+		// TODO: is there a way to deduplicate doc IDs without a second iteration and the slice copying?
+		// Possibly work the cache in reverse, starting from the high sequence of the channel (if that's available
+		// in metadata)?  We've got two competing goals here:
+		//   - deduplicate Doc IDs, keeping the most recent
+		//   - only read to limit, from oldest
+		// - Reading oldest to the limit first means that DocID deduplication
+		// could result in smaller resultset than limit
+		// - Deduplicating first requires loading the entire set (could be much larger than limit)
+		result := make([]*LogEntry, 0, len(cacheContents))
+		count := len(cacheContents)
+		base.LogTo("DCache", "found contents with length %d", count)
+		docIDs := make(map[string]struct{}, options.Limit)
+		for i := count - 1; i >= 0; i-- {
+			entry := cacheContents[i]
+			docID := entry.DocID
+			if _, found := docIDs[docID]; !found {
+				// safe insert at 0
+				result = append(result, nil)
+				copy(result[1:], result[0:])
+				result[0] = entry
+				docIDs[docID] = struct{}{}
+			}
 
-	base.LogTo("DCacheDebug", " getCachedChanges returning %d changes", len(result))
+		}
 
-	//TODO: correct validFrom
-	return uint64(0), result
+		base.LogTo("DCacheDebug", " getCachedChanges returning %d changes", len(result))
+
+		//TODO: correct validFrom
+	*/
+	return uint64(0), []*LogEntry{}
 }
 
 func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
@@ -361,111 +382,69 @@ func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 	return intValue, nil
 }
 
-// Index block management
-
-///////// DenseCacheBlock - management of a single channel cache block (one doc)
-// Cache block is stored as binary, as a collection of [vbNo][sequence flags]
-type IndexBlock struct {
-	key         string            // DocID for the cache block doc
-	value       []byte            // Raw document value
-	values      map[uint16][]byte // Contents of the cache block doc
-	minSequence uint64            // Starting sequence
-}
-
-func NewIndexBlock(channelName string, sequence uint64) (*IndexBlock, error) {
-
-	// Calculate the key
-	blockIndex := uint16(sequence / byteCacheBlockCapacity)
-	key := getIndexBlockKey(channelName, blockIndex)
-
-	// Initialize the byte[] bucket
-	cacheValue := make([]byte, byteCacheBlockCapacity+kSequenceOffsetLength)
-	sequenceOffset := uint64(sequence/byteCacheBlockCapacity) * byteCacheBlockCapacity
-	// Write the sequence Offset first (8 bytes for uint64)
-	/* disabling until we actually need the offset
-	offSet := intToBytes(sequenceOffset)
-	copy(cacheValue[0:8], offset)
-	*/
-	// Grow the buffer by kvCacheCapacity
-
-	cacheBlock := &IndexBlock{
-		key:         key,
-		value:       cacheValue,
-		minSequence: sequenceOffset,
-	}
-	return cacheBlock, nil
-
-}
-
 // Determine the cache block index for a sequence
 func (k *kvChannelIndex) getBlockIndex(sequence uint64) uint16 {
 	base.LogTo("DCache", "block index for sequence %d is %d", sequence, uint16(sequence/byteCacheBlockCapacity))
 	return uint16(sequence / byteCacheBlockCapacity)
 }
 
-func (k *kvChannelIndex) readOrCreateIndexBlockForSequence(sequence uint64) *IndexBlock {
+// Safely retrieves index block from the channel's block cache
+func (k *kvChannelIndex) getIndexBlock(key string) IndexBlock {
+	k.indexBlockCacheLock.Lock()
+	defer k.indexBlockCacheLock.Unlock()
+	return k.indexBlockCache[key]
+}
 
-	cacheBlock := k.readIndexBlockForSequence(sequence)
-	if cacheBlock == nil {
-		cacheBlock, _ = NewIndexBlock(k.channelName, sequence)
+// Safely inserts index block from the channel's block cache
+func (k *kvChannelIndex) putIndexBlockToCache(key string, block IndexBlock) {
+	k.indexBlockCacheLock.Lock()
+	defer k.indexBlockCacheLock.Unlock()
+	k.indexBlockCache[key] = block
+}
+
+// Retrieves the appropriate index block for an entry.  If not found in the channel's block map,
+// initializes a new block and adds to the map.
+func (k *kvChannelIndex) getIndexBlockForEntry(entry kvIndexEntry) IndexBlock {
+
+	partition := k.partitionMap[entry.vbNo]
+	key := GenerateBlockKey(k.channelName, entry.sequence, partition)
+	// First attempt to retrieve from the cache of recently accessed blocks
+	block := k.getIndexBlock(key)
+	if block != nil {
+		return block
 	}
-	return cacheBlock
+
+	// If not found in cache, attempt to retrieve from the index bucket
+	block = NewIndexBlock(k.channelName, entry.sequence, partition)
+	err := k.loadIndexBlockFromBucket(key, block)
+	if err == nil {
+		return block
+	}
+
+	// If still not found, initialize a new empty index block
+	block = NewIndexBlock(k.channelName, entry.sequence, partition)
+
+	k.putIndexBlockToCache(key, block)
+	return block
 }
 
-// Loads the cache block associated with the sequence
-func (k *kvChannelIndex) readIndexBlockForSequence(sequence uint64) *IndexBlock {
-	// Determine which cache block should be used for the sequence, and read that block
-	return k.readIndexBlock(k.getBlockIndex(sequence))
-}
+func (k *kvChannelIndex) loadIndexBlockFromBucket(key string, block IndexBlock) error {
 
-// Loads the cache block
-func (k *kvChannelIndex) readIndexBlock(blockIndex uint16) *IndexBlock {
-
-	docID := getIndexBlockKey(k.channelName, blockIndex)
-	cacheBlockDoc, err := k.context.Bucket.GetRaw(docID)
-	// Not found
+	data, err := k.context.Bucket.GetRaw(key)
+	//data, _, cas, err := k.context.Bucket.GetsRaw(key)
 	if err != nil {
-		return nil
+		return err
 	}
-	startSequence := uint64(blockIndex) * byteCacheBlockCapacity
-	cacheBlock := &IndexBlock{
-		key:         docID,
-		minSequence: startSequence,
-	}
-	cacheBlock.load(cacheBlockDoc)
-	return cacheBlock
-}
 
-func (b *IndexBlock) addSequence(sequence uint64, isRemoval bool) error {
-	// Byte for sequence:
-	//   0 : sequence is not in channel
-	//   1 : sequence is in channel
-	//   2 : sequence triggers removal from channel
-	index := b.getIndexForSequence(sequence)
-	if index < 0 || index >= uint64(len(b.value)) {
-		base.LogTo("DCache", "CACHE ERROR CACHE ERROR KLAXON KLAXON")
-		return errors.New("Sequence out of range of block")
+	//err = block.Unmarshal(data, cas)
+	err = block.Unmarshal(data, uint64(0))
+
+	if err != nil {
+		return err
 	}
-	if isRemoval {
-		b.value[index] = 2
-	} else {
-		b.value[index] = 1
-	}
+	// If found, add to the cache
+	k.putIndexBlockToCache(key, block)
 	return nil
-}
-
-func (b *IndexBlock) hasSequence(sequence uint64) bool {
-	base.LogTo("DCache", "hasSequence? %d ", sequence)
-	return b.value[b.getIndexForSequence(sequence)] > 0
-}
-
-func (b *IndexBlock) getIndexForSequence(sequence uint64) uint64 {
-	base.LogTo("DCache", "GetIndexForSequence %d: %d", sequence, sequence-b.minSequence+kSequenceOffsetLength)
-	return sequence - b.minSequence + kSequenceOffsetLength
-}
-
-func (b *IndexBlock) load(contents []byte) {
-	b.value = contents
 }
 
 ////////  Utility functions for key generation
@@ -476,8 +455,8 @@ func getIndexCountKey(channelName string) string {
 }
 
 // Get the key for the cache block, based on the block index
-func getIndexBlockKey(channelName string, blockIndex uint16) string {
-	return fmt.Sprintf("%s:%s:block%d", kCachePrefix, channelName, blockIndex)
+func getIndexBlockKey(channelName string, partition uint16, blockIndex uint16) string {
+	return fmt.Sprintf("%s:%s:%d:block%d", kCachePrefix, channelName, partition, blockIndex)
 }
 
 // Generate the key for a single sequence/entry

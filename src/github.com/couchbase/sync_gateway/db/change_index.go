@@ -74,4 +74,5 @@ type ChannelIndex interface {
 	GetClock() (uint64, error)
 	SetClock() (uint64, error)
 	GetCachedChanges(options ChangesOptions, stableSequence uint64)
+	Compact()
 }

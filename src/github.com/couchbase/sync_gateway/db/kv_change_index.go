@@ -29,11 +29,30 @@ const (
 type kvChangeIndex struct {
 	context          *DatabaseContext           // Database connection (used for connection queries)
 	maxVbNo          uint16                     // Number of vbuckets
-	indexPartitions  map[uint16]uint16          // Partitioning of vbuckets in the index
+	indexPartitions  IndexPartitionMap          // Partitioning of vbuckets in the index
 	channelIndexes   map[string]*kvChannelIndex // Channel indexes, map indexed by channel name
 	channelIndexLock sync.RWMutex               // Coordinates access to channel index map
 	onChange         func(base.Set)             // Client callback that notifies of channel changes
 	pending          chan *LogEntry             // Incoming changes, pending indexing
+}
+
+type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
+
+type ChannelPartition struct {
+	channelName string
+	partition   uint16
+}
+
+//
+type ChannelPartitionMap map[ChannelPartition][]kvIndexEntry
+
+func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry, isRemoval bool) {
+	_, found := cpm[cp]
+	if !found {
+		// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
+		cpm[cp] = make([]kvIndexEntry, 0, maxCacheUpdate)
+	}
+	cpm[cp] = append(cpm[cp], newKvIndexEntry(entry, isRemoval))
 }
 
 ////// Cache writer API
@@ -45,7 +64,7 @@ func (c *kvChangeIndex) Init(initialSequence uint64) {
 	c.pending = make(chan *LogEntry, maxCacheUpdate)
 
 	// Load index partitions
-	c.indexPartitions = c.loadIndexPartitions()
+	c.indexPartitions = c.loadIndexPartitionMap()
 
 	// start process to work pending sequences
 	go c.indexPending()
@@ -80,7 +99,7 @@ func (b *kvChangeIndex) newChannelIndex(channelName string) *kvChannelIndex {
 
 	b.channelIndexLock.Lock()
 	defer b.channelIndexLock.Unlock()
-	b.channelIndexes[channelName] = NewKvChannelIndex(channelName, b.getStableSequence, b.onChange)
+	b.channelIndexes[channelName] = NewKvChannelIndex(channelName, b.context, b.indexPartitions, b.getStableSequence, b.onChange)
 	return b.channelIndexes[channelName]
 }
 
@@ -130,10 +149,7 @@ func (c *kvChangeIndex) indexPending() {
 
 		// Wait group to track when the buffer has been completely processed
 		var wg sync.WaitGroup
-		channelSets := make(map[string][]kvIndexEntry)
-		if EnableStarChannelLog {
-			channelSets["*"] = make([]kvIndexEntry, 0, maxCacheUpdate)
-		}
+		channelSets := make(map[ChannelPartition][]kvIndexEntry)
 
 		// Iterate over entries to do cache entry writes, and group channel updates
 		for _, logEntry := range entries {
@@ -147,27 +163,35 @@ func (c *kvChangeIndex) indexPending() {
 			// Collect entries by channel for channel cache updates below
 			for channelName, removal := range logEntry.Channels {
 				if removal == nil || removal.Seq == logEntry.Sequence {
-					_, found := channelSets[channelName]
+					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
+					chanPartition := ChannelPartition{channelName: channelName, partition: c.indexPartitions[logEntry.VbNo]}
+					_, found := channelSets[chanPartition]
 					if !found {
 						// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-						channelSets[channelName] = make([]kvIndexEntry, 0, maxCacheUpdate)
+						channelSets[chanPartition] = make([]kvIndexEntry, 0, maxCacheUpdate)
 					}
-					channelSets[channelName] = append(channelSets[channelName], kvIndexEntry{sequence: logEntry.Sequence, vbNo: logEntry.VbNo, removal: removal != nil})
+					channelSets[chanPartition] = append(channelSets[chanPartition], newKvIndexEntry(logEntry, removal != nil))
 				}
 			}
 			if EnableStarChannelLog {
-				channelSets["*"] = append(channelSets["*"], kvIndexEntry{sequence: logEntry.Sequence, removal: false})
+				chanPartition := ChannelPartition{channelName: "*", partition: c.indexPartitions[logEntry.VbNo]}
+				_, found := channelSets[chanPartition]
+				if !found {
+					// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
+					channelSets[chanPartition] = make([]kvIndexEntry, 0, maxCacheUpdate)
+				}
+				channelSets[chanPartition] = append(channelSets[chanPartition], kvIndexEntry{sequence: logEntry.Sequence, removal: false})
 			}
 		}
 
 		// Iterate over channel collections, and update cache
-		for channelName, entrySet := range channelSets {
+		for chanPartition, entrySet := range channelSets {
 			wg.Add(1)
-			go func(channelName string, entrySet []kvIndexEntry) {
+			go func(chanPartition ChannelPartition, entrySet []kvIndexEntry) {
 				defer wg.Done()
-				c.addSetToChannelCache(channelName, entrySet)
+				c.addPartitionSetToChannelIndex(chanPartition.channelName, chanPartition.partition, entrySet)
 
-			}(channelName, entrySet)
+			}(chanPartition, entrySet)
 		}
 
 		wg.Wait()
@@ -175,6 +199,16 @@ func (c *kvChangeIndex) indexPending() {
 		lastSequence := entries[len(entries)-1].Sequence
 		c.setStableSequence(lastSequence)
 	}
+}
+
+func addEntryToMap(setMap map[ChannelPartition][]kvIndexEntry, channelName string, partition uint16, entry *LogEntry) {
+	chanPartition := ChannelPartition{channelName: channelName, partition: partition}
+	_, found := setMap[chanPartition]
+	if !found {
+		// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
+		setMap[chanPartition] = make([]kvIndexEntry, 0, maxCacheUpdate)
+	}
+	setMap[chanPartition] = append(setMap[chanPartition], kvIndexEntry{sequence: entry.Sequence, removal: false})
 }
 
 func (b *kvChangeIndex) SetNotifier(onChange func(base.Set)) {
@@ -226,8 +260,12 @@ func (b *kvChangeIndex) addToChannelCache(channelName string, change kvIndexEntr
 	base.LogTo("DCache", "    #%d ==> channel %q", change.sequence, channelName)
 }
 
-func (b *kvChangeIndex) addSetToChannelCache(channelName string, entries []kvIndexEntry) {
+func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []kvIndexEntry) {
 	b.getChannelIndex(channelName).AddSet(entries)
+}
+
+func (b *kvChangeIndex) addPartitionSetToChannelIndex(channelName string, partition uint16, entries []kvIndexEntry) {
+	b.getChannelIndex(channelName).AddPartitionSet(partition, entries)
 }
 
 // Add late sequence information to channel cache
@@ -275,10 +313,10 @@ func (b *kvChangeIndex) writeEntry(change *LogEntry) {
 }
 
 // Load the index partition definitions
-func (b *kvChangeIndex) loadIndexPartitions() map[uint16]uint16 {
+func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
 
 	// TODO: load from the profile definition.  Hardcode for now to 32 sequential partitions
-	partitions := make(map[uint16]uint16, b.maxVbNo)
+	partitions := make(IndexPartitionMap, b.maxVbNo)
 
 	numPartitions := uint16(32)
 	vbPerPartition := b.maxVbNo / numPartitions
