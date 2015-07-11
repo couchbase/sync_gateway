@@ -40,10 +40,10 @@ func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
 func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
 }
-func (b *LeakyBucket) Get(k string, rv interface{}) error {
+func (b *LeakyBucket) Get(k string, rv interface{}) (cas uint64, err error) {
 	return b.bucket.Get(k, rv)
 }
-func (b *LeakyBucket) GetRaw(k string) ([]byte, error) {
+func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	return b.bucket.GetRaw(k)
 }
 func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
@@ -69,6 +69,9 @@ func (b *LeakyBucket) Delete(k string) error {
 }
 func (b *LeakyBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
 	return b.bucket.Write(k, flags, exp, v, opt)
+}
+func (b *LeakyBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
 func (b *LeakyBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
 	return b.bucket.Update(k, exp, callback)

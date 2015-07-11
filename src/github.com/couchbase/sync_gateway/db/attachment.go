@@ -134,7 +134,8 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) (Body, error) 
 
 // Retrieves an attachment, base64-encoded, given its key.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
-	return db.Bucket.GetRaw(attachmentKeyToString(key))
+	v, _, err := db.Bucket.GetRaw(attachmentKeyToString(key))
+	return v, err
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
