@@ -277,7 +277,7 @@ func (b *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 func (b *kvChangeIndex) getStableSequence() (uint64, error) {
 
 	var intValue uint64
-	err := b.context.Bucket.Get(kStableSequenceKey, &intValue)
+	_, err := b.context.Bucket.Get(kStableSequenceKey, &intValue)
 	if err != nil {
 		// return nil here - cache clock may not have been initialized yet
 		return 0, nil
@@ -340,7 +340,7 @@ func readCacheEntry(sequence uint64, bucket base.Bucket) (*LogEntry, error) {
 	var cacheEntry kvChannelIndexEntry
 
 	key := getEntryKey(sequence)
-	value, err := bucket.GetRaw(key)
+	value, _, err := bucket.GetRaw(key)
 	if err != nil {
 		base.Warn("DCache", "Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
 		return nil, err

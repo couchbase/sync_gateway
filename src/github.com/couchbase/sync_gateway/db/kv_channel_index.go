@@ -374,7 +374,7 @@ func (k *kvChannelIndex) getCachedChanges(options ChangesOptions) (uint64, []*Lo
 func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 	key := getIndexCountKey(k.channelName)
 	var intValue uint64
-	err := k.context.Bucket.Get(key, &intValue)
+	_, err := k.context.Bucket.Get(key, &intValue)
 	if err != nil {
 		// return nil here - cache clock may not have been initialized yet
 		return 0, nil
@@ -430,14 +430,12 @@ func (k *kvChannelIndex) getIndexBlockForEntry(entry kvIndexEntry) IndexBlock {
 
 func (k *kvChannelIndex) loadIndexBlockFromBucket(key string, block IndexBlock) error {
 
-	data, err := k.context.Bucket.GetRaw(key)
-	//data, _, cas, err := k.context.Bucket.GetsRaw(key)
+	data, cas, err := k.context.Bucket.GetRaw(key)
 	if err != nil {
 		return err
 	}
 
-	//err = block.Unmarshal(data, cas)
-	err = block.Unmarshal(data, uint64(0))
+	err = block.Unmarshal(data, cas)
 
 	if err != nil {
 		return err

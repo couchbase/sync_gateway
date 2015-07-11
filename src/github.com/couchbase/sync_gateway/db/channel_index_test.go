@@ -160,7 +160,7 @@ func (c *channelIndexTest) seedData(format string) error {
 
 	// Check if the data has already been loaded
 	loadFlagDoc := fmt.Sprintf("seedComplete::%s", format)
-	_, err := c.indexBucket.GetRaw(loadFlagDoc)
+	_, _, err := c.indexBucket.GetRaw(loadFlagDoc)
 	if err == nil {
 		return nil
 	}
@@ -255,7 +255,7 @@ func (c *channelIndexTest) readIndexSingle() error {
 
 	for i := 0; i < c.numVbuckets; i++ {
 		key := c.getIndexDocName(i)
-		body, err := c.indexBucket.GetRaw(key)
+		body, _, err := c.indexBucket.GetRaw(key)
 		if err != nil {
 			log.Printf("Error retrieving for key %s: %s", key, err)
 		} else {
@@ -276,7 +276,7 @@ func (c *channelIndexTest) readIndexSingleParallel() error {
 		go func(i int) {
 			defer wg.Done()
 			key := c.getIndexDocName(i)
-			body, err := c.indexBucket.GetRaw(key)
+			body, _, err := c.indexBucket.GetRaw(key)
 			if err != nil {
 				log.Printf("Error retrieving for key %s: %s", key, err)
 			} else {
