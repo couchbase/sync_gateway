@@ -37,7 +37,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	var session LoginSession
-	err := auth.bucket.Get(docIDForSession(cookie.Value), &session)
+	_, err := auth.bucket.Get(docIDForSession(cookie.Value), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil
@@ -90,7 +90,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 
 func (auth *Authenticator) GetSession(sessionid string) (*LoginSession, error) {
 	var session LoginSession
-	err := auth.bucket.Get(docIDForSession(sessionid), &session)
+	_, err := auth.bucket.Get(docIDForSession(sessionid), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil

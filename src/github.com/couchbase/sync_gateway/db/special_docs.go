@@ -24,7 +24,7 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 	}
 
 	body := Body{}
-	err := db.Bucket.Get(key, &body)
+	_, err := db.Bucket.Get(key, &body)
 	if err != nil {
 		return nil, err
 	}

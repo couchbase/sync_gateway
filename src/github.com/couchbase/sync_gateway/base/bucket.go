@@ -65,8 +65,24 @@ func (bucket CouchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
+func (bucket CouchbaseBucket) Get(k string, v interface{}) (cas uint64, err error) {
+	err = bucket.Bucket.Gets(k, v, &cas)
+	return cas, err
+}
+
+func (bucket CouchbaseBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
+	v, _, cas, err = bucket.Bucket.GetsRaw(k)
+	return v, cas, err
+}
+
 func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) (err error) {
 	return bucket.Bucket.Write(k, flags, exp, v, couchbase.WriteOptions(opt))
+}
+
+func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+
+	err = bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
+	return 0, err
 }
 
 func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {

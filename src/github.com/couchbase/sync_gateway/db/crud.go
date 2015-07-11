@@ -46,7 +46,7 @@ func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
 	}
 	dbExpvars.Add("document_gets", 1)
 	doc := newDocument(docid)
-	err := db.Bucket.Get(key, doc)
+	_, err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
 	} else if !doc.hasValidSyncData() {

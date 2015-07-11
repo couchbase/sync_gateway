@@ -15,12 +15,12 @@ func (b *LoggingBucket) GetName() string {
 	//LogTo("Bucket", "GetName()")
 	return b.bucket.GetName()
 }
-func (b *LoggingBucket) Get(k string, rv interface{}) error {
+func (b *LoggingBucket) Get(k string, rv interface{}) (uint64, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Get(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.Get(k, rv)
 }
-func (b *LoggingBucket) GetRaw(k string) ([]byte, error) {
+func (b *LoggingBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "GetRaw(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.GetRaw(k)
@@ -64,6 +64,13 @@ func (b *LoggingBucket) Write(k string, flags int, exp int, v interface{}, opt s
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Write(%q, 0x%x, %d, ..., 0x%x) [%v]", k, flags, exp, opt, time.Since(start)) }()
 	return b.bucket.Write(k, flags, exp, v, opt)
+}
+func (b *LoggingBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+	start := time.Now()
+	defer func() {
+		LogTo("Bucket", "WriteCas(%q, 0x%x, %d, %d, ..., 0x%x) [%v]", k, flags, exp, cas, opt, time.Since(start))
+	}()
+	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
 func (b *LoggingBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
 	start := time.Now()
