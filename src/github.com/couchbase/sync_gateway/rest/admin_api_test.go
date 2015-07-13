@@ -295,6 +295,27 @@ func TestRoleAPI(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
 }
 
+func TestRoleDeleteRole(t *testing.T) {
+	var rt restTester
+	// PUT a role
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+	response := rt.sendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
+	assertStatus(t, response, 201)
+
+	response = rt.sendAdminRequest("GET", "/db/_role/", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), `["hipster"]`)
+
+	// DELETE the role
+	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+
+	// GET all the roles
+	response = rt.sendAdminRequest("GET", "/db/_role/", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), `[]`)
+}
+
 func TestGuestUser(t *testing.T) {
 
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
