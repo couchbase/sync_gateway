@@ -93,7 +93,7 @@ type DbConfig struct {
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
-	MaxRevsCacheSize   *uint32                        `json:"max_revs_cahce_size,omitempty"`  // Maximum number of revisions to store in the revision cache
+	MaxRevsCacheSize   *uint32                        `json:"max_revs_cache_size,omitempty"`  // Maximum number of revisions to store in the revision cache
 }
 
 type DbConfigMap map[string]*DbConfig
