@@ -714,6 +714,20 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 }
 
+// Unit test for issue #976
+func TestWithNullPropertyKey(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with null property key
+	customDocId := "customIdValue"
+	log.Printf("Create document with empty property key")
+	body := Body{"_id": customDocId, "": "value1"}
+	docid, rev1id, _ := db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != "")
+}
+
 // Unit test for issue #507
 func TestPostWithUserSpecialProperty(t *testing.T) {
 	db := setupTestDB(t)
