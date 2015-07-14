@@ -78,9 +78,9 @@ func TestViewQuery(t *testing.T) {
 	assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
 }
 
-func FailingTestViewQuerySaveIntoDB(t *testing.T) {
+func TestViewQuerySaveIntoDB(t *testing.T) {
 	var rt restTester
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.name, doc.points);}", "reduce": "_count"}}}`)
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {if (doc.name) emit(doc.name, doc.points);}", "reduce": "_count"}}}`)
 	assertStatus(t, response, 201)
 	response = rt.sendRequest("PUT", "/db/doc1", `{"points":10, "name":"jchris"}`)
 	assertStatus(t, response, 201)
@@ -89,29 +89,74 @@ func FailingTestViewQuerySaveIntoDB(t *testing.T) {
 	response = rt.sendRequest("PUT", "/db/doc3", `{"points":12 , "name":"jchris"}`)
 	assertStatus(t, response, 201)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&into=true", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
+
 	// assert on the response
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0].Value, 1) // when we support _sum we can change this to 16
-	assert.DeepEquals(t, result.Rows[0].Key, "adam")
-	assert.DeepEquals(t, result.Rows[1].Value, 2) // and this to 22
-	assert.DeepEquals(t, result.Rows[1].Key, "jchris")
-	// assert on the target
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
-	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9", ``)
-	// assertStatus(t, response, 200)
-	// json.Unmarshal(response.Body.Bytes(), &result)
-	// assert.Equals(t, len(result.Rows), 1)
-	// assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+	// assert on the target database
+	response = rt.sendAdminRequest("GET", "/db/gate-foo-bar-0.null", ``)
+	assertStatus(t, response, 200)
+	var doc map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	assert.Equals(t, doc["value"], 3.0)
 
-	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9&include_docs=true", ``)
-	// assertStatus(t, response, 200)
-	// json.Unmarshal(response.Body.Bytes(), &result)
-	// assert.Equals(t, len(result.Rows), 1)
-	// assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
+	// test that repeats don't change the rev until the value changes
+	var rev string
+	rev = doc["_rev"].(string)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&into=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// assert on the response
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
+
+	response = rt.sendAdminRequest("GET", "/db/gate-foo-bar-0.null", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	assert.Equals(t, doc["_rev"], rev)
+
+	// change the value
+	response = rt.sendAdminRequest("GET", "/db/", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	var since = doc["update_seq"]
+	assert.Equals(t, since, 4.0)
+
+	response = rt.sendRequest("PUT", "/db/doc4", `{"points":9 , "name":"jchris"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc5", `{"points":22 , "name":"adam"}`)
+	assertStatus(t, response, 201)
+
+	// need to wait for changes?
+	response = rt.sendAdminRequest("GET", "/db/_changes?since=7", ``)
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&into=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// assert on the response
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 5.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
+
+	// need to wait for changes?
+	response = rt.sendAdminRequest("GET", "/db/_changes?since=8", ``)
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/gate-foo-bar-0.null", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &doc)
+	assert.Equals(t, doc["value"], 5.0)
 }
 
 func TestUserViewQuery(t *testing.T) {

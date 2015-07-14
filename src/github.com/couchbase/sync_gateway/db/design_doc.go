@@ -114,8 +114,12 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			}
 		}
 	} else {
-		result = filterViewResult(result, db.user, options["reduce"] == true)
+		// don't filter when admin reduces
+		if !(db.user == nil && options["reduce"] == true) {
+			result = filterViewResult(result, db.user)
+		}
 	}
+	// refactor inside SaveRowsIntoTarget
 	if options["into"] != nil { // and user is admin
 		level := 0
 		if options["group"] == true {
@@ -191,7 +195,7 @@ func jsonRound(input interface{}) (result interface{}, err error) {
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
-func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
+func filterViewResult(input sgbucket.ViewResult, user auth.User) (result sgbucket.ViewResult) {
 	checkChannels := false
 	var visibleChannels ch.TimedSet
 	if user != nil {
@@ -204,28 +208,18 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (r
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		if reduce {
-			// Add the raw row:
+		value := row.Value.([]interface{})
+		// value[0] is the array of channels; value[1] is the actual value
+		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+			// Add this row:
+			stripSyncProperty(row)
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,
-				Value: row.Value,
+				Value: value[1],
 				ID:    row.ID,
+				Doc:   row.Doc,
 			})
-		} else {
-			value := row.Value.([]interface{})
-			// value[0] is the array of channels; value[1] is the actual value
-			if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
-				// Add this row:
-				stripSyncProperty(row)
-				result.Rows = append(result.Rows, &sgbucket.ViewRow{
-					Key:   row.Key,
-					Value: value[1],
-					ID:    row.ID,
-					Doc:   row.Doc,
-				})
-			}
 		}
-
 	}
 	return
 }
