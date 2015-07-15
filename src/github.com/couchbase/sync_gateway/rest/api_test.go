@@ -1143,7 +1143,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since),
 		"", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -1222,7 +1222,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since, db.SequenceID{Seq: 50})
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user1"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "", "user1"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
@@ -1258,7 +1258,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since, db.SequenceID{TriggeredBy: 103, Seq: 51})
 
 	//// Get remainder of changes i.e. no limit parameter
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since), "", "user3"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since), "", "user3"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
