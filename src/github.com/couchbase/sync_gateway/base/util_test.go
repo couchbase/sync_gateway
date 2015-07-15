@@ -10,8 +10,9 @@
 package base
 
 import (
-	"github.com/couchbaselabs/go.assert"
 	"testing"
+
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -52,4 +53,17 @@ func TestBackQuotedStrings(t *testing.T) {
 	input = "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}"
 	output = ConvertBackQuotedStrings([]byte(input))
 	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
+}
+
+func TestCouchbaseUrlWithAuth(t *testing.T) {
+
+	result, err := CouchbaseUrlWithAuth(
+		"http://127.0.0.1:8091",
+		"username",
+		"password",
+		"bucket",
+	)
+	assert.True(t, err == nil)
+	assert.Equals(t, result, "http://username:password@127.0.0.1:8091")
+
 }

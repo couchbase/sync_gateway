@@ -48,8 +48,8 @@ func testStableSequence() (uint64, error) {
 	return 0, nil
 }
 
-func testStableClock() SequenceClock {
-	return NewSequenceClockImpl()
+func testStableClock() base.SequenceClock {
+	return base.NewSequenceClockImpl()
 }
 
 func testOnChange(keys base.Set) {
@@ -290,15 +290,15 @@ func TestSequenceClockWrite(t *testing.T) {
 	// Add entries
 	assertNoError(t, channelIndex.AddSet(entrySet), "Add set")
 
-	assert.Equals(t, channelIndex.clock.value[9], uint64(25000))
-	assert.Equals(t, channelIndex.clock.value[5], uint64(15000))
-	assert.Equals(t, channelIndex.clock.value[7], uint64(100))
+	assert.Equals(t, channelIndex.clock.Value()[9], uint64(25000))
+	assert.Equals(t, channelIndex.clock.Value()[5], uint64(15000))
+	assert.Equals(t, channelIndex.clock.Value()[7], uint64(100))
 
 	// Load clock from db and reverify
 	channelIndex.loadClock()
-	assert.Equals(t, channelIndex.clock.value[9], uint64(25000))
-	assert.Equals(t, channelIndex.clock.value[5], uint64(15000))
-	assert.Equals(t, channelIndex.clock.value[7], uint64(100))
+	assert.Equals(t, channelIndex.clock.Value()[9], uint64(25000))
+	assert.Equals(t, channelIndex.clock.Value()[5], uint64(15000))
+	assert.Equals(t, channelIndex.clock.Value()[7], uint64(100))
 
 }
 

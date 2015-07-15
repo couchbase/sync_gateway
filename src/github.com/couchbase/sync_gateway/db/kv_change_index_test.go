@@ -116,8 +116,8 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assert.Equals(t, len(allEntries), 1)
 
 	// Verify stable sequence
-	stableClock := SequenceClockImpl{}
-	stableSeqBytes, _, err := bucket.GetRaw(kStableSequenceKey)
+	stableClock := base.SequenceClockImpl{}
+	stableSeqBytes, _, err := bucket.GetRaw(base.KStableSequenceKey)
 	err = stableClock.Unmarshal(stableSeqBytes)
 	log.Println("bytes:", stableSeqBytes)
 	assertNoError(t, err, "Unmarshal stable sequence")
@@ -125,7 +125,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assert.Equals(t, stableClock.GetSequence(2), uint64(0))
 
 	// Verify channel sequences
-	channelClock := SequenceClockImpl{}
+	channelClock := base.SequenceClockImpl{}
 	chanClockBytes, _, err := bucket.GetRaw(getChannelClockKey("ABC"))
 	log.Println("key:", getChannelClockKey("ABC"))
 	log.Println("bytes:", chanClockBytes)
@@ -135,7 +135,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assert.Equals(t, channelClock.GetSequence(1), uint64(1))
 	assert.Equals(t, channelClock.GetSequence(2), uint64(0))
 
-	channelClock = SequenceClockImpl{}
+	channelClock = base.SequenceClockImpl{}
 	chanClockBytes, _, err = bucket.GetRaw(getChannelClockKey("CBS"))
 	err = channelClock.Unmarshal(chanClockBytes)
 	assertNoError(t, err, "Unmarshal channel clock sequence")
@@ -261,7 +261,7 @@ func TestLoadStableSequence(t *testing.T) {
 	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
 	time.Sleep(10 * time.Millisecond)
 
-	stableSequence := LoadStableSequence(bucket)
+	stableSequence := base.LoadStableSequence(bucket)
 	assert.Equals(t, stableSequence.GetSequence(100), uint64(1))
 	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
 	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))

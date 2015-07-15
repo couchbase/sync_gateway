@@ -203,6 +203,10 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		spec.Auth = config
 	}
 
+	if config.FeedParams != nil {
+		spec.FeedParams = *config.FeedParams
+	}
+
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
 	if config.CacheConfig != nil {
