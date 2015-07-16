@@ -27,18 +27,30 @@ import (
 // Register profiling handlers (see Go docs)
 import _ "net/http/pprof"
 
+// Default value of ServerConfig.Interface
 var DefaultInterface = ":4984"
+
+// Default value of ServerConfig.AdminInterface
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
+
+// Default value of DbConfig.Server
+// The default Couchbase database server is Walrus, a simple in-memory database
+// for development and testing.
 var DefaultServer = "walrus:"
+
+// Default value of DbConfig.Pool
 var DefaultPool = "default"
 
 var config *ServerConfig
 
 const (
-	DefaultMaxCouchbaseConnections         = 16
+	// Default value of ServerConfig.MaxCouchbaseConnections
+	DefaultMaxCouchbaseConnections = 16
+
+	// Default value of ServerConfig.MaxCouchbaseOverflow. Zero (0) implies no maximum.
 	DefaultMaxCouchbaseOverflowConnections = 0
 
-	// Default value of ServerConfig.MaxIncomingConnections
+	// Default value of ServerConfig.MaxIncomingConnections. Zero (0) implies no maximum.
 	DefaultMaxIncomingConnections = 0
 
 	// Default value of ServerConfig.MaxFileDescriptors
@@ -47,100 +59,147 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface                      *string         // Interface to bind REST API to, default ":4984"
-	SSLCert                        *string         // Path to SSL cert file, or nil
-	SSLKey                         *string         // Path to SSL private key file, or nil
-	ServerReadTimeout              *int            // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout             *int            // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface                 *string         // Interface to bind admin API to, default ":4985"
-	AdminUI                        *string         // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface               *string         // Interface to bind Go profile API to (no default)
-	ConfigServer                   *string         // URL of config server (for dynamic db discovery)
-	Persona                        *PersonaConfig  // Configuration for Mozilla Persona validation
-	Facebook                       *FacebookConfig // Configuration for Facebook validation
-	CORS                           *CORSConfig     // Configuration for allowing CORS
-	Log                            []string        // Log keywords to enable
-	LogFilePath                    *string         // Path to log file, if missing write to stderr
-	Pretty                         bool            // Pretty-print JSON responses?
-	DeploymentID                   *string         // Optional customer/deployment ID for stats reporting
-	StatsReportInterval            *float64        // Optional stats report interval (0 to disable)
-	MaxCouchbaseConnections        *int            // Max # of sockets to open to a Couchbase Server node
-	MaxCouchbaseOverflow           *int            // Max # of overflow sockets to open
-	CouchbaseKeepaliveInterval     *int            // TCP keep-alive interval between SG and Couchbase server
-	SlowServerCallWarningThreshold *int            // Log warnings if database calls take this many ms
-	MaxIncomingConnections         *int            // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors             *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses              *bool           // If false, disables compression of HTTP responses
+	Interface                      *string         // HTTP address (IP address for localhost and the port) that the Sync REST API
+	                                               // listens on; the default is ":4984"; it is not necessary to specify the host
+	                                               // name, which is assumed to be localhost. If you include a host name, it must be
+	                                               // "localhost" or the IP address of localhost.
+	                                               // The default is defined above in DefaultInterface.
+	SSLCert                        *string         // Absolute or relative path on the filesystem to the TLS certificate file,
+	                                               // if TLS is used to secure Sync Gateway connections, or "nil" for plaintext
+	                                               // connections
+	SSLKey                         *string         // Absolute or relative path on the filesystem to the TLS private key file,
+	                                               // if TLS is used to secure Sync Gateway connections, or "nil" for plaintext
+	                                               // connections
+	ServerReadTimeout              *int            // Maximum duration in seconds before timing out the read of an HTTP(S) request
+	ServerWriteTimeout             *int            // Maximum duration in seconds before timing out the write of an HTTP(S) response
+	AdminInterface                 *string         // HTTP address (IP address for localhost and the port) that the Admin REST API
+	                                               // listens on; the default is "127.0.0.1:4985"; it is not necessary to specify
+	                                               // the host name, which is assumed to be localhost. If you include a host name,
+	                                               // it must be "localhost" or the IP address of localhost.
+	                                               // The default is defined above in DefaultAdminInterface.
+	AdminUI                        *string         // URL of the Sync Gateway Admin Console HTML page. If omitted, the bundled Admin
+	                                               // Console at localhost:4985/_admin/ is used.
+	ProfileInterface               *string         // Interface to bind the Go profile API to, in order to obtain go profiling
+	                                               // information; there is no default. It is not necessary to specify the host name,
+	                                               // which is assumed to be localhost. If you include a host name, it must be
+	                                               // "localhost" or the IP address of localhost.
+	ConfigServer                   *string         // URL of a Couchbase database-configuration server (for dynamic database discovery).
+	                                               // A database-configuration server allows Sync Gateway to load a database configuration
+	                                               // dynamically from a remote endpoint. If a database-configuration server is defined, when
+	                                               // Sync Gateway gets a request for a database that it doesn't know about, then
+	                                               // Sync Gateway will attempt to retrieve the database configuration properties
+	                                               // from the URL ConfigServer/DBname, where DBname is the database name.
+	Persona                        *PersonaConfig  // Configuration for Mozilla Persona authentication
+	Facebook                       *FacebookConfig // Configuration for Facebook Login authentication
+	CORS                           *CORSConfig     // Configuration for allowing CORS (cross-origin resource sharing)
+	Log                            []string        // Comma-separated list of log keys to enable for logging. If defined, logging is
+	                                               // limited to log messages that contain the specified log keys.
+	                                               // Log keys include (the most commonly used keys are prefaced by an asterisk):
+	                                               //
+                                                   //    Access: Log access() calls made by the sync function.
+                                                   //    Attach: Log attachment processing.
+                                                   //    Auth: Log authentication.
+                                                   //    Bucket: Verbosely log Sync Gateway interactions with the bucket.
+                                                   //    * Cache/Cache+: Log interactions with Sync Gateway's in-memory channel cache.
+                                                   //    * Changes/Changes+: Log processing of _changes requests.
+                                                   //    * CRUD/CRUD+: Log updates made by Sync Gateway to documents.
+                                                   //    DCP: Verbosely Log DCP-feed processing.
+                                                   //    Events/Events+: Log event processing (webhooks).
+                                                   //    Feed/Feed+: Log TAP-feed processing.
+                                                   //    * HTTP/HTTP+: Log all requests made to the Sync Gateway REST APIs (Sync and Admin).
+                                                   //    Note: The log keyword HTTP is always enabled, which means that HTTP requests and
+                                                   //    error responses are always logged (in a non-verbose manner). HTTP+ provides more
+                                                   //    verbose HTTP logging.
+	                                               // 
+	LogFilePath                    *string         // Absolute or relative path on the filesystem to the log file. If absent, log
+	                                               // to stderr.
+	Pretty                         bool            // Whether to pretty-print JSON responses
+	DeploymentID                   *string         // Optional customer/deployment ID for statistics reporting
+	StatsReportInterval            *float64        // Optional statistics reporting interval in seconds (0 to disable)
+	MaxCouchbaseConnections        *int            // Maximum number of sockets to open to a Couchbase Server node. If omitted,
+	                                               // the default is used (it is defined above in DefaultMaxCouchbaseConnections).
+	MaxCouchbaseOverflow           *int            // Maximum number of overflow sockets to open. If omitted, the default is
+	                                               // used (it is defined above in DefaultMaxCouchbaseOverflowConnections).
+	CouchbaseKeepaliveInterval     *int            // TCP keep-alive interval in seconds between Sync Gateway and Couchbase Server
+	SlowServerCallWarningThreshold *int            // Log warnings if database calls take this many milliseconds or longer. The time
+	                                               // is measured from a Sync Gateway request to the Couchbase Server response.
+	MaxIncomingConnections         *int            // Maximum number of incoming HTTP connections to accept. If omitted, the
+	                                               // default is used (it is defined above in DefaultMaxIncomingConnections).
+	MaxFileDescriptors             *uint64         // Maximum number of open file descriptors (RLIMIT_NOFILE). If omitted, the
+	                                               // default is used (it is defined above in DefaultMaxFileDescriptors).
+	CompressResponses              *bool           // Whether to compress HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
-	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
+	MaxHeartbeat                   uint64          // Maximum heartbeat value for _changes feed requests (in seconds)
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
-	Name               string                         `json:"name"`                           // Database name in REST API (stored as key in JSON)
-	Server             *string                        `json:"server"`                         // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username           string                         `json:"username,omitempty"`             // Username for authenticating to server
-	Password           string                         `json:"password,omitempty"`             // Password for authenticating to server
-	Bucket             *string                        `json:"bucket"`                         // Bucket name on server; defaults to same as 'name'
-	Pool               *string                        `json:"pool"`                           // Couchbase pool name, default "default"
-	Sync               *string                        `json:"sync"`                           // Sync function defines which users can see which data
+	Name               string                         `json:"name"`                           // Database name for use by the REST APIs (stored as a key in JSON)
+	Server             *string                        `json:"server"`                         // Couchbase Server (or Walrus) URL; the default is "walrus:"
+	Username           string                         `json:"username,omitempty"`             // Username for authenticating to Couchbase Server
+	Password           string                         `json:"password,omitempty"`             // Password for authenticating to Couchbase Server
+	Bucket             *string                        `json:"bucket"`                         // Bucket name on Couchbase Server; defaults to the same value as "Name"
+	Pool               *string                        `json:"pool"`                           // Name of the Couchbase Server pool in which to find buckets; the default is "default"
+	Sync               *string                        `json:"sync"`                           // Sync function, which defines which users can read, update, or delete which documents
 	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
 	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
-	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
-	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
+	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Maximum depth to which a document's revision tree can grow
+	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // False, true, or "continuous"
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
-	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
-	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
+	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (for webhooks)
+	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type: "DCP" or "TAP"; the default depends on the Couchbase server version.
+	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Whether to allow empty passwords for Couchbase Server authentication. Defaults to false.
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 }
 
 type DbConfigMap map[string]*DbConfig
 
 type PersonaConfig struct {
-	Origin   string // Canonical server URL for Persona authentication
-	Register bool   // If true, server will register new user accounts
+	Origin   string // URL of Mozilla Persona Identity Provider (IdP) server for Persona authentication
+	Register bool   // Whether the Mozilla Persona IdP server will register new user accounts (true or false)
 }
 
 type FacebookConfig struct {
-	Register bool // If true, server will register new user accounts
+	Register bool // Whether the Facebook Login server will register new user accounts (true or false)
 }
 
 type CORSConfig struct {
-	Origin      []string // List of allowed origins, use ["*"] to allow access from everywhere
-	LoginOrigin []string // List of allowed login origins
-	Headers     []string // List of allowed headers
-	MaxAge      int      // Maximum age of the CORS Options request
+	Origin      []string // Comma-separated list of allowed origins; use an asterisk (*) to allow access from everywhere
+	LoginOrigin []string // Comma-separated list of allowed login origins
+	Headers     []string // Comma-separated list of allowed HTTP headers
+	MaxAge      int      // Value for the Access-Control-Max-Age header. This is the the number of seconds
+	                     // that the response to a CORS preflight request can be cached before sending
+	                     // another preflight request.
 }
 
 type ShadowConfig struct {
 	Server       *string `json:"server"`                 // Couchbase server URL
-	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name, default "default"
+	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name; the default is "default"
 	Bucket       string  `json:"bucket"`                 // Bucket name
-	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
-	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
-	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
-	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults to TAP
+	Username     string  `json:"username,omitempty"`     // Username for authenticating to the Couchbase server
+	Password     string  `json:"password,omitempty"`     // Password for authenticating to the Couchbase server
+	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that document IDs must match
+	FeedType     string  `json:"feed_type,omitempty"`    // Feed type: "DCP" or "TAP"; defaults to TAP
 }
 
 type EventHandlerConfig struct {
-	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
-	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
-	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
+	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Maximum concurrent event handling goroutines; the default is 500
+	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Maximum wait time when the event queue is full (milliseconds)' the default is 5
+	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // The document_changed event
 }
 
 type EventConfig struct {
-	HandlerType string  `json:"handler"`           // Handler type
-	Url         string  `json:"url,omitempty"`     // Url (webhook)
-	Filter      string  `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+	HandlerType string  `json:"handler"`           // Handler type ("webhook")
+	Url         string  `json:"url,omitempty"`     // URL to which to post documents (for a webhook event handler)
+	Filter      string  `json:"filter,omitempty"`  // Filter function to determine which documents to post (for a webhook event handler)
+	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout in seconds (for a webhook event handler); the default is 60
 }
 
 type CacheConfig struct {
-	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
-	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
-	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
-	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
+	CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Maximum wait time in milliseconds for a pending sequence before skipping the sequence
+	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Maximum number of pending sequences before skipping sequences
+	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Maximum wait time in milliseconds for a skipped sequence before abandoning the sequence
+	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable the star (*) channel
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -312,20 +371,20 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() {
 
-	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
-	addr := flag.String("interface", DefaultInterface, "Address to bind to")
-	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
+	siteURL := flag.String("personaOrigin", "", "URL that clients use to communicate with a Mozilla Persona IdP server")
+	addr := flag.String("interface", DefaultInterface, "Port that the Sync REST API listens on")
+	authAddr := flag.String("adminInterface", DefaultAdminInterface, "HTTP address (IP address for localhost and the port), or only the port, that the Admin REST API listens on")
+	profAddr := flag.String("profileInterface", "", "Port for a diagnostic interface, from which profiling information can be obtained")
 	configServer := flag.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flag.String("pool", DefaultPool, "Name of pool")
-	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
+	couchbaseURL := flag.String("url", DefaultServer, "URL of the database server. An HTTP URL implies Couchbase Server. A walrus: URL implies the built-in Walrus database. A combination of a Walrus URL and a file-style URI implies the built-in Walrus database and persisting the database to a file.")
+	poolName := flag.String("pool", DefaultPool, "Name of the Couchbase Server pool in which to find buckets")
+	bucketName := flag.String("bucket", "sync_gateway", "Name of the Couchbase bucket")
+	dbName := flag.String("dbname", "", "Name of the Couchbase Server database to serve through the Sync REST API (defaults to the bucket name)")
+	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses to improve readability. This is useful for debugging, but reduces performance.")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
-	logKeys := flag.String("log", "", "Log keywords, comma separated")
-	logFilePath := flag.String("logFilePath", "", "Path to log file")
+	logKeys := flag.String("log", "", "Comma-separated list of log keywords to enable. The log keyword HTTP is always enabled, which means that HTTP requests and error responses are always logged.")
+	logFilePath := flag.String("logFilePath", "", "Path to the log file")
 	flag.Parse()
 
 	if flag.NArg() > 0 {
