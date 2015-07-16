@@ -100,7 +100,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
 	// assert on the target database
-	response = rt.sendAdminRequest("GET", "/db/gate-foo-bar-0.null", ``)
+	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
 	assertStatus(t, response, 200)
 	var doc map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &doc)
@@ -119,7 +119,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
 	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
-	response = rt.sendAdminRequest("GET", "/db/gate-foo-bar-0.null", ``)
+	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &doc)
 	assert.Equals(t, doc["_rev"], rev)
@@ -153,7 +153,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 	response = rt.sendAdminRequest("GET", "/db/_changes?since=8", ``)
 	assertStatus(t, response, 200)
 
-	response = rt.sendAdminRequest("GET", "/db/gate-foo-bar-0.null", ``)
+	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &doc)
 	assert.Equals(t, doc["value"], 5.0)

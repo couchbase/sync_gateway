@@ -145,7 +145,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 }
 
 func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
-	prefix := fmt.Sprintf("gate-%s-%s-%d", ddocName, viewName, level)
+	prefix := fmt.Sprintf("%s_%s_%d", ddocName, viewName, level)
 	// targetDb =
 	// ... load all docs with that prefix by docid, and remove them one by one as we work
 	// through the set
@@ -161,7 +161,7 @@ func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level in
 	for _, row := range result.Rows {
 		jsonKey, _ := json.Marshal(row.Key)
 		// error checking...
-		docid := fmt.Sprintf("%s.%s", prefix, jsonKey)
+		docid := fmt.Sprintf("r.%s.%s", prefix, jsonKey)
 		docids[docid] = 0
 		body, err := db.GetRev(docid, "", false, nil)
 		base.LogTo("HTTP", "View doc %q", docid)
@@ -175,6 +175,7 @@ func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level in
 			body["value"] = row.Value
 			body["key"] = row.Key
 			body["type"] = "reduction"
+			body["query"] = prefix
 			newRev, err2 := db.Put(docid, body)
 			base.LogTo("HTTP", "Save into %q - %v - %v %v", docid, newRev, body["value"], err2)
 		}
