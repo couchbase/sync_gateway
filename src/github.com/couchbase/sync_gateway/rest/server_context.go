@@ -33,7 +33,7 @@ const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
 // Number of recently-accessed doc revisions to cache in RAM
-const RevisionCacheCapacity = 5000
+const kDefaultRevisionCacheCapacity = 5000
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -228,15 +228,15 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
-	var maxRevsCacheSize uint32
+	var revCacheSize uint32
 
-	if config.MaxRevsCacheSize != nil && *config.MaxRevsCacheSize > 0 {
-		maxRevsCacheSize = *config.MaxRevsCacheSize
+	if config.RevCacheSize != nil && *config.RevCacheSize > 0 {
+		revCacheSize = *config.RevCacheSize
 	} else {
-		maxRevsCacheSize = RevisionCacheCapacity
+		revCacheSize = kDefaultRevisionCacheCapacity
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions, maxRevsCacheSize)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions, revCacheSize)
 	if err != nil {
 		return nil, err
 	}
