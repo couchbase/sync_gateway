@@ -189,7 +189,7 @@ func (c *kvChangeIndex) indexPending() {
 			wg.Add(1)
 			go func(chanPartition ChannelPartition, entrySet []kvIndexEntry) {
 				defer wg.Done()
-				c.addPartitionSetToChannelIndex(chanPartition.channelName, chanPartition.partition, entrySet)
+				c.addSetToChannelIndex(chanPartition.channelName, entrySet)
 
 			}(chanPartition, entrySet)
 		}
@@ -262,10 +262,6 @@ func (b *kvChangeIndex) addToChannelCache(channelName string, change kvIndexEntr
 
 func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []kvIndexEntry) {
 	b.getChannelIndex(channelName).AddSet(entries)
-}
-
-func (b *kvChangeIndex) addPartitionSetToChannelIndex(channelName string, partition uint16, entries []kvIndexEntry) {
-	b.getChannelIndex(channelName).AddPartitionSet(partition, entries)
 }
 
 // Add late sequence information to channel cache

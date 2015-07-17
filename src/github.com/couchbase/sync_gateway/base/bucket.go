@@ -82,7 +82,9 @@ func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{},
 func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 
 	err = bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
-	return 0, err
+	// TODO: switch over to go-couchbase version that returns CAS when it's available
+	observeResult, err := bucket.Bucket.Observe(k)
+	return observeResult.Cas, err
 }
 
 func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {

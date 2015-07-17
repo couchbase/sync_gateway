@@ -10,7 +10,11 @@
 package db
 
 import (
+	"bytes"
+	"encoding/gob"
+	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -21,6 +25,7 @@ import (
 var ByteCachePollingTime = 1000 // initial polling time for notify, ms
 
 const kSequenceOffsetLength = 0 // disabled until we actually need it
+const kMaxVbNo = 1024           // TODO: load from cluster config
 
 type kvChannelIndex struct {
 	context             *DatabaseContext  // Database connection (used for connection queries)
@@ -37,6 +42,7 @@ type kvChannelIndex struct {
 	onChange            func(base.Set)
 	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
 	indexBlockCacheLock sync.Mutex
+	clock               *channelClock
 }
 
 /*
@@ -75,6 +81,9 @@ func NewKvChannelIndex(channelName string, context *DatabaseContext, partitions 
 		stableSequence = 0
 	}
 
+	// Initialize clock
+	channelIndex.clock = NewChannelClock(context.Bucket, channelName)
+
 	channelIndex.stableSequence = stableSequence
 	return channelIndex
 
@@ -86,15 +95,14 @@ func NewKvChannelIndex(channelName string, context *DatabaseContext, partitions 
 
 func (k *kvChannelIndex) Add(entry kvIndexEntry) error {
 	// Update the sequence in the appropriate cache block
-	base.LogTo("DCache+", "Add to channel cache %s, isRemoval:%v", k.channelName, entry.removal)
-	partition := k.partitionMap[entry.vbNo]
-	key := GenerateBlockKey(k.channelName, entry.sequence, partition)
+	base.LogTo("DCache+", "Add to channel index %s, isRemoval:%v", k.channelName, entry.removal)
 	entries := make([]kvIndexEntry, 0)
 	entries = append(entries, entry)
-	k.casUpdate(key, entries)
+	k.writeSingleBlockWithCas(entries)
 	return nil
 }
 
+// Adds a set
 func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 
 	base.LogTo("DCache", "enter AddSet for channel %s, %+v", k.channelName, entries)
@@ -103,68 +111,79 @@ func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 		return nil
 	}
 
-	// Pending - break into partition sets and call AddPartitionSet
-
-	return nil
-}
-
-// Adds a set to a specified partition
-func (k *kvChannelIndex) AddPartitionSet(partition uint16, entries []kvIndexEntry) error {
-
-	base.LogTo("DCache", "enter AddSet for channel %s, %+v", k.channelName, entries)
-	// Update the sequences in the appropriate cache block
-	if len(entries) == 0 {
-		return nil
-	}
-
-	// The set of updates for a single partition may be distributed over multiple blocks, since
-	// a particular vbucket in the partition may have seen more revisions and rolled
-	// over to a new block.
+	// The set of updates may be distributed over multiple partitions and blocks.
 	// To support this, iterate over the set, and define groups of sequences by block
 	// TODO: this approach feels like it's generating a lot of GC work.  Considered an iterative
-	//       approach where a set update returvned a list of entries that weren't targeted at the
+	//       approach where a set update returned a list of entries that weren't targeted at the
 	//       same block as the first entry in the list, but this would force sequential
 	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
 	blockSets := make(map[string][]kvIndexEntry)
 	for _, entry := range entries {
-		blockKey := GenerateBlockKey(k.channelName, entry.sequence, partition)
+		blockKey := GenerateBlockKey(k.channelName, entry.sequence, k.partitionMap[entry.vbNo])
 		if _, ok := blockSets[blockKey]; !ok {
 			blockSets[blockKey] = make([]kvIndexEntry, 0)
 		}
 		blockSets[blockKey] = append(blockSets[blockKey], entry)
 	}
 
-	for key, blockSet := range blockSets {
-		// Get an existing block if we've got one
-		k.casUpdate(key, blockSet)
-
+	for _, blockSet := range blockSets {
+		// update the block
+		err := k.writeSingleBlockWithCas(blockSet)
+		if err != nil {
+			return err
+		}
 	}
 
-	return nil
+	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
+	// round trips.
+	err := k.writeClockCas(entries)
+
+	return err
 }
 
-func (k *kvChannelIndex) casUpdate(key string, entries []kvIndexEntry) {
+// Expects all incoming entries to target the same block
+func (k *kvChannelIndex) writeSingleBlockWithCas(entries []kvIndexEntry) error {
 
 	casSuccess := false
-	block := k.getIndexBlock(key)
+	if len(entries) == 0 {
+		return nil
+	}
+	// Get block based on first entry
+	block := k.getIndexBlockForEntry(entries[0])
 	for casSuccess == false {
-		// apply updates
+		// Apply updates to the in-memory block
+		for _, entry := range entries {
+			err := block.AddEntry(entry)
+			// Wrong block for this entry
+			if err != nil {
+				return err
+			}
+		}
 
-		// Note: CasRaw doesn't support write options.  If we need to set indexable/persistence,
-		// we'll need to switch to using WriteCas directly
-		err := k.context.Bucket.Write(key, 0, 0, block.Marshal, sgbucket.Raw)
-		//err := k.context.Bucket.CasRaw(key, 0, block.Cas, block.Marshal())
+		value, err := block.Marshal()
 		if err != nil {
-			// cas failure - reload and reapply the changes
-			err = k.loadIndexBlockFromBucket(key, block)
+			base.Warn("Unable to marshal channel block - cancelling block update")
+			return errors.New("Error marshalling channel block")
+		}
+		casOut, err := k.context.Bucket.WriteCas(block.Key(), 0, 0, block.Cas(), value, sgbucket.Raw)
+		if err != nil {
+			// CAS failure - reload block for another try
+			log.Println("CAS error - retrying")
+			err = k.loadBlock(block)
+			if err != nil {
+				return err
+			}
 		} else {
+			// Success - update the local cas value for next time
+			block.SetCas(casOut)
 			casSuccess = true
 		}
 	}
+	return nil
 }
 
 func (k *kvChannelIndex) Compact() {
-	// TODO: for each index block being stored, check whether expired
+	// TODO: for each index block being cached, check whether expired
 }
 
 func (k *kvChannelIndex) startNotify() {
@@ -389,7 +408,7 @@ func (k *kvChannelIndex) getBlockIndex(sequence uint64) uint16 {
 }
 
 // Safely retrieves index block from the channel's block cache
-func (k *kvChannelIndex) getIndexBlock(key string) IndexBlock {
+func (k *kvChannelIndex) getIndexBlockFromCache(key string) IndexBlock {
 	k.indexBlockCacheLock.Lock()
 	defer k.indexBlockCacheLock.Unlock()
 	return k.indexBlockCache[key]
@@ -402,35 +421,39 @@ func (k *kvChannelIndex) putIndexBlockToCache(key string, block IndexBlock) {
 	k.indexBlockCache[key] = block
 }
 
-// Retrieves the appropriate index block for an entry.  If not found in the channel's block map,
-// initializes a new block and adds to the map.
+// Retrieves the appropriate index block for an entry. If not found in the channel's block cache,
+// will initialize a new block and add to the map.
 func (k *kvChannelIndex) getIndexBlockForEntry(entry kvIndexEntry) IndexBlock {
 
 	partition := k.partitionMap[entry.vbNo]
 	key := GenerateBlockKey(k.channelName, entry.sequence, partition)
+
 	// First attempt to retrieve from the cache of recently accessed blocks
-	block := k.getIndexBlock(key)
+	block := k.getIndexBlockFromCache(key)
 	if block != nil {
+		log.Println("Returning from cache")
 		return block
 	}
 
 	// If not found in cache, attempt to retrieve from the index bucket
 	block = NewIndexBlock(k.channelName, entry.sequence, partition)
-	err := k.loadIndexBlockFromBucket(key, block)
+	err := k.loadBlock(block)
 	if err == nil {
+		log.Println("Returning from disk")
 		return block
 	}
 
-	// If still not found, initialize a new empty index block
+	// If still not found, initialize a new empty index block and add to cache
 	block = NewIndexBlock(k.channelName, entry.sequence, partition)
-
 	k.putIndexBlockToCache(key, block)
+
+	log.Println("Returning new")
 	return block
 }
 
-func (k *kvChannelIndex) loadIndexBlockFromBucket(key string, block IndexBlock) error {
+func (k *kvChannelIndex) loadBlock(block IndexBlock) error {
 
-	data, cas, err := k.context.Bucket.GetRaw(key)
+	data, cas, err := k.context.Bucket.GetRaw(block.Key())
 	if err != nil {
 		return err
 	}
@@ -441,7 +464,113 @@ func (k *kvChannelIndex) loadIndexBlockFromBucket(key string, block IndexBlock) 
 		return err
 	}
 	// If found, add to the cache
-	k.putIndexBlockToCache(key, block)
+	k.putIndexBlockToCache(block.Key(), block)
+	return nil
+}
+
+func (k *kvChannelIndex) writeClockCas(entries []kvIndexEntry) error {
+
+	casSuccess := false
+	if len(entries) == 0 {
+		return nil
+	}
+	// Make a copy of the channel clock to use during update
+	updatedClock := k.clock.clone()
+	for casSuccess == false {
+		// Apply updates to the
+		for _, entry := range entries {
+			// assumes always ascending
+			updatedClock.value[entry.vbNo] = entry.sequence
+		}
+
+		value, err := updatedClock.Marshal()
+		if err != nil {
+			base.Warn("Unable to marshal channel clock - cancelling clock update")
+			return errors.New("Error marshalling channel clock")
+		}
+		casOut, err := k.context.Bucket.WriteCas(getChannelClockKey(k.channelName), 0, 0, updatedClock.cas, value, sgbucket.Raw)
+		if err != nil {
+			// CAS failure - reload clock for another try
+			log.Println("CAS error on clock update - retrying")
+			updatedClock.load(k.context.Bucket, k.channelName)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Success - update the local cas value for next time
+			updatedClock.cas = casOut
+			// TODO: copying into k.clock might be less GC overhead, but at cost of CPU processing.
+			k.clock = updatedClock
+			casSuccess = true
+		}
+	}
+	return nil
+}
+
+///////// Channel clock
+type channelClock struct {
+	value map[uint16]uint64
+	cas   uint64
+	lock  sync.RWMutex
+}
+
+func NewChannelClock(bucket base.Bucket, channelName string) *channelClock {
+	// Initialize empty clock
+	clock := channelClock{
+		value: make(map[uint16]uint64, kMaxVbNo),
+	}
+	clock.load(bucket, channelName)
+	return &clock
+}
+
+// Copies a channel clock
+func (c *channelClock) clone() *channelClock {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	copy := channelClock{
+		value: make(map[uint16]uint64, len(c.value)),
+		cas:   c.cas,
+	}
+
+	for k, v := range c.value {
+		copy.value[k] = v
+	}
+	return &copy
+}
+
+func (c *channelClock) load(bucket base.Bucket, channelName string) error {
+	data, cas, err := bucket.GetRaw(getChannelClockKey(channelName))
+	if err != nil {
+		// return empty clock
+		base.LogTo("DCache+", "Unable to find existing channel clock for channel %s - initializing as new", channelName)
+		return errors.New("Channel clock not found")
+	}
+	c.Unmarshal(data)
+	c.cas = cas
+	return nil
+}
+
+// TODO: replace with something more intelligent than gob encode, to take advantage of known
+//       clock structure?
+func (c *channelClock) Marshal() ([]byte, error) {
+	var output bytes.Buffer
+	enc := gob.NewEncoder(&output)
+	err := enc.Encode(c.value)
+	if err != nil {
+		return nil, err
+	}
+
+	return output.Bytes(), nil
+}
+
+func (c *channelClock) Unmarshal(value []byte) error {
+
+	input := bytes.NewBuffer(value)
+	dec := gob.NewDecoder(input)
+	err := dec.Decode(&c.value)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -455,6 +584,11 @@ func getIndexCountKey(channelName string) string {
 // Get the key for the cache block, based on the block index
 func getIndexBlockKey(channelName string, partition uint16, blockIndex uint16) string {
 	return fmt.Sprintf("%s:%s:%d:block%d", kCachePrefix, channelName, partition, blockIndex)
+}
+
+// Get the key for the cache block, based on the block index
+func getChannelClockKey(channelName string) string {
+	return fmt.Sprintf("%s_channelClock:%s", kCachePrefix, channelName)
 }
 
 // Generate the key for a single sequence/entry
