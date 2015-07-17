@@ -83,7 +83,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions, maxRevsCacheSize uint32) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions, revCacheSize uint32) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		RevsLimit:  DefaultRevsLimit,
 		autoImport: autoImport,
 	}
-	context.revisionCache = NewRevisionCache(int(maxRevsCacheSize), context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(int(revCacheSize), context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
