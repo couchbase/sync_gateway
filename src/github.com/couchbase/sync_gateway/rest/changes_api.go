@@ -80,7 +80,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = db.ParseSequenceID(unmarshalJSONString(h.getQuery("since"))); err != nil {
+		if err = options.Since.UnmarshalJSON([]byte(h.getQuery("since"))); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -480,14 +480,3 @@ func sequenceFromString(str string) uint64 {
 	}
 	return seq
 }
-
-
-func unmarshalJSONString(s string) string {
-	var js string
-	err := json.Unmarshal([]byte(s), &js); if err != nil {
-		return s
-	} else {
-		return js
-	}
-}
-
