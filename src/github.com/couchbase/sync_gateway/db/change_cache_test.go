@@ -22,6 +22,7 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+
 func e(seq uint64, docid string, revid string) *LogEntry {
 	return &LogEntry{
 		Sequence:     seq,
@@ -80,7 +81,7 @@ func TestSkippedSequenceQueue(t *testing.T) {
 
 func TestLateSequenceHandling(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -143,7 +144,7 @@ func TestLateSequenceHandling(t *testing.T) {
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{})
+	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
