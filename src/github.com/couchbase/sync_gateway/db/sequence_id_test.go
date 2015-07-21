@@ -55,6 +55,33 @@ func TestMarshalSequenceID(t *testing.T) {
 	assert.Equals(t, s2, s)
 }
 
+func TestSequenceIDUnmarshalJSON(t *testing.T) {
+
+	str := "123"
+	s := SequenceID{}
+	err := s.UnmarshalJSON([]byte(str))
+	assertNoError(t, err, "UnmarshalJSON failed")
+	assert.Equals(t, s, SequenceID{Seq: 123})
+
+	str = "456:123"
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assertNoError(t, err, "UnmarshalJSON failed")
+	assert.Equals(t, s, SequenceID{TriggeredBy: 456, Seq: 123})
+
+	str = "\"234\""
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assertNoError(t, err, "UnmarshalJSON failed")
+	assert.Equals(t, s, SequenceID{Seq: 234})
+
+	str = "\"567:234\""
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assertNoError(t, err, "UnmarshalJSON failed")
+	assert.Equals(t, s, SequenceID{TriggeredBy: 567, Seq: 234})
+}
+
 func TestMarshalTriggeredSequenceID(t *testing.T) {
 	s := SequenceID{TriggeredBy: 5678, Seq: 1234}
 	assert.Equals(t, s.String(), "5678:1234")
