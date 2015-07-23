@@ -23,7 +23,7 @@ var byteCacheBlockCapacity = uint64(10000)
 type IndexBlock interface {
 	Key() string
 	Marshal() ([]byte, error)
-	Unmarshal(value []byte, cas uint64) error
+	Unmarshal(value []byte) error
 	AddEntry(entry kvIndexEntry) error
 	AddEntrySet(entries []kvIndexEntry) error
 	Cas() uint64
@@ -141,7 +141,7 @@ func (b *BitFlagBlock) Marshal() ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func (b *BitFlagBlock) Unmarshal(value []byte, cas uint64) error {
+func (b *BitFlagBlock) Unmarshal(value []byte) error {
 
 	input := bytes.NewBuffer(value)
 	dec := gob.NewDecoder(input)
@@ -150,7 +150,6 @@ func (b *BitFlagBlock) Unmarshal(value []byte, cas uint64) error {
 		return err
 	}
 
-	b.SetCas(cas)
 	return nil
 }
 

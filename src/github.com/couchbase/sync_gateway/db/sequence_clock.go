@@ -1,0 +1,182 @@
+//  Copyright (c) 2015 Couchbase, Inc.
+//  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
+//  except in compliance with the License. You may obtain a copy of the License at
+//    http://www.apache.org/licenses/LICENSE-2.0
+//  Unless required by applicable law or agreed to in writing, software distributed under the
+//  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+//  either express or implied. See the License for the specific language governing permissions
+//  and limitations under the License.
+
+package db
+
+import (
+	"bytes"
+	"encoding/gob"
+	"fmt"
+	"sync"
+)
+
+type SequenceClock interface {
+	SetSequence(vbNo uint16, vbSequence uint64)
+	GetSequence(vbNo uint16) (vbSequence uint64)
+	Cas() (casOut uint64)
+	SetCas(cas uint64)
+	Marshal() (value []byte, err error)
+	Unmarshal(value []byte) error
+	UpdateWithClock(updateClock SequenceClock)
+	Value() map[uint16]uint64
+}
+
+// Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
+type SequenceClockImpl struct {
+	value       map[uint16]uint64
+	hashedValue string
+	cas         uint64
+}
+
+func NewSequenceClockImpl() *SequenceClockImpl {
+	// Initialize empty clock
+	clock := &SequenceClockImpl{
+		value: make(map[uint16]uint64, kMaxVbNo),
+	}
+	return clock
+}
+
+func (c *SequenceClockImpl) SetSequence(vbNo uint16, vbSequence uint64) {
+	c.value[vbNo] = vbSequence
+}
+
+func (c *SequenceClockImpl) GetSequence(vbNo uint16) (vbSequence uint64) {
+	return c.value[vbNo]
+}
+
+// Copies a channel clock
+func (c *SequenceClockImpl) clone() SequenceClockImpl {
+	copy := SequenceClockImpl{
+		value: make(map[uint16]uint64, len(c.value)),
+		cas:   c.cas,
+	}
+
+	for k, v := range c.value {
+		copy.value[k] = v
+	}
+	return copy
+}
+
+func (c *SequenceClockImpl) Cas() uint64 {
+	return c.cas
+}
+
+func (c *SequenceClockImpl) SetCas(cas uint64) {
+	c.cas = cas
+}
+
+func (c *SequenceClockImpl) Value() map[uint16]uint64 {
+	return c.value
+}
+
+// TODO: replace with something more intelligent than gob encode, to take advantage of known
+//       clock structure?
+func (c *SequenceClockImpl) Marshal() ([]byte, error) {
+	var output bytes.Buffer
+	enc := gob.NewEncoder(&output)
+	err := enc.Encode(c.value)
+	if err != nil {
+		return nil, err
+	}
+
+	return output.Bytes(), nil
+}
+
+func (c *SequenceClockImpl) Unmarshal(value []byte) error {
+
+	input := bytes.NewBuffer(value)
+	dec := gob.NewDecoder(input)
+	err := dec.Decode(&c.value)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
+	for vb, sequence := range updateClock.Value() {
+		if sequence > 0 {
+			// TODO: This method assumes the non-zero values in updateClock are greater than
+			//  the current clock values.  The following check is for safety/testing during
+			//  implementation - could consider removing for performance
+			currentSequence, ok := c.value[vb]
+			if ok && sequence < currentSequence {
+				panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vb, currentSequence, sequence))
+			}
+			c.value[vb] = sequence
+		}
+	}
+}
+
+// Synchronized Sequence Clock - should be used in shared usage scenarios
+type SyncSequenceClock struct {
+	clock *SequenceClockImpl
+	lock  sync.RWMutex
+}
+
+func NewSyncSequenceClock() *SyncSequenceClock {
+	// Initialize empty clock
+	syncClock := SyncSequenceClock{}
+	syncClock.clock = NewSequenceClockImpl()
+	return &syncClock
+}
+
+func (c *SyncSequenceClock) Cas() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.Cas()
+}
+
+func (c *SyncSequenceClock) SetCas(cas uint64) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.clock.SetCas(cas)
+}
+
+func (c *SyncSequenceClock) SetSequence(vbNo uint16, sequence uint64) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.clock.SetSequence(vbNo, sequence)
+}
+
+func (c *SyncSequenceClock) GetSequence(vbNo uint16) (sequence uint64) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.clock.GetSequence(vbNo)
+}
+
+// Copies a channel clock
+func (c *SyncSequenceClock) clone() *SyncSequenceClock {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	clockCopy := c.clock.clone()
+	return &SyncSequenceClock{
+		clock: &clockCopy,
+	}
+}
+
+// TODO: possibly replace with something more intelligent than gob encode, to take advantage of known
+//       clock structure?
+func (c *SyncSequenceClock) Marshal() ([]byte, error) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.Marshal()
+}
+
+func (c *SyncSequenceClock) Unmarshal(value []byte) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.clock.Unmarshal(value)
+}
+
+func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.clock.UpdateWithClock(updateClock)
+}

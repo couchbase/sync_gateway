@@ -47,6 +47,11 @@ type DatabaseContext struct {
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 }
 
+type DatabaseContextOptions struct {
+	CacheOptions *CacheOptions
+	IndexOptions *ChangeIndexOptions
+}
+
 const DefaultRevsLimit = 1000
 
 // Number of recently-accessed doc revisions to cache in RAM
@@ -86,7 +91,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions, indexOptions *ChangeIndexOptions) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -111,16 +116,19 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		return nil, err
 	}
 
-	if indexOptions == nil {
+	if options.IndexOptions == nil {
 		// In-memory channel cache
 		context.changeCache = &changeCache{}
-		context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {
-			context.tapListener.Notify(changedChannels)
-		}, cacheOptions)
-		context.tapListener.OnDocChanged = context.changeCache.DocChanged
+
 	} else {
 		// KV channel index
+		context.changeCache = &kvChangeIndex{}
 	}
+
+	context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {
+		context.tapListener.Notify(changedChannels)
+	}, options.CacheOptions, options.IndexOptions)
+	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
 	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err

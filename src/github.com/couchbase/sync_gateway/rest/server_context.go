@@ -264,7 +264,12 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		channelIndexOptions = nil
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions, channelIndexOptions)
+	contextOptions := db.DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+		IndexOptions: channelIndexOptions,
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}

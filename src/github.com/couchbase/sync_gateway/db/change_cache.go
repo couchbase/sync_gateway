@@ -76,7 +76,7 @@ type CacheOptions struct {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options CacheOptions) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
 	c.context = context
 	c.initialSequence = lastSequence.Seq
 	c.nextSequence = lastSequence.Seq + 1
@@ -91,16 +91,18 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 		CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
 	}
 
-	if options.CachePendingSeqMaxNum > 0 {
-		c.options.CachePendingSeqMaxNum = options.CachePendingSeqMaxNum
-	}
+	if options != nil {
+		if options.CachePendingSeqMaxNum > 0 {
+			c.options.CachePendingSeqMaxNum = options.CachePendingSeqMaxNum
+		}
 
-	if options.CachePendingSeqMaxWait > 0 {
-		c.options.CachePendingSeqMaxWait = options.CachePendingSeqMaxWait
-	}
+		if options.CachePendingSeqMaxWait > 0 {
+			c.options.CachePendingSeqMaxWait = options.CachePendingSeqMaxWait
+		}
 
-	if options.CacheSkippedSeqMaxWait > 0 {
-		c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
+		if options.CacheSkippedSeqMaxWait > 0 {
+			c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
+		}
 	}
 
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
@@ -525,9 +527,10 @@ func (c *changeCache) getNextSequence() uint64 {
 	return c.nextSequence
 }
 
-func (c *changeCache) GetStableSequence() SequenceID {
+func (c *changeCache) GetStableSequence(docID string) SequenceID {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+	// Stable sequence is independent of docID in changeCache
 	return SequenceID{Seq: c.nextSequence - 1}
 }
 
@@ -542,11 +545,15 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 
 //////// CHANGE ACCESS:
 
-func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 	if c.stopped {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.getChannelCache(channelName).GetChanges(options)
+}
+
+func (c *changeCache) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
+	return c.getChannelCache(channelName).getCachedChanges(options)
 }
 
 // Returns the sequence number the cache is up-to-date with.

@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -559,7 +560,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			// on the feed is small - sub-second, so we usually shouldn't care about more than
 			// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
 			// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
-			stableSequence := db.changeCache.GetStableSequence().Seq
+			stableSequence := db.changeCache.GetStableSequence(docid).Seq
 			count := 0
 			for _, seq := range doc.RecentSequences {
 				// Only remove sequences if they are higher than a sequence that's been seen on the
@@ -931,4 +932,40 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 		}
 	}
 	return
+}
+
+func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
+
+	log.Printf("writeCasRaw: starting with len (%d), cas=%d", len(value), cas)
+	// If there's an incoming value, attempt to write with that first
+	if len(value) > 0 {
+		casOut, err := bucket.WriteCas(key, 0, 0, cas, value, sgbucket.Raw)
+		if err == nil {
+			log.Println("writeCasRaw: Write cas succeeded the first time")
+			return casOut, nil
+		} else {
+			log.Println("writeCasRaw: initial error:", err)
+		}
+	}
+
+	// TODO: limit on retries?  Or delay between retries
+	for {
+		currentValue, cas, err := bucket.GetRaw(key)
+		if err != nil {
+			log.Println("writeCasRaw: GetRaw failed:", err)
+			return 0, err
+		}
+		currentValue, err = callback(currentValue)
+		if err != nil {
+			return 0, err
+		}
+		casOut, err := bucket.WriteCas(key, 0, 0, cas, currentValue, sgbucket.Raw)
+		if err != nil {
+			// CAS failure - reload block for another try
+			log.Println("CAS error - retrying")
+		} else {
+			// Success - return the new cas value
+			return casOut, nil
+		}
+	}
 }

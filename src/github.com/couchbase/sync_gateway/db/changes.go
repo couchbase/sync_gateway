@@ -87,7 +87,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
-	log, err := db.changeCache.GetChangesInChannel(channel, options)
+	log, err := db.changeCache.GetChanges(channel, options)
 
 	if err != nil {
 		return nil, err
@@ -173,6 +173,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 
 	output := make(chan *ChangeEntry, 50)
+
 	go func() {
 		defer func() {
 			base.LogTo("Changes", "MultiChangesFeed done %s", to)

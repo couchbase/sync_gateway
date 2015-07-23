@@ -14,8 +14,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
+	"strings"
 	"sync"
+	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -27,13 +32,16 @@ const (
 )
 
 type kvChangeIndex struct {
-	context          *DatabaseContext           // Database connection (used for connection queries)
+	context          *DatabaseContext           // Database context
+	indexBucket      base.Bucket                // Index bucket
 	maxVbNo          uint16                     // Number of vbuckets
 	indexPartitions  IndexPartitionMap          // Partitioning of vbuckets in the index
 	channelIndexes   map[string]*kvChannelIndex // Channel indexes, map indexed by channel name
 	channelIndexLock sync.RWMutex               // Coordinates access to channel index map
 	onChange         func(base.Set)             // Client callback that notifies of channel changes
 	pending          chan *LogEntry             // Incoming changes, pending indexing
+	stableSequence   *SyncSequenceClock         // Stabfle sequence in index
+	logsDisabled     bool                       // If true, ignore incoming tap changes
 }
 
 type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
@@ -57,35 +65,194 @@ func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry, isRemov
 
 ////// Cache writer API
 
-func (c *kvChangeIndex) Init(initialSequence uint64) {
+func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
 
 	// not sure yet whether we'll need initial sequence
-	c.channelIndexes = make(map[string]*kvChannelIndex)
-	c.pending = make(chan *LogEntry, maxCacheUpdate)
+	k.channelIndexes = make(map[string]*kvChannelIndex)
+	k.pending = make(chan *LogEntry, maxCacheUpdate)
 
 	// Load index partitions
-	c.indexPartitions = c.loadIndexPartitionMap()
+	k.indexPartitions = k.loadIndexPartitionMap()
+
+	k.context = context
+	k.indexBucket = indexOptions.Bucket
+
+	// Initialize stable sequence
+
+	k.initStableClock()
 
 	// start process to work pending sequences
-	go c.indexPending()
+	go k.indexPending()
 }
 
-func (c *kvChangeIndex) Prune() {
+func (k *kvChangeIndex) Prune() {
 	// TODO: currently no pruning of channel indexes
 }
 
-func (c *kvChangeIndex) Clear(initialSequence uint64) {
+func (k *kvChangeIndex) Clear() {
 	// TODO: Currently no clear for distributed cache
 	// temp handling until implemented, to pass unit tests
-	c.channelIndexes = make(map[string]*kvChannelIndex)
+	k.channelIndexes = make(map[string]*kvChannelIndex)
 }
 
-func (c *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
+func (k *kvChangeIndex) Stop() {
+	// TBD
+}
 
+// Returns the stable sequence for a document from the stable clock, based on the vbucket for the document.
+// Used during document write for handling deduplicated sequences on the DCP feed.
+func (k *kvChangeIndex) GetStableSequence(docID string) SequenceID {
+
+	vbNo := k.indexBucket.VBHash(docID)
+	return SequenceID{Seq: k.stableSequence.GetSequence(uint16(vbNo))}
+
+}
+
+// Returns the stable sequence clock for the index
+func (k *kvChangeIndex) getStableClock() SequenceClock {
+	return k.stableSequence.clock
+}
+
+func (k *kvChangeIndex) initStableClock() {
+
+	k.stableSequence = NewSyncSequenceClock()
+	value, cas, err := k.indexBucket.GetRaw(kStableSequenceKey)
+	if err != nil {
+		base.Warn("Stable sequence not found in index - resetting to 0")
+		return
+	}
+	k.stableSequence.Unmarshal(value)
+	k.stableSequence.SetCas(cas)
+
+}
+
+func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
+
+	log.Println("CHANNEL ENTRY AGAIN:", change.VbNo)
 	// queue for cache addition
-	c.pending <- change
+	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d]", change.DocID, change.VbNo)
+	k.pending <- change
 	return base.Set{}
 
+}
+
+// No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
+// change_cache altogether)
+func (k *kvChangeIndex) getOldestSkippedSequence() uint64 {
+	return uint64(0)
+}
+func (k *kvChangeIndex) getChannelCache(channelName string) *channelCache {
+	return nil
+}
+
+// TODO: refactor waitForSequence to accept either vbNo or clock
+func (k *kvChangeIndex) waitForSequenceID(sequence SequenceID) {
+	k.waitForSequence(sequence.Seq)
+}
+func (k *kvChangeIndex) waitForSequence(sequence uint64) {
+	return
+}
+func (k *kvChangeIndex) waitForSequenceWithMissing(sequence uint64) {
+	k.waitForSequence(sequence)
+}
+
+// If set to false, DocChanged() becomes a no-op.
+func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
+	k.logsDisabled = !enable
+}
+
+// Given a newly changed document (received from the feed), adds to the pending entries.
+// The JSON must be the raw document from the bucket, with the metadata and all.
+func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, vbNo uint64) {
+	entryTime := time.Now()
+	// ** This method does not directly access any state of c, so it doesn't lock.
+	go func() {
+		// Is this a user/role doc?
+		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
+			k.processPrincipalDoc(docID, docJSON, true)
+			return
+		} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+			k.processPrincipalDoc(docID, docJSON, false)
+			return
+		}
+
+		// First unmarshal the doc (just its metadata, to save time/memory):
+		doc, err := unmarshalDocumentSyncData(docJSON, false)
+		if err != nil || !doc.hasValidSyncData() {
+			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+			return
+		}
+
+		// TODO: disabled - we don't care about unused sequences since we don't need contiguous seqs
+		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
+
+		/*
+			for _, seq := range doc.UnusedSequences {
+				base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+				change := &LogEntry{
+					Sequence:     seq,
+					TimeReceived: time.Now(),
+				}
+				c.AddToCache(change)
+			}
+		*/
+
+		// TODO: Handling for feed de-duplication by Couchbase Server
+		// Ignoring this for now, since we don't have a requirement for contiguous sequences in this model
+		/*
+			currentSequence := doc.Sequence
+			if len(doc.UnusedSequences) > 0 {
+				currentSequence = doc.UnusedSequences[0]
+			}
+			if len(doc.RecentSequences) > 0 {
+				//TODO: this has the possibility to send the same sequence to be buffered multiple times - depends
+				//      on the subsequent processing ignoring duplicates.  Probably a better question is how much
+				//      we care about this since we're not dependent on contiguous sequences.
+				nextSeq := c.getNextSequence(vbNo)
+				for _, seq := range doc.RecentSequences {
+					if seq >= nextSeq && seq < currentSequence {
+						base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+						change := &LogEntry{
+							Sequence:     seq,
+							TimeReceived: time.Now(),
+						}
+						c.processEntry(change)
+					}
+				}
+			}
+		*/
+
+		// Record a histogram of the  feed's lag:
+		feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
+		lagMs := int(feedLag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("lag-feed-%04dms", lagMs), 1)
+
+		// Now add the entry for the new doc revision:
+		change := &LogEntry{
+			Sequence:     doc.Sequence,
+			DocID:        docID,
+			RevID:        doc.CurrentRev,
+			Flags:        doc.Flags,
+			TimeReceived: time.Now(),
+			TimeSaved:    doc.TimeSaved,
+			Channels:     doc.Channels,
+			VbNo:         uint16(vbNo),
+		}
+		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLag/time.Millisecond), change.DocID, change.RevID)
+
+		if change.DocID == "" {
+			base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
+			changeCacheExpvars.Add("changes_without_id", 1)
+			return
+		}
+
+		// TODO: not doing local notification - it's all done via the bucket.  Could revisit as optimization on small SG clusters
+		k.AddToCache(change)
+	}()
+}
+
+func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
+	// TODO
 }
 
 func (b *kvChangeIndex) getChannelIndex(channelName string) *kvChannelIndex {
@@ -95,12 +262,12 @@ func (b *kvChangeIndex) getChannelIndex(channelName string) *kvChannelIndex {
 	return b.channelIndexes[channelName]
 }
 
-func (b *kvChangeIndex) newChannelIndex(channelName string) *kvChannelIndex {
+func (k *kvChangeIndex) newChannelIndex(channelName string) *kvChannelIndex {
 
-	b.channelIndexLock.Lock()
-	defer b.channelIndexLock.Unlock()
-	b.channelIndexes[channelName] = NewKvChannelIndex(channelName, b.context, b.indexPartitions, b.getStableSequence, b.onChange)
-	return b.channelIndexes[channelName]
+	k.channelIndexLock.Lock()
+	defer k.channelIndexLock.Unlock()
+	k.channelIndexes[channelName] = NewKvChannelIndex(channelName, k.indexBucket, k.indexPartitions, k.getStableClock, k.onChange)
+	return k.channelIndexes[channelName]
 }
 
 func (b *kvChangeIndex) getOrCreateChannelIndex(channelName string) *kvChannelIndex {
@@ -150,8 +317,9 @@ func (c *kvChangeIndex) indexPending() {
 		// Wait group to track when the buffer has been completely processed
 		var wg sync.WaitGroup
 		channelSets := make(map[ChannelPartition][]kvIndexEntry)
+		updatedSequences := NewSequenceClockImpl()
 
-		// Iterate over entries to do cache entry writes, and group channel updates
+		// Iterate over entries to do index entry writes, and group channel updates
 		for _, logEntry := range entries {
 			// Add cache entry
 			wg.Add(1)
@@ -160,7 +328,7 @@ func (c *kvChangeIndex) indexPending() {
 				c.writeEntry(logEntry)
 			}(logEntry)
 
-			// Collect entries by channel for channel cache updates below
+			// Collect entries by channel for channel index updates below
 			for channelName, removal := range logEntry.Channels {
 				if removal == nil || removal.Seq == logEntry.Sequence {
 					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
@@ -182,6 +350,10 @@ func (c *kvChangeIndex) indexPending() {
 				}
 				channelSets[chanPartition] = append(channelSets[chanPartition], kvIndexEntry{sequence: logEntry.Sequence, removal: false})
 			}
+
+			// Track vbucket sequences for clock update
+			updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
+
 		}
 
 		// Iterate over channel collections, and update cache
@@ -195,9 +367,12 @@ func (c *kvChangeIndex) indexPending() {
 		}
 
 		wg.Wait()
+
 		// Update stable sequence
-		lastSequence := entries[len(entries)-1].Sequence
-		c.setStableSequence(lastSequence)
+		err := c.updateStableSequence(updatedSequences)
+		if err != nil {
+			base.LogPanic("Error updating stable sequence", err)
+		}
 	}
 }
 
@@ -256,12 +431,12 @@ func (b *kvChangeIndex) ReleaseLateSequenceClient(channelName string, sequence u
 
 func (b *kvChangeIndex) addToChannelCache(channelName string, change kvIndexEntry) {
 
-	b.getChannelIndex(channelName).Add(change)
+	b.getOrCreateChannelIndex(channelName).Add(change)
 	base.LogTo("DCache", "    #%d ==> channel %q", change.sequence, channelName)
 }
 
 func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []kvIndexEntry) {
-	b.getChannelIndex(channelName).AddSet(entries)
+	b.getOrCreateChannelIndex(channelName).AddSet(entries)
 }
 
 // Add late sequence information to channel cache
@@ -270,26 +445,26 @@ func (b *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 	return nil
 }
 
-func (b *kvChangeIndex) getStableSequence() (uint64, error) {
+func (k *kvChangeIndex) updateStableSequence(updates SequenceClock) error {
 
-	var intValue uint64
-	_, err := b.context.Bucket.Get(kStableSequenceKey, &intValue)
+	log.Println("Updating stable sequence:", k.stableSequence)
+
+	// Initial set, for the first cas update attempt
+	k.stableSequence.UpdateWithClock(updates)
+	value, err := k.stableSequence.Marshal()
 	if err != nil {
-		// return nil here - cache clock may not have been initialized yet
-		return 0, nil
-	}
-	base.LogTo("StableSeq", "getStableSequence - returning %d", intValue)
-	return intValue, nil
-}
-
-func (b *kvChangeIndex) setStableSequence(sequence uint64) error {
-
-	err := b.context.Bucket.Set(kStableSequenceKey, 0, sequence)
-	if err != nil {
-		base.Warn("Error Setting stable sequence in setStableSequence(%s): %v", sequence, err)
 		return err
 	}
-
+	casOut, err := writeCasRaw(k.indexBucket, kStableSequenceKey, value, k.stableSequence.Cas(), func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - may be called multiple times
+		err = k.stableSequence.Unmarshal(value)
+		if err != nil {
+			return nil, err
+		}
+		k.stableSequence.UpdateWithClock(updates)
+		return k.stableSequence.Marshal()
+	})
+	k.stableSequence.SetCas(casOut)
 	return nil
 }
 
@@ -304,7 +479,7 @@ func (b *kvChangeIndex) writeEntry(change *LogEntry) {
 	}
 	key := getEntryKey(change.Sequence)
 	value, _ := json.Marshal(cacheEntry)
-	b.context.Bucket.SetRaw(key, 0, value)
+	b.indexBucket.SetRaw(key, 0, value)
 
 }
 

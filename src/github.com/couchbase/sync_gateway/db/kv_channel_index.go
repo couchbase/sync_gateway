@@ -10,15 +10,12 @@
 package db
 
 import (
-	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -28,7 +25,7 @@ const kSequenceOffsetLength = 0 // disabled until we actually need it
 const kMaxVbNo = 1024           // TODO: load from cluster config
 
 type kvChannelIndex struct {
-	context             *DatabaseContext  // Database connection (used for connection queries)
+	indexBucket         base.Bucket       // Database connection (used for connection queries)
 	partitionMap        IndexPartitionMap // Index partition map
 	channelName         string
 	lastSequence        uint64
@@ -37,12 +34,12 @@ type kvChannelIndex struct {
 	notifyLock          sync.Mutex
 	lastNotifiedChanges []*LogEntry
 	lastNotifiedSince   uint64
-	stableSequence      uint64
-	stableSequenceCb    func() (uint64, error)
+	stableSequence      SequenceClock
+	stableSequenceCb    func() SequenceClock
 	onChange            func(base.Set)
 	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
 	indexBlockCacheLock sync.Mutex
-	clock               *channelClock
+	clock               *SequenceClockImpl
 }
 
 /*
@@ -60,31 +57,27 @@ type kvIndexEntry struct {
 }
 
 func newKvIndexEntry(logEntry *LogEntry, isRemoval bool) kvIndexEntry {
-	return kvIndexEntry{sequence: logEntry.Sequence, removal: isRemoval}
+	return kvIndexEntry{sequence: logEntry.Sequence, removal: isRemoval, vbNo: logEntry.VbNo}
 }
 
-func NewKvChannelIndex(channelName string, context *DatabaseContext, partitions IndexPartitionMap, stableSequenceCallback func() (uint64, error), onChangeCallback func(base.Set)) *kvChannelIndex {
+func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexPartitionMap, stableClockCallback func() SequenceClock, onChangeCallback func(base.Set)) *kvChannelIndex {
 
 	channelIndex := &kvChannelIndex{
 		channelName:      channelName,
-		context:          context,
+		indexBucket:      bucket,
 		partitionMap:     partitions,
-		stableSequenceCb: stableSequenceCallback,
+		stableSequenceCb: stableClockCallback,
 		onChange:         onChangeCallback,
 	}
 
 	channelIndex.indexBlockCache = make(map[string]IndexBlock)
 
 	// Init stable sequence
-	stableSequence, err := channelIndex.stableSequenceCb()
-	if err != nil {
-		stableSequence = 0
-	}
+	channelIndex.stableSequence = channelIndex.stableSequenceCb()
 
-	// Initialize clock
-	channelIndex.clock = NewChannelClock(context.Bucket, channelName)
+	// Initialize and load channel clock
+	channelIndex.loadClock()
 
-	channelIndex.stableSequence = stableSequence
 	return channelIndex
 
 }
@@ -95,10 +88,10 @@ func NewKvChannelIndex(channelName string, context *DatabaseContext, partitions 
 
 func (k *kvChannelIndex) Add(entry kvIndexEntry) error {
 	// Update the sequence in the appropriate cache block
-	base.LogTo("DCache+", "Add to channel index %s, isRemoval:%v", k.channelName, entry.removal)
+	base.LogTo("DCache+", "Add to channel index %s, vbNo, isRemoval:%v", k.channelName, entry.vbNo, entry.removal)
 	entries := make([]kvIndexEntry, 0)
 	entries = append(entries, entry)
-	k.writeSingleBlockWithCas(entries)
+	k.AddSet(entries)
 	return nil
 }
 
@@ -118,12 +111,16 @@ func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 	//       same block as the first entry in the list, but this would force sequential
 	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
 	blockSets := make(map[string][]kvIndexEntry)
+	clockUpdates := NewSequenceClockImpl()
 	for _, entry := range entries {
+		// Update the sequence in the appropriate cache block
+		base.LogTo("DCache+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", k.channelName, entry.vbNo, entry.removal)
 		blockKey := GenerateBlockKey(k.channelName, entry.sequence, k.partitionMap[entry.vbNo])
 		if _, ok := blockSets[blockKey]; !ok {
 			blockSets[blockKey] = make([]kvIndexEntry, 0)
 		}
 		blockSets[blockKey] = append(blockSets[blockKey], entry)
+		clockUpdates.SetSequence(entry.vbNo, entry.sequence)
 	}
 
 	for _, blockSet := range blockSets {
@@ -136,7 +133,7 @@ func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 
 	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
 	// round trips.
-	err := k.writeClockCas(entries)
+	err := k.writeClockCas(clockUpdates)
 
 	return err
 }
@@ -144,41 +141,45 @@ func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 // Expects all incoming entries to target the same block
 func (k *kvChannelIndex) writeSingleBlockWithCas(entries []kvIndexEntry) error {
 
-	casSuccess := false
 	if len(entries) == 0 {
 		return nil
 	}
 	// Get block based on first entry
 	block := k.getIndexBlockForEntry(entries[0])
-	for casSuccess == false {
-		// Apply updates to the in-memory block
-		for _, entry := range entries {
-			err := block.AddEntry(entry)
-			// Wrong block for this entry
-			if err != nil {
-				return err
-			}
-		}
-
-		value, err := block.Marshal()
-		if err != nil {
-			base.Warn("Unable to marshal channel block - cancelling block update")
-			return errors.New("Error marshalling channel block")
-		}
-		casOut, err := k.context.Bucket.WriteCas(block.Key(), 0, 0, block.Cas(), value, sgbucket.Raw)
-		if err != nil {
-			// CAS failure - reload block for another try
-			log.Println("CAS error - retrying")
-			err = k.loadBlock(block)
-			if err != nil {
-				return err
-			}
-		} else {
-			// Success - update the local cas value for next time
-			block.SetCas(casOut)
-			casSuccess = true
+	// Apply updates to the in-memory block
+	log.Println("Updating in-memory:", len(entries))
+	for _, entry := range entries {
+		err := block.AddEntry(entry)
+		if err != nil { // Wrong block for this entry
+			return err
 		}
 	}
+	localValue, err := block.Marshal()
+	if err != nil {
+		base.Warn("Unable to marshal channel block - cancelling block update")
+		return errors.New("Error marshalling channel block")
+	}
+
+	log.Println("Starting cas write for key:", block.Key(), len(localValue))
+	casOut, err := writeCasRaw(k.indexBucket, block.Key(), localValue, block.Cas(), func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - kmay be called multiple times
+		err = block.Unmarshal(value)
+
+		log.Println("callback, unmarshalled block", len(value), nil)
+		log.Println("callback, entry count", len(entries))
+		for _, entry := range entries {
+			err := block.AddEntry(entry)
+			if err != nil { // Wrong block for this entry
+				return nil, err
+			}
+		}
+		return block.Marshal()
+	})
+
+	if err != nil {
+		return err
+	}
+	block.SetCas(casOut)
 	return nil
 }
 
@@ -215,7 +216,7 @@ func (k *kvChannelIndex) updateIndexCount() error {
 	// increment index count
 	key := getIndexCountKey(k.channelName)
 
-	newValue, err := k.context.Bucket.Incr(key, 1, 1, 0)
+	newValue, err := k.indexBucket.Incr(key, 1, 1, 0)
 	if err != nil {
 		base.Warn("Error from Incr in updateCacheClock(%s): %v", key, err)
 		return err
@@ -233,22 +234,11 @@ func (k *kvChannelIndex) pollForChanges() bool {
 	// channel caches
 
 	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
-	stableSequence, err := k.stableSequenceCb()
-	if err != nil {
-		stableSequence = 0
-	}
-
-	if stableSequence <= k.stableSequence {
-		return true
-	}
+	stableSequence := k.stableSequenceCb()
 
 	k.stableSequence = stableSequence
 
 	base.LogTo("DCacheDebug", "Updating stable sequence to: %d (%s)", k.stableSequence, k.channelName)
-
-	sequenceAsVar := &base.IntMax{}
-	sequenceAsVar.SetIfMax(int64(k.stableSequence))
-	changeCacheExpvars.Set(fmt.Sprintf("stableSequence-%s", k.channelName), sequenceAsVar)
 
 	currentCounter, err := k.getIndexCounter()
 	if err != nil {
@@ -393,7 +383,7 @@ func (k *kvChannelIndex) getCachedChanges(options ChangesOptions) (uint64, []*Lo
 func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 	key := getIndexCountKey(k.channelName)
 	var intValue uint64
-	_, err := k.context.Bucket.Get(key, &intValue)
+	_, err := k.indexBucket.Get(key, &intValue)
 	if err != nil {
 		// return nil here - cache clock may not have been initialized yet
 		return 0, nil
@@ -428,6 +418,7 @@ func (k *kvChannelIndex) getIndexBlockForEntry(entry kvIndexEntry) IndexBlock {
 	partition := k.partitionMap[entry.vbNo]
 	key := GenerateBlockKey(k.channelName, entry.sequence, partition)
 
+	log.Println("Retrieving for key:", key)
 	// First attempt to retrieve from the cache of recently accessed blocks
 	block := k.getIndexBlockFromCache(key)
 	if block != nil {
@@ -453,12 +444,13 @@ func (k *kvChannelIndex) getIndexBlockForEntry(entry kvIndexEntry) IndexBlock {
 
 func (k *kvChannelIndex) loadBlock(block IndexBlock) error {
 
-	data, cas, err := k.context.Bucket.GetRaw(block.Key())
+	data, cas, err := k.indexBucket.GetRaw(block.Key())
 	if err != nil {
 		return err
 	}
 
-	err = block.Unmarshal(data, cas)
+	err = block.Unmarshal(data)
+	block.SetCas(cas)
 
 	if err != nil {
 		return err
@@ -468,109 +460,40 @@ func (k *kvChannelIndex) loadBlock(block IndexBlock) error {
 	return nil
 }
 
-func (k *kvChannelIndex) writeClockCas(entries []kvIndexEntry) error {
+func (k *kvChannelIndex) loadClock() {
 
-	casSuccess := false
-	if len(entries) == 0 {
-		return nil
+	if k.clock == nil {
+		k.clock = NewSequenceClockImpl()
 	}
-	// Make a copy of the channel clock to use during update
-	updatedClock := k.clock.clone()
-	for casSuccess == false {
-		// Apply updates to the
-		for _, entry := range entries {
-			// assumes always ascending
-			updatedClock.value[entry.vbNo] = entry.sequence
-		}
-
-		value, err := updatedClock.Marshal()
-		if err != nil {
-			base.Warn("Unable to marshal channel clock - cancelling clock update")
-			return errors.New("Error marshalling channel clock")
-		}
-		casOut, err := k.context.Bucket.WriteCas(getChannelClockKey(k.channelName), 0, 0, updatedClock.cas, value, sgbucket.Raw)
-		if err != nil {
-			// CAS failure - reload clock for another try
-			log.Println("CAS error on clock update - retrying")
-			updatedClock.load(k.context.Bucket, k.channelName)
-			if err != nil {
-				return err
-			}
-		} else {
-			// Success - update the local cas value for next time
-			updatedClock.cas = casOut
-			// TODO: copying into k.clock might be less GC overhead, but at cost of CPU processing.
-			k.clock = updatedClock
-			casSuccess = true
-		}
-	}
-	return nil
-}
-
-///////// Channel clock
-type channelClock struct {
-	value map[uint16]uint64
-	cas   uint64
-	lock  sync.RWMutex
-}
-
-func NewChannelClock(bucket base.Bucket, channelName string) *channelClock {
-	// Initialize empty clock
-	clock := channelClock{
-		value: make(map[uint16]uint64, kMaxVbNo),
-	}
-	clock.load(bucket, channelName)
-	return &clock
-}
-
-// Copies a channel clock
-func (c *channelClock) clone() *channelClock {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	copy := channelClock{
-		value: make(map[uint16]uint64, len(c.value)),
-		cas:   c.cas,
-	}
-
-	for k, v := range c.value {
-		copy.value[k] = v
-	}
-	return &copy
-}
-
-func (c *channelClock) load(bucket base.Bucket, channelName string) error {
-	data, cas, err := bucket.GetRaw(getChannelClockKey(channelName))
+	data, cas, err := k.indexBucket.GetRaw(getChannelClockKey(k.channelName))
 	if err != nil {
-		// return empty clock
-		base.LogTo("DCache+", "Unable to find existing channel clock for channel %s - initializing as new", channelName)
-		return errors.New("Channel clock not found")
+		base.LogTo("DCache+", "Unable to find existing channel clock for channel %s - treating as new", k.channelName)
 	}
-	c.Unmarshal(data)
-	c.cas = cas
-	return nil
+	k.clock.Unmarshal(data)
+	k.clock.SetCas(cas)
 }
 
-// TODO: replace with something more intelligent than gob encode, to take advantage of known
-//       clock structure?
-func (c *channelClock) Marshal() ([]byte, error) {
-	var output bytes.Buffer
-	enc := gob.NewEncoder(&output)
-	err := enc.Encode(c.value)
-	if err != nil {
-		return nil, err
-	}
+func (k *kvChannelIndex) writeClockCas(updateClock SequenceClock) error {
+	// Initial set, for the first cas update attempt
+	log.Println("calling channel clock write with update clock:", updateClock)
 
-	return output.Bytes(), nil
-}
-
-func (c *channelClock) Unmarshal(value []byte) error {
-
-	input := bytes.NewBuffer(value)
-	dec := gob.NewDecoder(input)
-	err := dec.Decode(&c.value)
+	log.Println("double check (vb 0):", updateClock.GetSequence(0))
+	log.Println("double check (vb 1):", updateClock.GetSequence(1))
+	k.clock.UpdateWithClock(updateClock)
+	value, err := k.clock.Marshal()
 	if err != nil {
 		return err
 	}
+	casOut, err := writeCasRaw(k.indexBucket, getChannelClockKey(k.channelName), value, k.clock.Cas(), func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - may be called multiple times
+		err = k.clock.Unmarshal(value)
+		if err != nil {
+			return nil, err
+		}
+		k.clock.UpdateWithClock(updateClock)
+		return k.clock.Marshal()
+	})
+	k.clock.SetCas(casOut)
 	return nil
 }
 
@@ -588,7 +511,7 @@ func getIndexBlockKey(channelName string, partition uint16, blockIndex uint16) s
 
 // Get the key for the cache block, based on the block index
 func getChannelClockKey(channelName string) string {
-	return fmt.Sprintf("%s_channelClock:%s", kCachePrefix, channelName)
+	return fmt.Sprintf("%s_SequenceClock:%s", kCachePrefix, channelName)
 }
 
 // Generate the key for a single sequence/entry

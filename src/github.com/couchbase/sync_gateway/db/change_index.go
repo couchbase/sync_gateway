@@ -23,7 +23,7 @@ import (
 type ChangeIndex interface {
 
 	// Initialize the index
-	Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options CacheOptions)
+	Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChangeIndexOptions)
 
 	// Stop the index
 	Stop()
@@ -35,20 +35,25 @@ type ChangeIndex interface {
 	EnableChannelIndexing(enable bool)
 
 	// Retrieve changes in a channel
-	GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error)
+	GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error)
+	// Retrieve in-memory changes in a channel
+	GetCachedChanges(channelName string, options ChangesOptions) (validFrom uint64, entries []*LogEntry)
 
 	// Called to add a document to the index
 	DocChanged(docID string, docJSON []byte, vbucket uint64)
 
 	// Retrieves stable sequence for index
-	GetStableSequence() SequenceID
+	GetStableSequence(docID string) SequenceID
 
 	// Utility functions for unit testing
 	waitForSequenceID(sequence SequenceID)
 
-	// Specific to change_cache.go's sequence handling.  Needs refactored
+	// Handling specific to change_cache.go's sequence handling.  Ideally should refactor usage in changes.go to push
+	// down into internal change_cache.go handling, but it's non-trivial refactoring
 	getOldestSkippedSequence() uint64
-	getChannelCache(channelName string) *channelCache //TODO replace with channel cache
+	getChannelCache(channelName string) *channelCache
+
+	// Unit test support
 	waitForSequence(sequence uint64)
 	waitForSequenceWithMissing(sequence uint64)
 }

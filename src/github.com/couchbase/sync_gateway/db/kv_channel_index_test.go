@@ -23,8 +23,19 @@ func testPartitionMap() IndexPartitionMap {
 	return partitions
 }
 
+func testContextAndChannelIndex(channelName string) (*DatabaseContext, *kvChannelIndex) {
+	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	// TODO: don't use the base bucket as the index bucket in tests
+	channelIndex := NewKvChannelIndex(channelName, context.Bucket, testPartitionMap(), testStableClock, testOnChange)
+	return context, channelIndex
+}
+
 func testStableSequence() (uint64, error) {
 	return 0, nil
+}
+
+func testStableClock() SequenceClock {
+	return NewSequenceClockImpl()
 }
 
 func testOnChange(keys base.Set) {
@@ -43,9 +54,8 @@ func makeEntry(vbNo int, sequence int, removal bool) kvIndexEntry {
 
 func TestIndexBlockCreation(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, nil)
+	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
-	channelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
 
 	entry := kvIndexEntry{
 		vbNo:     1,
@@ -61,9 +71,8 @@ func TestIndexBlockCreation(t *testing.T) {
 
 func TestIndexBlockStorage(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, nil)
+	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
-	channelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
 
 	// Add entries
 	block := channelIndex.getIndexBlockForEntry(makeEntry(5, 100, false))
@@ -84,7 +93,7 @@ func TestIndexBlockStorage(t *testing.T) {
 	log.Printf("Marshalled size: %d", len(marshalledBlock))
 
 	newBlock := BitFlagBlock{}
-	assertNoError(t, newBlock.Unmarshal(marshalledBlock, 0), "Unmarshal block")
+	assertNoError(t, newBlock.Unmarshal(marshalledBlock), "Unmarshal block")
 	loadedEntries := newBlock.GetAllEntries()
 	assert.Equals(t, 5, len(loadedEntries))
 	log.Printf("Unmarshalled: %+v", loadedEntries)
@@ -93,9 +102,8 @@ func TestIndexBlockStorage(t *testing.T) {
 
 func TestChannelIndexWrite(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, nil)
+	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
-	channelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
 
 	// Init block for sequence 100, partition 1
 	entry_5_100 := kvIndexEntry{
@@ -106,13 +114,15 @@ func TestChannelIndexWrite(t *testing.T) {
 	// Add entries
 	assertNoError(t, channelIndex.Add(entry_5_100), "Add entry 5_100")
 
+	log.Println("ADD COMPLETE")
+
 	// Reset the channel index to verify loading the block from the DB and validate contents
-	channelIndex = NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
+	channelIndex = NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testStableClock, testOnChange)
 	block := channelIndex.getIndexBlockForEntry(entry_5_100)
 	assert.Equals(t, len(block.GetAllEntries()), 1)
 
 	// Test CAS handling.  AnotherChannelIndex is another writer updating the same block in the DB.
-	anotherChannelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
+	anotherChannelIndex := NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testStableClock, testOnChange)
 	// Init block for sequence 100, partition 1
 	entry_5_101 := kvIndexEntry{
 		vbNo:     5,
@@ -193,9 +203,8 @@ func TestAddPartitionSetMultiBlock(t *testing.T) {
 
 func TestAddSet(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, nil)
+	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
-	channelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
 
 	// Init entries across multiple partitions
 	entrySet := []kvIndexEntry{
@@ -223,9 +232,8 @@ func TestAddSet(t *testing.T) {
 
 func TestAddSetMultiBlock(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, nil)
+	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
-	channelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
 
 	// Init entries across multiple partitions
 	entrySet := []kvIndexEntry{
@@ -247,11 +255,10 @@ func TestAddSetMultiBlock(t *testing.T) {
 
 }
 
-func TestChannelClockWrite(t *testing.T) {
+func TestSequenceClockWrite(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, nil)
+	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
-	channelIndex := NewKvChannelIndex("ABC", context, testPartitionMap(), testStableSequence, testOnChange)
 
 	// Init entries across multiple partitions
 	entrySet := []kvIndexEntry{
@@ -269,7 +276,7 @@ func TestChannelClockWrite(t *testing.T) {
 	assert.Equals(t, channelIndex.clock.value[7], uint64(100))
 
 	// Load clock from db and reverify
-	channelIndex.clock.load(context.Bucket, "ABC")
+	channelIndex.loadClock()
 	assert.Equals(t, channelIndex.clock.value[9], uint64(25000))
 	assert.Equals(t, channelIndex.clock.value[5], uint64(15000))
 	assert.Equals(t, channelIndex.clock.value[7], uint64(100))
