@@ -254,3 +254,34 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// value = row.Value.(float64)
 	// assert.True(t, value == 1)
 }
+
+func FailingTestAdminReduceSumQuery(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+
+	// Create a view with a reduce:
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	assertStatus(t, response, 201)
+
+	for i := 0; i < 9; i++ {
+		// Create docs:
+		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
+		assertStatus(t, response, 201)
+
+	}
+	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
+	assertStatus(t, response, 201)
+
+	var result sgbucket.ViewResult
+
+	// Admin view query:
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// we should get 1 row with the reduce result
+	assert.Equals(t, len(result.Rows), 1)
+	row := result.Rows[0]
+	value := row.Value.(float64)
+	assert.True(t, value == 109)
+}
