@@ -256,7 +256,6 @@ func TestAdminReduceViewQuery(t *testing.T) {
 }
 
 func TestAdminReduceSumQuery(t *testing.T) {
-
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 
 	// Create a view with a reduce:
