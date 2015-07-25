@@ -213,9 +213,6 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User) (result sgbucke
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
-		if reduce {
-			return // this is an error, only admin can reduce
-		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
