@@ -255,12 +255,12 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// assert.True(t, value == 1)
 }
 
-func FailingTestAdminReduceSumQuery(t *testing.T) {
+func TestAdminReduceSumQuery(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 
 	// Create a view with a reduce:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
 
 	for i := 0; i < 9; i++ {
@@ -283,5 +283,5 @@ func FailingTestAdminReduceSumQuery(t *testing.T) {
 	assert.Equals(t, len(result.Rows), 1)
 	row := result.Rows[0]
 	value := row.Value.(float64)
-	assert.True(t, value == 109)
+	assert.Equals(t, value, 108.0)
 }
