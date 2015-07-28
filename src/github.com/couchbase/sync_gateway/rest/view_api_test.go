@@ -80,7 +80,7 @@ func TestViewQuery(t *testing.T) {
 
 func TestViewQuerySaveIntoDB(t *testing.T) {
 	var rt restTester
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {if (doc.name) emit(doc.name, doc.points);}", "reduce": "_count"}}}`)
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.name) emit(doc.name, doc.points);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
 	response = rt.sendRequest("PUT", "/db/doc1", `{"points":10, "name":"jchris"}`)
 	assertStatus(t, response, 201)
@@ -96,7 +96,17 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 
 	// assert on the response
 	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Value, 38.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Key, nil)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&key=\"jchris\"", ``)
+	assertStatus(t, response, 200)
+	var result sgbucket.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// assert on the response
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0].Value, 38.0) // when we support _sum we can change this to 16
 	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
 	// assert on the target database
@@ -104,7 +114,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 	assertStatus(t, response, 200)
 	var doc map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &doc)
-	assert.Equals(t, doc["value"], 3.0)
+	assert.Equals(t, doc["value"], 38.0)
 
 	// test that repeats don't change the rev until the value changes
 	var rev string
