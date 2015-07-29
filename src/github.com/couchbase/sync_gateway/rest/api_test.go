@@ -407,6 +407,28 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	assertStatus(t, response, 401)
 }
 
+// #issue 991
+func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+
+	req := request("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}")
+	for k, v := range reqHeaders {
+		req.Header.Set(k, v)
+	}
+
+	response := &testResponse{httptest.NewRecorder(), req}
+	response.Code = 200
+
+	sc := rt.ServerContext()
+	sc.config.CORS = nil
+	CreatePublicHandler(sc).ServeHTTP(response, req)
+
+	assertStatus(t, response, 400)
+}
+
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	var rt restTester
 	reqHeaders := map[string]string{

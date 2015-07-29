@@ -40,7 +40,10 @@ func (h *handler) handleSessionPOST() error {
 	// CORS not allowed for login #115 #762
 	originHeader := h.rq.Header["Origin"]
 	if len(originHeader) > 0 {
-		matched := matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		matched := ""
+		if h.server.config.CORS != nil {
+			matched = matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		}
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
 		}
