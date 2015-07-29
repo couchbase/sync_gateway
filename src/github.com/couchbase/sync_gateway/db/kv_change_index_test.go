@@ -69,7 +69,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	changeIndex.AddToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify entry
 	var entry kvChannelIndexEntry
@@ -116,4 +116,24 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assertNoError(t, err, "Unmarshal channel clock sequence")
 	assert.Equals(t, channelClock.GetSequence(1), uint64(1))
 	assert.Equals(t, channelClock.GetSequence(2), uint64(0))
+}
+
+func TestChangeIndexGetChanges(t *testing.T) {
+
+	base.LogKeys["DCache+"] = true
+	changeIndex, _ := testKvChangeIndex("indexBucket")
+	// Add entries across multiple partitions
+	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
+
+	// wait for add
+	time.Sleep(10 * time.Millisecond)
+
+	// Verify entries
+	//entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+
+	//assert.Equals(t, len(entries), 3)
+	//assert.True(t, err == nil)
+
 }

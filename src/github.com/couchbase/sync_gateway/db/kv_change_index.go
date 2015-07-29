@@ -309,17 +309,17 @@ func (c *kvChangeIndex) indexPending() {
 
 	// TODO: cancellation handling
 
-	// Continual processing of pending
+	// Continual processing of arriving entries from the feed.
 	for {
 		// Read entries from the pending list into array
 		entries := c.readFromPending()
 
-		// Wait group to track when the buffer has been completely processed
+		// Wait group tracks when the current buffer has been completely processed
 		var wg sync.WaitGroup
 		channelSets := make(map[ChannelPartition][]kvIndexEntry)
 		updatedSequences := NewSequenceClockImpl()
 
-		// Iterate over entries to do index entry writes, and group channel updates
+		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
 			// Add cache entry
 			wg.Add(1)
@@ -328,7 +328,7 @@ func (c *kvChangeIndex) indexPending() {
 				c.writeEntry(logEntry)
 			}(logEntry)
 
-			// Collect entries by channel for channel index updates below
+			// Collect entries by channel
 			for channelName, removal := range logEntry.Channels {
 				if removal == nil || removal.Seq == logEntry.Sequence {
 					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
@@ -356,7 +356,7 @@ func (c *kvChangeIndex) indexPending() {
 
 		}
 
-		// Iterate over channel collections, and update cache
+		// Iterate over channel sets to update channel index
 		for chanPartition, entrySet := range channelSets {
 			wg.Add(1)
 			go func(chanPartition ChannelPartition, entrySet []kvIndexEntry) {
@@ -392,7 +392,7 @@ func (b *kvChangeIndex) SetNotifier(onChange func(base.Set)) {
 
 func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (entries []*LogEntry, err error) {
 
-	// TODO: add backfill from view.  Currently expects infinite cache
+	// TODO: add backfill from view?  Currently expects infinite cache
 	_, resultFromCache := b.GetCachedChanges(channelName, options)
 	b.enableNotifications(channelName)
 	return resultFromCache, nil
@@ -400,7 +400,12 @@ func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (
 
 func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
 
-	validFrom, changes := b.getChannelIndex(channelName).getCachedChanges(options)
+	//TODO: calculate the since clock based on the incoming since sequence
+	sinceSequence := NewSequenceClockFromHash(options.Since.String())
+
+	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
+
+	changes := b.getChannelIndex(channelName).getChanges(sinceSequence)
 
 	// Limit handling
 	if options.Limit > 0 && len(changes) > options.Limit {
@@ -410,7 +415,7 @@ func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOpti
 	}
 
 	// todo: Set validFrom when we enable pruning/compacting cache
-	return validFrom, changes
+	return uint64(0), changes
 }
 
 // TODO: Implement late sequence handling if needed

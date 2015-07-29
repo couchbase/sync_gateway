@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -33,7 +35,7 @@ type kvChannelIndex struct {
 	notifyRunning       bool
 	notifyLock          sync.Mutex
 	lastNotifiedChanges []*LogEntry
-	lastNotifiedSince   uint64
+	lastNotifiedSince   SequenceClock
 	stableSequence      SequenceClock
 	stableSequenceCb    func() SequenceClock
 	onChange            func(base.Set)
@@ -110,7 +112,7 @@ func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
 	//       approach where a set update returned a list of entries that weren't targeted at the
 	//       same block as the first entry in the list, but this would force sequential
 	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
-	blockSets := make(map[string][]kvIndexEntry)
+	blockSets := make(BlockSet)
 	clockUpdates := NewSequenceClockImpl()
 	for _, entry := range entries {
 		// Update the sequence in the appropriate cache block
@@ -249,7 +251,7 @@ func (k *kvChannelIndex) pollForChanges() bool {
 	// all connected clients to request these changes
 	base.LogTo("DCache", "poll for changes on channel %s: (current, last) (%d, %d)", k.channelName, currentCounter, k.lastCounter)
 	if currentCounter > k.lastCounter {
-		k.UpdateRecentCache(currentCounter)
+		//k.UpdateRecentCache(currentCounter)
 	}
 
 	return true
@@ -265,6 +267,7 @@ func (k *kvChannelIndex) pollForChanges() bool {
 	//
 }
 
+/*
 func (k *kvChannelIndex) UpdateRecentCache(currentCounter uint64) {
 	k.notifyLock.Lock()
 	defer k.notifyLock.Unlock()
@@ -272,7 +275,7 @@ func (k *kvChannelIndex) UpdateRecentCache(currentCounter uint64) {
 	// Compare counter again, in case someone has already updated cache while we waited for the lock
 	if currentCounter > k.lastCounter {
 		options := ChangesOptions{Since: SequenceID{Seq: k.lastSequence}}
-		_, recentChanges := k.getCachedChanges(options)
+		_, recentChanges := k.getChanges(options)
 		if len(recentChanges) > 0 {
 			k.lastNotifiedChanges = recentChanges
 			k.lastNotifiedSince = k.lastSequence
@@ -287,24 +290,60 @@ func (k *kvChannelIndex) UpdateRecentCache(currentCounter uint64) {
 		}
 	}
 }
+*/
 
-func (k *kvChannelIndex) getCachedChanges(options ChangesOptions) (uint64, []*LogEntry) {
+// Returns the set of index entries for the channel more recent than the
+// specified since SequenceClock.  Index entries with sequence values greater than
+// the index stable sequence are not returned.
+func (k *kvChannelIndex) getChanges(since SequenceClock) []*LogEntry {
 
-	/*
-		// Check whether we can use the cached results from the latest poll
-		base.LogTo("DCacheDebug", "Comparing since=%d with k.lastSince=%d", options.Since.SafeSequence(), k.lastNotifiedSince)
-		if k.lastNotifiedSince > 0 && options.Since.SafeSequence() == k.lastNotifiedSince {
-			return uint64(0), k.lastNotifiedChanges
+	var results []*LogEntry
+
+	// Get the set of vbuckets that have changed for this channel since 'since', where
+	// the since value is greater than the stable sequence.
+	stableClock := k.stableSequence
+	sinceBlockSet := make(BlockSet)
+	for vbNo, sequence := range k.clock.value {
+		sinceSeq := since.GetSequence(vbNo)
+		if sequence > sinceSeq && sinceSeq > stableClock.GetSequence(vbNo) {
+			sinceEntry := kvIndexEntry{vbNo: vbNo, sequence: sinceSeq}
+			blockKey := GenerateBlockKey(k.channelName, sinceSeq, k.partitionMap[vbNo])
+			sinceBlockSet[blockKey] = append(sinceBlockSet[blockKey], sinceEntry)
 		}
+	}
 
-		// If not, retrieve from cache
-		stableSequence := k.stableSequence
-		base.LogTo("DCacheDebug", "getCachedChanges - since=%d, stable sequence: %d", options.Since.Seq, k.stableSequence)
+	if len(sinceBlockSet) == 0 {
+		return results
+	}
 
-		var cacheContents []*LogEntry
-		since := options.Since.SafeSequence()
+	// If there are changes, compare with last notified to see if it's a match
+	if since.Equals(k.lastNotifiedSince) {
+		return k.lastNotifiedChanges
+	}
 
-		// Byte channel cache is separated into docs of (byteCacheBlockCapacity) sequences.
+	// If not, retrieve from cache.  Don't return anything later than stableClock.
+
+	// loop while more blocks (use channel clock to figure out when you're done)
+	// for {
+
+	// Only retrieves one block per partition per iteration, to avoid a huge bulk get when the
+	// since value is much older than the channel clock.  Could consider instead using a target
+	// number of documents as a future performance optimization.
+	//blocks, err := k.indexBucket.GetBulkRaw(sinceBlockSet.keySet())
+
+	// 		Do a bulk get to retrieve all changed blocks
+	//      Process blocks in parallel
+	//      For each block, get the set of vb since values from sinceBlockSet
+	//      Add results
+	// }
+
+	// start goroutines to process each block, and write to some channel
+	// use waitgroup to coordinate when done
+	// start another goroutine to close the channel when the waitgroups are done.  that will allow range below to close
+	// do a range on the channel, writing entries to limit
+
+	// Byte channel cache is separated into docs of (byteCacheBlockCapacity) sequences.
+	/*
 		blockIndex := k.getBlockIndex(since)
 		block := k.readIndexBlock(blockIndex)
 		// Get index of sequence within block
@@ -377,8 +416,28 @@ func (k *kvChannelIndex) getCachedChanges(options ChangesOptions) (uint64, []*Lo
 
 		//TODO: correct validFrom
 	*/
-	return uint64(0), []*LogEntry{}
+	return []*LogEntry{}
 }
+
+// Returns the block keys needed to retrieve all changes between fromClock and toClock.  When
+// stableOnly is true, restricts to only those needed to retrieve changes earlier than the stable sequence
+/*
+func (k *kvChannelIndex) calculateBlocks(fromClock SequenceClock, toClock SequenceClock, stableOnly bool) BlockSet {
+
+	stableClock := k.stableSequence
+
+	sinceBlockSet := make(BlockSet)
+	for vb, sequence := range k.clock.value {
+		sinceSeq := since.GetSequence(vb)
+		if sequence > sinceSeq && (sinceSeq > toClock.GetSequence(vb) || stableOnly == false) {
+			sinceEntry := kvIndexEntry{vbNo: vb, sequence: sinceSeq}
+			blockKey := GenerateBlockKey(k.channelName, sinceSeq, k.partitionMap[vbNo])
+			sinceBlockSet[blockKey] = append(sinceBlockSet[blockKey], sinceEntry)
+		}
+	}
+
+}
+*/
 
 func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 	key := getIndexCountKey(k.channelName)
@@ -475,10 +534,6 @@ func (k *kvChannelIndex) loadClock() {
 
 func (k *kvChannelIndex) writeClockCas(updateClock SequenceClock) error {
 	// Initial set, for the first cas update attempt
-	log.Println("calling channel clock write with update clock:", updateClock)
-
-	log.Println("double check (vb 0):", updateClock.GetSequence(0))
-	log.Println("double check (vb 1):", updateClock.GetSequence(1))
 	k.clock.UpdateWithClock(updateClock)
 	value, err := k.clock.Marshal()
 	if err != nil {
@@ -495,6 +550,198 @@ func (k *kvChannelIndex) writeClockCas(updateClock SequenceClock) error {
 	})
 	k.clock.SetCas(casOut)
 	return nil
+}
+
+type kvChannelCache struct {
+}
+
+// vbCache caches a set of LogEntry values, representing the set of entries in a channel for a
+// particular vbucket.
+
+type vbCache struct {
+	validFrom uint64            // Sequence the cache is valid from
+	validTo   uint64            // Sequence the cache is valid to
+	entries   SortedEntrySet    // Deduplicated entries for the vbucket for sequences between validFrom and validTo, ordered by sequence
+	docIDs    map[string]uint64 // Map of doc ids present in entries, mapped to that doc's sequence id - used to optimize dedup processing
+	cacheLock sync.RWMutex      // Lock used for updating cache from index
+}
+
+func newVbCache() *vbCache {
+	return &vbCache{
+		validFrom: math.MaxUint64,
+		validTo:   0,
+		docIDs:    make(map[string]uint64),
+	}
+
+}
+
+// Returns all cached entries between fromSequence and toSequence.  When the cache doesn't have the full range, returns
+// non-zero validFrom and validTo values
+func (v *vbCache) getEntries(fromSequence, toSequence uint64) (validFrom uint64, validTo uint64, entries []*LogEntry) {
+
+	// Returning a new copy (instead of subslice of entries) to protect against future deduplication within entries
+	// TODO: use binary search to find starting point in entry list?
+	if fromSequence > toSequence {
+		return 0, 0, entries
+	}
+	v.cacheLock.RLock()
+	defer v.cacheLock.RUnlock()
+
+	for _, entry := range v.entries {
+		if entry.Sequence >= fromSequence {
+			if entry.Sequence <= toSequence {
+				entries = append(entries, entry)
+			} else {
+				break
+			}
+		}
+	}
+	validFrom = maxUint64(fromSequence, v.validFrom)
+	validTo = minUint64(toSequence, v.validTo)
+	return validFrom, validTo, entries
+}
+
+// Adds the provided set of entries to the cache.  Incoming entries must be ordered by vbucket sequence, and the first
+// entry must be greater than the current cache's validTo.
+// Deduplicates by doc id.
+func (v *vbCache) appendEntries(entries SortedEntrySet, validFrom uint64, validTo uint64) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if entries[0].Sequence < v.validTo {
+		return errors.New("Cache conflict - attempt to append entry earlier than validTo")
+	}
+
+	entries, duplicateDocIDs, error := v.validateCacheUpdate(entries, false)
+	if error != nil {
+		return error
+	}
+
+	v.cacheLock.Lock()
+	defer v.cacheLock.Unlock()
+
+	// Remove duplicates from cache
+	for _, docID := range duplicateDocIDs {
+		v.entries.Remove(v.docIDs[docID])
+	}
+
+	// Append entries
+	v.entries = append(v.entries, entries...)
+
+	// Update docID map
+	for _, entry := range entries {
+		v.docIDs[entry.DocID] = entry.Sequence
+	}
+
+	// If this is the first set appended, may need to set validFrom as well as validTo
+	if validFrom < v.validFrom {
+		v.validFrom = validFrom
+	}
+	v.validTo = validTo
+	return nil
+}
+
+// Adds the provided set of entries to the cache.  Incoming entries must be ordered by vbucket sequence, and the first
+// entry must be greater than the current cache's validTo.
+// Deduplicates by doc id.
+func (v *vbCache) prependEntries(entries SortedEntrySet, validFrom uint64) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if entries[len(entries)-1].Sequence > v.validFrom {
+		return errors.New("Cache conflict - attempt to prepend entry later than validFrom")
+	}
+
+	entries, _, error := v.validateCacheUpdate(entries, true)
+
+	if error != nil {
+		return error
+	}
+
+	v.cacheLock.Lock()
+	defer v.cacheLock.Unlock()
+
+	// Prepend all remaining entries
+	v.entries = append(entries, v.entries...)
+
+	// Append new doc ids
+	for _, entry := range entries {
+		v.docIDs[entry.DocID] = entry.Sequence
+	}
+
+	v.validFrom = validFrom
+
+	return nil
+}
+
+// Pre-processing for an incoming set of cache updates.  Returns the set of already cached doc IDs that need to get
+// deduplicated, the set of new DocIDs, removes any doc ID duplicates in the set
+func (v *vbCache) validateCacheUpdate(entries SortedEntrySet, deleteDuplicates bool) (validEntries SortedEntrySet, duplicateEntries []string, err error) {
+	v.cacheLock.RLock()
+	defer v.cacheLock.RUnlock()
+	var prevSeq uint64
+	prevSeq = math.MaxUint64
+
+	// Iterate over entries, doing the following:
+	//  - deduplicating by DocID within the set of new entries (*not* v.entries)
+	//  - build list of docIDs that are already known to the cache
+	entriesDocIDs := make(map[string]interface{})
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		// validate that the sequences are ordered as expected
+		if entry.Sequence > prevSeq {
+			return entries, duplicateEntries, errors.New("Entries must be ordered by sequencewhen updating cache")
+		}
+
+		// If we've already seen this doc ID in the new entry set, remove it
+		if _, ok := entriesDocIDs[entry.DocID]; ok {
+			entries = append(entries[:i], entries[i+1:]...)
+		} else { // Otherwise, add to appropriate DocId list
+			if _, ok := v.docIDs[entry.DocID]; ok {
+				duplicateEntries = append(duplicateEntries, entry.DocID)
+				if deleteDuplicates {
+					entries = append(entries[:i], entries[i+1:]...)
+				}
+			}
+		}
+	}
+
+	return entries, duplicateEntries, nil
+
+}
+
+// Removes an entry from the cache.
+func (v *vbCache) removeEntry(docID string, sequence uint64) {
+	v.cacheLock.Lock()
+	defer v.cacheLock.Unlock()
+	v._removeEntry(docID, sequence)
+}
+
+// Removes an entry from the cache.  Assumes caller has write lock on v.cacheLock
+func (v *vbCache) _removeEntry(docID string, sequence uint64) {
+
+}
+
+// SortedEntrySet
+// Optimizes removal of entries from a sorted array.
+type SortedEntrySet []*LogEntry
+
+func (h *SortedEntrySet) Remove(x uint64) error {
+
+	log.Printf("removeEntry: %d", x)
+	i := SearchSortedEntrySet(*h, x)
+	log.Printf("search results: i=%d, len=%d", i, len(*h))
+	if i < len(*h) && (*h)[i].Sequence == x {
+		*h = append((*h)[:i], (*h)[i+1:]...)
+		return nil
+	} else {
+		return errors.New("Value not found")
+	}
+}
+
+// Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
+func SearchSortedEntrySet(a SortedEntrySet, x uint64) int {
+	return sort.Search(len(a), func(i int) bool { return a[i].Sequence >= x })
 }
 
 ////////  Utility functions for key generation
@@ -517,4 +764,32 @@ func getChannelClockKey(channelName string) string {
 // Generate the key for a single sequence/entry
 func getEntryKey(sequence uint64) string {
 	return fmt.Sprintf("%s:seq:%d", kCachePrefix, sequence)
+}
+
+func minUint64(a, b uint64) uint64 {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+func maxUint64(a, b uint64) uint64 {
+	if a >= b {
+		return a
+	}
+	return b
+}
+
+// BlockSet - used to organize collections of vbuckets by partition for block-based removal
+
+type BlockSet map[string][]kvIndexEntry // Collection of index entries, indexed by block id.
+
+func (b BlockSet) keySet() []string {
+	keys := make([]string, len(b))
+	i := 0
+	for k := range b {
+		keys[i] = k
+		i += 1
+	}
+	return keys
 }

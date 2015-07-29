@@ -17,14 +17,16 @@ import (
 )
 
 type SequenceClock interface {
-	SetSequence(vbNo uint16, vbSequence uint64)
-	GetSequence(vbNo uint16) (vbSequence uint64)
-	Cas() (casOut uint64)
-	SetCas(cas uint64)
-	Marshal() (value []byte, err error)
-	Unmarshal(value []byte) error
-	UpdateWithClock(updateClock SequenceClock)
-	Value() map[uint16]uint64
+	SetSequence(vbNo uint16, vbSequence uint64)  // Sets the sequence value for a vbucket
+	GetSequence(vbNo uint16) (vbSequence uint64) // Retrieves the sequence value for a vbucket
+	Cas() (casOut uint64)                        // Gets the last known cas for this sequence clock
+	SetCas(cas uint64)                           // Sets the last known cas for this sequence clock
+	Marshal() (value []byte, err error)          // Marshals the sequence value
+	Unmarshal(value []byte) error                // Unmarshals the sequence value
+	UpdateWithClock(updateClock SequenceClock)   // Updates the clock with values from updateClock
+	Value() map[uint16]uint64                    // Returns the raw vector clock
+	HashedValue() string                         // Returns previously hashed value, if present.  If not present, does NOT generate hash
+	Equals(otherClock SequenceClock) bool        // Evaluates whether two clocks are identical
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -39,6 +41,13 @@ func NewSequenceClockImpl() *SequenceClockImpl {
 	clock := &SequenceClockImpl{
 		value: make(map[uint16]uint64, kMaxVbNo),
 	}
+	return clock
+}
+
+func NewSequenceClockFromHash(hashedValue string) *SequenceClockImpl {
+	// TODO: resolve hash.  Currently always returning empty clock
+	clock := NewSequenceClockImpl()
+	clock.hashedValue = hashedValue
 	return clock
 }
 
@@ -97,6 +106,47 @@ func (c *SequenceClockImpl) Unmarshal(value []byte) error {
 		return err
 	}
 	return nil
+}
+
+// Compares another sequence clock with this one
+func (c *SequenceClockImpl) Equals(other SequenceClock) bool {
+
+	if c.hashEquals(other.HashedValue()) {
+		return true
+	}
+	for vb, sequence := range other.Value() {
+		if sequence != c.value[vb] {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *SequenceClockImpl) HashedValue() string {
+	// TBD
+	return "hash-0"
+}
+
+func (c *SequenceClockImpl) hashEquals(otherHash string) bool {
+	if otherHash != "" && c.hashedValue != "" && otherHash == c.hashedValue {
+		return true
+	}
+	return false
+}
+
+// Compares another sequence clock with this one, and returns the set of vbucket ids where
+// the other bucket has a higher sequence value.  Used during Since calculations to identify which
+// vbuckets need to be retrieved.
+func (c *SequenceClockImpl) findModified(other SequenceClock) (modified []uint16) {
+	if c.hashEquals(other.HashedValue()) {
+		return nil
+	}
+	for vb, sequence := range other.Value() {
+		if sequence > c.value[vb] {
+			modified = append(modified, vb)
+		}
+	}
+	return modified
 }
 
 func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {

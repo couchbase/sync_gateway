@@ -52,6 +52,10 @@ func makeEntry(vbNo int, sequence int, removal bool) kvIndexEntry {
 	}
 }
 
+func makeLogEntry(seq uint64, docid string) *LogEntry {
+	return e(seq, docid, "1-abc")
+}
+
 func TestIndexBlockCreation(t *testing.T) {
 
 	context, channelIndex := testContextAndChannelIndex("ABC")
@@ -280,5 +284,89 @@ func TestSequenceClockWrite(t *testing.T) {
 	assert.Equals(t, channelIndex.clock.value[9], uint64(25000))
 	assert.Equals(t, channelIndex.clock.value[5], uint64(15000))
 	assert.Equals(t, channelIndex.clock.value[7], uint64(100))
+
+}
+
+// vbCache tests
+
+func TestVbCache(t *testing.T) {
+	vbCache := newVbCache()
+
+	// Add initial entries
+	entries := []*LogEntry{
+		makeLogEntry(15, "doc1"),
+		makeLogEntry(17, "doc2"),
+		makeLogEntry(23, "doc3"),
+	}
+	assertNoError(t, vbCache.appendEntries(entries, uint64(5), uint64(25)), "Error appending entries")
+
+	from, to, results := vbCache.getEntries(uint64(10), uint64(20))
+	assert.Equals(t, from, uint64(10))
+	assert.Equals(t, to, uint64(20))
+	assert.Equals(t, len(results), 2)
+	assert.Equals(t, results[0].DocID, "doc1")
+	assert.Equals(t, results[0].Sequence, uint64(15))
+	assert.Equals(t, results[1].DocID, "doc2")
+	assert.Equals(t, results[1].Sequence, uint64(17))
+
+	// Request for a range earlier than the cache is valid
+	from, to, results = vbCache.getEntries(uint64(0), uint64(15))
+	assert.Equals(t, from, uint64(5))
+	assert.Equals(t, to, uint64(15))
+	assert.Equals(t, len(results), 1)
+	assert.Equals(t, results[0].DocID, "doc1")
+	assert.Equals(t, results[0].Sequence, uint64(15))
+
+	// Request for a range later than the cache is valid
+	from, to, results = vbCache.getEntries(uint64(20), uint64(30))
+	assert.Equals(t, from, uint64(20))
+	assert.Equals(t, to, uint64(25))
+	assert.Equals(t, len(results), 1)
+	assert.Equals(t, results[0].DocID, "doc3")
+	assert.Equals(t, results[0].Sequence, uint64(23))
+
+	// Prepend older entries, including one duplicate doc id
+	olderEntries := []*LogEntry{
+		makeLogEntry(3, "doc1"),
+		makeLogEntry(4, "doc4"),
+	}
+	assertNoError(t, vbCache.prependEntries(olderEntries, uint64(0)), "Error prepending entries")
+
+	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
+	assert.Equals(t, from, uint64(0))
+	assert.Equals(t, to, uint64(25))
+	assert.Equals(t, len(results), 4)
+	assert.Equals(t, results[0].DocID, "doc4")
+	assert.Equals(t, results[1].DocID, "doc1")
+	assert.Equals(t, results[2].DocID, "doc2")
+	assert.Equals(t, results[3].DocID, "doc3")
+
+	// Append newer entries, including two duplicate doc ids
+	newerEntries := []*LogEntry{
+		makeLogEntry(28, "doc1"),
+		makeLogEntry(31, "doc5"),
+		makeLogEntry(35, "doc3"),
+	}
+	assertNoError(t, vbCache.appendEntries(newerEntries, uint64(25), uint64(35)), "Error appending entries")
+
+	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
+	assert.Equals(t, from, uint64(0))
+	assert.Equals(t, to, uint64(35))
+	assert.Equals(t, len(results), 5)
+	assert.Equals(t, results[0].DocID, "doc4")
+	assert.Equals(t, results[1].DocID, "doc2")
+	assert.Equals(t, results[2].DocID, "doc1")
+	assert.Equals(t, results[3].DocID, "doc5")
+	assert.Equals(t, results[4].DocID, "doc3")
+
+	// Attempt to add out-of-order entries
+	newerEntries = []*LogEntry{
+		makeLogEntry(40, "doc1"),
+		makeLogEntry(37, "doc5"),
+		makeLogEntry(43, "doc3"),
+	}
+	err := vbCache.appendEntries(newerEntries, uint64(35), uint64(43))
+	log.Println("got back error:", err)
+	//assertTrue(t, err != nil, "Adding out-of-sequence entries should return error")
 
 }
