@@ -101,12 +101,11 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false&reduce=true&key=\"jchris\"", ``)
 	assertStatus(t, response, 200)
-	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
 
 	// assert on the response
 	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0].Value, 38.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Value, 22.0) // when we support _sum we can change this to 16
 	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
 	// assert on the target database
@@ -126,7 +125,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 
 	// assert on the response
 	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0].Value, 3.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Value, 38.0) // when we support _sum we can change this to 16
 	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
 	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
@@ -156,7 +155,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 
 	// assert on the response
 	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0].Value, 5.0) // when we support _sum we can change this to 16
+	assert.DeepEquals(t, result.Rows[0].Value, 69.0) // when we support _sum we can change this to 16
 	assert.DeepEquals(t, result.Rows[0].Key, nil)
 
 	// need to wait for changes?
@@ -166,7 +165,7 @@ func TestViewQuerySaveIntoDB(t *testing.T) {
 	response = rt.sendAdminRequest("GET", "/db/r.foo_bar_0.null", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &doc)
-	assert.Equals(t, doc["value"], 5.0)
+	assert.Equals(t, doc["value"], 69.0)
 }
 
 func TestUserViewQuery(t *testing.T) {
