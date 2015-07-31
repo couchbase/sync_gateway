@@ -662,21 +662,27 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 func (db *Database) invalUserRoles(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateRoles(user)
+		if err := authr.InvalidateRoles(user); err != nil {
+			base.Warn("Error invalidating roles for user %s: %v", username, err)
+		}
 	}
 }
 
 func (db *Database) invalUserChannels(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateChannels(user)
+		if err := authr.InvalidateChannels(user); err != nil {
+			base.Warn("Error invalidating channels for user %s: %v", username, err)
+		}
 	}
 }
 
 func (db *Database) invalRoleChannels(rolename string) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
-		authr.InvalidateChannels(role)
+		if err := authr.InvalidateChannels(role); err != nil {
+			base.Warn("Error invalidating channels for role %s: %v", rolename, err)
+		}
 	}
 }
 
