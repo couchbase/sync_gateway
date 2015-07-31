@@ -414,18 +414,11 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 		"Origin": "http://example.com",
 	}
 
-	req := request("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}")
-	for k, v := range reqHeaders {
-		req.Header.Set(k, v)
-	}
-
-	response := &testResponse{httptest.NewRecorder(), req}
-	response.Code = 200
-
+	// Set CORS to nil
 	sc := rt.ServerContext()
 	sc.config.CORS = nil
-	CreatePublicHandler(sc).ServeHTTP(response, req)
 
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
 	assertStatus(t, response, 400)
 }
 
