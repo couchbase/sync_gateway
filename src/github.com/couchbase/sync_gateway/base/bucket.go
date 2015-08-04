@@ -319,6 +319,10 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
 	if err == nil {
+		// Start bucket updater - see SG issue 1011
+		cbbucket.RunBucketUpdater(func(bucket string, err error) {
+			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+		})
 		bucket = CouchbaseBucket{cbbucket, spec}
 	}
 
