@@ -14,19 +14,23 @@ import (
 	"encoding/gob"
 	"fmt"
 	"sync"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 type SequenceClock interface {
-	SetSequence(vbNo uint16, vbSequence uint64)  // Sets the sequence value for a vbucket
-	GetSequence(vbNo uint16) (vbSequence uint64) // Retrieves the sequence value for a vbucket
-	Cas() (casOut uint64)                        // Gets the last known cas for this sequence clock
-	SetCas(cas uint64)                           // Sets the last known cas for this sequence clock
-	Marshal() (value []byte, err error)          // Marshals the sequence value
-	Unmarshal(value []byte) error                // Unmarshals the sequence value
-	UpdateWithClock(updateClock SequenceClock)   // Updates the clock with values from updateClock
-	Value() map[uint16]uint64                    // Returns the raw vector clock
-	HashedValue() string                         // Returns previously hashed value, if present.  If not present, does NOT generate hash
-	Equals(otherClock SequenceClock) bool        // Evaluates whether two clocks are identical
+	SetSequence(vbNo uint16, vbSequence uint64)    // Sets the sequence value for a vbucket
+	SetMaxSequence(vbNo uint16, vbSequence uint64) // Sets the sequence value for a vbucket - must be larger than existing sequence
+	GetSequence(vbNo uint16) (vbSequence uint64)   // Retrieves the sequence value for a vbucket
+	Cas() (casOut uint64)                          // Gets the last known cas for this sequence clock
+	SetCas(cas uint64)                             // Sets the last known cas for this sequence clock
+	Marshal() (value []byte, err error)            // Marshals the sequence value
+	Unmarshal(value []byte) error                  // Unmarshals the sequence value
+	UpdateWithClock(updateClock SequenceClock)     // Updates the clock with values from updateClock
+	Value() map[uint16]uint64                      // Returns the raw vector clock
+	HashedValue() string                           // Returns previously hashed value, if present.  If not present, does NOT generate hash
+	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
+	Before(otherClock SequenceClock) bool          // True if all entries in clock are earlier than the corresponding values in otherClock
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -53,6 +57,14 @@ func NewSequenceClockFromHash(hashedValue string) *SequenceClockImpl {
 
 func (c *SequenceClockImpl) SetSequence(vbNo uint16, vbSequence uint64) {
 	c.value[vbNo] = vbSequence
+}
+
+func (c *SequenceClockImpl) SetMaxSequence(vbNo uint16, vbSequence uint64) {
+	if c.value[vbNo] <= vbSequence {
+		c.value[vbNo] = vbSequence
+	} else {
+		base.Warn("Attempted to lower sequence value when calling SetMaxSequence")
+	}
 }
 
 func (c *SequenceClockImpl) GetSequence(vbNo uint16) (vbSequence uint64) {
@@ -120,6 +132,29 @@ func (c *SequenceClockImpl) Equals(other SequenceClock) bool {
 		}
 	}
 	return true
+}
+
+// Compares another sequence clock with this one
+func (c *SequenceClockImpl) Before(other SequenceClock) bool {
+
+	if c.hashEquals(other.HashedValue()) {
+		return false
+	}
+	for vb, sequence := range other.Value() {
+		if sequence < c.value[vb] {
+			return false
+		}
+	}
+	return true
+}
+
+// Deep-copies a SequenceClock
+func (c *SequenceClockImpl) copy() SequenceClock {
+	result := &SequenceClockImpl{}
+	for key, value := range c.value {
+		result.value[key] = value
+	}
+	return result
 }
 
 func (c *SequenceClockImpl) HashedValue() string {

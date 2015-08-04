@@ -2,6 +2,7 @@ package db
 
 import (
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // A ChangeIndex is responsible for indexing incoming events from change_listener, and
@@ -74,10 +75,18 @@ type ChangeIndexOptions struct {
 
 // ChannelIndex defines the API used by the ChangeIndex to interact with the underlying index storage
 type ChannelIndex interface {
-	Add(entry kvIndexEntry) error
-	AddSet(entries []kvIndexEntry) error
+	Add(entry *LogEntry) error
+	AddSet(entries []*LogEntry) error
 	GetClock() (uint64, error)
 	SetClock() (uint64, error)
 	GetCachedChanges(options ChangesOptions, stableSequence uint64)
 	Compact()
+}
+
+func (entry *LogEntry) isRemoved() bool {
+	return entry.Flags&channels.Removed != 0
+}
+
+func (entry *LogEntry) setRemoved() {
+	entry.Flags |= channels.Removed
 }

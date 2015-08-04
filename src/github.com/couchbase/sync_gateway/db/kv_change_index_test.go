@@ -54,7 +54,7 @@ func TestChannelPartitionMap(t *testing.T) {
 		for _, par := range partitions {
 			entry := &LogEntry{Sequence: 1, VbNo: 1}
 			chanPar := ChannelPartition{channelName: ch, partition: par}
-			cpMap.add(chanPar, entry, false)
+			cpMap.add(chanPar, entry)
 		}
 	}
 	log.Printf("map: %v", cpMap)
@@ -72,14 +72,13 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify entry
-	var entry kvChannelIndexEntry
-	entryBytes, _, err := bucket.GetRaw("_cache:seq:1")
+	var entry LogEntry
+	entryBytes, _, err := bucket.GetRaw("_cache_entry:1:1")
+	assert.True(t, err == nil)
 	json.Unmarshal(entryBytes, &entry)
-
 	assert.Equals(t, entry.DocID, "foo1")
 	assert.Equals(t, entry.Sequence, uint64(1))
 	assert.Equals(t, entry.RevID, "1-a")
-	assert.True(t, err == nil)
 
 	// Verify Channel Index Block
 	block := NewIndexBlock("ABC", 1, 1)

@@ -12,7 +12,6 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 const (
@@ -52,15 +52,15 @@ type ChannelPartition struct {
 }
 
 //
-type ChannelPartitionMap map[ChannelPartition][]kvIndexEntry
+type ChannelPartitionMap map[ChannelPartition][]*LogEntry
 
-func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry, isRemoval bool) {
+func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry) {
 	_, found := cpm[cp]
 	if !found {
 		// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-		cpm[cp] = make([]kvIndexEntry, 0, maxCacheUpdate)
+		cpm[cp] = make([]*LogEntry, 0, maxCacheUpdate)
 	}
-	cpm[cp] = append(cpm[cp], newKvIndexEntry(entry, isRemoval))
+	cpm[cp] = append(cpm[cp], entry)
 }
 
 ////// Cache writer API
@@ -316,29 +316,41 @@ func (c *kvChangeIndex) indexPending() {
 
 		// Wait group tracks when the current buffer has been completely processed
 		var wg sync.WaitGroup
-		channelSets := make(map[ChannelPartition][]kvIndexEntry)
+		channelSets := make(map[ChannelPartition][]*LogEntry)
 		updatedSequences := NewSequenceClockImpl()
 
+		// Generic channelStorage for log entry storage
+		channelStorage := NewChannelStorage(c.indexBucket, "", c.indexPartitions)
 		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
-			// Add cache entry
-			wg.Add(1)
-			go func(logEntry *LogEntry) {
-				defer wg.Done()
-				c.writeEntry(logEntry)
-			}(logEntry)
-
+			// Add index log entry if needed
+			if channelStorage.StoresLogEntries() {
+				wg.Add(1)
+				go func(logEntry *LogEntry) {
+					defer wg.Done()
+					channelStorage.WriteLogEntry(logEntry)
+				}(logEntry)
+			}
 			// Collect entries by channel
-			for channelName, removal := range logEntry.Channels {
+			// Remove channels from entry to save space in memory, index entries
+			ch := logEntry.Channels
+			logEntry.Channels = nil
+			for channelName, removal := range ch {
 				if removal == nil || removal.Seq == logEntry.Sequence {
 					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
 					chanPartition := ChannelPartition{channelName: channelName, partition: c.indexPartitions[logEntry.VbNo]}
 					_, found := channelSets[chanPartition]
 					if !found {
 						// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-						channelSets[chanPartition] = make([]kvIndexEntry, 0, maxCacheUpdate)
+						channelSets[chanPartition] = make([]*LogEntry, 0, maxCacheUpdate)
 					}
-					channelSets[chanPartition] = append(channelSets[chanPartition], newKvIndexEntry(logEntry, removal != nil))
+					if removal != nil {
+						removalEntry := *logEntry
+						removalEntry.Flags |= channels.Removed
+						channelSets[chanPartition] = append(channelSets[chanPartition], &removalEntry)
+					} else {
+						channelSets[chanPartition] = append(channelSets[chanPartition], logEntry)
+					}
 				}
 			}
 			if EnableStarChannelLog {
@@ -346,9 +358,9 @@ func (c *kvChangeIndex) indexPending() {
 				_, found := channelSets[chanPartition]
 				if !found {
 					// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-					channelSets[chanPartition] = make([]kvIndexEntry, 0, maxCacheUpdate)
+					channelSets[chanPartition] = make([]*LogEntry, 0, maxCacheUpdate)
 				}
-				channelSets[chanPartition] = append(channelSets[chanPartition], kvIndexEntry{sequence: logEntry.Sequence, removal: false})
+				channelSets[chanPartition] = append(channelSets[chanPartition], logEntry)
 			}
 
 			// Track vbucket sequences for clock update
@@ -359,7 +371,7 @@ func (c *kvChangeIndex) indexPending() {
 		// Iterate over channel sets to update channel index
 		for chanPartition, entrySet := range channelSets {
 			wg.Add(1)
-			go func(chanPartition ChannelPartition, entrySet []kvIndexEntry) {
+			go func(chanPartition ChannelPartition, entrySet []*LogEntry) {
 				defer wg.Done()
 				c.addSetToChannelIndex(chanPartition.channelName, entrySet)
 
@@ -376,14 +388,14 @@ func (c *kvChangeIndex) indexPending() {
 	}
 }
 
-func addEntryToMap(setMap map[ChannelPartition][]kvIndexEntry, channelName string, partition uint16, entry *LogEntry) {
+func addEntryToMap(setMap map[ChannelPartition][]*LogEntry, channelName string, partition uint16, entry *LogEntry) {
 	chanPartition := ChannelPartition{channelName: channelName, partition: partition}
 	_, found := setMap[chanPartition]
 	if !found {
 		// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-		setMap[chanPartition] = make([]kvIndexEntry, 0, maxCacheUpdate)
+		setMap[chanPartition] = make([]*LogEntry, 0, maxCacheUpdate)
 	}
-	setMap[chanPartition] = append(setMap[chanPartition], kvIndexEntry{sequence: entry.Sequence, removal: false})
+	setMap[chanPartition] = append(setMap[chanPartition], entry)
 }
 
 func (b *kvChangeIndex) SetNotifier(onChange func(base.Set)) {
@@ -405,7 +417,11 @@ func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOpti
 
 	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
 
-	changes := b.getChannelIndex(channelName).getChanges(sinceSequence)
+	changes, err := b.getChannelIndex(channelName).getChanges(sinceSequence)
+	if err != nil {
+		base.Warn("Error retrieving cached changes for channel %s", channelName)
+		return uint64(0), nil
+	}
 
 	// Limit handling
 	if options.Limit > 0 && len(changes) > options.Limit {
@@ -434,13 +450,13 @@ func (b *kvChangeIndex) ReleaseLateSequenceClient(channelName string, sequence u
 	return nil
 }
 
-func (b *kvChangeIndex) addToChannelCache(channelName string, change kvIndexEntry) {
+func (b *kvChangeIndex) addToChannelCache(channelName string, change *LogEntry) {
 
 	b.getOrCreateChannelIndex(channelName).Add(change)
-	base.LogTo("DCache", "    #%d ==> channel %q", change.sequence, channelName)
+	base.LogTo("DCache", "    #%d ==> channel %q", change.Sequence, channelName)
 }
 
-func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []kvIndexEntry) {
+func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []*LogEntry) {
 	b.getOrCreateChannelIndex(channelName).AddSet(entries)
 }
 
@@ -473,21 +489,6 @@ func (k *kvChangeIndex) updateStableSequence(updates SequenceClock) error {
 	return nil
 }
 
-// Writes a single doc to the cache for the entry.
-func (b *kvChangeIndex) writeEntry(change *LogEntry) {
-
-	cacheEntry := &kvChannelIndexEntry{
-		Sequence: change.Sequence,
-		DocID:    change.DocID,
-		RevID:    change.RevID,
-		Flags:    change.Flags,
-	}
-	key := getEntryKey(change.Sequence)
-	value, _ := json.Marshal(cacheEntry)
-	b.indexBucket.SetRaw(key, 0, value)
-
-}
-
 // Load the index partition definitions
 func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
 
@@ -508,47 +509,6 @@ func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
 // Notification handling
 func (b *kvChangeIndex) enableNotifications(channelName string) {
 	b.getChannelIndex(channelName).startNotify()
-}
-
-// Reads a single doc from the cache for the entry.
-func readCacheEntry(sequence uint64, bucket base.Bucket) (*LogEntry, error) {
-
-	var cacheEntry kvChannelIndexEntry
-
-	key := getEntryKey(sequence)
-	value, _, err := bucket.GetRaw(key)
-	if err != nil {
-		base.Warn("DCache", "Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
-		return nil, err
-	}
-
-	err = json.Unmarshal(value, &cacheEntry)
-	if err != nil {
-		base.Warn("DCache", "Error unmarshalling entry for sequence %d, key %s", sequence, key)
-		return nil, err
-	}
-	// TODO: the cache write/read loses information from the original LogEntry (timing).  re-confirm it's not needed by readers
-	// TODO: Is there a way to optimize entry unmarshalling when being used by multiple readers?  Recent Sequence cache
-	// per notify?
-
-	logEntry := &LogEntry{
-		Sequence: cacheEntry.Sequence,
-		DocID:    cacheEntry.DocID,
-		RevID:    cacheEntry.RevID,
-		Flags:    cacheEntry.Flags,
-	}
-	return logEntry, nil
-}
-
-// Notes:
-// Functional logic that happens in channel_cache, not in change cache:
-//  - removed handling, since it varies per channel
-
-type kvChannelIndexEntry struct {
-	Sequence uint64 `json:"seq"`
-	DocID    string `json:"doc"`
-	RevID    string `json:"rev"`
-	Flags    uint8  `json:"flags"`
 }
 
 //////////  FakeBucket for testing KV flows:

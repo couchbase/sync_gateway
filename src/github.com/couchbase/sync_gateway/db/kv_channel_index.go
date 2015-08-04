@@ -27,39 +27,22 @@ const kSequenceOffsetLength = 0 // disabled until we actually need it
 const kMaxVbNo = 1024           // TODO: load from cluster config
 
 type kvChannelIndex struct {
-	indexBucket         base.Bucket       // Database connection (used for connection queries)
-	partitionMap        IndexPartitionMap // Index partition map
-	channelName         string
-	lastSequence        uint64
-	lastCounter         uint64
-	notifyRunning       bool
-	notifyLock          sync.Mutex
-	lastNotifiedChanges []*LogEntry
-	lastNotifiedSince   SequenceClock
-	stableSequence      SequenceClock
-	stableSequenceCb    func() SequenceClock
-	onChange            func(base.Set)
-	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
-	indexBlockCacheLock sync.Mutex
-	clock               *SequenceClockImpl
-}
-
-/*
-	Add(entry kvIndexEntry) error
-	AddSet(entries []kvIndexEntry) error
-	GetClock() (uint64, error)
-	SetClock() (uint64, error)
-	GetCachedChanges(options ChangesOptions, stableSequence uint64)
-*/
-
-type kvIndexEntry struct {
-	vbNo     uint16
-	sequence uint64
-	removal  bool
-}
-
-func newKvIndexEntry(logEntry *LogEntry, isRemoval bool) kvIndexEntry {
-	return kvIndexEntry{sequence: logEntry.Sequence, removal: isRemoval, vbNo: logEntry.VbNo}
+	indexBucket       base.Bucket       // Database connection (used for connection queries)
+	partitionMap      IndexPartitionMap // Index partition map
+	channelName       string
+	lastSequence      uint64
+	lastCounter       uint64
+	notifyRunning     bool
+	notifyLock        sync.Mutex
+	lastPolledChanges []*LogEntry
+	lastPolledClock   SequenceClock
+	lastPolledLock    sync.RWMutex
+	stableSequence    SequenceClock
+	stableSequenceCb  func() SequenceClock
+	onChange          func(base.Set)
+	clock             *SequenceClockImpl
+	vbucketCache      map[uint64]*vbCache // Cached entries by vbucket
+	channelStorage    ChannelStorage
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexPartitionMap, stableClockCallback func() SequenceClock, onChangeCallback func(base.Set)) *kvChannelIndex {
@@ -70,9 +53,13 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexP
 		partitionMap:     partitions,
 		stableSequenceCb: stableClockCallback,
 		onChange:         onChangeCallback,
+		channelStorage:   NewChannelStorage(bucket, channelName, partitions),
 	}
 
-	channelIndex.indexBlockCache = make(map[string]IndexBlock)
+	// TODO: The optimal initial capacity for the vbucketCache will vary depending on how many documents
+	// are assigned to the channel.  Currently starting with kMaxVbNo/4 as a ballpark, but might want
+	// to tune this based on performance analysis
+	channelIndex.vbucketCache = make(map[uint64]*vbCache, kMaxVbNo/4)
 
 	// Init stable sequence
 	channelIndex.stableSequence = channelIndex.stableSequenceCb()
@@ -88,101 +75,24 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexP
 // Index Writing
 //
 
-func (k *kvChannelIndex) Add(entry kvIndexEntry) error {
+func (k *kvChannelIndex) Add(entry *LogEntry) error {
 	// Update the sequence in the appropriate cache block
-	base.LogTo("DCache+", "Add to channel index %s, vbNo, isRemoval:%v", k.channelName, entry.vbNo, entry.removal)
-	entries := make([]kvIndexEntry, 0)
-	entries = append(entries, entry)
-	k.AddSet(entries)
-	return nil
+	entries := make([]*LogEntry, 1)
+	entries[0] = entry
+	return k.AddSet(entries)
 }
 
 // Adds a set
-func (k *kvChannelIndex) AddSet(entries []kvIndexEntry) error {
-
+func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
 	base.LogTo("DCache", "enter AddSet for channel %s, %+v", k.channelName, entries)
-	// Update the sequences in the appropriate cache block
-	if len(entries) == 0 {
-		return nil
-	}
-
-	// The set of updates may be distributed over multiple partitions and blocks.
-	// To support this, iterate over the set, and define groups of sequences by block
-	// TODO: this approach feels like it's generating a lot of GC work.  Considered an iterative
-	//       approach where a set update returned a list of entries that weren't targeted at the
-	//       same block as the first entry in the list, but this would force sequential
-	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
-	blockSets := make(BlockSet)
-	clockUpdates := NewSequenceClockImpl()
-	for _, entry := range entries {
-		// Update the sequence in the appropriate cache block
-		base.LogTo("DCache+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", k.channelName, entry.vbNo, entry.removal)
-		blockKey := GenerateBlockKey(k.channelName, entry.sequence, k.partitionMap[entry.vbNo])
-		if _, ok := blockSets[blockKey]; !ok {
-			blockSets[blockKey] = make([]kvIndexEntry, 0)
-		}
-		blockSets[blockKey] = append(blockSets[blockKey], entry)
-		clockUpdates.SetSequence(entry.vbNo, entry.sequence)
-	}
-
-	for _, blockSet := range blockSets {
-		// update the block
-		err := k.writeSingleBlockWithCas(blockSet)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
-	// round trips.
-	err := k.writeClockCas(clockUpdates)
-
-	return err
-}
-
-// Expects all incoming entries to target the same block
-func (k *kvChannelIndex) writeSingleBlockWithCas(entries []kvIndexEntry) error {
-
-	if len(entries) == 0 {
-		return nil
-	}
-	// Get block based on first entry
-	block := k.getIndexBlockForEntry(entries[0])
-	// Apply updates to the in-memory block
-	log.Println("Updating in-memory:", len(entries))
-	for _, entry := range entries {
-		err := block.AddEntry(entry)
-		if err != nil { // Wrong block for this entry
-			return err
-		}
-	}
-	localValue, err := block.Marshal()
-	if err != nil {
-		base.Warn("Unable to marshal channel block - cancelling block update")
-		return errors.New("Error marshalling channel block")
-	}
-
-	log.Println("Starting cas write for key:", block.Key(), len(localValue))
-	casOut, err := writeCasRaw(k.indexBucket, block.Key(), localValue, block.Cas(), func(value []byte) (updatedValue []byte, err error) {
-		// Note: The following is invoked upon cas failure - kmay be called multiple times
-		err = block.Unmarshal(value)
-
-		log.Println("callback, unmarshalled block", len(value), nil)
-		log.Println("callback, entry count", len(entries))
-		for _, entry := range entries {
-			err := block.AddEntry(entry)
-			if err != nil { // Wrong block for this entry
-				return nil, err
-			}
-		}
-		return block.Marshal()
-	})
-
+	log.Printf("AddSet: adding %d entries", len(entries))
+	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
 	if err != nil {
 		return err
 	}
-	block.SetCas(casOut)
-	return nil
+	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
+	// round trips.
+	return k.writeClockCas(clockUpdates)
 }
 
 func (k *kvChannelIndex) Compact() {
@@ -292,131 +202,43 @@ func (k *kvChannelIndex) UpdateRecentCache(currentCounter uint64) {
 }
 */
 
+type vbEntryRange struct {
+	vbNo    uint64
+	fromSeq uint64
+	toSeq   uint64
+}
+
+func (k *kvChannelIndex) checkLastPolled(since SequenceClock) (results []*LogEntry) {
+	k.lastPolledLock.RLock()
+	defer k.lastPolledLock.RUnlock()
+	if k.lastPolledClock.Before(since) {
+		copy(results, k.lastPolledChanges)
+	}
+	return results
+}
+
 // Returns the set of index entries for the channel more recent than the
 // specified since SequenceClock.  Index entries with sequence values greater than
 // the index stable sequence are not returned.
-func (k *kvChannelIndex) getChanges(since SequenceClock) []*LogEntry {
+func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 
 	var results []*LogEntry
 
-	// Get the set of vbuckets that have changed for this channel since 'since', where
-	// the since value is greater than the stable sequence.
-	stableClock := k.stableSequence
-	sinceBlockSet := make(BlockSet)
-	for vbNo, sequence := range k.clock.value {
-		sinceSeq := since.GetSequence(vbNo)
-		if sequence > sinceSeq && sinceSeq > stableClock.GetSequence(vbNo) {
-			sinceEntry := kvIndexEntry{vbNo: vbNo, sequence: sinceSeq}
-			blockKey := GenerateBlockKey(k.channelName, sinceSeq, k.partitionMap[vbNo])
-			sinceBlockSet[blockKey] = append(sinceBlockSet[blockKey], sinceEntry)
-		}
+	// If requested clock is later than the channel clock, return empty
+	if !since.Before(k.clock) {
+		return results, nil
 	}
 
-	if len(sinceBlockSet) == 0 {
-		return results
+	// If the since value is more recent than the last polled clock, return the results from the
+	// last polling.  Has the potential to return values earlier than since and later than
+	// lastPolledClock, but these duplicates will be ignored by replication.  Could validate
+	// greater than since inside this if clause, but leaving out as a performance optimization for
+	// now
+	if lastPolledResults := k.checkLastPolled(since); len(lastPolledResults) > 0 {
+		return lastPolledResults, nil
 	}
 
-	// If there are changes, compare with last notified to see if it's a match
-	if since.Equals(k.lastNotifiedSince) {
-		return k.lastNotifiedChanges
-	}
-
-	// If not, retrieve from cache.  Don't return anything later than stableClock.
-
-	// loop while more blocks (use channel clock to figure out when you're done)
-	// for {
-
-	// Only retrieves one block per partition per iteration, to avoid a huge bulk get when the
-	// since value is much older than the channel clock.  Could consider instead using a target
-	// number of documents as a future performance optimization.
-	//blocks, err := k.indexBucket.GetBulkRaw(sinceBlockSet.keySet())
-
-	// 		Do a bulk get to retrieve all changed blocks
-	//      Process blocks in parallel
-	//      For each block, get the set of vb since values from sinceBlockSet
-	//      Add results
-	// }
-
-	// start goroutines to process each block, and write to some channel
-	// use waitgroup to coordinate when done
-	// start another goroutine to close the channel when the waitgroups are done.  that will allow range below to close
-	// do a range on the channel, writing entries to limit
-
-	// Byte channel cache is separated into docs of (byteCacheBlockCapacity) sequences.
-	/*
-		blockIndex := k.getBlockIndex(since)
-		block := k.readIndexBlock(blockIndex)
-		// Get index of sequence within block
-		offset := uint64(blockIndex) * byteCacheBlockCapacity
-		startIndex := (since + 1) - offset
-
-		// Iterate over blocks
-		moreChanges := true
-
-		for moreChanges {
-			if block != nil {
-				for i := startIndex; i < byteCacheBlockCapacity; i++ {
-					sequence := i + offset
-					if sequence > stableSequence {
-						moreChanges = false
-						break
-					}
-					if block.value[i] > 0 {
-						entry, err := readCacheEntry(sequence, k.context.Bucket)
-						if err != nil {
-							// error reading cache entry - return changes to this point
-							moreChanges = false
-							break
-						}
-						if block.value[i] == 2 {
-							// deleted
-							entry.Flags |= channels.Removed
-						}
-						cacheContents = append(cacheContents, entry)
-					}
-				}
-			}
-			// Init for next block
-			blockIndex++
-			if uint64(blockIndex)*byteCacheBlockCapacity > stableSequence {
-				moreChanges = false
-			}
-			block = k.readIndexBlock(blockIndex)
-			startIndex = 0
-			offset = uint64(blockIndex) * byteCacheBlockCapacity
-		}
-
-		base.LogTo("DCacheDebug", "getCachedChanges: found %d changes for channel %s, since %d", len(cacheContents), k.channelName, options.Since.Seq)
-		// TODO: is there a way to deduplicate doc IDs without a second iteration and the slice copying?
-		// Possibly work the cache in reverse, starting from the high sequence of the channel (if that's available
-		// in metadata)?  We've got two competing goals here:
-		//   - deduplicate Doc IDs, keeping the most recent
-		//   - only read to limit, from oldest
-		// - Reading oldest to the limit first means that DocID deduplication
-		// could result in smaller resultset than limit
-		// - Deduplicating first requires loading the entire set (could be much larger than limit)
-		result := make([]*LogEntry, 0, len(cacheContents))
-		count := len(cacheContents)
-		base.LogTo("DCache", "found contents with length %d", count)
-		docIDs := make(map[string]struct{}, options.Limit)
-		for i := count - 1; i >= 0; i-- {
-			entry := cacheContents[i]
-			docID := entry.DocID
-			if _, found := docIDs[docID]; !found {
-				// safe insert at 0
-				result = append(result, nil)
-				copy(result[1:], result[0:])
-				result[0] = entry
-				docIDs[docID] = struct{}{}
-			}
-
-		}
-
-		base.LogTo("DCacheDebug", " getCachedChanges returning %d changes", len(result))
-
-		//TODO: correct validFrom
-	*/
-	return []*LogEntry{}
+	return k.channelStorage.GetChanges(since, k.stableSequence, k.clock)
 }
 
 // Returns the block keys needed to retrieve all changes between fromClock and toClock.  When
@@ -456,69 +278,6 @@ func (k *kvChannelIndex) getBlockIndex(sequence uint64) uint16 {
 	return uint16(sequence / byteCacheBlockCapacity)
 }
 
-// Safely retrieves index block from the channel's block cache
-func (k *kvChannelIndex) getIndexBlockFromCache(key string) IndexBlock {
-	k.indexBlockCacheLock.Lock()
-	defer k.indexBlockCacheLock.Unlock()
-	return k.indexBlockCache[key]
-}
-
-// Safely inserts index block from the channel's block cache
-func (k *kvChannelIndex) putIndexBlockToCache(key string, block IndexBlock) {
-	k.indexBlockCacheLock.Lock()
-	defer k.indexBlockCacheLock.Unlock()
-	k.indexBlockCache[key] = block
-}
-
-// Retrieves the appropriate index block for an entry. If not found in the channel's block cache,
-// will initialize a new block and add to the map.
-func (k *kvChannelIndex) getIndexBlockForEntry(entry kvIndexEntry) IndexBlock {
-
-	partition := k.partitionMap[entry.vbNo]
-	key := GenerateBlockKey(k.channelName, entry.sequence, partition)
-
-	log.Println("Retrieving for key:", key)
-	// First attempt to retrieve from the cache of recently accessed blocks
-	block := k.getIndexBlockFromCache(key)
-	if block != nil {
-		log.Println("Returning from cache")
-		return block
-	}
-
-	// If not found in cache, attempt to retrieve from the index bucket
-	block = NewIndexBlock(k.channelName, entry.sequence, partition)
-	err := k.loadBlock(block)
-	if err == nil {
-		log.Println("Returning from disk")
-		return block
-	}
-
-	// If still not found, initialize a new empty index block and add to cache
-	block = NewIndexBlock(k.channelName, entry.sequence, partition)
-	k.putIndexBlockToCache(key, block)
-
-	log.Println("Returning new")
-	return block
-}
-
-func (k *kvChannelIndex) loadBlock(block IndexBlock) error {
-
-	data, cas, err := k.indexBucket.GetRaw(block.Key())
-	if err != nil {
-		return err
-	}
-
-	err = block.Unmarshal(data)
-	block.SetCas(cas)
-
-	if err != nil {
-		return err
-	}
-	// If found, add to the cache
-	k.putIndexBlockToCache(block.Key(), block)
-	return nil
-}
-
 func (k *kvChannelIndex) loadClock() {
 
 	if k.clock == nil {
@@ -552,11 +311,12 @@ func (k *kvChannelIndex) writeClockCas(updateClock SequenceClock) error {
 	return nil
 }
 
-type kvChannelCache struct {
-}
-
-// vbCache caches a set of LogEntry values, representing the set of entries in a channel for a
-// particular vbucket.
+// A vbCache caches a set of LogEntry values, representing the set of entries for the channel for a
+// particular vbucket.  Intended to cache recently accessed channel block data, to avoid repeated
+// block retrieval, parsing, and deduplication.
+// The validFrom and validTo specify the range for which the cache is valid.
+// Additional entries can be added to the cache using appendEntries (for entries after validTo), or
+// prependEntries (backfilling values prior to validFrom).
 
 type vbCache struct {
 	validFrom uint64            // Sequence the cache is valid from
@@ -608,13 +368,14 @@ func (v *vbCache) appendEntries(entries SortedEntrySet, validFrom uint64, validT
 	if len(entries) == 0 {
 		return nil
 	}
-	if entries[0].Sequence < v.validTo {
-		return errors.New("Cache conflict - attempt to append entry earlier than validTo")
+
+	if v.validTo > 0 && validFrom > v.validTo+1 {
+		return errors.New("Cache conflict - attempt to append entries with gap in valid range")
 	}
 
-	entries, duplicateDocIDs, error := v.validateCacheUpdate(entries, false)
-	if error != nil {
-		return error
+	entries, duplicateDocIDs, err := v.validateCacheUpdate(entries, false)
+	if err != nil {
+		return err
 	}
 
 	v.cacheLock.Lock()
@@ -644,18 +405,19 @@ func (v *vbCache) appendEntries(entries SortedEntrySet, validFrom uint64, validT
 // Adds the provided set of entries to the cache.  Incoming entries must be ordered by vbucket sequence, and the first
 // entry must be greater than the current cache's validTo.
 // Deduplicates by doc id.
-func (v *vbCache) prependEntries(entries SortedEntrySet, validFrom uint64) error {
+func (v *vbCache) prependEntries(entries SortedEntrySet, validFrom uint64, validTo uint64) error {
 	if len(entries) == 0 {
 		return nil
 	}
-	if entries[len(entries)-1].Sequence > v.validFrom {
-		return errors.New("Cache conflict - attempt to prepend entry later than validFrom")
+
+	if v.validFrom < math.MaxUint64 && validTo < v.validFrom-1 {
+		return errors.New("Cache conflict - attempt to prepend entries with gap in valid range")
 	}
 
-	entries, _, error := v.validateCacheUpdate(entries, true)
+	entries, _, err := v.validateCacheUpdate(entries, true)
 
-	if error != nil {
-		return error
+	if err != nil {
+		return err
 	}
 
 	v.cacheLock.Lock()
@@ -690,8 +452,9 @@ func (v *vbCache) validateCacheUpdate(entries SortedEntrySet, deleteDuplicates b
 		entry := entries[i]
 		// validate that the sequences are ordered as expected
 		if entry.Sequence > prevSeq {
-			return entries, duplicateEntries, errors.New("Entries must be ordered by sequencewhen updating cache")
+			return entries, duplicateEntries, errors.New("Entries must be ordered by sequence when updating cache")
 		}
+		prevSeq = entry.Sequence
 
 		// If we've already seen this doc ID in the new entry set, remove it
 		if _, ok := entriesDocIDs[entry.DocID]; ok {
@@ -707,7 +470,6 @@ func (v *vbCache) validateCacheUpdate(entries SortedEntrySet, deleteDuplicates b
 	}
 
 	return entries, duplicateEntries, nil
-
 }
 
 // Removes an entry from the cache.
@@ -761,11 +523,6 @@ func getChannelClockKey(channelName string) string {
 	return fmt.Sprintf("%s_SequenceClock:%s", kCachePrefix, channelName)
 }
 
-// Generate the key for a single sequence/entry
-func getEntryKey(sequence uint64) string {
-	return fmt.Sprintf("%s:seq:%d", kCachePrefix, sequence)
-}
-
 func minUint64(a, b uint64) uint64 {
 	if a <= b {
 		return a
@@ -778,18 +535,4 @@ func maxUint64(a, b uint64) uint64 {
 		return a
 	}
 	return b
-}
-
-// BlockSet - used to organize collections of vbuckets by partition for block-based removal
-
-type BlockSet map[string][]kvIndexEntry // Collection of index entries, indexed by block id.
-
-func (b BlockSet) keySet() []string {
-	keys := make([]string, len(b))
-	i := 0
-	for k := range b {
-		keys[i] = k
-		i += 1
-	}
-	return keys
 }

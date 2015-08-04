@@ -94,29 +94,6 @@ var suffixMapRemote = []uint32{609, 799, 3428, 5688, 5718, 6539, 10876, 11172, 1
 
 var suffixMap = suffixMapOSX
 
-func testIndexBucket() base.Bucket {
-	/*
-		bucket, err := ConnectToBucket(base.BucketSpec{
-			Server:     "http://localhost:8091",
-			BucketName: "channel_index"})
-	*/
-
-	/*
-		bucket, err := ConnectToBucket(base.BucketSpec{
-			Server:     "http://172.23.96.62:8091",
-			BucketName: "channel_index"})
-	*/
-
-	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     "http://localhost:8091",
-		BucketName: "channel_index"})
-
-	if err != nil {
-		log.Fatalf("Couldn't connect to bucket: %v", err)
-	}
-	return bucket
-}
-
 type channelIndexTest struct {
 	numVbuckets   int         // Number of vbuckets
 	indexBucket   base.Bucket // Index Bucket

@@ -30,6 +30,20 @@ func testContextAndChannelIndex(channelName string) (*DatabaseContext, *kvChanne
 	return context, channelIndex
 }
 
+func testIndexBucket() base.Bucket {
+	bucket, err := ConnectToBucket(base.BucketSpec{
+		Server:     kTestURL,
+		BucketName: "index_tests"})
+	if err != nil {
+		log.Fatalf("Couldn't connect to bucket: %v", err)
+	}
+	return bucket
+}
+
+func testBitFlagStorage(channelName string) *BitFlagStorage {
+	return NewBitFlagStorage(testIndexBucket(), channelName, testPartitionMap())
+}
+
 func testStableSequence() (uint64, error) {
 	return 0, nil
 }
@@ -44,12 +58,15 @@ func testOnChange(keys base.Set) {
 	}
 }
 
-func makeEntry(vbNo int, sequence int, removal bool) kvIndexEntry {
-	return kvIndexEntry{
-		vbNo:     uint16(vbNo),
-		sequence: uint64(sequence),
-		removal:  removal,
+func makeEntry(vbNo int, sequence int, removal bool) *LogEntry {
+	entry := LogEntry{
+		VbNo:     uint16(vbNo),
+		Sequence: uint64(sequence),
 	}
+	if removal {
+		entry.setRemoved()
+	}
+	return &entry
 }
 
 func makeLogEntry(seq uint64, docid string) *LogEntry {
@@ -58,16 +75,11 @@ func makeLogEntry(seq uint64, docid string) *LogEntry {
 
 func TestIndexBlockCreation(t *testing.T) {
 
-	context, channelIndex := testContextAndChannelIndex("ABC")
-	defer context.Close()
-
-	entry := kvIndexEntry{
-		vbNo:     1,
-		sequence: 1,
-		removal:  false,
-	}
-	block := channelIndex.getIndexBlockForEntry(entry)
-	assert.True(t, len(channelIndex.indexBlockCache) == 1)
+	testStorage := testBitFlagStorage("ABC")
+	defer testStorage.bucket.Close()
+	entry := makeEntry(1, 1, false)
+	block := testStorage.getIndexBlockForEntry(entry)
+	assert.True(t, len(testStorage.indexBlockCache) == 1)
 	blockEntries := block.GetAllEntries()
 	assert.Equals(t, len(blockEntries), 0)
 
@@ -75,11 +87,11 @@ func TestIndexBlockCreation(t *testing.T) {
 
 func TestIndexBlockStorage(t *testing.T) {
 
-	context, channelIndex := testContextAndChannelIndex("ABC")
-	defer context.Close()
+	testStorage := testBitFlagStorage("ABC")
+	defer testStorage.bucket.Close()
 
 	// Add entries
-	block := channelIndex.getIndexBlockForEntry(makeEntry(5, 100, false))
+	block := testStorage.getIndexBlockForEntry(makeEntry(5, 100, false))
 
 	assertNoError(t, block.AddEntry(makeEntry(5, 100, false)), "Add entry 5_100")
 	assertNoError(t, block.AddEntry(makeEntry(5, 105, true)), "Add entry 5_105")
@@ -108,12 +120,11 @@ func TestChannelIndexWrite(t *testing.T) {
 
 	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
+	channelStorage, ok := channelIndex.channelStorage.(*BitFlagStorage)
+	assert.True(t, ok)
 
 	// Init block for sequence 100, partition 1
-	entry_5_100 := kvIndexEntry{
-		vbNo:     5,
-		sequence: 100,
-	}
+	entry_5_100 := makeEntry(5, 100, false)
 
 	// Add entries
 	assertNoError(t, channelIndex.Add(entry_5_100), "Add entry 5_100")
@@ -122,26 +133,26 @@ func TestChannelIndexWrite(t *testing.T) {
 
 	// Reset the channel index to verify loading the block from the DB and validate contents
 	channelIndex = NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testStableClock, testOnChange)
-	block := channelIndex.getIndexBlockForEntry(entry_5_100)
+	block := channelStorage.getIndexBlockForEntry(entry_5_100)
 	assert.Equals(t, len(block.GetAllEntries()), 1)
 
 	// Test CAS handling.  AnotherChannelIndex is another writer updating the same block in the DB.
 	anotherChannelIndex := NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testStableClock, testOnChange)
+	anotherChannelStorage, ok := channelIndex.channelStorage.(*BitFlagStorage)
+
 	// Init block for sequence 100, partition 1
-	entry_5_101 := kvIndexEntry{
-		vbNo:     5,
-		sequence: 101,
-	}
+	entry_5_101 := makeEntry(5, 101, false)
 	assertNoError(t, anotherChannelIndex.Add(entry_5_101), "Add entry 5_100")
+	log.Println("ADD 101 COMPLETE")
 
 	// Now send another update to the original index (which now has a stale cas/cache).  Ensure all three entries
 	// end up in the block.
-	entry_5_102 := kvIndexEntry{
-		vbNo:     5,
-		sequence: 102,
-	}
+	entry_5_102 := makeEntry(5, 102, false)
 	channelIndex.Add(entry_5_102)
-	block = channelIndex.getIndexBlockForEntry(entry_5_102)
+
+	log.Println("ADD 102 COMPLETE")
+
+	block = anotherChannelStorage.getIndexBlockForEntry(entry_5_102)
 	assert.Equals(t, len(block.GetAllEntries()), 3)
 
 }
@@ -209,9 +220,11 @@ func TestAddSet(t *testing.T) {
 
 	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
+	channelStorage, ok := channelIndex.channelStorage.(*BitFlagStorage)
+	assert.True(t, ok)
 
 	// Init entries across multiple partitions
-	entrySet := []kvIndexEntry{
+	entrySet := []*LogEntry{
 		makeEntry(5, 100, false),
 		makeEntry(5, 105, false),
 		makeEntry(7, 100, false),
@@ -221,15 +234,15 @@ func TestAddSet(t *testing.T) {
 	// Add entries
 	assertNoError(t, channelIndex.AddSet(entrySet), "Add entry set")
 
-	block := channelIndex.getIndexBlockForEntry(makeEntry(5, 100, false))
+	block := channelStorage.getIndexBlockForEntry(makeEntry(5, 100, false))
 	assert.Equals(t, len(block.GetAllEntries()), 3)
-	block = channelIndex.getIndexBlockForEntry(makeEntry(50, 100, false))
+	block = channelStorage.getIndexBlockForEntry(makeEntry(50, 100, false))
 	assert.Equals(t, len(block.GetAllEntries()), 1)
-	block = channelIndex.getIndexBlockForEntry(makeEntry(75, 1001, false))
+	block = channelStorage.getIndexBlockForEntry(makeEntry(75, 1001, false))
 	assert.Equals(t, len(block.GetAllEntries()), 1)
 
 	// check non-existent entry
-	block = channelIndex.getIndexBlockForEntry(makeEntry(100, 1, false))
+	block = channelStorage.getIndexBlockForEntry(makeEntry(100, 1, false))
 	assert.Equals(t, len(block.GetAllEntries()), 0)
 
 }
@@ -238,9 +251,11 @@ func TestAddSetMultiBlock(t *testing.T) {
 
 	context, channelIndex := testContextAndChannelIndex("ABC")
 	defer context.Close()
+	channelStorage, ok := channelIndex.channelStorage.(*BitFlagStorage)
+	assert.True(t, ok)
 
 	// Init entries across multiple partitions
-	entrySet := []kvIndexEntry{
+	entrySet := []*LogEntry{
 		makeEntry(5, 100, false),
 		makeEntry(5, 15000, false),
 		makeEntry(7, 100, false),
@@ -250,11 +265,11 @@ func TestAddSetMultiBlock(t *testing.T) {
 	// Add entries
 	assertNoError(t, channelIndex.AddSet(entrySet), "Add set")
 
-	block := channelIndex.getIndexBlockForEntry(makeEntry(5, 100, false))
+	block := channelStorage.getIndexBlockForEntry(makeEntry(5, 100, false))
 	assert.Equals(t, len(block.GetAllEntries()), 3) // 5_100, 7_100, 9_100
-	block = channelIndex.getIndexBlockForEntry(makeEntry(5, 15000, false))
+	block = channelStorage.getIndexBlockForEntry(makeEntry(5, 15000, false))
 	assert.Equals(t, len(block.GetAllEntries()), 1) // 5_15000
-	block = channelIndex.getIndexBlockForEntry(makeEntry(9, 25000, false))
+	block = channelStorage.getIndexBlockForEntry(makeEntry(9, 25000, false))
 	assert.Equals(t, len(block.GetAllEntries()), 1) // 9_25000
 
 }
@@ -265,7 +280,7 @@ func TestSequenceClockWrite(t *testing.T) {
 	defer context.Close()
 
 	// Init entries across multiple partitions
-	entrySet := []kvIndexEntry{
+	entrySet := []*LogEntry{
 		makeEntry(5, 100, false),
 		makeEntry(5, 15000, false),
 		makeEntry(7, 100, false),
@@ -288,7 +303,7 @@ func TestSequenceClockWrite(t *testing.T) {
 }
 
 // vbCache tests
-
+/*
 func TestVbCache(t *testing.T) {
 	vbCache := newVbCache()
 
@@ -330,10 +345,10 @@ func TestVbCache(t *testing.T) {
 		makeLogEntry(3, "doc1"),
 		makeLogEntry(4, "doc4"),
 	}
-	assertNoError(t, vbCache.prependEntries(olderEntries, uint64(0)), "Error prepending entries")
+	assertNoError(t, vbCache.prependEntries(olderEntries, uint64(3), uint64(4)), "Error prepending entries")
 
 	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
-	assert.Equals(t, from, uint64(0))
+	assert.Equals(t, from, uint64(3))
 	assert.Equals(t, to, uint64(25))
 	assert.Equals(t, len(results), 4)
 	assert.Equals(t, results[0].DocID, "doc4")
@@ -350,7 +365,7 @@ func TestVbCache(t *testing.T) {
 	assertNoError(t, vbCache.appendEntries(newerEntries, uint64(25), uint64(35)), "Error appending entries")
 
 	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
-	assert.Equals(t, from, uint64(0))
+	assert.Equals(t, from, uint64(3))
 	assert.Equals(t, to, uint64(35))
 	assert.Equals(t, len(results), 5)
 	assert.Equals(t, results[0].DocID, "doc4")
@@ -366,7 +381,23 @@ func TestVbCache(t *testing.T) {
 		makeLogEntry(43, "doc3"),
 	}
 	err := vbCache.appendEntries(newerEntries, uint64(35), uint64(43))
-	log.Println("got back error:", err)
-	//assertTrue(t, err != nil, "Adding out-of-sequence entries should return error")
+	assertTrue(t, err != nil, "Adding out-of-sequence entries should return error")
+	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
+	assert.Equals(t, len(results), 5)
+
+	// Attempt to append entries with gaps
+	newerEntries = []*LogEntry{
+		makeLogEntry(40, "doc1"),
+	}
+	err = vbCache.appendEntries(newerEntries, uint64(40), uint64(45))
+	assertTrue(t, err != nil, "Appending with gap should return error")
+
+	// Attempt to prepend entries with gaps
+	newerEntries = []*LogEntry{
+		makeLogEntry(1, "doc1"),
+	}
+	err = vbCache.prependEntries(newerEntries, uint64(0), uint64(1))
+	assertTrue(t, err != nil, "Prepending with gap should return error")
 
 }
+*/
