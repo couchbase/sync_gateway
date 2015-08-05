@@ -166,7 +166,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 
 	dcpReceiver := NewDCPReceiver()
 
-	maxVbno, err := bucket.getMaxVbno()
+	maxVbno, err := bucket.GetMaxVbno()
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]
 	return
 }
 
-func (bucket CouchbaseBucket) getMaxVbno() (uint16, error) {
+func (bucket CouchbaseBucket) GetMaxVbno() (uint16, error) {
 
 	var maxVbno uint16
 	vbsMap := bucket.Bucket.VBServerMap()

@@ -71,11 +71,20 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	k.channelIndexes = make(map[string]*kvChannelIndex)
 	k.pending = make(chan *LogEntry, maxCacheUpdate)
 
-	// Load index partitions
-	k.indexPartitions = k.loadIndexPartitionMap()
-
 	k.context = context
 	k.indexBucket = indexOptions.Bucket
+
+	// TODO: need to get the number of vbuckets from the bucket itself
+	cbBucket, ok := k.indexBucket.(base.CouchbaseBucket)
+	if ok {
+		k.maxVbNo, _ = cbBucket.GetMaxVbno()
+	} else {
+		// walrus, for unit testing
+		k.maxVbNo = 1024
+	}
+
+	// Load index partitions
+	k.indexPartitions = k.loadIndexPartitionMap()
 
 	// Initialize stable sequence
 
@@ -127,13 +136,10 @@ func (k *kvChangeIndex) initStableClock() {
 }
 
 func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
-
-	log.Println("CHANNEL ENTRY AGAIN:", change.VbNo)
 	// queue for cache addition
 	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d]", change.DocID, change.VbNo)
 	k.pending <- change
 	return base.Set{}
-
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
@@ -503,6 +509,7 @@ func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
 			partitions[vb] = partition
 		}
 	}
+	log.Printf("partition map: %+v", partitions)
 	return partitions
 }
 

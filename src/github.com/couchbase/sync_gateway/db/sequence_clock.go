@@ -13,6 +13,8 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"log"
+	"strconv"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -30,7 +32,8 @@ type SequenceClock interface {
 	Value() map[uint16]uint64                      // Returns the raw vector clock
 	HashedValue() string                           // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
-	Before(otherClock SequenceClock) bool          // True if all entries in clock are earlier than the corresponding values in otherClock
+	After(otherClock SequenceClock) bool           // True if all entries in clock are greater than or equal to the corresponding values in otherClock
+	Before(otherClock SequenceClock) bool          // True if all entries in clock are less than or equal to the corresponding values in otherClock
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -49,9 +52,18 @@ func NewSequenceClockImpl() *SequenceClockImpl {
 }
 
 func NewSequenceClockFromHash(hashedValue string) *SequenceClockImpl {
-	// TODO: resolve hash.  Currently always returning empty clock
+
+	log.Println("New sequence clock from hash:", hashedValue)
 	clock := NewSequenceClockImpl()
 	clock.hashedValue = hashedValue
+	// TODO: resolve hash.  Currently returns a clock with all vbuckets set to int value
+	seqInt, err := strconv.ParseUint(hashedValue, 0, 64)
+	if err == nil {
+		for i := 0; i < 1024; i++ {
+			clock.SetSequence(uint16(i), seqInt)
+		}
+	}
+
 	return clock
 }
 
@@ -134,7 +146,8 @@ func (c *SequenceClockImpl) Equals(other SequenceClock) bool {
 	return true
 }
 
-// Compares another sequence clock with this one
+// Compares another sequence clock with this one.  Returns true only if ALL vb values in
+// the clock are less than or equal to the corresponding values in other
 func (c *SequenceClockImpl) Before(other SequenceClock) bool {
 
 	if c.hashEquals(other.HashedValue()) {
@@ -142,6 +155,21 @@ func (c *SequenceClockImpl) Before(other SequenceClock) bool {
 	}
 	for vb, sequence := range other.Value() {
 		if sequence < c.value[vb] {
+			return false
+		}
+	}
+	return true
+}
+
+// Compares another sequence clock with this one.  Returns true only if ALL vb values in the clock
+// are greater than or equal to corresponding values in other
+func (c *SequenceClockImpl) After(other SequenceClock) bool {
+
+	if c.hashEquals(other.HashedValue()) {
+		return false
+	}
+	for vb, sequence := range other.Value() {
+		if sequence > c.value[vb] {
 			return false
 		}
 	}

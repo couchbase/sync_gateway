@@ -150,7 +150,6 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 	// Get block based on first entry
 	block := b.getIndexBlockForEntry(entries[0])
 	// Apply updates to the in-memory block
-	log.Println("Updating in-memory:", len(entries))
 	for _, entry := range entries {
 		err := block.AddEntry(entry)
 		if err != nil { // Wrong block for this entry
@@ -163,13 +162,9 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 		return errors.New("Error marshalling channel block")
 	}
 
-	log.Println("Starting cas write for key:", block.Key(), len(localValue))
 	casOut, err := writeCasRaw(b.bucket, block.Key(), localValue, block.Cas(), func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - kmay be called multiple times
 		err = block.Unmarshal(value)
-
-		log.Println("callback, unmarshalled block", len(value), nil)
-		log.Println("callback, entry count", len(entries))
 		for _, entry := range entries {
 			err := block.AddEntry(entry)
 			if err != nil { // Wrong block for this entry
@@ -206,6 +201,7 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 
 func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock, channelClock SequenceClock) ([]*LogEntry, error) {
 
+	log.Printf("getting changes between fromSeq %v and toSeq %v", fromSeq, toSeq)
 	// Determine which blocks have changed, and load those blocks
 	blocksByVb, blocksByKey, err := b.calculateChangedBlocks(fromSeq, toSeq, channelClock)
 	if err != nil {
@@ -216,19 +212,22 @@ func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock, 
 	// For each vbucket, create the entries from the blocks.  Create in reverse sequence order, for
 	// deduplication once we've retrieved the full entry
 	entries := make([]*LogEntry, 0)
-	keys := make([]string, 0)
+	entryKeys := make([]string, 0)
 	for vbNo, blocks := range blocksByVb {
 		fromVbSeq := fromSeq.GetSequence(vbNo)
 		toVbSeq := toSeq.GetSequence(vbNo)
 
 		for blockIndex := len(blocks) - 1; blockIndex >= 0; blockIndex-- {
-			blockEntries, blockKeys := blocks[blockIndex].GetEntries(vbNo, fromVbSeq, toVbSeq, true)
+			blockEntries, keys := blocks[blockIndex].GetEntries(vbNo, fromVbSeq, toVbSeq, true)
 			entries = append(entries, blockEntries...)
-			keys = append(keys, blockKeys...)
+			entryKeys = append(entryKeys, keys...)
 		}
 	}
 
-	return entries, nil
+	log.Println("got total block entries:", len(entries))
+	// Bulk retrieval of individual entries
+	results := b.bulkLoadEntries(entryKeys, entries)
+	return results, nil
 
 }
 
@@ -237,6 +236,9 @@ func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock, 
 //   values can point to the same IndexBlock (i.e. when those vbs share a partition).
 //   blocksByKey stores all IndexBlocks to be retrieved, indexed by block key - no duplicates
 func (b *BitFlagStorage) calculateChangedBlocks(fromSeq SequenceClock, toSeq SequenceClock, channelClock SequenceClock) (blocksByVb map[uint16][]IndexBlock, blocksByKey map[string]IndexBlock, err error) {
+
+	blocksByVb = make(map[uint16][]IndexBlock)
+	blocksByKey = make(map[string]IndexBlock, 1)
 
 	for vbNo, clockVbSeq := range channelClock.Value() {
 		fromVbSeq := fromSeq.GetSequence(vbNo)
@@ -266,6 +268,7 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	// Do bulk retrieval of blocks, and unmarshal into loadedBlocks
 	var keySet []string
 	for key, _ := range loadedBlocks {
+		base.LogTo("DIndex+", "Loading blocks, adding key:%s", key)
 		keySet = append(keySet, key)
 	}
 	blocks, err := b.bucket.GetBulkRaw(keySet)
@@ -279,45 +282,50 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	var wg sync.WaitGroup
 	for key, blockBytes := range blocks {
 		if len(blockBytes) > 0 {
-			go func() {
-				wg.Add(1)
+			wg.Add(1)
+			go func(key string, blockBytes []byte) {
 				defer wg.Done()
+				base.LogTo("DIndex+", "Unmarshalling for key:%s", key)
 				if err := loadedBlocks[key].Unmarshal(blockBytes); err != nil {
 					base.Warn("Error unmarshalling block into map")
 				}
-			}()
+			}(key, blockBytes)
 		}
 	}
 	wg.Wait()
 }
 
 // Bulk get the blocks from the index bucket, and unmarshal into the provided map.
-func (b *BitFlagStorage) bulkLoadEntries(keySet []string, loadedEntries map[string]*LogEntry) {
+func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEntry) (results []*LogEntry) {
 	// Do bulk retrieval of entries
+	// TODO: do in batches if keySet is very large?
+
 	entries, err := b.bucket.GetBulkRaw(keySet)
 	if err != nil {
 		base.Warn("Error doing bulk get:", err)
 	}
 
-	// Unmarshal concurrently
-	var wg sync.WaitGroup
-	for key, entryBytes := range entries {
-		if len(entryBytes) > 0 {
-			go func() {
-				wg.Add(1)
-				defer wg.Done()
-				removed := loadedEntries[key].isRemoved()
-				if err := json.Unmarshal(entryBytes, loadedEntries[key]); err != nil {
-					base.Warn("Error unmarshalling block into map")
-				}
-				// Retain channel-specific removal flag (not stored in indexEntry)
-				if removed {
-					loadedEntries[key].setRemoved()
-				}
-			}()
+	docIDs := make(map[string]struct{}, len(blockEntries))
+	results = make([]*LogEntry, 0, len(blockEntries))
+	// Unmarshal and deduplicate
+	// TODO: unmarshalls sequentially on a single thread - consider unmarshalling in parallel, with a separate
+	// iteration for deduplication - based on performance
+	for _, entry := range blockEntries {
+		entryKey := getEntryKey(entry.VbNo, entry.Sequence)
+		entryBytes := entries[entryKey]
+		removed := entry.isRemoved()
+		if err := json.Unmarshal(entryBytes, entry); err != nil {
+			base.Warn("Error unmarshalling entry for key", entryKey)
+		}
+		if _, exists := docIDs[entry.DocID]; !exists {
+			docIDs[entry.DocID] = struct{}{}
+			if removed {
+				entry.setRemoved()
+			}
+			results = append(results, entry)
 		}
 	}
-	wg.Wait()
+	return results
 }
 
 // Retrieves the appropriate index block for an entry. If not found in the channel's block cache,
@@ -327,11 +335,9 @@ func (b *BitFlagStorage) getIndexBlockForEntry(entry *LogEntry) IndexBlock {
 	partition := b.partitionMap[entry.VbNo]
 	key := GenerateBlockKey(b.channelName, entry.Sequence, partition)
 
-	log.Println("Retrieving for key:", key)
 	// First attempt to retrieve from the cache of recently accessed blocks
 	block := b.getIndexBlockFromCache(key)
 	if block != nil {
-		log.Println("Returning from cache")
 		return block
 	}
 
@@ -339,7 +345,6 @@ func (b *BitFlagStorage) getIndexBlockForEntry(entry *LogEntry) IndexBlock {
 	block = NewIndexBlock(b.channelName, entry.Sequence, partition)
 	err := b.loadBlock(block)
 	if err == nil {
-		log.Println("Returning from disk")
 		return block
 	}
 
@@ -347,7 +352,6 @@ func (b *BitFlagStorage) getIndexBlockForEntry(entry *LogEntry) IndexBlock {
 	block = NewIndexBlock(b.channelName, entry.Sequence, partition)
 	b.putIndexBlockToCache(key, block)
 
-	log.Println("Returning new")
 	return block
 }
 
@@ -474,7 +478,9 @@ func (d *BitFlagBlockData) hasEntry(vbNo uint16, sequence uint64) (found, isRemo
 	return false, false
 }
 
-func newBitFlagBlock(channelName string, minSequence uint64, partition uint16) *BitFlagBlock {
+func newBitFlagBlock(channelName string, forSequence uint64, partition uint16) *BitFlagBlock {
+
+	minSequence := uint64(forSequence/byteCacheBlockCapacity) * byteCacheBlockCapacity
 
 	key := generateBitFlagBlockKey(channelName, minSequence, partition)
 
@@ -579,17 +585,19 @@ func (b *BitFlagBlock) GetAllEntries() []*LogEntry {
 func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, includeKeys bool) (entries []*LogEntry, keySet []string) {
 
 	// To avoid GC overhead when we append entries one-by-one into the results below, define the capacity as the
-	// max possible (toSeq - fromSeq).  This is going to be excessively large in most cases - could consider writing
-	// a custom append that will increase capacity in chunks
-	entries = make([]*LogEntry, toSeq-fromSeq+1)
-	keySet = make([]string, toSeq-fromSeq+1)
+	// max possible (toSeq - fromSeq).  This is going to be unnecessarily large in most cases - could consider writing
+	// a custom append
+	entries = make([]*LogEntry, 0, toSeq-fromSeq+1)
+	keySet = make([]string, 0, toSeq-fromSeq+1)
 	vbEntries, ok := b.value.Entries[vbNo]
 	if !ok { // nothing for this vbucket
+		base.LogTo("DIndex+", "No entries found for vbucket %d in block %s", vbNo, b.Key())
 		return entries, keySet
 	}
 
 	// Validate range against block bounds
 	if fromSeq > b.value.MaxSequence() || toSeq < b.value.MinSequence {
+		base.LogTo("DIndex+", "Invalid Range for block (from, to): (%d, %d).  MinSeq:%d", fromSeq, toSeq, b.value.MinSequence)
 		return entries, keySet
 	}
 
@@ -606,7 +614,7 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 		endIndex = toSeq - b.value.MinSequence
 	}
 
-	for index := endIndex; index >= startIndex; index-- {
+	for index := int(endIndex); index >= int(startIndex); index-- {
 		entry := vbEntries[index]
 		if entry != byte(0) {
 			removed := entry == byte(2)

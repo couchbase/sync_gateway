@@ -209,6 +209,9 @@ type vbEntryRange struct {
 }
 
 func (k *kvChannelIndex) checkLastPolled(since SequenceClock) (results []*LogEntry) {
+	if k.lastPolledClock == nil {
+		return results
+	}
 	k.lastPolledLock.RLock()
 	defer k.lastPolledLock.RUnlock()
 	if k.lastPolledClock.Before(since) {
@@ -225,7 +228,8 @@ func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 	var results []*LogEntry
 
 	// If requested clock is later than the channel clock, return empty
-	if !since.Before(k.clock) {
+	if since.After(k.clock) {
+		log.Println("requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
 
@@ -514,7 +518,7 @@ func getIndexCountKey(channelName string) string {
 }
 
 // Get the key for the cache block, based on the block index
-func getIndexBlockKey(channelName string, partition uint16, blockIndex uint16) string {
+func getIndexBlockKey(channelName string, blockIndex uint16, partition uint16) string {
 	return fmt.Sprintf("%s:%s:%d:block%d", kCachePrefix, channelName, partition, blockIndex)
 }
 

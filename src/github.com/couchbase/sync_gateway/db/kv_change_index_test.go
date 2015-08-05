@@ -42,7 +42,6 @@ func channelEntry(vbNo uint16, seq uint64, docid string, revid string, channelNa
 		Channels:     channelMap,
 		VbNo:         vbNo,
 	}
-	log.Println("CHANNEL ENTRY:", entry.VbNo)
 	return entry
 }
 
@@ -119,8 +118,8 @@ func TestChangeIndexAddEntry(t *testing.T) {
 
 func TestChangeIndexGetChanges(t *testing.T) {
 
-	base.LogKeys["DCache+"] = true
-	changeIndex, _ := testKvChangeIndex("indexBucket")
+	base.LogKeys["DIndex+"] = true
+	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	// Add entries across multiple partitions
 	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
@@ -129,10 +128,44 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 
+	bucket.Dump()
 	// Verify entries
-	//entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 3)
+	assert.True(t, err == nil)
 
-	//assert.Equals(t, len(entries), 3)
-	//assert.True(t, err == nil)
+	// Add entries across multiple partitions in the same block
+	changeIndex.AddToCache(channelEntry(101, 1, "foo101-1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(100, 8, "foo100-8", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
+
+	// wait for add
+	time.Sleep(10 * time.Millisecond)
+	// Verify entries
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 6)
+	assert.True(t, err == nil)
+
+	// Add entries across multiple partitions, multiple blocks
+	changeIndex.AddToCache(channelEntry(101, 10001, "foo101-10001", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(100, 10100, "foo100-10100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
+
+	// wait for add
+	time.Sleep(10 * time.Millisecond)
+	// Verify entries
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 9)
+	assert.True(t, err == nil)
+
+	// Retrieval for a more restricted range
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 100}})
+	assert.Equals(t, len(entries), 3)
+	assert.True(t, err == nil)
+
+	// Retrieval for a more restricted range where the since matches a valid sequence number (since border case)
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 10100}})
+	assert.Equals(t, len(entries), 1)
+	assert.True(t, err == nil)
 
 }
