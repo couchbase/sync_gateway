@@ -621,6 +621,13 @@ func TestBulkDocs(t *testing.T) {
 		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
 }
 
+func TestBulkDocsEmptyDocs(t *testing.T) {
+	var rt restTester
+	input := `{}`
+	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 400)
+}
+
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	base.LogKeys["Access"] = true
