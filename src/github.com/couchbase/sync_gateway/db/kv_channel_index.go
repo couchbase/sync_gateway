@@ -12,7 +12,6 @@ package db
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"sort"
 	"sync"
@@ -85,7 +84,6 @@ func (k *kvChannelIndex) Add(entry *LogEntry) error {
 // Adds a set
 func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
 	base.LogTo("DCache", "enter AddSet for channel %s, %+v", k.channelName, entries)
-	log.Printf("AddSet: adding %d entries", len(entries))
 	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
 	if err != nil {
 		return err
@@ -229,7 +227,7 @@ func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 
 	// If requested clock is later than the channel clock, return empty
 	if since.After(k.clock) {
-		log.Println("requested clock is later than channel clock - no new changes to report")
+		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
 
@@ -493,10 +491,7 @@ func (v *vbCache) _removeEntry(docID string, sequence uint64) {
 type SortedEntrySet []*LogEntry
 
 func (h *SortedEntrySet) Remove(x uint64) error {
-
-	log.Printf("removeEntry: %d", x)
 	i := SearchSortedEntrySet(*h, x)
-	log.Printf("search results: i=%d, len=%d", i, len(*h))
 	if i < len(*h) && (*h)[i].Sequence == x {
 		*h = append((*h)[:i], (*h)[i+1:]...)
 		return nil

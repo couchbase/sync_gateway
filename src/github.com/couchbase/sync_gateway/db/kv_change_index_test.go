@@ -128,7 +128,6 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 
-	bucket.Dump()
 	// Verify entries
 	entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 3)
@@ -168,4 +167,29 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.Equals(t, len(entries), 1)
 	assert.True(t, err == nil)
 
+	// Add entries that skip a block in a partition
+	changeIndex.AddToCache(channelEntry(800, 100, "foo800-100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.AddToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
+
+	// wait for add
+	time.Sleep(10 * time.Millisecond)
+	// Verify entries
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 11)
+	assert.True(t, err == nil)
+
+	// Test deduplication by doc id, including across empty blocks
+	changeIndex.AddToCache(channelEntry(700, 100, "foo700", "1-a", []string{"DUP"}))
+	changeIndex.AddToCache(channelEntry(700, 200, "foo700", "1-b", []string{"DUP"}))
+	changeIndex.AddToCache(channelEntry(700, 300, "foo700", "1-c", []string{"DUP"}))
+	changeIndex.AddToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
+	changeIndex.AddToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
+	// wait for add
+	time.Sleep(10 * time.Millisecond)
+	// Verify entries
+	entries, err = changeIndex.GetChanges("DUP", ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 1)
+	assert.True(t, err == nil)
+
+	bucket.Dump()
 }

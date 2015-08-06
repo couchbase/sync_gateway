@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -201,7 +200,6 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 
 func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock, channelClock SequenceClock) ([]*LogEntry, error) {
 
-	log.Printf("getting changes between fromSeq %v and toSeq %v", fromSeq, toSeq)
 	// Determine which blocks have changed, and load those blocks
 	blocksByVb, blocksByKey, err := b.calculateChangedBlocks(fromSeq, toSeq, channelClock)
 	if err != nil {
@@ -224,7 +222,6 @@ func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock, 
 		}
 	}
 
-	log.Println("got total block entries:", len(entries))
 	// Bulk retrieval of individual entries
 	results := b.bulkLoadEntries(entryKeys, entries)
 	return results, nil
@@ -528,14 +525,12 @@ func (b *BitFlagBlock) Marshal() ([]byte, error) {
 }
 
 func (b *BitFlagBlock) Unmarshal(value []byte) error {
-
 	input := bytes.NewBuffer(value)
 	dec := gob.NewDecoder(input)
 	err := dec.Decode(&b.value)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -601,19 +596,20 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 		return entries, keySet
 	}
 
+	// Determine the range to iterate within this block, based on fromSeq and toSeq
 	var startIndex, endIndex uint64
 	if fromSeq < b.value.MinSequence {
 		startIndex = 0
 	} else {
 		startIndex = fromSeq - b.value.MinSequence
 	}
-
 	if toSeq > b.value.MaxSequence() {
-		endIndex = b.value.MaxSequence()
+		endIndex = b.value.MaxSequence() - b.value.MinSequence // max index value within block
 	} else {
 		endIndex = toSeq - b.value.MinSequence
 	}
 
+	base.LogTo("DIndex+", "Block.GetEntries for block.  endIndex:%d, startIndex:%d", endIndex, startIndex)
 	for index := int(endIndex); index >= int(startIndex); index-- {
 		entry := vbEntries[index]
 		if entry != byte(0) {

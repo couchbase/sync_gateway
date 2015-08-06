@@ -14,7 +14,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -474,8 +473,6 @@ func (b *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 
 func (k *kvChangeIndex) updateStableSequence(updates SequenceClock) error {
 
-	log.Println("Updating stable sequence:", k.stableSequence)
-
 	// Initial set, for the first cas update attempt
 	k.stableSequence.UpdateWithClock(updates)
 	value, err := k.stableSequence.Marshal()
@@ -509,7 +506,6 @@ func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
 			partitions[vb] = partition
 		}
 	}
-	log.Printf("partition map: %+v", partitions)
 	return partitions
 }
 
