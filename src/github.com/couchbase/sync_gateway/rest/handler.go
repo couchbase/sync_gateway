@@ -18,11 +18,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -370,7 +372,7 @@ func (h *handler) currentEffectiveUserName() string {
 		}
 	}
 
-	return effectiveName;
+	return effectiveName
 }
 
 //////// RESPONSES:
@@ -513,6 +515,100 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setStatus(status, message)
 	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
+}
+
+var kRangeRegex = regexp.MustCompile("^bytes=(\\d+)?-(\\d+)?$")
+
+// Detects and partially HTTP content range requests.
+// If the request _can_ accept ranges, sets the "Accept-Ranges" response header to "bytes".
+//
+// If there is no Range: request header, or if its valid is invalid, returns a status of 200,
+// meaning that the caller should return the entire response as usual.
+//
+// If there is a request range but it exceeds the contentLength, returns status 416. The caller
+// should treat this as an error and abort, returning that HTTP status code.
+//
+// If there is a useable range, it returns status 206 and the start and end in Go slice terms, i.e.
+// starting at 0 and with the end non-inclusive. It also adds a "Content-Range" response header.
+// It is then the _caller's_ responsibility to set it as the response status code (by calling
+// h.response.WriteHeader(status)), and then write the indicated subrange of the response data.
+func (h *handler) handleRange(contentLength uint64) (status int, start uint64, end uint64) {
+	status = http.StatusOK
+	if h.rq.Method == "GET" || h.rq.Method == "HEAD" {
+		h.setHeader("Accept-Ranges", "bytes")
+		status, start, end = parseHTTPRangeHeader(h.rq.Header.Get("Range"), contentLength)
+		if status == http.StatusPartialContent {
+			h.setHeader("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
+			h.setStatus(http.StatusPartialContent, "Partial Content")
+			end += 1 // make end non-inclusive, as in Go slices
+		}
+	}
+	return
+}
+
+// Given an HTTP "Range:" header value, parses it and returns the approppriate HTTP status code,
+// and the numeric byte range if appropriate:
+// * If the Range header is empty or syntactically invalid, it ignores it and returns status=200.
+// * If the header is valid but exceeds the contentLength, it returns status=416 (Not Satisfiable).
+// * Otherwise it returns status=206 and sets the start and end values in HTTP terms, i.e. with
+//   the first byte numbered 0, and the end value inclusive (so the first 100 bytes are 0-99.)
+func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, start uint64, end uint64) {
+	// http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+	status = http.StatusOK
+	if rangeStr == "" {
+		return
+	}
+	match := kRangeRegex.FindStringSubmatch(rangeStr)
+	if match == nil || (match[1] == "" && match[2] == "") {
+		return
+	}
+	startStr, endStr := match[1], match[2]
+	var err error
+
+	start = 0
+	if startStr != "" {
+		// byte-range-spec
+		if start, err = strconv.ParseUint(startStr, 10, 64); err != nil {
+			start = math.MaxUint64 // string is all digits, so must just be too big for uint64
+		}
+	} else if endStr == "" {
+		return // "-" is an invalid range spec
+	}
+
+	end = contentLength - 1
+	if endStr != "" {
+		if end, err = strconv.ParseUint(endStr, 10, 64); err != nil {
+			end = math.MaxUint64 // string is all digits, so must just be too big for uint64
+		}
+		if startStr == "" {
+			// suffix-range-spec ("-nnn" means the last nnn bytes)
+			if end == 0 {
+				return http.StatusRequestedRangeNotSatisfiable, 0, 0
+			} else if contentLength == 0 {
+				return
+			} else if end > contentLength {
+				end = contentLength
+			}
+			start = contentLength - end
+			end = contentLength - 1
+		} else {
+			if end < start {
+				return // invalid range
+			}
+			if end >= contentLength {
+				end = contentLength - 1 // trim to end of content
+			}
+		}
+	}
+	if start >= contentLength {
+		return http.StatusRequestedRangeNotSatisfiable, 0, 0
+	} else if start == 0 && end == contentLength-1 {
+		return // no-op
+	}
+
+	// OK, it's a subrange:
+	status = http.StatusPartialContent
+	return
 }
 
 // Returns the integer value of a URL query, restricted to a min and max value,
