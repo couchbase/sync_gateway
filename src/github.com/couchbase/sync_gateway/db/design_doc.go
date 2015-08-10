@@ -145,6 +145,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 }
 
 func saveRowsIntoTarget(db *Database, ddocName string, viewName string, level int, result sgbucket.ViewResult, target string) {
+	// what about view version?
 	prefix := fmt.Sprintf("%s_%s_%d", ddocName, viewName, level)
 	// targetDb =
 	// ... load all docs with that prefix by docid, and remove them one by one as we work
