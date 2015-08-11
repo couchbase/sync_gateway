@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/couchbaselabs/walrus"
+	"time"
 )
 
 const (
@@ -14,10 +15,29 @@ const (
 type LeakyBucket struct {
 	bucket    Bucket
 	incrCount uint16
+	config    LeakyBucketConfig
 }
 
-func NewLeakyBucket(bucket Bucket) Bucket {
-	return &LeakyBucket{bucket: bucket}
+// The config object that controls the LeakyBucket behavior
+type LeakyBucketConfig struct {
+
+	// Incr() fails 3 times before finally succeeding
+	IncrTemporaryFail bool
+
+	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
+	// window of # of mutations or a timeout, mutations for a given document
+	// will be filtered such that only the _latest_ mutation will make it through.
+	TapFeedDeDuplication bool
+
+	// Emulate entry not appearing on tap feed
+	TapFeedMissingDocs []string
+}
+
+func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
+	return &LeakyBucket{
+		bucket: bucket,
+		config: config,
+	}
 }
 func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
@@ -57,11 +77,13 @@ func (b *LeakyBucket) WriteUpdate(k string, exp int, callback walrus.WriteUpdate
 }
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
-	if b.incrCount < maxIncrFailures {
-		b.incrCount++
-		return 0, errors.New(fmt.Sprintf("Incr forced fail (%d/%d), try again maybe?", b.incrCount, maxIncrFailures))
+	if b.config.IncrTemporaryFail {
+		if b.incrCount < maxIncrFailures {
+			b.incrCount++
+			return 0, errors.New(fmt.Sprintf("Incr forced fail (%d/%d), try again maybe?", b.incrCount, maxIncrFailures))
+		}
+		b.incrCount = 0
 	}
-	b.incrCount = 0
 	return b.bucket.Incr(k, amt, def, exp)
 }
 
@@ -80,8 +102,124 @@ func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (wa
 func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
+
 func (b *LeakyBucket) StartTapFeed(args walrus.TapArguments) (walrus.TapFeed, error) {
-	return b.bucket.StartTapFeed(args)
+
+	if b.config.TapFeedDeDuplication {
+		return b.wrapFeedForDeduplication(args)
+	} else if len(b.config.TapFeedMissingDocs) > 0 {
+		callback := func(event *walrus.TapEvent) bool {
+			for _, key := range b.config.TapFeedMissingDocs {
+				if string(event.Key) == key {
+					return false
+				}
+			}
+			return true
+		}
+		return b.wrapFeed(args, callback)
+	} else {
+		return b.bucket.StartTapFeed(args)
+	}
+
+}
+
+type EventUpdateFunc func(event *walrus.TapEvent) bool
+
+func (b *LeakyBucket) wrapFeed(args walrus.TapArguments, callback EventUpdateFunc) (walrus.TapFeed, error) {
+
+	// kick off the wrapped walrus tap feed
+	walrusTapFeed, err := b.bucket.StartTapFeed(args)
+	if err != nil {
+		return walrusTapFeed, err
+	}
+
+	// create an output channel
+	channel := make(chan walrus.TapEvent, 10)
+
+	// this is the walrus.TapFeed impl we'll return to callers, which
+	// will have missing entries
+	wrapperFeed := &wrappedTapFeedImpl{
+		channel:        channel,
+		wrappedTapFeed: walrusTapFeed,
+	}
+
+	go func() {
+		for event := range walrusTapFeed.Events() {
+			// Callback returns false if the event should be skipped
+			if callback(&event) {
+				wrapperFeed.channel <- event
+			}
+		}
+	}()
+	return wrapperFeed, nil
+}
+
+func (b *LeakyBucket) wrapFeedForDeduplication(args walrus.TapArguments) (walrus.TapFeed, error) {
+	// create an output channel
+	// start a goroutine which reads off the walrus tap feed
+	//   - de-duplicate certain events
+	//   - puts them to output channel
+
+	// the number of changes that it will buffer up before de-duplicating
+	deDuplicationWindowSize := 5
+
+	// the timeout window in milliseconds after which it will flush to output, even if
+	// the dedupe buffer has not filled up yet.
+	deDuplicationTimeoutMs := time.Millisecond * 1000
+
+	// kick off the wrapped walrus tap feed
+	walrusTapFeed, err := b.bucket.StartTapFeed(args)
+	if err != nil {
+		return walrusTapFeed, err
+	}
+
+	// create an output channel for de-duplicated events
+	channel := make(chan walrus.TapEvent, 10)
+
+	// this is the walrus.TapFeed impl we'll return to callers, which
+	// will reead from the de-duplicated events channel
+	dupeTapFeed := &wrappedTapFeedImpl{
+		channel:        channel,
+		wrappedTapFeed: walrusTapFeed,
+	}
+
+	go func() {
+
+		// the buffer to hold tap events that are candidates for de-duplication
+		deDupeBuffer := []walrus.TapEvent{}
+
+		for {
+			select {
+			case tapEvent, ok := <-walrusTapFeed.Events():
+				if !ok {
+					// channel closed, goroutine is done
+					// dedupe and send what we currently have
+					dedupeAndForward(deDupeBuffer, channel)
+					deDupeBuffer = []walrus.TapEvent{}
+					return
+				}
+				deDupeBuffer = append(deDupeBuffer, tapEvent)
+
+				// if we've collected enough, dedeupe and send what we have,
+				// and reset buffer.
+				if len(deDupeBuffer) >= deDuplicationWindowSize {
+					dedupeAndForward(deDupeBuffer, channel)
+					deDupeBuffer = []walrus.TapEvent{}
+				}
+
+			case <-time.After(deDuplicationTimeoutMs):
+
+				// give up on waiting for the buffer to fill up,
+				// de-dupe and send what we currently have
+				dedupeAndForward(deDupeBuffer, channel)
+				deDupeBuffer = []walrus.TapEvent{}
+
+			}
+		}
+
+	}()
+
+	return dupeTapFeed, nil
 }
 func (b *LeakyBucket) Close() {
 	b.bucket.Close()
@@ -91,4 +229,60 @@ func (b *LeakyBucket) Dump() {
 }
 func (b *LeakyBucket) VBHash(docID string) uint32 {
 	return b.bucket.VBHash(docID)
+}
+
+// An implementation of a walrus tap feed that wraps
+// tap events on the upstream tap feed to better emulate real world
+// TAP/DCP behavior.
+type wrappedTapFeedImpl struct {
+	channel        chan walrus.TapEvent
+	wrappedTapFeed walrus.TapFeed
+}
+
+func (feed *wrappedTapFeedImpl) Close() error {
+	return feed.wrappedTapFeed.Close()
+}
+
+func (feed *wrappedTapFeedImpl) Events() <-chan walrus.TapEvent {
+	return feed.channel
+}
+
+func dedupeAndForward(tapEvents []walrus.TapEvent, destChannel chan<- walrus.TapEvent) {
+
+	deduped := dedupeTapEvents(tapEvents)
+
+	for _, tapEvent := range deduped {
+		destChannel <- tapEvent
+	}
+
+}
+
+func dedupeTapEvents(tapEvents []walrus.TapEvent) []walrus.TapEvent {
+
+	// For each document key, keep track of the latest seen tapEvent
+	// doc1 -> tapEvent with Seq=1
+	// doc2 -> tapEvent with Seq=5
+	// (if tapEvent with Seq=7 comes in for doc1, it will clobber existing)
+	latestTapEventPerKey := map[string]walrus.TapEvent{}
+
+	for _, tapEvent := range tapEvents {
+		key := string(tapEvent.Key)
+		latestTapEventPerKey[key] = tapEvent
+	}
+
+	// Iterate over the original tapEvents, and only keep what
+	// is in latestTapEventPerKey, and discard all previous mutations
+	// of that doc.  This will preserve the original
+	// sequence order as read off the feed.
+	deduped := []walrus.TapEvent{}
+	for _, tapEvent := range tapEvents {
+		key := string(tapEvent.Key)
+		latestTapEventForKey := latestTapEventPerKey[key]
+		if tapEvent.Sequence == latestTapEventForKey.Sequence {
+			deduped = append(deduped, tapEvent)
+		}
+	}
+
+	return deduped
+
 }
