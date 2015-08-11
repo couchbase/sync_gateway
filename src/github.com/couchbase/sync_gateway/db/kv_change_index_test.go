@@ -194,3 +194,18 @@ func TestChangeIndexGetChanges(t *testing.T) {
 
 	bucket.Dump()
 }
+
+func TestLoadStableSequence(t *testing.T) {
+	changeIndex, bucket := testKvChangeIndex("indexBucket")
+	// Add entries across multiple partitions
+	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
+	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
+	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
+	time.Sleep(10 * time.Millisecond)
+
+	stableSequence := LoadStableSequence(bucket)
+	assert.Equals(t, stableSequence.GetSequence(100), uint64(1))
+	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
+	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))
+
+}

@@ -127,7 +127,6 @@ func (k *kvChangeIndex) getStableClock() SequenceClock {
 }
 
 func (k *kvChangeIndex) initStableClock() {
-
 	k.stableSequence = NewSyncSequenceClock()
 	value, cas, err := k.indexBucket.GetRaw(kStableSequenceKey)
 	if err != nil {
@@ -136,7 +135,18 @@ func (k *kvChangeIndex) initStableClock() {
 	}
 	k.stableSequence.Unmarshal(value)
 	k.stableSequence.SetCas(cas)
+}
 
+func LoadStableSequence(bucket base.Bucket) SequenceClock {
+	stableSequence := NewSequenceClockImpl()
+	value, cas, err := bucket.GetRaw(kStableSequenceKey)
+	if err != nil {
+		base.Warn("Stable sequence not found in index - resetting to 0")
+		return stableSequence
+	}
+	stableSequence.Unmarshal(value)
+	stableSequence.SetCas(cas)
+	return stableSequence
 }
 
 func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
