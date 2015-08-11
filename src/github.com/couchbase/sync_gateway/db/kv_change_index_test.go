@@ -140,6 +140,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
+	bucket.Dump()
 	// Verify entries
 	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.Equals(t, len(entries), 6)

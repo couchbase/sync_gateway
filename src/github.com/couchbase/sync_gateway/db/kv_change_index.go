@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -31,16 +32,18 @@ const (
 )
 
 type kvChangeIndex struct {
-	context          *DatabaseContext           // Database context
-	indexBucket      base.Bucket                // Index bucket
-	maxVbNo          uint16                     // Number of vbuckets
-	indexPartitions  IndexPartitionMap          // Partitioning of vbuckets in the index
-	channelIndexes   map[string]*kvChannelIndex // Channel indexes, map indexed by channel name
-	channelIndexLock sync.RWMutex               // Coordinates access to channel index map
-	onChange         func(base.Set)             // Client callback that notifies of channel changes
-	pending          chan *LogEntry             // Incoming changes, pending indexing
-	stableSequence   *SyncSequenceClock         // Stabfle sequence in index
-	logsDisabled     bool                       // If true, ignore incoming tap changes
+	context                *DatabaseContext           // Database context
+	indexBucket            base.Bucket                // Index bucket
+	maxVbNo                uint16                     // Number of vbuckets
+	indexPartitions        IndexPartitionMap          // Partitioning of vbuckets in the index
+	channelIndexWriters    map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
+	channelIndexWriterLock sync.RWMutex               // Coordinates access to channel index writer map.
+	channelIndexReaders    map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
+	channelIndexReaderLock sync.RWMutex               // Coordinates read access to channel index reader map
+	onChange               func(base.Set)             // Client callback that notifies of channel changes
+	pending                chan *LogEntry             // Incoming changes, pending indexing
+	stableSequence         *SyncSequenceClock         // Stabfle sequence in index
+	logsDisabled           bool                       // If true, ignore incoming tap changes
 }
 
 type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
@@ -67,7 +70,8 @@ func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry) {
 func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
 
 	// not sure yet whether we'll need initial sequence
-	k.channelIndexes = make(map[string]*kvChannelIndex)
+	k.channelIndexWriters = make(map[string]*kvChannelIndex)
+	k.channelIndexReaders = make(map[string]*kvChannelIndex)
 	k.pending = make(chan *LogEntry, maxCacheUpdate)
 
 	k.context = context
@@ -100,7 +104,8 @@ func (k *kvChangeIndex) Prune() {
 func (k *kvChangeIndex) Clear() {
 	// TODO: Currently no clear for distributed cache
 	// temp handling until implemented, to pass unit tests
-	k.channelIndexes = make(map[string]*kvChannelIndex)
+	k.channelIndexWriters = make(map[string]*kvChannelIndex)
+	k.channelIndexReaders = make(map[string]*kvChannelIndex)
 }
 
 func (k *kvChangeIndex) Stop() {
@@ -168,7 +173,7 @@ func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
 
 // Given a newly changed document (received from the feed), adds to the pending entries.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, vbNo uint64) {
+func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, vbNo uint16) {
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
@@ -260,25 +265,56 @@ func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, isUser
 	// TODO
 }
 
-func (b *kvChangeIndex) getChannelIndex(channelName string) *kvChannelIndex {
+func (b *kvChangeIndex) getChannelWriter(channelName string) *kvChannelIndex {
 
-	b.channelIndexLock.RLock()
-	defer b.channelIndexLock.RUnlock()
-	return b.channelIndexes[channelName]
+	b.channelIndexWriterLock.RLock()
+	defer b.channelIndexWriterLock.RUnlock()
+	return b.channelIndexWriters[channelName]
 }
 
-func (k *kvChangeIndex) newChannelIndex(channelName string) *kvChannelIndex {
+func (b *kvChangeIndex) getChannelReader(channelName string) *kvChannelIndex {
 
-	k.channelIndexLock.Lock()
-	defer k.channelIndexLock.Unlock()
-	k.channelIndexes[channelName] = NewKvChannelIndex(channelName, k.indexBucket, k.indexPartitions, k.getStableClock, k.onChange)
-	return k.channelIndexes[channelName]
+	b.channelIndexReaderLock.RLock()
+	defer b.channelIndexReaderLock.RUnlock()
+	return b.channelIndexReaders[channelName]
 }
 
-func (b *kvChangeIndex) getOrCreateChannelIndex(channelName string) *kvChannelIndex {
-	index := b.getChannelIndex(channelName)
+func (k *kvChangeIndex) newChannelReader(channelName string) *kvChannelIndex {
+
+	k.channelIndexReaderLock.Lock()
+	defer k.channelIndexReaderLock.Unlock()
+	// make sure someone else hasn't created while we waited for the lock
+	if _, ok := k.channelIndexReaders[channelName]; ok {
+		return k.channelIndexReaders[channelName]
+	}
+	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, k.indexPartitions, k.getStableClock, k.onChange)
+	return k.channelIndexReaders[channelName]
+}
+
+func (k *kvChangeIndex) newChannelWriter(channelName string) *kvChannelIndex {
+
+	k.channelIndexWriterLock.Lock()
+	defer k.channelIndexWriterLock.Unlock()
+	// make sure someone else hasn't created while we waited for the lock
+	if _, ok := k.channelIndexWriters[channelName]; ok {
+		return k.channelIndexWriters[channelName]
+	}
+	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexBucket, k.indexPartitions, k.getStableClock, k.onChange)
+	return k.channelIndexWriters[channelName]
+}
+
+func (b *kvChangeIndex) getOrCreateReader(channelName string) *kvChannelIndex {
+	index := b.getChannelReader(channelName)
 	if index == nil {
-		index = b.newChannelIndex(channelName)
+		index = b.newChannelReader(channelName)
+	}
+	return index
+}
+
+func (b *kvChangeIndex) getOrCreateWriter(channelName string) *kvChannelIndex {
+	index := b.getChannelWriter(channelName)
+	if index == nil {
+		index = b.newChannelWriter(channelName)
 	}
 	return index
 }
@@ -328,13 +364,10 @@ func (c *kvChangeIndex) indexPending() {
 		channelStorage := NewChannelStorage(c.indexBucket, "", c.indexPartitions)
 		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
+			log.Printf("Processing entry with docID:%s", logEntry.DocID)
 			// Add index log entry if needed
 			if channelStorage.StoresLogEntries() {
-				wg.Add(1)
-				go func(logEntry *LogEntry) {
-					defer wg.Done()
-					channelStorage.WriteLogEntry(logEntry)
-				}(logEntry)
+				channelStorage.WriteLogEntry(logEntry)
 			}
 			// Collect entries by channel
 			// Remove channels from entry to save space in memory, index entries
@@ -382,7 +415,6 @@ func (c *kvChangeIndex) indexPending() {
 
 			}(chanPartition, entrySet)
 		}
-
 		wg.Wait()
 
 		// Update stable sequence
@@ -391,6 +423,65 @@ func (c *kvChangeIndex) indexPending() {
 			base.LogPanic("Error updating stable sequence", err)
 		}
 	}
+}
+
+func (k *kvChangeIndex) pollReaders() {
+	k.channelIndexReaderLock.RLock()
+	defer k.channelIndexReaderLock.RUnlock()
+
+	if len(k.channelIndexReaders) == 0 {
+		return
+	}
+
+	// Build the set of clock keys to retrieve.  Stable sequence, plus one per channel reader
+	keySet := make([]string, len(k.channelIndexReaders))
+	keySet[0] = kStableSequenceKey
+	index := 1
+	for _, reader := range k.channelIndexReaders {
+		keySet[index] = getChannelClockKey(reader.channelName)
+		index++
+	}
+	bulkGetResults, err := k.indexBucket.GetBulkRaw(keySet)
+	if err != nil {
+		base.Warn("Error retrieving channel clocks:", err)
+	}
+
+	stableClock, err := NewSequenceClockForBytes(bulkGetResults[kStableSequenceKey])
+	if err != nil {
+		base.Warn("Error loading stable clock - cancelling polling:", err)
+	}
+
+	changedChannels := make(chan string)
+	var wg sync.WaitGroup
+	for _, reader := range k.channelIndexReaders {
+		// For each channel, unmarshal new channel clock, then check with reader whether this represents changes
+		wg.Add(1)
+		go func(reader *kvChannelIndex) {
+			clockKey := getChannelClockKey(reader.channelName)
+			newChannelClock, err := NewSequenceClockForBytes(bulkGetResults[clockKey])
+			if err != nil {
+				base.Warn("Error retrieving channel clock - skipping polling for channel %s: %v", reader.channelName, err)
+			} else {
+				if reader.pollForChanges(stableClock, newChannelClock) {
+					changedChannels <- reader.channelName
+				}
+			}
+			wg.Done()
+		}(reader)
+	}
+
+	// Wait/close in goroutine so that we can start working changedChannels below as they complete
+	go func() {
+		wg.Wait()
+		close(changedChannels)
+	}()
+
+	// Build channel set from the changed channels
+	var channels []string
+	for channelName := range changedChannels {
+		channels = append(channels, channelName)
+	}
+	k.onChange(base.SetFromArray(channels))
 }
 
 func addEntryToMap(setMap map[ChannelPartition][]*LogEntry, channelName string, partition uint16, entry *LogEntry) {
@@ -411,7 +502,6 @@ func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (
 
 	// TODO: add backfill from view?  Currently expects infinite cache
 	_, resultFromCache := b.GetCachedChanges(channelName, options)
-	b.enableNotifications(channelName)
 	return resultFromCache, nil
 }
 
@@ -421,8 +511,7 @@ func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOpti
 	sinceSequence := NewSequenceClockFromHash(options.Since.String())
 
 	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
-
-	changes, err := b.getChannelIndex(channelName).getChanges(sinceSequence)
+	changes, err := b.getOrCreateReader(channelName).getChanges(sinceSequence)
 	if err != nil {
 		base.Warn("Error retrieving cached changes for channel %s", channelName)
 		return uint64(0), nil
@@ -455,14 +544,8 @@ func (b *kvChangeIndex) ReleaseLateSequenceClient(channelName string, sequence u
 	return nil
 }
 
-func (b *kvChangeIndex) addToChannelCache(channelName string, change *LogEntry) {
-
-	b.getOrCreateChannelIndex(channelName).Add(change)
-	base.LogTo("DCache", "    #%d ==> channel %q", change.Sequence, channelName)
-}
-
 func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []*LogEntry) {
-	b.getOrCreateChannelIndex(channelName).AddSet(entries)
+	b.getOrCreateWriter(channelName).AddSet(entries)
 }
 
 // Add late sequence information to channel cache
@@ -507,11 +590,6 @@ func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
 		}
 	}
 	return partitions
-}
-
-// Notification handling
-func (b *kvChangeIndex) enableNotifications(channelName string) {
-	b.getChannelIndex(channelName).startNotify()
 }
 
 //////////  FakeBucket for testing KV flows:

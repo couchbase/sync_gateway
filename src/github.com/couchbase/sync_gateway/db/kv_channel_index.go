@@ -12,10 +12,10 @@ package db
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -29,11 +29,11 @@ type kvChannelIndex struct {
 	indexBucket       base.Bucket       // Database connection (used for connection queries)
 	partitionMap      IndexPartitionMap // Index partition map
 	channelName       string
-	lastSequence      uint64
 	lastCounter       uint64
 	notifyRunning     bool
 	notifyLock        sync.Mutex
 	lastPolledChanges []*LogEntry
+	lastPolledSince   SequenceClock
 	lastPolledClock   SequenceClock
 	lastPolledLock    sync.RWMutex
 	stableSequence    SequenceClock
@@ -60,7 +60,7 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexP
 	// to tune this based on performance analysis
 	channelIndex.vbucketCache = make(map[uint64]*vbCache, kMaxVbNo/4)
 
-	// Init stable sequence
+	// Init stable sequence, last polled
 	channelIndex.stableSequence = channelIndex.stableSequenceCb()
 
 	// Initialize and load channel clock
@@ -83,42 +83,19 @@ func (k *kvChannelIndex) Add(entry *LogEntry) error {
 
 // Adds a set
 func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
-	base.LogTo("DCache", "enter AddSet for channel %s, %+v", k.channelName, entries)
+	base.LogTo("DIndex+", "Adding set of %d entries to channel %s", len(entries), k.channelName)
 	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
 	if err != nil {
 		return err
 	}
 	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
 	// round trips.
+	log.Printf("clockUpdates:%+v", clockUpdates)
 	return k.writeClockCas(clockUpdates)
 }
 
 func (k *kvChannelIndex) Compact() {
 	// TODO: for each index block being cached, check whether expired
-}
-
-func (k *kvChannelIndex) startNotify() {
-	if !k.notifyRunning {
-		k.notifyLock.Lock()
-		defer k.notifyLock.Unlock()
-		// ensure someone else didn't already start while we were waiting
-		if k.notifyRunning {
-			return
-		}
-		k.notifyRunning = true
-		go func() {
-			for k.pollForChanges() {
-				// TODO: geometrically increase sleep time to better manage rarely updated channels? Would result in increased
-				// latency for those channels for connected clients, but reduce churn until we have DCP-based
-				// notification instead of polling
-				time.Sleep(time.Duration(ByteCachePollingTime) * time.Millisecond)
-			}
-
-		}()
-
-	} else {
-		base.LogTo("DCache", "Notify already running for channel %s", k.channelName)
-	}
 }
 
 func (k *kvChannelIndex) updateIndexCount() error {
@@ -137,82 +114,60 @@ func (k *kvChannelIndex) updateIndexCount() error {
 
 }
 
-func (k *kvChannelIndex) pollForChanges() bool {
-
-	// check stable sequence first
-	// TODO: move this up out of the channel cache so that we're only doing it once (not once per channel), and have that process call the registered
-	// channel caches
+func (k *kvChannelIndex) pollForChanges(stableClock SequenceClock, newChannelClock SequenceClock) bool {
 
 	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
-	stableSequence := k.stableSequenceCb()
-
-	k.stableSequence = stableSequence
-
-	base.LogTo("DCacheDebug", "Updating stable sequence to: %d (%s)", k.stableSequence, k.channelName)
-
-	currentCounter, err := k.getIndexCounter()
-	if err != nil {
-		return true
+	if k.lastPolledClock == nil {
+		k.lastPolledClock = k.clock.copy()
 	}
 
-	// If there's an update, cache the recent changes in memory, as we'll expect all
-	// all connected clients to request these changes
-	base.LogTo("DCache", "poll for changes on channel %s: (current, last) (%d, %d)", k.channelName, currentCounter, k.lastCounter)
-	if currentCounter > k.lastCounter {
-		//k.UpdateRecentCache(currentCounter)
+	// Find the minimum of stable clock and new channel clock (to ignore cases when channel clock has
+	// changed but stable hasn't yet)
+	combinedClock := getMinimumClock(stableClock, newChannelClock)
+	if !combinedClock.AnyAfter(k.lastPolledClock) {
+		return false
 	}
 
+	// The clock has changed - load the changes and store in last polled
+	if err := k.updateLastPolled(combinedClock); err != nil {
+		base.Warn("Error updating last polled for channel %s: %v", k.channelName, err)
+		return false
+	}
 	return true
-	// if count != previous count
-
-	//   get changes since previous, save to lastChanges
-	//   update lastSince
-	//   call onChange
-	//   return true
-
-	// else
-	//   return false
-	//
 }
 
-/*
-func (k *kvChannelIndex) UpdateRecentCache(currentCounter uint64) {
-	k.notifyLock.Lock()
-	defer k.notifyLock.Unlock()
+func (k *kvChannelIndex) updateLastPolled(combinedClock SequenceClock) error {
+	k.lastPolledLock.Lock()
+	defer k.lastPolledLock.Unlock()
 
-	// Compare counter again, in case someone has already updated cache while we waited for the lock
-	if currentCounter > k.lastCounter {
-		options := ChangesOptions{Since: SequenceID{Seq: k.lastSequence}}
-		_, recentChanges := k.getChanges(options)
+	// Compare counter again, in case someone has already updated last polled while we waited for the lock
+	if combinedClock.AnyAfter(k.clock) {
+		// Get changes since the last clock
+		recentChanges, err := k.getChanges(k.clock)
+		if err != nil {
+			return err
+		}
 		if len(recentChanges) > 0 {
-			k.lastNotifiedChanges = recentChanges
-			k.lastNotifiedSince = k.lastSequence
-			k.lastSequence = k.lastNotifiedChanges[len(k.lastNotifiedChanges)-1].Sequence
-			k.lastCounter = currentCounter
+			k.lastPolledChanges = recentChanges
+			k.lastPolledClock = combinedClock
 		} else {
-			base.Warn("pollForChanges: channel [%s] clock changed to %d (from %d), but no changes found in cache since #%d", k.channelName, currentCounter, k.lastCounter, k.lastSequence)
-			return
+			base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
+			return errors.New("Expected changes based on clock, none found")
 		}
 		if k.onChange != nil {
 			k.onChange(base.SetOf(k.channelName))
 		}
 	}
-}
-*/
-
-type vbEntryRange struct {
-	vbNo    uint64
-	fromSeq uint64
-	toSeq   uint64
+	return nil
 }
 
-func (k *kvChannelIndex) checkLastPolled(since SequenceClock) (results []*LogEntry) {
+func (k *kvChannelIndex) checkLastPolled(since SequenceClock, chanClock SequenceClock) (results []*LogEntry) {
 	if k.lastPolledClock == nil {
 		return results
 	}
 	k.lastPolledLock.RLock()
 	defer k.lastPolledLock.RUnlock()
-	if k.lastPolledClock.Before(since) {
+	if k.lastPolledClock.Equals(chanClock) && k.lastPolledSince.AllBefore(since) {
 		copy(results, k.lastPolledChanges)
 	}
 	return results
@@ -224,9 +179,10 @@ func (k *kvChannelIndex) checkLastPolled(since SequenceClock) (results []*LogEnt
 func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 
 	var results []*LogEntry
-
+	// TODO: pass in an option to reuse existing channel clock
+	chanClock, _ := k.loadChannelClock()
 	// If requested clock is later than the channel clock, return empty
-	if since.After(k.clock) {
+	if since.AllAfter(chanClock) {
 		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
@@ -236,11 +192,12 @@ func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 	// lastPolledClock, but these duplicates will be ignored by replication.  Could validate
 	// greater than since inside this if clause, but leaving out as a performance optimization for
 	// now
-	if lastPolledResults := k.checkLastPolled(since); len(lastPolledResults) > 0 {
+	if lastPolledResults := k.checkLastPolled(since, chanClock); len(lastPolledResults) > 0 {
+		base.LogTo("DIndex+", "returning results from last polling")
 		return lastPolledResults, nil
 	}
 
-	return k.channelStorage.GetChanges(since, k.stableSequence, k.clock)
+	return k.channelStorage.GetChanges(since, chanClock)
 }
 
 // Returns the block keys needed to retrieve all changes between fromClock and toClock.  When
@@ -272,6 +229,17 @@ func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 		return 0, nil
 	}
 	return intValue, nil
+}
+
+func (k *kvChannelIndex) loadChannelClock() (SequenceClock, error) {
+	chanClock := NewSyncSequenceClock()
+	key := getChannelClockKey(k.channelName)
+	value, _, err := k.indexBucket.GetRaw(key)
+	if err != nil {
+		return chanClock, err
+	}
+	err = chanClock.Unmarshal(value)
+	return chanClock, err
 }
 
 // Determine the cache block index for a sequence

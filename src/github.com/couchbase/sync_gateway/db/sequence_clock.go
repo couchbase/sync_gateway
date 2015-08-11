@@ -32,8 +32,10 @@ type SequenceClock interface {
 	Value() map[uint16]uint64                      // Returns the raw vector clock
 	HashedValue() string                           // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
-	After(otherClock SequenceClock) bool           // True if all entries in clock are greater than or equal to the corresponding values in otherClock
-	Before(otherClock SequenceClock) bool          // True if all entries in clock are less than or equal to the corresponding values in otherClock
+	AllAfter(otherClock SequenceClock) bool        // True if all entries in clock are greater than or equal to the corresponding values in otherClock
+	AllBefore(otherClock SequenceClock) bool       // True if all entries in clock are less than or equal to the corresponding values in otherClock
+	AnyAfter(otherClock SequenceClock) bool        // True if any entries in clock are greater than the corresponding values in otherClock
+	AnyBefore(otherClock SequenceClock) bool       // True if any entries in clock are less than the corresponding values in otherClock
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -65,6 +67,12 @@ func NewSequenceClockFromHash(hashedValue string) *SequenceClockImpl {
 	}
 
 	return clock
+}
+
+func NewSequenceClockForBytes(bytes []byte) (*SequenceClockImpl, error) {
+	clock := NewSequenceClockImpl()
+	err := clock.Unmarshal(bytes)
+	return clock, err
 }
 
 func (c *SequenceClockImpl) SetSequence(vbNo uint16, vbSequence uint64) {
@@ -146,13 +154,22 @@ func (c *SequenceClockImpl) Equals(other SequenceClock) bool {
 	return true
 }
 
+// Compares another sequence clock with this one.  Returns true only if ALL vb values in the clock
+// are greater than or equal to corresponding values in other
+func (c *SequenceClockImpl) AllAfter(other SequenceClock) bool {
+
+	for vb, sequence := range other.Value() {
+		if sequence > c.value[vb] {
+			return false
+		}
+	}
+	return true
+}
+
 // Compares another sequence clock with this one.  Returns true only if ALL vb values in
 // the clock are less than or equal to the corresponding values in other
-func (c *SequenceClockImpl) Before(other SequenceClock) bool {
+func (c *SequenceClockImpl) AllBefore(other SequenceClock) bool {
 
-	if c.hashEquals(other.HashedValue()) {
-		return false
-	}
 	for vb, sequence := range other.Value() {
 		if sequence < c.value[vb] {
 			return false
@@ -161,19 +178,34 @@ func (c *SequenceClockImpl) Before(other SequenceClock) bool {
 	return true
 }
 
-// Compares another sequence clock with this one.  Returns true only if ALL vb values in the clock
-// are greater than or equal to corresponding values in other
-func (c *SequenceClockImpl) After(other SequenceClock) bool {
+// Compares another sequence clock with this one.  Returns true if ANY vb values in
+// the clock are less than the corresponding values in other
+func (c *SequenceClockImpl) AnyBefore(other SequenceClock) bool {
 
 	if c.hashEquals(other.HashedValue()) {
 		return false
 	}
 	for vb, sequence := range other.Value() {
-		if sequence > c.value[vb] {
-			return false
+		if c.value[vb] < sequence {
+			return true
 		}
 	}
-	return true
+	return false
+}
+
+// Compares another sequence clock with this one.  Returns true if ANY vb values in the clock
+// are greater than the corresponding values in other
+func (c *SequenceClockImpl) AnyAfter(other SequenceClock) bool {
+
+	if c.hashEquals(other.HashedValue()) {
+		return false
+	}
+	for vb, sequence := range other.Value() {
+		if c.value[vb] > sequence {
+			return true
+		}
+	}
+	return false
 }
 
 // Deep-copies a SequenceClock
@@ -258,10 +290,51 @@ func (c *SyncSequenceClock) SetSequence(vbNo uint16, sequence uint64) {
 	c.clock.SetSequence(vbNo, sequence)
 }
 
+func (c *SyncSequenceClock) SetMaxSequence(vbNo uint16, vbSequence uint64) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.clock.SetMaxSequence(vbNo, vbSequence)
+}
 func (c *SyncSequenceClock) GetSequence(vbNo uint16) (sequence uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c.clock.GetSequence(vbNo)
+}
+
+func (c *SyncSequenceClock) HashedValue() string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.HashedValue()
+}
+
+func (c *SyncSequenceClock) AllAfter(other SequenceClock) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.AllAfter(other)
+}
+
+func (c *SyncSequenceClock) AllBefore(other SequenceClock) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.AllAfter(other)
+}
+
+func (c *SyncSequenceClock) AnyAfter(other SequenceClock) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.AllAfter(other)
+}
+
+func (c *SyncSequenceClock) AnyBefore(other SequenceClock) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.AllAfter(other)
+}
+
+func (c *SyncSequenceClock) Equals(other SequenceClock) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.clock.Equals(other)
 }
 
 // Copies a channel clock
@@ -272,6 +345,12 @@ func (c *SyncSequenceClock) clone() *SyncSequenceClock {
 	return &SyncSequenceClock{
 		clock: &clockCopy,
 	}
+}
+
+func (c *SyncSequenceClock) Value() map[uint16]uint64 {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.clock.Value()
 }
 
 // TODO: possibly replace with something more intelligent than gob encode, to take advantage of known
@@ -292,4 +371,22 @@ func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.clock.UpdateWithClock(updateClock)
+}
+
+func getMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
+	minClock := NewSequenceClockImpl()
+	// Need to iterate over all index values instead of using range, to handle map entries in b that
+	// are not in a (and vice versa)
+	for i := uint16(0); i < kMaxVbNo; i++ {
+		aValue := a.GetSequence(i)
+		bValue := b.GetSequence(i)
+		if aValue < bValue {
+			minClock.SetSequence(i, bValue)
+		} else {
+			if aValue > 0 {
+				minClock.SetSequence(i, aValue)
+			}
+		}
+	}
+	return minClock
 }
