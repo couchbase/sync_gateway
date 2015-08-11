@@ -302,12 +302,51 @@ func TestDocEtag(t *testing.T) {
 	response = rt.sendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 
 	//Validate Etag returned from retrieving an attachment
 	assert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
 
+}
+
+// Add and retrieve an attachment, including a subrange
+func TestDocAttachment(t *testing.T) {
+	var rt restTester
+
+	response := rt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid := body["rev"].(string)
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	assert.Equals(t, response.Header().Get("Content-Length"), "30")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+
+	// retrieve subrange
+	response = rt.sendRequestWithHeaders("GET", "/db/doc/attach1", "", map[string]string{"Range": "bytes=5-6"})
+	assertStatus(t, response, 206)
+	assert.Equals(t, string(response.Body.Bytes()), "is")
+	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	assert.Equals(t, response.Header().Get("Content-Length"), "2")
+	assert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 }
 
 func TestFunkyDocIDs(t *testing.T) {

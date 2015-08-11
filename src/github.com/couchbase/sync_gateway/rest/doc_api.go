@@ -140,16 +140,25 @@ func (h *handler) handleGetAttachment() error {
 		return err
 	}
 
+	status, start, end := h.handleRange(uint64(len(data)))
+	if status > 299 {
+		return base.HTTPErrorf(status, "")
+	} else if status == http.StatusPartialContent {
+		data = data[start:end]
+	}
+	h.setHeader("Content-Length", strconv.FormatUint(uint64(len(data)), 10))
+
 	h.setHeader("Etag", strconv.Quote(digest))
 	if contentType, ok := meta["content_type"].(string); ok {
 		h.setHeader("Content-Type", contentType)
 	}
 	if encoding, ok := meta["encoding"].(string); ok {
-		h.setHeader("Content-Encoding", encoding)
+			h.setHeader("Content-Encoding", encoding)
 	}
 	if h.privs == adminPrivs { // #720
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
 	}
+	h.response.WriteHeader(status)
 	h.response.Write(data)
 	return nil
 }
