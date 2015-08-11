@@ -22,7 +22,6 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-
 func e(seq uint64, docid string, revid string) *LogEntry {
 	return &LogEntry{
 		Sequence:     seq,
@@ -196,9 +195,13 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 // simulating out-of-order arrivals on the tap feed using walrus.
 
 func WriteDirect(db *Database, channelArray []string, sequence uint64) {
-
 	docId := fmt.Sprintf("doc-%v", sequence)
 	rev := "1-a"
+	WriteDirectForDoc(db, channelArray, docId, rev, sequence)
+}
+
+func WriteDirectForDoc(db *Database, channelArray []string, docID string, revID string, sequence uint64) {
+
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
 	for _, channel := range channelArray {
@@ -206,12 +209,13 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 	}
 
 	syncData := &syncData{
-		CurrentRev: rev,
+		CurrentRev: revID,
 		Sequence:   sequence,
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
+
+	db.Bucket.Set(docID, 0, Body{"_sync": syncData, "key": docID})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -687,6 +691,43 @@ func FailingTestChannelRace(t *testing.T) {
 	fmt.Println("changes: ", changesString)
 
 	close(options.Terminator)
+}
+
+// Test retrieval of skipped sequence using view.  Unit test catches panic, but we don't currently have a way
+// to simulate an entry that makes it to the bucket (and so is accessible to the view), but doesn't show up on the TAP feed.
+// Cache logging in this test validates that view retrieval is working because of TAP latency (item is in the bucket, but hasn't
+// been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
+func TestSkippedViewRetrieval(t *testing.T) {
+	base.LogKeys["Cache"] = true
+	base.LogKeys["Cache+"] = true
+
+	// Use leaky bucket to have the tap feed 'lose' document 3
+	leakyConfig := base.LeakyBucketConfig{
+		TapFeedMissingDocs: []string{"doc-3"},
+	}
+	db := setupTestLeakyDBWithCacheOptions(t, shortWaitCache(), leakyConfig)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Allow db to initialize and run initial CleanSkippedSequenceQueue
+	time.Sleep(10 * time.Millisecond)
+
+	// Write sequences direct
+	WriteDirect(db, []string{"ABC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC"}, 3)
+
+	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.CleanSkippedSequenceQueue()
+
+	// Validate that 3 is in the channel cache, 5 isn't
+	entries, err := db.changeCache.GetChangesInChannel("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	assertNoError(t, err, "Get Changes returned error")
+	assertTrue(t, len(entries) == 1, "Incorrect number of entries returned")
+	assert.Equals(t, entries[0].DocID, "doc-3")
+
 }
 
 func shortWaitCache() CacheOptions {

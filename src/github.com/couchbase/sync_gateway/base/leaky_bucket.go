@@ -28,7 +28,10 @@ type LeakyBucketConfig struct {
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
 	// will be filtered such that only the _latest_ mutation will make it through.
-	TapFeedDeDupliation bool
+	TapFeedDeDuplication bool
+
+	// Emulate entry not appearing on tap feed
+	TapFeedMissingDocs []string
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -110,10 +113,56 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 
 func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
-	if !b.config.TapFeedDeDupliation {
+	if b.config.TapFeedDeDuplication {
+		return b.wrapFeedForDeduplication(args)
+	} else if len(b.config.TapFeedMissingDocs) > 0 {
+		callback := func(event *sgbucket.TapEvent) bool {
+			for _, key := range b.config.TapFeedMissingDocs {
+				if string(event.Key) == key {
+					return false
+				}
+			}
+			return true
+		}
+		return b.wrapFeed(args, callback)
+	} else {
 		return b.bucket.StartTapFeed(args)
 	}
 
+}
+
+type EventUpdateFunc func(event *sgbucket.TapEvent) bool
+
+func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateFunc) (sgbucket.TapFeed, error) {
+
+	// kick off the wrapped sgbucket tap feed
+	walrusTapFeed, err := b.bucket.StartTapFeed(args)
+	if err != nil {
+		return walrusTapFeed, err
+	}
+
+	// create an output channel
+	channel := make(chan sgbucket.TapEvent, 10)
+
+	// this is the sgbucket.TapFeed impl we'll return to callers, which
+	// will have missing entries
+	wrapperFeed := &wrappedTapFeedImpl{
+		channel:        channel,
+		wrappedTapFeed: walrusTapFeed,
+	}
+
+	go func() {
+		for event := range walrusTapFeed.Events() {
+			// Callback returns false if the event should be skipped
+			if callback(&event) {
+				wrapperFeed.channel <- event
+			}
+		}
+	}()
+	return wrapperFeed, nil
+}
+
+func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	// create an output channel
 	// start a goroutine which reads off the sgbucket tap feed
 	//   - de-duplicate certain events
@@ -137,7 +186,7 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 
 	// this is the sgbucket.TapFeed impl we'll return to callers, which
 	// will reead from the de-duplicated events channel
-	dupeTapFeed := &deDuplicatorTapFeedImpl{
+	dupeTapFeed := &wrappedTapFeedImpl{
 		channel:        channel,
 		wrappedTapFeed: walrusTapFeed,
 	}
@@ -179,7 +228,6 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 	}()
 
 	return dupeTapFeed, nil
-
 }
 
 func (b *LeakyBucket) Close() {
@@ -192,19 +240,19 @@ func (b *LeakyBucket) VBHash(docID string) uint32 {
 	return b.bucket.VBHash(docID)
 }
 
-// An implementation of a sgbucket tap feed that wraps and de-duplicates
+// An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
-type deDuplicatorTapFeedImpl struct {
+type wrappedTapFeedImpl struct {
 	channel        chan sgbucket.TapEvent
 	wrappedTapFeed sgbucket.TapFeed
 }
 
-func (feed *deDuplicatorTapFeedImpl) Close() error {
+func (feed *wrappedTapFeedImpl) Close() error {
 	return feed.wrappedTapFeed.Close()
 }
 
-func (feed *deDuplicatorTapFeedImpl) Events() <-chan sgbucket.TapEvent {
+func (feed *wrappedTapFeedImpl) Events() <-chan sgbucket.TapEvent {
 	return feed.channel
 }
 

@@ -61,6 +61,14 @@ func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 	return db
 }
 
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, options, RevisionCacheCapacity)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
 func tearDownTestDB(t *testing.T, db *Database) {
 	db.Close()
 }
