@@ -373,7 +373,11 @@ func (h *handler) handleBulkDocs() error {
 		newEdits = true
 	}
 
-	docs := body["docs"].([]interface{})
+	docs, ok := body["docs"].([]interface{})
+	if !ok {
+		err = base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
+		return err
+	}
 	h.db.ReserveSequences(uint64(len(docs)))
 
 	result := make([]db.Body, 0, len(docs))
