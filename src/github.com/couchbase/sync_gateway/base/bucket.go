@@ -87,7 +87,7 @@ func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64,
 		Warn("Error in WriteCas:", err)
 		return 0, err
 	}
-	// TODO: switch over to go-couchbase version that returns CAS when it's available
+	// TODO: remove the bucket.Observe() workaround after https://github.com/couchbase/go-couchbase/issues/59 is done
 	observeResult, err := bucket.Bucket.Observe(k)
 	LogTo("DIndex+", "WriteCas: post-write cas value is %d", observeResult.Cas)
 	return observeResult.Cas, err
