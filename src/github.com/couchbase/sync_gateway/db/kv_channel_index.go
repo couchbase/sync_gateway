@@ -181,7 +181,10 @@ func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 
 	var results []*LogEntry
 	// TODO: pass in an option to reuse existing channel clock
-	chanClock, _ := k.loadChannelClock()
+	chanClock, err := k.loadChannelClock()
+	if err != nil {
+		base.Warn("Error loading channel clock:", err)
+	}
 
 	base.LogTo("DIndex+", "[channelIndex.GetChanges] Channel clock for channel %s: %s", k.channelName, PrintClock(chanClock))
 	// If requested clock is later than the channel clock, return empty
@@ -239,9 +242,13 @@ func (k *kvChannelIndex) loadChannelClock() (SequenceClock, error) {
 	key := getChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
 	if err != nil {
+		base.LogTo("DIndex+", "Error loading channel clock for key %s:%v", key, err)
 		return chanClock, err
 	}
 	err = chanClock.Unmarshal(value)
+	if err != nil {
+		base.Warn("Error unmarshalling channel clock for channel %s, clock value %v", k.channelName, value)
+	}
 	return chanClock, err
 }
 
