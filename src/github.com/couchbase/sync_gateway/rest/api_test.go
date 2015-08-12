@@ -628,6 +628,13 @@ func TestBulkDocsEmptyDocs(t *testing.T) {
 	assertStatus(t, response, 400)
 }
 
+func TestBulkGetEmptyDocs(t *testing.T) {
+	var rt restTester
+	input := `{}`
+	response := rt.sendRequest("POST", "/db/_bulk_get", input)
+	assertStatus(t, response, 400)
+}
+
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	base.LogKeys["Access"] = true

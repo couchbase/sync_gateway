@@ -303,6 +303,12 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
+	_, ok := body["docs"].([]interface{})
+	if !ok {
+		internalerr := base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
+		return internalerr
+	}
+
 	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range body["docs"].([]interface{}) {
 			var body db.Body
