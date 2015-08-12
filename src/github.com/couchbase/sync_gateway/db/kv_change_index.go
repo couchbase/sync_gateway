@@ -317,6 +317,9 @@ func (b *kvChangeIndex) getOrCreateReader(channelName string) *kvChannelIndex {
 	index := b.getChannelReader(channelName)
 	if index == nil {
 		index = b.newChannelReader(channelName)
+		base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
+	} else {
+		base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
 	}
 	return index
 }
@@ -517,7 +520,6 @@ func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (
 
 func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
 
-	//TODO: calculate the since clock based on the incoming since sequence
 	sinceSequence := NewSequenceClockFromHash(options.Since.String())
 
 	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit

@@ -144,6 +144,7 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) 
 				Key:      cbEvent.Key,
 				Value:    cbEvent.Value,
 				Sequence: cbEvent.Cas,
+				VbNo:     cbEvent.VBucket,
 			}
 		}
 	}()

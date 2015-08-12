@@ -28,6 +28,32 @@ func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
 	return index, cacheBucket
 }
 
+func setupTestDBForChangeIndex(t *testing.T) *Database {
+
+	leakyBucketConfig := base.LeakyBucketConfig{
+		TapFeedVbuckets: true,
+	}
+	vbEnabledBucket := testLeakyBucket(leakyBucketConfig)
+
+	indexBucket, err := ConnectToBucket(base.BucketSpec{
+		Server:     "walrus:",
+		BucketName: "indexBucket"})
+
+	if err != nil {
+		log.Fatal("Couldn't connect to index bucket")
+	}
+	dbcOptions := DatabaseContextOptions{
+		IndexOptions: &ChangeIndexOptions{
+			Bucket: indexBucket,
+		},
+	}
+	context, err := NewDatabaseContext("db", vbEnabledBucket, false, dbcOptions)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
 func channelEntry(vbNo uint16, seq uint64, docid string, revid string, channelNames []string) *LogEntry {
 
 	channelMap := make(channels.ChannelMap, len(channelNames))
@@ -65,6 +91,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 
 	base.LogKeys["DCache+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
+	defer bucket.Close()
 	changeIndex.AddToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
@@ -120,6 +147,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 
 	base.LogKeys["DIndex+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
+	defer bucket.Close()
 	// Add entries across multiple partitions
 	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
@@ -195,8 +223,38 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	bucket.Dump()
 }
 
+func TestChangeIndexChanges(t *testing.T) {
+	base.LogKeys["DIndex+"] = true
+	base.LogKeys["DIndex"] = true
+	db := setupTestDBForChangeIndex(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
+	authenticator.Save(user)
+
+	// Write an entry to the bucket
+	WriteDirectWithKey(db, "1c856b5724dcf4273c3993619900ce7f", []string{}, 1)
+
+	time.Sleep(2000 * time.Millisecond)
+	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.True(t, err == nil)
+	assert.Equals(t, len(changes), 1)
+
+	time.Sleep(2000 * time.Millisecond)
+	// Write a few more entries to the bucket
+	WriteDirectWithKey(db, "12389b182ababd12fff662848edeb908", []string{}, 1)
+	time.Sleep(2000 * time.Millisecond)
+	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.True(t, err == nil)
+	assert.Equals(t, len(changes), 2)
+}
+
 func TestLoadStableSequence(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
+	defer bucket.Close()
 	// Add entries across multiple partitions
 	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
 	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))

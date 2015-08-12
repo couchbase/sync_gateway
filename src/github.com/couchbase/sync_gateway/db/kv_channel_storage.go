@@ -202,6 +202,8 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
+
+	base.LogTo("DIndex+", "[channelStorage.GetChanges] From clock, to clock: %s: %s", PrintClock(fromSeq), PrintClock(toSeq))
 	blocksByVb, blocksByKey, err := b.calculateChangedBlocks(fromSeq, toSeq)
 	if err != nil {
 		return nil, err
@@ -225,6 +227,8 @@ func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock) 
 
 	// Bulk retrieval of individual entries
 	results := b.bulkLoadEntries(entryKeys, entries)
+
+	base.LogTo("DIndex+", "[channelStorage.GetChanges] Returning %d entries...", len(results))
 	return results, nil
 
 }
@@ -282,7 +286,6 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 			wg.Add(1)
 			go func(key string, blockBytes []byte) {
 				defer wg.Done()
-				base.LogTo("DIndex+", "Unmarshalling for key:%s", key)
 				if err := loadedBlocks[key].Unmarshal(blockBytes); err != nil {
 					base.Warn("Error unmarshalling block into map")
 				}
@@ -626,6 +629,8 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 			}
 		}
 	}
+
+	base.LogTo("DIndex+", "Block.GetEntries for block %s - returning %d entries...", b.Key(), len(entries))
 
 	return entries, keySet
 }

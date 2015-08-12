@@ -202,6 +202,11 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 
 	docId := fmt.Sprintf("doc-%v", sequence)
+	WriteDirectWithKey(db, docId, channelArray, sequence)
+}
+
+func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
+
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
@@ -215,7 +220,7 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
+	db.Bucket.Add(key, 0, Body{"_sync": syncData, "key": key})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for

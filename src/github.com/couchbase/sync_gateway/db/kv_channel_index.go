@@ -117,6 +117,7 @@ func (k *kvChannelIndex) updateIndexCount() error {
 func (k *kvChannelIndex) pollForChanges(stableClock SequenceClock, newChannelClock SequenceClock) bool {
 
 	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
+	base.LogTo("DIndex+", "Poll for changes for channel %s", k.channelName)
 	if k.lastPolledClock == nil {
 		k.lastPolledClock = k.clock.copy()
 	}
@@ -181,6 +182,8 @@ func (k *kvChannelIndex) getChanges(since SequenceClock) ([]*LogEntry, error) {
 	var results []*LogEntry
 	// TODO: pass in an option to reuse existing channel clock
 	chanClock, _ := k.loadChannelClock()
+
+	base.LogTo("DIndex+", "[channelIndex.GetChanges] Channel clock for channel %s: %s", k.channelName, PrintClock(chanClock))
 	// If requested clock is later than the channel clock, return empty
 	if since.AllAfter(chanClock) {
 		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")

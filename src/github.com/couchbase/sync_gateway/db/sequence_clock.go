@@ -373,6 +373,17 @@ func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
 	c.clock.UpdateWithClock(updateClock)
 }
 
+// Clock utility functions
+func PrintClock(clock SequenceClock) string {
+	var output string
+	for vbNo, sequence := range clock.Value() {
+		if sequence > 0 {
+			output += fmt.Sprintf("[%d:%d]", vbNo, sequence)
+		}
+	}
+	return output
+}
+
 func getMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
 	minClock := NewSequenceClockImpl()
 	// Need to iterate over all index values instead of using range, to handle map entries in b that
