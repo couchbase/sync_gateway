@@ -81,9 +81,15 @@ func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{},
 
 func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 
+	LogTo("DIndex+", "WriteCas: pre-write cas value is %d", cas)
 	err = bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
+	if err != nil {
+		Warn("Error in WriteCas:", err)
+		return 0, err
+	}
 	// TODO: switch over to go-couchbase version that returns CAS when it's available
 	observeResult, err := bucket.Bucket.Observe(k)
+	LogTo("DIndex+", "WriteCas: post-write cas value is %d", observeResult.Cas)
 	return observeResult.Cas, err
 }
 

@@ -269,6 +269,7 @@ func (k *kvChannelIndex) loadClock() {
 	}
 	k.clock.Unmarshal(data)
 	k.clock.SetCas(cas)
+	base.LogTo("DCache+", "Loaded channel clock: %s", PrintClock(k.clock))
 }
 
 func (k *kvChannelIndex) writeClockCas(updateClock SequenceClock) error {

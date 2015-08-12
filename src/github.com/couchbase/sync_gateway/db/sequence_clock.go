@@ -377,6 +377,7 @@ func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
 // Clock utility functions
 func PrintClock(clock SequenceClock) string {
 	var output string
+	output += fmt.Sprintf("[cas:%d]", clock.Cas())
 	for vbNo, sequence := range clock.Value() {
 		if sequence > 0 {
 			output += fmt.Sprintf("[%d:%d]", vbNo, sequence)
