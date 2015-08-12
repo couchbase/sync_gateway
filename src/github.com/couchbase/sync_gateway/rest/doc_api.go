@@ -153,7 +153,17 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Type", contentType)
 	}
 	if encoding, ok := meta["encoding"].(string); ok {
+		if h.getOptBoolQuery("content_encoding", true) {
 			h.setHeader("Content-Encoding", encoding)
+		} else {
+			// Couchbase Lite wants to download the encoded form directly and store it that way,
+			// but some HTTP client libraries like NSURLConnection will automatically decompress
+			// the HTTP response if it has a Content-Encoding header. As a workaround, allow the
+			// client to add ?content_encoding=false to the request URL to disable setting this
+			// header.
+			h.setHeader("X-Content-Encoding", encoding)
+			h.setHeader("Content-Type", "application/gzip")
+		}
 	}
 	if h.privs == adminPrivs { // #720
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
