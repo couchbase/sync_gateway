@@ -257,6 +257,7 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 			c.value[vb] = sequence
 		}
 	}
+	base.LogTo("DIndex+", "UpdateWithClock completed - updated clock to:%s", PrintClock(c))
 }
 
 // Synchronized Sequence Clock - should be used in shared usage scenarios

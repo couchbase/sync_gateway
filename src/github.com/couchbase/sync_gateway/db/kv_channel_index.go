@@ -267,20 +267,27 @@ func (k *kvChannelIndex) loadClock() {
 func (k *kvChannelIndex) writeClockCas(updateClock SequenceClock) error {
 	// Initial set, for the first cas update attempt
 	k.clock.UpdateWithClock(updateClock)
+	base.LogTo("DIndex+", "About to write updated clock for channel %s:%s", k.channelName, PrintClock(k.clock))
 	value, err := k.clock.Marshal()
 	if err != nil {
 		return err
 	}
 	casOut, err := writeCasRaw(k.indexBucket, getChannelClockKey(k.channelName), value, k.clock.Cas(), func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
+
+		base.LogTo("DIndex+", "CAS fail - reapplying changes for channel %s", k.channelName)
 		err = k.clock.Unmarshal(value)
 		if err != nil {
+			base.Warn("Error unmarshalling clock during update", err)
 			return nil, err
 		}
 		k.clock.UpdateWithClock(updateClock)
+		base.LogTo("DIndex+", "Reattempting clock write for channel %s: %s", k.channelName, PrintClock(k.clock))
 		return k.clock.Marshal()
 	})
+
 	k.clock.SetCas(casOut)
+	base.LogTo("DIndex+", "Clock update complete for channel %s", k.channelName)
 	return nil
 }
 

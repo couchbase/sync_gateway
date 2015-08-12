@@ -948,11 +948,12 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, callb
 	for {
 		currentValue, cas, err := bucket.GetRaw(key)
 		if err != nil {
-			log.Println("writeCasRaw: GetRaw failed:", err)
+			base.Warn("WriteCasRaw got error when calling GetRaw:", err)
 			return 0, err
 		}
 		currentValue, err = callback(currentValue)
 		if err != nil {
+			base.Warn("WriteCasRaw got error when calling callback:", err)
 			return 0, err
 		}
 		casOut, err := bucket.WriteCas(key, 0, 0, cas, currentValue, sgbucket.Raw)
@@ -961,6 +962,7 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, callb
 			log.Println("CAS error - retrying")
 		} else {
 			// Success - return the new cas value
+			base.LogTo("DIndex+", "Successful cas write for key %s", key)
 			return casOut, nil
 		}
 	}
