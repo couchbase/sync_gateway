@@ -350,11 +350,11 @@ func TestMaxSessionTtl(t *testing.T) {
 	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592000}`)
 	assertStatus(t, response, 200)
 
-	layout := "2006-01-02T15:04:05.999999999-07:00"
+	layout := "2006-01-02T15:04:05.999999999"
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	expires, err := time.Parse(layout,body["expires"].(string))
+	expires, err := time.Parse(layout,body["expires"].(string)[:29])
 	assert.Equals(t, err, nil)
 
 	//get a session with a ttl value orders of magnitude greater than max value allowed
@@ -363,7 +363,7 @@ func TestMaxSessionTtl(t *testing.T) {
 
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	expires2, err := time.Parse(layout,body["expires"].(string))
+	expires2, err := time.Parse(layout,body["expires"].(string)[:29])
 	assert.Equals(t, err, nil)
 
 	//Allow a ten second drift between the expires dates, to pass test on slow servers
