@@ -324,6 +324,55 @@ func TestGuestUser(t *testing.T) {
 	assert.Equals(t, user.Disabled(), true)
 }
 
+//The max session ttl that can be passed to _session is 2592000 (30 days), any value over that will
+//be truncated to 2592000
+func TestMaxSessionTtl(t *testing.T) {
+	var rt restTester
+	a := auth.NewAuthenticator(rt.bucket(), nil)
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	user, err = a.GetUser("")
+	assert.Equals(t, err, nil)
+	assert.True(t, user.Disabled())
+
+	response := rt.sendRequest("PUT", "/db/doc", `{"hi": "there"}`)
+	assertStatus(t, response, 401)
+
+	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
+	a.Save(user)
+
+
+	//get a session with the maximum ttl value
+	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592000}`)
+	assertStatus(t, response, 200)
+
+	layout := "2006-01-02T15:04:05.999999999-07:00"
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	expires, err := time.Parse(layout,body["expires"].(string))
+	assert.Equals(t, err, nil)
+
+	//get a session with a ttl value orders of magnitude greater than max value allowed
+	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":25920000000}`)
+	assertStatus(t, response, 200)
+
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	expires2, err := time.Parse(layout,body["expires"].(string))
+	assert.Equals(t, err, nil)
+
+	//Allow a ten second drift between the expires dates, to pass test on slow servers
+	acceptableTimeDelta := time.Duration(10) * time.Second
+
+	//The difference between the two expires dates should be less than the acceptable time delta
+	assert.True(t, expires2.Sub(expires) < acceptableTimeDelta)
+}
+
 func TestSessionExtension(t *testing.T) {
 	var rt restTester
 	a := auth.NewAuthenticator(rt.bucket(), nil)
@@ -337,7 +386,6 @@ func TestSessionExtension(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.True(t, user.Disabled())
 
-	log.Printf("hello")
 	response := rt.sendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
 
