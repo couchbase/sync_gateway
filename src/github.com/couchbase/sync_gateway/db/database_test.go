@@ -43,9 +43,9 @@ func testBucket() base.Bucket {
 	return bucket
 }
 
-func testLeakyBucket() base.Bucket {
+func testLeakyBucket(options base.LeakyBucketConfig) base.Bucket {
 	testBucket := testBucket()
-	leakyBucket := base.NewLeakyBucket(testBucket)
+	leakyBucket := base.NewLeakyBucket(testBucket, options)
 	return leakyBucket
 }
 
@@ -55,6 +55,14 @@ func setupTestDB(t *testing.T) *Database {
 
 func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 	context, err := NewDatabaseContext("db", testBucket(), false, options, RevisionCacheCapacity)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, options, RevisionCacheCapacity)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -749,7 +757,10 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 }
 
 func TestIncrRetry(t *testing.T) {
-	leakyBucket := testLeakyBucket()
+	leakyBucketConfig := base.LeakyBucketConfig{
+		IncrTemporaryFail: true,
+	}
+	leakyBucket := testLeakyBucket(leakyBucketConfig)
 	defer leakyBucket.Close()
 	seqAllocator, _ := newSequenceAllocator(leakyBucket)
 	err := seqAllocator.reserveSequences(1)
