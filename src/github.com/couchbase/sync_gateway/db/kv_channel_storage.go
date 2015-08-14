@@ -29,10 +29,10 @@ var byteCacheBlockCapacity = uint64(10000)
 type ChannelStorage interface {
 
 	// AddEntrySet adds a set of entries to the channel index
-	AddEntrySet(entries []*LogEntry) (clockUpdates SequenceClock, err error)
+	AddEntrySet(entries []*LogEntry) (clockUpdates base.SequenceClock, err error)
 
 	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
-	GetChanges(fromSeq SequenceClock, channelClock SequenceClock) ([]*LogEntry, error)
+	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock) ([]*LogEntry, error)
 
 	// If channel storage implementation uses separate storage for log entries and channel presence,
 	// WriteLogEntry and ReadLogEntry can be used to read/write.  Useful when changeIndex wants to
@@ -104,7 +104,7 @@ func (b *BitFlagStorage) readIndexEntryInto(vbNo uint16, sequence uint64, entry 
 }
 
 // Adds a set
-func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates SequenceClock, err error) {
+func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.SequenceClock, err error) {
 
 	// Update the sequences in the appropriate cache block
 	if len(entries) == 0 {
@@ -118,7 +118,7 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates Sequence
 	//       same block as the first entry in the list, but this would force sequential
 	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
 	blockSets := make(BlockSet)
-	clockUpdates = NewSequenceClockImpl()
+	clockUpdates = base.NewSequenceClockImpl()
 	for _, entry := range entries {
 		// Update the sequence in the appropriate cache block
 		base.LogTo("DCache+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.isRemoved())
@@ -199,11 +199,11 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 	return nil
 }
 
-func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock) ([]*LogEntry, error) {
+func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
 
-	base.LogTo("DIndex+", "[channelStorage.GetChanges] From clock, to clock: %s: %s", PrintClock(fromSeq), PrintClock(toSeq))
+	base.LogTo("DIndex+", "[channelStorage.GetChanges] From clock, to clock: %s: %s", base.PrintClock(fromSeq), base.PrintClock(toSeq))
 	blocksByVb, blocksByKey, err := b.calculateChangedBlocks(fromSeq, toSeq)
 	if err != nil {
 		return nil, err
@@ -237,7 +237,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq SequenceClock, toSeq SequenceClock) 
 //   blocksByVb stores which blocks need to be processed for each vbucket.  Multiple vb map
 //   values can point to the same IndexBlock (i.e. when those vbs share a partition).
 //   blocksByKey stores all IndexBlocks to be retrieved, indexed by block key - no duplicates
-func (b *BitFlagStorage) calculateChangedBlocks(fromSeq SequenceClock, channelClock SequenceClock) (blocksByVb map[uint16][]IndexBlock, blocksByKey map[string]IndexBlock, err error) {
+func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, channelClock base.SequenceClock) (blocksByVb map[uint16][]IndexBlock, blocksByKey map[string]IndexBlock, err error) {
 
 	blocksByVb = make(map[uint16][]IndexBlock)
 	blocksByKey = make(map[string]IndexBlock, 1)

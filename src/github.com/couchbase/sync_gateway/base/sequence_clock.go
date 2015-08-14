@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package db
+package base
 
 import (
 	"bytes"
@@ -16,8 +16,11 @@ import (
 	"log"
 	"strconv"
 	"sync"
+)
 
-	"github.com/couchbase/sync_gateway/base"
+const (
+	KMaxVbNo           = 1024 // TODO: load from cluster config
+	KStableSequenceKey = "_cache_stableSeq"
 )
 
 type SequenceClock interface {
@@ -48,7 +51,7 @@ type SequenceClockImpl struct {
 func NewSequenceClockImpl() *SequenceClockImpl {
 	// Initialize empty clock
 	clock := &SequenceClockImpl{
-		value: make(map[uint16]uint64, kMaxVbNo),
+		value: make(map[uint16]uint64, KMaxVbNo),
 	}
 	return clock
 }
@@ -83,7 +86,7 @@ func (c *SequenceClockImpl) SetMaxSequence(vbNo uint16, vbSequence uint64) {
 	if c.value[vbNo] <= vbSequence {
 		c.value[vbNo] = vbSequence
 	} else {
-		base.Warn("Attempted to lower sequence value when calling SetMaxSequence")
+		Warn("Attempted to lower sequence value when calling SetMaxSequence")
 	}
 }
 
@@ -209,7 +212,7 @@ func (c *SequenceClockImpl) AnyAfter(other SequenceClock) bool {
 }
 
 // Deep-copies a SequenceClock
-func (c *SequenceClockImpl) copy() SequenceClock {
+func (c *SequenceClockImpl) Copy() SequenceClock {
 	result := &SequenceClockImpl{}
 	for key, value := range c.value {
 		result.value[key] = value
@@ -257,101 +260,101 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 			c.value[vb] = sequence
 		}
 	}
-	base.LogTo("DIndex+", "UpdateWithClock completed - updated clock to:%s", PrintClock(c))
+	LogTo("DIndex+", "UpdateWithClock completed - updated clock to:%s", PrintClock(c))
 }
 
 // Synchronized Sequence Clock - should be used in shared usage scenarios
 type SyncSequenceClock struct {
-	clock *SequenceClockImpl
+	Clock *SequenceClockImpl
 	lock  sync.RWMutex
 }
 
 func NewSyncSequenceClock() *SyncSequenceClock {
 	// Initialize empty clock
 	syncClock := SyncSequenceClock{}
-	syncClock.clock = NewSequenceClockImpl()
+	syncClock.Clock = NewSequenceClockImpl()
 	return &syncClock
 }
 
 func (c *SyncSequenceClock) Cas() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.Cas()
+	return c.Clock.Cas()
 }
 
 func (c *SyncSequenceClock) SetCas(cas uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.clock.SetCas(cas)
+	c.Clock.SetCas(cas)
 }
 
 func (c *SyncSequenceClock) SetSequence(vbNo uint16, sequence uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.clock.SetSequence(vbNo, sequence)
+	c.Clock.SetSequence(vbNo, sequence)
 }
 
 func (c *SyncSequenceClock) SetMaxSequence(vbNo uint16, vbSequence uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.clock.SetMaxSequence(vbNo, vbSequence)
+	c.Clock.SetMaxSequence(vbNo, vbSequence)
 }
 func (c *SyncSequenceClock) GetSequence(vbNo uint16) (sequence uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.clock.GetSequence(vbNo)
+	return c.Clock.GetSequence(vbNo)
 }
 
 func (c *SyncSequenceClock) HashedValue() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.HashedValue()
+	return c.Clock.HashedValue()
 }
 
 func (c *SyncSequenceClock) AllAfter(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.AllAfter(other)
+	return c.Clock.AllAfter(other)
 }
 
 func (c *SyncSequenceClock) AllBefore(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.AllAfter(other)
+	return c.Clock.AllAfter(other)
 }
 
 func (c *SyncSequenceClock) AnyAfter(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.AllAfter(other)
+	return c.Clock.AllAfter(other)
 }
 
 func (c *SyncSequenceClock) AnyBefore(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.AllAfter(other)
+	return c.Clock.AllAfter(other)
 }
 
 func (c *SyncSequenceClock) Equals(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.Equals(other)
+	return c.Clock.Equals(other)
 }
 
 // Copies a channel clock
 func (c *SyncSequenceClock) clone() *SyncSequenceClock {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	clockCopy := c.clock.clone()
+	clockCopy := c.Clock.clone()
 	return &SyncSequenceClock{
-		clock: &clockCopy,
+		Clock: &clockCopy,
 	}
 }
 
 func (c *SyncSequenceClock) Value() map[uint16]uint64 {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.clock.Value()
+	return c.Clock.Value()
 }
 
 // TODO: possibly replace with something more intelligent than gob encode, to take advantage of known
@@ -359,19 +362,19 @@ func (c *SyncSequenceClock) Value() map[uint16]uint64 {
 func (c *SyncSequenceClock) Marshal() ([]byte, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.clock.Marshal()
+	return c.Clock.Marshal()
 }
 
 func (c *SyncSequenceClock) Unmarshal(value []byte) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.clock.Unmarshal(value)
+	return c.Clock.Unmarshal(value)
 }
 
 func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.clock.UpdateWithClock(updateClock)
+	c.Clock.UpdateWithClock(updateClock)
 }
 
 // Clock utility functions
@@ -386,11 +389,11 @@ func PrintClock(clock SequenceClock) string {
 	return output
 }
 
-func getMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
+func GetMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
 	minClock := NewSequenceClockImpl()
 	// Need to iterate over all index values instead of using range, to handle map entries in b that
 	// are not in a (and vice versa)
-	for i := uint16(0); i < kMaxVbNo; i++ {
+	for i := uint16(0); i < KMaxVbNo; i++ {
 		aValue := a.GetSequence(i)
 		bValue := b.GetSequence(i)
 		if aValue < bValue {

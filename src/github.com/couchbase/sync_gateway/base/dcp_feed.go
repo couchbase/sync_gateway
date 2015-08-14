@@ -45,11 +45,26 @@ type dcpAuth struct {
 // Reviewed with Steve and he said that the auth handling in couchbase server is undergoing changes
 // as part of Sherlock, so we may need to revisit once they've stabilized on an approach.
 func (a dcpAuth) GetCredentials() (string, string, string) {
-	if a.Username == "" {
-		return a.BucketName, "", a.BucketName
-	} else {
-		return a.Username, a.Password, a.BucketName
+
+	var (
+		username string
+		password string
+	)
+
+	// as long as it's not the default bucket, if the username is empty
+	// then set the username to the bucketname.  (if it's the default bucket, the
+	// username should just be empty rather than "default")
+	if a.Username == "" && a.BucketName != "default" {
+		username = a.BucketName
 	}
+
+	// if the username is empty, then the password should be empty too
+	if username == "" {
+		password = ""
+	}
+
+	return username, password, a.BucketName
+
 }
 
 type Receiver interface {

@@ -25,10 +25,9 @@ import (
 )
 
 const (
-	kCachePrefix       = "_cache"
-	kStableSequenceKey = "_cache_stableSeq"
-	maxCacheUpdate     = 500
-	minCacheUpdate     = 1
+	kCachePrefix   = "_cache"
+	maxCacheUpdate = 500
+	minCacheUpdate = 1
 )
 
 type kvChangeIndex struct {
@@ -42,7 +41,7 @@ type kvChangeIndex struct {
 	channelIndexReaderLock sync.RWMutex               // Coordinates read access to channel index reader map
 	onChange               func(base.Set)             // Client callback that notifies of channel changes
 	pending                chan *LogEntry             // Incoming changes, pending indexing
-	stableSequence         *SyncSequenceClock         // Stabfle sequence in index
+	stableSequence         *base.SyncSequenceClock    // Stabfle sequence in index
 	logsDisabled           bool                       // If true, ignore incoming tap changes
 }
 
@@ -122,31 +121,19 @@ func (k *kvChangeIndex) GetStableSequence(docID string) SequenceID {
 }
 
 // Returns the stable sequence clock for the index
-func (k *kvChangeIndex) getStableClock() SequenceClock {
-	return k.stableSequence.clock
+func (k *kvChangeIndex) getStableClock() base.SequenceClock {
+	return k.stableSequence.Clock
 }
 
 func (k *kvChangeIndex) initStableClock() {
-	k.stableSequence = NewSyncSequenceClock()
-	value, cas, err := k.indexBucket.GetRaw(kStableSequenceKey)
+	k.stableSequence = base.NewSyncSequenceClock()
+	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
 	if err != nil {
 		base.Warn("Stable sequence not found in index - resetting to 0")
 		return
 	}
 	k.stableSequence.Unmarshal(value)
 	k.stableSequence.SetCas(cas)
-}
-
-func LoadStableSequence(bucket base.Bucket) SequenceClock {
-	stableSequence := NewSequenceClockImpl()
-	value, cas, err := bucket.GetRaw(kStableSequenceKey)
-	if err != nil {
-		base.Warn("Stable sequence not found in index - resetting to 0")
-		return stableSequence
-	}
-	stableSequence.Unmarshal(value)
-	stableSequence.SetCas(cas)
-	return stableSequence
 }
 
 func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
@@ -371,7 +358,7 @@ func (c *kvChangeIndex) indexPending() {
 		// Wait group tracks when the current buffer has been completely processed
 		var wg sync.WaitGroup
 		channelSets := make(map[ChannelPartition][]*LogEntry)
-		updatedSequences := NewSequenceClockImpl()
+		updatedSequences := base.NewSequenceClockImpl()
 
 		// Generic channelStorage for log entry storage
 		channelStorage := NewChannelStorage(c.indexBucket, "", c.indexPartitions)
@@ -448,7 +435,7 @@ func (k *kvChangeIndex) pollReaders() {
 
 	// Build the set of clock keys to retrieve.  Stable sequence, plus one per channel reader
 	keySet := make([]string, len(k.channelIndexReaders))
-	keySet[0] = kStableSequenceKey
+	keySet[0] = base.KStableSequenceKey
 	index := 1
 	for _, reader := range k.channelIndexReaders {
 		keySet[index] = getChannelClockKey(reader.channelName)
@@ -459,7 +446,7 @@ func (k *kvChangeIndex) pollReaders() {
 		base.Warn("Error retrieving channel clocks:", err)
 	}
 
-	stableClock, err := NewSequenceClockForBytes(bulkGetResults[kStableSequenceKey])
+	stableClock, err := base.NewSequenceClockForBytes(bulkGetResults[base.KStableSequenceKey])
 	if err != nil {
 		base.Warn("Error loading stable clock - cancelling polling:", err)
 	}
@@ -471,7 +458,7 @@ func (k *kvChangeIndex) pollReaders() {
 		wg.Add(1)
 		go func(reader *kvChannelIndex) {
 			clockKey := getChannelClockKey(reader.channelName)
-			newChannelClock, err := NewSequenceClockForBytes(bulkGetResults[clockKey])
+			newChannelClock, err := base.NewSequenceClockForBytes(bulkGetResults[clockKey])
 			if err != nil {
 				base.Warn("Error retrieving channel clock - skipping polling for channel %s: %v", reader.channelName, err)
 			} else {
@@ -520,7 +507,7 @@ func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (
 
 func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
 
-	sinceSequence := NewSequenceClockFromHash(options.Since.String())
+	sinceSequence := base.NewSequenceClockFromHash(options.Since.String())
 
 	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
 	changes, err := b.getOrCreateReader(channelName).getChanges(sinceSequence)
@@ -566,7 +553,7 @@ func (b *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 	return nil
 }
 
-func (k *kvChangeIndex) updateStableSequence(updates SequenceClock) error {
+func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 
 	// Initial set, for the first cas update attempt
 	k.stableSequence.UpdateWithClock(updates)
@@ -574,7 +561,7 @@ func (k *kvChangeIndex) updateStableSequence(updates SequenceClock) error {
 	if err != nil {
 		return err
 	}
-	casOut, err := writeCasRaw(k.indexBucket, kStableSequenceKey, value, k.stableSequence.Cas(), func(value []byte) (updatedValue []byte, err error) {
+	casOut, err := writeCasRaw(k.indexBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		err = k.stableSequence.Unmarshal(value)
 		if err != nil {

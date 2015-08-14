@@ -10,12 +10,14 @@
 package base
 
 import (
-	"strconv"
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -123,6 +125,64 @@ func ToInt64(value interface{}) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (string, error) {
+
+	// parse url and reconstruct it piece by piece
+	u, err := url.Parse(serverUrl)
+	if err != nil {
+		return "", err
+	}
+
+	userPass := bytes.Buffer{}
+	addedUsername := false
+
+	// do we have a username?  if so add it
+	if username != "" {
+		userPass.WriteString(username)
+		addedUsername = true
+	} else {
+		// do we have a bucket name?  if so, use that as the username
+		if bucketname != "" {
+			userPass.WriteString(bucketname)
+			addedUsername = true
+		}
+	}
+
+	if addedUsername {
+		if password != "" {
+			userPass.WriteString(":")
+			userPass.WriteString(password)
+		}
+
+	}
+
+	if addedUsername {
+		return fmt.Sprintf(
+			"%v://%v@%v%v",
+			u.Scheme,
+			userPass.String(),
+			u.Host,
+			u.Path,
+		), nil
+	} else {
+		// just return the original
+		return serverUrl, nil
+	}
+
+}
+
+func LoadStableSequence(bucket Bucket) SequenceClock {
+	stableSequence := NewSequenceClockImpl()
+	value, cas, err := bucket.GetRaw(KStableSequenceKey)
+	if err != nil {
+		Warn("Stable sequence not found in index - resetting to 0")
+		return stableSequence
+	}
+	stableSequence.Unmarshal(value)
+	stableSequence.SetCas(cas)
+	return stableSequence
 }
 
 // IntMax is an expvar.Value that tracks the maximum value it's given.

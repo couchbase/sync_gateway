@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbaselabs/cbgt"
 	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sg-bucket"
@@ -45,6 +46,7 @@ type DatabaseContext struct {
 	changeCache        ChangeIndex             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
+	cbgtManager        *cbgt.Manager           // The cbgt manager for sharded DCP stream
 }
 
 type DatabaseContextOptions struct {

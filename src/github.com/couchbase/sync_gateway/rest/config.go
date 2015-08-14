@@ -96,6 +96,7 @@ type DbConfig struct {
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
 	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	FeedParams         *base.FeedParams               `json:"feed_params,omitempty"`          // Feed params.  Currently only used for CBGT
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitEmpty"`        // Channel index settings
@@ -217,6 +218,29 @@ func (dbConfig *DbConfig) setup(name string) error {
 	return err
 }
 
+func (dbConfig DbConfig) validate() error {
+
+	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
+	if dbConfig.ChannelIndex != nil {
+		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
+			msg := "ChannelIndex declared in config, but the FeedType is %v " +
+				"rather than expected value of DCPSHARD"
+			return fmt.Errorf(msg)
+		}
+	}
+
+	// if the feed type is DCPSHARD, then there must be a ChannelIndex
+	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
+		if dbConfig.ChannelIndex == nil {
+			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
+			return fmt.Errorf(msg)
+		}
+	}
+
+	return nil
+
+}
+
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 	return dbConfig.Username, dbConfig.Password, *dbConfig.Bucket
@@ -242,9 +266,10 @@ func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
 	}
 
 	// Validation:
-	for name, dbConfig := range config.Databases {
-		dbConfig.setup(name)
+	if err := config.setupAndValidateDatabases(); err != nil {
+		return nil, err
 	}
+
 	return config, nil
 }
 
@@ -293,10 +318,21 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 	}
 
 	// Validation:
-	for name, dbConfig := range config.Databases {
-		dbConfig.setup(name)
+	if err := config.setupAndValidateDatabases(); err != nil {
+		return nil, err
 	}
 	return config, nil
+
+}
+
+func (config *ServerConfig) setupAndValidateDatabases() error {
+	for name, dbConfig := range config.Databases {
+		dbConfig.setup(name)
+		if err := dbConfig.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
