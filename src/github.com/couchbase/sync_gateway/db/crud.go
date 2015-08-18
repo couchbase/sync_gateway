@@ -956,6 +956,10 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, callb
 			base.Warn("WriteCasRaw got error when calling callback:", err)
 			return 0, err
 		}
+		if len(currentValue) == 0 {
+			// callback returned empty value - cancel write
+			return cas, nil
+		}
 		casOut, err := bucket.WriteCas(key, 0, 0, cas, currentValue, sgbucket.Raw)
 		if err != nil {
 			// CAS failure - reload block for another try

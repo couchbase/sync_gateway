@@ -78,6 +78,11 @@ func NewSequenceClockForBytes(bytes []byte) (*SequenceClockImpl, error) {
 	return clock, err
 }
 
+func (c *SequenceClockImpl) Init(value map[uint16]uint64, hash string) {
+	c.value = value
+	c.hashedValue = hash
+}
+
 func (c *SequenceClockImpl) SetSequence(vbNo uint16, vbSequence uint64) {
 	c.value[vbNo] = vbSequence
 }
