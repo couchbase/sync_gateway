@@ -934,11 +934,11 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	return
 }
 
-func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
+func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, exp int, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
 
 	// If there's an incoming value, attempt to write with that first
 	if len(value) > 0 {
-		casOut, err := bucket.WriteCas(key, 0, 0, cas, value, sgbucket.Raw)
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, sgbucket.Raw)
 		if err == nil {
 			return casOut, nil
 		}
@@ -960,7 +960,7 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, callb
 			// callback returned empty value - cancel write
 			return cas, nil
 		}
-		casOut, err := bucket.WriteCas(key, 0, 0, cas, currentValue, sgbucket.Raw)
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, currentValue, sgbucket.Raw)
 		if err != nil {
 			// CAS failure - reload block for another try
 			log.Println("CAS error - retrying")

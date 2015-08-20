@@ -14,6 +14,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -21,12 +22,14 @@ import (
 )
 
 const kHashPrefix = "_sequence:"
+const kDefaultHashExpiry = 15
 
 type sequenceHasher struct {
-	bucket    base.Bucket // Bucket to store hashed instances
-	exp       uint8       // Range of hash values is from 0 to 2^exp
-	mod       uint64      // 2^exp.  Stored during init to reduce computation during hash.
-	modMinus1 uint64      // 2^exp - 1.  Stored during init to reduce computation during hash.
+	bucket     base.Bucket // Bucket to store hashed instances
+	exp        uint8       // Range of hash values is from 0 to 2^exp
+	mod        uint64      // 2^exp.  Stored during init to reduce computation during hash.
+	modMinus1  uint64      // 2^exp - 1.  Stored during init to reduce computation during hash.
+	hashExpiry int
 }
 
 type sequenceHash struct {
@@ -43,15 +46,22 @@ func (s *sequenceHash) String() string {
 }
 
 // Creates a new sequenceHasher using 2^exp as mod.
-func NewSequenceHasher(exp uint8, hashBucket base.Bucket) (*sequenceHasher, error) {
-	if exp > 63 {
+func NewSequenceHasher(exponent uint8, expiration *int, hashBucket base.Bucket) (*sequenceHasher, error) {
+	if exponent > 63 {
 		return nil, errors.New("Power for sequence hash must be less than 63")
 	}
+	expireTime := kDefaultHashExpiry
+	if expiration != nil {
+		expireTime = *expiration
+		log.Println("Creating with expiry:", expireTime)
+	}
+
 	return &sequenceHasher{
-		bucket:    hashBucket,
-		exp:       exp,
-		mod:       uint64(1 << exp),   // 2^exp
-		modMinus1: uint64(1<<exp - 1), // 2^exp - 1
+		bucket:     hashBucket,
+		exp:        exponent,
+		mod:        uint64(1 << exponent),   // 2^exp
+		modMinus1:  uint64(1<<exponent - 1), // 2^exp - 1
+		hashExpiry: expireTime,
 	}, nil
 
 }
@@ -99,7 +109,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, err = writeCasRaw(s.bucket, key, initialValue, storedClocks.cas, func(value []byte) (updatedValue []byte, err error) {
+	_, err = writeCasRaw(s.bucket, key, initialValue, storedClocks.cas, s.hashExpiry, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		base.LogTo("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", key)
 		err = storedClocks.Unmarshal(value)
@@ -134,7 +144,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 
 func (s *sequenceHasher) GetClock(sequence string) base.SequenceClock {
 
-	var clock *base.SequenceClockImpl
+	clock := base.NewSequenceClockImpl()
 	var err error
 	var seqHash sequenceHash
 	components := strings.Split(sequence, "-")
@@ -165,7 +175,7 @@ func (s *sequenceHasher) GetClock(sequence string) base.SequenceClock {
 	}
 
 	if uint16(len(stored.Sequences)) <= seqHash.collisionIndex {
-		base.Warn("Index %d not found in stored hash for key [%s], returning zero sequence", seqHash.collisionIndex, seqHash.hashValue)
+		base.Warn("Stored hash not found for sequence [%s], returning zero clock", sequence)
 		return clock
 	}
 	clock = base.NewSequenceClockImpl()
@@ -180,7 +190,8 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (storedClocks, error) {
 	key := kHashPrefix + strconv.FormatUint(hashValue, 10)
 
 	// TODO: update to GetAndTouch - https://github.com/couchbase/go-couchbase/issues/60
-	bytes, cas, err := s.bucket.GetRaw(key)
+	bytes, cas, err := s.bucket.GetAndTouchRaw(key, s.hashExpiry)
+	//bytes, cas, err := s.bucket.GetRaw(key)
 
 	if err != nil {
 		// Assume no clocks stored for this string

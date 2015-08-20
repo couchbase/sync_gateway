@@ -1,28 +1,35 @@
 package db
 
 import (
+	"log"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
 
-func testSequenceHasher(size uint8) (*sequenceHasher, error) {
+func testSequenceHasher(size uint8, expiry int) (*sequenceHasher, error) {
 
 	hashBucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: "hashBucket"})
+		BucketName: "hash_bucket"})
+	/*hashBucket, err := ConnectToBucket(base.BucketSpec{
+	Server:     "http://localhost:8091",
+	BucketName: "hash_bucket"})
+	*/
+
 	if err != nil {
 		return nil, err
 	}
-	return NewSequenceHasher(size, hashBucket)
+	return NewSequenceHasher(size, &expiry, hashBucket)
 
 }
 
 func TestHashCalculation(t *testing.T) {
 	// Create a hasher with a small range (0-256) for testing
-	seqHasher, err := testSequenceHasher(8)
+	seqHasher, err := testSequenceHasher(8, 0)
 	defer seqHasher.bucket.Close()
 	assertNoError(t, err, "Error creating new sequence hasher")
 	clock := base.NewSequenceClockImpl()
@@ -41,7 +48,7 @@ func TestHashCalculation(t *testing.T) {
 
 func TestHashStorage(t *testing.T) {
 	// Create a hasher with a small range (0-256) for testing
-	seqHasher, err := testSequenceHasher(8)
+	seqHasher, err := testSequenceHasher(8, 0)
 	defer seqHasher.bucket.Close()
 	assertNoError(t, err, "Error creating new sequence hasher")
 
@@ -75,8 +82,8 @@ func TestHashStorage(t *testing.T) {
 	assertNoError(t, err, "Error getting hash")
 	assert.Equals(t, hashValue, "14-1")
 
-	// Simulate multiple processes requesting a hash for the same clock concurrently - ensures cas write checks for
-	// updates before writing
+	// Simulate multiple processes requesting a hash for the same clock concurrently - ensures cas write checks
+	// whether clock has already been added before writing
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
@@ -94,5 +101,40 @@ func TestHashStorage(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+
+	// Retrieve non-existent hash
+	missingClock := seqHasher.GetClock("1234")
+	assertNoError(t, err, "Error getting hash")
+	assert.Equals(t, missingClock.GetSequence(50), uint64(0))
+	assert.Equals(t, missingClock.GetSequence(80), uint64(0))
+	assert.Equals(t, missingClock.GetSequence(150), uint64(0))
+}
+
+// Tests hash expiry.  Requires a real couchbase server bucket - walrus doesn't support expiry yet
+func CouchbaseOnlyTestHashExpiry(t *testing.T) {
+	// Create a hasher with a small range (0-256) and short expiry for testing
+	seqHasher, err := testSequenceHasher(8, 5)
+	defer seqHasher.bucket.Close()
+	assertNoError(t, err, "Error creating new sequence hasher")
+
+	// Add first hash entry
+	clock := base.NewSequenceClockImpl()
+	clock.SetSequence(50, 100)
+	clock.SetSequence(80, 20)
+	clock.SetSequence(150, 150)
+	hashValue, err := seqHasher.GetHash(clock)
+	assertNoError(t, err, "Error creating hash")
+	// Validate that expiry is reset every time sequence for hash is requested.
+	for i := 0; i < 20; i++ {
+		clockBack := seqHasher.GetClock(hashValue)
+		assert.Equals(t, clockBack.GetSequence(50), uint64(100))
+		time.Sleep(2 * time.Second)
+	}
+
+	// Validate it disappears after expiry time when no active requests
+	time.Sleep(10 * time.Second)
+	clockBack := seqHasher.GetClock(hashValue)
+	log.Println("Got clockback:", clockBack)
+	assert.Equals(t, clockBack.GetSequence(50), uint64(0))
 
 }

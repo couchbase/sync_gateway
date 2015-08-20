@@ -561,7 +561,7 @@ func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 	if err != nil {
 		return err
 	}
-	casOut, err := writeCasRaw(k.indexBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), func(value []byte) (updatedValue []byte, err error) {
+	casOut, err := writeCasRaw(k.indexBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		err = k.stableSequence.Unmarshal(value)
 		if err != nil {

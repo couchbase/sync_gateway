@@ -279,7 +279,7 @@ func (k *kvChannelIndex) writeClockCas(updateClock base.SequenceClock) error {
 	if err != nil {
 		return err
 	}
-	casOut, err := writeCasRaw(k.indexBucket, getChannelClockKey(k.channelName), value, k.clock.Cas(), func(value []byte) (updatedValue []byte, err error) {
+	casOut, err := writeCasRaw(k.indexBucket, getChannelClockKey(k.channelName), value, k.clock.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 
 		base.LogTo("DIndex+", "CAS fail - reapplying changes for channel %s", k.channelName)
