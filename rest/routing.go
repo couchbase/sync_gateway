@@ -108,6 +108,8 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs,
 		(*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
 
+	dbr.Handle("/_blipsync", makeHandler(sc, privs, (*handler).handleBLIPSync)).Methods("GET")
+
 	return r, dbr
 }
 
