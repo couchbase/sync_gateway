@@ -177,7 +177,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 // Looks up a User by email address.
 func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	var info userByEmailInfo
-	err := auth.bucket.Get(docIDForUserEmail(email), &info)
+	_, err := auth.bucket.Get(docIDForUserEmail(email), &info)
 	if base.IsDocNotFoundError(err) {
 		return nil, nil
 	} else if err != nil {

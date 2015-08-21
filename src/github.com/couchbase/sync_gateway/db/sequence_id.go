@@ -106,18 +106,15 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		var raw string
-		err := json.Unmarshal(data, &raw)
-		if err == nil {
-			*s, err = ParseSequenceID(string(raw))
-		}
-		return err
+	var js string
+	err := json.Unmarshal(data, &js); if err != nil {
+		*s, err = ParseSequenceID(string(data))
 	} else {
-		s.TriggeredBy = 0
-		return json.Unmarshal(data, &s.Seq)
+		*s, err = ParseSequenceID(js)
 	}
+	return err
 }
+
 
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 {

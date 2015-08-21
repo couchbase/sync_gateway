@@ -35,7 +35,7 @@ var DefaultPool = "default"
 var config *ServerConfig
 
 const (
-	DefaultMaxCouchbaseConnections         = 16
+	DefaultMaxCouchbaseConnections = 16
 	DefaultMaxCouchbaseOverflowConnections = 0
 
 	// Default value of ServerConfig.MaxIncomingConnections
@@ -93,6 +93,7 @@ type DbConfig struct {
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
+	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -439,7 +440,7 @@ func setMaxFileDescriptors(maxP *uint64) {
 	if maxP != nil {
 		maxFDs = *maxP
 	}
-	_ , err := base.SetMaxFileDescriptors(maxFDs)
+	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
 		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 	}

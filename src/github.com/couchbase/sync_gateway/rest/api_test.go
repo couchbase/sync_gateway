@@ -302,12 +302,51 @@ func TestDocEtag(t *testing.T) {
 	response = rt.sendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 
 	//Validate Etag returned from retrieving an attachment
 	assert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
 
+}
+
+// Add and retrieve an attachment, including a subrange
+func TestDocAttachment(t *testing.T) {
+	var rt restTester
+
+	response := rt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid := body["rev"].(string)
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	assert.Equals(t, response.Header().Get("Content-Length"), "30")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+
+	// retrieve subrange
+	response = rt.sendRequestWithHeaders("GET", "/db/doc/attach1", "", map[string]string{"Range": "bytes=5-6"})
+	assertStatus(t, response, 206)
+	assert.Equals(t, string(response.Body.Bytes()), "is")
+	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	assert.Equals(t, response.Header().Get("Content-Length"), "2")
+	assert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 }
 
 func TestFunkyDocIDs(t *testing.T) {
@@ -405,6 +444,21 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertStatus(t, response, 401)
+}
+
+// #issue 991
+func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+
+	// Set CORS to nil
+	sc := rt.ServerContext()
+	sc.config.CORS = nil
+
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
+	assertStatus(t, response, 400)
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
@@ -604,6 +658,20 @@ func TestBulkDocs(t *testing.T) {
 		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
 	assert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
+}
+
+func TestBulkDocsEmptyDocs(t *testing.T) {
+	var rt restTester
+	input := `{}`
+	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 400)
+}
+
+func TestBulkGetEmptyDocs(t *testing.T) {
+	var rt restTester
+	input := `{}`
+	response := rt.sendRequest("POST", "/db/_bulk_get", input)
+	assertStatus(t, response, 400)
 }
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
@@ -1144,7 +1212,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since),
 		"", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -1223,7 +1291,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since, db.SequenceID{Seq: 50})
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user1"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "", "user1"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
@@ -1259,7 +1327,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since, db.SequenceID{TriggeredBy: 103, Seq: 51})
 
 	//// Get remainder of changes i.e. no limit parameter
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since), "", "user3"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since), "", "user3"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)

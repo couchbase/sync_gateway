@@ -49,9 +49,6 @@ type DatabaseContext struct {
 
 const DefaultRevsLimit = 1000
 
-// Number of recently-accessed doc revisions to cache in RAM
-const RevisionCacheCapacity = 5000
-
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
 type Database struct {
@@ -86,7 +83,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions, revCacheSize uint32) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -97,7 +94,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		RevsLimit:  DefaultRevsLimit,
 		autoImport: autoImport,
 	}
-	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(int(revCacheSize), context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
@@ -670,21 +667,27 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 func (db *Database) invalUserRoles(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateRoles(user)
+		if err := authr.InvalidateRoles(user); err != nil {
+			base.Warn("Error invalidating roles for user %s: %v", username, err)
+		}
 	}
 }
 
 func (db *Database) invalUserChannels(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateChannels(user)
+		if err := authr.InvalidateChannels(user); err != nil {
+			base.Warn("Error invalidating channels for user %s: %v", username, err)
+		}
 	}
 }
 
 func (db *Database) invalRoleChannels(rolename string) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
-		authr.InvalidateChannels(role)
+		if err := authr.InvalidateChannels(role); err != nil {
+			base.Warn("Error invalidating channels for role %s: %v", rolename, err)
+		}
 	}
 }
 

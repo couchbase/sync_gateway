@@ -56,7 +56,6 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set, error) 
 
 // Adds a revision to the cache.
 func (rc *RevisionCache) Put(body Body, history Body, channels base.Set) {
-	body = body.ShallowCopy()
 	if history == nil {
 		panic("Missing history for RevisionCache.Put")
 	}

@@ -185,16 +185,28 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		var deletes []uint64
 		for _, skippedSeq := range c.skippedSeqs {
 			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-				// Attempt to retrieve the sequence from the view before we remove
-				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
-				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-				if err != nil && len(entries) > 0 {
+				// Attempt to retrieve the sequence from the view before we remove.  View call
+				// expects 'since' value, and returns results greater than the since value, so
+				// set 'since' to our target sequence - 1
+				sinceSequence := skippedSeq.seq - 1
+				endSequence := skippedSeq.seq
+				options := ChangesOptions{Since: SequenceID{Seq: sinceSequence}}
+				// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
+				//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
+				//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
+				//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
+				entries, err := c.context.getChangesInChannelFromView("*", endSequence, options)
+				if err == nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					found = append(found, entries[0])
 				} else {
-					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
-					deletes = append(deletes, skippedSeq.seq)
+					if err != nil {
+						base.Warn("Error retrieving changes from view during skipped sequence check:", err)
+					}
+					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq.seq)
 				}
+				// Remove from skipped queue
+				deletes = append(deletes, skippedSeq.seq)
 			} else {
 				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
 				// still inside the time window
@@ -206,6 +218,15 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Add found entries
 	for _, entry := range foundEntries {
+		entry.Skipped = true
+		// Need to populate the actual channels for this entry - the entry returned from the * channel
+		// view will only have the * channel
+		doc, err := c.context.GetDoc(entry.DocID)
+		if err != nil {
+			base.Warn("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", entry.DocID, entry.Sequence)
+			continue
+		}
+		entry.Channels = doc.Channels
 		c.processEntry(entry)
 	}
 
@@ -381,7 +402,6 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	if c.logsDisabled {
 		return nil
 	}
@@ -492,6 +512,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 // Returns the channels that changed.
 func (c *changeCache) _addPendingLogs() base.Set {
 	var changedChannels base.Set
+
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence

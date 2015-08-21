@@ -46,6 +46,22 @@ func (db *Database) GetDesignDoc(ddocName string, result interface{}) (err error
 }
 
 func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
+	wrap := true
+	if opts := ddoc.Options; opts != nil {
+		if opts.Raw == true {
+			wrap = false
+		}
+	}
+	if wrap {
+		wrapViews(&ddoc)
+	}
+	if err = db.checkDDocAccess(ddocName); err == nil {
+		err = db.Bucket.PutDDoc(ddocName, ddoc)
+	}
+	return
+}
+
+func wrapViews(ddoc *DesignDoc) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata:
 	for name, view := range ddoc.Views {
 		view.Map = `function(doc,meta) {
@@ -77,11 +93,6 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 					}`
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
-
-	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.PutDDoc(ddocName, ddoc)
-	}
-	return
 }
 
 func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
@@ -110,34 +121,47 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			}
 		}
 	} else {
-		result = filterViewResult(result, db.user)
+		result = filterViewResult(result, db.user, options["reduce"] == true)
 	}
 	return &result, nil
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
-func filterViewResult(input sgbucket.ViewResult, user auth.User) (result sgbucket.ViewResult) {
+func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
 	checkChannels := false
 	var visibleChannels ch.TimedSet
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
+		if (reduce) {
+			return; // this is an error
+		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		value := row.Value.([]interface{})
-		// value[0] is the array of channels; value[1] is the actual value
-		if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
-			// Add this row:
-			stripSyncProperty(row)
+		if (reduce){
+			// Add the raw row:
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,
-				Value: value[1],
+				Value: row.Value,
 				ID:    row.ID,
-				Doc:   row.Doc,
 			})
+		} else {
+			value := row.Value.([]interface{})
+			// value[0] is the array of channels; value[1] is the actual value
+			if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+				// Add this row:
+				stripSyncProperty(row)
+				result.Rows = append(result.Rows, &sgbucket.ViewRow{
+					Key:   row.Key,
+					Value: value[1],
+					ID:    row.ID,
+					Doc:   row.Doc,
+				})
+			}
 		}
+
 	}
 	return
 }

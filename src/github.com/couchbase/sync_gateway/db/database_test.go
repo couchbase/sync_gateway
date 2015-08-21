@@ -54,7 +54,15 @@ func setupTestDB(t *testing.T) *Database {
 }
 
 func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
-	context, err := NewDatabaseContext("db", testBucket(), false, options)
+	context, err := NewDatabaseContext("db", testBucket(), false, options, RevisionCacheCapacity)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, options, RevisionCacheCapacity)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -714,6 +722,20 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 }
 
+// Unit test for issue #976
+func TestWithNullPropertyKey(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with null property key
+	customDocId := "customIdValue"
+	log.Printf("Create document with empty property key")
+	body := Body{"_id": customDocId, "": "value1"}
+	docid, rev1id, _ := db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != "")
+}
+
 // Unit test for issue #507
 func TestPostWithUserSpecialProperty(t *testing.T) {
 	db := setupTestDB(t)
@@ -820,7 +842,7 @@ func BenchmarkDatabase(b *testing.B) {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
 			BucketName: fmt.Sprintf("b-%d", i)})
-		context, _ := NewDatabaseContext("db", bucket, false, CacheOptions{})
+		context, _ := NewDatabaseContext("db", bucket, false, CacheOptions{}, RevisionCacheCapacity)
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

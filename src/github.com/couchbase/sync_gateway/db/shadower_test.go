@@ -95,7 +95,9 @@ func TestShadowerPush(t *testing.T) {
 	base.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 Body
 	waitFor(t, func() bool {
-		return bucket.Get("key1", &doc1) == nil && bucket.Get("key2", &doc2) == nil
+		_, err1 := bucket.Get("key1", &doc1)
+		_, err2 := bucket.Get("key2", &doc2)
+		return err1 == nil && err2 == nil
 	})
 	assert.DeepEquals(t, doc1, Body{"aaa": "bbb"})
 	assert.DeepEquals(t, doc2, Body{"ccc": "ddd"})
@@ -104,7 +106,7 @@ func TestShadowerPush(t *testing.T) {
 	db.DeleteDoc("key1", key1rev1)
 
 	waitFor(t, func() bool {
-		err = bucket.Get("key1", &doc1)
+		_, err = bucket.Get("key1", &doc1)
 		return err != nil
 	})
 	assert.True(t, base.IsDocNotFoundError(err))
