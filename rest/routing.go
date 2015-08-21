@@ -87,6 +87,8 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 			(*handler).handleGooglePOST)).Methods("POST")
 	}
 
+	dbr.Handle("/_blipsync", makeHandler(sc, privs, (*handler).handleBLIPSync)).Methods("GET")
+
 	return r, dbr
 }
 

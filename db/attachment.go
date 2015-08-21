@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/md5"
+	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
@@ -51,8 +52,8 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 		if !ok {
 			return base.HTTPErrorf(400, "Invalid _attachments")
 		}
-		data, exists := meta["data"]
-		if exists {
+		data := meta["data"]
+		if data != nil {
 			// Attachment contains data, so store it in the db:
 			attachment, err := decodeAttachment(data)
 			if err != nil {
@@ -161,7 +162,7 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int) (Body, error) 
 	return body, nil
 }
 
-// Retrieves an attachment, base64-encoded, given its key.
+// Retrieves an attachment given its key.
 func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 	v, _, err := db.Bucket.GetRaw(attachmentKeyToString(key))
 	return v, err
@@ -407,6 +408,60 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	}
 
 	return body, nil
+}
+
+type AttachmentCallback func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error)
+
+// Given a document body, invokes the callback once for each attachment that doesn't include
+// its data. The callback is told whether the attachment body is known to the database, according
+// to its digest. If the attachment isn't known, the callback can return data for it, which will
+// be added to the metadata as a "data" property.
+func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback) error {
+	atts := BodyAttachments(body)
+	if atts == nil && body["_attachments"] != nil {
+		return base.HTTPErrorf(400, "Invalid _attachments")
+	}
+	for name, value := range atts {
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return base.HTTPErrorf(400, "Invalid attachment")
+		}
+		if meta["data"] == nil {
+			if revpos, ok := base.ToInt64(meta["revpos"]); revpos < int64(minRevpos) || !ok {
+				continue
+			}
+			digest, ok := meta["digest"].(string)
+			if !ok {
+				return base.HTTPErrorf(400, "Invalid attachment")
+			}
+			data, err := db.GetAttachment(AttachmentKey(digest))
+			if err != nil && !base.IsDocNotFoundError(err) {
+				return err
+			}
+
+			if newData, err := callback(name, digest, data, meta); err != nil {
+				return err
+			} else if newData != nil {
+				meta["data"] = newData
+				delete(meta, "stub")
+				delete(meta, "follows")
+			}
+		}
+	}
+	return nil
+}
+
+func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string) {
+	nonce = make([]byte, 20)
+	if n, err := rand.Read(nonce); n < len(nonce) {
+		base.LogPanic("Failed to generate random data: %s", err)
+	}
+	digester := sha1.New()
+	digester.Write([]byte{byte(len(nonce))})
+	digester.Write(nonce)
+	digester.Write(attachmentData)
+	proof = "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+	return
 }
 
 //////// HELPERS:

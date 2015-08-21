@@ -84,7 +84,7 @@ func (db *Database) Get(docid string) (Body, error) {
 func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
 	var doc *document
 	var body Body
-	var revisions Body
+	var revisions map[string]interface{}
 	var inChannels base.Set
 	var err error
 	revIDGiven := (revid != "")
