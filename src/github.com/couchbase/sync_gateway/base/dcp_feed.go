@@ -46,10 +46,8 @@ type dcpAuth struct {
 // as part of Sherlock, so we may need to revisit once they've stabilized on an approach.
 func (a dcpAuth) GetCredentials() (string, string, string) {
 
-	var (
-		username string
-		password string
-	)
+	username := a.Username
+	password := a.Password
 
 	// as long as it's not the default bucket, if the username is empty
 	// then set the username to the bucketname.  (if it's the default bucket, the
