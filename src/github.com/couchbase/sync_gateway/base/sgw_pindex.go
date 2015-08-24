@@ -14,11 +14,16 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
-var CBGTManager *cbgt.Manager
+// The two "handles" we have for CBGT are the manager and Cfg objects.
+// This struct makes it easy to pass them around together as a unit.
+type CbgtContext struct {
+	Manager *cbgt.Manager
+	Cfg     cbgt.Cfg
+}
 
 const (
-	SourceTypeCouchbase  = "couchbase"
-	IndexTypeSyncGateway = "sync_gateway"
+	SourceTypeCouchbase = "couchbase"
+	BaseNameSyncGateway = "sync_gateway" // Used by CBGT for its data path
 )
 
 type CBGTDCPFeed struct {

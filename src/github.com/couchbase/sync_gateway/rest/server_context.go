@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -23,6 +24,8 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbaselabs/cbgt/cmd"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -136,6 +139,97 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
+func (sc *ServerContext) initCBGTManager() (base.CbgtContext, error) {
+
+	couchbaseUrl, err := base.CouchbaseUrlWithAuth(
+		*sc.config.ClusterConfig.Server,
+		sc.config.ClusterConfig.Username,
+		sc.config.ClusterConfig.Password,
+		*sc.config.ClusterConfig.Bucket,
+	)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	// the connection string, eg: "couchbase:http://user:pass@localhost:8091"
+	connect := fmt.Sprintf("couchbase:%v", couchbaseUrl)
+
+	uuid, err := cmd.MainUUID(base.BaseNameSyncGateway, sc.config.ClusterConfig.DataDir)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	// this tells CBGT that we are brining a new CBGT node online
+	register := "wanted"
+
+	// use the uuid as the bindHttp so that we don't have to make the user
+	// configure this, and since as far as the REST Api interface, we'll be using
+	// whatever is configured in adminInterface anyway.
+	// More info here:
+	//   https://github.com/couchbaselabs/cbgt/issues/1
+	//   https://github.com/couchbaselabs/cbgt/issues/25
+	bindHttp := uuid
+
+	cfg, err := cmd.MainCfg(
+		base.BaseNameSyncGateway,
+		connect,
+		bindHttp,
+		register,
+		sc.config.ClusterConfig.DataDir,
+	)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	// type assertion to convert to CfgCB so we can call SetKeyPrefix
+	cfgCb, ok := cfg.(*cbgt.CfgCB)
+	if !ok {
+		return base.CbgtContext{}, fmt.Errorf("Type assertion failure")
+	}
+
+	// this will cause CBGT to name the cfg document _sync:cfg
+	cfgCb.SetKeyPrefix("_sync:")
+
+	tags := []string{"feed", "janitor", "pindex", "planner"}
+	container := ""
+	weight := 1                               // this would allow us to have more pindexes serviced by this node
+	server := *sc.config.ClusterConfig.Server // or use "." (don't bother checking)
+	extras := ""
+	var managerEventHandlers cbgt.ManagerEventHandlers
+
+	// refresh it so we have a fresh copy
+	if err := cfg.Refresh(); err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	manager := cbgt.NewManager(
+		cbgt.VERSION,
+		cfgCb,
+		uuid,
+		tags,
+		container,
+		weight,
+		extras,
+		bindHttp,
+		sc.config.ClusterConfig.DataDir,
+		server,
+		managerEventHandlers,
+	)
+	err = manager.Start(register)
+	if err != nil {
+		log.Printf("Manager.Start() returned error: %v", err)
+		return base.CbgtContext{}, err
+	}
+
+	cbgtContext := base.CbgtContext{
+		Manager: manager,
+		Cfg:     cfg,
+	}
+
+	return cbgtContext, nil
+
+}
+
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
@@ -199,6 +293,16 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		BucketName: bucketName,
 		FeedType:   feedType,
 	}
+
+	// If we are using DCPSHARD feed type, initialize the CBGT manager
+	if feedType == strings.ToLower(base.DcpShardFeedType) {
+		cbgtContext, err := sc.initCBGTManager()
+		if err != nil {
+			return nil, fmt.Errorf("Error initializing cbgt manager: %v", err)
+		}
+		spec.CbgtContext = cbgtContext
+	}
+
 	if config.Username != "" {
 		spec.Auth = config
 	}

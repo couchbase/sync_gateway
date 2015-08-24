@@ -73,6 +73,7 @@ type ServerConfig struct {
 	CompressResponses              *bool           // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
 	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
+	ClusterConfig                  ClusterConfig   `json:"cluster_config"` // Bucket and other config related to CBGT
 }
 
 // Bucket configuration elements - used by db, shadow, index
@@ -82,6 +83,11 @@ type BucketConfig struct {
 	Bucket   *string `json:"bucket"`             // Bucket name
 	Username string  `json:"username,omitempty"` // Username for authenticating to server
 	Password string  `json:"password,omitempty"` // Password for authenticating to server
+}
+
+type ClusterConfig struct {
+	BucketConfig
+	DataDir string `json:"data_dir"`
 }
 
 // JSON object that defines a database configuration within the ServerConfig.

@@ -25,7 +25,6 @@ import (
 	"github.com/couchbase/sg-bucket"
 
 	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/cmd"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -51,13 +50,13 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	FeedParams                             FeedParams
+	CbgtContext                            CbgtContext
 }
 
 // These are used by CBGT to determine the sharding factor and other properties
 type FeedParams struct {
-	MaxPartitionsPerPIndex int    `json:"max_partitions_per_pindex"`
-	NumReplicas            int    `json:"num_replicas"`
-	DataDir                string `json:"data_dir"`
+	MaxPartitionsPerPIndex int `json:"max_partitions_per_pindex"`
+	NumReplicas            int `json:"num_replicas"`
 }
 
 func (f FeedParams) PlanParams() cbgt.PlanParams {
@@ -141,9 +140,6 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 	case DcpShardFeedType:
 
-		// TODO -- is this guaranteed to _only_ be called once per bucket
-		// throughout lifetime of Sync Gateway?  If not, this will need to get reworked.
-
 		// CBGT initialization
 
 		// Create the TapEvent feed channel that will be passed back to the caller
@@ -153,18 +149,16 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 		newSyncGatewayPIndexImpl := NewSyncGatewayPIndexImplFactory(eventFeed, bucket, args)
 		openSyncGatewayPIndexImpl := OpenSyncGatewayPIndexImplFactory(eventFeed, bucket, args)
 
-		// register with CBGT
-		cbgt.RegisterPIndexImplType(IndexTypeSyncGateway, &cbgt.PIndexImplType{
+		// register with CBGT -- we're creating a new index type for each bucket because
+		// we need to pass in the closure-wrapped per-bucket eventFeed along with the
+		// factory.
+		cbgt.RegisterPIndexImplType(bucket.Name, &cbgt.PIndexImplType{
 			New:         newSyncGatewayPIndexImpl,
 			Open:        openSyncGatewayPIndexImpl,
 			Count:       nil,
 			Query:       nil,
 			Description: "Sync Gateway Pindex",
 		})
-
-		if err := bucket.initCBGTManager(); err != nil {
-			log.Fatalf("Unable to initialize CBGT for sharded dcp: %v", err)
-		}
 
 		// create the index
 		alreadyExists, err := bucket.checkCBGTIndexExists(bucket.Name)
@@ -191,97 +185,9 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 }
 
-func (bucket CouchbaseBucket) initCBGTManager() error {
-
-	username, password, _ := bucket.getDcpAuthHandler().GetCredentials()
-
-	couchbaseUrl, err := CouchbaseUrlWithAuth(
-		bucket.spec.Server,
-		username,
-		password,
-		bucket.Name,
-	)
-	if err != nil {
-		return err
-	}
-
-	// the connection string, eg: "couchbase:http://user:pass@localhost:8091"
-	connect := fmt.Sprintf("couchbase:%v", couchbaseUrl)
-
-	uuid, err := cmd.MainUUID(IndexTypeSyncGateway, bucket.spec.FeedParams.DataDir)
-	if err != nil {
-		return err
-	}
-
-	// this tells CBGT that we are brining a new CBGT node online
-	register := "wanted"
-
-	// use the uuid as the bindHttp so that we don't have to make the user
-	// configure this, and since as far as the REST Api interface, we'll be using
-	// whatever is configured in adminInterface anyway.
-	// More info here:
-	//   https://github.com/couchbaselabs/cbgt/issues/1
-	//   https://github.com/couchbaselabs/cbgt/issues/25
-	bindHttp := uuid
-
-	cfg, err := cmd.MainCfg(
-		IndexTypeSyncGateway,
-		connect,
-		bindHttp,
-		register,
-		bucket.spec.FeedParams.DataDir,
-	)
-	if err != nil {
-		return err
-	}
-
-	// type assertion to convert to CfgCB so we can call SetKeyPrefix
-	cfgCb, ok := cfg.(*cbgt.CfgCB)
-	if !ok {
-		return fmt.Errorf("Type assertion failure")
-	}
-
-	// this will cause CBGT to name the cfg document _sync:cfg
-	cfgCb.SetKeyPrefix("_sync:")
-
-	tags := []string{"feed", "janitor", "pindex", "planner"}
-	container := ""
-	weight := 1                  // this would allow us to have more pindexes serviced by this node
-	server := bucket.spec.Server // or use "." (don't bother checking)
-	extras := ""
-	var managerEventHandlers cbgt.ManagerEventHandlers
-
-	// refresh it so we have a fresh copy
-	if err := cfg.Refresh(); err != nil {
-		return err
-	}
-
-	CBGTManager = cbgt.NewManager(
-		cbgt.VERSION,
-		cfgCb,
-		uuid,
-		tags,
-		container,
-		weight,
-		extras,
-		bindHttp,
-		bucket.spec.FeedParams.DataDir,
-		server,
-		managerEventHandlers,
-	)
-	err = CBGTManager.Start(register)
-	if err != nil {
-		log.Printf("Manager.Start() returned error: %v", err)
-		return err
-	}
-
-	return nil
-
-}
-
 func (bucket CouchbaseBucket) checkCBGTIndexExists(indexName string) (bool, error) {
 
-	_, indexDefsMap, err := CBGTManager.GetIndexDefs(true)
+	_, indexDefsMap, err := bucket.spec.CbgtContext.Manager.GetIndexDefs(true)
 	if err != nil {
 		return false, err
 	}
@@ -294,8 +200,13 @@ func (bucket CouchbaseBucket) checkCBGTIndexExists(indexName string) (bool, erro
 // DCP events to us for our shard of the full DCP stream.
 func (bucket CouchbaseBucket) createCBGTIndex() error {
 
+	log.Printf("bucket: %+v", bucket)
+
 	authHandler := bucket.getDcpAuthHandler()
+	log.Printf("authHandler: %+v", authHandler)
+
 	user, pwd, _ := authHandler.GetCredentials()
+	log.Printf("user: %v password: %v", user, pwd)
 
 	sourceParams := cbgt.NewDCPFeedParams()
 	sourceParams.AuthUser = user
@@ -306,12 +217,12 @@ func (bucket CouchbaseBucket) createCBGTIndex() error {
 		return err
 	}
 
-	err = CBGTManager.CreateIndex(
+	err = bucket.spec.CbgtContext.Manager.CreateIndex(
 		SourceTypeCouchbase,       // sourceType
 		bucket.Name,               // sourceName
 		bucket.UUID,               // sourceUUID
 		string(sourceParamsBytes), // sourceParams
-		IndexTypeSyncGateway,      // indexType
+		bucket.Name,               // indexType
 		bucket.Name,               // indexName
 		"",                        // indexParams
 		bucket.spec.FeedParams.PlanParams(), // planParams
@@ -442,6 +353,8 @@ func (bucket CouchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
 	username, password := "", ""
 	if bucket.spec.Auth != nil {
 		username, password, _ = bucket.spec.Auth.GetCredentials()
+	} else {
+		log.Printf("bucket.spec.Auth == nil.  bucket.spec: %+v", bucket.spec)
 	}
 	return &dcpAuth{username, password, bucket.spec.BucketName}
 }
