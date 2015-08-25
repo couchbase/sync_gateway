@@ -16,6 +16,7 @@ type changeListener struct {
 	bucket       base.Bucket
 	tapFeed      base.TapFeed           // Observes changes to bucket
 	tapNotifier  *sync.Cond             // Posts notifications when documents are updated
+	TapArgs      sgbucket.TapArguments  // The Tap Args (backfill, etc)
 	counter      uint64                 // Event counter; increments on every doc update
 	keyCounts    map[string]uint64      // Latest count at which each doc key was updated
 	DocChannel   chan sgbucket.TapEvent // Passthru channel for doc mutations
@@ -25,7 +26,8 @@ type changeListener struct {
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error {
 	listener.bucket = bucket
-	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: sgbucket.TapNoBackfill})
+	listener.TapArgs = sgbucket.TapArguments{Backfill: sgbucket.TapNoBackfill}
+	tapFeed, err := bucket.StartTapFeed(listener.TapArgs)
 	if err != nil {
 		return err
 	}
@@ -73,6 +75,10 @@ func (listener *changeListener) Stop() {
 	if listener.tapFeed != nil {
 		listener.tapFeed.Close()
 	}
+}
+
+func (listener changeListener) TapFeed() base.TapFeed {
+	return listener.tapFeed
 }
 
 //////// NOTIFICATIONS:
