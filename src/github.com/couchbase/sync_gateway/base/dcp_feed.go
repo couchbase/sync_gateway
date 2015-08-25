@@ -20,10 +20,14 @@ import (
 
 type couchbaseDCPFeedImpl struct {
 	bds    cbdatasource.BucketDataSource
-	events <-chan sgbucket.TapEvent
+	events chan sgbucket.TapEvent
 }
 
 func (feed *couchbaseDCPFeedImpl) Events() <-chan sgbucket.TapEvent {
+	return feed.events
+}
+
+func (feed *couchbaseDCPFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
 	return feed.events
 }
 

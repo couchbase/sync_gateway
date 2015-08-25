@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -88,6 +89,11 @@ type BucketConfig struct {
 type ClusterConfig struct {
 	BucketConfig
 	DataDir string `json:"data_dir"`
+}
+
+func (c ClusterConfig) CBGTEnabled() bool {
+	// if we have a non-empty server field, then assume CBGT is enabled.
+	return *c.Server != ""
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -231,7 +237,7 @@ func (dbConfig DbConfig) validate() error {
 		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
 			msg := "ChannelIndex declared in config, but the FeedType is %v " +
 				"rather than expected value of DCPSHARD"
-			return fmt.Errorf(msg)
+			return fmt.Errorf(msg, dbConfig.FeedType)
 		}
 	}
 
@@ -551,6 +557,13 @@ func RunServer(config *ServerConfig) {
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
+		}
+	}
+
+	// Initialize CBGT if needed
+	if config.ClusterConfig.CBGTEnabled() {
+		if err := sc.InitCBGT(); err != nil {
+			log.Fatalf("%v", err)
 		}
 	}
 
