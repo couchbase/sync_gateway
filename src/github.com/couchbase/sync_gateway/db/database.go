@@ -14,6 +14,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -34,6 +35,7 @@ import (
 type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
+	BucketSpec         base.BucketSpec         // The BucketSpec
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
@@ -135,8 +137,63 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if err = context.tapListener.Start(bucket, true); err != nil {
 		return nil, err
 	}
+
 	go context.watchDocChanges()
 	return context, nil
+}
+
+func (context *DatabaseContext) CreateCBGTIndex() error {
+
+	// Create the CBGT index.  This must be done _after_ the tapListener is started,
+	// as the tapFeed will be created at that point, and it must be already created
+	// at the point we try to create a CBGT index.
+	if context.BucketSpec.FeedType == strings.ToLower(base.DcpShardFeedType) {
+		// create the index
+		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.Bucket.GetName())
+		if err != nil {
+			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
+		}
+		if !alreadyExists {
+			if err := createCBGTIndex(context.Bucket, context.BucketSpec); err != nil {
+				return fmt.Errorf("Unable to initialize CBGT index: %v", err)
+			}
+		}
+
+	}
+
+	return nil
+
+}
+
+// Check if this CBGT index already exists
+func checkCBGTIndexExists(cbgtContext base.CbgtContext, indexName string) (bool, error) {
+
+	_, indexDefsMap, err := cbgtContext.Manager.GetIndexDefs(true)
+	if err != nil {
+		return false, err
+	}
+
+	return (indexDefsMap[indexName] != nil), nil
+
+}
+
+// Create an "index" in CBGT which will cause it to start streaming
+// DCP events to us for our shard of the full DCP stream.
+func createCBGTIndex(baseBucket base.Bucket, spec base.BucketSpec) error {
+
+	log.Printf("createCBGTIndex called with: %v", baseBucket)
+
+	bucket, ok := baseBucket.(base.CouchbaseBucket)
+	if !ok {
+		return fmt.Errorf("Type assertion failure from base.Bucket -> CouchbaseBucket")
+	}
+
+	return bucket.CreateCBGTIndex(spec)
+
+}
+
+func (context *DatabaseContext) TapListener() changeListener {
+	return context.tapListener
 }
 
 func (context *DatabaseContext) Close() {

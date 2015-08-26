@@ -145,31 +145,8 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 		// Create the TapEvent feed channel that will be passed back to the caller
 		eventFeed := make(chan sgbucket.TapEvent, 10)
 
-		// wrap functions with closures that have references to channel
-		newSyncGatewayPIndexImpl := NewSyncGatewayPIndexImplFactory(eventFeed, bucket, args)
-		openSyncGatewayPIndexImpl := OpenSyncGatewayPIndexImplFactory(eventFeed, bucket, args)
-
-		// register with CBGT -- we're creating a new index type for each bucket because
-		// we need to pass in the closure-wrapped per-bucket eventFeed along with the
-		// factory.
-		cbgt.RegisterPIndexImplType(bucket.Name, &cbgt.PIndexImplType{
-			New:         newSyncGatewayPIndexImpl,
-			Open:        openSyncGatewayPIndexImpl,
-			Count:       nil,
-			Query:       nil,
-			Description: "Sync Gateway Pindex",
-		})
-
-		// create the index
-		alreadyExists, err := bucket.checkCBGTIndexExists(bucket.Name)
-		if err != nil {
-			log.Fatalf("Error checking if CBGT index exists: %v", err)
-		}
-		if !alreadyExists {
-			if err := bucket.createCBGTIndex(); err != nil {
-				log.Fatalf("Unable to initialize CBGT index: %v", err)
-			}
-		}
+		// Save this event feed somewhere that CBGT can get access to it
+		TapEventWritableChannels[bucket.GetName()] = eventFeed
 
 		//  - create a new CBGTDCPFeed and pass in the eventFeed channel
 		feed := &CBGTDCPFeed{
@@ -185,28 +162,11 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 }
 
-func (bucket CouchbaseBucket) checkCBGTIndexExists(indexName string) (bool, error) {
-
-	_, indexDefsMap, err := bucket.spec.CbgtContext.Manager.GetIndexDefs(true)
-	if err != nil {
-		return false, err
-	}
-
-	return (indexDefsMap[indexName] != nil), nil
-
-}
-
-// Create an "index" in CBGT which will cause it to start streaming
-// DCP events to us for our shard of the full DCP stream.
-func (bucket CouchbaseBucket) createCBGTIndex() error {
-
-	log.Printf("bucket: %+v", bucket)
+func (bucket CouchbaseBucket) CreateCBGTIndex(spec BucketSpec) error {
 
 	authHandler := bucket.getDcpAuthHandler()
-	log.Printf("authHandler: %+v", authHandler)
 
 	user, pwd, _ := authHandler.GetCredentials()
-	log.Printf("user: %v password: %v", user, pwd)
 
 	sourceParams := cbgt.NewDCPFeedParams()
 	sourceParams.AuthUser = user
@@ -217,18 +177,25 @@ func (bucket CouchbaseBucket) createCBGTIndex() error {
 		return err
 	}
 
-	err = bucket.spec.CbgtContext.Manager.CreateIndex(
-		SourceTypeCouchbase,       // sourceType
-		bucket.Name,               // sourceName
-		bucket.UUID,               // sourceUUID
-		string(sourceParamsBytes), // sourceParams
-		bucket.Name,               // indexType
-		bucket.Name,               // indexName
-		"",                        // indexParams
-		bucket.spec.FeedParams.PlanParams(), // planParams
+	indexParams := SyncGatewayIndexParams{
+		BucketName: bucket.Name,
+	}
+	indexParamsBytes, err := json.Marshal(indexParams)
+	if err != nil {
+		return err
+	}
+
+	err = spec.CbgtContext.Manager.CreateIndex(
+		SourceTypeCouchbase,          // sourceType
+		bucket.Name,                  // sourceName
+		bucket.UUID,                  // sourceUUID
+		string(sourceParamsBytes),    // sourceParams
+		IndexTypeSyncGateway,         // indexType
+		bucket.Name,                  // indexName
+		string(indexParamsBytes),     // indexParams
+		spec.FeedParams.PlanParams(), // planParams
 		"", // prevIndexUUID
 	)
-
 	if err != nil {
 		LogTo("DCP", "Error creating CBGT index: %v", err)
 	}
