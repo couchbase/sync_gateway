@@ -534,6 +534,10 @@ func (c *changeCache) GetStableSequence(docID string) SequenceID {
 	return SequenceID{Seq: c.nextSequence - 1}
 }
 
+func (c *changeCache) GetStableClock() (clock base.SequenceClock, err error) {
+	return nil, errors.New("Change cache doesn't use vector clocks")
+}
+
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {

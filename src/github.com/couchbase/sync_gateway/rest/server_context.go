@@ -336,6 +336,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	// Channel index definition, if present
 	channelIndexOptions := &db.ChangeIndexOptions{}
+	sequenceHashOptions := &db.SequenceHashOptions{}
 	if config.ChannelIndex != nil {
 		indexServer := "http://localhost:8091"
 		indexPool := "default"
@@ -368,13 +369,17 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 			// TODO: revert to local index?
 			return nil, err
 		}
+		// TODO: separate config of hash bucket
+		sequenceHashOptions.Bucket = channelIndexOptions.Bucket
+		sequenceHashOptions.Size = 32
 	} else {
 		channelIndexOptions = nil
 	}
 
 	contextOptions := db.DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
-		IndexOptions: channelIndexOptions,
+		CacheOptions:        &cacheOptions,
+		IndexOptions:        channelIndexOptions,
+		SequenceHashOptions: sequenceHashOptions,
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)

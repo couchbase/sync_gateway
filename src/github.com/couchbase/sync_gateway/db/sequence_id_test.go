@@ -8,37 +8,37 @@ import (
 )
 
 func TestParseSequenceID(t *testing.T) {
-	s, err := ParseSequenceID("1234")
-	assertNoError(t, err, "ParseSequenceID")
+	s, err := parseIntegerSequenceID("1234")
+	assertNoError(t, err, "parseIntegerSequenceID")
 	assert.Equals(t, s, SequenceID{Seq: 1234})
 
-	s, err = ParseSequenceID("5678:1234")
-	assertNoError(t, err, "ParseSequenceID")
+	s, err = parseIntegerSequenceID("5678:1234")
+	assertNoError(t, err, "parseIntegerSequenceID")
 	assert.Equals(t, s, SequenceID{Seq: 1234, TriggeredBy: 5678})
 
-	s, err = ParseSequenceID("")
-	assertNoError(t, err, "ParseSequenceID")
+	s, err = parseIntegerSequenceID("")
+	assertNoError(t, err, "parseIntegerSequenceID")
 	assert.Equals(t, s, SequenceID{Seq: 0, TriggeredBy: 0})
 
-	s, err = ParseSequenceID("123:456:789")
-	assertNoError(t, err, "ParseSequenceID")
+	s, err = parseIntegerSequenceID("123:456:789")
+	assertNoError(t, err, "parseIntegerSequenceID")
 	assert.Equals(t, s, SequenceID{Seq: 789, TriggeredBy: 456, LowSeq: 123})
 
-	s, err = ParseSequenceID("123::789")
-	assertNoError(t, err, "ParseSequenceID")
+	s, err = parseIntegerSequenceID("123::789")
+	assertNoError(t, err, "parseIntegerSequenceID")
 	assert.Equals(t, s, SequenceID{Seq: 789, TriggeredBy: 0, LowSeq: 123})
 
-	s, err = ParseSequenceID("foo")
+	s, err = parseIntegerSequenceID("foo")
 	assert.True(t, err != nil)
-	s, err = ParseSequenceID(":")
+	s, err = parseIntegerSequenceID(":")
 	assert.True(t, err != nil)
-	s, err = ParseSequenceID(":1")
+	s, err = parseIntegerSequenceID(":1")
 	assert.True(t, err != nil)
-	s, err = ParseSequenceID("::1")
+	s, err = parseIntegerSequenceID("::1")
 	assert.True(t, err != nil)
-	s, err = ParseSequenceID("10:11:12:13")
+	s, err = parseIntegerSequenceID("10:11:12:13")
 	assert.True(t, err != nil)
-	s, err = ParseSequenceID("123:ggg")
+	s, err = parseIntegerSequenceID("123:ggg")
 	assert.True(t, err != nil)
 }
 

@@ -47,11 +47,13 @@ type DatabaseContext struct {
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 	cbgtManager        *cbgt.Manager           // The cbgt manager for sharded DCP stream
+	sequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions *CacheOptions
-	IndexOptions *ChangeIndexOptions
+	CacheOptions        *CacheOptions
+	IndexOptions        *ChangeIndexOptions
+	SequenceHashOptions *SequenceHashOptions
 }
 
 const DefaultRevsLimit = 1000
@@ -121,10 +123,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil {
 		// In-memory channel cache
 		context.changeCache = &changeCache{}
-
 	} else {
 		// KV channel index
 		context.changeCache = &kvChangeIndex{}
+		context.sequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {

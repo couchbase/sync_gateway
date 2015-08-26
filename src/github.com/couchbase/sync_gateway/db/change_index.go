@@ -45,6 +45,7 @@ type ChangeIndex interface {
 
 	// Retrieves stable sequence for index
 	GetStableSequence(docID string) SequenceID
+	GetStableClock() (clock base.SequenceClock, err error)
 
 	// Utility functions for unit testing
 	waitForSequenceID(sequence SequenceID)
@@ -71,6 +72,12 @@ type ChangeIndexOptions struct {
 	Type    IndexType    // Index type
 	Bucket  base.Bucket  // Indexing bucket
 	Options CacheOptions // Caching options
+}
+
+type SequenceHashOptions struct {
+	Bucket base.Bucket // Hash lookup bucket
+	Size   uint8       // Hash keyset size log 2
+	Expiry *uint32     // Expiry for untouched hash bucket docs
 }
 
 // ChannelIndex defines the API used by the ChangeIndex to interact with the underlying index storage

@@ -46,6 +46,9 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 		IndexOptions: &ChangeIndexOptions{
 			Bucket: indexBucket,
 		},
+		SequenceHashOptions: &SequenceHashOptions{
+			Bucket: indexBucket,
+		},
 	}
 	context, err := NewDatabaseContext("db", vbEnabledBucket, false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
@@ -69,6 +72,18 @@ func channelEntry(vbNo uint16, seq uint64, docid string, revid string, channelNa
 		VbNo:         vbNo,
 	}
 	return entry
+}
+
+// Returns a clock-base SequenceID with all vb values set to seq
+func simpleClockSequence(seq uint64) SequenceID {
+	result := SequenceID{
+		SeqType: ClockSequenceType,
+		Clock:   base.NewSequenceClockImpl(),
+	}
+	for i := 0; i < 1024; i++ {
+		result.Clock.SetSequence(uint16(i), seq)
+	}
+	return result
 }
 
 func TestChannelPartitionMap(t *testing.T) {
@@ -157,7 +172,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify entries
-	entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 3)
 	assert.True(t, err == nil)
 
@@ -170,7 +185,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	bucket.Dump()
 	// Verify entries
-	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 6)
 	assert.True(t, err == nil)
 
@@ -182,17 +197,17 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 	// Verify entries
-	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 9)
 	assert.True(t, err == nil)
 
 	// Retrieval for a more restricted range
-	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 100}})
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(100)})
 	assert.Equals(t, len(entries), 3)
 	assert.True(t, err == nil)
 
 	// Retrieval for a more restricted range where the since matches a valid sequence number (since border case)
-	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 10100}})
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(10100)})
 	assert.Equals(t, len(entries), 1)
 	assert.True(t, err == nil)
 
@@ -203,7 +218,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 	// Verify entries
-	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 0}})
+	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 11)
 	assert.True(t, err == nil)
 
@@ -216,7 +231,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 	// Verify entries
-	entries, err = changeIndex.GetChanges("DUP", ChangesOptions{Since: SequenceID{Seq: 0}})
+	entries, err = changeIndex.GetChanges("DUP", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 1)
 	assert.True(t, err == nil)
 
@@ -239,7 +254,7 @@ func TestChangeIndexChanges(t *testing.T) {
 	WriteDirectWithKey(db, "1c856b5724dcf4273c3993619900ce7f", []string{}, 1)
 
 	time.Sleep(2000 * time.Millisecond)
-	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: simpleClockSequence(0)})
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 1)
 
@@ -247,7 +262,7 @@ func TestChangeIndexChanges(t *testing.T) {
 	// Write a few more entries to the bucket
 	WriteDirectWithKey(db, "12389b182ababd12fff662848edeb908", []string{}, 1)
 	time.Sleep(2000 * time.Millisecond)
-	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: simpleClockSequence(0)})
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 2)
 }
@@ -266,4 +281,21 @@ func TestLoadStableSequence(t *testing.T) {
 	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
 	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))
 
+}
+
+func TestStableSequenceCallback(t *testing.T) {
+	changeIndex, bucket := testKvChangeIndex("indexBucket")
+	defer bucket.Close()
+
+	// Add entries across multiple partitions
+	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
+	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
+	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
+	time.Sleep(10 * time.Millisecond)
+
+	stableSequence, err := base.StableCallbackTest(changeIndex.GetStableClock)
+	assertNoError(t, err, "Got error on callback")
+	assert.Equals(t, stableSequence.GetSequence(100), uint64(1))
+	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
+	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))
 }

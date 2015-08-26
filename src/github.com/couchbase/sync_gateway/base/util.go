@@ -173,6 +173,9 @@ func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (str
 
 }
 
+// Callback function to return the stable sequence
+type StableSequenceFunc func() (clock SequenceClock, err error)
+
 func LoadStableSequence(bucket Bucket) SequenceClock {
 	stableSequence := NewSequenceClockImpl()
 	value, cas, err := bucket.GetRaw(KStableSequenceKey)
@@ -183,6 +186,10 @@ func LoadStableSequence(bucket Bucket) SequenceClock {
 	stableSequence.Unmarshal(value)
 	stableSequence.SetCas(cas)
 	return stableSequence
+}
+
+func StableCallbackTest(callback StableSequenceFunc) (SequenceClock, error) {
+	return callback()
 }
 
 // IntMax is an expvar.Value that tracks the maximum value it's given.

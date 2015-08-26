@@ -10,7 +10,7 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-func testSequenceHasher(size uint8, expiry int) (*sequenceHasher, error) {
+func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
 
 	hashBucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     "walrus:",
@@ -23,7 +23,13 @@ func testSequenceHasher(size uint8, expiry int) (*sequenceHasher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewSequenceHasher(size, &expiry, hashBucket)
+	options := &SequenceHashOptions{
+		Bucket: hashBucket,
+		Size:   size,
+		Expiry: &expiry,
+	}
+
+	return NewSequenceHasher(options)
 
 }
 
@@ -62,7 +68,8 @@ func TestHashStorage(t *testing.T) {
 	assert.Equals(t, hashValue, "14")
 
 	// Retrieve first hash entry
-	clockBack := seqHasher.GetClock(hashValue)
+	clockBack, err := seqHasher.GetClock(hashValue)
+	assertNoError(t, err, "Error getting clock")
 	assert.Equals(t, clockBack.GetSequence(50), uint64(100))
 	assert.Equals(t, clockBack.GetSequence(80), uint64(20))
 	assert.Equals(t, clockBack.GetSequence(150), uint64(150))
@@ -103,8 +110,8 @@ func TestHashStorage(t *testing.T) {
 	wg.Wait()
 
 	// Retrieve non-existent hash
-	missingClock := seqHasher.GetClock("1234")
-	assertNoError(t, err, "Error getting hash")
+	missingClock, err := seqHasher.GetClock("1234")
+	assertTrue(t, err != nil, "Should return error for non-existent hash")
 	assert.Equals(t, missingClock.GetSequence(50), uint64(0))
 	assert.Equals(t, missingClock.GetSequence(80), uint64(0))
 	assert.Equals(t, missingClock.GetSequence(150), uint64(0))
@@ -126,14 +133,16 @@ func CouchbaseOnlyTestHashExpiry(t *testing.T) {
 	assertNoError(t, err, "Error creating hash")
 	// Validate that expiry is reset every time sequence for hash is requested.
 	for i := 0; i < 20; i++ {
-		clockBack := seqHasher.GetClock(hashValue)
+		clockBack, err := seqHasher.GetClock(hashValue)
+		assertNoError(t, err, "Error getting clock")
 		assert.Equals(t, clockBack.GetSequence(50), uint64(100))
 		time.Sleep(2 * time.Second)
 	}
 
 	// Validate it disappears after expiry time when no active requests
 	time.Sleep(10 * time.Second)
-	clockBack := seqHasher.GetClock(hashValue)
+	clockBack, err := seqHasher.GetClock(hashValue)
+	assertNoError(t, err, "Error getting clock")
 	log.Println("Got clockback:", clockBack)
 	assert.Equals(t, clockBack.GetSequence(50), uint64(0))
 

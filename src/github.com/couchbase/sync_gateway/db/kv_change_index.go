@@ -90,7 +90,7 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 
 	// Initialize stable sequence
 
-	k.initStableClock()
+	k.stableSequence = k.loadStableClock()
 
 	// start process to work pending sequences
 	go k.indexPending()
@@ -120,20 +120,24 @@ func (k *kvChangeIndex) GetStableSequence(docID string) SequenceID {
 
 }
 
-// Returns the stable sequence clock for the index
+// Returns the cached stable sequence clock for the index
 func (k *kvChangeIndex) getStableClock() base.SequenceClock {
 	return k.stableSequence.Clock
 }
 
-func (k *kvChangeIndex) initStableClock() {
-	k.stableSequence = base.NewSyncSequenceClock()
+func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
+	return k.loadStableClock(), nil
+}
+
+func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
+	clock := base.NewSyncSequenceClock()
 	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
 	if err != nil {
-		base.Warn("Stable sequence not found in index - resetting to 0")
-		return
+		base.Warn("Stable sequence not found in index - treating as 0")
 	}
-	k.stableSequence.Unmarshal(value)
-	k.stableSequence.SetCas(cas)
+	clock.Unmarshal(value)
+	clock.SetCas(cas)
+	return clock
 }
 
 func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
@@ -189,45 +193,6 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, vbNo uint16) {
 			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
 		}
-
-		// TODO: disabled - we don't care about unused sequences since we don't need contiguous seqs
-		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
-
-		/*
-			for _, seq := range doc.UnusedSequences {
-				base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
-				change := &LogEntry{
-					Sequence:     seq,
-					TimeReceived: time.Now(),
-				}
-				c.AddToCache(change)
-			}
-		*/
-
-		// TODO: Handling for feed de-duplication by Couchbase Server
-		// Ignoring this for now, since we don't have a requirement for contiguous sequences in this model
-		/*
-			currentSequence := doc.Sequence
-			if len(doc.UnusedSequences) > 0 {
-				currentSequence = doc.UnusedSequences[0]
-			}
-			if len(doc.RecentSequences) > 0 {
-				//TODO: this has the possibility to send the same sequence to be buffered multiple times - depends
-				//      on the subsequent processing ignoring duplicates.  Probably a better question is how much
-				//      we care about this since we're not dependent on contiguous sequences.
-				nextSeq := c.getNextSequence(vbNo)
-				for _, seq := range doc.RecentSequences {
-					if seq >= nextSeq && seq < currentSequence {
-						base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
-						change := &LogEntry{
-							Sequence:     seq,
-							TimeReceived: time.Now(),
-						}
-						c.processEntry(change)
-					}
-				}
-			}
-		*/
 
 		// Record a histogram of the  feed's lag:
 		feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
@@ -507,10 +472,8 @@ func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (
 
 func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
 
-	sinceSequence := base.NewSequenceClockFromHash(options.Since.String())
-
 	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
-	changes, err := b.getOrCreateReader(channelName).getChanges(sinceSequence)
+	changes, err := b.getOrCreateReader(channelName).getChanges(options.Since.Clock)
 	if err != nil {
 		base.Warn("Error retrieving cached changes for channel %s", channelName)
 		return uint64(0), nil

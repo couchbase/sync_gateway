@@ -179,6 +179,7 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, error) {
 
 	var results []*LogEntry
+
 	// TODO: pass in an option to reuse existing channel clock
 	chanClock, err := k.loadChannelClock()
 	if err != nil {

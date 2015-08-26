@@ -80,7 +80,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = db.ParseSequenceID(h.getQuery("since")); err != nil {
+		if options.Since, err = h.db.ParseSequenceID(h.getQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -193,6 +193,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					} else {
 						h.response.Write([]byte(","))
 					}
+					base.LogTo("DIndex+", "----->encoding entry with seq:%+v", entry.Seq)
 					encoder.Encode(entry)
 					lastSeq = entry.Seq
 				}

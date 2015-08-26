@@ -33,7 +33,8 @@ type SequenceClock interface {
 	Unmarshal(value []byte) error                  // Unmarshals the sequence value
 	UpdateWithClock(updateClock SequenceClock)     // Updates the clock with values from updateClock
 	Value() map[uint16]uint64                      // Returns the raw vector clock
-	HashedValue() string                           // Returns previously hashed value, if present.  If not present, does NOT generate hash
+	GetHashedValue() string                        // Returns previously hashed value, if present.  If not present, does NOT generate hash
+	SetHashedValue(value string)                   // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
 	AllAfter(otherClock SequenceClock) bool        // True if all entries in clock are greater than or equal to the corresponding values in otherClock
 	AllBefore(otherClock SequenceClock) bool       // True if all entries in clock are less than or equal to the corresponding values in otherClock
@@ -85,6 +86,8 @@ func (c *SequenceClockImpl) Init(value map[uint16]uint64, hash string) {
 
 func (c *SequenceClockImpl) SetSequence(vbNo uint16, vbSequence uint64) {
 	c.value[vbNo] = vbSequence
+	// Invalidate any previous hash
+	c.hashedValue = ""
 }
 
 func (c *SequenceClockImpl) SetMaxSequence(vbNo uint16, vbSequence uint64) {
@@ -93,6 +96,8 @@ func (c *SequenceClockImpl) SetMaxSequence(vbNo uint16, vbSequence uint64) {
 	} else {
 		Warn("Attempted to lower sequence value when calling SetMaxSequence")
 	}
+	// Invalidate any previous hash
+	c.hashedValue = ""
 }
 
 func (c *SequenceClockImpl) GetSequence(vbNo uint16) (vbSequence uint64) {
@@ -151,7 +156,7 @@ func (c *SequenceClockImpl) Unmarshal(value []byte) error {
 // Compares another sequence clock with this one
 func (c *SequenceClockImpl) Equals(other SequenceClock) bool {
 
-	if c.hashEquals(other.HashedValue()) {
+	if c.hashEquals(other.GetHashedValue()) {
 		return true
 	}
 	for vb, sequence := range other.Value() {
@@ -190,7 +195,7 @@ func (c *SequenceClockImpl) AllBefore(other SequenceClock) bool {
 // the clock are less than the corresponding values in other
 func (c *SequenceClockImpl) AnyBefore(other SequenceClock) bool {
 
-	if c.hashEquals(other.HashedValue()) {
+	if c.hashEquals(other.GetHashedValue()) {
 		return false
 	}
 	for vb, sequence := range other.Value() {
@@ -205,7 +210,7 @@ func (c *SequenceClockImpl) AnyBefore(other SequenceClock) bool {
 // are greater than the corresponding values in other
 func (c *SequenceClockImpl) AnyAfter(other SequenceClock) bool {
 
-	if c.hashEquals(other.HashedValue()) {
+	if c.hashEquals(other.GetHashedValue()) {
 		return false
 	}
 	for vb, sequence := range other.Value() {
@@ -225,9 +230,12 @@ func (c *SequenceClockImpl) Copy() SequenceClock {
 	return result
 }
 
-func (c *SequenceClockImpl) HashedValue() string {
-	// TBD
-	return "hash-0"
+func (c *SequenceClockImpl) GetHashedValue() string {
+	return c.hashedValue
+}
+
+func (c *SequenceClockImpl) SetHashedValue(value string) {
+	c.hashedValue = value
 }
 
 func (c *SequenceClockImpl) hashEquals(otherHash string) bool {
@@ -241,7 +249,7 @@ func (c *SequenceClockImpl) hashEquals(otherHash string) bool {
 // the other bucket has a higher sequence value.  Used during Since calculations to identify which
 // vbuckets need to be retrieved.
 func (c *SequenceClockImpl) findModified(other SequenceClock) (modified []uint16) {
-	if c.hashEquals(other.HashedValue()) {
+	if c.hashEquals(other.GetHashedValue()) {
 		return nil
 	}
 	for vb, sequence := range other.Value() {
@@ -310,10 +318,16 @@ func (c *SyncSequenceClock) GetSequence(vbNo uint16) (sequence uint64) {
 	return c.Clock.GetSequence(vbNo)
 }
 
-func (c *SyncSequenceClock) HashedValue() string {
+func (c *SyncSequenceClock) GetHashedValue() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.Clock.HashedValue()
+	return c.Clock.GetHashedValue()
+}
+
+func (c *SyncSequenceClock) SetHashedValue(value string) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	c.Clock.SetHashedValue(value)
 }
 
 func (c *SyncSequenceClock) AllAfter(other SequenceClock) bool {
