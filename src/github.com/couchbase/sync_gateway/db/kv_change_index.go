@@ -137,6 +137,7 @@ func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
 	}
 	clock.Unmarshal(value)
 	clock.SetCas(cas)
+	base.LogTo("Feed", "loadStableClock:%s", base.PrintClock(clock))
 	return clock
 }
 
@@ -174,7 +175,7 @@ func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
 
 // Given a newly changed document (received from the feed), adds to the pending entries.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, vbNo uint16) {
+func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
@@ -201,7 +202,7 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, vbNo uint16) {
 
 		// Now add the entry for the new doc revision:
 		change := &LogEntry{
-			Sequence:     doc.Sequence,
+			Sequence:     seq,
 			DocID:        docID,
 			RevID:        doc.CurrentRev,
 			Flags:        doc.Flags,

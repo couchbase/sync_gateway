@@ -41,7 +41,7 @@ type ChangeIndex interface {
 	GetCachedChanges(channelName string, options ChangesOptions) (validFrom uint64, entries []*LogEntry)
 
 	// Called to add a document to the index
-	DocChanged(docID string, docJSON []byte, vbucket uint16)
+	DocChanged(docID string, docJSON []byte, seq uint64, vbucket uint16)
 
 	// Retrieves stable sequence for index
 	GetStableSequence(docID string) SequenceID
