@@ -180,7 +180,7 @@ func LoadStableSequence(bucket Bucket) SequenceClock {
 	stableSequence := NewSequenceClockImpl()
 	value, cas, err := bucket.GetRaw(KStableSequenceKey)
 	if err != nil {
-		Warn("Stable sequence not found in index - resetting to 0")
+		Warn("Stable sequence not found in index - resetting to 0.  Err: %v.  Bucket: %+v", err, bucket)
 		return stableSequence
 	}
 	stableSequence.Unmarshal(value)

@@ -235,6 +235,10 @@ func (feed *wrapperTapFeedImpl) Events() <-chan sgbucket.TapEvent {
 	return feed.channel
 }
 
+func (feed *wrapperTapFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
+	return feed.channel
+}
+
 func dedupeAndForward(tapEvents []sgbucket.TapEvent, destChannel chan<- sgbucket.TapEvent) {
 
 	deduped := dedupeTapEvents(tapEvents)

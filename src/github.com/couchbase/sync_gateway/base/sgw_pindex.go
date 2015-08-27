@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"os"
 	"strconv"
 	"sync"
 
@@ -21,9 +20,13 @@ type CbgtContext struct {
 	Cfg     cbgt.Cfg
 }
 
+type SyncGatewayIndexParams struct {
+	BucketName string `json:"bucket_name"`
+}
+
 const (
-	SourceTypeCouchbase = "couchbase"
-	BaseNameSyncGateway = "sync_gateway" // Used by CBGT for its data path
+	SourceTypeCouchbase  = "couchbase"
+	IndexTypeSyncGateway = "sync_gateway" // Used by CBGT for its data path
 )
 
 type CBGTDCPFeed struct {
@@ -34,25 +37,31 @@ func (c *CBGTDCPFeed) Events() <-chan sgbucket.TapEvent {
 	return c.eventFeed
 }
 
+func (c *CBGTDCPFeed) WriteEvents() chan<- sgbucket.TapEvent {
+	return c.eventFeed
+}
+
 func (c *CBGTDCPFeed) Close() error { // TODO
 	log.Fatalf("CBGTDCPFeed.Close() called but not implemented")
 	return nil
 }
 
 type SyncGatewayPIndex struct {
-	mutex        sync.Mutex             // mutex used to protect meta and seqs
-	seqs         map[uint16]uint64      // To track max seq #'s we received per partition (vbucketId).
-	meta         map[uint16][]byte      // To track metadata blob's per partition (vbucketId).
-	feedEvents   chan sgbucket.TapEvent // The channel to forward TapEvents
-	bucket       CouchbaseBucket        // the couchbase bucket
-	tapArguments sgbucket.TapArguments  // tap args
+	mutex        sync.Mutex               // mutex used to protect meta and seqs
+	seqs         map[uint16]uint64        // To track max seq #'s we received per partition (vbucketId).
+	meta         map[uint16][]byte        // To track metadata blob's per partition (vbucketId).
+	feedEvents   chan<- sgbucket.TapEvent // The channel to forward TapEvents
+	bucket       CouchbaseBucket          // the couchbase bucket
+	tapArguments sgbucket.TapArguments    // tap args
+	stableClock  SequenceClock            // The stable clock when this PIndex object was created
 }
 
-func NewSyncGatewayPIndex(feedEvents chan sgbucket.TapEvent, bucket CouchbaseBucket, args sgbucket.TapArguments) *SyncGatewayPIndex {
+func NewSyncGatewayPIndex(feedEvents chan<- sgbucket.TapEvent, bucket CouchbaseBucket, args sgbucket.TapArguments, stableClock SequenceClock) *SyncGatewayPIndex {
 	pindex := &SyncGatewayPIndex{
 		feedEvents:   feedEvents,
 		bucket:       bucket,
 		tapArguments: args,
+		stableClock:  stableClock,
 	}
 
 	if err := pindex.SeedSeqnos(); err != nil {
@@ -74,13 +83,14 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 	startSeqnos := make(map[uint16]uint64, maxVbno)
 	vbuuids := make(map[uint16]uint64, maxVbno)
 
-	sequenceClock := LoadStableSequence(s.bucket) // Note: I think we should change this to bucket.LoadStableSequence()
-	highSeqnos := sequenceClock.ValueAsMap()
+	highSeqnos := s.stableClock.ValueAsMap()
 
 	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
 	// DCP stream from that position.  Also being used as a check on whether the server supports
 	// DCP.
-	statsUuids, _, err := s.bucket.GetStatsVbSeqno(maxVbno)
+	statsUuids, highSeqnosTemp, err := s.bucket.GetStatsVbSeqno(maxVbno)
+	log.Printf("highSeqnosFromStats: %+v", highSeqnosTemp)
+
 	if err != nil {
 		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 	}
@@ -258,7 +268,7 @@ func (s *SyncGatewayPIndex) Rollback(partition string, rollbackSeq uint64) error
 	// As of the time of this writing, I believe this is also broken in the master branch
 	// of Sync Gateway.
 
-	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", partition, rollbackSeq)
+	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
 
 	s.updateSeq(partition, rollbackSeq)
 
@@ -283,42 +293,4 @@ func (s *SyncGatewayPIndex) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 
 func (s *SyncGatewayPIndex) Stats(io.Writer) error {
 	return nil
-}
-
-// Function type for the function passed into CBGT to create a new Sync Gateway PIndex
-type NewSyncGatewayPIndexFunc func(string, string, string, func()) (cbgt.PIndexImpl, cbgt.Dest, error)
-
-// Function type for the function passed into CBGT to open a Sync Gateway PIndex
-type OpenSyncGatewayPIndexFunc func(string, string, func()) (cbgt.PIndexImpl, cbgt.Dest, error)
-
-// Function factory that has a closure over the eventFeed channel -- each Sync Gateway PIndex
-// will therefore have a reference to the channel.  This was done to avoid introducing a new package
-// scoped variable.
-func NewSyncGatewayPIndexImplFactory(eventFeed chan sgbucket.TapEvent, bucket CouchbaseBucket, args sgbucket.TapArguments) NewSyncGatewayPIndexFunc {
-
-	return func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-
-		os.MkdirAll(path, 0700)
-
-		result := NewSyncGatewayPIndex(eventFeed, bucket, args)
-
-		return result, result, nil
-
-	}
-
-}
-
-// Function factory that has a closure over the eventFeed channel -- each Sync Gateway PIndex
-// will therefore have a reference to the channel.  This was done to avoid introducing a new package
-// scoped variable.
-func OpenSyncGatewayPIndexImplFactory(eventFeed chan sgbucket.TapEvent, bucket CouchbaseBucket, args sgbucket.TapArguments) OpenSyncGatewayPIndexFunc {
-
-	return func(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-
-		result := NewSyncGatewayPIndex(eventFeed, bucket, args)
-
-		return result, result, nil
-
-	}
-
 }

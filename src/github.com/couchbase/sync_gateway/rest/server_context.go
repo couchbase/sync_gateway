@@ -14,9 +14,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -46,6 +48,7 @@ type ServerContext struct {
 	lock        sync.RWMutex
 	statsTicker *time.Ticker
 	HTTPClient  *http.Client
+	CbgtContext base.CbgtContext
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
@@ -81,7 +84,141 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
 	}
+
+	if err := sc.registerCbgtPindexType(); err != nil {
+		log.Fatalf("Fatal error initializing CBGT: %v", err)
+	}
+
 	return sc
+}
+
+func (sc *ServerContext) registerCbgtPindexType() error {
+
+	log.Printf("ServerContext.registerCbgtPindexType()")
+	defer log.Printf("/ServerContext.registerCbgtPindexType()")
+
+	// Register with CBGT
+	cbgt.RegisterPIndexImplType(base.IndexTypeSyncGateway, &cbgt.PIndexImplType{
+		New:         sc.NewSyncGatewayPIndexFactory,
+		Open:        sc.OpenSyncGatewayPIndexFactory,
+		Count:       nil,
+		Query:       nil,
+		Description: "Sync Gateway Pindex",
+	})
+	return nil
+
+}
+
+func (sc *ServerContext) NewSyncGatewayPIndexFactory(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	os.MkdirAll(path, 0700)
+
+	indexParamsStruct := base.SyncGatewayIndexParams{}
+	err := json.Unmarshal([]byte(indexParams), &indexParamsStruct)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Error unmarshalling indexParams: %v.  indexParams: %v", err, indexParams)
+	}
+
+	pathMeta := path + string(os.PathSeparator) + "SyncGatewayIndexParams.json"
+	err = ioutil.WriteFile(pathMeta, []byte(indexParams), 0600)
+	if err != nil {
+		errWrap := fmt.Errorf("Error writing %v to %v. Err: %v", indexParams, pathMeta, err)
+		log.Fatalf("%v", errWrap)
+		return nil, nil, errWrap
+	}
+
+	pindexImpl, dest, err := sc.SyncGatewayPIndexFactoryCommon(indexParamsStruct)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	return pindexImpl, dest, nil
+
+}
+
+func (sc *ServerContext) OpenSyncGatewayPIndexFactory(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	buf, err := ioutil.ReadFile(path +
+		string(os.PathSeparator) + "SyncGatewayIndexParams.json")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	indexParams := base.SyncGatewayIndexParams{}
+	err = json.Unmarshal(buf, &indexParams)
+	if err != nil {
+		errWrap := fmt.Errorf("Could not unmarshal buf: %v err: %v", buf, err)
+		log.Fatalf("%v", errWrap)
+		return nil, nil, errWrap
+	}
+
+	pindexImpl, dest, err := sc.SyncGatewayPIndexFactoryCommon(indexParams)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	return pindexImpl, dest, nil
+
+}
+
+func (sc *ServerContext) SyncGatewayPIndexFactoryCommon(indexParams base.SyncGatewayIndexParams) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	bucketName := indexParams.BucketName
+
+	// lookup the database context based on the indexParams
+	dbName := sc.findDbByBucketName(bucketName)
+	if dbName == "" {
+		err := fmt.Errorf("Could not find database for bucket name: %v", bucketName)
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	dbContext, ok := sc.databases_[dbName]
+	if !ok {
+		err := fmt.Errorf("Could not find database for name: %v", dbName)
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	// get the bucket, and type assert to a couchbase bucket
+	baseBucket := dbContext.Bucket
+	bucket, ok := baseBucket.(base.CouchbaseBucket)
+	if !ok {
+		err := fmt.Errorf("Type assertion fail to Couchbasebucket: %+v", baseBucket)
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	tapListener := dbContext.TapListener()
+
+	eventFeed := tapListener.TapFeed().WriteEvents()
+
+	stableClock, err := dbContext.GetStableClock()
+	if err != nil {
+		errWrap := fmt.Errorf("Error getting stable clock: %v", err)
+		log.Fatalf("%v", errWrap)
+		return nil, nil, errWrap
+	}
+
+	result := base.NewSyncGatewayPIndex(eventFeed, bucket, tapListener.TapArgs, stableClock)
+
+	return result, result, nil
+
+}
+
+func (sc *ServerContext) findDbByBucketName(bucketName string) string {
+
+	// Loop through all known database contexts and return the first one
+	// that has the bucketName specified above.
+	for dbName, dbContext := range sc.databases_ {
+		if dbContext.Bucket.GetName() == bucketName {
+			return dbName
+		}
+	}
+	return ""
+
 }
 
 func (sc *ServerContext) Close() {
@@ -139,7 +276,34 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
-func (sc *ServerContext) initCBGTManager() (base.CbgtContext, error) {
+func (sc *ServerContext) InitCBGT() error {
+
+	cbgtContext, err := sc.InitCBGTManager()
+	if err != nil {
+		return err
+	}
+	sc.CbgtContext = cbgtContext
+
+	// loop through all databases and init CBGT index
+	for _, dbContext := range sc.databases_ {
+		dbContext.BucketSpec.CbgtContext = sc.CbgtContext
+		if err := dbContext.CreateCBGTIndex(); err != nil {
+			return err
+		}
+	}
+
+	// Since we've created new indexes via the dbContext.InitCBGT() calls above,
+	// we need to kick the manager to recognize them.
+	cbgtContext.Manager.Kick("NewIndexesCreated")
+
+	return nil
+
+}
+
+func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
+
+	log.Printf("ServerContext.initCBGTManager()")
+	defer log.Printf("/ServerContext.initCBGTManager()")
 
 	couchbaseUrl, err := base.CouchbaseUrlWithAuth(
 		*sc.config.ClusterConfig.Server,
@@ -154,7 +318,7 @@ func (sc *ServerContext) initCBGTManager() (base.CbgtContext, error) {
 	// the connection string, eg: "couchbase:http://user:pass@localhost:8091"
 	connect := fmt.Sprintf("couchbase:%v", couchbaseUrl)
 
-	uuid, err := cmd.MainUUID(base.BaseNameSyncGateway, sc.config.ClusterConfig.DataDir)
+	uuid, err := cmd.MainUUID(base.IndexTypeSyncGateway, sc.config.ClusterConfig.DataDir)
 	if err != nil {
 		return base.CbgtContext{}, err
 	}
@@ -171,7 +335,7 @@ func (sc *ServerContext) initCBGTManager() (base.CbgtContext, error) {
 	bindHttp := uuid
 
 	cfg, err := cmd.MainCfg(
-		base.BaseNameSyncGateway,
+		base.IndexTypeSyncGateway,
 		connect,
 		bindHttp,
 		register,
@@ -188,6 +352,7 @@ func (sc *ServerContext) initCBGTManager() (base.CbgtContext, error) {
 	}
 
 	// this will cause CBGT to name the cfg document _sync:cfg
+	// TODO: SetKeyPrefix is deprecated, see https://github.com/couchbaselabs/cbgt/issues/19
 	cfgCb.SetKeyPrefix("_sync:")
 
 	tags := []string{"feed", "janitor", "pindex", "planner"}
@@ -215,6 +380,7 @@ func (sc *ServerContext) initCBGTManager() (base.CbgtContext, error) {
 		server,
 		managerEventHandlers,
 	)
+
 	err = manager.Start(register)
 	if err != nil {
 		log.Printf("Manager.Start() returned error: %v", err)
@@ -294,13 +460,9 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		FeedType:   feedType,
 	}
 
-	// If we are using DCPSHARD feed type, initialize the CBGT manager
+	// If we are using DCPSHARD feed type, set CbgtContext on bucket spec
 	if feedType == strings.ToLower(base.DcpShardFeedType) {
-		cbgtContext, err := sc.initCBGTManager()
-		if err != nil {
-			return nil, fmt.Errorf("Error initializing cbgt manager: %v", err)
-		}
-		spec.CbgtContext = cbgtContext
+		spec.CbgtContext = sc.CbgtContext
 	}
 
 	if config.Username != "" {
@@ -386,6 +548,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	if err != nil {
 		return nil, err
 	}
+	dbcontext.BucketSpec = spec
 
 	syncFn := ""
 	if config.Sync != nil {
