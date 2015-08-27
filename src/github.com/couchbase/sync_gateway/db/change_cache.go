@@ -109,15 +109,21 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 	// Start a background task for periodic housekeeping:
 	go func() {
-		for c.CleanUp() {
+		for {
 			time.Sleep(c.options.CachePendingSeqMaxWait / 2)
+			if c.stopped || !c.CleanUp() {
+				break
+			}
 		}
 	}()
 
 	// Start a background task for SkippedSequenceQueue housekeeping:
 	go func() {
-		for c.CleanSkippedSequenceQueue() {
+		for {
 			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
+			if c.stopped || !c.CleanSkippedSequenceQueue() {
+				break
+			}
 		}
 	}()
 }
