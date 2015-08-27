@@ -27,6 +27,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbaselabs/cbgt/autofailover"
 	"github.com/couchbaselabs/cbgt/cmd"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -94,8 +95,12 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 func (sc *ServerContext) registerCbgtPindexType() error {
 
-	log.Printf("ServerContext.registerCbgtPindexType()")
-	defer log.Printf("/ServerContext.registerCbgtPindexType()")
+	// The Description format is:
+	//
+	//     $categoryName/$indexType - short descriptive string
+	//
+	// where $categoryName is something like "advanced", or "general".
+	description := fmt.Sprintf("%v/%v - Sync Gateway", base.IndexCategorySyncGateway, base.IndexTypeSyncGateway)
 
 	// Register with CBGT
 	cbgt.RegisterPIndexImplType(base.IndexTypeSyncGateway, &cbgt.PIndexImplType{
@@ -103,7 +108,7 @@ func (sc *ServerContext) registerCbgtPindexType() error {
 		Open:        sc.OpenSyncGatewayPIndexFactory,
 		Count:       nil,
 		Query:       nil,
-		Description: "Sync Gateway Pindex",
+		Description: description,
 	})
 	return nil
 
@@ -315,9 +320,6 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 		return base.CbgtContext{}, err
 	}
 
-	// the connection string, eg: "couchbase:http://user:pass@localhost:8091"
-	connect := fmt.Sprintf("couchbase:%v", couchbaseUrl)
-
 	uuid, err := cmd.MainUUID(base.IndexTypeSyncGateway, sc.config.ClusterConfig.DataDir)
 	if err != nil {
 		return base.CbgtContext{}, err
@@ -334,26 +336,18 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 	//   https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
 
-	cfg, err := cmd.MainCfg(
-		base.IndexTypeSyncGateway,
-		connect,
-		bindHttp,
-		register,
-		sc.config.ClusterConfig.DataDir,
+	options := map[string]interface{}{
+		"keyPrefix": db.KSyncKeyPrefix,
+	}
+
+	cfgCb, err := cbgt.NewCfgCBEx(
+		couchbaseUrl,
+		*sc.config.ClusterConfig.Bucket,
+		options,
 	)
 	if err != nil {
 		return base.CbgtContext{}, err
 	}
-
-	// type assertion to convert to CfgCB so we can call SetKeyPrefix
-	cfgCb, ok := cfg.(*cbgt.CfgCB)
-	if !ok {
-		return base.CbgtContext{}, fmt.Errorf("Type assertion failure")
-	}
-
-	// this will cause CBGT to name the cfg document _sync:cfg
-	// TODO: SetKeyPrefix is deprecated, see https://github.com/couchbaselabs/cbgt/issues/19
-	cfgCb.SetKeyPrefix("_sync:")
 
 	tags := []string{"feed", "janitor", "pindex", "planner"}
 	container := ""
@@ -363,7 +357,7 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 	var managerEventHandlers cbgt.ManagerEventHandlers
 
 	// refresh it so we have a fresh copy
-	if err := cfg.Refresh(); err != nil {
+	if err := cfgCb.Refresh(); err != nil {
 		return base.CbgtContext{}, err
 	}
 
@@ -383,16 +377,61 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 
 	err = manager.Start(register)
 	if err != nil {
-		log.Printf("Manager.Start() returned error: %v", err)
+		return base.CbgtContext{}, err
+	}
+
+	if err := sc.enableCBGTAutofailover(
+		cbgt.VERSION,
+		manager,
+		cfgCb,
+		uuid,
+		couchbaseUrl,
+		db.KSyncKeyPrefix,
+	); err != nil {
 		return base.CbgtContext{}, err
 	}
 
 	cbgtContext := base.CbgtContext{
 		Manager: manager,
-		Cfg:     cfg,
+		Cfg:     cfgCb,
 	}
 
 	return cbgtContext, nil
+
+}
+
+func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manager, cfg cbgt.Cfg, uuid, couchbaseUrl, keyPrefix string) error {
+
+	cbHeartbeater, err := autofailover.NewCouchbaseHeartbeater(
+		couchbaseUrl,
+		*sc.config.ClusterConfig.Bucket,
+		keyPrefix,
+		uuid,
+	)
+	if err != nil {
+		return err
+	}
+
+	intervalMs := 10000
+
+	if sc.config.ClusterConfig.HeartbeatIntervalSeconds != nil {
+		intervalMs = int(*sc.config.ClusterConfig.HeartbeatIntervalSeconds) * 1000
+	}
+
+	cbHeartbeater.StartSendingHeartbeats(intervalMs)
+
+	deadNodeHandler := base.HeartbeatStoppedHandler{
+		Cfg:         cfg,
+		CbgtVersion: version,
+		Manager:     mgr,
+	}
+
+	staleThresholdMs := intervalMs * 10
+	if err := cbHeartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
+		return err
+	}
+
+	return nil
 
 }
 
