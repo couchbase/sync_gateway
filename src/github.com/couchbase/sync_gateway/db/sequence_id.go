@@ -37,7 +37,10 @@ const (
 	ClockSequenceType
 )
 
-var MaxSequenceID = SequenceID{Seq: math.MaxUint64}
+var MaxSequenceID = SequenceID{
+	Seq:  math.MaxUint64,
+	vbNo: math.MaxUint16,
+}
 
 // Format sequence ID to send to clients.  Sequence IDs can be in one of the following formats:
 //   Seq                    - simple sequence
@@ -221,6 +224,18 @@ func (s SequenceID) SafeSequence() uint64 {
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
 // The tricky part is that "n" sorts after "n:m" for any nonzero m
 func (s SequenceID) Before(s2 SequenceID) bool {
+	if s.SeqType == IntSequenceType {
+		return s.intBefore(s2)
+	} else {
+		vbefore := s.vectorBefore(s2)
+		base.LogTo("DIndex+", "Is [%v,%v] before [%v,%v]? %v", s.vbNo, s.Seq, s2.vbNo, s2.Seq, vbefore)
+		return vbefore
+	}
+}
+
+// The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
+// The tricky part is that "n" sorts after "n:m" for any nonzero m
+func (s SequenceID) intBefore(s2 SequenceID) bool {
 
 	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
 	if s.TriggeredBy == s2.TriggeredBy {
@@ -231,5 +246,30 @@ func (s SequenceID) Before(s2 SequenceID) bool {
 		return s.TriggeredBy <= s2.SafeSequence() // s triggered but not s2
 	} else {
 		return s.TriggeredBy < s2.TriggeredBy // both triggered, but by different sequences
+	}
+}
+
+// For vector sequences, triggered by is always a full clock, and
+func (s SequenceID) vectorBefore(s2 SequenceID) bool {
+
+	if s.TriggeredByClock == nil && s2.TriggeredByClock == nil { // No triggered by - return based on vb.seq only
+		return s.vbucketSequenceBefore(s2)
+	} else if s.TriggeredByClock == nil { // s2 triggered but not s.  Backfill gets priority
+		return false
+	} else if s2.TriggeredByClock == nil { // s2 triggered but not s.  Backfill gets priority
+		return true
+	} else if s.TriggeredByClock.Equals(s2.TriggeredByClock) { // Both triggered by the same clock - return based on vb.seq
+		return s.vbucketSequenceBefore(s2)
+	} else { // Triggered by difference clocks - return based on earlier triggeredBy
+		return s.TriggeredByClock.AllBefore(s2.TriggeredByClock)
+	}
+
+}
+
+func (s SequenceID) vbucketSequenceBefore(s2 SequenceID) bool {
+	if s.vbNo == s2.vbNo {
+		return s.Seq < s2.Seq
+	} else {
+		return s.vbNo < s2.vbNo
 	}
 }

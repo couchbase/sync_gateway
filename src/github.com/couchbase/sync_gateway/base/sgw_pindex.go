@@ -75,7 +75,7 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 	vbuuids := make(map[uint16]uint64, maxVbno)
 
 	sequenceClock := LoadStableSequence(s.bucket) // Note: I think we should change this to bucket.LoadStableSequence()
-	highSeqnos := sequenceClock.Value()
+	highSeqnos := sequenceClock.ValueAsMap()
 
 	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
 	// DCP stream from that position.  Also being used as a check on whether the server supports

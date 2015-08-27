@@ -217,7 +217,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (storedClocks, error) {
 
 type storedClocks struct {
 	cas       uint64
-	Sequences []map[uint16]uint64
+	Sequences [][]uint64
 }
 
 // TODO: replace with something more intelligent than gob encode, to take advantage of known
@@ -251,7 +251,7 @@ func (s *storedClocks) Contains(clock base.SequenceClock) (bool, int) {
 	return false, 0
 }
 
-func ClockMatches(a, b map[uint16]uint64) bool {
+func ClockMatches(a, b []uint64) bool {
 	if len(a) != len(b) {
 		return false
 	}

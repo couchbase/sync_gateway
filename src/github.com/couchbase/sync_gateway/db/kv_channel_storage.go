@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -204,7 +203,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 	// Determine which blocks have changed, and load those blocks
 
 	base.LogTo("DIndex+", "[channelStorage.GetChanges] From clock, to clock: %s: %s", base.PrintClock(fromSeq), base.PrintClock(toSeq))
-	blocksByVb, blocksByKey, err := b.calculateChangedBlocks(fromSeq, toSeq)
+	blocksByKey, blocksByVb, err := b.calculateChangedBlocks(fromSeq, toSeq)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +213,10 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 	// deduplication once we've retrieved the full entry
 	entries := make([]*LogEntry, 0)
 	entryKeys := make([]string, 0)
-	for vbNo, blocks := range blocksByVb {
+	for _, blockSet := range blocksByVb {
+		vbNo := blockSet.vbNo
+		blocks := blockSet.blocks
+		base.LogTo("Changes+", "GetChanges: Adding entries for vb: %v", vbNo)
 		fromVbSeq := fromSeq.GetSequence(vbNo)
 		toVbSeq := toSeq.GetSequence(vbNo)
 
@@ -233,18 +235,22 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 
 }
 
+type vbBlockSet struct {
+	vbNo   uint16
+	blocks []IndexBlock
+}
+
 // Calculate the set of index blocks that need to be loaded.
 //   blocksByVb stores which blocks need to be processed for each vbucket.  Multiple vb map
 //   values can point to the same IndexBlock (i.e. when those vbs share a partition).
 //   blocksByKey stores all IndexBlocks to be retrieved, indexed by block key - no duplicates
-func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, channelClock base.SequenceClock) (blocksByVb map[uint16][]IndexBlock, blocksByKey map[string]IndexBlock, err error) {
+func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, channelClock base.SequenceClock) (blocksByKey map[string]IndexBlock, blocksByVb []vbBlockSet, err error) {
 
-	blocksByVb = make(map[uint16][]IndexBlock)
 	blocksByKey = make(map[string]IndexBlock, 1)
+	blocksByVb = make([]vbBlockSet, 0)
 
 	for vbNo, clockVbSeq := range channelClock.Value() {
-		log.Printf("Channel clock has value for vbNo (%d):%d", vbNo, clockVbSeq)
-		fromVbSeq := fromSeq.GetSequence(vbNo)
+		fromVbSeq := fromSeq.GetSequence(uint16(vbNo))
 
 		// Verify that the requested from value is less than the channel clock sequence (there are
 		// new entries for this vbucket in the channel)
@@ -252,16 +258,18 @@ func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, chan
 			continue
 		}
 
-		for _, blockKey := range GenerateBlockKeys(b.channelName, fromVbSeq, clockVbSeq, b.partitionMap[vbNo]) {
+		blockSet := vbBlockSet{vbNo: uint16(vbNo)}
+		for _, blockKey := range GenerateBlockKeys(b.channelName, fromVbSeq, clockVbSeq, b.partitionMap[uint16(vbNo)]) {
 			block, found := blocksByKey[blockKey]
 			if !found {
 				block = newBitFlagBlockForKey(blockKey)
 				blocksByKey[blockKey] = block
 			}
-			blocksByVb[vbNo] = append(blocksByVb[vbNo], block)
+			blockSet.blocks = append(blockSet.blocks, block)
 		}
+		blocksByVb = append(blocksByVb, blockSet)
 	}
-	return blocksByVb, blocksByKey, nil
+	return blocksByKey, blocksByVb, nil
 }
 
 // Bulk get the blocks from the index bucket, and unmarshal into the provided map.
@@ -393,6 +401,7 @@ func GenerateBlockKey(channelName string, sequence uint64, partition uint16) str
 	return generateBitFlagBlockKey(channelName, sequence, partition)
 }
 
+// Returns the set of all block keys required to return sequences from minSeq to maxSeq for the channel, partition
 func GenerateBlockKeys(channelName string, minSeq uint64, maxSeq uint64, partition uint16) []string {
 	return generateBitFlagBlockKeys(channelName, minSeq, maxSeq, partition)
 }

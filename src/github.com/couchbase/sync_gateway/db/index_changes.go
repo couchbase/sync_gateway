@@ -250,6 +250,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 		defer close(feed)
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
+			base.LogTo("Changes+", "vectorChangedFeed, adding entry for [%v,%v]", logEntry.VbNo, logEntry.Sequence)
 			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
 				//continue  // FIX: had to comment this out.
 				// This entry is shadowed by a conflicting one. We would like to skip it.

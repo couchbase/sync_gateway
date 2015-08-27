@@ -12,7 +12,6 @@ package db
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"sort"
 	"sync"
@@ -89,7 +88,6 @@ func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
 	}
 	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
 	// round trips.
-	log.Printf("clockUpdates:%+v", clockUpdates)
 	return k.writeClockCas(clockUpdates)
 }
 

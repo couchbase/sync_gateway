@@ -32,7 +32,8 @@ type SequenceClock interface {
 	Marshal() (value []byte, err error)            // Marshals the sequence value
 	Unmarshal(value []byte) error                  // Unmarshals the sequence value
 	UpdateWithClock(updateClock SequenceClock)     // Updates the clock with values from updateClock
-	Value() map[uint16]uint64                      // Returns the raw vector clock
+	Value() []uint64                               // Returns the raw vector clock
+	ValueAsMap() map[uint16]uint64                 // Returns the raw vector clock
 	GetHashedValue() string                        // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	SetHashedValue(value string)                   // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
@@ -44,7 +45,7 @@ type SequenceClock interface {
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
 type SequenceClockImpl struct {
-	value       map[uint16]uint64
+	value       []uint64
 	hashedValue string
 	cas         uint64
 }
@@ -52,7 +53,7 @@ type SequenceClockImpl struct {
 func NewSequenceClockImpl() *SequenceClockImpl {
 	// Initialize empty clock
 	clock := &SequenceClockImpl{
-		value: make(map[uint16]uint64, KMaxVbNo),
+		value: make([]uint64, KMaxVbNo),
 	}
 	return clock
 }
@@ -79,7 +80,7 @@ func NewSequenceClockForBytes(bytes []byte) (*SequenceClockImpl, error) {
 	return clock, err
 }
 
-func (c *SequenceClockImpl) Init(value map[uint16]uint64, hash string) {
+func (c *SequenceClockImpl) Init(value []uint64, hash string) {
 	c.value = value
 	c.hashedValue = hash
 }
@@ -107,7 +108,7 @@ func (c *SequenceClockImpl) GetSequence(vbNo uint16) (vbSequence uint64) {
 // Copies a channel clock
 func (c *SequenceClockImpl) clone() SequenceClockImpl {
 	copy := SequenceClockImpl{
-		value: make(map[uint16]uint64, len(c.value)),
+		value: make([]uint64, KMaxVbNo),
 		cas:   c.cas,
 	}
 
@@ -125,8 +126,19 @@ func (c *SequenceClockImpl) SetCas(cas uint64) {
 	c.cas = cas
 }
 
-func (c *SequenceClockImpl) Value() map[uint16]uint64 {
+func (c *SequenceClockImpl) Value() []uint64 {
 	return c.value
+}
+
+func (c *SequenceClockImpl) ValueAsMap() map[uint16]uint64 {
+
+	clockMap := make(map[uint16]uint64)
+	for vb, seq := range c.Value() {
+		if seq > 0 {
+			clockMap[uint16(vb)] = seq
+		}
+	}
+	return clockMap
 }
 
 // TODO: replace with something more intelligent than gob encode, to take advantage of known
@@ -254,7 +266,7 @@ func (c *SequenceClockImpl) findModified(other SequenceClock) (modified []uint16
 	}
 	for vb, sequence := range other.Value() {
 		if sequence > c.value[vb] {
-			modified = append(modified, vb)
+			modified = append(modified, uint16(vb))
 		}
 	}
 	return modified
@@ -266,8 +278,8 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 			// TODO: This method assumes the non-zero values in updateClock are greater than
 			//  the current clock values.  The following check is for safety/testing during
 			//  implementation - could consider removing for performance
-			currentSequence, ok := c.value[vb]
-			if ok && sequence < currentSequence {
+			currentSequence := c.value[vb]
+			if sequence < currentSequence {
 				panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vb, currentSequence, sequence))
 			}
 			c.value[vb] = sequence
@@ -370,10 +382,16 @@ func (c *SyncSequenceClock) clone() *SyncSequenceClock {
 	}
 }
 
-func (c *SyncSequenceClock) Value() map[uint16]uint64 {
+func (c *SyncSequenceClock) Value() []uint64 {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c.Clock.Value()
+}
+
+func (c *SyncSequenceClock) ValueAsMap() map[uint16]uint64 {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.Clock.ValueAsMap()
 }
 
 // TODO: possibly replace with something more intelligent than gob encode, to take advantage of known
@@ -410,7 +428,7 @@ func PrintClock(clock SequenceClock) string {
 
 func GetMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
 	minClock := NewSequenceClockImpl()
-	// Need to iterate over all index values instead of using range, to handle map entries in b that
+	// Need to iterate over all index values instead of using range, to handle entries in b that
 	// are not in a (and vice versa)
 	for i := uint16(0); i < KMaxVbNo; i++ {
 		aValue := a.GetSequence(i)
