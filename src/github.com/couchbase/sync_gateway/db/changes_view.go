@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
@@ -28,6 +29,9 @@ type channelsViewRow struct {
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseContext) getChangesInChannelFromView(
 	channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
+	if dbc.Bucket == nil {
+		return nil, errors.New("No bucket available for channel view query")
+	}
 	start := time.Now()
 	// Query the view:
 	optMap := changesViewOptions(channelName, endSeq, options)

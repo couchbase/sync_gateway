@@ -730,6 +730,35 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 }
 
+// Test that housekeeping goroutines get terminated when change cache is stopped
+func TestStopChangeCache(t *testing.T) {
+	// Setup short-wait cache to ensure cleanup goroutines fire often
+	cacheOptions := CacheOptions{
+		CachePendingSeqMaxWait: 10 * time.Millisecond,
+		CachePendingSeqMaxNum:  50,
+		CacheSkippedSeqMaxWait: 1 * time.Second}
+	// Use leaky bucket to have the tap feed 'lose' document 3
+	leakyConfig := base.LeakyBucketConfig{
+		TapFeedMissingDocs: []string{"doc-3"},
+	}
+	db := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
+
+	// Write sequences direct
+	WriteDirect(db, []string{"ABC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC"}, 3)
+
+	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+
+	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
+	tearDownTestDB(t, db)
+
+	// Hang around a while to see if the housekeeping tasks fire and panic
+	time.Sleep(2 * time.Second)
+
+}
+
 func shortWaitCache() CacheOptions {
 
 	return CacheOptions{
