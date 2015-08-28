@@ -109,21 +109,17 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 
 	// Start a background task for periodic housekeeping:
 	go func() {
-		for {
+		time.Sleep(c.options.CachePendingSeqMaxWait / 2)
+		for !c.IsStopped() && c.CleanUp() {
 			time.Sleep(c.options.CachePendingSeqMaxWait / 2)
-			if c.stopped || !c.CleanUp() {
-				break
-			}
 		}
 	}()
 
 	// Start a background task for SkippedSequenceQueue housekeeping:
 	go func() {
-		for {
+		time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
+		for !c.IsStopped() && c.CleanSkippedSequenceQueue() {
 			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
-			if c.stopped || !c.CleanSkippedSequenceQueue() {
-				break
-			}
 		}
 	}()
 }
@@ -134,6 +130,12 @@ func (c *changeCache) Stop() {
 	c.stopped = true
 	c.logsDisabled = true
 	c.lock.Unlock()
+}
+
+func (c *changeCache) IsStopped() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.stopped
 }
 
 // Forgets all cached changes for all channels.
@@ -560,7 +562,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 //////// CHANGE ACCESS:
 
 func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error) {
-	if c.stopped {
+	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.getChannelCache(channelName).GetChanges(options)
