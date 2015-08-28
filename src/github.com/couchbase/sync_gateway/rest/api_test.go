@@ -646,6 +646,141 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	assert.True(t, len(body) == 3)
 }
 
+// PUT new attachment on existing attachment with same name
+func TestAttachmentUpdate(t *testing.T) {
+	var rt restTester
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "text/plain"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to new document without any rev (should succeed)
+	response := rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/notexistyet/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// now check the document
+	body = db.Body{}
+	response = rt.sendRequest("GET", "/db/notexistyet", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	// body should only have 3 top-level entries _id, _rev, _attachments
+	assert.True(t, len(body) == 3)
+
+	//Now update the attachement (should succeed)
+	attachmentBody = "this is the new body of attachment"
+
+	reqHeaders["If-Match"] = revIdAfterAttachment
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment = body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/notexistyet/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// now check the document
+	body = db.Body{}
+	response = rt.sendRequest("GET", "/db/notexistyet", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	// body should only have 3 top-level entries _id, _rev, _attachments
+	assert.True(t, len(body) == 3)
+
+}
+
+// PUT new attachment on existing attachment with same name, rejected by sync function
+// This is a test for #1097
+func TestAttachmentUpdateSyncFunctionRejects(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc,oldDoc) {if (oldDoc && (doc._attachments.attach1.digest != oldDoc._attachments.attach1.digest)) {throw({forbidden:"Attachments may not be modified"});}}`}
+
+	// attach to new document using bogus rev (should fail)
+	attachmentBody := "this is the body of an attachment that has some random text in it"
+	attachmentContentType := "text/plain"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to new document without any rev (should succeed)
+	response := rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+	if revIdAfterAttachment == "" {
+		t.Fatalf("No revid in response for PUT attachment")
+	}
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/notexistyet/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// now check the document
+	body = db.Body{}
+	response = rt.sendRequest("GET", "/db/notexistyet", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	// body should only have 3 top-level entries _id, _rev, _attachments
+	assert.True(t, len(body) == 3)
+	attachmentDigest := body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["digest"]
+	attachmentLength := body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["length"]
+
+	//Now update the attachement
+	newAttachmentBody := "this is the NEW body of an attachment that has some random text in it"
+
+	// attempt to update attachment (should fail with sync function rejection)
+	reqHeaders["If-Match"] = revIdAfterAttachment
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", newAttachmentBody, reqHeaders)
+	assertStatus(t, response, 403)
+
+	// retrieve attachment, should be unchanged
+	response = rt.sendRequest("GET", "/db/notexistyet/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// now check the document attachments properties are unchanged
+	body = db.Body{}
+	response = rt.sendRequest("GET", "/db/notexistyet", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	// body should only have 3 top-level entries _id, _rev, _attachments
+	assert.True(t, len(body) == 3)
+
+	//attachment digest should not have changed
+	newAttachmentDigest := body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["digest"]
+	assert.True(t, newAttachmentDigest == attachmentDigest)
+
+	//attachment length should not have changed
+	newAttachmentLength := body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["length"]
+	assert.True(t, newAttachmentLength == attachmentLength)
+}
+
 func TestBulkDocs(t *testing.T) {
 	var rt restTester
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}]}`
