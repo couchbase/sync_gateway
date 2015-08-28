@@ -718,7 +718,7 @@ func TestAttachmentUpdateSyncFunctionRejects(t *testing.T) {
 
 	// attach to new document using bogus rev (should fail)
 	attachmentBody := "this is the body of an attachment that has some random text in it"
-	attachmentContentType := "text/plain"
+	attachmentContentType := "text/plain;charset=UTF-8"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
@@ -754,8 +754,8 @@ func TestAttachmentUpdateSyncFunctionRejects(t *testing.T) {
 	newAttachmentBody := "this is the NEW body of an attachment that has some random text in it"
 
 	// attempt to update attachment (should fail with sync function rejection)
-	reqHeaders["If-Match"] = revIdAfterAttachment
-	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1", newAttachmentBody, reqHeaders)
+	//reqHeaders["If-Match"] = revIdAfterAttachment
+	response = rt.sendRequestWithHeaders("PUT", "/db/notexistyet/attach1?rev="+revIdAfterAttachment, newAttachmentBody, reqHeaders)
 	assertStatus(t, response, 403)
 
 	// retrieve attachment, should be unchanged
