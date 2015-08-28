@@ -93,7 +93,7 @@ type ClusterConfig struct {
 
 func (c ClusterConfig) CBGTEnabled() bool {
 	// if we have a non-empty server field, then assume CBGT is enabled.
-	return *c.Server != ""
+	return c.Server != nil && *c.Server != ""
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
@@ -340,11 +340,40 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 func (config *ServerConfig) setupAndValidateDatabases() error {
 	for name, dbConfig := range config.Databases {
 		dbConfig.setup(name)
-		if err := dbConfig.validate(); err != nil {
+		if err := config.validateDbConfig(dbConfig); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
+
+	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
+	if dbConfig.ChannelIndex != nil {
+		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
+			msg := "ChannelIndex declared in config, but the FeedType is %v " +
+				"rather than expected value of DCPSHARD"
+			return fmt.Errorf(msg, dbConfig.FeedType)
+		}
+	}
+
+	// if the feed type is DCPSHARD, then there must be a ChannelIndex
+	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
+		if dbConfig.ChannelIndex == nil {
+			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
+			return fmt.Errorf(msg)
+		}
+	}
+
+	// must have valid CBGT enabled in cluster config
+	if !config.ClusterConfig.CBGTEnabled() {
+		msg := "FeedType is DCPSHARD, but CBGT not enabled in cluster_config"
+		return fmt.Errorf(msg)
+	}
+
+	return nil
+
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
