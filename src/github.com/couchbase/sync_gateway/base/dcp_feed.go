@@ -53,16 +53,20 @@ func (a dcpAuth) GetCredentials() (string, string, string) {
 	username := a.Username
 	password := a.Password
 
-	// as long as it's not the default bucket, if the username is empty
-	// then set the username to the bucketname.  (if it's the default bucket, the
-	// username should just be empty rather than "default")
-	if a.Username == "" && a.BucketName != "default" {
+	// If the username is empty then set the username to the bucketname.
+	if a.Username == "" {
 		username = a.BucketName
 	}
 
 	// if the username is empty, then the password should be empty too
 	if username == "" {
 		password = ""
+	}
+
+	// If it's the default bucket, then set the username to "default"
+	// workaround for https://github.com/couchbaselabs/cbgt/issues/32#issuecomment-136481228
+	if a.BucketName == "" || a.BucketName == "default" {
+		username = "default"
 	}
 
 	return username, password, a.BucketName
