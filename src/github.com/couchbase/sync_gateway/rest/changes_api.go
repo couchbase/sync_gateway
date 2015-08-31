@@ -422,6 +422,10 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		HeartbeatMs *uint64       `json:"heartbeat"`
 		TimeoutMs   *uint64       `json:"timeout"`
 	}
+	if h.db != nil && h.db.SequenceType == db.ClockSequenceType {
+		input.Since.SeqType = h.db.SequenceType
+		input.Since.SequenceHasher = h.db.SequenceHasher
+	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
 	}

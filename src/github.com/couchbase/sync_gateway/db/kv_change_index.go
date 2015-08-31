@@ -473,6 +473,10 @@ func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (
 
 func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
 
+	if options.Since.Clock == nil {
+		options.Since.Clock = base.NewSequenceClockImpl()
+	}
+
 	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
 	changes, err := b.getOrCreateReader(channelName).getChanges(options.Since.Clock)
 	if err != nil {

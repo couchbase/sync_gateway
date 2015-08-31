@@ -28,7 +28,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 	go func() {
 		defer func() {
-			base.LogTo("Changes", "MultiChangesFeed done %s", to)
+			base.LogTo("DIndex+", "MultiChangesFeed done %s", to)
 			close(output)
 		}()
 
@@ -63,7 +63,10 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Populate the  array of feed channels:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 
+			base.LogTo("DIndex+", "GotChannelSince... %v", channelsSince)
 			for name, seqAddedAt := range channelsSince {
+
+				base.LogTo("DIndex+", "Starting for channel... %s", name)
 				chanOpts := options
 
 				// Check whether requires backfill based on addedChannels in this _changes feed
@@ -165,7 +168,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				// update the cumulative clock, and stick it on the entry
 				cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
 				minEntry.Seq.Clock = cumulativeClock
-				clockHash, err := db.sequenceHasher.GetHash(minEntry.Seq.Clock)
+				clockHash, err := db.SequenceHasher.GetHash(minEntry.Seq.Clock)
 				minEntry.Seq.Clock = &base.SequenceClockImpl{}
 				base.LogTo("DIndex+", "calculated hash...%v", clockHash)
 				if err != nil {
@@ -233,7 +236,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
-	base.LogTo("DCache+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	base.LogTo("DIndex+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	if err != nil {
 		return nil, err
 	}
@@ -250,15 +253,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 		defer close(feed)
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
-			base.LogTo("Changes+", "vectorChangedFeed, adding entry for [%v,%v]", logEntry.VbNo, logEntry.Sequence)
-			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
-				//continue  // FIX: had to comment this out.
-				// This entry is shadowed by a conflicting one. We would like to skip it.
-				// The problem is that if this is the newest revision of this doc, then the
-				// doc will appear under this sequence # in the changes view, which means
-				// we won't emit the doc at all because we already stopped emitting entries
-				// from the view before this point.
-			}
+			base.LogTo("DIndex+", "vectorChangesFeed, adding entry for [%v,%v]", logEntry.VbNo, logEntry.Sequence)
 			if logEntry.Sequence >= options.Since.TriggeredBy {
 				options.Since.TriggeredBy = 0
 			}

@@ -49,7 +49,8 @@ type DatabaseContext struct {
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 	cbgtManager        *cbgt.Manager           // The cbgt manager for sharded DCP stream
-	sequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
+	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
+	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
 }
 
 type DatabaseContextOptions struct {
@@ -124,11 +125,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	if options.IndexOptions == nil {
 		// In-memory channel cache
+		context.SequenceType = IntSequenceType
 		context.changeCache = &changeCache{}
 	} else {
 		// KV channel index
+		context.SequenceType = ClockSequenceType
 		context.changeCache = &kvChangeIndex{}
-		context.sequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
+		context.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
 		if err != nil {
 			return nil, err
 		}

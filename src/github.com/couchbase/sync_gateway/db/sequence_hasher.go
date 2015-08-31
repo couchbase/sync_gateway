@@ -39,11 +39,7 @@ type sequenceHash struct {
 }
 
 func (s *sequenceHash) String() string {
-	if s.collisionIndex == 0 {
-		return strconv.FormatUint(s.hashValue, 10)
-	} else {
-		return fmt.Sprintf("%d-%d", s.hashValue, s.collisionIndex)
-	}
+	return fmt.Sprintf("%d-%d", s.hashValue, s.collisionIndex)
 }
 
 // Creates a new sequenceHasher using 2^exp as mod.

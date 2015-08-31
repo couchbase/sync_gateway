@@ -123,6 +123,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 			change := makeChangeEntry(logEntry, seqID, channel)
 
+			base.LogTo("Changes+", "Sending seq:%v from channel %s", seqID, channel)
 			select {
 			case <-options.Terminator:
 				base.LogTo("Changes+", "Aborting changesFeed")
@@ -164,11 +165,11 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	if (options.Continuous || options.Wait) && options.Terminator == nil {
 		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
 	}
-	if options.Since.SeqType == IntSequenceType {
-		base.LogTo("DIndex+", "Simple multi changes feed...")
+	if db.SequenceType == IntSequenceType {
+		base.LogTo("Changes+", "Int sequence multi changes feed...")
 		return db.SimpleMultiChangesFeed(chans, options)
 	} else {
-		base.LogTo("DIndex+", "Vector multi changes feed...")
+		base.LogTo("Changes+", "Vector multi changes feed...")
 		return db.VectorMultiChangesFeed(chans, options)
 	}
 }

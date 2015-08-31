@@ -65,7 +65,7 @@ func TestHashStorage(t *testing.T) {
 	clock.SetSequence(150, 150)
 	hashValue, err := seqHasher.GetHash(clock)
 	assertNoError(t, err, "Error getting hash")
-	assert.Equals(t, hashValue, "14")
+	assert.Equals(t, hashValue, "14-0")
 
 	// Retrieve first hash entry
 	clockBack, err := seqHasher.GetClock(hashValue)
@@ -77,7 +77,7 @@ func TestHashStorage(t *testing.T) {
 	// Create hash for the first clock again - ensure retrieves existing, and doesn't create new
 	hashValue, err = seqHasher.GetHash(clock)
 	assertNoError(t, err, "Error getting hash")
-	assert.Equals(t, hashValue, "14")
+	assert.Equals(t, hashValue, "14-0")
 
 	// Add a second clock that hashes to the same value
 	secondClock := base.NewSequenceClockImpl()

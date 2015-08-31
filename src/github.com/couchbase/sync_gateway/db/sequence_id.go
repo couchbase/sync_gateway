@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ type SequenceID struct {
 	Seq              uint64             // Int sequence: The actual internal sequence
 	Clock            base.SequenceClock // Clock sequence: Sequence (distributed index)
 	TriggeredByClock base.SequenceClock // Clock sequence: Sequence (distributed index)
+	SequenceHasher   *sequenceHasher    // Sequence hasher - used when unmarshalling clock-based sequences
 	vbNo             uint16             // Vbucket number for actual sequence
 }
 
@@ -91,9 +93,9 @@ func (s SequenceID) clockSeqToString() string {
 
 func (dbc *DatabaseContext) ParseSequenceID(str string) (s SequenceID, err error) {
 	// If there's a sequence hasher defined, we're expecting clock-based sequences
-	if dbc.sequenceHasher != nil {
+	if dbc.SequenceHasher != nil {
 		base.LogTo("DIndex+", "Handling changes as clock sequence...")
-		return dbc.parseClockSequenceID(str)
+		return parseClockSequenceID(str, dbc.SequenceHasher)
 	} else {
 		base.LogTo("DIndex+", "Handling changes as int sequence...")
 		return parseIntegerSequenceID(str)
@@ -137,9 +139,10 @@ func parseIntegerSequenceID(str string) (s SequenceID, err error) {
 	return
 }
 
-func (dbc *DatabaseContext) parseClockSequenceID(str string) (s SequenceID, err error) {
+func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s SequenceID, err error) {
 
-	if dbc.sequenceHasher == nil {
+	log.Println("parsing sequence")
+	if sequenceHasher == nil {
 		return SequenceID{}, errors.New("No Sequence Hasher available to parse clock sequence ID")
 	}
 
@@ -153,14 +156,20 @@ func (dbc *DatabaseContext) parseClockSequenceID(str string) (s SequenceID, err 
 	s.SeqType = ClockSequenceType
 	components := strings.Split(str, ":")
 	if len(components) == 1 {
-		// Just the standard clock
-		if s.Clock, err = dbc.sequenceHasher.GetClock(components[0]); err != nil {
-			return SequenceID{}, err
+		// Convert simple zero to empty clock, to handle clients sending zero to mean 'no previous since'
+		if components[0] == "0" {
+			log.Println("setting since to zero clock")
+			s.Clock = base.NewSequenceClockImpl()
+		} else {
+			// Standard clock hash
+			if s.Clock, err = sequenceHasher.GetClock(components[0]); err != nil {
+				return SequenceID{}, err
+			}
 		}
 	} else if len(components) == 2 {
 		// TriggeredBy and Clock
 		// TODO: parse triggered by
-		if s.Clock, err = dbc.sequenceHasher.GetClock(components[0]); err != nil {
+		if s.Clock, err = sequenceHasher.GetClock(components[0]); err != nil {
 			return SequenceID{}, err
 		}
 	} else {
@@ -200,6 +209,14 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
+	if s.SeqType == ClockSequenceType {
+		return s.unmarshalClockSequence(data)
+	} else {
+		return s.unmarshalIntSequence(data)
+	}
+}
+
+func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	if len(data) > 0 && data[0] == '"' {
 		var raw string
 		err := json.Unmarshal(data, &raw)
@@ -211,6 +228,31 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 		s.TriggeredBy = 0
 		return json.Unmarshal(data, &s.Seq)
 	}
+}
+
+// UnmarshalClockSequence only populates the s.ClockHash value, since it doesn't have a sequenceHasher
+// available to resolve the hash.  Expects caller to
+func (s *SequenceID) unmarshalClockSequence(data []byte) error {
+	var hashValue string
+	if len(data) > 0 && data[0] == '"' {
+		json.Unmarshal(data, &hashValue)
+	} else {
+		// Sequence coming in as simple int.  Convert to string
+		var intValue uint64
+		if err := json.Unmarshal(data, &intValue); err != nil {
+			return err
+		}
+		// Check whether it's a valid hash
+		hashValue = strconv.FormatUint(intValue, 10)
+	}
+	if s.SequenceHasher != nil {
+		var err error
+		*s, err = parseClockSequenceID(hashValue, s.SequenceHasher)
+		return err
+	} else {
+		return errors.New("Unable to unmarshal vector clock sequence without SequenceHasher defined")
+	}
+
 }
 
 func (s SequenceID) SafeSequence() uint64 {
