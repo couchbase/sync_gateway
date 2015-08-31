@@ -65,6 +65,12 @@ func (a dcpAuth) GetCredentials() (string, string, string) {
 		password = ""
 	}
 
+	// if it's the default bucket, then set the username to "default"
+	// workaround for https://github.com/couchbaselabs/cbgt/issues/32#issuecomment-136481228
+	if a.BucketName == "" || a.BucketName == "default" {
+		username = "default"
+	}
+
 	return username, password, a.BucketName
 
 }
