@@ -349,7 +349,7 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 
-	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
+	// If there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
 	if dbConfig.ChannelIndex != nil {
 		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
 			msg := "ChannelIndex declared in config, but the FeedType is %v " +
@@ -358,18 +358,21 @@ func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 		}
 	}
 
-	// if the feed type is DCPSHARD, then there must be a ChannelIndex
+	// If the feed type is DCPSHARD, perform extra checks
 	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
+
+		// There must be a ChannelIndex
 		if dbConfig.ChannelIndex == nil {
 			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
 			return fmt.Errorf(msg)
 		}
-	}
 
-	// must have valid CBGT enabled in cluster config
-	if !config.ClusterConfig.CBGTEnabled() {
-		msg := "FeedType is DCPSHARD, but CBGT not enabled in cluster_config"
-		return fmt.Errorf(msg)
+		// There must be a valid cluster config section included
+		if !config.ClusterConfig.CBGTEnabled() {
+			msg := "FeedType is DCPSHARD, but CBGT not enabled in cluster_config"
+			return fmt.Errorf(msg)
+		}
+
 	}
 
 	return nil
