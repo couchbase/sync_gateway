@@ -158,7 +158,7 @@ func (s *SyncGatewayPIndex) DataUpdate(partition string, key []byte, seq uint64,
 
 	vbucketNumber := partitionToVbucketId(partition)
 
-	s.updateSeq(partition, seq)
+	s.updateSeq(partition, seq, true)
 
 	event := sgbucket.TapEvent{
 		Opcode:   sgbucket.TapMutation,
@@ -178,7 +178,7 @@ func (s *SyncGatewayPIndex) DataDelete(partition string, key []byte, seq uint64,
 
 	LogTo("DCP", "DataDelete called with vbucket: %v.  key: %v", partition, string(key))
 
-	s.updateSeq(partition, seq)
+	s.updateSeq(partition, seq, true)
 
 	event := sgbucket.TapEvent{
 		Opcode:   sgbucket.TapDeletion,
@@ -247,7 +247,12 @@ func (s *SyncGatewayPIndex) OpaqueSet(partition string, value []byte) error {
 	return nil
 }
 
-func (s *SyncGatewayPIndex) updateSeq(partition string, seq uint64) {
+// This updates the value stored in s.seqs with the given seq number for the given partition
+// (which is a string value of vbucket id).  Setting warnOnLowerSeqNo to true will check
+// if we are setting the seq number to a _lower_ value than we already have stored for that
+// vbucket and log a warning in that case.  The valid case for setting warnOnLowerSeqNo to
+// false is when it's a rollback scenario.  See https://github.com/couchbase/sync_gateway/issues/1098 for dev notes.
+func (s *SyncGatewayPIndex) updateSeq(partition string, seq uint64, warnOnLowerSeqNo bool) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -256,9 +261,11 @@ func (s *SyncGatewayPIndex) updateSeq(partition string, seq uint64) {
 	if s.seqs == nil {
 		s.seqs = make(map[uint16]uint64)
 	}
-	if s.seqs[vbucketNumber] < seq {
-		s.seqs[vbucketNumber] = seq // Remember the max seq for GetMetaData().
+	if seq < s.seqs[vbucketNumber] && warnOnLowerSeqNo == true {
+		Warn("Setting to _lower_ sequence number than previous: %v -> %v", s.seqs[vbucketNumber], seq)
 	}
+
+	s.seqs[vbucketNumber] = seq // Remember the max seq for GetMetaData().
 
 }
 
@@ -270,7 +277,7 @@ func (s *SyncGatewayPIndex) Rollback(partition string, rollbackSeq uint64) error
 
 	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
 
-	s.updateSeq(partition, rollbackSeq)
+	s.updateSeq(partition, rollbackSeq, false)
 
 	return nil
 }

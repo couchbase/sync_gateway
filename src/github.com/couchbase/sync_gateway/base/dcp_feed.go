@@ -79,7 +79,7 @@ type Receiver interface {
 	GetEventFeed() <-chan sgbucket.TapEvent
 	SetEventFeed(chan sgbucket.TapEvent)
 	GetOutput() chan sgbucket.TapEvent
-	updateSeq(vbucketId uint16, seq uint64)
+	updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool)
 }
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
@@ -126,14 +126,14 @@ func (r *DCPReceiver) OnError(err error) {
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	r.updateSeq(vbucketId, seq)
+	r.updateSeq(vbucketId, seq, true)
 	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapMutation)
 	return nil
 }
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	r.updateSeq(vbucketId, seq)
+	r.updateSeq(vbucketId, seq, true)
 	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapDeletion)
 	return nil
 }
@@ -197,20 +197,28 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 // vbucket to unblock the DCP stream.
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", vbucketId, rollbackSeq)
-	r.updateSeq(vbucketId, rollbackSeq)
+	r.updateSeq(vbucketId, rollbackSeq, false)
 	return nil
 }
 
-func (r *DCPReceiver) updateSeq(vbucketId uint16, seq uint64) {
+// This updates the value stored in r.seqs with the given seq number for the given partition
+// (whic.  Setting warnOnLowerSeqNo to true will check
+// if we are setting the seq number to a _lower_ value than we already have stored for that
+// vbucket and log a warning in that case.  The valid case for setting warnOnLowerSeqNo to
+// false is when it's a rollback scenario.  See https://github.com/couchbase/sync_gateway/issues/1098 for dev notes.
+func (r *DCPReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool) {
 	r.m.Lock()
 	defer r.m.Unlock()
 
 	if r.seqs == nil {
 		r.seqs = make(map[uint16]uint64)
 	}
-	if r.seqs[vbucketId] < seq {
-		r.seqs[vbucketId] = seq // Remember the max seq for GetMetaData().
+	if seq < r.seqs[vbucketId] && warnOnLowerSeqNo == true {
+		Warn("Setting to _lower_ sequence number than previous: %v -> %v", r.seqs[vbucketId], seq)
 	}
+
+	r.seqs[vbucketId] = seq // Remember the max seq for GetMetaData().
+
 }
 
 // Seeds the sequence numbers returned by GetMetadata to support starting DCP from a particular
@@ -300,8 +308,8 @@ func (r *DCPLoggingReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16
 	r.rec.SeedSeqnos(uuids, seqs)
 }
 
-func (r *DCPLoggingReceiver) updateSeq(vbucketId uint16, seq uint64) {
-	r.rec.updateSeq(vbucketId, seq)
+func (r *DCPLoggingReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool) {
+	r.rec.updateSeq(vbucketId, seq, warnOnLowerSeqNo)
 }
 
 func (r *DCPLoggingReceiver) SetEventFeed(c chan sgbucket.TapEvent) {
