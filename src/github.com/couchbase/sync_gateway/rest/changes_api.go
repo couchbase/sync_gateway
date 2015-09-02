@@ -422,7 +422,9 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		HeartbeatMs *uint64       `json:"heartbeat"`
 		TimeoutMs   *uint64       `json:"timeout"`
 	}
+	// Initialize since clock and hasher ahead of unmarshalling sequence
 	if h.db != nil && h.db.SequenceType == db.ClockSequenceType {
+		input.Since.Clock = base.NewSequenceClockImpl()
 		input.Since.SeqType = h.db.SequenceType
 		input.Since.SequenceHasher = h.db.SequenceHasher
 	}
