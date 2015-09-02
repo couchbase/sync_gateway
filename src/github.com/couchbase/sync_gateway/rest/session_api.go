@@ -20,7 +20,6 @@ import (
 )
 
 const kDefaultSessionTTL = 24 * time.Hour
-const kMaxSessionTTLValue = 2592000
 
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfo() error {
@@ -194,10 +193,6 @@ func (h *handler) createUserSession() error {
 		return err
 	}
 
-	if params.TTL > kMaxSessionTTLValue {
-		base.LogTo("Auth", "ttl [%d] exceeds max supported ttl [%d] (30 days), using max ttl to create session",params.TTL,kMaxSessionTTLValue)
-		params.TTL = kMaxSessionTTLValue
-	}
 	ttl := time.Duration(params.TTL) * time.Second
 	if ttl < 1.0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")

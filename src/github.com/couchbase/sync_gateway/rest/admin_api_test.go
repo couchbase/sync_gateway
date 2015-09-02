@@ -324,9 +324,9 @@ func TestGuestUser(t *testing.T) {
 	assert.Equals(t, user.Disabled(), true)
 }
 
-//The max session ttl that can be passed to _session is 2592000 (30 days), any value over that will
-//be truncated to 2592000
-func TestMaxSessionTtl(t *testing.T) {
+//Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
+// fixes #974
+func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	var rt restTester
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	user, err := a.GetUser("")
@@ -346,7 +346,7 @@ func TestMaxSessionTtl(t *testing.T) {
 	a.Save(user)
 
 
-	//get a session with the maximum ttl value
+	//create a session with the maximum offset ttl value (30days) 2592000 seconds
 	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592000}`)
 	assertStatus(t, response, 200)
 
@@ -354,15 +354,18 @@ func TestMaxSessionTtl(t *testing.T) {
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
+
+	log.Printf("expires %s",body["expires"].(string))
 	expires, err := time.Parse(layout,body["expires"].(string)[:19])
 	assert.Equals(t, err, nil)
 
-	//get a session with a ttl value orders of magnitude greater than max value allowed
-	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":25920000000}`)
+	//create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
+	response = rt.sendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
 	assertStatus(t, response, 200)
 
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
+	log.Printf("expires2 %s",body["expires"].(string))
 	expires2, err := time.Parse(layout,body["expires"].(string)[:19])
 	assert.Equals(t, err, nil)
 

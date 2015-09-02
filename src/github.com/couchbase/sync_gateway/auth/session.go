@@ -76,13 +76,15 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 	if ttlSec <= 0 {
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
 	}
+
+	expirationTime := time.Now().Add(ttl)
 	session := &LoginSession{
 		ID:         base.GenerateRandomSecret(),
 		Username:   username,
-		Expiration: time.Now().Add(ttl),
+		Expiration: expirationTime,
 		Ttl:        ttl,
 	}
-	if err := auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
+	if err := auth.bucket.Set(docIDForSession(session.ID), int(expirationTime.Unix()), session); err != nil {
 		return nil, err
 	}
 	return session, nil
