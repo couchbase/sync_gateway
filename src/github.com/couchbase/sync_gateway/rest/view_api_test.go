@@ -219,6 +219,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// Admin view query:
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
 	assertStatus(t, response, 200)
+
 	json.Unmarshal(response.Body.Bytes(), &result)
 
 	// we should get 1 row with the reduce result
@@ -271,4 +272,70 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	row := result.Rows[0]
 	value := row.Value.(float64)
 	assert.Equals(t, value, 108.0)
+}
+
+func TestAdminGroupReduceSumQuery(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+
+	// Create a view with a reduce:
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	assertStatus(t, response, 201)
+
+	for i := 0; i < 9; i++ {
+		// Create docs:
+		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
+		assertStatus(t, response, 201)
+
+	}
+	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
+	assertStatus(t, response, 201)
+
+	var result sgbucket.ViewResult
+
+	// Admin view query:
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
+	assertStatus(t, response, 200)
+	// fmt.Println(response.Body)
+
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// we should get 2 row with the reduce result
+	assert.Equals(t, len(result.Rows), 2)
+	row := result.Rows[1]
+	value := row.Value.(float64)
+	assert.Equals(t, value, 99.0)
+}
+
+func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+
+	// Create a view with a reduce:
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	assertStatus(t, response, 201)
+
+	for i := 0; i < 9; i++ {
+		// Create docs:
+		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), fmt.Sprintf(`{"key":["A",{},%v], "value":1}`, i))
+		assertStatus(t, response, 201)
+
+	}
+	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":["B",4,1], "value":99}`)
+	assertStatus(t, response, 201)
+
+	var result sgbucket.ViewResult
+
+	// Admin view query:
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group_level=2", ``)
+	assertStatus(t, response, 200)
+	// fmt.Println(response.Body)
+
+	json.Unmarshal(response.Body.Bytes(), &result)
+
+	// we should get 2 row with the reduce result
+	assert.Equals(t, len(result.Rows), 2)
+	row := result.Rows[1]
+	value := row.Value.(float64)
+	assert.Equals(t, value, 99.0)
 }
