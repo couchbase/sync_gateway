@@ -201,8 +201,6 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
-
-	base.LogTo("DIndex+", "[channelStorage.GetChanges] From clock, to clock: %s: %s", base.PrintClock(fromSeq), base.PrintClock(toSeq))
 	blocksByKey, blocksByVb, err := b.calculateChangedBlocks(fromSeq, toSeq)
 	if err != nil {
 		return nil, err
@@ -217,7 +215,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 		vbNo := blockSet.vbNo
 		blocks := blockSet.blocks
 		base.LogTo("Changes+", "GetChanges: Adding entries for vb: %v", vbNo)
-		fromVbSeq := fromSeq.GetSequence(vbNo)
+		fromVbSeq := fromSeq.GetSequence(vbNo) + 1
 		toVbSeq := toSeq.GetSequence(vbNo)
 
 		for blockIndex := len(blocks) - 1; blockIndex >= 0; blockIndex-- {
@@ -277,7 +275,6 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	// Do bulk retrieval of blocks, and unmarshal into loadedBlocks
 	var keySet []string
 	for key, _ := range loadedBlocks {
-		base.LogTo("DIndex+", "Loading blocks, adding key:%s", key)
 		keySet = append(keySet, key)
 	}
 	blocks, err := b.bucket.GetBulkRaw(keySet)
@@ -330,7 +327,8 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 			if removed {
 				entry.setRemoved()
 			}
-			results = append(results, entry)
+			// TODO: optimize performance for prepend
+			results = append([]*LogEntry{entry}, results...)
 		}
 	}
 	return results
@@ -621,7 +619,6 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 		endIndex = toSeq - b.value.MinSequence
 	}
 
-	base.LogTo("DIndex+", "Block.GetEntries for block.  endIndex:%d, startIndex:%d", endIndex, startIndex)
 	for index := int(endIndex); index >= int(startIndex); index-- {
 		entry := vbEntries[index]
 		if entry != byte(0) {

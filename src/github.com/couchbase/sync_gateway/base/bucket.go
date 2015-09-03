@@ -443,6 +443,10 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		sgbucket.Logging = LogKeys["Walrus"]
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+		// If feed type is specified and isn't TAP, wrap with pseudo-vbucket handling for walrus
+		if spec.FeedType != "" && spec.FeedType != TapFeedType {
+			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
+		}
 	} else {
 		suffix := ""
 		if spec.Auth != nil {

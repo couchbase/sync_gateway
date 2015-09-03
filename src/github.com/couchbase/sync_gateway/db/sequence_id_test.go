@@ -10,11 +10,11 @@ import (
 func TestParseSequenceID(t *testing.T) {
 	s, err := parseIntegerSequenceID("1234")
 	assertNoError(t, err, "parseIntegerSequenceID")
-	assert.Equals(t, s, SequenceID{Seq: 1234})
+	assert.Equals(t, s, SequenceID{Seq: 1234, SeqType: 1})
 
 	s, err = parseIntegerSequenceID("5678:1234")
 	assertNoError(t, err, "parseIntegerSequenceID")
-	assert.Equals(t, s, SequenceID{Seq: 1234, TriggeredBy: 5678})
+	assert.Equals(t, s, SequenceID{Seq: 1234, TriggeredBy: 5678, SeqType: 1})
 
 	s, err = parseIntegerSequenceID("")
 	assertNoError(t, err, "parseIntegerSequenceID")
@@ -22,11 +22,11 @@ func TestParseSequenceID(t *testing.T) {
 
 	s, err = parseIntegerSequenceID("123:456:789")
 	assertNoError(t, err, "parseIntegerSequenceID")
-	assert.Equals(t, s, SequenceID{Seq: 789, TriggeredBy: 456, LowSeq: 123})
+	assert.Equals(t, s, SequenceID{Seq: 789, TriggeredBy: 456, LowSeq: 123, SeqType: 1})
 
 	s, err = parseIntegerSequenceID("123::789")
 	assertNoError(t, err, "parseIntegerSequenceID")
-	assert.Equals(t, s, SequenceID{Seq: 789, TriggeredBy: 0, LowSeq: 123})
+	assert.Equals(t, s, SequenceID{Seq: 789, TriggeredBy: 0, LowSeq: 123, SeqType: 1})
 
 	s, err = parseIntegerSequenceID("foo")
 	assert.True(t, err != nil)
@@ -56,7 +56,7 @@ func TestMarshalSequenceID(t *testing.T) {
 }
 
 func TestMarshalTriggeredSequenceID(t *testing.T) {
-	s := SequenceID{TriggeredBy: 5678, Seq: 1234}
+	s := SequenceID{TriggeredBy: 5678, Seq: 1234, SeqType: 1}
 	assert.Equals(t, s.String(), "5678:1234")
 	asJson, err := json.Marshal(s)
 	assertNoError(t, err, "Marshal failed")

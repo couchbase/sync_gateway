@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -28,6 +27,7 @@ type SequenceID struct {
 	Seq              uint64             // Int sequence: The actual internal sequence
 	Clock            base.SequenceClock // Clock sequence: Sequence (distributed index)
 	TriggeredByClock base.SequenceClock // Clock sequence: Sequence (distributed index)
+	ClockHash        string             // String representation of clock hash
 	SequenceHasher   *sequenceHasher    // Sequence hasher - used when unmarshalling clock-based sequences
 	vbNo             uint16             // Vbucket number for actual sequence
 }
@@ -35,7 +35,8 @@ type SequenceID struct {
 type SequenceType int
 
 const (
-	IntSequenceType = SequenceType(iota)
+	Undefined = SequenceType(iota)
+	IntSequenceType
 	ClockSequenceType
 )
 
@@ -51,10 +52,10 @@ var MaxSequenceID = SequenceID{
 // When LowSeq is non-zero but TriggeredBy is zero, will appear as LowSeq::Seq.
 // When LowSeq is non-zero but is greater than s.Seq (occurs when sending previously skipped sequences), ignore LowSeq.
 func (s SequenceID) String() string {
-	if s.SeqType == IntSequenceType {
-		return s.intSeqToString()
-	} else {
+	if s.SeqType == ClockSequenceType {
 		return s.clockSeqToString()
+	} else {
+		return s.intSeqToString()
 	}
 }
 
@@ -141,7 +142,6 @@ func parseIntegerSequenceID(str string) (s SequenceID, err error) {
 
 func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s SequenceID, err error) {
 
-	log.Println("parsing sequence")
 	if sequenceHasher == nil {
 		return SequenceID{}, errors.New("No Sequence Hasher available to parse clock sequence ID")
 	}
@@ -158,7 +158,6 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 	if len(components) == 1 {
 		// Convert simple zero to empty clock, to handle clients sending zero to mean 'no previous since'
 		if components[0] == "0" {
-			log.Println("setting since to zero clock")
 			s.Clock = base.NewSequenceClockImpl()
 		} else {
 			// Standard clock hash
@@ -194,16 +193,16 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
-	if s.SeqType == IntSequenceType {
+	if s.SeqType == ClockSequenceType {
+		base.LogTo("DIndex+", "Marshalling clock sequence...%v", s.clockSeqToString())
+		return []byte(fmt.Sprintf("\"%s\"", s.clockSeqToString())), nil
+	} else {
 		base.LogTo("DIndex+", "Marshalling int sequence...%v", s.String())
 		if s.TriggeredBy > 0 || s.LowSeq > 0 {
 			return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
 		} else {
 			return []byte(strconv.FormatUint(s.Seq, 10)), nil
 		}
-	} else {
-		base.LogTo("DIndex+", "Marshalling clock sequence...%v", s.clockSeqToString())
-		return []byte(fmt.Sprintf("\"%s\"", s.clockSeqToString())), nil
 	}
 
 }
@@ -211,7 +210,20 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
 	if s.SeqType == ClockSequenceType {
 		return s.unmarshalClockSequence(data)
+	} else if s.SeqType == IntSequenceType {
+		return s.unmarshalIntSequence(data)
 	} else {
+		// Type not explicitly defined.  If sequence is string and contains "-", treat as clock.  Otherwise treat as int.
+		if len(data) > 0 && data[0] == '"' {
+			var raw string
+			err := json.Unmarshal(data, &raw)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(raw, "-") {
+				return s.unmarshalClockSequence(data)
+			}
+		}
 		return s.unmarshalIntSequence(data)
 	}
 }
@@ -230,8 +242,7 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	}
 }
 
-// UnmarshalClockSequence only populates the s.ClockHash value, since it doesn't have a sequenceHasher
-// available to resolve the hash.  Expects caller to
+// Unmarshals clock sequence.  If s.SequenceHasher is nil, UnmarshalClockSequence only populates the s.ClockHash value.
 func (s *SequenceID) unmarshalClockSequence(data []byte) error {
 	var hashValue string
 	if len(data) > 0 && data[0] == '"' {
@@ -250,7 +261,8 @@ func (s *SequenceID) unmarshalClockSequence(data []byte) error {
 		*s, err = parseClockSequenceID(hashValue, s.SequenceHasher)
 		return err
 	} else {
-		return errors.New("Unable to unmarshal vector clock sequence without SequenceHasher defined")
+		s.ClockHash = hashValue
+		return nil
 	}
 
 }
@@ -266,12 +278,12 @@ func (s SequenceID) SafeSequence() uint64 {
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
 // The tricky part is that "n" sorts after "n:m" for any nonzero m
 func (s SequenceID) Before(s2 SequenceID) bool {
-	if s.SeqType == IntSequenceType {
-		return s.intBefore(s2)
-	} else {
+	if s.SeqType == ClockSequenceType {
 		vbefore := s.vectorBefore(s2)
 		base.LogTo("DIndex+", "Is [%v,%v] before [%v,%v]? %v", s.vbNo, s.Seq, s2.vbNo, s2.Seq, vbefore)
 		return vbefore
+	} else {
+		return s.intBefore(s2)
 	}
 }
 

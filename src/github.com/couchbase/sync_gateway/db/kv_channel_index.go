@@ -137,11 +137,10 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) error {
 	k.lastPolledLock.Lock()
 	defer k.lastPolledLock.Unlock()
-
 	// Compare counter again, in case someone has already updated last polled while we waited for the lock
 	if combinedClock.AnyAfter(k.clock) {
 		// Get changes since the last clock
-		recentChanges, err := k.getChanges(k.clock)
+		recentChanges, err := k.channelStorage.GetChanges(k.lastPolledClock, combinedClock)
 		if err != nil {
 			return err
 		}
@@ -163,6 +162,7 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 	if k.lastPolledClock == nil {
 		return results
 	}
+
 	k.lastPolledLock.RLock()
 	defer k.lastPolledLock.RUnlock()
 	if k.lastPolledClock.Equals(chanClock) && k.lastPolledSince.AllBefore(since) {
@@ -197,7 +197,6 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	// greater than since inside this if clause, but leaving out as a performance optimization for
 	// now
 	if lastPolledResults := k.checkLastPolled(since, chanClock); len(lastPolledResults) > 0 {
-		base.LogTo("DIndex+", "returning results from last polling")
 		return lastPolledResults, nil
 	}
 
@@ -273,27 +272,22 @@ func (k *kvChannelIndex) loadClock() {
 func (k *kvChannelIndex) writeClockCas(updateClock base.SequenceClock) error {
 	// Initial set, for the first cas update attempt
 	k.clock.UpdateWithClock(updateClock)
-	base.LogTo("DIndex+", "About to write updated clock for channel %s:%s", k.channelName, base.PrintClock(k.clock))
 	value, err := k.clock.Marshal()
 	if err != nil {
 		return err
 	}
 	casOut, err := writeCasRaw(k.indexBucket, getChannelClockKey(k.channelName), value, k.clock.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
-
-		base.LogTo("DIndex+", "CAS fail - reapplying changes for channel %s", k.channelName)
 		err = k.clock.Unmarshal(value)
 		if err != nil {
 			base.Warn("Error unmarshalling clock during update", err)
 			return nil, err
 		}
 		k.clock.UpdateWithClock(updateClock)
-		base.LogTo("DIndex+", "Reattempting clock write for channel %s: %s", k.channelName, base.PrintClock(k.clock))
 		return k.clock.Marshal()
 	})
 
 	k.clock.SetCas(casOut)
-	base.LogTo("DIndex+", "Clock update complete for channel %s", k.channelName)
 	return nil
 }
 

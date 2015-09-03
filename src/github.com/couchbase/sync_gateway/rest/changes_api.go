@@ -193,7 +193,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					} else {
 						h.response.Write([]byte(","))
 					}
-					base.LogTo("DIndex+", "----->encoding entry with seq:%+v", entry.Seq)
 					encoder.Encode(entry)
 					lastSeq = entry.Seq
 				}

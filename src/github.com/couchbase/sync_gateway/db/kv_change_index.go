@@ -28,6 +28,7 @@ const (
 	kCachePrefix   = "_cache"
 	maxCacheUpdate = 500
 	minCacheUpdate = 1
+	kPollFrequency = 500
 )
 
 type kvChangeIndex struct {
@@ -43,6 +44,7 @@ type kvChangeIndex struct {
 	pending                chan *LogEntry             // Incoming changes, pending indexing
 	stableSequence         *base.SyncSequenceClock    // Stabfle sequence in index
 	logsDisabled           bool                       // If true, ignore incoming tap changes
+	terminator             chan struct{}              // Ends polling
 }
 
 type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
@@ -89,11 +91,24 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	k.indexPartitions = k.loadIndexPartitionMap()
 
 	// Initialize stable sequence
-
 	k.stableSequence = k.loadStableClock()
 
 	// start process to work pending sequences
 	go k.indexPending()
+
+	// Start background task to poll for changes
+	k.terminator = make(chan struct{})
+	go func(k *kvChangeIndex) {
+		for {
+			select {
+			case <-time.After(kPollFrequency * time.Millisecond):
+				k.pollReaders()
+			case <-k.terminator:
+				return
+			}
+		}
+	}(k)
+
 }
 
 func (k *kvChangeIndex) Prune() {
@@ -108,7 +123,8 @@ func (k *kvChangeIndex) Clear() {
 }
 
 func (k *kvChangeIndex) Stop() {
-	// TBD
+	close(k.terminator)
+	k.indexBucket.Close()
 }
 
 // Returns the stable sequence for a document from the stable clock, based on the vbucket for the document.
@@ -191,7 +207,7 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbN
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, err := unmarshalDocumentSyncData(docJSON, false)
 		if err != nil || !doc.hasValidSyncData() {
-			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+			base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
 		}
 
@@ -330,7 +346,7 @@ func (c *kvChangeIndex) indexPending() {
 		channelStorage := NewChannelStorage(c.indexBucket, "", c.indexPartitions)
 		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
-			log.Printf("Processing entry with docID:%s", logEntry.DocID)
+			log.Printf("Processing entry with docID:%s, vbno: %d, sequence:%d", logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
 			// Add index log entry if needed
 			if channelStorage.StoresLogEntries() {
 				channelStorage.WriteLogEntry(logEntry)
@@ -391,16 +407,16 @@ func (c *kvChangeIndex) indexPending() {
 	}
 }
 
-func (k *kvChangeIndex) pollReaders() {
+func (k *kvChangeIndex) pollReaders() bool {
 	k.channelIndexReaderLock.RLock()
 	defer k.channelIndexReaderLock.RUnlock()
 
 	if len(k.channelIndexReaders) == 0 {
-		return
+		return true
 	}
 
 	// Build the set of clock keys to retrieve.  Stable sequence, plus one per channel reader
-	keySet := make([]string, len(k.channelIndexReaders))
+	keySet := make([]string, len(k.channelIndexReaders)+1)
 	keySet[0] = base.KStableSequenceKey
 	index := 1
 	for _, reader := range k.channelIndexReaders {
@@ -415,6 +431,7 @@ func (k *kvChangeIndex) pollReaders() {
 	stableClock, err := base.NewSequenceClockForBytes(bulkGetResults[base.KStableSequenceKey])
 	if err != nil {
 		base.Warn("Error loading stable clock - cancelling polling:", err)
+		return false
 	}
 
 	changedChannels := make(chan string)
@@ -423,6 +440,9 @@ func (k *kvChangeIndex) pollReaders() {
 		// For each channel, unmarshal new channel clock, then check with reader whether this represents changes
 		wg.Add(1)
 		go func(reader *kvChannelIndex) {
+			defer func() {
+				wg.Done()
+			}()
 			clockKey := getChannelClockKey(reader.channelName)
 			newChannelClock, err := base.NewSequenceClockForBytes(bulkGetResults[clockKey])
 			if err != nil {
@@ -432,15 +452,14 @@ func (k *kvChangeIndex) pollReaders() {
 					changedChannels <- reader.channelName
 				}
 			}
-			wg.Done()
 		}(reader)
 	}
 
 	// Wait/close in goroutine so that we can start working changedChannels below as they complete
-	go func() {
+	go func(wg sync.WaitGroup) {
 		wg.Wait()
 		close(changedChannels)
-	}()
+	}(wg)
 
 	// Build channel set from the changed channels
 	var channels []string
@@ -448,6 +467,8 @@ func (k *kvChangeIndex) pollReaders() {
 		channels = append(channels, channelName)
 	}
 	k.onChange(base.SetFromArray(channels))
+
+	return true
 }
 
 func addEntryToMap(setMap map[ChannelPartition][]*LogEntry, channelName string, partition uint16, entry *LogEntry) {

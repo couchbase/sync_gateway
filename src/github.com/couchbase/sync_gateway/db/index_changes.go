@@ -24,6 +24,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	}
 
 	base.LogTo("DIndex+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+	base.LogTo("DIndex+", "Vector MultiChangesFeed since:%s", base.PrintClock(options.Since.Clock))
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {

@@ -23,6 +23,72 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+type indexTester struct {
+	restTester
+}
+
+func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
+
+	it := indexTester{}
+	it.syncFn = syncFn
+
+	it._sc = NewServerContext(&ServerConfig{
+		Facebook: &FacebookConfig{},
+		Persona:  &PersonaConfig{},
+	})
+
+	var syncFnPtr *string
+	if len(it.syncFn) > 0 {
+		syncFnPtr = &it.syncFn
+	}
+
+	serverName := "walrus:"
+	bucketName := "sg_bucket"
+
+	feedType := "tap"
+	if useBucketIndex {
+		feedType = "dcp"
+	}
+
+	dbConfig := &DbConfig{
+		BucketConfig: BucketConfig{
+			Server: &serverName,
+			Bucket: &bucketName},
+		Name:     "db",
+		Sync:     syncFnPtr,
+		FeedType: feedType,
+	}
+
+	if useBucketIndex {
+		indexBucketName := "sg_index_bucket"
+		channelIndexConfig := &ChannelIndexConfig{
+			BucketConfig: BucketConfig{
+				Server: &serverName,
+				Bucket: &indexBucketName,
+			},
+			CacheWriter: true,
+		}
+		dbConfig.ChannelIndex = channelIndexConfig
+	}
+
+	_, err := it._sc.AddDatabaseFromConfig(dbConfig)
+	if err != nil {
+		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+	}
+
+	it._bucket = it._sc.Database("db").Bucket
+
+	return it
+}
+
+func (it *indexTester) Close() {
+	it._sc.Close()
+}
+
+func (it *indexTester) ServerContext() *ServerContext {
+	return it._sc
+}
+
 func TestDocDeletionFromChannel(t *testing.T) {
 	// See https://github.com/couchbase/couchbase-lite-ios/issues/59
 	// base.LogKeys["Changes"] = true
@@ -89,4 +155,165 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// Get the old revision, which should still be accessible:
 	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
 	assert.Equals(t, response.Code, 200)
+}
+
+func TestPostChangesInteger(t *testing.T) {
+
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChanges(t, it)
+}
+
+func TestPostChangesClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChanges(t, it)
+}
+
+func postChanges(t *testing.T, it indexTester) {
+
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents
+	response = it.sendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/abc1", `{"value":1, "channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 3)
+
+}
+
+func TestPostChangesSameVbucket(t *testing.T) {
+
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents with ids that hash to the same vbucket
+	response = it.sendAdminRequest("PUT", "/db/pbs0000609", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs0000799", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs0003428", `{"value":3, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 3)
+
+}
+
+func TestPostChangesSinceInteger(t *testing.T) {
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChangesSince(t, it)
+}
+
+func TestPostChangesSinceClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChangesSince(t, it)
+}
+
+func postChangesSince(t *testing.T, it indexTester) {
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Poll+":true}`)
+
+	//response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents
+	response = it.sendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/samevbdiffchannel-0000609", `{"channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/samevbdiffchannel-0000799", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2-0000609", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs3-0000609", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 4)
+
+	// Put several more documents, some to the same vbuckets
+	response = it.sendAdminRequest("PUT", "/db/pbs1-0000799", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/abc1-0000609", `{"value":1, "channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2-0000799", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs4", `{"value":4, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	time.Sleep(1 * time.Second)
+	changesJSON = fmt.Sprintf(`{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"%s"}`, changes.Last_Seq)
+	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 3)
+
+	time.Sleep(2 * time.Second)
+}
+
+//////// HELPERS:
+
+func assertNoError(t *testing.T, err error, message string) {
+	if err != nil {
+		t.Fatalf("%s: %v", message, err)
+	}
+}
+
+func assertTrue(t *testing.T, success bool, message string) {
+	if !success {
+		t.Fatalf("%s", message)
+	}
 }

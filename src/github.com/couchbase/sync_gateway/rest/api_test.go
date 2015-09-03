@@ -829,7 +829,8 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
 
-	assert.Equals(t, options.Since, db.SequenceID{Seq: 78, TriggeredBy: 123456})
+	assert.Equals(t, options.Since.Seq, uint64(78))
+	assert.Equals(t, options.Since.TriggeredBy, uint64(123456))
 	assert.Equals(t, options.Limit, 123)
 	assert.Equals(t, options.Conflicts, true)
 	assert.Equals(t, options.IncludeDocs, true)
@@ -1142,7 +1143,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, changes.Results[0].Seq, db.SequenceID{Seq: 8})
 	assert.Equals(t, changes.Results[1].ID, "a1")
-	assert.Equals(t, changes.Results[1].Seq, db.SequenceID{Seq: 5, TriggeredBy: 9})
+	assert.Equals(t, changes.Results[1].Seq.Seq, uint64(5))
+	assert.Equals(t, changes.Results[1].Seq.TriggeredBy, uint64(9))
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
@@ -1258,7 +1260,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 50)
 	since = changes.Results[49].Seq
 	assert.Equals(t, changes.Results[49].ID, "doc49")
-	assert.Equals(t, since, db.SequenceID{TriggeredBy: 103, Seq: 51})
+	assert.Equals(t, since.Seq, uint64(51))
+	assert.Equals(t, since.TriggeredBy, uint64(103))
 
 	//// Get remainder of changes i.e. no limit parameter
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since), "", "user3"))
@@ -1279,7 +1282,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 50)
 	since = changes.Results[49].Seq
 	assert.Equals(t, changes.Results[49].ID, "doc49")
-	assert.Equals(t, since, db.SequenceID{TriggeredBy: 104, Seq: 51})
+	assert.Equals(t, since.Seq, uint64(51))
+	assert.Equals(t, since.TriggeredBy, uint64(104))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user4"))

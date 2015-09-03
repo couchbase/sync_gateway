@@ -624,10 +624,8 @@ func verifyVBMapping(bucket base.Bucket, channelName string) error {
 		vbNo := bucket.VBHash(docId)
 		if channelVbNo == 0 {
 			channelVbNo = vbNo
-			log.Printf("channel %s gets vb %d", channelName, channelVbNo)
 		}
 		if vbNo != channelVbNo {
-			log.Println("Sad trombone - no match")
 			return errors.New("vb numbers don't match")
 		}
 	}

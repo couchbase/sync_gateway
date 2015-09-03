@@ -235,7 +235,7 @@ func (c *SequenceClockImpl) AnyAfter(other SequenceClock) bool {
 
 // Deep-copies a SequenceClock
 func (c *SequenceClockImpl) Copy() SequenceClock {
-	result := &SequenceClockImpl{}
+	result := NewSequenceClockImpl()
 	for key, value := range c.value {
 		result.value[key] = value
 	}

@@ -106,7 +106,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 
 	base.LogKeys["DCache+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
-	defer bucket.Close()
+	defer changeIndex.Stop()
 	changeIndex.AddToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
@@ -162,7 +162,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 
 	base.LogKeys["DIndex+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
-	defer bucket.Close()
+	defer changeIndex.Stop()
 	// Add entries across multiple partitions
 	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
@@ -269,7 +269,7 @@ func TestChangeIndexChanges(t *testing.T) {
 
 func TestLoadStableSequence(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
-	defer bucket.Close()
+	defer changeIndex.Stop()
 	// Add entries across multiple partitions
 	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
 	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
@@ -284,8 +284,8 @@ func TestLoadStableSequence(t *testing.T) {
 }
 
 func TestStableSequenceCallback(t *testing.T) {
-	changeIndex, bucket := testKvChangeIndex("indexBucket")
-	defer bucket.Close()
+	changeIndex, _ := testKvChangeIndex("indexBucket")
+	defer changeIndex.Stop()
 
 	// Add entries across multiple partitions
 	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
