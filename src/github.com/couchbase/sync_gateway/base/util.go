@@ -219,6 +219,10 @@ func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname st
 
 }
 
+func IsPowerOfTwo(n uint16) bool {
+	return (n & (n - 1)) == 0
+}
+
 // IntMax is an expvar.Value that tracks the maximum value it's given.
 type IntMax struct {
 	i  int64
