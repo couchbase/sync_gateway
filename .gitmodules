@@ -64,3 +64,6 @@
 [submodule "src/github.com/elazarl/go-bindata-assetfs"]
 	path = src/github.com/elazarl/go-bindata-assetfs
 	url = https://github.com/elazarl/go-bindata-assetfs.git
+[submodule "src/github.com/couchbase/cb-heartbeat"]
+	path = src/github.com/couchbase/cb-heartbeat
+	url = https://github.com/couchbase/cb-heartbeat
