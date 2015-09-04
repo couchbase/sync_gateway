@@ -25,8 +25,9 @@ type SyncGatewayIndexParams struct {
 }
 
 const (
-	SourceTypeCouchbase  = "couchbase"
-	IndexTypeSyncGateway = "sync_gateway" // Used by CBGT for its data path
+	SourceTypeCouchbase      = "couchbase"
+	IndexTypeSyncGateway     = "sync_gateway" // Used by CBGT for its data path
+	IndexCategorySyncGateway = "general"      // CBGT expects this index to fit into a category (general vs advanced)
 )
 
 type CBGTDCPFeed struct {
@@ -300,4 +301,28 @@ func (s *SyncGatewayPIndex) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 
 func (s *SyncGatewayPIndex) Stats(io.Writer) error {
 	return nil
+}
+
+// When we detect other nodes have stopped pushing heartbeats, remove from CBGT cluster
+type HeartbeatStoppedHandler struct {
+	Cfg         cbgt.Cfg
+	Manager     *cbgt.Manager
+	CbgtVersion string
+}
+
+func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
+
+	kinds := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
+	for _, kind := range kinds {
+		if err := cbgt.CfgRemoveNodeDef(
+			h.Cfg,
+			kind,
+			nodeUuid,
+			h.CbgtVersion,
+		); err != nil {
+			Warn("Warning: attempted to remove %v (%v) from CBGT but failed: %v", nodeUuid, kind, err)
+		}
+
+	}
+
 }

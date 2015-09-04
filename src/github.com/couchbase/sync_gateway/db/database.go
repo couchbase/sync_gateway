@@ -72,7 +72,7 @@ type Database struct {
 }
 
 // All special/internal documents the gateway creates have this prefix in their keys.
-const kSyncKeyPrefix = "_sync:"
+const KSyncKeyPrefix = "_sync:"
 
 var dbExpvars = expvar.NewMap("syncGateway_db")
 

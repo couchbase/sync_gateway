@@ -57,6 +57,7 @@ func TestBackQuotedStrings(t *testing.T) {
 
 func TestCouchbaseUrlWithAuth(t *testing.T) {
 
+	// normal bucket
 	result, err := CouchbaseUrlWithAuth(
 		"http://127.0.0.1:8091",
 		"username",
@@ -65,5 +66,15 @@ func TestCouchbaseUrlWithAuth(t *testing.T) {
 	)
 	assert.True(t, err == nil)
 	assert.Equals(t, result, "http://username:password@127.0.0.1:8091")
+
+	// default bucket
+	result, err = CouchbaseUrlWithAuth(
+		"http://127.0.0.1:8091",
+		"",
+		"",
+		"default",
+	)
+	assert.True(t, err == nil)
+	assert.Equals(t, result, "http://127.0.0.1:8091")
 
 }

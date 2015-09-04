@@ -143,8 +143,8 @@ func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (str
 		userPass.WriteString(username)
 		addedUsername = true
 	} else {
-		// do we have a bucket name?  if so, use that as the username
-		if bucketname != "" {
+		// do we have a non-default bucket name?  if so, use that as the username
+		if bucketname != "" && bucketname != "default" {
 			userPass.WriteString(bucketname)
 			addedUsername = true
 		}

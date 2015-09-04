@@ -88,7 +88,8 @@ type BucketConfig struct {
 
 type ClusterConfig struct {
 	BucketConfig
-	DataDir string `json:"data_dir"`
+	DataDir                  string  `json:"data_dir"`
+	HeartbeatIntervalSeconds *uint16 `json:"heartbeat_interval_seconds"`
 }
 
 func (c ClusterConfig) CBGTEnabled() bool {
