@@ -50,7 +50,7 @@ func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
 	_, err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
-	} else if !doc.hasValidSyncData() {
+	} else if !doc.hasValidSyncData(db.writeSequences()) {
 		return nil, base.HTTPErrorf(404, "Not imported")
 	}
 	return doc, nil
@@ -353,7 +353,9 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 	doc.setFlag(channels.Deleted, false)
 	doc.History = make(RevTree)
 	doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false})
-	doc.Sequence, err = db.sequences.nextSequence()
+	if db.writeSequences() {
+		doc.Sequence, err = db.sequences.nextSequence()
+	}
 	return
 }
 
@@ -467,7 +469,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
-		} else if !allowImport && currentValue != nil && !doc.hasValidSyncData() {
+		} else if !allowImport && currentValue != nil && !doc.hasValidSyncData(db.writeSequences()) {
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
@@ -530,57 +532,60 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Move the body of the replaced revision out of the document so it can be compacted later.
 		db.backupAncestorRevs(doc, newRevID)
 
-		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
-		// But be careful not to request a second sequence # on a retry if we don't need one.
-		if docSequence <= doc.Sequence {
-			if docSequence > 0 {
-				// Oops: we're on our second iteration thanks to a conflict, but the sequence
-				// we previously allocated is unusable now. We have to allocate a new sequence
-				// instead, but we add the unused one(s) to the document so when the changeCache
-				// reads the doc it won't freak out over the break in the sequence numbering.
-				base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
-				unusedSequences = append(unusedSequences, docSequence)
-			}
-			if docSequence, err = db.sequences.nextSequence(); err != nil {
-				return
-			}
-		}
-		doc.Sequence = docSequence
-		doc.UnusedSequences = unusedSequences
-
-		// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
-		// the same mutation queue processing window. This results in missing sequences on the change listener.
-		// To account for this, we track the recent sequence numbers for the document.
-		if doc.RecentSequences == nil {
-			doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
-		}
-
-		if len(doc.RecentSequences) > 20 {
-			// Prune recent sequences that are earlier than the nextSequence.  The dedup window
-			// on the feed is small - sub-second, so we usually shouldn't care about more than
-			// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
-			// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
-			stableSequence := db.changeCache.GetStableSequence(docid).Seq
-			count := 0
-			for _, seq := range doc.RecentSequences {
-				// Only remove sequences if they are higher than a sequence that's been seen on the
-				// feed. This is valid across SG nodes (which could each have a different nextSequence),
-				// as the mutations that this node used to rev nextSequence will at some point be delivered
-				// to each node.
-				if seq < stableSequence {
-					count++
-				} else {
-					break
+		// Sequence processing
+		if db.writeSequences() {
+			// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
+			// But be careful not to request a second sequence # on a retry if we don't need one.
+			if docSequence <= doc.Sequence {
+				if docSequence > 0 {
+					// Oops: we're on our second iteration thanks to a conflict, but the sequence
+					// we previously allocated is unusable now. We have to allocate a new sequence
+					// instead, but we add the unused one(s) to the document so when the changeCache
+					// reads the doc it won't freak out over the break in the sequence numbering.
+					base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
+					unusedSequences = append(unusedSequences, docSequence)
+				}
+				if docSequence, err = db.sequences.nextSequence(); err != nil {
+					return
 				}
 			}
-			if count > 0 {
-				doc.RecentSequences = doc.RecentSequences[count:]
-			}
-		}
+			doc.Sequence = docSequence
+			doc.UnusedSequences = unusedSequences
 
-		// Append current sequence and unused sequences to recent sequence history
-		doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
-		doc.RecentSequences = append(doc.RecentSequences, docSequence)
+			// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
+			// the same mutation queue processing window. This results in missing sequences on the change listener.
+			// To account for this, we track the recent sequence numbers for the document.
+			if doc.RecentSequences == nil {
+				doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
+			}
+
+			if len(doc.RecentSequences) > 20 {
+				// Prune recent sequences that are earlier than the nextSequence.  The dedup window
+				// on the feed is small - sub-second, so we usually shouldn't care about more than
+				// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
+				// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
+				stableSequence := db.changeCache.GetStableSequence(docid).Seq
+				count := 0
+				for _, seq := range doc.RecentSequences {
+					// Only remove sequences if they are higher than a sequence that's been seen on the
+					// feed. This is valid across SG nodes (which could each have a different nextSequence),
+					// as the mutations that this node used to rev nextSequence will at some point be delivered
+					// to each node.
+					if seq < stableSequence {
+						count++
+					} else {
+						break
+					}
+				}
+				if count > 0 {
+					doc.RecentSequences = doc.RecentSequences[count:]
+				}
+			}
+
+			// Append current sequence and unused sequences to recent sequence history
+			doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
+			doc.RecentSequences = append(doc.RecentSequences, docSequence)
+		}
 
 		if doc.CurrentRev != prevCurrentRev {
 			// Most of the time this update will change the doc's current rev. (The exception is

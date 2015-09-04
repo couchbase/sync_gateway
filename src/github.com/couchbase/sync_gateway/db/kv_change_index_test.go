@@ -299,3 +299,42 @@ func TestStableSequenceCallback(t *testing.T) {
 	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
 	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))
 }
+
+func TestChangeIndexPrincipal(t *testing.T) {
+
+	base.LogKeys["DIndex+"] = true
+	db := setupTestDBForChangeIndex(t)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	kvChangeIndex, _ := db.changeCache.(*kvChangeIndex)
+
+	defer tearDownTestDB(t, db)
+	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["ABC", "PBS"]}`), uint64(1), uint16(1))
+	time.Sleep(100 * time.Millisecond) // wait for indexing
+
+	// Verify user entry in index
+	var principal PrincipalIndex
+	principalBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_cache_user:bob")
+	assert.True(t, err == nil)
+	json.Unmarshal(principalBytes, &principal)
+	assert.Equals(t, principal.VbNo, uint16(1))
+	assert.DeepEquals(t, principal.ExplicitChannels, channels.TimedSet{"ABC": 1, "PBS": 1})
+
+	// Verify stable sequence was incremented
+	stableClock := base.NewSequenceClockImpl()
+	stableClockBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_cache_stableSeq")
+	assertNoError(t, err, "Unable to retrieve stable sequence")
+	stableClock.Unmarshal(stableClockBytes)
+	log.Printf("got clock:%s", base.PrintClock(stableClock))
+	assert.Equals(t, stableClock.GetSequence(1), uint64(1))
+
+	// Update the user to add a channel, remove a channel
+	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["PBS", "NBC"]}`), uint64(2), uint16(1))
+	time.Sleep(100 * time.Millisecond) // wait for indexing
+
+	principalBytes, _, err = kvChangeIndex.indexBucket.GetRaw("_cache_user:bob")
+	assert.True(t, err == nil)
+	json.Unmarshal(principalBytes, &principal)
+	assert.Equals(t, principal.VbNo, uint16(1))
+	assert.DeepEquals(t, principal.ExplicitChannels, channels.TimedSet{"PBS": 1, "NBC": 2})
+
+}

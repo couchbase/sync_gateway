@@ -288,7 +288,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, err := unmarshalDocumentSyncData(docJSON, false)
-		if err != nil || !doc.hasValidSyncData() {
+		if err != nil || !doc.hasValidSyncData(c.context.writeSequences()) {
 			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
 		}

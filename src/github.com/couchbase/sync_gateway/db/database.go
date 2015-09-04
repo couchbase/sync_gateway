@@ -154,6 +154,10 @@ func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err 
 	return context.changeCache.GetStableClock()
 }
 
+func (context *DatabaseContext) writeSequences() bool {
+	return context.SequenceType != ClockSequenceType
+}
+
 func (context *DatabaseContext) CreateCBGTIndex() error {
 
 	// Create the CBGT index.  This must be done _after_ the tapListener is started,
@@ -683,7 +687,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			}
 
 			imported := false
-			if !doc.hasValidSyncData() {
+			if !doc.hasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore or import it:
 				if !doImportDocs {
 					return nil, couchbase.UpdateCancel

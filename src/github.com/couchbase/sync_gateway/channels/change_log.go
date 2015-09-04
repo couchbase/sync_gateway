@@ -18,11 +18,12 @@ type LogEntry struct {
 	TimeReceived time.Time  // Time received from tap feed
 	Channels     ChannelMap // Channels this entry is in or was removed from
 	Skipped      bool       // Late arriving entry
+	IsPrincipal  bool       // Entry for a user or role
 }
 
 type ChannelMap map[string]*ChannelRemoval
 type ChannelRemoval struct {
-	Seq     uint64 `json:"seq"`
+	Seq     uint64 `json:"seq,omitempty"`
 	RevID   string `json:"rev"`
 	Deleted bool   `json:"del,omitempty"`
 }

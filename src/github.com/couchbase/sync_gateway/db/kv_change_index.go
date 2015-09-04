@@ -12,6 +12,7 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -197,16 +198,16 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbN
 	go func() {
 		// Is this a user/role doc?
 		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-			k.processPrincipalDoc(docID, docJSON, true)
+			k.processPrincipalDoc(docID, docJSON, true, vbNo, seq)
 			return
 		} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-			k.processPrincipalDoc(docID, docJSON, false)
+			k.processPrincipalDoc(docID, docJSON, false, vbNo, seq)
 			return
 		}
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, err := unmarshalDocumentSyncData(docJSON, false)
-		if err != nil || !doc.hasValidSyncData() {
+		if err != nil || !doc.hasValidSyncData(false) {
 			base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
 		}
@@ -227,7 +228,7 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbN
 			Channels:     doc.Channels,
 			VbNo:         uint16(vbNo),
 		}
-		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLag/time.Millisecond), change.DocID, change.RevID)
+		base.LogTo("DIndex+", "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLag/time.Millisecond), change.DocID, change.RevID)
 
 		if change.DocID == "" {
 			base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
@@ -240,22 +241,98 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbN
 	}()
 }
 
-func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
-	// TODO
+type PrincipalIndex struct {
+	VbNo             uint16            `json:"vbucket"`        // vbucket number for user doc - for convenience
+	ExplicitChannels channels.TimedSet `json:"admin_channels"` // Timed Set of channel names to vbucket seq no of first user version that granted access
+	ExplicitRoles    channels.TimedSet `json:"admin_roles"`    // Timed Set of role names to vbucket seq no of first user version that granted access
 }
 
-func (b *kvChangeIndex) getChannelWriter(channelName string) *kvChannelIndex {
+func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, isUser bool, vbNo uint16, sequence uint64) {
+	// We need to track vbucket/sequence numbers for admin-granted roles and channels in the index,
+	// since we can no longer store the sequence in the user doc body itself
 
-	b.channelIndexWriterLock.RLock()
-	defer b.channelIndexWriterLock.RUnlock()
-	return b.channelIndexWriters[channelName]
+	base.LogTo("DIndex+", "Processing principal doc %s", docID)
+	// Index doc for a user stores the timed channel set of admin-granted channels.  These are merged with
+	// the document-granted channels during calculateChannels.
+	princ, err := k.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	if princ == nil {
+		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		return
+	}
+
+	var indexDocID string
+	if isUser {
+		indexDocID = kCachePrefix + "_user:" + princ.Name()
+	} else {
+		indexDocID = kCachePrefix + "_role:" + princ.Name()
+	}
+
+	// Update the user doc in the index based on the principal
+	var principalIndex *PrincipalIndex
+	err = k.indexBucket.Update(indexDocID, 0, func(currentValue []byte) ([]byte, error) {
+
+		// Be careful: this block can be invoked multiple times if there are races!
+		var principalRoleSet channels.TimedSet
+		principalChannelSet := princ.ExplicitChannels()
+		user, isUserPrincipal := princ.(auth.User)
+		if isUserPrincipal {
+			principalRoleSet = user.ExplicitRoles()
+		}
+
+		if currentValue == nil {
+			// User index entry doesn't yet exist - create as new if the principal has channels
+			// or roles
+			if len(principalChannelSet) == 0 && len(principalRoleSet) == 0 {
+				return nil, errors.New("No update required")
+			}
+			principalIndex = &PrincipalIndex{
+				VbNo:             vbNo,
+				ExplicitChannels: make(channels.TimedSet),
+				ExplicitRoles:    make(channels.TimedSet),
+			}
+
+		} else {
+			if err := json.Unmarshal(currentValue, &principalIndex); err != nil {
+				return nil, err
+			}
+		}
+		var rolesChanged, channelsChanged bool
+		channelsChanged = principalIndex.ExplicitChannels.UpdateAtSequence(principalChannelSet.AsSet(), sequence)
+
+		if isUserPrincipal {
+			rolesChanged = principalIndex.ExplicitRoles.UpdateAtSequence(principalRoleSet.AsSet(), sequence)
+		}
+
+		if channelsChanged || rolesChanged {
+			return json.Marshal(principalIndex)
+		} else {
+			return nil, errors.New("No update required")
+		}
+	})
+
+	// Add to cache so that the stable sequence gets updated
+	change := &LogEntry{
+		Sequence:     sequence,
+		DocID:        docID,
+		TimeReceived: time.Now(),
+		VbNo:         uint16(vbNo),
+		IsPrincipal:  true,
+	}
+	k.AddToCache(change)
 }
 
-func (b *kvChangeIndex) getChannelReader(channelName string) *kvChannelIndex {
+func (k *kvChangeIndex) getChannelWriter(channelName string) *kvChannelIndex {
 
-	b.channelIndexReaderLock.RLock()
-	defer b.channelIndexReaderLock.RUnlock()
-	return b.channelIndexReaders[channelName]
+	k.channelIndexWriterLock.RLock()
+	defer k.channelIndexWriterLock.RUnlock()
+	return k.channelIndexWriters[channelName]
+}
+
+func (k *kvChangeIndex) getChannelReader(channelName string) *kvChannelIndex {
+
+	k.channelIndexReaderLock.RLock()
+	defer k.channelIndexReaderLock.RUnlock()
+	return k.channelIndexReaders[channelName]
 }
 
 func (k *kvChangeIndex) newChannelReader(channelName string) *kvChannelIndex {
@@ -347,6 +424,13 @@ func (c *kvChangeIndex) indexPending() {
 		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
 			log.Printf("Processing entry with docID:%s, vbno: %d, sequence:%d", logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
+
+			// If principal, update the stable sequence and continue
+			if logEntry.IsPrincipal {
+				updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
+				continue
+			}
+
 			// Add index log entry if needed
 			if channelStorage.StoresLogEntries() {
 				channelStorage.WriteLogEntry(logEntry)
@@ -356,7 +440,7 @@ func (c *kvChangeIndex) indexPending() {
 			ch := logEntry.Channels
 			logEntry.Channels = nil
 			for channelName, removal := range ch {
-				if removal == nil || removal.Seq == logEntry.Sequence {
+				if removal == nil || removal.RevID == logEntry.RevID {
 					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
 					chanPartition := ChannelPartition{channelName: channelName, partition: c.indexPartitions[logEntry.VbNo]}
 					_, found := channelSets[chanPartition]
