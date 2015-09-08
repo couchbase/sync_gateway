@@ -192,6 +192,33 @@ func StableCallbackTest(callback StableSequenceFunc) (SequenceClock, error) {
 	return callback()
 }
 
+// This transforms raw input bucket credentials (for example, from config), to input
+// credentials expected by Couchbase server, based on a few rules
+func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {
+
+	username = inputUsername
+	password = inputPassword
+
+	// If the username is empty then set the username to the bucketname.
+	if inputUsername == "" {
+		username = inputBucketname
+	}
+
+	// if the username is empty, then the password should be empty too
+	if username == "" {
+		password = ""
+	}
+
+	// If it's the default bucket, then set the username to "default"
+	// workaround for https://github.com/couchbaselabs/cbgt/issues/32#issuecomment-136481228
+	if inputBucketname == "" || inputBucketname == "default" {
+		username = "default"
+	}
+
+	return username, password, inputBucketname
+
+}
+
 // IntMax is an expvar.Value that tracks the maximum value it's given.
 type IntMax struct {
 	i  int64

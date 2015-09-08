@@ -256,17 +256,17 @@ func (dbConfig DbConfig) validate() error {
 
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
-	return dbConfig.Username, dbConfig.Password, *dbConfig.Bucket
+	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
 }
 
 // Implementation of AuthHandler interface for ShadowConfig
 func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
-	return shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket
+	return base.TransformBucketCredentials(shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket)
 }
 
 // Implementation of AuthHandler interface for ChannelIndexConfig
 func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
-	return channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket
+	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
 }
 
 // Reads a ServerConfig from raw data
