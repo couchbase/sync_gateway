@@ -90,6 +90,7 @@ func wrapViews(ddoc *DesignDoc) {
 		                    };
 							(` + view.Map + `) (doc, meta);
 						}());
+						doc._sync = sync;
 					}`
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
