@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/cb-heartbeat"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/autofailover"
 	"github.com/couchbaselabs/cbgt/cmd"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -402,7 +402,7 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 
 func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manager, cfg cbgt.Cfg, uuid, couchbaseUrl, keyPrefix string) error {
 
-	cbHeartbeater, err := autofailover.NewCouchbaseHeartbeater(
+	cbHeartbeater, err := cbheartbeat.NewCouchbaseHeartbeater(
 		couchbaseUrl,
 		*sc.config.ClusterConfig.Bucket,
 		keyPrefix,
