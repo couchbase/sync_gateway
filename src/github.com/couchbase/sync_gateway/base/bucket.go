@@ -54,15 +54,55 @@ type BucketSpec struct {
 
 // These are used by CBGT to determine the sharding factor and other properties
 type FeedParams struct {
-	MaxPartitionsPerPIndex int `json:"max_partitions_per_pindex"`
-	NumReplicas            int `json:"num_replicas"`
+	NumShards   uint16 `json:"num_shards"`
+	NumReplicas uint16 `json:"num_replicas"`
 }
 
-func (f FeedParams) PlanParams() cbgt.PlanParams {
-	return cbgt.PlanParams{
-		MaxPartitionsPerPIndex: f.MaxPartitionsPerPIndex,
-		NumReplicas:            f.NumReplicas,
+func (f FeedParams) PlanParams(numVbuckets uint16) cbgt.PlanParams {
+
+	// Make sure the number of vbuckets is a power of two, since it's possible
+	// (but not common) to configure the number of vbuckets as such.
+	if !IsPowerOfTwo(numVbuckets) {
+		LogPanic("The number of vbuckets is %v, but Sync Gateway expects this to be a power of two", numVbuckets)
 	}
+
+	// We can't allow more shards than vbuckets, that makes no sense because each
+	// shard would be responsible for less than one vbucket.
+	if f.NumShards > numVbuckets {
+		LogPanic("The number of shards (%v) must be less than the number of vbuckets (%v)", f.NumShards, numVbuckets)
+	}
+
+	// Calculate numVbucketsPerShard based on numVbuckets and num_shards.
+	// Due to the guarantees above and the ValidateOrPanic() method, this
+	// is guaranteed to divide evenly.
+	numVbucketsPerShard := numVbuckets / f.NumShards
+
+	return cbgt.PlanParams{
+		MaxPartitionsPerPIndex: int(numVbucketsPerShard),
+		NumReplicas:            int(f.NumReplicas),
+	}
+
+}
+
+func (f *FeedParams) SetDefaultValues() {
+	if f.NumShards == 0 {
+		f.NumShards = 64
+	}
+}
+
+func (f FeedParams) ValidateOrPanic() {
+
+	if f.NumShards == 0 {
+		LogPanic("The number of shards must be greater than 0")
+	}
+
+	// make sure num_shards is a power of two, or panic
+	isPowerOfTwo := IsPowerOfTwo(f.NumShards)
+	if !isPowerOfTwo {
+		errMsg := "Invalid value for num_shards in feed_params: %v Must be a power of 2 so that all shards have the same number of vbuckets"
+		LogPanic(errMsg, f.NumShards)
+	}
+
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
@@ -183,15 +223,20 @@ func (bucket CouchbaseBucket) CreateCBGTIndex(spec BucketSpec) error {
 		return err
 	}
 
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
 	err = spec.CbgtContext.Manager.CreateIndex(
-		SourceTypeCouchbase,          // sourceType
-		bucket.Name,                  // sourceName
-		bucket.UUID,                  // sourceUUID
-		string(sourceParamsBytes),    // sourceParams
-		IndexTypeSyncGateway,         // indexType
-		bucket.Name,                  // indexName
-		string(indexParamsBytes),     // indexParams
-		spec.FeedParams.PlanParams(), // planParams
+		SourceTypeCouchbase,                     // sourceType
+		bucket.Name,                             // sourceName
+		bucket.UUID,                             // sourceUUID
+		string(sourceParamsBytes),               // sourceParams
+		IndexTypeSyncGateway,                    // indexType
+		bucket.Name,                             // indexName
+		string(indexParamsBytes),                // indexParams
+		spec.FeedParams.PlanParams(numVbuckets), // planParams
 		"", // prevIndexUUID
 	)
 	if err != nil {

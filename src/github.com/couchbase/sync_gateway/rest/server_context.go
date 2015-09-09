@@ -509,7 +509,9 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	}
 
 	if config.FeedParams != nil {
+		config.FeedParams.SetDefaultValues()
 		spec.FeedParams = *config.FeedParams
+		spec.FeedParams.ValidateOrPanic()
 	}
 
 	// Set cache properties, if present
