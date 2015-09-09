@@ -35,44 +35,6 @@ func (feed *couchbaseDCPFeedImpl) Close() error {
 	return feed.bds.Close()
 }
 
-// Implementation of couchbase.AuthHandler for use by cbdatasource during bucket connect.
-type dcpAuth struct {
-	Username, Password, BucketName string
-}
-
-// GetCredentials is used when cbdatasource makes a new bucket connection, based on approach we're
-// using for our other bucket connections (via go-couchbase pools.go authHandler()).
-// Background: After hitting an auth issue when connecting to a new cbdatasource bucket with the
-// standard username/password authenticator, I talked to Steve Yen and he tipped me off about the
-// default bucketname-as-username handling, and figured out that go-couchbase was doing that for us
-// for our usual bucket handling.
-// Reviewed with Steve and he said that the auth handling in couchbase server is undergoing changes
-// as part of Sherlock, so we may need to revisit once they've stabilized on an approach.
-func (a dcpAuth) GetCredentials() (string, string, string) {
-
-	username := a.Username
-	password := a.Password
-
-	// If the username is empty then set the username to the bucketname.
-	if a.Username == "" {
-		username = a.BucketName
-	}
-
-	// if the username is empty, then the password should be empty too
-	if username == "" {
-		password = ""
-	}
-
-	// If it's the default bucket, then set the username to "default"
-	// workaround for https://github.com/couchbaselabs/cbgt/issues/32#issuecomment-136481228
-	if a.BucketName == "" || a.BucketName == "default" {
-		username = "default"
-	}
-
-	return username, password, a.BucketName
-
-}
-
 type Receiver interface {
 	cbdatasource.Receiver
 	SeedSeqnos(map[uint16]uint64, map[uint16]uint64)

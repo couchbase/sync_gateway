@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -165,9 +164,7 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 func (bucket CouchbaseBucket) CreateCBGTIndex(spec BucketSpec) error {
 
-	authHandler := bucket.getDcpAuthHandler()
-
-	user, pwd, _ := authHandler.GetCredentials()
+	user, pwd, _ := bucket.spec.Auth.GetCredentials()
 
 	sourceParams := cbgt.NewDCPFeedParams()
 	sourceParams.AuthUser = user
@@ -282,16 +279,14 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	}
 	dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
 
-	auth := bucket.getDcpAuthHandler()
-
-	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, auth)
+	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, bucket.spec.Auth)
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
 		poolName,
 		bucketName,
 		"",
 		vbucketIdsArr,
-		auth,
+		bucket.spec.Auth,
 		dcpReceiver,
 		nil,
 	)
@@ -313,18 +308,6 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	}()
 
 	return &dcpFeed, nil
-}
-
-func (bucket CouchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
-
-	// Auth handler for DCP connection needs to support bucket name defaults
-	username, password := "", ""
-	if bucket.spec.Auth != nil {
-		username, password, _ = bucket.spec.Auth.GetCredentials()
-	} else {
-		log.Printf("bucket.spec.Auth == nil.  bucket.spec: %+v", bucket.spec)
-	}
-	return &dcpAuth{username, password, bucket.spec.BucketName}
 }
 
 func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
