@@ -79,6 +79,7 @@ func TestViewQuery(t *testing.T) {
 }
 
 //Tests #1109, where design doc contains multiple views
+//Currently fails against walrus bucket as '_sync' property will exist in doc if it is emmitted in the map function
 func failingTestViewQueryMultipleViews(t *testing.T) {
 	var rt restTester
 	//Define three views
