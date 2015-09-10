@@ -54,8 +54,7 @@ type BucketSpec struct {
 
 // These are used by CBGT to determine the sharding factor and other properties
 type FeedParams struct {
-	NumShards   uint16 `json:"num_shards"`
-	NumReplicas uint16 `json:"num_replicas"`
+	NumShards uint16 `json:"num_shards"`
 }
 
 func (f FeedParams) PlanParams(numVbuckets uint16) cbgt.PlanParams {
@@ -79,7 +78,7 @@ func (f FeedParams) PlanParams(numVbuckets uint16) cbgt.PlanParams {
 
 	return cbgt.PlanParams{
 		MaxPartitionsPerPIndex: int(numVbucketsPerShard),
-		NumReplicas:            int(f.NumReplicas),
+		NumReplicas:            0, // no use case for Sync Gateway to have pindex replicas
 	}
 
 }
