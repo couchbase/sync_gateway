@@ -111,6 +111,7 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	base.LogTo("DIndex+", "Poll for changes for channel %s", k.channelName)
 	if k.lastPolledClock == nil {
 		k.lastPolledClock = k.clock.Copy()
+		k.lastPolledSince = k.clock.Copy()
 	}
 
 	// Find the minimum of stable clock and new channel clock (to ignore cases when channel clock has
@@ -140,7 +141,8 @@ func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) erro
 		}
 		if len(recentChanges) > 0 {
 			k.lastPolledChanges = recentChanges
-			k.lastPolledClock = combinedClock
+			k.lastPolledSince.SetTo(k.lastPolledClock)
+			k.lastPolledClock.SetTo(combinedClock)
 		} else {
 			base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
 			return errors.New("Expected changes based on clock, none found")
@@ -153,7 +155,7 @@ func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) erro
 }
 
 func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock base.SequenceClock) (results []*LogEntry) {
-	if k.lastPolledClock == nil {
+	if k.lastPolledClock == nil || k.lastPolledSince == nil {
 		return results
 	}
 

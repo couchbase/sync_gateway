@@ -250,6 +250,7 @@ func TestPostChangesSinceClock(t *testing.T) {
 	postChangesSince(t, it)
 }
 
+// Basic _changes test with since value
 func postChangesSince(t *testing.T, it indexTester) {
 	response := it.sendAdminRequest("PUT", "/_logging", `{"Poll+":true}`)
 
@@ -301,7 +302,71 @@ func postChangesSince(t *testing.T, it indexTester) {
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 3)
 
-	time.Sleep(2 * time.Second)
+}
+
+func TestPostChangesChannelFilterInteger(t *testing.T) {
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChangesChannelFilter(t, it)
+}
+
+func TestPostChangesChannelFilterClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChangesChannelFilter(t, it)
+}
+
+// Test _changes with channel filter
+func postChangesChannelFilter(t *testing.T, it indexTester) {
+
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents
+	response = it.sendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/samevbdiffchannel-0000609", `{"channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/samevbdiffchannel-0000799", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2-0000609", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs3-0000609", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	changesJSON := `{"filter":"sync_gateway/bychannel", "channels":"PBS"}`
+	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 4)
+
+	// Put several more documents, some to the same vbuckets
+	response = it.sendAdminRequest("PUT", "/db/pbs1-0000799", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/abc1-0000609", `{"value":1, "channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2-0000799", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs4", `{"value":4, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	time.Sleep(10 * time.Millisecond)
+	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 7)
+
 }
 
 //////// HELPERS:

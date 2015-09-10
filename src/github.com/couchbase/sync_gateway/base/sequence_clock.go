@@ -39,6 +39,7 @@ type SequenceClock interface {
 	AllBefore(otherClock SequenceClock) bool       // True if all entries in clock are less than or equal to the corresponding values in otherClock
 	AnyAfter(otherClock SequenceClock) bool        // True if any entries in clock are greater than the corresponding values in otherClock
 	AnyBefore(otherClock SequenceClock) bool       // True if any entries in clock are less than the corresponding values in otherClock
+	SetTo(otherClock SequenceClock)                // Sets the current clock to a copy of the other clock
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -224,6 +225,15 @@ func (c *SequenceClockImpl) Copy() SequenceClock {
 	return result
 }
 
+// Compares another sequence clock with this one.  Returns true if ANY vb values in the clock
+// are greater than the corresponding values in other
+func (c *SequenceClockImpl) SetTo(other SequenceClock) {
+	for vbNo := uint16(0); vbNo < KMaxVbNo; vbNo++ {
+		c.value[vbNo] = other.GetSequence(vbNo)
+	}
+	c.hashedValue = ""
+}
+
 func (c *SequenceClockImpl) GetHashedValue() string {
 	return c.hashedValue
 }
@@ -354,13 +364,10 @@ func (c *SyncSequenceClock) Equals(other SequenceClock) bool {
 }
 
 // Copies a channel clock
-func (c *SyncSequenceClock) clone() *SyncSequenceClock {
+func (c *SyncSequenceClock) SetTo(other SequenceClock) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	clockCopy := c.Clock.clone()
-	return &SyncSequenceClock{
-		Clock: &clockCopy,
-	}
+	c.Clock.SetTo(other)
 }
 
 func (c *SyncSequenceClock) Value() []uint64 {
@@ -408,6 +415,7 @@ func PrintClock(clock SequenceClock) string {
 }
 
 func GetMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
+
 	minClock := NewSequenceClockImpl()
 	// Need to iterate over all index values instead of using range, to handle entries in b that
 	// are not in a (and vice versa)
@@ -415,10 +423,10 @@ func GetMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
 		aValue := a.GetSequence(i)
 		bValue := b.GetSequence(i)
 		if aValue < bValue {
-			minClock.SetSequence(i, bValue)
+			minClock.SetSequence(i, aValue)
 		} else {
-			if aValue > 0 {
-				minClock.SetSequence(i, aValue)
+			if bValue > 0 {
+				minClock.SetSequence(i, bValue)
 			}
 		}
 	}
