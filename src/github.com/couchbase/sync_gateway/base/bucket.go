@@ -203,7 +203,12 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 func (bucket CouchbaseBucket) CreateCBGTIndex(spec BucketSpec) error {
 
-	user, pwd, _ := bucket.spec.Auth.GetCredentials()
+	var user, pwd string
+	if bucket.spec.Auth != nil {
+		user, pwd, _ = bucket.spec.Auth.GetCredentials()
+	} else {
+		user, pwd, _ = TransformBucketCredentials(user, pwd, bucket.Name)
+	}
 
 	sourceParams := cbgt.NewDCPFeedParams()
 	sourceParams.AuthUser = user
