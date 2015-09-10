@@ -254,6 +254,16 @@ func (dbConfig DbConfig) validate() error {
 
 }
 
+func (dbConfig *DbConfig) modifyConfig() {
+	if dbConfig.ChannelIndex != nil {
+		// if there is NO feed type, set to DCPSHARD, since that's the only
+		// valid config when a Channel Index is specified
+		if dbConfig.FeedType == "" {
+			dbConfig.FeedType = base.DcpShardFeedType
+		}
+	}
+}
+
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
@@ -350,31 +360,9 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 
-	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
-	if dbConfig.ChannelIndex != nil {
-		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
-			msg := "ChannelIndex declared in config, but the FeedType is %v " +
-				"rather than expected value of DCPSHARD"
-			return fmt.Errorf(msg, dbConfig.FeedType)
-		}
-	}
+	dbConfig.modifyConfig()
 
-	// if the feed type is DCPSHARD, then there must be a ChannelIndex
-	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
-		if dbConfig.ChannelIndex == nil {
-			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
-			return fmt.Errorf(msg)
-		}
-	}
-
-	// must have valid CBGT enabled in cluster config
-	/*if !config.ClusterConfig.CBGTEnabled() {
-		msg := "FeedType is DCPSHARD, but CBGT not enabled in cluster_config"
-		return fmt.Errorf(msg)
-	}
-	*/
-
-	return nil
+	return dbConfig.validate()
 
 }
 
