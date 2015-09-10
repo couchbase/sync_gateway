@@ -38,7 +38,6 @@ type kvChannelIndex struct {
 	stableSequenceCb  func() base.SequenceClock
 	onChange          func(base.Set)
 	clock             *base.SequenceClockImpl
-	vbucketCache      map[uint64]*vbCache // Cached entries by vbucket
 	channelStorage    ChannelStorage
 }
 
@@ -52,11 +51,6 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexP
 		onChange:         onChangeCallback,
 		channelStorage:   NewChannelStorage(bucket, channelName, partitions),
 	}
-
-	// TODO: The optimal initial capacity for the vbucketCache will vary depending on how many documents
-	// are assigned to the channel.  Currently starting with kMaxVbNo/4 as a ballpark, but might want
-	// to tune this based on performance analysis
-	channelIndex.vbucketCache = make(map[uint64]*vbCache, base.KMaxVbNo/4)
 
 	// Init stable sequence, last polled
 	channelIndex.stableSequence = channelIndex.stableSequenceCb()
@@ -487,17 +481,17 @@ func SearchSortedEntrySet(a SortedEntrySet, x uint64) int {
 
 // Get the key for the cache count doc
 func getIndexCountKey(channelName string) string {
-	return fmt.Sprintf("%s_count:%s", kCachePrefix, channelName)
+	return fmt.Sprintf("%s_count:%s", kIndexPrefix, channelName)
 }
 
 // Get the key for the cache block, based on the block index
 func getIndexBlockKey(channelName string, blockIndex uint16, partition uint16) string {
-	return fmt.Sprintf("%s:%s:%d:block%d", kCachePrefix, channelName, partition, blockIndex)
+	return fmt.Sprintf("%s:%s:%d:block%d", kIndexPrefix, channelName, partition, blockIndex)
 }
 
 // Get the key for the cache block, based on the block index
 func getChannelClockKey(channelName string) string {
-	return fmt.Sprintf("%s_SequenceClock:%s", kCachePrefix, channelName)
+	return fmt.Sprintf("%s_SequenceClock:%s", kIndexPrefix, channelName)
 }
 
 func minUint64(a, b uint64) uint64 {

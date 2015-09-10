@@ -234,7 +234,7 @@ func (bucket CouchbaseBucket) CreateCBGTIndex(spec BucketSpec) error {
 		bucket.UUID,                             // sourceUUID
 		string(sourceParamsBytes),               // sourceParams
 		IndexTypeSyncGateway,                    // indexType
-		bucket.Name,                             // indexName
+		bucket.GetCBGTIndexName(),               // indexName
 		string(indexParamsBytes),                // indexParams
 		spec.FeedParams.PlanParams(numVbuckets), // planParams
 		"", // prevIndexUUID
@@ -252,6 +252,10 @@ func (bucket CouchbaseBucket) CreateCBGTIndex(spec BucketSpec) error {
 
 	return err
 
+}
+
+func (bucket CouchbaseBucket) GetCBGTIndexName() string {
+	return bucket.Name + bucket.UUID
 }
 
 func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {

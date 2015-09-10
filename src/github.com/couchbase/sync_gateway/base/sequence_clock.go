@@ -13,8 +13,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"log"
-	"strconv"
 	"sync"
 )
 
@@ -55,22 +53,6 @@ func NewSequenceClockImpl() *SequenceClockImpl {
 	clock := &SequenceClockImpl{
 		value: make([]uint64, KMaxVbNo),
 	}
-	return clock
-}
-
-func NewSequenceClockFromHash(hashedValue string) *SequenceClockImpl {
-
-	log.Println("New sequence clock from hash:", hashedValue)
-	clock := NewSequenceClockImpl()
-	clock.hashedValue = hashedValue
-	// TODO: resolve hash.  Currently returns a clock with all vbuckets set to int value
-	seqInt, err := strconv.ParseUint(hashedValue, 0, 64)
-	if err == nil {
-		for i := 0; i < 1024; i++ {
-			clock.SetSequence(uint16(i), seqInt)
-		}
-	}
-
 	return clock
 }
 

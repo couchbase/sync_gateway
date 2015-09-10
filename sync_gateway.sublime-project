@@ -39,6 +39,14 @@
 			"path": "src/github.com/couchbaselabs/walrus"
 		},
 		{
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "src/github.com/couchbaselabs/cbgt"
+		},
+		{
 			"follow_symlinks": true,
 			"path": "utils"
 		},

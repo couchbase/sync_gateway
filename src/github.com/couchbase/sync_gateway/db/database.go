@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbaselabs/cbgt"
 	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sg-bucket"
@@ -48,7 +47,6 @@ type DatabaseContext struct {
 	changeCache        ChangeIndex             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
-	cbgtManager        *cbgt.Manager           // The cbgt manager for sharded DCP stream
 	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
 }
@@ -164,8 +162,8 @@ func (context *DatabaseContext) CreateCBGTIndex() error {
 	// as the tapFeed will be created at that point, and it must be already created
 	// at the point we try to create a CBGT index.
 	if context.BucketSpec.FeedType == strings.ToLower(base.DcpShardFeedType) {
-		// create the index
-		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.Bucket.GetName())
+		// create the index]
+		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.getCBGTIndexNameForBucket(context.Bucket))
 		if err != nil {
 			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
 		}
@@ -178,6 +176,18 @@ func (context *DatabaseContext) CreateCBGTIndex() error {
 	}
 
 	return nil
+
+}
+
+func (context *DatabaseContext) getCBGTIndexNameForBucket(bucket base.Bucket) (indexName string) {
+	// Real Couchbase buckets use an index name that includes UUID.
+	cbBucket, ok := bucket.(base.CouchbaseBucket)
+	if ok {
+		indexName = cbBucket.GetCBGTIndexName()
+	} else {
+		indexName = bucket.GetName()
+	}
+	return indexName
 
 }
 

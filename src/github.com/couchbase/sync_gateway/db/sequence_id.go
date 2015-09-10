@@ -275,6 +275,14 @@ func (s SequenceID) SafeSequence() uint64 {
 	}
 }
 
+func (s SequenceID) IsNonZero() bool {
+	if s.SeqType == ClockSequenceType {
+		return s.Clock != nil
+	} else {
+		return s.Seq > 0
+	}
+}
+
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
 // The tricky part is that "n" sorts after "n:m" for any nonzero m
 func (s SequenceID) Before(s2 SequenceID) bool {

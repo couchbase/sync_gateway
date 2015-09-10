@@ -250,7 +250,7 @@ loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			if lastSeq.Seq > 0 { // start after end of last feed
+			if lastSeq.IsNonZero() { // start after end of last feed
 				options.Since = lastSeq
 			}
 			if h.db.IsClosed() {

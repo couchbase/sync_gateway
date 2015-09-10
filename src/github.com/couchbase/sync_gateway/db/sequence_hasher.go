@@ -195,9 +195,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (storedClocks, error) {
 	stored := storedClocks{}
 	key := kHashPrefix + strconv.FormatUint(hashValue, 10)
 
-	// TODO: update to GetAndTouch - https://github.com/couchbase/go-couchbase/issues/60
 	bytes, cas, err := s.bucket.GetAndTouchRaw(key, int(s.hashExpiry))
-	//bytes, cas, err := s.bucket.GetRaw(key)
 
 	if err != nil {
 		// Assume no clocks stored for this string

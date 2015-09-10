@@ -16,9 +16,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/couchbaselabs/cbgt"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -26,10 +29,11 @@ import (
 )
 
 const (
-	kCachePrefix   = "_cache"
-	maxCacheUpdate = 500
-	minCacheUpdate = 1
-	kPollFrequency = 500
+	kIndexPrefix       = "_idx"
+	maxCacheUpdate     = 500
+	minCacheUpdate     = 1
+	kPollFrequency     = 500
+	kIndexPartitionKey = "_idxPartitionMap"
 )
 
 type kvChangeIndex struct {
@@ -43,13 +47,18 @@ type kvChangeIndex struct {
 	channelIndexReaderLock sync.RWMutex               // Coordinates read access to channel index reader map
 	onChange               func(base.Set)             // Client callback that notifies of channel changes
 	pending                chan *LogEntry             // Incoming changes, pending indexing
-	stableSequence         *base.SyncSequenceClock    // Stabfle sequence in index
+	stableSequence         *base.SyncSequenceClock    // Stable sequence in index
 	logsDisabled           bool                       // If true, ignore incoming tap changes
 	terminator             chan struct{}              // Ends polling
 }
 
 type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
 
+type partitionStorage struct {
+	Uuid  string   `json:"uuid"`
+	Index uint16   `json:"index"`
+	VbNos []uint16 `json:"vbNos"`
+}
 type ChannelPartition struct {
 	channelName string
 	partition   uint16
@@ -79,7 +88,6 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	k.context = context
 	k.indexBucket = indexOptions.Bucket
 
-	// TODO: need to get the number of vbuckets from the bucket itself
 	cbBucket, ok := k.indexBucket.(base.CouchbaseBucket)
 	if ok {
 		k.maxVbNo, _ = cbBucket.GetMaxVbno()
@@ -87,9 +95,6 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 		// walrus, for unit testing
 		k.maxVbNo = 1024
 	}
-
-	// Load index partitions
-	k.indexPartitions = k.loadIndexPartitionMap()
 
 	// Initialize stable sequence
 	k.stableSequence = k.loadStableClock()
@@ -165,6 +170,102 @@ func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
 	return base.Set{}
 }
 
+func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
+
+	if k.indexPartitions == nil || len(k.indexPartitions) == 0 {
+		var partitionDef []partitionStorage
+		// First attempt to load from the bucket
+		value, _, err := k.indexBucket.GetRaw(kIndexPartitionKey)
+		if err == nil {
+			if err = json.Unmarshal(value, &partitionDef); err != nil {
+				return nil, err
+			}
+		}
+
+		// If unable to load from index bucket - attempt to initialize based on cbgt partitions
+		if partitionDef == nil {
+			var manager *cbgt.Manager
+			if k.context != nil {
+				manager = k.context.BucketSpec.CbgtContext.Manager
+			} else {
+				base.Warn("No database context - using generic partition map")
+				return k.testIndexPartitionMap(), nil
+			}
+
+			if manager == nil {
+				if _, ok := k.context.Bucket.(base.CouchbaseBucket); ok {
+					return nil, errors.New("No map definition in index bucket, and no cbgt manager available")
+				} else {
+					base.Warn("Non-couchbase bucket - using generic partition map")
+					return k.testIndexPartitionMap(), nil
+				}
+			}
+			planPIndexes, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
+			log.Printf("planPIndexes:%+v", planPIndexes)
+			log.Printf("planPIndexesByName:%+v", planPIndexesByName)
+			indexName := k.context.getCBGTIndexNameForBucket(k.context.Bucket)
+			pindexes := planPIndexesByName[indexName]
+
+			for index, pIndex := range pindexes {
+				log.Printf("adding %s as %d", pIndex.UUID, index)
+				vbStrings := strings.Split(pIndex.SourcePartitions, ",")
+				// convert string vbNos to uint16
+				vbNos := make([]uint16, len(vbStrings))
+				for i := 0; i < len(vbStrings); i++ {
+					vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
+					if err != nil {
+						base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
+					}
+					vbNos[i] = uint16(vbNumber)
+				}
+				entry := partitionStorage{
+					Index: uint16(index),
+					Uuid:  pIndex.UUID,
+					VbNos: vbNos,
+				}
+				partitionDef = append(partitionDef, entry)
+			}
+
+			// Persist to bucket
+			value, err = json.Marshal(partitionDef)
+			if err != nil {
+				return nil, err
+			}
+			k.indexBucket.SetRaw(kIndexPartitionKey, 0, value)
+		}
+
+		// Create k.indexPartitions based on partitionDef
+		k.indexPartitions = make(map[uint16]uint16)
+		for _, partition := range partitionDef {
+			for _, vbNo := range partition.VbNos {
+				k.indexPartitions[vbNo] = partition.Index
+			}
+		}
+	}
+	return k.indexPartitions, nil
+}
+
+// Index partition map for testing
+func (k *kvChangeIndex) testIndexPartitionMap() IndexPartitionMap {
+	maxVbNo := uint16(1024)
+	partitions := make(IndexPartitionMap, maxVbNo)
+
+	numPartitions := uint16(32)
+	vbPerPartition := maxVbNo / numPartitions
+	for partition := uint16(0); partition < numPartitions; partition++ {
+		for index := uint16(0); index < vbPerPartition; index++ {
+			vb := partition*vbPerPartition + index
+			partitions[vb] = partition
+		}
+	}
+	return partitions
+}
+
+// Primarily for use by unit tests to avoid CBGT dependency for partition map
+func (k *kvChangeIndex) setIndexPartitionMap(partitionMap IndexPartitionMap) {
+	k.indexPartitions = partitionMap
+}
+
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
 // change_cache altogether)
 func (k *kvChangeIndex) getOldestSkippedSequence() uint64 {
@@ -236,7 +337,6 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbN
 			return
 		}
 
-		// TODO: not doing local notification - it's all done via the bucket.  Could revisit as optimization on small SG clusters
 		k.AddToCache(change)
 	}()
 }
@@ -262,9 +362,9 @@ func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, isUser
 
 	var indexDocID string
 	if isUser {
-		indexDocID = kCachePrefix + "_user:" + princ.Name()
+		indexDocID = kIndexPrefix + "_user:" + princ.Name()
 	} else {
-		indexDocID = kCachePrefix + "_role:" + princ.Name()
+		indexDocID = kIndexPrefix + "_role:" + princ.Name()
 	}
 
 	// Update the user doc in the index based on the principal
@@ -335,50 +435,60 @@ func (k *kvChangeIndex) getChannelReader(channelName string) *kvChannelIndex {
 	return k.channelIndexReaders[channelName]
 }
 
-func (k *kvChangeIndex) newChannelReader(channelName string) *kvChannelIndex {
+func (k *kvChangeIndex) newChannelReader(channelName string) (*kvChannelIndex, error) {
 
 	k.channelIndexReaderLock.Lock()
 	defer k.channelIndexReaderLock.Unlock()
 	// make sure someone else hasn't created while we waited for the lock
 	if _, ok := k.channelIndexReaders[channelName]; ok {
-		return k.channelIndexReaders[channelName]
+		return k.channelIndexReaders[channelName], nil
 	}
-	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, k.indexPartitions, k.getStableClock, k.onChange)
-	return k.channelIndexReaders[channelName]
+	indexPartitions, err := k.getIndexPartitionMap()
+	if err != nil {
+		return nil, err
+	}
+	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, k.onChange)
+	return k.channelIndexReaders[channelName], nil
 }
 
-func (k *kvChangeIndex) newChannelWriter(channelName string) *kvChannelIndex {
+func (k *kvChangeIndex) newChannelWriter(channelName string) (*kvChannelIndex, error) {
 
 	k.channelIndexWriterLock.Lock()
 	defer k.channelIndexWriterLock.Unlock()
 	// make sure someone else hasn't created while we waited for the lock
 	if _, ok := k.channelIndexWriters[channelName]; ok {
-		return k.channelIndexWriters[channelName]
+		return k.channelIndexWriters[channelName], nil
 	}
-	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexBucket, k.indexPartitions, k.getStableClock, k.onChange)
-	return k.channelIndexWriters[channelName]
+	indexPartitions, err := k.getIndexPartitionMap()
+	if err != nil {
+		return nil, err
+	}
+	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, k.onChange)
+	return k.channelIndexWriters[channelName], nil
 }
 
-func (b *kvChangeIndex) getOrCreateReader(channelName string) *kvChannelIndex {
+func (b *kvChangeIndex) getOrCreateReader(channelName string) (*kvChannelIndex, error) {
+	var err error
 	index := b.getChannelReader(channelName)
 	if index == nil {
-		index = b.newChannelReader(channelName)
+		index, err = b.newChannelReader(channelName)
 		base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 	} else {
 		base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
 	}
-	return index
+	return index, err
 }
 
-func (b *kvChangeIndex) getOrCreateWriter(channelName string) *kvChannelIndex {
-	index := b.getChannelWriter(channelName)
+func (k *kvChangeIndex) getOrCreateWriter(channelName string) (*kvChannelIndex, error) {
+	var err error
+	index := k.getChannelWriter(channelName)
 	if index == nil {
-		index = b.newChannelWriter(channelName)
+		index, err = k.newChannelWriter(channelName)
 	}
-	return index
+	return index, err
 }
 
-func (c *kvChangeIndex) readFromPending() []*LogEntry {
+func (k *kvChangeIndex) readFromPending() []*LogEntry {
 
 	entries := make([]*LogEntry, 0, maxCacheUpdate)
 
@@ -386,12 +496,12 @@ func (c *kvChangeIndex) readFromPending() []*LogEntry {
 	// Blocks until reading at least one from pending
 	for {
 		select {
-		case entry := <-c.pending:
+		case entry := <-k.pending:
 			entries = append(entries, entry)
 			// read additional from cache if present, up to maxCacheUpdate
 			for {
 				select {
-				case additionalEntry := <-c.pending:
+				case additionalEntry := <-k.pending:
 					entries = append(entries, additionalEntry)
 					if len(entries) > maxCacheUpdate {
 						return entries
@@ -405,22 +515,26 @@ func (c *kvChangeIndex) readFromPending() []*LogEntry {
 	}
 }
 
-func (c *kvChangeIndex) indexPending() {
+func (k *kvChangeIndex) indexPending() {
 
-	// TODO: cancellation handling
+	// Read entries from the pending list into array
+	entries := k.readFromPending()
+
+	// Initialize partition map (lazy init)
+	indexPartitions, err := k.getIndexPartitionMap()
+	if err != nil {
+		base.LogFatal("Unable to load index partition map - cannot write incoming entry to index")
+	}
 
 	// Continual processing of arriving entries from the feed.
 	for {
-		// Read entries from the pending list into array
-		entries := c.readFromPending()
-
 		// Wait group tracks when the current buffer has been completely processed
 		var wg sync.WaitGroup
 		channelSets := make(map[ChannelPartition][]*LogEntry)
 		updatedSequences := base.NewSequenceClockImpl()
 
 		// Generic channelStorage for log entry storage
-		channelStorage := NewChannelStorage(c.indexBucket, "", c.indexPartitions)
+		channelStorage := NewChannelStorage(k.indexBucket, "", indexPartitions)
 		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
 			log.Printf("Processing entry with docID:%s, vbno: %d, sequence:%d", logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
@@ -442,7 +556,7 @@ func (c *kvChangeIndex) indexPending() {
 			for channelName, removal := range ch {
 				if removal == nil || removal.RevID == logEntry.RevID {
 					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
-					chanPartition := ChannelPartition{channelName: channelName, partition: c.indexPartitions[logEntry.VbNo]}
+					chanPartition := ChannelPartition{channelName: channelName, partition: indexPartitions[logEntry.VbNo]}
 					_, found := channelSets[chanPartition]
 					if !found {
 						// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
@@ -458,7 +572,7 @@ func (c *kvChangeIndex) indexPending() {
 				}
 			}
 			if EnableStarChannelLog {
-				chanPartition := ChannelPartition{channelName: "*", partition: c.indexPartitions[logEntry.VbNo]}
+				chanPartition := ChannelPartition{channelName: "*", partition: indexPartitions[logEntry.VbNo]}
 				_, found := channelSets[chanPartition]
 				if !found {
 					// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
@@ -477,17 +591,20 @@ func (c *kvChangeIndex) indexPending() {
 			wg.Add(1)
 			go func(chanPartition ChannelPartition, entrySet []*LogEntry) {
 				defer wg.Done()
-				c.addSetToChannelIndex(chanPartition.channelName, entrySet)
+				k.addSetToChannelIndex(chanPartition.channelName, entrySet)
 
 			}(chanPartition, entrySet)
 		}
 		wg.Wait()
 
 		// Update stable sequence
-		err := c.updateStableSequence(updatedSequences)
+		err = k.updateStableSequence(updatedSequences)
 		if err != nil {
 			base.LogPanic("Error updating stable sequence", err)
 		}
+
+		// Read next entries
+		entries = k.readFromPending()
 	}
 }
 
@@ -571,7 +688,6 @@ func (b *kvChangeIndex) SetNotifier(onChange func(base.Set)) {
 
 func (b *kvChangeIndex) GetChanges(channelName string, options ChangesOptions) (entries []*LogEntry, err error) {
 
-	// TODO: add backfill from view?  Currently expects infinite cache
 	_, resultFromCache := b.GetCachedChanges(channelName, options)
 	return resultFromCache, nil
 }
@@ -581,9 +697,12 @@ func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOpti
 	if options.Since.Clock == nil {
 		options.Since.Clock = base.NewSequenceClockImpl()
 	}
-
-	// TODO: Compare with stable clock (hash only?) first for a potential short-circuit
-	changes, err := b.getOrCreateReader(channelName).getChanges(options.Since.Clock)
+	reader, err := b.getOrCreateReader(channelName)
+	if err != nil {
+		base.Warn("Error obtaining channel reader (need partition index?) for channel %s", channelName)
+		return uint64(0), nil
+	}
+	changes, err := reader.getChanges(options.Since.Clock)
 	if err != nil {
 		base.Warn("Error retrieving cached changes for channel %s", channelName)
 		return uint64(0), nil
@@ -600,24 +719,27 @@ func (b *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOpti
 	return uint64(0), changes
 }
 
-// TODO: Implement late sequence handling if needed
 func (b *kvChangeIndex) InitLateSequenceClient(channelName string) uint64 {
-	// no-op
+	// no-op when not buffering sequences
 	return 0
 }
 
 func (b *kvChangeIndex) GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
-	// no-op
+	// no-op when not buffering sequences
 	return entries, lastSequence, nil
 }
 
 func (b *kvChangeIndex) ReleaseLateSequenceClient(channelName string, sequence uint64) error {
-	// no-op
+	// no-op when not buffering sequences
 	return nil
 }
 
 func (b *kvChangeIndex) addSetToChannelIndex(channelName string, entries []*LogEntry) {
-	b.getOrCreateWriter(channelName).AddSet(entries)
+	writer, err := b.getOrCreateWriter(channelName)
+	if err != nil {
+		base.LogFatal("Unable to obtain channel writer - partition map not defined?")
+	}
+	writer.AddSet(entries)
 }
 
 // Add late sequence information to channel cache
@@ -645,23 +767,6 @@ func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 	})
 	k.stableSequence.SetCas(casOut)
 	return nil
-}
-
-// Load the index partition definitions
-func (b *kvChangeIndex) loadIndexPartitionMap() IndexPartitionMap {
-
-	// TODO: load from the profile definition.  Hardcode for now to 32 sequential partitions
-	partitions := make(IndexPartitionMap, b.maxVbNo)
-
-	numPartitions := uint16(32)
-	vbPerPartition := b.maxVbNo / numPartitions
-	for partition := uint16(0); partition < numPartitions; partition++ {
-		for index := uint16(0); index < vbPerPartition; index++ {
-			vb := partition*vbPerPartition + index
-			partitions[vb] = partition
-		}
-	}
-	return partitions
 }
 
 //////////  FakeBucket for testing KV flows:

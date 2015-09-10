@@ -114,7 +114,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 
 	// Verify entry
 	var entry LogEntry
-	entryBytes, _, err := bucket.GetRaw("_cache_entry:1:1")
+	entryBytes, _, err := bucket.GetRaw("_idx_entry:1:1")
 	assert.True(t, err == nil)
 	json.Unmarshal(entryBytes, &entry)
 	assert.Equals(t, entry.DocID, "foo1")
@@ -313,7 +313,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 
 	// Verify user entry in index
 	var principal PrincipalIndex
-	principalBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_cache_user:bob")
+	principalBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_idx_user:bob")
 	assert.True(t, err == nil)
 	json.Unmarshal(principalBytes, &principal)
 	assert.Equals(t, principal.VbNo, uint16(1))
@@ -331,7 +331,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["PBS", "NBC"]}`), uint64(2), uint16(1))
 	time.Sleep(100 * time.Millisecond) // wait for indexing
 
-	principalBytes, _, err = kvChangeIndex.indexBucket.GetRaw("_cache_user:bob")
+	principalBytes, _, err = kvChangeIndex.indexBucket.GetRaw("_idx_user:bob")
 	assert.True(t, err == nil)
 	json.Unmarshal(principalBytes, &principal)
 	assert.Equals(t, principal.VbNo, uint16(1))

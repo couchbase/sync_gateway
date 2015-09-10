@@ -1064,7 +1064,7 @@ func TestAccessControl(t *testing.T) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
-	// base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD"})
+	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
