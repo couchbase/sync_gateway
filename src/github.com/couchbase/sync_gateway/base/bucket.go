@@ -52,12 +52,16 @@ type CouchbaseBucket struct {
 
 type couchbaseFeedImpl struct {
 	*couchbase.TapFeed
-	events <-chan sgbucket.TapEvent
+	events chan sgbucket.TapEvent
 }
 
 var versionString string
 
 func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.TapEvent {
+	return feed.events
+}
+
+func (feed *couchbaseFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
 	return feed.events
 }
 
@@ -81,8 +85,8 @@ func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{},
 
 func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 
-	err = bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
-	return 0, err
+	casOut, err = bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
+	return casOut, err
 }
 
 func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
