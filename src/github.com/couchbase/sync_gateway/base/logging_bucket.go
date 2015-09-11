@@ -25,6 +25,11 @@ func (b *LoggingBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	defer func() { LogTo("Bucket", "GetRaw(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.GetRaw(k)
 }
+func (b *LoggingBucket) GetAndTouchRaw(k string, exp int) (v []byte, cas uint64, err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "GetAndTouchRaw(%q) [%v]", k, time.Since(start)) }()
+	return b.bucket.GetAndTouchRaw(k, exp)
+}
 func (b *LoggingBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "GetBulkRaw(%q) [%v]", keys, time.Since(start)) }()

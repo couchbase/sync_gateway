@@ -52,6 +52,9 @@ func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	return b.bucket.GetBulkRaw(keys)
 }
+func (b *LeakyBucket) GetAndTouchRaw(k string, exp int) (v []byte, cas uint64, err error) {
+	return b.bucket.GetAndTouchRaw(k, exp)
+}
 func (b *LeakyBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
 	return b.bucket.Add(k, exp, v)
 }
@@ -253,6 +256,10 @@ func (feed *wrappedTapFeedImpl) Close() error {
 }
 
 func (feed *wrappedTapFeedImpl) Events() <-chan sgbucket.TapEvent {
+	return feed.channel
+}
+
+func (feed *wrappedTapFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
 	return feed.channel
 }
 
