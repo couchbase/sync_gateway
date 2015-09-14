@@ -307,9 +307,6 @@ func (sc *ServerContext) InitCBGT() error {
 
 func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 
-	log.Printf("ServerContext.initCBGTManager()")
-	defer log.Printf("/ServerContext.initCBGTManager()")
-
 	couchbaseUrl, err := base.CouchbaseUrlWithAuth(
 		*sc.config.ClusterConfig.Server,
 		sc.config.ClusterConfig.Username,

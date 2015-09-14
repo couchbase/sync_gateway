@@ -89,9 +89,7 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
 	// DCP stream from that position.  Also being used as a check on whether the server supports
 	// DCP.
-	statsUuids, highSeqnosTemp, err := s.bucket.GetStatsVbSeqno(maxVbno)
-	log.Printf("highSeqnosFromStats: %+v", highSeqnosTemp)
-
+	statsUuids, _, err := s.bucket.GetStatsVbSeqno(maxVbno)
 	if err != nil {
 		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 	}
@@ -220,6 +218,9 @@ func (s *SyncGatewayPIndex) OpaqueGet(partition string) (value []byte, lastSeq u
 
 	if s.seqs != nil {
 		lastSeq = s.seqs[vbucketNumber]
+		log.Printf("OpaqueGet(): returning lastSeq: %v for partition: %v", lastSeq, partition)
+	} else {
+		log.Printf("OpaqueGet(): s.seqs is nil")
 	}
 
 	return value, lastSeq, nil

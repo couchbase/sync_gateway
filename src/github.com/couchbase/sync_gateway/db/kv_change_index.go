@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -200,14 +199,11 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 					return k.testIndexPartitionMap(), nil
 				}
 			}
-			planPIndexes, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
-			log.Printf("planPIndexes:%+v", planPIndexes)
-			log.Printf("planPIndexesByName:%+v", planPIndexesByName)
+			_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
 			indexName := k.context.getCBGTIndexNameForBucket(k.context.Bucket)
 			pindexes := planPIndexesByName[indexName]
 
 			for index, pIndex := range pindexes {
-				log.Printf("adding %s as %d", pIndex.UUID, index)
 				vbStrings := strings.Split(pIndex.SourcePartitions, ",")
 				// convert string vbNos to uint16
 				vbNos := make([]uint16, len(vbStrings))
@@ -537,7 +533,6 @@ func (k *kvChangeIndex) indexPending() {
 		channelStorage := NewChannelStorage(k.indexBucket, "", indexPartitions)
 		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 		for _, logEntry := range entries {
-			log.Printf("Processing entry with docID:%s, vbno: %d, sequence:%d", logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
 
 			// If principal, update the stable sequence and continue
 			if logEntry.IsPrincipal {

@@ -14,7 +14,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -206,8 +205,6 @@ func checkCBGTIndexExists(cbgtContext base.CbgtContext, indexName string) (bool,
 // Create an "index" in CBGT which will cause it to start streaming
 // DCP events to us for our shard of the full DCP stream.
 func createCBGTIndex(baseBucket base.Bucket, spec base.BucketSpec) error {
-
-	log.Printf("createCBGTIndex called with: %v", baseBucket)
 
 	bucket, ok := baseBucket.(base.CouchbaseBucket)
 	if !ok {
