@@ -2,7 +2,9 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -253,18 +255,107 @@ func TestChangeIndexChanges(t *testing.T) {
 	// Write an entry to the bucket
 	WriteDirectWithKey(db, "1c856b5724dcf4273c3993619900ce7f", []string{}, 1)
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: simpleClockSequence(0)})
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 1)
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	// Write a few more entries to the bucket
 	WriteDirectWithKey(db, "12389b182ababd12fff662848edeb908", []string{}, 1)
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: simpleClockSequence(0)})
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 2)
+}
+
+func TestPollingChangesFeed(t *testing.T) {
+	//base.LogKeys["DIndex+"] = true
+	db := setupTestDBForChangeIndex(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Start a longpoll changes
+	go func() {
+		abcHboChanges, err := db.GetChanges(base.SetOf("ABC", "HBO"), ChangesOptions{Since: simpleClockSequence(0), Wait: true})
+		assertTrue(t, err == nil, "Error getting changes")
+		// Expects two changes - the nil that's sent on initial wait, and then docABC_1
+		assert.Equals(t, len(abcHboChanges), 2)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	// Write an entry to channel ABC to notify the waiting longpoll
+	WriteDirectWithKey(db, "docABC_1", []string{"ABC"}, 1)
+
+	// Start a continuous changes on a different channel (CBS).  Waitgroup keeps test open until continuous is terminated
+	var wg sync.WaitGroup
+	continuousTerminator := make(chan bool)
+	go func() {
+		defer wg.Done()
+		wg.Add(1)
+		cbsChanges, err := db.GetChanges(base.SetOf("CBS"), ChangesOptions{Since: simpleClockSequence(0), Wait: true, Continuous: true, Terminator: continuousTerminator})
+		assertTrue(t, err == nil, "Error getting changes")
+		// Expect 15 entries + 16 nil entries (one per wait)
+		assert.Equals(t, len(cbsChanges), 25)
+		log.Println("Continuous completed")
+
+	}()
+
+	// Write another entry to channel ABC to start the clock for unread polls
+	time.Sleep(1000 * time.Millisecond)
+	WriteDirectWithKey(db, "docABC_2", []string{"ABC"}, 1)
+
+	// Verify that the channel is initially in the polled set
+	changeIndex, _ := db.changeCache.(*kvChangeIndex)
+	assertTrue(t, changeIndex.getChannelReader("ABC") != nil, "Channel reader should not be nil")
+	log.Printf("changeIndex readers: %+v", changeIndex.channelIndexReaders)
+
+	// Send multiple docs to channels HBO, PBS, CBS.  Expected results:
+	//   ABC - Longpoll has ended - should trigger "nobody listening" expiry of channel reader
+	//   CBS - Active continuous feed - channel reader shouldn't expire
+	//   PBS - No changes feeds have requested this channel - no channel reader should be created
+	//   HBO - New longpoll started mid-way before poll limit reached, channel reader shouldn't expire
+	time.Sleep(20 * time.Millisecond)
+	for i := 0; i < 12; i++ {
+		log.Printf("writing multiDoc_%d", i)
+		WriteDirectWithKey(db, fmt.Sprintf("multiDoc_%d", i), []string{"PBS", "HBO", "CBS"}, 1)
+		// Midway through, read from HBO
+		if i == 9 {
+			time.Sleep(20 * time.Millisecond)
+			hboChanges, err := db.GetChanges(base.SetOf("HBO"), ChangesOptions{Since: simpleClockSequence(0), Wait: true})
+			assertTrue(t, err == nil, "Error getting changes")
+			assert.Equals(t, len(hboChanges), 10)
+		}
+		time.Sleep(kPollFrequency * time.Millisecond)
+	}
+
+	close(continuousTerminator)
+	log.Println("closed terminator")
+
+	// Send another entry to continuous CBS feed in order to trigger the terminator check
+	time.Sleep(100 * time.Millisecond)
+	WriteDirectWithKey(db, "terminatorCheck", []string{"CBS"}, 1)
+
+	time.Sleep(100 * time.Millisecond)
+	// Validate that the ABC reader was deleted due to inactivity
+	log.Printf("channel reader ABC:%+v", changeIndex.getChannelReader("ABC"))
+	assertTrue(t, changeIndex.getChannelReader("ABC") == nil, "Channel reader should be nil")
+
+	// Validate that the HBO reader is still present
+	assertTrue(t, changeIndex.getChannelReader("HBO") != nil, "Channel reader should be exist")
+
+	// Start another longpoll changes for ABC, ensure it's successful (will return the existing 2 records, no wait)
+	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0), Wait: true})
+	assertTrue(t, err == nil, "Error getting changes")
+	assert.Equals(t, len(changes), 2)
+
+	// Repeat, verify use of existing channel reader
+	changes, err = db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0), Wait: true})
+	assertTrue(t, err == nil, "Error getting changes")
+	assert.Equals(t, len(changes), 2)
+
+	wg.Wait()
+
 }
 
 func TestLoadStableSequence(t *testing.T) {

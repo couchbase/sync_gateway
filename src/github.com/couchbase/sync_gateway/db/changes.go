@@ -503,8 +503,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 // Synchronous convenience function that returns all changes as a simple array.
 func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	if options.Terminator == nil {
+		options.Terminator = make(chan bool)
+		defer close(options.Terminator)
+	}
 
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)

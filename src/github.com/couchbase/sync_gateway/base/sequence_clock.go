@@ -18,7 +18,7 @@ import (
 
 const (
 	KMaxVbNo           = 1024 // TODO: load from cluster config
-	KStableSequenceKey = "_cache_stableSeq"
+	KStableSequenceKey = "_idx_stableSeq"
 )
 
 type SequenceClock interface {
@@ -231,6 +231,7 @@ func (c *SequenceClockImpl) SetTo(other SequenceClock) {
 	for vbNo := uint16(0); vbNo < KMaxVbNo; vbNo++ {
 		c.value[vbNo] = other.GetSequence(vbNo)
 	}
+	c.cas = other.Cas()
 	c.hashedValue = ""
 }
 

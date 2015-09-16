@@ -15,30 +15,35 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
 )
 
 var ByteCachePollingTime = 1000 // initial polling time for notify, ms
 
-const kSequenceOffsetLength = 0 // disabled until we actually need it
+const (
+	kSequenceOffsetLength = 0   // disabled until we actually need it
+	kMaxUnreadPollCount   = 10  // If the channel polls for (kMaxUnusedPollCount) times after publishing a notification without anyone calling getChanges(), terminates polling
+	kMaxEmptyPollCount    = 100 // If a channel is polled and finds no changes (kMaxEmptyPollCount) times, it triggers a null update in order to trigger unused poll handling (i.e. see if anyone is still listening)
+
+)
 
 type kvChannelIndex struct {
-	indexBucket       base.Bucket       // Database connection (used for connection queries)
-	partitionMap      IndexPartitionMap // Index partition map
-	channelName       string
-	lastCounter       uint64
-	notifyRunning     bool
-	notifyLock        sync.Mutex
-	lastPolledChanges []*LogEntry
-	lastPolledSince   base.SequenceClock
-	lastPolledClock   base.SequenceClock
-	lastPolledLock    sync.RWMutex
-	stableSequence    base.SequenceClock
-	stableSequenceCb  func() base.SequenceClock
-	onChange          func(base.Set)
-	clock             *base.SequenceClockImpl
-	channelStorage    ChannelStorage
+	indexBucket       base.Bucket               // Database connection (used for connection queries)
+	partitionMap      IndexPartitionMap         // Index partition map
+	channelName       string                    // Channel name
+	lastPolledChanges []*LogEntry               // Set of changes found in most recent polling.  Optimization for scenario where multiple continuous changes listeners are awakened at once
+	lastPolledSince   base.SequenceClock        // Since value used for most recent polling
+	lastPolledClock   base.SequenceClock        // New channel clock after most recent polling
+	lastPolledLock    sync.RWMutex              // Synchronization for lastPolled data
+	unreadPollCount   uint32                    // Number of times the channel has polled for data since the last non-empty poll, without a getChanges call
+	pollCount         uint32                    // Number of times the channel has polled for data and not found changes
+	stableSequence    base.SequenceClock        // Global stable sequence
+	stableSequenceCb  func() base.SequenceClock // Callback for retrieval of global stable sequence
+	onChange          func(base.Set)            // Notification callback
+	clock             *base.SequenceClockImpl   // Channel clock
+	channelStorage    ChannelStorage            // Channel storage - manages interaction with the index format
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexPartitionMap, stableClockCallback func() base.SequenceClock, onChangeCallback func(base.Set)) *kvChannelIndex {
@@ -59,7 +64,6 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexP
 	channelIndex.loadClock()
 
 	return channelIndex
-
 }
 
 //
@@ -105,9 +109,26 @@ func (k *kvChannelIndex) updateIndexCount() error {
 
 }
 
-func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) bool {
+func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
 
 	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
+
+	// Increment the overall poll count since a changes request (regardless of whether there have been polled changes)
+	totalPollCount := atomic.AddUint32(&k.pollCount, 1)
+	unreadPollCount := atomic.LoadUint32(&k.unreadPollCount)
+	if unreadPollCount > kMaxUnreadPollCount {
+		// We've sent a notify, but had (kMaxUnreadPollCount) polls without anyone calling getChanges.
+		// Assume nobody is listening for updates - cancel polling for this channel
+		return false, true
+	}
+
+	if unreadPollCount > 0 {
+		// Give listeners more time to call getChanges, but increment
+		atomic.AddUint32(&k.unreadPollCount, 1)
+	}
+
+	k.lastPolledLock.Lock()
+	defer k.lastPolledLock.Unlock()
 	base.LogTo("DIndex+", "Poll for changes for channel %s", k.channelName)
 	if k.lastPolledClock == nil {
 		k.lastPolledClock = k.clock.Copy()
@@ -118,20 +139,29 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	// changed but stable hasn't yet)
 	combinedClock := base.GetMinimumClock(stableClock, newChannelClock)
 	if !combinedClock.AnyAfter(k.lastPolledClock) {
-		return false
+		// No changes.  Only return true if we've exceeded empty poll count (and want to trigger the "is
+		// anyone listening" check)
+		if totalPollCount > kMaxEmptyPollCount {
+			return true, false
+		} else {
+			return false, false
+		}
 	}
 
 	// The clock has changed - load the changes and store in last polled
 	if err := k.updateLastPolled(combinedClock); err != nil {
 		base.Warn("Error updating last polled for channel %s: %v", k.channelName, err)
-		return false
+		return false, false
 	}
-	return true
+
+	// We have changes - increment unread counter if we haven't already
+	if unreadPollCount == 0 {
+		atomic.AddUint32(&k.unreadPollCount, 1)
+	}
+	return true, false
 }
 
 func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) error {
-	k.lastPolledLock.Lock()
-	defer k.lastPolledLock.Unlock()
 	// Compare counter again, in case someone has already updated last polled while we waited for the lock
 	if combinedClock.AnyAfter(k.clock) {
 		// Get changes since the last clock
@@ -147,20 +177,22 @@ func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) erro
 			base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
 			return errors.New("Expected changes based on clock, none found")
 		}
+		/* onChange handled by change index
 		if k.onChange != nil {
 			k.onChange(base.SetOf(k.channelName))
 		}
+		*/
 	}
 	return nil
 }
 
 func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock base.SequenceClock) (results []*LogEntry) {
-	if k.lastPolledClock == nil || k.lastPolledSince == nil {
-		return results
-	}
 
 	k.lastPolledLock.RLock()
 	defer k.lastPolledLock.RUnlock()
+	if k.lastPolledClock == nil || k.lastPolledSince == nil {
+		return results
+	}
 	if k.lastPolledClock.Equals(chanClock) && k.lastPolledSince.AllBefore(since) {
 		copy(results, k.lastPolledChanges)
 	}
@@ -173,6 +205,10 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, error) {
 
 	var results []*LogEntry
+
+	// Someone is still interested in this channel - reset poll counts
+	atomic.StoreUint32(&k.pollCount, 0)
+	atomic.StoreUint32(&k.unreadPollCount, 0)
 
 	// TODO: pass in an option to reuse existing channel clock
 	chanClock, err := k.loadChannelClock()

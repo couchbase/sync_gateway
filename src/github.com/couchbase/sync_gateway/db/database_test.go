@@ -735,6 +735,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		revid, err = db.Put("doc1", body)
 		// Sleep needed to ensure consistent results when running single-threaded vs. multi-threaded test:
 		// without it we can't predict the relative update times of nextSequence and RecentSequences
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	db.changeCache.waitForSequence(24)
@@ -742,6 +743,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	revid, err = db.Put("doc1", body)
 	doc, err = db.GetDoc("doc1")
 	assert.True(t, err == nil)
+	log.Printf("recent:%d, max:%d", len(doc.RecentSequences), kMaxRecentSequences)
 	assert.True(t, len(doc.RecentSequences) < kMaxRecentSequences)
 
 	// Ensure pruning works when sequences aren't sequential

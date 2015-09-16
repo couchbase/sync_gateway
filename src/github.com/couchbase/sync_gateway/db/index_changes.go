@@ -38,11 +38,18 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 
 		if options.Wait {
-			options.Wait = false
+			// Note (Adam): I don't think there's a reason to set this to false here.  We're outside the
+			// main iteration loop (so the if check above should only happen once), and I don't believe
+			// options.Wait is referenced elsewhere once MultiChangesFeed is called.  Leaving it as-is
+			// makes it possible for channels to identify whether a getChanges call has options.Wait set to true,
+			// which is useful to identify active change listeners.  However, it's possible there's a subtlety of
+			// longpoll or continuous processing I'm missing here - leaving this note instead of just deleting for now.
+			//options.Wait = false
 			changeWaiter = db.startChangeWaiter(chans)
 			userChangeCount = changeWaiter.CurrentUserCount()
 		}
 		cumulativeClock := options.Since.Clock
+
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
@@ -154,12 +161,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
-				// Update options.Since for use in the next outer loop iteration.  Only update
-				// when minSeq is greater than the previous options.Since value - we don't want to
-				// roll back the Since value when we get an late sequence is processed.
-				if options.Since.Before(minSeq) {
-					options.Since = minSeq
-				}
+				// Update options.Since for use in the next outer loop iteration.
+				options.Since.Clock = cumulativeClock
 
 				// Add the doc body or the conflicting rev IDs, if those options are set:
 				if options.IncludeDocs || options.Conflicts {
@@ -179,7 +182,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Send the entry, and repeat the loop:
-				base.LogTo("Changes+", "MultiChangesFeed sending %+v %+v %s", minEntry, to, base.PrintClock(minEntry.Seq.Clock))
 				select {
 				case <-options.Terminator:
 					return
