@@ -215,7 +215,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 			}
 
 			_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
-			indexName := k.context.getCBGTIndexNameForBucket(k.context.Bucket)
+			indexName := k.context.GetCBGTIndexNameForBucket(k.context.Bucket)
 			pindexes := planPIndexesByName[indexName]
 
 			for index, pIndex := range pindexes {

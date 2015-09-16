@@ -162,7 +162,7 @@ func (context *DatabaseContext) CreateCBGTIndex() error {
 	// at the point we try to create a CBGT index.
 	if context.BucketSpec.FeedType == strings.ToLower(base.DcpShardFeedType) {
 		// create the index]
-		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.getCBGTIndexNameForBucket(context.Bucket))
+		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.GetCBGTIndexNameForBucket(context.Bucket))
 		if err != nil {
 			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
 		}
@@ -178,7 +178,7 @@ func (context *DatabaseContext) CreateCBGTIndex() error {
 
 }
 
-func (context *DatabaseContext) getCBGTIndexNameForBucket(bucket base.Bucket) (indexName string) {
+func (context *DatabaseContext) GetCBGTIndexNameForBucket(bucket base.Bucket) (indexName string) {
 	// Real Couchbase buckets use an index name that includes UUID.
 	cbBucket, ok := bucket.(base.CouchbaseBucket)
 	if ok {

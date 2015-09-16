@@ -114,6 +114,7 @@ func (sc *ServerContext) registerCbgtPindexType() error {
 
 }
 
+// When CBGT is opening a PIndex for the first time, it will call back this method.
 func (sc *ServerContext) NewSyncGatewayPIndexFactory(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
 	os.MkdirAll(path, 0700)
@@ -142,6 +143,7 @@ func (sc *ServerContext) NewSyncGatewayPIndexFactory(indexType, indexParams, pat
 
 }
 
+// When CBGT is re-opening an existing PIndex (after a Sync Gw restart for example), it will call back this method.
 func (sc *ServerContext) OpenSyncGatewayPIndexFactory(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
 	buf, err := ioutil.ReadFile(path +
@@ -301,8 +303,45 @@ func (sc *ServerContext) InitCBGT() error {
 	// we need to kick the manager to recognize them.
 	cbgtContext.Manager.Kick("NewIndexesCreated")
 
+	// Make sure that we don't have multiple partitions subscribed to the same DCP shard
+	// for a given bucket.
+	if err := sc.validateCBGTPartitionMap(); err != nil {
+		return err
+	}
+
 	return nil
 
+}
+
+// This was created in reaction to a development bug that was found:
+//    https://github.com/couchbase/sync_gateway/issues/1129
+// What this method does is to loop through all the databases and build
+// up a map of what the CBGT index names _should be_.  Then, it loops over
+// all of the known CBGT indexes, and makes sure the CBGT index name is a valid
+// name by checking if it's in the map.  If not, return an error.
+func (sc *ServerContext) validateCBGTPartitionMap() error {
+
+	validCBGTIndexNames := map[string]string{}
+	for _, dbContext := range sc.databases_ {
+		cbgtIndexName := dbContext.GetCBGTIndexNameForBucket(dbContext.Bucket)
+		validCBGTIndexNames[cbgtIndexName] = "n/a"
+	}
+
+	_, planPIndexesByName, _ := sc.CbgtContext.Manager.GetPlanPIndexes(true)
+
+	for cbgtIndexName, _ := range planPIndexesByName {
+		_, ok := validCBGTIndexNames[cbgtIndexName]
+		if !ok {
+			return fmt.Errorf(
+				"CBGT contains an invalid index name: %v.  Aborting. "+
+					"Valid index names: %v",
+				cbgtIndexName,
+				validCBGTIndexNames,
+			)
+		}
+	}
+
+	return nil
 }
 
 func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {

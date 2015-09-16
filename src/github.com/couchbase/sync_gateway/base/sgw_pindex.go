@@ -218,9 +218,6 @@ func (s *SyncGatewayPIndex) OpaqueGet(partition string) (value []byte, lastSeq u
 
 	if s.seqs != nil {
 		lastSeq = s.seqs[vbucketNumber]
-		log.Printf("OpaqueGet(): returning lastSeq: %v for partition: %v", lastSeq, partition)
-	} else {
-		log.Printf("OpaqueGet(): s.seqs is nil")
 	}
 
 	return value, lastSeq, nil
