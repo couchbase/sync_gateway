@@ -178,7 +178,7 @@ func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
 
 func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
 	// queue for cache addition
-	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d]", change.DocID, change.VbNo)
+	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", change.DocID, change.VbNo, change.Sequence)
 	k.pending <- change
 	return base.Set{}
 }
@@ -305,51 +305,58 @@ func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
 // Given a newly changed document (received from the feed), adds to the pending entries.
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
+
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
-	go func() {
-		// Is this a user/role doc?
-		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-			k.processPrincipalDoc(docID, docJSON, true, vbNo, seq)
-			return
-		} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-			k.processPrincipalDoc(docID, docJSON, false, vbNo, seq)
-			return
-		}
 
-		// First unmarshal the doc (just its metadata, to save time/memory):
-		doc, err := unmarshalDocumentSyncData(docJSON, false)
-		if err != nil || !doc.hasValidSyncData(false) {
-			base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
-			return
-		}
+	// TODO: in order to work around https://github.com/couchbase/sync_gateway/issues/1139,
+	// I had to remove the code which spawned a goroutine, since it broke the strict
+	// ordering of how changes were being processed.  (see issue 1139).  To achieve
+	// parallelism, this kvChangeIndex could maintain a pool of worker goroutines
+	// that are reading from a channel.
 
-		// Record a histogram of the  feed's lag:
-		feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
-		lagMs := int(feedLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("lag-feed-%04dms", lagMs), 1)
+	// Is this a user/role doc?
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
+		k.processPrincipalDoc(docID, docJSON, true, vbNo, seq)
+		return
+	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+		k.processPrincipalDoc(docID, docJSON, false, vbNo, seq)
+		return
+	}
 
-		// Now add the entry for the new doc revision:
-		change := &LogEntry{
-			Sequence:     seq,
-			DocID:        docID,
-			RevID:        doc.CurrentRev,
-			Flags:        doc.Flags,
-			TimeReceived: time.Now(),
-			TimeSaved:    doc.TimeSaved,
-			Channels:     doc.Channels,
-			VbNo:         uint16(vbNo),
-		}
-		base.LogTo("DIndex+", "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLag/time.Millisecond), change.DocID, change.RevID)
+	// First unmarshal the doc (just its metadata, to save time/memory):
+	doc, err := unmarshalDocumentSyncData(docJSON, false)
+	if err != nil || !doc.hasValidSyncData(false) {
+		base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
+		return
+	}
 
-		if change.DocID == "" {
-			base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
-			changeCacheExpvars.Add("changes_without_id", 1)
-			return
-		}
+	// Record a histogram of the  feed's lag:
+	feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
+	lagMs := int(feedLag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-feed-%04dms", lagMs), 1)
 
-		k.AddToCache(change)
-	}()
+	// Now add the entry for the new doc revision:
+	change := &LogEntry{
+		Sequence:     seq,
+		DocID:        docID,
+		RevID:        doc.CurrentRev,
+		Flags:        doc.Flags,
+		TimeReceived: time.Now(),
+		TimeSaved:    doc.TimeSaved,
+		Channels:     doc.Channels,
+		VbNo:         uint16(vbNo),
+	}
+	base.LogTo("DIndex+", "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLag/time.Millisecond), change.DocID, change.RevID)
+
+	if change.DocID == "" {
+		base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
+		changeCacheExpvars.Add("changes_without_id", 1)
+		return
+	}
+
+	k.AddToCache(change)
+
 }
 
 type PrincipalIndex struct {
