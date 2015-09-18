@@ -280,10 +280,10 @@ func installViews(bucket base.Bucket) error {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
-	                    var access = sync.access;
+	                    var access = sync.access;  // enabling sync access
 	                    if (access) {
 	                        for (var name in access) {
-	                            emit(name, access[name]);
+	                            emit([name, meta.vb, meta.seq], access[name]);
 	                        }
 	                    }
 	               }`
@@ -293,7 +293,7 @@ func installViews(bucket base.Bucket) error {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
-	                    var access = sync.role_access;
+	                    var access = sync.role_access; // role access comment check
 	                    if (access) {
 	                        for (var name in access) {
 	                            emit(name, access[name]);

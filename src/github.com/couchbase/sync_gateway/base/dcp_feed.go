@@ -109,6 +109,8 @@ func (r *DCPReceiver) OnError(err error) {
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
+
+	LogTo("DCP", "DataUpdate:%d, %s, %d, %v", vbucketId, key, seq, req)
 	r.updateSeq(vbucketId, seq)
 	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapMutation)
 	return nil
