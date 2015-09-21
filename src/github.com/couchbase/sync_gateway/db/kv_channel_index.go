@@ -524,7 +524,7 @@ func getIndexCountKey(channelName string) string {
 
 // Get the key for the cache block, based on the block index
 func getIndexBlockKey(channelName string, blockIndex uint16, partition uint16) string {
-	return fmt.Sprintf("%s:%s:%d:block%d", kIndexPrefix, channelName, partition, blockIndex)
+	return fmt.Sprintf("%s:%s:block%d:%s", kIndexPrefix, channelName, blockIndex, vbSuffixMap[partition])
 }
 
 // Get the key for the cache block, based on the block index

@@ -412,7 +412,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 
 	// Verify stable sequence was incremented
 	stableClock := base.NewSequenceClockImpl()
-	stableClockBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_cache_stableSeq")
+	stableClockBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_idx_stableSeq")
 	assertNoError(t, err, "Unable to retrieve stable sequence")
 	stableClock.Unmarshal(stableClockBytes)
 	log.Printf("got clock:%s", base.PrintClock(stableClock))
