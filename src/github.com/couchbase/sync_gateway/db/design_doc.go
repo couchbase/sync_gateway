@@ -3,11 +3,13 @@ package db
 import (
 	"net/http"
 	"strings"
+	// "encoding/json"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	// "github.com/couchbase/gocb"
 )
 
 type DesignDoc sgbucket.DesignDoc
@@ -127,6 +129,69 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	return &result, nil
 }
 
+// Result of a n1ql query.
+type N1QLResult struct {
+	Rows []interface{} `json:"results"`
+}
+
+func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, args []interface{}) (*N1QLResult, error) {
+	vres := N1QLResult{}
+
+	if queryString := db.N1QLQueries[queryName]; queryString != "" {
+		// queries that don't start with SELECT _channels are restricted to users with * access
+		hasMeta := strings.HasPrefix(queryString, "SELECT _sync.channels as _channels,")
+		query := db.N1QLStatements[queryName]
+
+		checkChannels := false
+		var visibleChannels ch.TimedSet
+		if db.user != nil {
+			visibleChannels = db.user.InheritedChannels()
+			checkChannels = !visibleChannels.Contains("*")
+		}
+		if checkChannels && !hasMeta {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can query without `SELECT _sync.channels as _channels,` prefix.")
+		}
+
+		var queryParams interface{};
+		if len(args) > 0 {
+			queryParams = args
+		} else {
+			queryParams = params
+		}
+		rows, err := db.N1QLConnection.ExecuteN1qlQuery(query, queryParams)
+		if err != nil {
+			return nil, err
+		}
+		for {
+			var row map[string]interface{}
+			hasRow := rows.Next(&row)
+			if !hasRow {
+				break
+			}
+			// fmt.Printf("Row: %+v\n", row)
+			if checkChannels {
+				if docCh0 := row["_channels"]; docCh0 != nil {
+					docChannels := docCh0.(map[string]interface{})
+					docChannelsList := make([]interface{}, 0, len(docChannels))
+					for k := range docChannels {
+						channelStatus := docChannels[k]
+						if channelStatus == nil {
+							docChannelsList = append(docChannelsList, k)
+						}
+					}
+					if channelsIntersect(visibleChannels, docChannelsList) {
+						vres.Rows = append(vres.Rows, row)
+					}
+				}
+			} else {
+				vres.Rows = append(vres.Rows, row)
+			}
+		}
+		rows.Close()
+	}
+	return &vres, nil
+}
+
 // Cleans up the Value property, and removes rows that aren't visible to the current user
 func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
 	checkChannels := false
@@ -134,14 +199,14 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (r
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
-		if (reduce) {
-			return; // this is an error
+		if reduce {
+			return // this is an error
 		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		if (reduce){
+		if reduce {
 			// Add the raw row:
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,

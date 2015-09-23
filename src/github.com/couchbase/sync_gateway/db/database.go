@@ -19,7 +19,10 @@ import (
 	"strings"
 	"time"
 
+	// "database/sql"
+	// _ "github.com/couchbaselabs/go_n1ql"
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -30,20 +33,23 @@ import (
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name               string                  // Database name
-	Bucket             base.Bucket             // Storage
-	tapListener        changeListener          // Listens on server Tap feed
-	sequences          *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime          time.Time               // Timestamp when context was instantiated
-	ChangesClientStats Statistics              // Tracks stats of # of changes connections
-	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
-	autoImport         bool                    // Add sync data to new untracked docs?
-	Shadower           *Shadower               // Tracks an external Couchbase bucket
-	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
-	changeCache        changeCache             //
-	EventMgr           *EventManager           // Manages notification events
-	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
+	Name               string                     // Database name
+	Bucket             base.Bucket                // Storage
+	tapListener        changeListener             // Listens on server Tap feed
+	sequences          *sequenceAllocator         // Source of new sequence numbers
+	ChannelMapper      *channels.ChannelMapper    // Runs JS 'sync' function
+	StartTime          time.Time                  // Timestamp when context was instantiated
+	ChangesClientStats Statistics                 // Tracks stats of # of changes connections
+	RevsLimit          uint32                     // Max depth a document's revision tree can grow to
+	autoImport         bool                       // Add sync data to new untracked docs?
+	Shadower           *Shadower                  // Tracks an external Couchbase bucket
+	revisionCache      *RevisionCache             // Cache of recently-accessed doc revisions
+	changeCache        changeCache                //
+	EventMgr           *EventManager              // Manages notification events
+	AllowEmptyPassword bool                       // Allow empty passwords?  Defaults to false
+	N1QLConnection     *gocb.Bucket               // connection object, instantiated lazily on first query
+	N1QLQueries        map[string]string          // named queries
+	N1QLStatements     map[string]*gocb.N1qlQuery // prepared statment
 }
 
 const DefaultRevsLimit = 1000

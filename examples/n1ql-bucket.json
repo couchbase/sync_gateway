@@ -1,0 +1,57 @@
+{
+  "log": ["CRUD"],
+  "databases": {
+    "travel-sample": {
+      "server": "http://127.0.0.1:8091",
+      "import_docs" : true,
+      "sync" : 
+        `
+        function(doc)  {
+          if (doc.type)
+            channel(doc.type)
+          if (doc.country)
+            channel(doc.country.replace(" ","."))
+        }
+        `,
+      "n1ql_queries" : {
+        "type" : "SELECT DISTINCT(type) from \u0060travel-sample\u0060",
+        "airline" : "SELECT name from \u0060travel-sample\u0060 WHERE type = \"airline\"",
+        "name-filter" : "SELECT _sync.channels as _channels, name, country, type from \u0060travel-sample\u0060 WHERE country IS NOT NULL and name IS NOT NULL"
+      },
+      "users": { 
+        "GUEST": { 
+          "disabled": false, 
+          "admin_channels": ["United.Kingdom"] 
+        }
+      }
+    },
+    "default": {
+      "server": "http://localhost:8091",
+      "n1ql_queries" : {
+        "all" : "SELECT _sync.channels as _channels, * from default",
+        "beer" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer IS NOT NULL",
+        "good" : "SELECT _sync.channels as _channels, beer, good, META(default).id from default WHERE good IS NOT NULL",
+        "nofilter" : "SELECT good, beer as bier, META(default).id from default WHERE beer IS NOT NULL",
+        "beer-positional" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $1",
+        "beer-named" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $beer",
+        "from-param" : "SELECT true as filter WHERE $1.beer = \"cider\" and $1.good = true"
+      },
+      "sync" : 
+`
+      function(doc)  {
+        if (doc.beer)
+          channel("beer")
+        if (doc.good)
+          channel("good")
+      }
+      `,
+      "bucket": "default",
+      "users": { 
+        "GUEST": { 
+          "disabled": false, 
+          "admin_channels": ["good"] 
+        } 
+      }
+    }
+  }
+}
