@@ -7,18 +7,16 @@ import (
 	// "io"
 	// "net/http"
 
-	// "github.com/couchbaselabs/go_n1ql"
+	"database/sql"
+   _ "github.com/couchbaselabs/go_n1ql"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
 
 
-// HTTP handler for GET _design/$ddoc/_n1ql/$query
+// HTTP handler for GET _n1ql/$query
 func (h *handler) handleN1QLQuery() error {
-	ddocName := h.PathVar("ddoc")
-	if ddocName == "" {
-		ddocName = db.DesignDocSyncGateway
-	}
 	queryName := h.PathVar("query")
 	opts := db.Body{}
 

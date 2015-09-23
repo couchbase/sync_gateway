@@ -47,6 +47,7 @@ type restTester struct {
 	_sc          *ServerContext
 	noAdminParty bool   // Unless this is true, Admin Party is in full effect
 	syncFn       string // put the sync() function source in here (optional)
+	Queries map[string]string // for N1QL tests
 }
 
 func (rt *restTester) bucket() base.Bucket {

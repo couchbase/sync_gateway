@@ -241,6 +241,10 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
+	// if config.N1QL != nil {
+		
+	// }
+
 	syncFn := ""
 	if config.Sync != nil {
 		syncFn = *config.Sync

@@ -86,6 +86,7 @@ type DbConfig struct {
 	Sync               *string                        `json:"sync"`                           // Sync function defines which users can see which data
 	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
 	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
+	Queries            map[string]string `json:"queries,omitempty"`                // Initial user accounts
 	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
 	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow

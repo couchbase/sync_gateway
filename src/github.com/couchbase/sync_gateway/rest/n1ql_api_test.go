@@ -243,35 +243,31 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// assert.True(t, value == 1)
 }
 
-func TestAdminReduceSumQuery(t *testing.T) {
+func TestSelectStarQuery(t *testing.T) {
 
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := restTester{
+		syncFn: `function(doc) {channel(doc.channel)}`,
+		Queries: map[string]string{
+		"all": "SELECT * FROM db"
+		}}
 
-	// Create a view with a reduce:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
-	assertStatus(t, response, 201)
+		// hook up the router to a URL TODO
+		response := rt.sendAdminRequest("GET", "/db/_n1ql/all", ``)
+		assertStatus(t, response, 200)
 
-	for i := 0; i < 9; i++ {
-		// Create docs:
-		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
-		assertStatus(t, response, 201)
 
-	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
-	assertStatus(t, response, 201)
+	// var result sgbucket.ViewResult
 
-	var result sgbucket.ViewResult
+	// // Admin view query:
+	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
+	// assertStatus(t, response, 200)
+	// json.Unmarshal(response.Body.Bytes(), &result)
 
-	// Admin view query:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
-
-	// we should get 1 row with the reduce result
-	assert.Equals(t, len(result.Rows), 1)
-	row := result.Rows[0]
-	value := row.Value.(float64)
-	assert.Equals(t, value, 108.0)
+	// // we should get 1 row with the reduce result
+	// assert.Equals(t, len(result.Rows), 1)
+	// row := result.Rows[0]
+	// value := row.Value.(float64)
+	// assert.Equals(t, value, 108.0)
 }
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
