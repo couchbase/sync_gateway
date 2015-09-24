@@ -69,6 +69,12 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 	assertNoError(t, err, "UnmarshalJSON failed")
 	assert.Equals(t, s, SequenceID{TriggeredBy: 456, Seq: 123})
 
+	str = "220::222"
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assertNoError(t, err, "UnmarshalJSON failed")
+	assert.Equals(t, s, SequenceID{ LowSeq: 220, TriggeredBy: 0, Seq: 222})
+
 	str = "\"234\""
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
@@ -80,6 +86,12 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 	err = s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
 	assert.Equals(t, s, SequenceID{TriggeredBy: 567, Seq: 234})
+
+	str = "\"220::222\""
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assertNoError(t, err, "UnmarshalJSON failed")
+	assert.Equals(t, s, SequenceID{ LowSeq: 220, TriggeredBy: 0, Seq: 222})
 }
 
 func TestMarshalTriggeredSequenceID(t *testing.T) {
