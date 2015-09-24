@@ -21,7 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+		"database/sql"
+	   _ "github.com/couchbaselabs/go_n1ql"
 	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -241,9 +242,13 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
-	// if config.N1QL != nil {
-		
-	// }
+	if config.N1QLQueries != nil {
+		dbcontext.N1QLQueries = config.N1QLQueries
+		n1ql, err := sql.Open("n1ql", *config.Server)
+		if err == nil {
+			dbcontext.N1QLConnection = n1ql
+		}
+	}
 
 	syncFn := ""
 	if config.Sync != nil {

@@ -127,6 +127,64 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	return &result, nil
 }
 
+// Result of a n1ql query.
+type N1QLResult struct {
+	TotalRows int         `json:"total_rows"`
+	Rows      N1QLRows    `json:"rows"`
+}
+
+type N1QLRows []*N1QLRow
+
+// A single result row from a n1ql query.
+type N1QLRow struct {
+	ID    string       `json:"id"`
+	Key   interface{}  `json:"key"`
+	Value interface{}  `json:"value"`
+	Doc   *interface{} `json:"doc,omitempty"`
+}
+
+func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) (*N1QLResult, error) {
+	vres := N1QLResult{}
+
+	if query := db.N1QLQueries[queryName]; query != "" {
+		stmt, err := db.N1QLConnection.Prepare(query)
+
+		rows, err := stmt.Query()
+		if err != nil {
+			// todo put on JSON result
+			return nil, err;
+		}
+		defer rows.Close()
+		for rows.Next() {
+		    var value string
+		    if err := rows.Scan(&value); err != nil {
+		    	return nil, err;
+		    }
+		    // add value to vres...
+		    vres.Rows = append(vres.Rows, &N1QLRow{Value:value})
+		    // log.Printf("Row returned value: %% \n", value)
+		}
+	}
+	// todo
+	// result = filterN1QLResult(result, db.user)
+
+	return &vres, nil
+}
+
+func filterN1QLResult(input sgbucket.ViewResult, user auth.User) (result sgbucket.ViewResult) {
+	checkChannels := false
+	var visibleChannels ch.TimedSet
+	if user != nil {
+		visibleChannels = user.InheritedChannels()
+		checkChannels = !visibleChannels.Contains("*")
+	}
+	result.TotalRows = input.TotalRows
+	if checkChannels {
+		
+	}
+	return
+}
+
 // Cleans up the Value property, and removes rows that aren't visible to the current user
 func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
 	checkChannels := false

@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+		"database/sql"
+	   // _ "github.com/couchbaselabs/go_n1ql"
 	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sg-bucket"
@@ -44,6 +46,8 @@ type DatabaseContext struct {
 	changeCache        changeCache             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
+	N1QLConnection *sql.DB // connection object, instantiated lazily on first query
+	N1QLQueries map[string]string // named queries
 }
 
 const DefaultRevsLimit = 1000

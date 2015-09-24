@@ -7,8 +7,8 @@ import (
 	// "io"
 	// "net/http"
 
-	"database/sql"
-   _ "github.com/couchbaselabs/go_n1ql"
+	// "database/sql"
+   // _ "github.com/couchbaselabs/go_n1ql"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -20,41 +20,9 @@ func (h *handler) handleN1QLQuery() error {
 	queryName := h.PathVar("query")
 	opts := db.Body{}
 
-	// // Boolean options:
-	// for _, name := range []string{"inclusive_end", "descending", "include_docs", "reduce", "group"} {
-	// 	if val := h.getQuery(name); "" != val {
-	// 		opts[name] = (val == "true")
-	// 	}
-	// }
+	base.LogTo("HTTP", "N1QL query %q - opts %v", queryName, opts)
 
-	// // Integer options:
-	// for _, name := range []string{"skip", "limit", "group_level"} {
-	// 	if h.getQuery(name) != "" {
-	// 		opts[name] = h.getIntQuery(name, 0)
-	// 	}
-	// }
-
-	// // String options:
-	// for _, name := range []string{"startkey_docid", "endkey_docid", "stale"} {
-	// 	if val := h.getQuery(name); "" != val {
-	// 		opts[name] = val
-	// 	}
-	// }
-
-	// // JSON options:
-	// for _, name := range []string{"startkey", "endkey", "key", "keys"} {
-	// 	if rawVal := h.getQuery(name); "" != rawVal {
-	// 		var val interface{}
-	// 		if err := json.Unmarshal([]byte(rawVal), &val); err != nil {
-	// 			return err
-	// 		}
-	// 		opts[name] = val
-	// 	}
-	// }
-
-	base.LogTo("HTTP", "N1QL query %q/%q - opts %v", ddocName, queryName, opts)
-
-	result, err := h.db.QueryDesignDoc(ddocName, queryName, opts)
+	result, err := h.db.N1QLQuery(queryName, opts)
 	if err != nil {
 		return err
 	}
