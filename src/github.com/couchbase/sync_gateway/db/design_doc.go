@@ -161,27 +161,26 @@ func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) 
 			// todo put on JSON result
 			return nil, err;
 		}
-		argCount := len(cols)
-		fmt.Printf("argCount %#v", argCount)
+		count := len(cols)
+	    values := make([]string, count)
+	    valuePtrs := make([]interface{}, count)
 
+		fmt.Printf("argCount %#v", count)
 
 		defer rows.Close()
 		for rows.Next() {
-			var meta string;
-			var value string;
-			if argCount == 1 {
-				if err := rows.Scan(&meta); err != nil {
-					return nil, err;
-				}
-			} else if argCount == 2 {
-				if err := rows.Scan(&meta, &value); err != nil {
-					return nil, err;
-				}
+
+			for i, _ := range cols {
+			    valuePtrs[i] = &values[i]
+			}
+			
+			if err := rows.Scan(valuePtrs...); err != nil {
+				return nil, err;
 			}
 		    // add value to vres...
-		    // parse and check
+		    // parse and check based on id
 		    // get doc channels
-		    vres.Rows = append(vres.Rows, &N1QLRow{Key:meta, Value:value})
+		    vres.Rows = append(vres.Rows, &N1QLRow{ID:values[0], Value:values[0:]})
 		    // log.Printf("Row returned value: %% \n", value)
 		}
 	}
