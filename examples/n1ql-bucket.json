@@ -4,8 +4,8 @@
     "default": {
       "server": "http://localhost:8091",
       "n1ql_queries" : {
-        "all" : "SELECT META(default), * from default",
-        "beer" : "SELECT META(default), beer from default WHERE beer IS NOT NULL"
+        "all" : "SELECT META(default) as meta, * from default",
+        "beer" : "SELECT META(default) as meta, beer from default WHERE beer IS NOT NULL"
       },
       "bucket": "default",
       "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }

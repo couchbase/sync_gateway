@@ -248,6 +248,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if err == nil {
 			dbcontext.N1QLConnection = n1ql
 		}
+		// TODO prepare the queries now
 	}
 
 	syncFn := ""
