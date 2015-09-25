@@ -11,7 +11,7 @@ package rest
 
 import (
 	// "encoding/json"
-	// "fmt"
+	"fmt"
 	// "net/http"
 	"testing"
 
@@ -29,9 +29,9 @@ func TestSelectStarQuery(t *testing.T) {
 			"all": "SELECT field FROM db",
 		}}
 
-		// hook up the router to a URL TODO
 		response := rt.sendAdminRequest("GET", "/db/_n1ql/all", ``)
 		assertStatus(t, response, 200)
+		// why does this 200 when underlying engine doesn't support n1ql?
 		fmt.Println(response.Body)
 
 

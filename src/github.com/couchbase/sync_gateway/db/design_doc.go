@@ -3,6 +3,7 @@ package db
 import (
 	"net/http"
 	"strings"
+	"fmt"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -149,19 +150,38 @@ func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) 
 	if query := db.N1QLQueries[queryName]; query != "" {
 		stmt, err := db.N1QLConnection.Prepare(query)
 
+
 		rows, err := stmt.Query()
 		if err != nil {
 			// todo put on JSON result
 			return nil, err;
 		}
+		cols, err := rows.Columns()
+		if err != nil {
+			// todo put on JSON result
+			return nil, err;
+		}
+		argCount := len(cols)
+		fmt.Printf("argCount %#v", argCount)
+
+
 		defer rows.Close()
 		for rows.Next() {
-		    var value string
-		    if err := rows.Scan(&value); err != nil {
-		    	return nil, err;
-		    }
+			var meta string;
+			var value string;
+			if argCount == 1 {
+				if err := rows.Scan(&meta); err != nil {
+					return nil, err;
+				}
+			} else if argCount == 2 {
+				if err := rows.Scan(&meta, &value); err != nil {
+					return nil, err;
+				}
+			}
 		    // add value to vres...
-		    vres.Rows = append(vres.Rows, &N1QLRow{Value:value})
+		    // parse and check
+		    // get doc channels
+		    vres.Rows = append(vres.Rows, &N1QLRow{Key:meta, Value:value})
 		    // log.Printf("Row returned value: %% \n", value)
 		}
 	}
@@ -180,7 +200,7 @@ func filterN1QLResult(input sgbucket.ViewResult, user auth.User) (result sgbucke
 	}
 	result.TotalRows = input.TotalRows
 	if checkChannels {
-		
+
 	}
 	return
 }
