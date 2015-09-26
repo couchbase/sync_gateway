@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/gocb"
 )
 
 type DesignDoc sgbucket.DesignDoc
@@ -131,58 +132,23 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 // Result of a n1ql query.
 type N1QLResult struct {
 	TotalRows int         `json:"total_rows"`
-	Rows      N1QLRows    `json:"rows"`
-}
-
-type N1QLRows []*N1QLRow
-
-// A single result row from a n1ql query.
-type N1QLRow struct {
-	ID    string       `json:"id"`
-	Key   interface{}  `json:"key"`
-	Value interface{}  `json:"value"`
-	Doc   *interface{} `json:"doc,omitempty"`
+	Rows      []interface{}    `json:"rows"`
 }
 
 func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) (*N1QLResult, error) {
 	vres := N1QLResult{}
 
 	if query := db.N1QLQueries[queryName]; query != "" {
-		stmt, err := db.N1QLConnection.Prepare(query)
+		// stmt, err := db.N1QLConnection.Prepare(query)
+		query := gocb.NewN1qlQuery(query)
+		rows, _ := db.N1QLConnection.ExecuteN1qlQuery(query, nil)
 
-
-		rows, err := stmt.Query()
-		if err != nil {
-			// todo put on JSON result
-			return nil, err;
+		var row interface{}
+		for rows.Next(&row) {
+		    fmt.Printf("Row: %+v\n", row)
+		    vres.Rows = append(vres.Rows, row)
 		}
-		cols, err := rows.Columns()
-		if err != nil {
-			// todo put on JSON result
-			return nil, err;
-		}
-		count := len(cols)
-	    values := make([]string, count)
-	    valuePtrs := make([]interface{}, count)
-
-		fmt.Printf("argCount %#v", count)
-
-		defer rows.Close()
-		for rows.Next() {
-
-			for i, _ := range cols {
-			    valuePtrs[i] = &values[i]
-			}
-			
-			if err := rows.Scan(valuePtrs...); err != nil {
-				return nil, err;
-			}
-		    // add value to vres...
-		    // parse and check based on id
-		    // get doc channels
-		    vres.Rows = append(vres.Rows, &N1QLRow{ID:values[0], Value:values[0:]})
-		    // log.Printf("Row returned value: %% \n", value)
-		}
+		rows.Close()
 	}
 	// todo
 	// result = filterN1QLResult(result, db.user)

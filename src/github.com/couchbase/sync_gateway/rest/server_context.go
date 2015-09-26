@@ -21,9 +21,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-		"database/sql"
-	   _ "github.com/couchbaselabs/go_n1ql"
+
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -244,10 +244,12 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	if config.N1QLQueries != nil {
 		dbcontext.N1QLQueries = config.N1QLQueries
-		n1ql, err := sql.Open("n1ql", *config.Server)
-		if err == nil {
-			dbcontext.N1QLConnection = n1ql
+		cluster, _ := gocb.Connect(*config.Server)
+		bucket, err := cluster.OpenBucket(bucketName, "")
+		if err != nil {
+			return nil, err
 		}
+		dbcontext.N1QLConnection = bucket
 		// TODO prepare the queries now
 	}
 
