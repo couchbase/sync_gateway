@@ -9,7 +9,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/gocb"
+	// "github.com/couchbase/gocb"
 )
 
 type DesignDoc sgbucket.DesignDoc
@@ -131,7 +131,6 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 
 // Result of a n1ql query.
 type N1QLResult struct {
-	TotalRows int         `json:"total_rows"`
 	Rows      []interface{}    `json:"rows"`
 }
 
@@ -141,7 +140,7 @@ func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) 
 	if queryString := db.N1QLQueries[queryName]; queryString != "" {
 		// queries that don't start with SELECT _channels are restricted to users with * access
 		hasMeta := strings.HasPrefix(queryString, "SELECT _sync.channels as _channels,")
-		query := gocb.NewN1qlQuery(queryString) // todo move to server_context.go (config handling)
+		query := db.N1QLStatements[queryName]
 
 		checkChannels := false
 		var visibleChannels ch.TimedSet
@@ -158,9 +157,8 @@ func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) 
 			var row map[string]interface{}
 			hasRow := rows.Next(&row)
 			if !hasRow { break }
-		    fmt.Printf("Row: %+v\n", row)
+		    // fmt.Printf("Row: %+v\n", row)
 		    if checkChannels {
-		    	
 		    	if docCh0 := row["_channels"]; docCh0 != nil {
 		    		docChannels := docCh0.(map[string]interface{})
 		    		docChannelsList := make([]interface{}, 0, len(docChannels))

@@ -49,6 +49,7 @@ type DatabaseContext struct {
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 	N1QLConnection *gocb.Bucket // connection object, instantiated lazily on first query
 	N1QLQueries map[string]string // named queries
+	N1QLStatements map[string]*gocb.N1qlQuery // prepared statment
 }
 
 const DefaultRevsLimit = 1000

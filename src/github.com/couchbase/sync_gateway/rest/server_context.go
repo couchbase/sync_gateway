@@ -244,14 +244,16 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	if config.N1QLQueries != nil {
 		dbcontext.N1QLQueries = config.N1QLQueries
+		dbcontext.N1QLStatements  = make(map[string]*gocb.N1qlQuery)
 		cluster, _ := gocb.Connect(*config.Server)
 		bucket, err := cluster.OpenBucket(bucketName, "")
 		if err != nil {
 			return nil, err
 		}
 		dbcontext.N1QLConnection = bucket
-		// TODO prepare the queries now
-		// SELECT _sync.history.channels as _cb_channels,
+		for name := range dbcontext.N1QLQueries {
+			dbcontext.N1QLStatements[name] = gocb.NewN1qlQuery(dbcontext.N1QLQueries[name])
+		}
 	}
 
 	syncFn := ""

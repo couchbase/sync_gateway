@@ -22,7 +22,7 @@
       "users": { 
         "GUEST": { 
           "disabled": false, 
-          "admin_channels": ["good"] 
+          "admin_channels": ["beer"] 
         } 
       }
     }
