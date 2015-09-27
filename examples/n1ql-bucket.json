@@ -4,12 +4,27 @@
     "default": {
       "server": "http://localhost:8091",
       "n1ql_queries" : {
-        "all" : "SELECT META(default) as meta, * from default",
-        "beer" : "SELECT META(default) as meta, beer from default WHERE beer IS NOT NULL",
-        "test" : "SELECT META(default) as meta, beer as bier, _sync as cool from default WHERE beer IS NOT NULL"
+        "all" : "SELECT _sync.channels as _channels, * from default",
+        "beer" : "SELECT _sync.channels as _channels, beer from default WHERE beer IS NOT NULL",
+        "good" : "SELECT _sync.channels as _channels, beer, good from default WHERE good IS NOT NULL",
+        "nofilter" : "SELECT good, beer as bier from default WHERE beer IS NOT NULL"
       },
+      "sync" : 
+`
+      function(doc)  {
+        if (doc.beer)
+          channel("beer")
+        if (doc.good)
+          channel("good")
+      }
+      `,
       "bucket": "default",
-      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+      "users": { 
+        "GUEST": { 
+          "disabled": false, 
+          "admin_channels": ["good"] 
+        } 
+      }
     }
   }
 }

@@ -251,6 +251,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 		dbcontext.N1QLConnection = bucket
 		// TODO prepare the queries now
+		// SELECT _sync.history.channels as _cb_channels,
 	}
 
 	syncFn := ""

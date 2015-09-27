@@ -138,37 +138,51 @@ type N1QLResult struct {
 func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) (*N1QLResult, error) {
 	vres := N1QLResult{}
 
-	if query := db.N1QLQueries[queryName]; query != "" {
-		// stmt, err := db.N1QLConnection.Prepare(query)
-		query := gocb.NewN1qlQuery(query)
-		rows, _ := db.N1QLConnection.ExecuteN1qlQuery(query, nil)
+	if queryString := db.N1QLQueries[queryName]; queryString != "" {
+		// queries that don't start with SELECT _channels are restricted to users with * access
+		hasMeta := strings.HasPrefix(queryString, "SELECT _sync.channels as _channels,")
+		query := gocb.NewN1qlQuery(queryString) // todo move to server_context.go (config handling)
 
-		var row interface{}
-		for rows.Next(&row) {
+		checkChannels := false
+		var visibleChannels ch.TimedSet
+		if db.user != nil {
+			visibleChannels = db.user.InheritedChannels()
+			checkChannels = !visibleChannels.Contains("*")
+		}
+		if checkChannels && !hasMeta {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
+		}
+
+		rows, _ := db.N1QLConnection.ExecuteN1qlQuery(query, nil)
+		for {
+			var row map[string]interface{}
+			hasRow := rows.Next(&row)
+			if !hasRow { break }
 		    fmt.Printf("Row: %+v\n", row)
-		    vres.Rows = append(vres.Rows, row)
+		    if checkChannels {
+		    	
+		    	if docCh0 := row["_channels"]; docCh0 != nil {
+		    		docChannels := docCh0.(map[string]interface{})
+		    		docChannelsList := make([]interface{}, 0, len(docChannels))
+		    		for k := range docChannels {
+		    			channelStatus := docChannels[k]
+		    			if channelStatus == nil {
+		    				docChannelsList = append(docChannelsList, k)		    				
+		    			}
+		    		}
+		    		if channelsIntersect(visibleChannels, docChannelsList) {
+		    			vres.Rows = append(vres.Rows, row)
+		    		}
+		    	}
+		    } else {
+		    	vres.Rows = append(vres.Rows, row)		    	
+		    }
 		}
 		rows.Close()
 	}
-	// todo
-	// result = filterN1QLResult(result, db.user)
-
 	return &vres, nil
 }
 
-func filterN1QLResult(input sgbucket.ViewResult, user auth.User) (result sgbucket.ViewResult) {
-	checkChannels := false
-	var visibleChannels ch.TimedSet
-	if user != nil {
-		visibleChannels = user.InheritedChannels()
-		checkChannels = !visibleChannels.Contains("*")
-	}
-	result.TotalRows = input.TotalRows
-	if checkChannels {
-
-	}
-	return
-}
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
 func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
