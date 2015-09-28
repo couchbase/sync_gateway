@@ -253,6 +253,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		dbcontext.N1QLConnection = bucket
 		for name := range dbcontext.N1QLQueries {
 			dbcontext.N1QLStatements[name] = gocb.NewN1qlQuery(dbcontext.N1QLQueries[name])
+			dbcontext.N1QLStatements[name].AdHoc(false)
 		}
 	}
 
