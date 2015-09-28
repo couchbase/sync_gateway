@@ -55,7 +55,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handlePutDesignDoc)).Methods("PUT")
 	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
 	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, (*handler).handleView)).Methods("GET")
-	dbr.Handle("/_n1ql/{query}", makeHandler(sc, privs, (*handler).handleN1QLQuery)).Methods("GET")
+	dbr.Handle("/_query/{query}", makeHandler(sc, privs, (*handler).handleN1QLQuery)).Methods("GET")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(sc, privs, (*handler).handleRevsDiff)).Methods("POST")
 

@@ -131,10 +131,10 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 
 // Result of a n1ql query.
 type N1QLResult struct {
-	Rows      []interface{}    `json:"rows"`
+	Rows      []interface{}    `json:"results"`
 }
 
-func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) (*N1QLResult, error) {
+func (db *Database) N1QLQuery(queryName string, params []interface{}) (*N1QLResult, error) {
 	vres := N1QLResult{}
 
 	if queryString := db.N1QLQueries[queryName]; queryString != "" {
@@ -152,7 +152,10 @@ func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) 
 			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can query without `SELECT _sync.channels as _channels,` prefix.")
 		}
 
-		rows, _ := db.N1QLConnection.ExecuteN1qlQuery(query, nil)
+		rows, err := db.N1QLConnection.ExecuteN1qlQuery(query, params)
+		if err != nil {
+			return nil, err
+		}
 		for {
 			var row map[string]interface{}
 			hasRow := rows.Next(&row)

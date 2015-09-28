@@ -5,9 +5,10 @@
       "server": "http://localhost:8091",
       "n1ql_queries" : {
         "all" : "SELECT _sync.channels as _channels, * from default",
-        "beer" : "SELECT _sync.channels as _channels, beer from default WHERE beer IS NOT NULL",
-        "good" : "SELECT _sync.channels as _channels, beer, good from default WHERE good IS NOT NULL",
-        "nofilter" : "SELECT good, beer as bier from default WHERE beer IS NOT NULL"
+        "beer" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer IS NOT NULL",
+        "good" : "SELECT _sync.channels as _channels, beer, good, META(default).id from default WHERE good IS NOT NULL",
+        "nofilter" : "SELECT good, beer as bier, META(default).id from default WHERE beer IS NOT NULL",
+        "beer-params" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $1"
       },
       "sync" : 
 `

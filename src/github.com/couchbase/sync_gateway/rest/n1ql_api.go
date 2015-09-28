@@ -2,7 +2,7 @@ package rest
 
 import (
 	// "crypto/sha1"
-	// "encoding/json"
+	"encoding/json"
 	// "fmt"
 	// "io"
 	// "net/http"
@@ -11,18 +11,24 @@ import (
    // _ "github.com/couchbaselabs/go_n1ql"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	// "github.com/couchbase/sync_gateway/db"
 )
 
 
-// HTTP handler for GET _n1ql/$query
+// HTTP handler for GET _query/$query
 func (h *handler) handleN1QLQuery() error {
 	queryName := h.PathVar("query")
-	opts := db.Body{}
+	
+	var params []interface{}
+	
+	if rawVal := h.getQuery("args"); "" != rawVal {
+		if err := json.Unmarshal([]byte(rawVal), &params); err != nil {
+			return err
+		}
+	}
 
-	base.LogTo("HTTP", "N1QL query %q - opts %v", queryName, opts)
-
-	result, err := h.db.N1QLQuery(queryName, opts)
+	base.LogTo("HTTP", "N1QL query %q - params %v", queryName, params)
+	result, err := h.db.N1QLQuery(queryName, params)
 	if err != nil {
 		return err
 	}
