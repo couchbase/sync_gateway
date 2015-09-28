@@ -3,7 +3,7 @@ package db
 import (
 	"net/http"
 	"strings"
-	"fmt"
+	// "fmt"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -149,7 +149,7 @@ func (db *Database) N1QLQuery(queryName string, options map[string]interface{}) 
 			checkChannels = !visibleChannels.Contains("*")
 		}
 		if checkChannels && !hasMeta {
-			return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
+			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can query without `SELECT _sync.channels as _channels,` prefix.")
 		}
 
 		rows, _ := db.N1QLConnection.ExecuteN1qlQuery(query, nil)
