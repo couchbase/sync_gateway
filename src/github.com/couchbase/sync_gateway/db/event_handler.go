@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -23,10 +24,11 @@ type AsyncEventHandler struct{}
 // Webhook is an implementation of EventHandler that sends an asynchronous HTTP POST
 type Webhook struct {
 	AsyncEventHandler
-	url     string
-	filter  *JSEventFunction
-	timeout time.Duration
-	client  *http.Client
+	url        string
+	filter     *JSEventFunction
+	n1qlFilter *N1QLEventFunction
+	timeout    time.Duration
+	client     *http.Client
 }
 
 // default HTTP post timeout
@@ -45,7 +47,13 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 	wh := &Webhook{
 		url: url,
 	}
-	if filterFnString != "" {
+	if strings.HasPrefix(filterFnString, "WHERE ") {
+		filter, err := NewN1QLEventFunction(filterFnString)
+		if err != nil {
+			return nil, err
+		}
+		wh.n1qlFilter = filter
+	} else if filterFnString != "" {
 		wh.filter = NewJSEventFunction(filterFnString)
 	}
 
@@ -69,7 +77,17 @@ func (wh *Webhook) HandleEvent(event Event) {
 
 	var payload *bytes.Buffer
 	var contentType string
-	if wh.filter != nil {
+	if wh.n1qlFilter != nil {
+		success, err := wh.n1qlFilter.CallFilterFunction(event)
+		if err != nil {
+			base.Warn("Error calling webhook N1QL filter: %v", err)
+		}
+
+		// If filter returns false, cancel webhook post
+		if !success {
+			return
+		}
+	} else if wh.filter != nil {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {

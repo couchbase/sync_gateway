@@ -46,3 +46,12 @@
 [submodule "src/github.com/couchbase/sg-bucket"]
 	path = src/github.com/couchbase/sg-bucket
 	url = https://github.com/couchbase/sg-bucket.git
+[submodule "src/github.com/couchbase/query"]
+	path = src/github.com/couchbase/query
+	url = http://github.com/couchbase/query
+[submodule "src/github.com/dustin/go-jsonpointer"]
+	path = src/github.com/dustin/go-jsonpointer
+	url = http://github.com/dustin/go-jsonpointer
+[submodule "src/github.com/dustin/gojson"]
+	path = src/github.com/dustin/gojson
+	url = http://github.com/dustin/gojson	

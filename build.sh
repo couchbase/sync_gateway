@@ -19,6 +19,12 @@ sed -i.bak -e 's/GitCommit.*=.*/GitCommit = "'$GIT_COMMIT'"/' $BUILD_INFO
 sed -i.bak -e 's/GitBranch.*=.*/GitBranch = "'$GIT_BRANCH'"/' $BUILD_INFO
 sed -i.bak -e 's/GitDirty.*=.*/GitDirty = "'$GIT_DIRTY'"/' $BUILD_INFO
 
+# the n1ql query engine needs yacc 
+SRC_ROOT=`pwd`
+cd src/github.com/couchbase/query/parser/n1ql
+go tool yacc n1ql.y
+cd $SRC_ROOT
+
 export GOBIN="`pwd`/bin"
 ./go.sh install -v github.com/couchbase/sync_gateway
 echo "Success! Output is bin/sync_gateway"
