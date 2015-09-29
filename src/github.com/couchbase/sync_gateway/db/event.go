@@ -4,10 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/robertkrimen/otto"
+
+	"github.com/couchbase/query/expression"
+	"github.com/couchbase/query/expression/parser"
+
 )
 
 // Event type
@@ -102,6 +107,35 @@ func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	return eventTask, nil
 }
 
+//////// N1QLEventFunction
+
+type N1QLEventFunction struct {
+	expr expression.Expression
+}
+
+func NewN1QLEventFunction(queryString string) *N1QLEventFunction {
+	prefix := "WHERE "
+	if strings.HasPrefix(queryString, prefix) {
+		exprString := queryString[len(prefix):]
+		fmt.Printf("N1QL filter expr %v", exprString)
+		return &N1QLEventFunction{
+			expr : parser.Parse(exprString),
+		}
+	}
+}
+
+func (ef *N1QLEventFunction) CallFilterFunction(event Event) (bool, error) {
+	// Different events send different parameters
+	switch event := event.(type) {
+	case *DocumentChangeEvent:
+		val, err := ef.expr.Evaluate(event.Doc, expression.NewIndexContext())
+		if err != nil {
+		     return nil, err
+		}
+		return val.Truth(), nil
+	}
+}
+
 //////// JSEventFunction
 
 // A thread-safe wrapper around a jsEventTask, i.e. an event function.
@@ -119,6 +153,8 @@ func NewJSEventFunction(fnSource string) *JSEventFunction {
 			}),
 	}
 }
+
+
 
 // Calls a jsEventFunction returning an interface{}
 func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
