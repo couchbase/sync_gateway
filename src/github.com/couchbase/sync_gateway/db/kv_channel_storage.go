@@ -185,6 +185,7 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 
 	data, cas, err := b.bucket.GetRaw(block.Key())
+	indexExpvars.Add("get_loadBlock", 1)
 	if err != nil {
 		return err
 	}
@@ -286,6 +287,9 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 		base.Warn("Error doing bulk get:", err)
 	}
 
+	indexExpvars.Add("bulkGet_bulkLoadBlocks", 1)
+	indexExpvars.Add("bulkGet_bulkLoadBlocksCount", int64(len(keySet)))
+
 	// Unmarshal concurrently
 	var wg sync.WaitGroup
 	for key, blockBytes := range blocks {
@@ -311,6 +315,8 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 	if err != nil {
 		base.Warn("Error doing bulk get:", err)
 	}
+	indexExpvars.Add("bulkGet_bulkLoadEntries", 1)
+	indexExpvars.Add("bulkGet_bulkLoadEntriesCount", int64(len(keySet)))
 
 	docIDs := make(map[string]struct{}, len(blockEntries))
 	results = make([]*LogEntry, 0, len(blockEntries))

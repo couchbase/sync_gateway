@@ -945,8 +945,10 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, exp i
 	if len(value) > 0 {
 		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, sgbucket.Raw)
 		if err == nil {
+			indexExpvars.Add("writeCasRaw_cas_success", 1)
 			return casOut, nil
 		}
+		indexExpvars.Add("writeCasRaw_cas_fail", 1)
 	}
 
 	// TODO: limit on retries?  Or delay between retries
@@ -954,23 +956,28 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, exp i
 		currentValue, cas, err := bucket.GetRaw(key)
 		if err != nil {
 			base.Warn("WriteCasRaw got error when calling GetRaw:", err)
+			indexExpvars.Add("writeCasRaw_cas_error_getRaw", 1)
 			return 0, err
 		}
 		currentValue, err = callback(currentValue)
 		if err != nil {
 			base.Warn("WriteCasRaw got error when calling callback:", err)
+			indexExpvars.Add("writeCasRaw_cas_error_callback", 1)
 			return 0, err
 		}
 		if len(currentValue) == 0 {
 			// callback returned empty value - cancel write
+			indexExpvars.Add("writeCasRaw_cas_cancel", 1)
 			return cas, nil
 		}
 		casOut, err := bucket.WriteCas(key, 0, exp, cas, currentValue, sgbucket.Raw)
 		if err != nil {
 			// CAS failure - reload block for another try
+			indexExpvars.Add("writeCasRaw_cas_fail", 1)
 			log.Println("CAS error - retrying")
 		} else {
 			// Success - return the new cas value
+			indexExpvars.Add("writeCasRaw_cas_success", 1)
 			base.LogTo("DIndex+", "Successful cas write for key %s", key)
 			return casOut, nil
 		}

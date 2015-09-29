@@ -108,8 +108,10 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 			hashValue:      hashValue,
 			collisionIndex: uint16(index),
 		}
+		indexExpvars.Add("hash_getHash_hits", 1)
 		return seqHash.String(), nil
 	}
+	indexExpvars.Add("hash_getHash_misses", 1)
 
 	// Didn't find a match
 	storedClocks.Sequences = append(storedClocks.Sequences, clock.Value())
@@ -140,6 +142,8 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		index = len(storedClocks.Sequences) - 1
 		return storedClocks.Marshal()
 	})
+
+	indexExpvars.Add("writeCasRaw_hash", 1)
 
 	if err != nil && err.Error() != "Already Exists" {
 		return "", err
@@ -196,6 +200,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (storedClocks, error) {
 	key := kHashPrefix + strconv.FormatUint(hashValue, 10)
 
 	bytes, cas, err := s.bucket.GetAndTouchRaw(key, int(s.hashExpiry))
+	indexExpvars.Add("get_hashLoadClocks", 1)
 
 	if err != nil {
 		// Assume no clocks stored for this string

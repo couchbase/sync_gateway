@@ -166,6 +166,7 @@ func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) erro
 	if combinedClock.AnyAfter(k.clock) {
 		// Get changes since the last clock
 		recentChanges, err := k.channelStorage.GetChanges(k.lastPolledClock, combinedClock)
+		indexExpvars.Add("updateChannelPolled", 1)
 		if err != nil {
 			return err
 		}
@@ -229,8 +230,10 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	// greater than since inside this if clause, but leaving out as a performance optimization for
 	// now
 	if lastPolledResults := k.checkLastPolled(since, chanClock); len(lastPolledResults) > 0 {
+		indexExpvars.Add("getChanges_lastPolled_hit", 1)
 		return lastPolledResults, nil
 	}
+	indexExpvars.Add("getChanges_lastPolled_miss", 1)
 
 	return k.channelStorage.GetChanges(since, chanClock)
 }
@@ -270,6 +273,7 @@ func (k *kvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 	chanClock := base.NewSyncSequenceClock()
 	key := getChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
+	indexExpvars.Add("get_loadChannelClock", 1)
 	if err != nil {
 		base.LogTo("DIndex+", "Error loading channel clock for key %s:%v", key, err)
 		return chanClock, err

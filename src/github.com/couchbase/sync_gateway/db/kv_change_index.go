@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"strconv"
 	"strings"
@@ -66,6 +67,8 @@ type ChannelPartition struct {
 
 //
 type ChannelPartitionMap map[ChannelPartition][]*LogEntry
+
+var indexExpvars = expvar.NewMap("syncGateway_index")
 
 func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry) {
 	_, found := cpm[cp]
@@ -167,6 +170,7 @@ func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
 func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
 	clock := base.NewSyncSequenceClock()
 	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
+	indexExpvars.Add("get_loadStableClock", 1)
 	if err != nil {
 		base.Warn("Stable sequence not found in index - treating as 0")
 	}
@@ -189,6 +193,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 		var partitionDef []partitionStorage
 		// First attempt to load from the bucket
 		value, _, err := k.indexBucket.GetRaw(kIndexPartitionKey)
+		indexExpvars.Add("get_indexPartitionMap", 1)
 		if err == nil {
 			if err = json.Unmarshal(value, &partitionDef); err != nil {
 				return nil, err
@@ -494,8 +499,10 @@ func (k *kvChangeIndex) getOrCreateReader(channelName string, options ChangesOpt
 		index := k.getChannelReader(channelName)
 		if index == nil {
 			index, err = k.newChannelReader(channelName)
+			indexExpvars.Add("getOrCreateReader_create", 1)
 			base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 		} else {
+			indexExpvars.Add("getOrCreateReader_get", 1)
 			base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
 		}
 		return index, err
@@ -650,6 +657,7 @@ func (k *kvChangeIndex) hasActiveReaders() bool {
 func (k *kvChangeIndex) stableSequenceChanged() bool {
 
 	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
+	indexExpvars.Add("get_stableSequenceChanged", 1)
 	if err != nil {
 		base.Warn("Error loading stable sequence - skipping polling. Error:%v", err)
 		return false
@@ -682,9 +690,12 @@ func (k *kvChangeIndex) pollReaders() bool {
 		index++
 	}
 	bulkGetResults, err := k.indexBucket.GetBulkRaw(keySet)
+
 	if err != nil {
 		base.Warn("Error retrieving channel clocks:", err)
 	}
+	indexExpvars.Add("bulkGet_channelClocks", 1)
+	indexExpvars.Add("bulkGet_channelClocks_keyCount", int64(len(keySet)))
 
 	changedChannels := make(chan string, len(k.channelIndexReaders))
 	cancelledChannels := make(chan string, len(k.channelIndexReaders))
