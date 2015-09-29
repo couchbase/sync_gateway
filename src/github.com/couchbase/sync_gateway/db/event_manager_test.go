@@ -400,6 +400,131 @@ func TestWebhookBasic(t *testing.T) {
 
 }
 
+func TestN1QLWebhook(t *testing.T) {
+
+	if !testLiveHTTP {
+		return
+	}
+	count, sum, payloads := InitWebhookTest()
+	ids := make([]string, 200)
+	for i := 0; i < 200; i++ {
+		ids[i] = fmt.Sprintf("%d", i)
+	}
+
+	time.Sleep(1 * time.Second)
+	eventForTest := func(i int) (Body, base.Set) {
+		testBody := Body{
+			"_id":   ids[i],
+			"value": i,
+		}
+		var channelSet base.Set
+		if i%2 == 0 {
+			channelSet = base.SetFromArray([]string{"Even"})
+		} else {
+			channelSet = base.SetFromArray([]string{"Odd"})
+		}
+		return testBody, channelSet
+	}
+
+	// Test basic webhook
+	em := NewEventManager()
+	em.Start(0, -1)
+	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 10)
+
+	// Test webhook filter function
+	log.Println("Test filter function")
+	*count, *sum = 0, 0.0
+	em = NewEventManager()
+	em.Start(0, -1)
+	filterFunction := `function(doc) {
+							if (doc.value < 6) {
+								return false;
+							} else {
+								return true;
+							}
+							}`
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 4)
+
+	// Validate payload
+	*count, *sum, *payloads = 0, 0.0, nil
+	em = NewEventManager()
+	em.Start(0, -1)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	body, channels := eventForTest(0)
+	em.RaiseDocumentChangeEvent(body, channels)
+	time.Sleep(50 * time.Millisecond)
+	receivedPayload := string((*payloads)[0])
+	fmt.Println("payload:", receivedPayload)
+	assert.Equals(t, string((*payloads)[0]), `{"_id":"0","value":0}`)
+	assert.Equals(t, *count, 1)
+
+	// Test fast fill, fast webhook
+	*count, *sum = 0, 0.0
+	em = NewEventManager()
+	em.Start(5, -1)
+	timeout := uint64(60)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", &timeout)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 100; i++ {
+		body, channels := eventForTest(i % 10)
+		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	time.Sleep(500 * time.Millisecond)
+	assert.Equals(t, *count, 100)
+
+	// Test queue full, slow webhook.  Drops events
+	log.Println("Test queue full, slow webhook")
+	*count, *sum = 0, 0.0
+	errCount := 0
+	em = NewEventManager()
+	em.Start(5, -1)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 100; i++ {
+		body, channels := eventForTest(i)
+		err := em.RaiseDocumentChangeEvent(body, channels)
+		time.Sleep(2 * time.Millisecond)
+		if err != nil {
+			errCount++
+		}
+	}
+	time.Sleep(5 * time.Second)
+	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
+	// for a goroutine.  The rest get discarded because the queue is full.
+	assert.Equals(t, *count, 21)
+	assert.Equals(t, errCount, 79)
+
+	// Test queue full, slow webhook, long wait time.  Throttles events
+	log.Println("Test queue full, slow webhook, long wait")
+	*count, *sum = 0, 0.0
+	em = NewEventManager()
+	em.Start(5, 1100)
+	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 100; i++ {
+		body, channels := eventForTest(i % 10)
+		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	time.Sleep(5 * time.Second)
+	assert.Equals(t, *count, 100)
+
+}
+
 func TestWebhookTimeout(t *testing.T) {
 
 	if !testLiveHTTP {
