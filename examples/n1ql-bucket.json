@@ -8,7 +8,8 @@
         "beer" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer IS NOT NULL",
         "good" : "SELECT _sync.channels as _channels, beer, good, META(default).id from default WHERE good IS NOT NULL",
         "nofilter" : "SELECT good, beer as bier, META(default).id from default WHERE beer IS NOT NULL",
-        "beer-params" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $1"
+        "beer-params" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $1",
+        "from-param" : "SELECT true as filter WHERE $1.beer = \"cider\" and $1.good = true"
       },
       "sync" : 
 `
