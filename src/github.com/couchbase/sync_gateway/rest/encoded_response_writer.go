@@ -64,7 +64,7 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 
 	// Can/should we compress the response?
 	if w.status >= 300 || w.Header().Get("Content-Encoding") != "" ||
-		(!strings.HasPrefix(respType, "application/json") && !strings.HasPrefix(respType, "text/")) {
+		(!strings.HasPrefix(respType, "application/json") && !strings.HasPrefix(respType, "text/") && !strings.HasPrefix(respType, "multipart/mixed")) {
 		return
 	}
 
