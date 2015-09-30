@@ -49,3 +49,12 @@
 [submodule "src/github.com/couchbase/gocb"]
 	path = src/github.com/couchbase/gocb
 	url = http://github.com/couchbase/gocb
+[submodule "src/github.com/couchbase/query"]
+	path = src/github.com/couchbase/query
+	url = http://github.com/couchbase/query
+[submodule "src/github.com/dustin/go-jsonpointer"]
+	path = src/github.com/dustin/go-jsonpointer
+	url = http://github.com/dustin/go-jsonpointer
+[submodule "src/github.com/dustin/gojson"]
+	path = src/github.com/dustin/gojson
+	url = http://github.com/dustin/gojson	
