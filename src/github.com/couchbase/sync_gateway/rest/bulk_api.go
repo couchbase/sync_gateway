@@ -297,7 +297,7 @@ func (h *handler) handleDumpChannel() error {
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
-	canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
+	canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip") && !strings.Contains(h.rq.Header.Get("Accept-Encoding"), "gzip")
 	body, err := h.readJSON()
 	if err != nil {
 		return err
