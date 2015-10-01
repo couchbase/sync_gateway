@@ -117,9 +117,9 @@ type N1QLEventFunction struct {
 func NewN1QLEventFunction(queryString string) (*N1QLEventFunction, error) {
 	prefix := "WHERE "
 	if strings.HasPrefix(queryString, prefix) {
-		// exprString := queryString[len(prefix):]
-		fmt.Printf("N1QL filter expr %v \n", queryString)
-		expr, err := parser.Parse(queryString)
+		exprString := queryString[len(prefix):]
+		fmt.Printf("N1QL filter expr %v \n", exprString)
+		expr, err := parser.Parse(exprString)
 		fmt.Printf("Parsed %+v err %v \n", expr, err)
 		if err != nil {
 			return nil, err

@@ -439,13 +439,15 @@ func TestN1QLWebhook(t *testing.T) {
 	assert.Equals(t, *count, 10)
 
 	// Test webhook filter function
-	log.Println("Test filter function")
+	log.Println("Test n1ql filter")
 	*count, *sum = 0, 0.0
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction := `WHERE value < 6`
-	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	webhookHandler2, err := NewWebhook("http://localhost:8081/echo", filterFunction, nil)
+	log.Println("Compiled n1ql filter")
+	assert.Equals(t, err, nil)
+	em.RegisterEventHandler(webhookHandler2, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, channels)
