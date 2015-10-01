@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"io"
@@ -47,7 +48,11 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 		url: url,
 	}
 	if strings.HasPrefix(filterFnString, "WHERE ") {
-		wh.n1qlFilter = NewN1QLEventFunction(filterFnString)
+		filter, err := NewN1QLEventFunction(filterFnString)
+		if err != nil {
+			return nil, err
+		}
+		wh.n1qlFilter = filter
 	} else if filterFnString != "" {
 		wh.filter = NewJSEventFunction(filterFnString)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	// "encoding/json"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -12,7 +13,7 @@ import (
 
 	"github.com/couchbase/query/expression"
 	"github.com/couchbase/query/expression/parser"
-
+	 qv "github.com/couchbase/query/value"
 )
 
 // Event type
@@ -113,27 +114,42 @@ type N1QLEventFunction struct {
 	expr expression.Expression
 }
 
-func NewN1QLEventFunction(queryString string) *N1QLEventFunction {
+func NewN1QLEventFunction(queryString string) (*N1QLEventFunction, error) {
 	prefix := "WHERE "
 	if strings.HasPrefix(queryString, prefix) {
-		exprString := queryString[len(prefix):]
-		fmt.Printf("N1QL filter expr %v", exprString)
-		return &N1QLEventFunction{
-			expr : parser.Parse(exprString),
+		// exprString := queryString[len(prefix):]
+		fmt.Printf("N1QL filter expr %v \n", queryString)
+		expr, err := parser.Parse(queryString)
+		fmt.Printf("Parsed %+v err %v \n", expr, err)
+		if err != nil {
+			return nil, err
 		}
+		return &N1QLEventFunction{
+			expr : expr,
+		}, nil
 	}
+	return nil, errors.New("Query must start with `WHERE `.")
 }
 
 func (ef *N1QLEventFunction) CallFilterFunction(event Event) (bool, error) {
 	// Different events send different parameters
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
-		val, err := ef.expr.Evaluate(event.Doc, expression.NewIndexContext())
+		// make event.Doc to JSON bytes
+		// docJSONbytes, err := json.Marshal(event.Doc)
+		// if err != nil {
+		// 	return false, err
+		// }
+		fmt.Printf("CallFilterFunction %v", event.Doc)
+		n1qlDoc := qv.NewValue(event.Doc)
+
+		val, err := ef.expr.Evaluate(n1qlDoc, expression.NewIndexContext())
 		if err != nil {
-		     return nil, err
+		     return false, err
 		}
 		return val.Truth(), nil
 	}
+	return false, nil
 }
 
 //////// JSEventFunction

@@ -29,7 +29,7 @@ func TestSelectStarQuery(t *testing.T) {
 			"all": "SELECT field FROM db",
 		}}
 
-		response := rt.sendAdminRequest("GET", "/db/_n1ql/all", ``)
+		response := rt.sendAdminRequest("GET", "/db/_query/all", ``)
 		assertStatus(t, response, 200)
 		// why does this 200 when underlying engine doesn't support n1ql?
 		fmt.Println(response.Body)
