@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	// "encoding/json"
+	"encoding/json"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -136,12 +136,12 @@ func (ef *N1QLEventFunction) CallFilterFunction(event Event) (bool, error) {
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
 		// make event.Doc to JSON bytes
-		// docJSONbytes, err := json.Marshal(event.Doc)
-		// if err != nil {
-		// 	return false, err
-		// }
-		fmt.Printf("CallFilterFunction %v", event.Doc)
-		n1qlDoc := qv.NewValue(event.Doc)
+		docJSONbytes, err := json.Marshal(event.Doc)
+		if err != nil {
+			return false, err
+		}
+		fmt.Printf("CallFilterFunction %s", docJSONbytes)
+		n1qlDoc := qv.NewValue(docJSONbytes)
 
 		val, err := ef.expr.Evaluate(n1qlDoc, expression.NewIndexContext())
 		if err != nil {
