@@ -214,7 +214,7 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	// TODO: pass in an option to reuse existing channel clock
 	chanClock, err := k.loadChannelClock()
 	if err != nil {
-		base.Warn("Error loading channel clock:%v", err)
+		base.LogTo("DIndex+", "Error loading channel clock for channel %s - may not exist for channel: %v", k.channelName, err)
 	}
 
 	base.LogTo("DIndex+", "[channelIndex.GetChanges] Channel clock for channel %s: %s", k.channelName, base.PrintClock(chanClock))
