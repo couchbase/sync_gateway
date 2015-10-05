@@ -113,8 +113,17 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
-	LogPanic("Unimplemented method: GetAndTouchRaw()")
-	return nil, 0, nil
+
+	var returnVal interface{}
+
+	casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return returnVal.([]byte), uint64(casGoCB), nil
+
 }
 
 func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added bool, err error) {
