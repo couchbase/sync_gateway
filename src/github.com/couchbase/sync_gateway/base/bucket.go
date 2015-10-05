@@ -33,6 +33,11 @@ const (
 	DcpShardFeedType = "dcpshard"
 )
 
+const (
+	GoCouchbase CouchbaseDriver = iota
+	GoCB
+)
+
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issues #210, #333, #342)
@@ -43,6 +48,7 @@ type Bucket sgbucket.Bucket
 type TapArguments sgbucket.TapArguments
 type TapFeed sgbucket.TapFeed
 type AuthHandler couchbase.AuthHandler
+type CouchbaseDriver int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
@@ -50,6 +56,7 @@ type BucketSpec struct {
 	Auth                                   AuthHandler
 	FeedParams                             FeedParams
 	CbgtContext                            CbgtContext
+	CouchbaseDriver                        CouchbaseDriver
 }
 
 // These are used by CBGT to determine the sharding factor and other properties
@@ -484,13 +491,18 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 	} else {
-		suffix := ""
-		if spec.Auth != nil {
-			username, _, _ := spec.Auth.GetCredentials()
-			suffix = fmt.Sprintf(" as user %q", username)
+		if spec.CouchbaseDriver == GoCB {
+			bucket, err = GetCouchbaseBucketGoCB(spec)
+		} else {
+			suffix := ""
+			if spec.Auth != nil {
+				username, _, _ := spec.Auth.GetCredentials()
+				suffix = fmt.Sprintf(" as user %q", username)
+			}
+			Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+			bucket, err = GetCouchbaseBucket(spec)
 		}
-		Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
-		bucket, err = GetCouchbaseBucket(spec)
+
 	}
 
 	if LogKeys["Bucket"] {

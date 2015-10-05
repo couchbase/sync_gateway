@@ -692,7 +692,7 @@ func (k *kvChangeIndex) pollReaders() bool {
 	bulkGetResults, err := k.indexBucket.GetBulkRaw(keySet)
 
 	if err != nil {
-		base.Warn("Error retrieving channel clocks:", err)
+		base.Warn("Error retrieving channel clocks: %v", err)
 	}
 	indexExpvars.Add("bulkGet_channelClocks", 1)
 	indexExpvars.Add("bulkGet_channelClocks_keyCount", int64(len(keySet)))
