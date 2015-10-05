@@ -67,19 +67,49 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	}
 	return returnVal.([]byte), uint64(casGoCB), nil
 
-	/*
-		rv, err = json.Marshal(returnVal) // TODO: remove unnecessary json Marshal
-		if err != nil {
-			log.Printf("GetRaw error calling json.Marshal: %v", err)
-			return nil, 0, err
-		}
-		return rv, uint64(casGoCB), nil
-	*/
 }
 
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
-	LogPanic("Unimplemented method: GetBulkRaw()")
-	return nil, nil
+
+	result := make(map[string][]byte)
+	for _, key := range keys {
+		getResult, _, err := bucket.GetRaw(key)
+		if err != nil {
+			return nil, err
+		}
+		result[key] = getResult
+	}
+	return result, nil
+
+	/*
+	   The code below is not working, I'm getting this error:
+
+	   2015/10/05 16:12:40 GetBulkRaw getOp item: &{bulkOp:{pendop:<nil>} Key:_idx:channel-0:block0:1jwu Value:<nil> Cas:0 Err:You must encode binary in a byte array or interface}
+
+	   	var items []gocb.BulkOp
+	   	for _, key := range keys {
+	   		item := &gocb.GetOp{Key: key}
+	   		items = append(items, item)
+	   	}
+	   	err := bucket.Do(items)
+	   	if err != nil {
+	   		return nil, err
+	   	}
+
+	   	result := make(map[string][]byte)
+	   	for _, item := range items {
+	   		log.Printf("GetBulkRaw item: %+v", item)
+	   		getOp := item.(*gocb.GetOp)
+	   		log.Printf("GetBulkRaw getOp item: %+v", getOp)
+	   		if getOp.Err != nil {
+	   			return nil, getOp.Err
+	   		}
+	   		result[getOp.Key] = getOp.Value.([]byte)
+	   	}
+
+	   	return result, nil
+	*/
+
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
@@ -152,6 +182,8 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 }
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
+
+	// TODO: a bunch of the json marshalling/unmarshalling stuff is probably not needed
 
 	// Call the callback() with an empty value, since we are first going to try to Insert()
 	valueToInsert, err := callback(nil)
