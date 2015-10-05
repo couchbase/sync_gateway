@@ -484,13 +484,19 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 	} else {
-		suffix := ""
-		if spec.Auth != nil {
-			username, _, _ := spec.Auth.GetCredentials()
-			suffix = fmt.Sprintf(" as user %q", username)
+		if spec.BucketName == "index_bucket" {
+			bucket, err = GetCouchbaseBucketGoCB(spec)
+
+		} else {
+			suffix := ""
+			if spec.Auth != nil {
+				username, _, _ := spec.Auth.GetCredentials()
+				suffix = fmt.Sprintf(" as user %q", username)
+			}
+			Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+			bucket, err = GetCouchbaseBucket(spec)
 		}
-		Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
-		bucket, err = GetCouchbaseBucket(spec)
+
 	}
 
 	if LogKeys["Bucket"] {
