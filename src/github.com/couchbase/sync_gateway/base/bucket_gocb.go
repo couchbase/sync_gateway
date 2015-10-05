@@ -58,11 +58,8 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	var returnVal interface{}
 
-	log.Printf("GetRaw() called with: %v", k)
-
 	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
 	if err != nil {
-		log.Printf("GetRaw error calling Get: %v", err)
 		return nil, 0, err
 	}
 	return returnVal.([]byte), uint64(casGoCB), nil
@@ -74,10 +71,13 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 	result := make(map[string][]byte)
 	for _, key := range keys {
 		getResult, _, err := bucket.GetRaw(key)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			result[key] = getResult
+		} else {
+			// TODO: should we do anything special for individual gets that returned errors?
+			Warn("BulkGetRaw() could not get document with key: %v", key)
 		}
-		result[key] = getResult
+
 	}
 	return result, nil
 
@@ -165,6 +165,8 @@ func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interfac
 
 func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 
+	log.Printf("WriteCas called with key: %v", k)
+
 	// we only support the sgbucket.Raw WriteOption at this point
 	if opt != sgbucket.Raw {
 		LogPanic("WriteOption must be sgbucket.Raw")
@@ -191,6 +193,8 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 }
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
+
+	log.Printf("Update called with key: %v", k)
 
 	// TODO: a bunch of the json marshalling/unmarshalling stuff is probably not needed
 
