@@ -236,6 +236,11 @@ func (h *handler) handlePprofGoroutine() error {
 	return nil
 }
 
+func (h *handler) handlePprofTrace() error {
+	httpprof.Trace(h.response, h.rq)
+	return nil
+}
+
 func (h *handler) handlePprofCmdline() error {
 	httpprof.Cmdline(h.response, h.rq)
 	return nil

@@ -187,6 +187,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handlePprofBlock)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/threadcreate",
 		makeHandler(sc, adminPrivs, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/trace",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofTrace)).Methods("GET", "POST")
 
 	// Database-relative handlers:
 	dbr.Handle("/_config",

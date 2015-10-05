@@ -45,6 +45,13 @@
 			],
 			"follow_symlinks": true,
 			"path": "src/github.com/couchbaselabs/cbgt"
+		},{
+			"file_exclude_patterns":
+			[
+				".*"
+			],
+			"follow_symlinks": true,
+			"path": "src/github.com/couchbase/gocb"
 		},
 		{
 			"follow_symlinks": true,
