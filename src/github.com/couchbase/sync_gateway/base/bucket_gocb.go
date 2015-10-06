@@ -204,16 +204,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		return err
 	}
 
-	// Since callback() returns a []byte but Insert() expects an interface,
-	// it's necessary to unmarshal the []byte into an interface
-	var valueToInsertIface interface{}
-	err = json.Unmarshal(valueToInsert, &valueToInsertIface)
-	if err != nil {
-		return err
-	}
-
 	// Try to insert the value into the bucket
-	_, err = bucket.Bucket.Insert(k, valueToInsertIface, uint32(exp))
+	_, err = bucket.Bucket.Insert(k, valueToInsert, uint32(exp))
 
 	// If there was no error, we've successfully inserted so we're done
 	if err == nil {
@@ -223,6 +215,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 	// Unable to insert, do a Replace CAS loop
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
+
+		var valueToInsertIface interface{}
 
 		// get the latest value and cas value
 		cas, err := bucket.Bucket.Get(k, &valueToInsertIface)
@@ -242,14 +236,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 			return err
 		}
 
-		// []byte -> interface{}
-		err = json.Unmarshal(valueToInsert, &valueToInsertIface)
-		if err != nil {
-			return err
-		}
-
 		// attempt to do a replace
-		_, err = bucket.Bucket.Replace(k, valueToInsertIface, cas, uint32(exp))
+		_, err = bucket.Bucket.Replace(k, valueToInsert, cas, uint32(exp))
 
 		// if there was no error, we're done
 		if err == nil {
