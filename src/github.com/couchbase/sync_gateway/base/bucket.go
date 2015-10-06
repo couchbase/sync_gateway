@@ -484,7 +484,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 	} else {
-		if spec.BucketName == "index_bucket" {
+		if spec.BucketName == "index_bucket" || spec.BucketName == "bucket-2" {
 			bucket, err = GetCouchbaseBucketGoCB(spec)
 
 		} else {
