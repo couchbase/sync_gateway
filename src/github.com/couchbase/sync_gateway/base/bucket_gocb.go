@@ -10,7 +10,6 @@
 package base
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/couchbase/gocb"
@@ -30,7 +29,14 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 	if err != nil {
 		return nil, err
 	}
-	goCBBucket, err := cluster.OpenBucket(spec.BucketName, "")
+
+	password := ""
+	if spec.Auth != nil {
+		_, password, _ = spec.Auth.GetCredentials()
+	}
+
+	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
+
 	if err != nil {
 		return nil, err
 	}
@@ -45,8 +51,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 }
 
 func (bucket CouchbaseBucketGoCB) GetName() string {
-	LogPanic("Unimplemented method: GetName()")
-	return ""
+	return bucket.spec.BucketName
 }
 
 func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
@@ -55,14 +60,9 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 }
 
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
-	var returnVal interface{}
-
+	var returnVal []byte
 	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
-	if err != nil {
-		return nil, 0, err
-	}
-	return returnVal.([]byte), uint64(casGoCB), nil
-
+	return returnVal, uint64(casGoCB), err
 }
 
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
@@ -111,17 +111,9 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
-
-	var returnVal interface{}
-
+	var returnVal []byte
 	casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
-
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return returnVal.([]byte), uint64(casGoCB), nil
-
+	return returnVal, uint64(casGoCB), nil
 }
 
 func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added bool, err error) {
@@ -145,9 +137,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
 }
 
 func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
-
 	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
-
 	return err
 }
 
@@ -188,52 +178,41 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 
-	// Unable to insert, do a Replace CAS loop
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var valueToInsertIface interface{}
 		var bytes []byte
 		var err error
 
 		// Load the existing value.
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
-		// serious error, it will probably recur when calling
-		cas, err := bucket.Bucket.Get(k, &valueToInsertIface)
+		// serious error, it will probably recur when calling other ops below
+		cas, _ := bucket.Bucket.Get(k, &bytes)
 
-		// interface{} -> []byte
-		if valueToInsertIface != nil {
-			switch valueToInsertIface.(type) {
-			case []byte:
-				bytes = valueToInsertIface.([]byte)
-			case *[]byte:
-				bytes = *valueToInsertIface.(*[]byte)
-			case string:
-				bytes = []byte(valueToInsertIface.(string))
-			case *string:
-				bytes = []byte(*valueToInsertIface.(*string))
-			default:
-				bytes, err = json.Marshal(valueToInsertIface)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		// invoke callback to get updated value
+		// Invoke callback to get updated value
 		valueToInsert, err := callback(bytes)
 		if err != nil {
 			return err
 		}
 
 		if cas == 0 {
+			// If the Get fails, the cas will be 0 and so call Insert().
+			// If we get an error on the insert, due to a race, this will
+			// go back through the cas loop
 			_, err = bucket.Bucket.Insert(k, valueToInsert, uint32(exp))
 		} else {
-			// attempt to do a replace
-			cas, err = bucket.Bucket.Replace(k, valueToInsert, cas, uint32(exp))
+			if valueToInsert == nil {
+				// In order to match the go-couchbase bucket behavior, if the
+				// callback returns nil, we delete the doc
+				_, err = bucket.Bucket.Remove(k, cas)
+			} else {
+				// Otherwise, attempt to do a replace.  won't succeed if
+				// updated underneath us
+				_, err = bucket.Bucket.Replace(k, valueToInsert, cas, uint32(exp))
+			}
 		}
 
-		// if there was no error, we're done
+		// If there was no error, we're done
 		if err == nil {
 			return nil
 		}
