@@ -34,6 +34,10 @@ func (th *TestingHandler) HandleEvent(event Event) {
 	if dceEvent, ok := event.(*DocumentChangeEvent); ok {
 		th.ResultChannel <- dceEvent.Doc
 	}
+
+	if dsceEvent, ok := event.(*DBStateChangeEvent); ok {
+		th.ResultChannel <- dsceEvent.Doc
+	}
 	return
 }
 
@@ -77,6 +81,33 @@ func TestDocumentChangeEvent(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	// wait for Event Manager queue worker to process
+	time.Sleep(10 * time.Millisecond)
+
+	assert.True(t, len(resultChannel) == 10)
+
+}
+
+func TestDBStateChangeEvent(t *testing.T) {
+
+	em := NewEventManager()
+	em.Start(0, -1)
+
+	// Setup test data
+	ids := make([]string, 20)
+	for i := 0; i < 20; i++ {
+		ids[i] = fmt.Sprintf("db%d", i)
+	}
+
+	resultChannel := make(chan Body, 10)
+	//Setup test handler
+	testHandler := &TestingHandler{HandledEvent: DBStateChange}
+	testHandler.SetChannel(resultChannel)
+	em.RegisterEventHandler(testHandler, DBStateChange)
+	//Raise events
+	for i := 0; i < 10; i++ {
+		em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", "0.0.0.0:0000")
 	}
 	// wait for Event Manager queue worker to process
 	time.Sleep(10 * time.Millisecond)

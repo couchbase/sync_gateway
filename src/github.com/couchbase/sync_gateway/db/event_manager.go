@@ -89,7 +89,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 func (em *EventManager) RegisterEventHandler(handler EventHandler, eventType EventType) {
 	em.eventHandlers[eventType] = append(em.eventHandlers[eventType], handler)
 	em.activeEventTypes[eventType] = true
-	base.LogTo("Events", "Registered event handler: %v", handler)
+	base.LogTo("Events", "Registered event handler: %v, for event type %v", handler,eventType)
 }
 
 // Checks whether a handler of the given type has been registered to the event manager.
@@ -129,3 +129,26 @@ func (em *EventManager) RaiseDocumentChangeEvent(body Body, channels base.Set) e
 	return em.raiseEvent(event)
 
 }
+
+// Raises a DB state change event based on the db name, admininterface, new state, reason and local system time.
+// If the event manager doesn't have a listener for this event, ignores.
+func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, reason string, adminInterface string) error {
+
+	if !em.activeEventTypes[DBStateChange] {
+		return nil
+	}
+
+	body := make(Body, 5)
+	body["dbname"] = dbName
+	body["admininterface"] = adminInterface
+	body["state"] = state
+	body["reason"] = reason
+	body["localtime"] = time.Now().Format(base.ISO8601Format)
+
+	event := &DBStateChangeEvent{
+		Doc:      body,
+	}
+
+	return em.raiseEvent(event)
+}
+

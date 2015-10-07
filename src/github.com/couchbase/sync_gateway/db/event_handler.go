@@ -93,6 +93,15 @@ func (wh *Webhook) HandleEvent(event Event) {
 		}
 		contentType = "application/json"
 		payload = bytes.NewBuffer(jsonOut)
+	case *DBStateChangeEvent:
+		// for DBStateChangeEvent, post document body
+		jsonOut, err := json.Marshal(event.Doc)
+		if err != nil {
+			base.Warn("Error marshalling doc for webhook post")
+			return
+		}
+		contentType = "application/json"
+		payload = bytes.NewBuffer(jsonOut)
 	default:
 		base.Warn("Webhook invoked for unsupported event type.")
 		return
