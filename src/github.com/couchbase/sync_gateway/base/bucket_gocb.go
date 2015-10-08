@@ -15,6 +15,7 @@ import (
 	"log"
 
 	"github.com/couchbase/gocb"
+	"github.com/couchbase/gocb/gocbcore"
 	"github.com/couchbase/sg-bucket"
 )
 
@@ -26,6 +27,8 @@ type CouchbaseBucketGoCB struct {
 
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
+
+	gocbcore.SetLogger(gocbcore.DefaultStdOutLogger())
 
 	cluster, err := gocb.Connect(spec.Server)
 	if err != nil {
