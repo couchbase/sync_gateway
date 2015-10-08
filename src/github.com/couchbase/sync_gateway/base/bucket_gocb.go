@@ -11,6 +11,7 @@ package base
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sg-bucket"
@@ -40,6 +41,10 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// increase timeout, as I was seeing timeouts in the logs during
+	// performance testing: https://gist.github.com/tleyden/7d2e2fd12927b9cee941
+	goCBBucket.SetOperationTimeout(30000 * time.Millisecond)
 
 	bucket = CouchbaseBucketGoCB{
 		goCBBucket,
