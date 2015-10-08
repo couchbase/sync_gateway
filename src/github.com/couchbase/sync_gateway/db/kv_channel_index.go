@@ -30,20 +30,21 @@ const (
 )
 
 type kvChannelIndex struct {
-	indexBucket       base.Bucket               // Database connection (used for connection queries)
-	partitionMap      IndexPartitionMap         // Index partition map
-	channelName       string                    // Channel name
-	lastPolledChanges []*LogEntry               // Set of changes found in most recent polling.  Optimization for scenario where multiple continuous changes listeners are awakened at once
-	lastPolledSince   base.SequenceClock        // Since value used for most recent polling
-	lastPolledClock   base.SequenceClock        // New channel clock after most recent polling
-	lastPolledLock    sync.RWMutex              // Synchronization for lastPolled data
-	unreadPollCount   uint32                    // Number of times the channel has polled for data since the last non-empty poll, without a getChanges call
-	pollCount         uint32                    // Number of times the channel has polled for data and not found changes
-	stableSequence    base.SequenceClock        // Global stable sequence
-	stableSequenceCb  func() base.SequenceClock // Callback for retrieval of global stable sequence
-	onChange          func(base.Set)            // Notification callback
-	clock             *base.SequenceClockImpl   // Channel clock
-	channelStorage    ChannelStorage            // Channel storage - manages interaction with the index format
+	indexBucket            base.Bucket               // Database connection (used for connection queries)
+	partitionMap           IndexPartitionMap         // Index partition map
+	channelName            string                    // Channel name
+	lastPolledChanges      []*LogEntry               // Set of changes found in most recent polling.  Optimization for scenario where multiple continuous changes listeners are awakened at once
+	lastPolledSince        base.SequenceClock        // Since value used for most recent polling
+	lastPolledValidTo      base.SequenceClock        // Stable sequence at time of last polling that found changes
+	lastPolledChannelClock base.SequenceClock        // Channel clock value that triggered the most recent polling
+	lastPolledLock         sync.RWMutex              // Synchronization for lastPolled data
+	unreadPollCount        uint32                    // Number of times the channel has polled for data since the last non-empty poll, without a getChanges call
+	pollCount              uint32                    // Number of times the channel has polled for data and not found changes
+	stableSequence         base.SequenceClock        // Global stable sequence
+	stableSequenceCb       func() base.SequenceClock // Callback for retrieval of global stable sequence
+	onChange               func(base.Set)            // Notification callback
+	clock                  *base.SequenceClockImpl   // Channel clock
+	channelStorage         ChannelStorage            // Channel storage - manages interaction with the index format
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexPartitionMap, stableClockCallback func() base.SequenceClock, onChangeCallback func(base.Set)) *kvChannelIndex {
@@ -130,17 +131,19 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	k.lastPolledLock.Lock()
 	defer k.lastPolledLock.Unlock()
 	base.LogTo("DIndex+", "Poll for changes for channel %s", k.channelName)
-	if k.lastPolledClock == nil {
-		k.lastPolledClock = k.clock.Copy()
+
+	// First poll handling
+	if k.lastPolledChannelClock == nil {
+		k.lastPolledChannelClock = k.clock.Copy()
 		k.lastPolledSince = k.clock.Copy()
+		k.lastPolledValidTo = k.clock.Copy()
 	}
 
-	// Find the minimum of stable clock and new channel clock (to ignore cases when channel clock has
-	// changed but stable hasn't yet)
-	combinedClock := base.GetMinimumClock(stableClock, newChannelClock)
-	if !combinedClock.AnyAfter(k.lastPolledClock) {
-		// No changes.  Only return true if we've exceeded empty poll count (and want to trigger the "is
-		// anyone listening" check)
+	if !newChannelClock.AnyAfter(k.lastPolledChannelClock) {
+		// No changes to channel clock - update validTo based on the new stable sequence
+		k.lastPolledValidTo.SetTo(stableClock)
+		// If we've exceeded empty poll count, return hasChanges=true to trigger the "is
+		// anyone listening" check
 		if totalPollCount > kMaxEmptyPollCount {
 			return true, false
 		} else {
@@ -149,7 +152,7 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	}
 
 	// The clock has changed - load the changes and store in last polled
-	if err := k.updateLastPolled(combinedClock); err != nil {
+	if err := k.updateLastPolled(stableClock, newChannelClock); err != nil {
 		base.Warn("Error updating last polled for channel %s: %v", k.channelName, err)
 		return false, false
 	}
@@ -161,29 +164,24 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	return true, false
 }
 
-func (k *kvChannelIndex) updateLastPolled(combinedClock base.SequenceClock) error {
-	// Compare counter again, in case someone has already updated last polled while we waited for the lock
-	if combinedClock.AnyAfter(k.clock) {
-		// Get changes since the last clock
-		recentChanges, err := k.channelStorage.GetChanges(k.lastPolledClock, combinedClock)
-		indexExpvars.Add("updateChannelPolled", 1)
-		if err != nil {
-			return err
-		}
-		if len(recentChanges) > 0 {
-			k.lastPolledChanges = recentChanges
-			k.lastPolledSince.SetTo(k.lastPolledClock)
-			k.lastPolledClock.SetTo(combinedClock)
-		} else {
-			base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
-			return errors.New("Expected changes based on clock, none found")
-		}
-		/* onChange handled by change index
-		if k.onChange != nil {
-			k.onChange(base.SetOf(k.channelName))
-		}
-		*/
+func (k *kvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock) error {
+
+	// Get changes since the last clock
+	recentChanges, err := k.channelStorage.GetChanges(k.lastPolledChannelClock, newChannelClock)
+	indexExpvars.Add("updateChannelPolled", 1)
+	if err != nil {
+		return err
 	}
+	if len(recentChanges) > 0 {
+		k.lastPolledChanges = recentChanges
+		k.lastPolledSince.SetTo(k.lastPolledChannelClock)
+		k.lastPolledChannelClock.SetTo(newChannelClock)
+		k.lastPolledValidTo.SetTo(stableSequence)
+	} else {
+		base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
+		return errors.New("Expected changes based on clock, none found")
+	}
+
 	return nil
 }
 
@@ -191,11 +189,42 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 
 	k.lastPolledLock.RLock()
 	defer k.lastPolledLock.RUnlock()
-	if k.lastPolledClock == nil || k.lastPolledSince == nil {
+	if k.lastPolledValidTo == nil || k.lastPolledSince == nil {
 		return results
 	}
-	if k.lastPolledClock.Equals(chanClock) && k.lastPolledSince.AllBefore(since) {
+
+	// If the since value matches the last polled since, return last polled changes
+	if k.lastPolledSince.Equals(since) {
 		copy(results, k.lastPolledChanges)
+		return results
+	}
+
+	matchesLastPolledSince := true
+	lastPolledValue := k.lastPolledSince.Value()
+	validToValue := k.lastPolledValidTo.Value()
+	sinceValue := since.Value()
+	for vb, sequence := range sinceValue {
+		lastPolledVbValue := lastPolledValue[vb]
+		if sequence != lastPolledVbValue {
+			matchesLastPolledSince = false
+			if sequence < lastPolledVbValue || sequence > validToValue[vb] {
+				// poll results aren't sufficient for this request - return empty set
+				return results
+			}
+		}
+	}
+
+	// The last polled results are sufficient to serve this request.  If there's a match on the since values,
+	// return the entire last polled changes.  If not, filter the last polled changes and return all entries greater
+	// than the since value
+	if matchesLastPolledSince {
+		return k.lastPolledChanges
+	} else {
+		for _, entry := range k.lastPolledChanges {
+			if entry.Sequence > sinceValue[entry.VbNo] {
+				results = append(results, entry)
+			}
+		}
 	}
 	return results
 }
