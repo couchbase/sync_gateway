@@ -26,14 +26,6 @@ type Event interface {
 	String() string
 }
 
-//type EventImpl struct {
-//	eventType EventType
-//}
-
-//func (e *EventImpl) EventType() EventType {
-//	return e.eventType
-//}
-
 // Currently the AsyncEvent type only manages the Synchronous() check.  Future enhancements
 // around async processing would leverage this type.
 type AsyncEvent struct {

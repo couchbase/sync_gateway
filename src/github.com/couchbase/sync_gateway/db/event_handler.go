@@ -94,7 +94,14 @@ func (wh *Webhook) HandleEvent(event Event) {
 		contentType = "application/json"
 		payload = bytes.NewBuffer(jsonOut)
 	case *DBStateChangeEvent:
-		// for DBStateChangeEvent, post document body
+		// for DBStateChangeEvent, post JSON document with the following format
+		//{
+		//	“admininterface":"127.0.0.1:4985",
+		//	“dbname":"db",
+		//	“localtime":"2015-10-07T11:20:29.138+01:00",
+		//	"reason":"DB started from config”,
+		//	“state”:"online"
+		//}
 		jsonOut, err := json.Marshal(event.Doc)
 		if err != nil {
 			base.Warn("Error marshalling doc for webhook post")
