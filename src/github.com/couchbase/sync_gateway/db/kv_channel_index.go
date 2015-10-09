@@ -130,7 +130,7 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 	k.lastPolledLock.Lock()
 	defer k.lastPolledLock.Unlock()
-	base.LogTo("DIndex+", "Poll for changes for channel %s", k.channelName)
+	base.LogTo("IndexPoll", "Poll for changes for channel %s", k.channelName)
 
 	// First poll handling
 	if k.lastPolledChannelClock == nil {
@@ -182,6 +182,11 @@ func (k *kvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 		return errors.New("Expected changes based on clock, none found")
 	}
 
+	base.LogTo("IndexPoll", "updateLastPolled for %s: # changes:    %d", k.channelName, len(recentChanges))
+	base.LogTo("IndexPoll", "updateLastPolled for %s: since:        %v", k.channelName, base.PrintClock(k.lastPolledSince))
+	base.LogTo("IndexPoll", "updateLastPolled for %s: channelClock: %v", k.channelName, base.PrintClock(k.lastPolledChannelClock))
+	base.LogTo("IndexPoll", "updateLastPolled for %s: validTo:      %v", k.channelName, base.PrintClock(k.lastPolledValidTo))
+
 	return nil
 }
 
@@ -193,11 +198,7 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 		return results
 	}
 
-	// If the since value matches the last polled since, return last polled changes
-	if k.lastPolledSince.Equals(since) {
-		copy(results, k.lastPolledChanges)
-		return results
-	}
+	base.LogTo("IndexPoll", "checkLastPolled for %s: incoming since:    %v", k.channelName, base.PrintClock(since))
 
 	matchesLastPolledSince := true
 	lastPolledValue := k.lastPolledSince.Value()
@@ -209,6 +210,7 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 			matchesLastPolledSince = false
 			if sequence < lastPolledVbValue || sequence > validToValue[vb] {
 				// poll results aren't sufficient for this request - return empty set
+				base.LogTo("IndexPoll", "checkLastPolled for %s: Doesn't match last polled since - returning empty changes", k.channelName)
 				return results
 			}
 		}
@@ -218,7 +220,12 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 	// return the entire last polled changes.  If not, filter the last polled changes and return all entries greater
 	// than the since value
 	if matchesLastPolledSince {
-		return k.lastPolledChanges
+		// TODO: come up with a solution that doesn't make as much GC work on every checkLastPolled hit,
+		// but doesn't break when k.lastPolledChanges gets updated.
+		results := make([]*LogEntry, len(k.lastPolledChanges))
+		copy(results, k.lastPolledChanges)
+		base.LogTo("IndexPoll", "checkLastPolled for %s: Matches last polled since - returning %d changes", k.channelName, len(results))
+		return results
 	} else {
 		for _, entry := range k.lastPolledChanges {
 			if entry.Sequence > sinceValue[entry.VbNo] {
@@ -259,8 +266,11 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	// greater than since inside this if clause, but leaving out as a performance optimization for
 	// now
 	if lastPolledResults := k.checkLastPolled(since, chanClock); len(lastPolledResults) > 0 {
+		base.LogTo("IndexPoll", "getChanges for channel %s, found %d lastPolledResults", k.channelName, len(lastPolledResults))
 		indexExpvars.Add("getChanges_lastPolled_hit", 1)
 		return lastPolledResults, nil
+	} else {
+		base.LogTo("IndexPoll", "getChanges for channel %s, found %d lastPolledResults", k.channelName, len(lastPolledResults))
 	}
 	indexExpvars.Add("getChanges_lastPolled_miss", 1)
 
