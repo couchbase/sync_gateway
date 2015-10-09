@@ -78,9 +78,12 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 }
 
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
-	var returnVal []byte
+	var returnVal interface{}
 	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
-	return returnVal, uint64(casGoCB), err
+	if err != nil {
+		return nil, 0, nil
+	}
+	return returnVal.([]byte), uint64(casGoCB), err
 }
 
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
@@ -129,9 +132,12 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
-	var returnVal []byte
+	var returnVal interface{}
 	casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
-	return returnVal, uint64(casGoCB), nil
+	if err != nil {
+		return nil, 0, err
+	}
+	return returnVal.([]byte), uint64(casGoCB), err
 }
 
 func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added bool, err error) {
@@ -199,7 +205,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var bytes []byte
+		var bytes []byte // TODO: use empty interface
 		var err error
 
 		// Load the existing value.
