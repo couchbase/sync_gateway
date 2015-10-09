@@ -358,6 +358,111 @@ func TestPollingChangesFeed(t *testing.T) {
 
 }
 
+func TestPollResultReuseLongpoll(t *testing.T) {
+	// Reset the index expvars
+	indexExpvars.Init()
+	base.LogKeys["IndexPoll"] = true
+	db := setupTestDBForChangeIndex(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	WriteDirectWithKey(db, "docABC_1", []string{"ABC"}, 1)
+	time.Sleep(100 * time.Millisecond)
+	// Do a basic changes to trigger start of polling for channel
+	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0)})
+	assertTrue(t, err == nil, "Error getting changes")
+	assert.Equals(t, len(changes), 1)
+	log.Printf("Changes:%+v", changes[0])
+
+	// Start a longpoll changes, use waitgroup to delay the test until it returns.
+	var wg sync.WaitGroup
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		since, err := db.ParseSequenceID("2-0")
+		assertTrue(t, err == nil, "Error parsing sequence ID")
+		abcHboChanges, err := db.GetChanges(base.SetOf("ABC", "HBO"), ChangesOptions{Since: since, Wait: true})
+		assertTrue(t, err == nil, "Error getting changes")
+		// Expects two changes - the nil that's sent on initial wait, and then docABC_2
+		assert.Equals(t, len(abcHboChanges), 2)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	// Write an entry to channel ABC to notify the waiting longpoll
+	WriteDirectWithKey(db, "docABC_2", []string{"ABC"}, 2)
+
+	wg.Wait()
+
+	// Use expvars to confirm poll hits/misses (can't tell from changes response whether it used poll results,
+	// or reloaded from index).  Expect one poll hit (the longpoll request), and one miss (the basic changes request)
+	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_hit").String(), "1")
+	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_miss").String(), "1")
+
+}
+
+func TestPollResultReuseContinuous(t *testing.T) {
+	// Reset the index expvars
+	indexExpvars.Init()
+	base.LogKeys["IndexPoll"] = true
+	db := setupTestDBForChangeIndex(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	WriteDirectWithKey(db, "docABC_1", []string{"ABC"}, 1)
+	time.Sleep(100 * time.Millisecond)
+	// Do a basic changes to trigger start of polling for channel
+	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0)})
+	assertTrue(t, err == nil, "Error getting changes")
+	assert.Equals(t, len(changes), 1)
+	log.Printf("Changes:%+v", changes[0])
+
+	// Start a continuous changes on a different channel (CBS).  Waitgroup keeps test open until continuous is terminated
+	var wg sync.WaitGroup
+	continuousTerminator := make(chan bool)
+	go func() {
+		defer wg.Done()
+		wg.Add(1)
+		since, err := db.ParseSequenceID("2-0")
+		abcHboChanges, err := db.GetChanges(base.SetOf("ABC", "HBO"), ChangesOptions{Since: since, Wait: true, Continuous: true, Terminator: continuousTerminator})
+		assertTrue(t, err == nil, "Error getting changes")
+		// Expect 2 entries + 3 nil entries (one per wait)
+		assert.Equals(t, len(abcHboChanges), 5)
+		for i := 0; i < len(abcHboChanges); i++ {
+			log.Printf("Got change:%+v", abcHboChanges[i])
+		}
+		log.Println("Continuous completed")
+
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	// Write an entry to channel HBO to shift the continuous since value ahead
+	WriteDirectWithKey(db, "docHBO_1", []string{"HBO"}, 3)
+
+	time.Sleep(1000 * time.Millisecond) // wait for indexing, polling, and changes processing
+	// Write an entry to channel ABC - last polled should be used
+	WriteDirectWithKey(db, "docABC_2", []string{"ABC"}, 4)
+
+	time.Sleep(1000 * time.Millisecond) // wait for indexing, polling, and changes processing
+	close(continuousTerminator)
+	log.Println("closed terminator")
+
+	time.Sleep(100 * time.Millisecond)
+	WriteDirectWithKey(db, "terminatorCheck", []string{"HBO"}, 1)
+
+	wg.Wait()
+	// Use expvars to confirm poll hits/misses (can't tell from changes response whether it used poll results,
+	// or reloaded from index).  Expect two poll hits (docHBO_1, docABC_2), and one miss (the initial changes request)
+	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_hit").String(), "2")
+	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_miss").String(), "1")
+
+	// Make a changes request prior to the last polled range, ensure it doesn't reuse polled results
+	changes, err = db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0)})
+
+	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_hit").String(), "2")
+	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_miss").String(), "2")
+
+}
+
 func TestLoadStableSequence(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
