@@ -23,10 +23,25 @@ type CouchbaseBucketGoCB struct {
 	spec         BucketSpec // keep a copy of the BucketSpec for DCP usage
 }
 
+type GoCBLogger struct{}
+
+func (l GoCBLogger) Output(s string) error {
+	LogTo("gocb", s)
+	return nil
+}
+
+func EnableGoCBLogging() {
+	gocbcore.SetLogger(GoCBLogger{})
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 
-	gocbcore.SetLogger(gocbcore.DefaultStdOutLogger())
+	// Only wrap the gocb logging when the log key is set, to avoid the overhead of a log keys
+	// map lookup for every gocb log call
+	if LogEnabled("gocb") {
+		EnableGoCBLogging()
+	}
 
 	cluster, err := gocb.Connect(spec.Server)
 	if err != nil {
