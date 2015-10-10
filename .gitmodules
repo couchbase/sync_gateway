@@ -69,4 +69,4 @@
 	url = https://github.com/couchbase/cb-heartbeat
 [submodule "src/github.com/couchbase/gocb"]
 	path = src/github.com/couchbase/gocb
-	url = https://github.com/couchbase/gocb.git
+    url=https://github.com/adamcfraser/gocb.git
