@@ -81,7 +81,7 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	var returnVal interface{}
 	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
 	if err != nil {
-		return nil, 0, nil
+		return nil, 0, err
 	}
 	return returnVal.([]byte), uint64(casGoCB), err
 }
@@ -166,8 +166,8 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 }
 
 func (bucket CouchbaseBucketGoCB) Delete(k string) error {
-	LogPanic("Unimplemented method: Delete()")
-	return nil
+	_, err := bucket.Bucket.Remove(k, 0)
+	return err
 }
 
 func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
@@ -205,16 +205,21 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var bytes []byte // TODO: use empty interface
+		var value interface{}
 		var err error
 
 		// Load the existing value.
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
 		// serious error, it will probably recur when calling other ops below
-		cas, _ := bucket.Bucket.Get(k, &bytes)
+		cas, _ := bucket.Bucket.Get(k, &value)
+
+		var callbackParam []byte
+		if value != nil {
+			callbackParam = value.([]byte)
+		}
 
 		// Invoke callback to get updated value
-		valueToInsert, err := callback(bytes)
+		value, err = callback(callbackParam)
 		if err != nil {
 			return err
 		}
@@ -223,16 +228,16 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
-			_, err = bucket.Bucket.Insert(k, valueToInsert, uint32(exp))
+			_, err = bucket.Bucket.Insert(k, value, uint32(exp))
 		} else {
-			if valueToInsert == nil {
+			if value == nil {
 				// In order to match the go-couchbase bucket behavior, if the
 				// callback returns nil, we delete the doc
 				_, err = bucket.Bucket.Remove(k, cas)
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
-				_, err = bucket.Bucket.Replace(k, valueToInsert, cas, uint32(exp))
+				_, err = bucket.Bucket.Replace(k, value, cas, uint32(exp))
 			}
 		}
 
