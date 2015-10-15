@@ -591,9 +591,10 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 			indexBucketName = *config.ChannelIndex.Bucket
 		}
 		indexSpec := base.BucketSpec{
-			Server:     indexServer,
-			PoolName:   indexPool,
-			BucketName: indexBucketName,
+			Server:          indexServer,
+			PoolName:        indexPool,
+			BucketName:      indexBucketName,
+			CouchbaseDriver: base.GoCB,
 		}
 		if config.ChannelIndex.Username != "" {
 			indexSpec.Auth = config.ChannelIndex
