@@ -89,46 +89,34 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	result := make(map[string][]byte)
+	var items []gocb.BulkOp
 	for _, key := range keys {
-		getResult, _, err := bucket.GetRaw(key)
-		if err == nil { // Ignore any docs with errors
-			result[key] = getResult
+		var value []byte
+		item := &gocb.GetOp{Key: key, Value: &value}
+		items = append(items, item)
+	}
+	err := bucket.Do(items)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range items {
+		getOp, ok := item.(*gocb.GetOp)
+		if !ok {
+			continue
+		}
+		// Ignore any ops with errors.
+		// NOTE: some of the errors are misleading:
+		// https://issues.couchbase.com/browse/GOCBC-64
+		if getOp.Err == nil {
+			byteValue, ok := getOp.Value.(*[]byte)
+			if ok {
+				result[getOp.Key] = *byteValue
+			}
 		}
 	}
+
 	return result, nil
-
-	// The code below is not working -- the gateload test does not pull any docs
-	// when it is enabled
-
-	/*
-
-		var items []gocb.BulkOp
-		for _, key := range keys {
-			item := &gocb.GetOp{Key: key}
-			items = append(items, item)
-		}
-		err := bucket.Do(items)
-		if err != nil {
-			return nil, err
-		}
-
-		result := make(map[string][]byte)
-		for _, item := range items {
-			getOp := item.(*gocb.GetOp)
-
-			// Ignore any ops with errors.
-			// NOTE: some of the errors are misleading:
-			// https://issues.couchbase.com/browse/GOCBC-64
-			if getOp.Err == nil {
-				result[getOp.Key] = getOp.Value.([]byte)
-
-			}
-			result[getOp.Key] = getOp.Value.([]byte)
-		}
-
-		return result, nil
-	*/
-
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
