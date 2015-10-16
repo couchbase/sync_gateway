@@ -305,7 +305,8 @@ func TestPollingChangesFeed(t *testing.T) {
 		WriteDirectWithKey(db, fmt.Sprintf("multiDoc_%d", i), []string{"PBS", "HBO", "CBS"}, 1)
 		// Midway through, read from HBO
 		if i == 9 {
-			time.Sleep(20 * time.Millisecond)
+			// wait for polling cycle
+			time.Sleep(600 * time.Millisecond)
 			hboChanges, err := db.GetChanges(base.SetOf("HBO"), ChangesOptions{Since: simpleClockSequence(0), Wait: true})
 			assertTrue(t, err == nil, "Error getting changes")
 			assert.Equals(t, len(hboChanges), 10)
