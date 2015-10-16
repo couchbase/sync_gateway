@@ -471,6 +471,7 @@ func (k *kvChangeIndex) newChannelReader(channelName string) (*kvChannelIndex, e
 		return nil, err
 	}
 	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, k.onChange)
+	k.channelIndexReaders[channelName].setType("reader")
 	return k.channelIndexReaders[channelName], nil
 }
 
@@ -487,6 +488,7 @@ func (k *kvChangeIndex) newChannelWriter(channelName string) (*kvChannelIndex, e
 		return nil, err
 	}
 	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, nil)
+	k.channelIndexWriters[channelName].setType("writer")
 	return k.channelIndexWriters[channelName], nil
 }
 

@@ -45,6 +45,7 @@ type kvChannelIndex struct {
 	onChange               func(base.Set)            // Notification callback
 	clock                  *base.SequenceClockImpl   // Channel clock
 	channelStorage         ChannelStorage            // Channel storage - manages interaction with the index format
+	channelIndexType       string                    // Optional type (writer, reader) - used for logging only
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexPartitionMap, stableClockCallback func() base.SequenceClock, onChangeCallback func(base.Set)) *kvChannelIndex {
@@ -108,6 +109,11 @@ func (k *kvChannelIndex) updateIndexCount() error {
 
 	return nil
 
+}
+
+// Set channel index type for logging, diagnostics
+func (k *kvChannelIndex) setType(channelIndexType string) {
+	k.channelIndexType = channelIndexType
 }
 
 func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
@@ -247,10 +253,9 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	atomic.StoreUint32(&k.pollCount, 0)
 	atomic.StoreUint32(&k.unreadPollCount, 0)
 
-	// TODO: pass in an option to reuse existing channel clock
-	chanClock, err := k.loadChannelClock()
+	chanClock, err := k.getChannelClock()
 	if err != nil {
-		base.LogTo("DIndex+", "Error loading channel clock for channel %s - may not exist for channel: %v", k.channelName, err)
+		return results, err
 	}
 
 	base.LogTo("DIndex+", "[channelIndex.GetChanges] Channel clock for channel %s: %s", k.channelName, base.PrintClock(chanClock))
@@ -308,11 +313,32 @@ func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 	return intValue, nil
 }
 
+func (k *kvChannelIndex) getChannelClock() (base.SequenceClock, error) {
+
+	var channelClock base.SequenceClock
+	var err error
+	// If we're polling, return a copy
+	if k.lastPolledChannelClock != nil {
+		k.lastPolledLock.RLock()
+		defer k.lastPolledLock.RUnlock()
+		channelClock = base.NewSequenceClockImpl()
+		channelClock.SetTo(k.lastPolledChannelClock)
+	} else {
+		channelClock, err = k.loadChannelClock()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return channelClock, nil
+
+}
+
 func (k *kvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
+
 	chanClock := base.NewSyncSequenceClock()
 	key := getChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
-	indexExpvars.Add("get_loadChannelClock", 1)
+	indexExpvars.Add(fmt.Sprintf("[%s]get_loadChannelClock", k.channelIndexType), 1)
 	if err != nil {
 		base.LogTo("DIndex+", "Error loading channel clock for key %s:%v", key, err)
 		return chanClock, err
