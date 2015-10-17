@@ -246,6 +246,58 @@ func (s *SyncGatewayPIndex) OpaqueSet(partition string, value []byte) error {
 	return nil
 }
 
+func (s *SyncGatewayPIndex) rollbackSeq(partition string, seq uint64) {
+
+	s.updateSeq(partition, seq, false)
+
+	if err := s.updateMeta(partition, seq); err != nil {
+		Warn("RollbackSeq() unable to update meta: %v", err)
+	}
+
+}
+
+func (s *SyncGatewayPIndex) updateMeta(partition string, seq uint64) error {
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	maxVbno, err := s.bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
+	// DCP stream from that position.
+	vbuuids, _, err := s.bucket.GetStatsVbSeqno(maxVbno)
+	if err != nil {
+		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
+	}
+
+	vbucketId := partitionToVbucketId(partition)
+	vbuuid := vbuuids[vbucketId]
+
+	failOver := make([][]uint64, 1)
+	failOverEntry := []uint64{vbuuid, 0}
+	failOver[0] = failOverEntry
+	metadata := &cbdatasource.VBucketMetaData{
+		SeqStart:    seq,
+		SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
+		SnapStart:   seq,
+		SnapEnd:     seq,
+		FailOverLog: failOver,
+	}
+	buf, err := json.Marshal(metadata)
+	if err == nil {
+		if s.meta == nil {
+			s.meta = make(map[uint16][]byte)
+		}
+		s.meta[vbucketId] = buf
+	}
+
+	return nil
+
+}
+
 // This updates the value stored in s.seqs with the given seq number for the given partition
 // (which is a string value of vbucket id).  Setting warnOnLowerSeqNo to true will check
 // if we are setting the seq number to a _lower_ value than we already have stored for that
@@ -276,7 +328,7 @@ func (s *SyncGatewayPIndex) Rollback(partition string, rollbackSeq uint64) error
 
 	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
 
-	s.updateSeq(partition, rollbackSeq, false)
+	s.rollbackSeq(partition, rollbackSeq)
 
 	return nil
 }
