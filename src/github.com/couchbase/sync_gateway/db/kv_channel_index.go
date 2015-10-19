@@ -349,6 +349,7 @@ func (k *kvChannelIndex) writeClockCas(updateClock base.SequenceClock) error {
 	k.clock.UpdateWithClock(updateClock)
 	value, err := k.clock.Marshal()
 	if err != nil {
+		base.Warn("Error marshalling clock [%s] for update:%+v", base.PrintClock(k.clock), err)
 		return err
 	}
 	casOut, err := writeCasRaw(k.indexBucket, getChannelClockKey(k.channelName), value, k.clock.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {

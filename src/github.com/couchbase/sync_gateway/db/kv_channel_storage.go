@@ -131,10 +131,11 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 		clockUpdates.SetMaxSequence(entry.VbNo, entry.Sequence)
 	}
 
-	for _, blockSet := range blockSets {
+	for blockKey, blockSet := range blockSets {
 		// update the block
 		err := b.writeSingleBlockWithCas(blockSet)
 		if err != nil {
+			base.Warn("Error writing single block with cas for block %s: %+v", blockKey, err)
 			return nil, err
 		}
 	}

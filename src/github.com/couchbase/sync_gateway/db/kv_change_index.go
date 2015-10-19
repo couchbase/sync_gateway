@@ -813,7 +813,10 @@ func (k *kvChangeIndex) addSetToChannelIndex(channelName string, entries []*LogE
 	if err != nil {
 		base.LogFatal("Unable to obtain channel writer - partition map not defined?")
 	}
-	writer.AddSet(entries)
+	err = writer.AddSet(entries)
+	if err != nil {
+		base.Warn("Error writing %d entries for channel [%s]: %+v", len(entries), channelName, err)
+	}
 }
 
 // Add late sequence information to channel cache
