@@ -18,7 +18,10 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"time"
 )
+
+const kDefaultDBOnlineDelay = 0
 
 //////// DATABASE MAINTENANCE:
 
@@ -39,10 +42,100 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+
+func (h *handler) handleDbOnline() error {
+	h.assertAdminOnly()
+
+	delay := kDefaultDBOnlineDelay;
+
+	body, err := h.readJSON()
+	if err == nil {
+		delay, _ = body["delay"].(int)
+	}
+
+
+	base.LogTo("CRUD", "Taking DB : %v, online", h.db.Name)
+
+	//If the DB is already trasitioning to: online or is online silently return
+	if (h.db.State == db.DBOnline || h.db.State == db.DBStarting) {
+		return nil
+	}
+
+	timer := time.NewTimer(time.Duration(delay) * time.Second)
+	go func() {
+		//Set DB state to DBStarting, this wil cause new API requests to be be rejected
+		h.db.State = db.DBStarting
+
+		//Take a write lock on the Database context so that we can cycle the underlying connection
+		h.db.AccessLock.Lock()
+		defer h.db.AccessLock.Unlock()
+
+		//Remove the database from the server context
+		h.server.RemoveDatabase(h.db.Name)
+
+		if _, err := h.server.AddDatabaseFromConfig(config.Databases[h.db.Name]); err != nil {
+			base.LogError(err)
+		}
+
+		<-timer.C
+		//Set DB state to DBOnline, this wil cause new API requests to be be rejected
+		h.server.databases_[h.db.Name].State = db.DBOnline
+	}()
+
+	h.response.Write([]byte("{}"))
+	return nil
+}
+
+func (h *handler) handleDbOffline() error {
+	h.assertAdminOnly()
+	base.LogTo("CRUD", "Taking Database : %v, offline", h.db.Name)
+
+	//If the DB is already trasitioning to: offline or is offline silently return
+	if (h.db.State == db.DBOffline || h.db.State == db.DBStopping ) {
+		return nil
+	}
+
+	//Set DB state to DBStopping, this wil cause new API requests to be be rejected
+	h.db.State = db.DBStopping
+
+	//Close channel to notify all active _changes feeds to close
+	close(h.db.ExitChanges)
+
+	base.LogTo("CRUD", "Waiting for all active calls to complete on Database : %v", h.db.Name)
+	//Block until all current calls have returned, including _changes feeds
+	h.db.AccessLock.Lock()
+	defer h.db.AccessLock.Unlock()
+
+	base.LogTo("CRUD", "Database : %v, is offline", h.db.Name)
+	//set DB state to Offline
+	h.db.State = db.DBOffline
+
+	h.response.Write([]byte("{}"))
+	return nil
+}
+
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
 	h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	return nil
+}
+
+// PUT a new database config
+func (h *handler) handlePutDbConfig() error {
+	h.assertAdminOnly()
+	dbName := h.db.Name
+	var config *DbConfig
+	if err := h.readJSONInto(&config); err != nil {
+		return err
+	}
+	if err := config.setup(dbName); err != nil {
+		return err
+	}
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+	h.server.config.Databases[dbName] = config
+
+	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)

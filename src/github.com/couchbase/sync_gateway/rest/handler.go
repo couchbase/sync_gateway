@@ -69,6 +69,7 @@ type handler struct {
 	startTime      time.Time
 	serialNumber   uint64
 	loggedDuration bool
+	runOffline     bool
 }
 
 type handlerPrivs int
@@ -84,14 +85,26 @@ type handlerMethod func(*handler) error
 // Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq)
+		runOffline := false
+		h := newHandler(server, privs, r, rq, runOffline)
 		err := h.invoke(method)
 		h.writeError(err)
 		h.logDuration(true)
 	})
 }
 
-func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request) *handler {
+// Creates an http.Handler that will run a handler with the given method even if the target DB is offline
+func makeOfflineHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
+	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+		runOffline := true
+		h := newHandler(server, privs, r, rq, runOffline)
+		err := h.invoke(method)
+		h.writeError(err)
+		h.logDuration(true)
+	})
+}
+
+func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, runOffline bool) *handler {
 	return &handler{
 		server:       server,
 		privs:        privs,
@@ -100,6 +113,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		status:       http.StatusOK,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
 		startTime:    time.Now(),
+		runOffline:      runOffline,
 	}
 }
 
@@ -156,7 +170,23 @@ func (h *handler) invoke(method handlerMethod) error {
 		if err != nil {
 			return err
 		}
+
+		if (dbContext.State == db.DBOnline) {
+			//Take a readlock for any method that does not run offline, run offline methods will take a write lock
+			if (!h.runOffline) {
+				//get a read lock on the dbContext
+				dbContext.AccessLock.RLock()
+
+				//defer releasing the dbContext until after the handler method returns
+				defer dbContext.AccessLock.RUnlock()
+			}
+		} else { //DB is offline or in a transition state
+			if (!h.runOffline) { //only offline methods can run if DB is not in Online state
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
+			}
+		}
 	}
+
 
 	return method(h) // Call the actual handler code
 }
@@ -183,7 +213,7 @@ func (h *handler) logDuration(realTime bool) {
 	var duration time.Duration
 	if realTime {
 		duration = time.Since(h.startTime)
-		bin := int(duration/(100*time.Millisecond)) * 100
+		bin := int(duration / (100 * time.Millisecond)) * 100
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 
@@ -193,7 +223,7 @@ func (h *handler) logDuration(realTime bool) {
 	}
 	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
 		h.serialNumber, h.status, h.statusMessage,
-		float64(duration)/float64(time.Millisecond))
+		float64(duration) / float64(time.Millisecond))
 }
 
 // Used for indefinitely-long handlers like _changes that we don't want to track duration of
@@ -602,7 +632,7 @@ func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, st
 	}
 	if start >= contentLength {
 		return http.StatusRequestedRangeNotSatisfiable, 0, 0
-	} else if start == 0 && end == contentLength-1 {
+	} else if start == 0 && end == contentLength - 1 {
 		return // no-op
 	}
 

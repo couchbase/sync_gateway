@@ -288,11 +288,24 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
+	dbcontext.ExitChanges = make(chan struct{})
+
+	if (config.StartOffline) {
+		dbcontext.State = db.DBOffline
+	} else {
+		dbcontext.State = db.DBOnline
+	}
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config
 	sc.config.Databases[config.Name] = config
+
+
+	//if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+	//	dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB started from config", *sc.config.AdminInterface)
+	//}
+
 	return dbcontext, nil
 }
 

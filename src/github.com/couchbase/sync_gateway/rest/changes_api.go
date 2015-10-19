@@ -91,7 +91,7 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
-		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat*1000, true)
+		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat * 1000, true)
 		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS, true)
 
 	} else {
@@ -178,7 +178,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 
 		encoder := json.NewEncoder(h.response)
-	loop:
+		loop:
 		for {
 			select {
 			case entry, ok := <-feed:
@@ -204,6 +204,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 			case <-timeout:
 				message = "OK (timeout)"
+				break loop
+			case <-h.db.ExitChanges:
+				message = "OK DB has gone offline"
 				break loop
 			}
 			if err != nil {
@@ -247,7 +250,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	var timeout <-chan time.Time
 	var err error
 
-loop:
+	loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
@@ -282,7 +285,7 @@ loop:
 				entries := []*db.ChangeEntry{entry}
 				waiting := false
 				// Batch up as many entries as we can without waiting:
-			collect:
+				collect:
 				for len(entries) < 20 {
 					select {
 					case entry, ok = <-feed:
@@ -307,7 +310,7 @@ loop:
 					err = send(nil)
 				}
 
-				lastSeq = entries[len(entries)-1].Seq
+				lastSeq = entries[len(entries) - 1].Seq
 				if options.Limit > 0 {
 					if len(entries) >= options.Limit {
 						break loop
@@ -315,7 +318,7 @@ loop:
 					options.Limit -= len(entries)
 				}
 			}
-			// Reset the timeout after sending an entry:
+		// Reset the timeout after sending an entry:
 			if timer != nil {
 				timer.Stop()
 				timer = nil
@@ -324,6 +327,8 @@ loop:
 			err = send(nil)
 			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 		case <-timeout:
+			break loop
+		case <-h.db.ExitChanges:
 			break loop
 		}
 
@@ -441,7 +446,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		input.HeartbeatMs,
 		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
-		h.server.config.MaxHeartbeat*1000,
+		h.server.config.MaxHeartbeat * 1000,
 		true,
 	)
 

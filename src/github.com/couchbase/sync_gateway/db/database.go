@@ -25,6 +25,16 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"sync"
+)
+
+type RunState int
+
+const (
+	DBOffline RunState = iota
+	DBStarting
+	DBOnline
+	DBStopping
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -44,6 +54,9 @@ type DatabaseContext struct {
 	changeCache        changeCache             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
+	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State              RunState                //The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
 }
 
 const DefaultRevsLimit = 1000
@@ -86,6 +99,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
+
 	context := &DatabaseContext{
 		Name:       dbName,
 		Bucket:     bucket,
@@ -157,7 +171,7 @@ func CreateDatabase(context *DatabaseContext) (*Database, error) {
 
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
-		db.Bucket == otherdb.Bucket
+	db.Bucket == otherdb.Bucket
 }
 
 // Reloads the database's User object, in case its persistent properties have been changed.
@@ -273,7 +287,7 @@ func installViews(bucket base.Bucket) error {
 						}
 					}`
 	channels_map = fmt.Sprintf(channels_map, channels.Deleted, EnableStarChannelLog,
-		channels.Removed|channels.Deleted, channels.Removed)
+		channels.Removed | channels.Deleted, channels.Removed)
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
@@ -353,10 +367,10 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 	type viewRow struct {
 		Key   string
 		Value struct {
-			RevID    string   `json:"r"`
-			Sequence uint64   `json:"s"`
-			Channels []string `json:"c"`
-		}
+				  RevID    string   `json:"r"`
+				  Sequence uint64   `json:"s"`
+				  Channels []string `json:"c"`
+			  }
 	}
 	var vres struct {
 		Rows []viewRow
@@ -625,8 +639,8 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 
 				if rev.ID == doc.CurrentRev {
 					changed = len(doc.Access.updateAccess(doc, access)) +
-						len(doc.RoleAccess.updateAccess(doc, roles)) +
-						len(doc.updateChannels(channels))
+					len(doc.RoleAccess.updateAccess(doc, roles)) +
+					len(doc.updateChannels(channels))
 				}
 			})
 

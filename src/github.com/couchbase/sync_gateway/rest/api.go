@@ -109,6 +109,10 @@ func (h *handler) handleFlush() error {
 }
 
 func (h *handler) handleResync() error {
+
+	if (h.db.State != db.DBOffline) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "DB must be _offline before calling _resync")
+	}
 	docsChanged, err := h.db.UpdateAllDocChannels(true, false)
 	if err != nil {
 		return err
@@ -118,7 +122,7 @@ func (h *handler) handleResync() error {
 }
 
 func (h *handler) instanceStartTime() json.Number {
-	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
+	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano() / 1000, 10))
 }
 
 func (h *handler) handleGetDB() error {
@@ -129,14 +133,16 @@ func (h *handler) handleGetDB() error {
 	if err != nil {
 		return err
 	}
+
 	response := db.Body{
 		"db_name":              h.db.Name,
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
 		"instance_start_time":  h.instanceStartTime(),
 		"compact_running":      false, // TODO: Implement this
-		"purge_seq":            0,     // TODO: Should track this value
-		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
+		"purge_seq":            0, // TODO: Should track this value
+		"disk_format_version":  0, // Probably meaningless, but add for compatibility
+		"offline:":                (h.db.State == db.DBOffline),
 		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)

@@ -41,7 +41,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	r.Handle("/", makeHandler(sc, privs, (*handler).handleRoot)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
@@ -187,12 +187,18 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	// Database-relative handlers:
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
+	dbr.Handle("/_config",
+		makeHandler(sc, adminPrivs, (*handler).handlePutDbConfig)).Methods("PUT")
 	dbr.Handle("/_resync",
-		makeHandler(sc, adminPrivs, (*handler).handleResync)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleResync)).Methods("POST")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_flush",
 		makeHandler(sc, adminPrivs, (*handler).handleFlush)).Methods("POST")
+	dbr.Handle("/_online",
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOnline)).Methods("POST")
+	dbr.Handle("/_offline",
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOffline)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
@@ -205,7 +211,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	r.Handle("/{newdb:"+dbRegex+"}/",
 		makeHandler(sc, adminPrivs, (*handler).handleCreateDB)).Methods("PUT")
 	r.Handle("/{db:"+dbRegex+"}/",
-		makeHandler(sc, adminPrivs, (*handler).handleDeleteDB)).Methods("DELETE")
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",
 		makeHandler(sc, adminPrivs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
@@ -236,7 +242,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			router.ServeHTTP(response, rq)
 		} else {
 			// Log the request
-			h := newHandler(sc, privs, response, rq)
+			h := newHandler(sc, privs, response, rq, false)
 			h.logRequestLine()
 
 			// What methods would have matched?
