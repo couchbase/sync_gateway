@@ -186,6 +186,16 @@ case $OS in
         ;;
     RedHat|CentOS)
         case $OS_MAJOR_VERSION in
+            5) 
+                setup_output_dirs
+                render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
+                chmod 755 /etc/init.d/${SERVICE_NAME}
+                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
+                chkconfig --add ${SERVICE_NAME}
+                chkconfig ${SERVICE_NAME} on
+                service ${SERVICE_NAME} start
+                ;;
             6)
                 setup_output_dirs
                 render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
