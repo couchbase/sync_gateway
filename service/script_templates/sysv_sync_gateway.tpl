@@ -1,31 +1,13 @@
 #!/bin/sh
-#
-# Startup / shutdown script for the couchbase server
-#
-# Copyright (c) 2011, Couchbase, Inc.
-# All rights reserved
-#
-#
 ### BEGIN INIT INFO
 # Provides:          ${SERVICE_NAME}
-# Required-Start:    $network $local_fs
-# Required-Stop:
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: couchbase sync gateway
-# Description:       couchbase sync gateway
-
+# Short-Description: Start sync_gateway service at boot time
+# Description:       Allow sync_gateway to be run as a service on linux/unix distros
 ### END INIT INFO
-
-. /etc/init.d/functions
-
-if [ "$(id -u)" != "0" ]; then
-    echo "Must run as root"
-    exit 1
-fi
-
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-
 
 RUNAS=${RUNAS_TEMPLATE_VAR}
 RUNBASE=${RUNBASE_TEMPLATE_VAR}
