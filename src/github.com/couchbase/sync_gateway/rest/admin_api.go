@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"time"
+	"sync/atomic"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -42,76 +43,68 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
-
+// Take a DB online, first reload the DB config
 func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
-
-	delay := kDefaultDBOnlineDelay;
-
-	body, err := h.readJSON()
-	if err == nil {
-		delay, _ = body["delay"].(int)
-	}
-
-
-	base.LogTo("CRUD", "Taking DB : %v, online", h.db.Name)
-
+	dbState := atomic.LoadUint32(&h.db.State)
 	//If the DB is already trasitioning to: online or is online silently return
-	if (h.db.State == db.DBOnline || h.db.State == db.DBStarting) {
+	if (dbState == db.DBOnline || dbState == db.DBStarting) {
 		return nil
 	}
 
-	timer := time.NewTimer(time.Duration(delay) * time.Second)
+	//If the DB is currently re-syncing return an error asking the user to retry later
+	if (dbState == db.DBResyncing) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is in progress, this may take some time, try again later")
+	}
+
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	var input struct {
+		Delay int           `json:"delay"`
+	}
+
+	input.Delay = kDefaultDBOnlineDelay;
+
+	json.Unmarshal(body, &input);
+
+	base.LogTo("CRUD", "Taking Database : %v, online in %v seconds", h.db.Name, input.Delay)
+
+	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
 	go func() {
-		//Set DB state to DBStarting, this wil cause new API requests to be be rejected
-		h.db.State = db.DBStarting
-
-		//Take a write lock on the Database context so that we can cycle the underlying connection
-		h.db.AccessLock.Lock()
-		defer h.db.AccessLock.Unlock()
-
-		//Remove the database from the server context
-		h.server.RemoveDatabase(h.db.Name)
-
-		if _, err := h.server.AddDatabaseFromConfig(config.Databases[h.db.Name]); err != nil {
-			base.LogError(err)
-		}
-
 		<-timer.C
-		//Set DB state to DBOnline, this wil cause new API requests to be be rejected
-		h.server.databases_[h.db.Name].State = db.DBOnline
+
+		//We can only transition to Online from Offline state
+		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
+			//Take a write lock on the Database context, so that we can cycle the underlying Database
+			// without any other call running concurrently
+			h.db.AccessLock.Lock()
+			defer h.db.AccessLock.Unlock()
+
+			//Remove the database from the server context
+			h.server.RemoveDatabase(h.db.Name)
+
+			if _, err := h.server.AddDatabaseFromConfig(h.server.config.Databases[h.db.Name]); err != nil {
+				base.LogError(err)
+				return
+			}
+
+			//Set DB state to DBOnline, this wil cause new API requests to be be rejected
+			atomic.StoreUint32(&h.server.databases_[h.db.Name].State, db.DBOnline)
+		} else {
+			base.LogTo("CRUD", "Unable to take Database : %v, online after %v seconds, database must be in Offline state", h.db.Name, input.Delay)
+		}
 	}()
 
-	h.response.Write([]byte("{}"))
 	return nil
 }
 
+//Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
-	base.LogTo("CRUD", "Taking Database : %v, offline", h.db.Name)
-
-	//If the DB is already trasitioning to: offline or is offline silently return
-	if (h.db.State == db.DBOffline || h.db.State == db.DBStopping ) {
-		return nil
-	}
-
-	//Set DB state to DBStopping, this wil cause new API requests to be be rejected
-	h.db.State = db.DBStopping
-
-	//Close channel to notify all active _changes feeds to close
-	close(h.db.ExitChanges)
-
-	base.LogTo("CRUD", "Waiting for all active calls to complete on Database : %v", h.db.Name)
-	//Block until all current calls have returned, including _changes feeds
-	h.db.AccessLock.Lock()
-	defer h.db.AccessLock.Unlock()
-
-	base.LogTo("CRUD", "Database : %v, is offline", h.db.Name)
-	//set DB state to Offline
-	h.db.State = db.DBOffline
-
-	h.response.Write([]byte("{}"))
-	return nil
+	return h.db.TakeDbOffline()
 }
 
 // Get admin database info

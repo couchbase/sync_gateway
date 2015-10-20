@@ -26,16 +26,24 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"sync"
+	"sync/atomic"
 )
 
-type RunState int
-
 const (
-	DBOffline RunState = iota
+	DBOffline uint32 = iota
 	DBStarting
 	DBOnline
 	DBStopping
+	DBResyncing
 )
+
+var RunStateString = []string{
+	DBOffline:        "Offline",
+	DBStarting:        "Starting",
+	DBOnline:        "Online",
+	DBStopping:        "Stopping",
+	DBResyncing:    "Resyncing",
+}
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
@@ -55,7 +63,7 @@ type DatabaseContext struct {
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              RunState                //The runtime state of the DB from a service perspective
+	State              uint32                  //The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
 }
 
@@ -83,8 +91,8 @@ func ValidateDatabaseName(dbName string) error {
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(spec)
+func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err error)) (bucket base.Bucket, err error) {
+	bucket, err = base.GetBucket(spec, callback)
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
 			"Unable to connect to server: %s", err)
@@ -125,7 +133,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 	}, cacheOptions)
 	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
-	if err = context.tapListener.Start(bucket, true); err != nil {
+	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
+		context.TakeDbOffline()
+	}); err != nil {
 		return nil, err
 	}
 	go context.watchDocChanges()
@@ -149,10 +159,40 @@ func (context *DatabaseContext) RestartListener() error {
 	context.tapListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	if err := context.tapListener.Start(context.Bucket, true); err != nil {
+	if err := context.tapListener.Start(context.Bucket, true, nil); err != nil {
 		return err
 	}
 	return nil
+}
+
+
+func (dc *DatabaseContext) TakeDbOffline() error {
+	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
+	dbState := atomic.LoadUint32(&dc.State)
+	//If the DB is already trasitioning to: offline or is offline silently return
+	if (dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping ) {
+		return nil
+	}
+
+	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
+
+		//notify all active _changes feeds to close
+		close(dc.ExitChanges)
+
+		base.LogTo("CRUD", "Waiting for all active calls to complete on Database : %v", dc.Name)
+		//Block until all current calls have returned, including _changes feeds
+		dc.AccessLock.Lock()
+		defer dc.AccessLock.Unlock()
+
+		base.LogTo("CRUD", "Database : %v, is offline", dc.Name)
+		//set DB state to Offline
+		atomic.StoreUint32(&dc.State, DBOffline)
+
+		return nil
+	} else {
+		base.LogTo("CRUD", "Unable to take Database offline, database must be in Online state")
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to take Database offline, database must be in Online state")
+	}
 }
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {

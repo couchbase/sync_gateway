@@ -188,7 +188,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
 	dbr.Handle("/_config",
-		makeHandler(sc, adminPrivs, (*handler).handlePutDbConfig)).Methods("PUT")
+		makeOfflineHandler(sc, adminPrivs, (*handler).handlePutDbConfig)).Methods("PUT")
 	dbr.Handle("/_resync",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleResync)).Methods("POST")
 	dbr.Handle("/_vacuum",

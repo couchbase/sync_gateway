@@ -28,7 +28,9 @@ type Shadower struct {
 
 // Creates a new Shadower.
 func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp) (*Shadower, error) {
-	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: 0})
+	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: 0},func(bucket string, err error) {
+		context.TakeDbOffline()
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"sync/atomic"
 )
 
 const ServerName = "Couchbase Sync Gateway"
@@ -110,14 +111,26 @@ func (h *handler) handleFlush() error {
 
 func (h *handler) handleResync() error {
 
-	if (h.db.State != db.DBOffline) {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "DB must be _offline before calling _resync")
+	//If the DB is already re syncing, return error to user
+	dbState := atomic.LoadUint32(&h.db.State)
+	if (dbState == db.DBResyncing) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is already in progress")
 	}
-	docsChanged, err := h.db.UpdateAllDocChannels(true, false)
-	if err != nil {
-		return err
+
+	if (dbState != db.DBOffline) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling /_resync")
 	}
-	h.writeJSON(db.Body{"changes": docsChanged})
+
+	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
+
+		docsChanged, err := h.db.UpdateAllDocChannels(true, false)
+		if err != nil {
+			return err
+		}
+		h.writeJSON(db.Body{"changes": docsChanged})
+
+		atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
+	}
 	return nil
 }
 
@@ -142,7 +155,7 @@ func (h *handler) handleGetDB() error {
 		"compact_running":      false, // TODO: Implement this
 		"purge_seq":            0, // TODO: Should track this value
 		"disk_format_version":  0, // Probably meaningless, but add for compatibility
-		"offline:":                (h.db.State == db.DBOffline),
+		"state":               db.RunStateString[atomic.LoadUint32(&h.db.State)],
 		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)
