@@ -256,6 +256,18 @@ func addCbgtRoutes(router *mux.Router, sc *ServerContext) error {
 	if err != nil {
 		return err
 	}
+
+	subrouterUI := router.PathPrefix("/_cbgt/ui").Subrouter()
+	_ = rest.InitStaticRouter(subrouterUI,
+		staticDir, staticETag, []string{
+			"/indexes",
+			"/nodes",
+			"/monitor",
+			"/manage",
+			"/logs",
+			"/debug",
+		}, nil)
+
 	return nil
 }
 
