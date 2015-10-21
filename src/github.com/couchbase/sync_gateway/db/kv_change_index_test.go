@@ -88,22 +88,6 @@ func simpleClockSequence(seq uint64) SequenceID {
 	return result
 }
 
-func TestChannelPartitionMap(t *testing.T) {
-	cpMap := make(ChannelPartitionMap, 0)
-	channels := []string{"A", "B", "C"}
-	partitions := []uint16{0, 1, 2, 3}
-	for _, ch := range channels {
-		for _, par := range partitions {
-			entry := &LogEntry{Sequence: 1, VbNo: 1}
-			chanPar := ChannelPartition{channelName: ch, partition: par}
-			cpMap.add(chanPar, entry)
-		}
-	}
-	log.Printf("map: %v", cpMap)
-	assert.True(t, len(cpMap) == 12)
-
-}
-
 func TestChangeIndexAddEntry(t *testing.T) {
 
 	base.LogKeys["DCache+"] = true
@@ -533,4 +517,38 @@ func TestChangeIndexPrincipal(t *testing.T) {
 	assert.Equals(t, principal.VbNo, uint16(1))
 	assert.DeepEquals(t, principal.ExplicitChannels, channels.TimedSet{"PBS": 1, "NBC": 2})
 
+}
+
+func TestChangeIndexAddSet(t *testing.T) {
+
+	base.LogKeys["DIndex+"] = true
+	changeIndex, bucket := testKvChangeIndex("indexBucket")
+	defer changeIndex.Stop()
+
+	entries := make([]*LogEntry, 1000)
+	for vb := 0; vb < 1000; vb++ {
+		entries[vb] = channelEntry(uint16(vb), 1, fmt.Sprintf("foo%d", vb), "1-a", []string{"ABC"})
+	}
+
+	indexPartitions := testPartitionMap()
+	channelStorage := NewChannelStorage(bucket, "", indexPartitions)
+	changeIndex.indexEntries(entries, indexPartitions, channelStorage)
+
+	// wait for add to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify channel clocks
+	channelClock := base.SequenceClockImpl{}
+	chanClockBytes, _, err := bucket.GetRaw(getChannelClockKey("ABC"))
+	err = channelClock.Unmarshal(chanClockBytes)
+	assertNoError(t, err, "Unmarshal channel clock sequence")
+
+	starChannelClock := base.SequenceClockImpl{}
+	chanClockBytes, _, err = bucket.GetRaw(getChannelClockKey("*"))
+	err = starChannelClock.Unmarshal(chanClockBytes)
+
+	for vb := uint16(0); vb < 1000; vb++ {
+		assert.Equals(t, channelClock.GetSequence(vb), uint64(1))
+		assert.Equals(t, starChannelClock.GetSequence(vb), uint64(1))
+	}
 }
