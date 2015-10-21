@@ -60,24 +60,8 @@ type partitionStorage struct {
 	Index uint16   `json:"index"`
 	VbNos []uint16 `json:"vbNos"`
 }
-type ChannelPartition struct {
-	channelName string
-	partition   uint16
-}
-
-//
-type ChannelPartitionMap map[ChannelPartition][]*LogEntry
 
 var indexExpvars = expvar.NewMap("syncGateway_index")
-
-func (cpm ChannelPartitionMap) add(cp ChannelPartition, entry *LogEntry) {
-	_, found := cpm[cp]
-	if !found {
-		// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-		cpm[cp] = make([]*LogEntry, 0, maxCacheUpdate)
-	}
-	cpm[cp] = append(cpm[cp], entry)
-}
 
 ////// Cache writer API
 
@@ -564,85 +548,88 @@ func (k *kvChangeIndex) indexPending() {
 		base.LogFatal("Unable to load index partition map - cannot write incoming entry to index")
 	}
 
+	// Generic channelStorage for log entry storage (if needed)
+	channelStorage := NewChannelStorage(k.indexBucket, "", indexPartitions)
+
 	// Continual processing of arriving entries from the feed.
 	for {
-		// Wait group tracks when the current buffer has been completely processed
-		var wg sync.WaitGroup
-		channelSets := make(map[ChannelPartition][]*LogEntry)
-		updatedSequences := base.NewSequenceClockImpl()
-
-		// Generic channelStorage for log entry storage
-		channelStorage := NewChannelStorage(k.indexBucket, "", indexPartitions)
-		// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
-		for _, logEntry := range entries {
-			base.LogTo("DIndex+", "Processing entry with docID:%s, vbno: %d, sequence:%d", logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
-
-			// If principal, update the stable sequence and continue
-			if logEntry.IsPrincipal {
-				updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
-				continue
-			}
-
-			// Add index log entry if needed
-			if channelStorage.StoresLogEntries() {
-				channelStorage.WriteLogEntry(logEntry)
-			}
-			// Collect entries by channel
-			// Remove channels from entry to save space in memory, index entries
-			ch := logEntry.Channels
-			logEntry.Channels = nil
-			for channelName, removal := range ch {
-				if removal == nil || removal.RevID == logEntry.RevID {
-					// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
-					chanPartition := ChannelPartition{channelName: channelName, partition: indexPartitions[logEntry.VbNo]}
-					_, found := channelSets[chanPartition]
-					if !found {
-						// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-						channelSets[chanPartition] = make([]*LogEntry, 0, maxCacheUpdate)
-					}
-					if removal != nil {
-						removalEntry := *logEntry
-						removalEntry.Flags |= channels.Removed
-						channelSets[chanPartition] = append(channelSets[chanPartition], &removalEntry)
-					} else {
-						channelSets[chanPartition] = append(channelSets[chanPartition], logEntry)
-					}
-				}
-			}
-			if EnableStarChannelLog {
-				chanPartition := ChannelPartition{channelName: "*", partition: indexPartitions[logEntry.VbNo]}
-				_, found := channelSets[chanPartition]
-				if !found {
-					// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-					channelSets[chanPartition] = make([]*LogEntry, 0, maxCacheUpdate)
-				}
-				channelSets[chanPartition] = append(channelSets[chanPartition], logEntry)
-			}
-
-			// Track vbucket sequences for clock update
-			updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
-
-		}
-
-		// Iterate over channel sets to update channel index
-		for chanPartition, entrySet := range channelSets {
-			wg.Add(1)
-			go func(chanPartition ChannelPartition, entrySet []*LogEntry) {
-				defer wg.Done()
-				k.addSetToChannelIndex(chanPartition.channelName, entrySet)
-
-			}(chanPartition, entrySet)
-		}
-		wg.Wait()
-
-		// Update stable sequence
-		err = k.updateStableSequence(updatedSequences)
-		if err != nil {
-			base.LogPanic("Error updating stable sequence", err)
-		}
-
+		k.indexEntries(entries, indexPartitions, channelStorage)
 		// Read next entries
 		entries = k.readFromPending()
+	}
+}
+
+// Index a group of entries.  Iterates over the entry set to build updates per channel, then
+// updates using channel index.
+func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexPartitionMap, channelStorage ChannelStorage) {
+	// Wait group tracks when the current buffer has been completely processed
+	var wg sync.WaitGroup
+	channelSets := make(map[string][]*LogEntry)
+	updatedSequences := base.NewSequenceClockImpl()
+
+	// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
+	for _, logEntry := range entries {
+
+		// If principal, update the stable sequence and continue
+		if logEntry.IsPrincipal {
+			updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
+			continue
+		}
+
+		// Add index log entry if needed
+		if channelStorage.StoresLogEntries() {
+			channelStorage.WriteLogEntry(logEntry)
+		}
+		// Collect entries by channel
+		// Remove channels from entry to save space in memory, index entries
+		ch := logEntry.Channels
+		logEntry.Channels = nil
+		for channelName, removal := range ch {
+			if removal == nil || removal.RevID == logEntry.RevID {
+				// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
+				_, found := channelSets[channelName]
+				if !found {
+					// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
+					channelSets[channelName] = make([]*LogEntry, 0, maxCacheUpdate)
+				}
+				if removal != nil {
+					removalEntry := *logEntry
+					removalEntry.Flags |= channels.Removed
+					channelSets[channelName] = append(channelSets[channelName], &removalEntry)
+				} else {
+					channelSets[channelName] = append(channelSets[channelName], logEntry)
+				}
+			}
+		}
+		if EnableStarChannelLog {
+			_, found := channelSets[channels.UserStarChannel]
+			if !found {
+				// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
+				channelSets[channels.UserStarChannel] = make([]*LogEntry, 0, maxCacheUpdate)
+			}
+			channelSets[channels.UserStarChannel] = append(channelSets[channels.UserStarChannel], logEntry)
+		}
+
+		// Track vbucket sequences for clock update
+		updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
+
+	}
+
+	// Iterate over channel sets to update channel index
+	for channelName, entrySet := range channelSets {
+		wg.Add(1)
+		go func(channelName string, entrySet []*LogEntry) {
+			defer wg.Done()
+			k.addSetToChannelIndex(channelName, entrySet)
+
+		}(channelName, entrySet)
+	}
+	wg.Wait()
+
+	// Update stable sequence
+	err := k.updateStableSequence(updatedSequences)
+	if err != nil {
+		base.LogPanic("Error updating stable sequence", err)
 	}
 }
 
@@ -743,16 +730,6 @@ func (k *kvChangeIndex) pollReaders() bool {
 	}
 
 	return true
-}
-
-func addEntryToMap(setMap map[ChannelPartition][]*LogEntry, channelName string, partition uint16, entry *LogEntry) {
-	chanPartition := ChannelPartition{channelName: channelName, partition: partition}
-	_, found := setMap[chanPartition]
-	if !found {
-		// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-		setMap[chanPartition] = make([]*LogEntry, 0, maxCacheUpdate)
-	}
-	setMap[chanPartition] = append(setMap[chanPartition], entry)
 }
 
 func (k *kvChangeIndex) SetNotifier(onChange func(base.Set)) {
