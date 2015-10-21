@@ -10,9 +10,12 @@
 package base
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func GetBucketOrPanic() Bucket {
@@ -51,6 +54,61 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 	err = bucket.Delete(key)
 	if err != nil {
 		t.Errorf("Error removing key from bucket")
+	}
+
+}
+
+func CouchbaseTestBulkGetRaw(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+
+	keyPrefix := "TestBulkGetRaw"
+	keySet := make([]string, 10)
+	valueSet := make(map[string][]byte, 10)
+
+	for i := 0; i < 10; i++ {
+		key := fmt.Sprintf("%s%d", keyPrefix, i)
+		val := []byte(fmt.Sprintf("bar%d", i))
+		keySet[i] = key
+		valueSet[key] = val
+
+		_, _, err := bucket.GetRaw(key)
+		if err == nil {
+			t.Errorf("Key [%s] should not exist yet, expected error but got nil", key)
+		}
+
+		if err := bucket.SetRaw(key, 0, val); err != nil {
+			t.Errorf("Error calling SetRaw(): %v", err)
+		}
+	}
+
+	results, err := bucket.GetBulkRaw(keySet)
+	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
+	assert.True(t, len(results) == 10)
+
+	// validate results, and prepare new keySet with non-existent keys
+	mixedKeySet := make([]string, 20)
+	for index, key := range keySet {
+		// Verify value
+		assert.True(t, bytes.Equal(results[key], valueSet[key]))
+		mixedKeySet[2*index] = key
+		mixedKeySet[2*index+1] = fmt.Sprintf("%s_invalid", key)
+	}
+
+	// Validate bulkGet that include non-existent keys work as expected
+	mixedResults, err := bucket.GetBulkRaw(mixedKeySet)
+	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
+	assert.True(t, len(results) == 10)
+
+	// Clean up
+	for _, key := range keySet {
+		// validate mixed results
+		assert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
+		// Delete key
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
 	}
 
 }
