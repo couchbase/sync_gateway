@@ -36,6 +36,8 @@ EOF
 
     chmod 755 @@PREFIX@@/service/sync_gateway_service_install.sh
 
+    chmod 755 @@PREFIX@@/examples
+
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 
     cat <<EOF
