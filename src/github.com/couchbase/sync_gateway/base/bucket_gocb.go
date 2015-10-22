@@ -10,12 +10,19 @@
 package base
 
 import (
+	"expvar"
 	"fmt"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocb/gocbcore"
 	"github.com/couchbase/sg-bucket"
 )
+
+var gocbExpvars *expvar.Map
+
+func init() {
+	gocbExpvars = expvar.NewMap("syncGateway_gocb")
+}
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
 type CouchbaseBucketGoCB struct {
@@ -73,12 +80,15 @@ func (bucket CouchbaseBucketGoCB) GetName() string {
 }
 
 func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
+	gocbExpvars.Add("Get", 1)
 	casGoCB, err := bucket.Bucket.Get(k, rv)
 	return uint64(casGoCB), err
 }
 
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	var returnVal interface{}
+
+	gocbExpvars.Add("GetRaw", 1)
 	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
 	if err != nil {
 		return nil, 0, err
@@ -88,6 +98,7 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
+	gocbExpvars.Add("GetBulkRaw", 1)
 	result := make(map[string][]byte)
 	var items []gocb.BulkOp
 	for _, key := range keys {
@@ -121,6 +132,7 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
 	var returnVal interface{}
+	gocbExpvars.Add("GetAndTouchRaw", 1)
 	casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
 	if err != nil {
 		return nil, 0, err
@@ -144,16 +156,20 @@ func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {
 }
 
 func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
+
+	gocbExpvars.Add("Set", 1)
 	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
 	return err
 }
 
 func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
+	gocbExpvars.Add("SetRaw", 1)
 	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
 	return err
 }
 
 func (bucket CouchbaseBucketGoCB) Delete(k string) error {
+	gocbExpvars.Add("Delete", 1)
 	_, err := bucket.Bucket.Remove(k, 0)
 	return err
 }
@@ -177,11 +193,13 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 
 	if cas == 0 {
 		// Try to insert the value into the bucket
+		gocbExpvars.Add("WriteCas_Insert", 1)
 		newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
 		return uint64(newCas), err
 	}
 
 	// Otherwise, replace existing value
+	gocbExpvars.Add("WriteCas_Replace", 1)
 	newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
 
 	return uint64(newCas), err
@@ -199,6 +217,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		// Load the existing value.
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
 		// serious error, it will probably recur when calling other ops below
+
+		gocbExpvars.Add("Update_Get", 1)
 		cas, _ := bucket.Bucket.Get(k, &value)
 
 		var callbackParam []byte
@@ -216,15 +236,19 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
+
+			gocbExpvars.Add("Update_Insert", 1)
 			_, err = bucket.Bucket.Insert(k, value, uint32(exp))
 		} else {
 			if value == nil {
 				// In order to match the go-couchbase bucket behavior, if the
 				// callback returns nil, we delete the doc
+				gocbExpvars.Add("Update_Remove", 1)
 				_, err = bucket.Bucket.Remove(k, cas)
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
+				gocbExpvars.Add("Update_Replace", 1)
 				_, err = bucket.Bucket.Replace(k, value, cas, uint32(exp))
 			}
 		}
