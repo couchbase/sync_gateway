@@ -65,6 +65,12 @@ func TestViewQuery(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
 
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?limit=1", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 1)
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
