@@ -205,6 +205,10 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
+	dbr.Handle("/_index/channel/{channel}",
+		makeHandler(sc, adminPrivs, (*handler).handleIndexChannel)).Methods("GET")
+	dbr.Handle("/_index/channels",
+		makeHandler(sc, adminPrivs, (*handler).handleIndexAllChannels)).Methods("GET")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.

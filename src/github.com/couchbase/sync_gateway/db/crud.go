@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -974,7 +973,6 @@ func writeCasRaw(bucket base.Bucket, key string, value []byte, cas uint64, exp i
 		if err != nil {
 			// CAS failure - reload block for another try
 			indexExpvars.Add("writeCasRaw_cas_fail", 1)
-			log.Println("CAS error - retrying")
 		} else {
 			// Success - return the new cas value
 			indexExpvars.Add("writeCasRaw_cas_success", 1)

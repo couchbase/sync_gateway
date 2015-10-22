@@ -456,6 +456,7 @@ func (k *kvChangeIndex) newChannelReader(channelName string) (*kvChannelIndex, e
 	}
 	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, k.onChange)
 	k.channelIndexReaders[channelName].setType("reader")
+	indexExpvars.Add("polling_readers_added", 1)
 	return k.channelIndexReaders[channelName], nil
 }
 
@@ -728,6 +729,7 @@ func (k *kvChangeIndex) pollReaders() bool {
 
 	// Remove cancelled channels from channel readers
 	for channelName := range cancelledChannels {
+		indexExpvars.Add("polling_readers_removed", 1)
 		delete(k.channelIndexReaders, channelName)
 	}
 
@@ -889,4 +891,91 @@ func uint64ToByte(input uint64) []byte {
 	result := new(bytes.Buffer)
 	binary.Write(result, binary.LittleEndian, input)
 	return result.Bytes()
+}
+
+// debug API
+
+type AllChannelStats struct {
+	Channels []ChannelStats `json:"channels"`
+}
+type ChannelStats struct {
+	Name         string              `json:"channel_name"`
+	IndexStats   ChannelIndexStats   `json:"index,omitempty"`
+	PollingStats ChannelPollingStats `json:"poll,omitempty"`
+}
+
+type ChannelIndexStats struct {
+	Clock     string `json:"index_clock,omitempty"`
+	ClockHash uint64 `json:"index_clock_hash,omitempty"`
+}
+type ChannelPollingStats struct {
+	Clock     string `json:"poll_clock,omitempty"`
+	ClockHash uint64 `json:"poll_clock_hash,omitempty"`
+}
+
+func (db *DatabaseContext) IndexChannelStats(channelName string) (*ChannelStats, error) {
+
+	kvIndex, ok := db.changeCache.(*kvChangeIndex)
+	if !ok {
+		return nil, errors.New("No channel index in use")
+	}
+
+	return db.singleChannelStats(kvIndex, channelName)
+
+}
+
+func (db *DatabaseContext) IndexAllChannelStats() ([]*ChannelStats, error) {
+
+	kvIndex, ok := db.changeCache.(*kvChangeIndex)
+	if !ok {
+		return nil, errors.New("No channel index in use")
+	}
+
+	/*	results := &AllChannelStats{
+		Channels: make([]*ChannelStats, len(kvIndex.channelIndexReaders)),
+	}*/
+	results := make([]*ChannelStats, 0)
+
+	for channelName, _ := range kvIndex.channelIndexReaders {
+		channelStats, err := db.singleChannelStats(kvIndex, channelName)
+		if err == nil {
+			results = append(results, channelStats)
+		}
+	}
+	return results, nil
+
+}
+
+func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelName string) (*ChannelStats, error) {
+
+	channelStats := &ChannelStats{
+		Name: channelName,
+	}
+
+	// Create a clean channel reader to retrieve bucket index stats
+	indexPartitions, err := kvIndex.getIndexPartitionMap()
+	if err != nil {
+		return nil, err
+	}
+
+	// Retrieve index stats from bucket
+	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexBucket, indexPartitions, kvIndex.getStableClock, nil)
+	indexClock, err := channelIndex.loadChannelClock()
+	if err == nil {
+		channelStats.IndexStats = ChannelIndexStats{}
+		channelStats.IndexStats.Clock = base.PrintClock(indexClock)
+		channelStats.IndexStats.ClockHash = db.SequenceHasher.calculateHash(indexClock)
+	}
+
+	// Retrieve polling stats from kvIndex
+	pollingChannelIndex := kvIndex.getChannelReader(channelName)
+	if pollingChannelIndex != nil {
+		lastPolledClock := pollingChannelIndex.lastPolledChannelClock
+		if lastPolledClock != nil {
+			channelStats.PollingStats = ChannelPollingStats{}
+			channelStats.PollingStats.Clock = base.PrintClock(lastPolledClock)
+			channelStats.PollingStats.ClockHash = db.SequenceHasher.calculateHash(lastPolledClock)
+		}
+	}
+	return channelStats, nil
 }

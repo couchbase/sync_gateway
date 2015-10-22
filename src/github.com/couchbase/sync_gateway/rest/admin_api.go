@@ -254,3 +254,32 @@ func (h *handler) getRoles() error {
 	h.response.Write(bytes)
 	return err
 }
+
+// HTTP handler for /index/channel
+func (h *handler) handleIndexChannel() error {
+	channelName := h.PathVar("channel")
+	base.LogTo("HTTP", "Index channel %q", channelName)
+
+	channelStats, err := h.db.IndexChannelStats(channelName)
+
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(channelStats)
+	h.response.Write(bytes)
+	return err
+}
+
+// HTTP handler for /index/channels
+func (h *handler) handleIndexAllChannels() error {
+	base.LogTo("HTTP", "Index channels")
+
+	channelStats, err := h.db.IndexAllChannelStats()
+
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(channelStats)
+	h.response.Write(bytes)
+	return err
+}
