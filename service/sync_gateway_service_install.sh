@@ -43,6 +43,9 @@ ostype() {
     elif [ -f /etc/redhat-release ]; then
         OS=RedHat
         VER=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
+    elif [ -f /etc/system-release ]; then
+        OS=RedHat
+        VER=5.0
     else
         OS=$(uname -s)
         VER=$(uname -r)
