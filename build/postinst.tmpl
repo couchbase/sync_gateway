@@ -38,6 +38,12 @@ EOF
 
     chmod 755 @@PREFIX@@/examples
 
+    if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+      useradd -m sync_gateway
+    fi
+
+    @@PREFIX@@/service/sync_gateway_service_install.sh
+
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 
     cat <<EOF

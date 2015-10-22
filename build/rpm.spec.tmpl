@@ -80,6 +80,12 @@ fi
 
 chmod a+x $RPM_INSTALL_PREFIX0/examples
 
+if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+  useradd -m sync_gateway
+fi
+
+@@PREFIX@@/service/sync_gateway_service_install.sh
+
 if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
 then
   cat <<EOF
