@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -259,7 +258,7 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 		// Note: gocb returns "Key not found.", go-couchbase returns "MCResponse status=KEY_ENOENT, opcode=GET, opaque=0, msg: Not found"
 		// Using string matching to identify key not found for now - really need a better API in go-couchbase/gocb for gets that allows us to distinguish
 		// between errors and key not found with something more robust than string matching.
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+		if IsNotFoundError(err) {
 			// initialize chanClock as empty clock
 			chanClock = base.NewSequenceClockImpl()
 		} else {
