@@ -697,19 +697,32 @@ func (k *kvChangeIndex) pollReaders() bool {
 			defer func() {
 				wg.Done()
 			}()
+
+			// Unmarshal channel clock.  If not present in the bulk get results, use empty clock to support
+			// channels that don't have any indexed data yet.  If clock was previously found successfully (i.e. empty clock is
+			// due to temporary error from server), empty clock treated safely as a non-update by pollForChanges.
 			clockKey := getChannelClockKey(reader.channelName)
-			newChannelClock, err := base.NewSequenceClockForBytes(bulkGetResults[clockKey])
-			if err != nil {
-				base.Warn("Error retrieving channel clock - skipping polling for channel %s: %v", reader.channelName, err)
+			var newChannelClock *base.SequenceClockImpl
+			clockBytes, found := bulkGetResults[clockKey]
+			if !found {
+				newChannelClock = base.NewSequenceClockImpl()
 			} else {
-				hasChanges, cancelPolling := reader.pollForChanges(k.lastPolledStableSequence, newChannelClock)
-				if hasChanges {
-					changedChannels <- reader.channelName
-				}
-				if cancelPolling {
-					cancelledChannels <- reader.channelName
+				var err error
+				newChannelClock, err = base.NewSequenceClockForBytes(clockBytes)
+				if err != nil {
+					base.Warn("Error unmarshalling channel clock - skipping polling for channel %s: %v", reader.channelName, err)
+					return
 				}
 			}
+			// Poll for changes
+			hasChanges, cancelPolling := reader.pollForChanges(k.lastPolledStableSequence, newChannelClock)
+			if hasChanges {
+				changedChannels <- reader.channelName
+			}
+			if cancelPolling {
+				cancelledChannels <- reader.channelName
+			}
+
 		}(reader, &wg)
 	}
 
@@ -978,4 +991,8 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 		}
 	}
 	return channelStats, nil
+}
+
+func IsNotFoundError(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "not found")
 }
