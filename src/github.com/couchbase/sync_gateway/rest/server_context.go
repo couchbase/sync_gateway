@@ -594,7 +594,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 			Server:          indexServer,
 			PoolName:        indexPool,
 			BucketName:      indexBucketName,
-			CouchbaseDriver: base.GoCB,
+			CouchbaseDriver: base.GoCouchbase,
 		}
 		if config.ChannelIndex.Username != "" {
 			indexSpec.Auth = config.ChannelIndex
