@@ -642,6 +642,13 @@ func TestUpdateDesignDoc(t *testing.T) {
 	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
+
+	// Validate retrieval of the design doc by admin
+	var result DesignDoc
+	err = db.GetDesignDoc("official", &result)
+	assertNoError(t, err, "retrieve design doc as admin")
+
+
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", DesignDoc{})
