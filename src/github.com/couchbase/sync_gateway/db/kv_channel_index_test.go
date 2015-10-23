@@ -97,7 +97,7 @@ func TestIndexBlockStorage(t *testing.T) {
 	assertNoError(t, block.AddEntry(makeEntry(5, 105, true)), "Add entry 5_105")
 	assertNoError(t, block.AddEntry(makeEntry(7, 100, true)), "Add entry 7_100")
 	assertNoError(t, block.AddEntry(makeEntry(9, 100, true)), "Add entry 9_100")
-	assertNoError(t, block.AddEntry(makeEntry(9, 1001, true)), "Add entry 9_1001")
+	assertNoError(t, block.AddEntry(makeEntry(9, 501, true)), "Add entry 9_501")
 
 	// validate in-memory storage
 	storedEntries := block.GetAllEntries()
