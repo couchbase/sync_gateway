@@ -38,7 +38,7 @@ EOF
 
     chmod 755 @@PREFIX@@/examples
 
-    if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+    if [ -z `id -u sync_gateway 2>/dev/null` ]; then
       useradd -m sync_gateway
     fi
 

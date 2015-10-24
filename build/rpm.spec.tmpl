@@ -80,7 +80,7 @@ fi
 
 chmod a+x $RPM_INSTALL_PREFIX0/examples
 
-if [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+if [ -z `id -u sync_gateway 2>/dev/null` ]; then
   useradd -m sync_gateway
 fi
 
