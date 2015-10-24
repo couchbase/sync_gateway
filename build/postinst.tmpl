@@ -42,7 +42,8 @@ EOF
       useradd -m sync_gateway
     fi
 
-    @@PREFIX@@/service/sync_gateway_service_install.sh
+    cd @@PREFIX@@/service
+    ./sync_gateway_service_install.sh
 
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 

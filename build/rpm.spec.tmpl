@@ -84,7 +84,8 @@ if [ -z `id -u sync_gateway 2>/dev/null` ]; then
   useradd -m sync_gateway
 fi
 
-@@PREFIX@@/service/sync_gateway_service_install.sh
+cd @@PREFIX@@/service
+./sync_gateway_service_install.sh
 
 if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
 then
