@@ -463,11 +463,12 @@ func (k *kvChangeIndex) indexPending() {
 // Index a group of entries.  Iterates over the entry set to build updates per channel, then
 // updates using channel index.
 func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexPartitionMap, channelStorage ChannelStorage) {
-	// Wait group tracks when the current buffer has been completely processed
-	var wg sync.WaitGroup
+
 	channelSets := make(map[string][]*LogEntry)
 	updatedSequences := base.NewSequenceClockImpl()
 
+	// Wait group tracks when the current buffer has been completely processed
+	var entryWg sync.WaitGroup
 	// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 	for _, logEntry := range entries {
 
@@ -479,7 +480,11 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 
 		// Add index log entry if needed
 		if channelStorage.StoresLogEntries() {
-			channelStorage.WriteLogEntry(logEntry)
+			entryWg.Add(1)
+			go func(logEntry *LogEntry) {
+				defer entryWg.Done()
+				channelStorage.WriteLogEntry(logEntry)
+			}(logEntry)
 		}
 		// Collect entries by channel
 		// Remove channels from entry to save space in memory, index entries
@@ -515,17 +520,21 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 		updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
 
 	}
+	entryWg.Wait()
+
+	// Wait group tracks when the current buffer has been completely processed
+	var channelWg sync.WaitGroup
 
 	// Iterate over channel sets to update channel index
 	for channelName, entrySet := range channelSets {
-		wg.Add(1)
+		channelWg.Add(1)
 		go func(channelName string, entrySet []*LogEntry) {
-			defer wg.Done()
+			defer channelWg.Done()
 			k.addSetToChannelIndex(channelName, entrySet)
 
 		}(channelName, entrySet)
 	}
-	wg.Wait()
+	channelWg.Wait()
 
 	// Update stable sequence
 	err := k.updateStableSequence(updatedSequences)
