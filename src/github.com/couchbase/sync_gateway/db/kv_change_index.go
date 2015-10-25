@@ -532,6 +532,19 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	if err != nil {
 		base.LogPanic("Error updating stable sequence", err)
 	}
+
+	// TODO: remove - iterate once more for perf logging
+	indexTime := time.Now()
+	for _, logEntry := range entries {
+		feedLag := time.Since(logEntry.TimeReceived) - time.Since(indexTime)
+		lagMs := int(feedLag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("lag-indexing-%04dms", lagMs), 1)
+
+		totalLag := time.Since(logEntry.TimeSaved) - time.Since(indexTime)
+		totalLagMs := int(totalLag/(100*time.Millisecond)) * 100
+		changeCacheExpvars.Add(fmt.Sprintf("lag-totalWrite-%04dms", totalLagMs), 1)
+	}
+
 }
 
 // TODO: If mutex read lock is too much overhead every time we poll, could manage numReaders using
