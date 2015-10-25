@@ -112,7 +112,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
-				feeds, _ = db.appendUserFeed(feeds, []string{}, options)
+				feeds, _ = db.appendVectorUserFeed(feeds, []string{}, options)
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
@@ -278,4 +278,25 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 		}
 	}()
 	return feed, nil
+}
+
+func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions) ([]<-chan *ChangeEntry, []string) {
+	userSeq := SequenceID{Seq: db.user.Sequence()}
+	if options.Since.Before(userSeq) {
+		name := db.user.Name()
+		if name == "" {
+			name = base.GuestUsername
+		}
+		entry := ChangeEntry{
+			Seq:     userSeq,
+			ID:      "_user/" + name,
+			Changes: []ChangeRev{},
+		}
+		userFeed := make(chan *ChangeEntry, 1)
+		userFeed <- &entry
+		close(userFeed)
+		feeds = append(feeds, userFeed)
+		names = append(names, entry.ID)
+	}
+	return feeds, names
 }

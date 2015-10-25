@@ -93,7 +93,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	base.LogKeys["DCache+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
-	changeIndex.AddToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(50 * time.Millisecond)
@@ -150,9 +150,9 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	// Add entries across multiple partitions
-	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -163,9 +163,9 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add entries across multiple partitions in the same block
-	changeIndex.AddToCache(channelEntry(101, 1, "foo101-1", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(100, 8, "foo100-8", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(101, 1, "foo101-1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(100, 8, "foo100-8", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -176,9 +176,9 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add entries across multiple partitions, multiple blocks
-	changeIndex.AddToCache(channelEntry(101, 10001, "foo101-10001", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(100, 10100, "foo100-10100", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(101, 10001, "foo101-10001", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(100, 10100, "foo100-10100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -198,8 +198,8 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add entries that skip a block in a partition
-	changeIndex.AddToCache(channelEntry(800, 100, "foo800-100", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(800, 100, "foo800-100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -209,11 +209,11 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Test deduplication by doc id, including across empty blocks
-	changeIndex.AddToCache(channelEntry(700, 100, "foo700", "1-a", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 200, "foo700", "1-b", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 300, "foo700", "1-c", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 100, "foo700", "1-a", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 200, "foo700", "1-b", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 300, "foo700", "1-c", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 	// Verify entries
@@ -452,9 +452,9 @@ func TestLoadStableSequence(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	// Add entries across multiple partitions
-	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
 	time.Sleep(10 * time.Millisecond)
 
 	stableSequence := base.LoadStableSequence(bucket)
@@ -469,9 +469,9 @@ func TestStableSequenceCallback(t *testing.T) {
 	defer changeIndex.Stop()
 
 	// Add entries across multiple partitions
-	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
 	time.Sleep(10 * time.Millisecond)
 
 	stableSequence, err := base.StableCallbackTest(changeIndex.GetStableClock)
