@@ -30,7 +30,7 @@ import (
 
 const (
 	kIndexPrefix       = "_idx"
-	maxCacheUpdate     = 500
+	maxCacheUpdate     = 2000
 	minCacheUpdate     = 1
 	kPollFrequency     = 500
 	kIndexPartitionKey = "_idxPartitionMap"
