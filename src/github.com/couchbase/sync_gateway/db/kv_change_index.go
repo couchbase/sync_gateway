@@ -62,8 +62,13 @@ type partitionStorage struct {
 	VbNos []uint16 `json:"vbNos"`
 }
 
-var indexExpvars = expvar.NewMap("syncGateway_index")
+var indexExpvars *expvar.Map
+var latestWriteBatch expvar.Int
 
+func init() {
+	indexExpvars = expvar.NewMap("syncGateway_index")
+	indexExpvars.Set("latest_write_batch", &latestWriteBatch)
+}
 ////// Cache writer API
 
 func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
@@ -448,6 +453,7 @@ func (k *kvChangeIndex) indexPending() {
 
 	// Continual processing of arriving entries from the feed.
 	for {
+		latestWriteBatch.Set(int64(len(entries)))
 		k.indexEntries(entries, indexPartitions, channelStorage)
 		// Read next entries
 		entries = k.readFromPending()
@@ -916,6 +922,10 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 						case ok:= <-unmarshalEntry.success:
 							if ok {
 								base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
+								processingLag := time.Since(unmarshalEntry.logEntry.TimeReceived)
+								lagMs := int(processingLag/(100*time.Millisecond)) * 100
+								changeCacheExpvars.Add(fmt.Sprintf("lag-processing-%04dms", lagMs), 1)
+
 								output <- unmarshalEntry.logEntry
 							} else {
 								// error already logged - just ignore the entry
