@@ -125,17 +125,21 @@ exit 0
 %postun
 
 if [ "$1" = "1" ]; then
+  echo "calling the service upgrade script"
   cd @@PREFIX@@/service
   ./sync_gateway_service_upgrade.sh
 fi
 
 if [ "$1" = "0" ]; then
+echo "killing SG processes"
   #kill any sync_gateway processes started by third party, sync_gateway has been uninstalled
   ps aux | grep -v grep | grep bin/sync_gateway | awk '{print $2}' |
   while read line; do
     # kill process
     kill -9 $line
   done
+
+  echo "The sync_gateway user account is still active, remove it manually if it is no longer required"
 fi
 
 exit 0
