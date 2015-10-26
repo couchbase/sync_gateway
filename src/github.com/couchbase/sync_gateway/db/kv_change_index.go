@@ -464,8 +464,16 @@ func (k *kvChangeIndex) indexPending() {
 // updates using channel index.
 func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexPartitionMap, channelStorage ChannelStorage) {
 
+
+	batchStart := time.Now()
 	channelSets := make(map[string][]*LogEntry)
 	updatedSequences := base.NewSequenceClockImpl()
+
+
+	// Record a histogram of the  feed's lag:
+	batchSizeWindow:= int(len(entries)/50) * 50
+	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
+
 
 	// Wait group tracks when the current buffer has been completely processed
 	var entryWg sync.WaitGroup
@@ -522,6 +530,10 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	}
 	entryWg.Wait()
 
+	indexEntryTimeMs := int(time.Since(batchStart)/(500*time.Millisecond)) * 500
+	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-entryTime-%06dms", indexEntryTimeMs), 1)
+
+	channelStart := time.Now()
 	// Wait group tracks when the current buffer has been completely processed
 	var channelWg sync.WaitGroup
 
@@ -536,11 +548,18 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	}
 	channelWg.Wait()
 
+	channelTimeMs := int(time.Since(channelStart)/(500*time.Millisecond)) * 500
+	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-channelTime-%06dms", channelTimeMs), 1)
+
+	stableStart := time.Now()
 	// Update stable sequence
 	err := k.updateStableSequence(updatedSequences)
 	if err != nil {
 		base.LogPanic("Error updating stable sequence", err)
 	}
+
+	stableTimeMs := int(time.Since(stableStart)/(500*time.Millisecond)) * 500
+	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-stableSeqTime-%06dms", stableTimeMs), 1)
 
 	// TODO: remove - iterate once more for perf logging
 	indexTime := time.Now()
@@ -554,6 +573,8 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 		changeCacheExpvars.Add(fmt.Sprintf("lag-totalWrite-%04dms", totalLagMs), 1)
 	}
 
+	batchTimeMs := int(time.Since(batchStart)/(500*time.Millisecond)) * 500
+	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-batchTime-%06dms", batchTimeMs), 1)
 }
 
 // TODO: If mutex read lock is too much overhead every time we poll, could manage numReaders using
