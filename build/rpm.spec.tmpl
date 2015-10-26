@@ -103,31 +103,8 @@ exit 0
 
 %preun
 
-check_upstart_service () {
-    if [ -f /etc/init/sync_gateway.conf ]; then
-        status $1 | grep -q "^$1 start" > /dev/null
-        return $?
-    else
-        return 1
-    fi
-}
-
-# stop upstart service if it's running
-if check_upstart_service sync_gateway; then
-    stop sync_gateway
-fi
-
-#uninstall upstart service start at boot
-if [ -f /etc/init/sync_gateway.conf ]; then
-    rm /etc/init/sync_gateway.conf
-fi
-
-# stop systemd service and disable start at boot
-if [ -f /usr/lib/systemd/system/sync_gateway.service ]; then
-    systemctl stop sync_gateway
-    systemctl disable sync_gateway
-    rm /usr/lib/systemd/system/sync_gateway.service
-fi
+cd @@PREFIX@@/service
+./sync_gateway_service_uninstall.sh
 
 
 if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
@@ -135,11 +112,6 @@ if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
 fi
 
 find $RPM_INSTALL_PREFIX0 -name '*.pyc' | xargs rm -f || true
-
-//Remove the sync_gateway binary only if called as part of an uninstall not an upgrade
-if [ "$1" = "0" ]; then
-  rm -f $RPM_INSTALL_PREFIX0/bin/*
-fi
 
 cat <<EOF
 
