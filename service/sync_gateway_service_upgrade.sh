@@ -17,7 +17,7 @@ LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 
 usage()
 {
-    echo "This script removes an init service to run a sync_gateway instance."
+    echo "This script upgrades an init service to run a sync_gateway instance."
 }
  
 ostype() {
@@ -70,9 +70,7 @@ case $OS in
         case $OS_MAJOR_VERSION in
             12|14)
 				service ${SERVICE_NAME} stop
-                if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
-                	rm /etc/init/${SERVICE_NAME}.conf
-                fi
+                service ${SERVICE_NAME} start
                 ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
@@ -86,26 +84,15 @@ case $OS in
             5) 
                 PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
                 service ${SERVICE_NAME} stop
-                chkconfig ${SERVICE_NAME} off
-                chkconfig --del ${SERVICE_NAME}
-                
-                if [ -f /etc/init.d/${SERVICE_NAME} ]; then
-                	rm /etc/init.d/${SERVICE_NAME}
-                fi
+                service ${SERVICE_NAME} start
                 ;;
             6)
                 initctl stop ${SERVICE_NAME}
-                if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
-                	rm /etc/init/${SERVICE_NAME}.conf
-                fi
+                initctl start ${SERVICE_NAME}
                 ;;
             7)
                 systemctl stop ${SERVICE_NAME}
-                systemctl disable ${SERVICE_NAME}
-                
-                if [ -f /usr/lib/systemd/system/${SERVICE_NAME}.service ]; then
-                	rm /usr/lib/systemd/system/${SERVICE_NAME}.service
-                fi
+                systemctl start ${SERVICE_NAME}
                 ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
@@ -116,9 +103,7 @@ case $OS in
         ;;
     Darwin)
         launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
-        if [ -f /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist ]; then
-        	rm /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
-        fi
+        launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         ;;
     *)
         echo "ERROR: unknown OS \"$OS\""
