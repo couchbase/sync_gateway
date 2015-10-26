@@ -27,8 +27,8 @@ import (
 
 	"github.com/couchbase/cb-heartbeat"
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/cmd"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/cmd"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
