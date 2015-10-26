@@ -961,16 +961,20 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 			select {
 				case unmarshalEntry:= <-worker.processing:
 					// Wait for entry processing to be done
+					entryTime := time.Now()
 					select {
 						case ok:= <-unmarshalEntry.success:
 							if ok {
 								base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
-
-								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-unmarshalling")
+								writeHistogram(changeCacheExpvars, entryTime, "lag-waitForSuccess")
+								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
+								outputStart := time.Now()
 								output <- unmarshalEntry.logEntry
-								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-toPendingChannel")
+								writeHistogram(changeCacheExpvars, outputStart, "lag-processedToOutput")
+								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
 
 							} else {
+								changeCacheExpvars.Add("unmarshalEntry_success_false", 1)
 								// error already logged - just ignore the entry
 							}
 
@@ -993,7 +997,7 @@ func (uw *unmarshalWorker) add(docID string, docJSON []byte, vbNo uint16, seq ui
 
 	// Add it to the ordering queue.  Will block if we're at limit for concurrent processing for this vbucket (maxProcessing).
 	// TODO: This means that one full vbucket queue will block additions to all others (as the main DocChanged blocks on
-	// call to this method).  Leaving as-is to avoid complexity, and as it's probably reasonable for hotspot vbs get priority.
+	// call to this method).  Leaving as-is to avoid complexity, and as it's probably reasonable for hotspot vbs to get priority.
 	uw.processing <- unmarshalEntry
 
 	// start goroutine to do the work on the document
@@ -1045,6 +1049,11 @@ func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, se
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	doc, err := unmarshalDocumentSyncData(docJSON, false)
+
+
+	// Record histogram of time spent unmarshalling sync metadata
+	writeHistogram(changeCacheExpvars, entryTime, "lag-unmarshal")
+
 	if err != nil || !doc.hasValidSyncData(false) {
 		base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
 		return nil, err
@@ -1073,11 +1082,15 @@ func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, se
 		return nil, errors.New(fmt.Sprintf("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo))
 	}
 
+	writeHistogram(changeCacheExpvars, entryTime, "lag-processDoc")
+
 	return logEntry, nil
 }
 
 
 func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, vbNo uint16, sequence uint64) (*LogEntry, error) {
+
+	entryTime := time.Now()
 
 	isUser :=  strings.HasPrefix(docID, auth.UserKeyPrefix)
 	// We need to track vbucket/sequence numbers for admin-granted roles and channels in the index,
@@ -1153,6 +1166,8 @@ func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, vbNo u
 		VbNo:         uint16(vbNo),
 		IsPrincipal:  true,
 	}
+
+	writeHistogram(changeCacheExpvars, entryTime, "lag-processPrincipalDoc")
 	return logEntry, nil
 }
 
