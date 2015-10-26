@@ -133,14 +133,19 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 
 
 	changeCacheExpvars.Add(fmt.Sprintf("addEntrySet-blockSetSize-%03d", len(blockSets)), 1)
+	var wg sync.WaitGroup
 	for blockKey, blockSet := range blockSets {
 		// update the block
-		err := b.writeSingleBlockWithCas(blockSet)
-		if err != nil {
-			base.Warn("Error writing single block with cas for block %s: %+v", blockKey, err)
-			return nil, err
-		}
+		wg.Add(1)
+		go func(blockKey string, blockSet []*LogEntry) {
+			defer wg.Done()
+			err := b.writeSingleBlockWithCas(blockSet)
+			if err != nil {
+				base.Warn("Error writing single block with cas for block %s: %+v", blockKey, err)
+			}
+		}(blockKey, blockSet)
 	}
+	wg.Wait()
 
 	return clockUpdates, err
 }

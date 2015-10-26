@@ -528,7 +528,6 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 		updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
 
 	}
-	entryWg.Wait()
 
 	indexEntryTimeMs := int(time.Since(batchStart)/(500*time.Millisecond)) * 500
 	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-entryTime-%06dms", indexEntryTimeMs), 1)
@@ -546,6 +545,9 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 
 		}(channelName, entrySet)
 	}
+
+	// Wait for entry and channel processing to complete
+	entryWg.Wait()
 	channelWg.Wait()
 
 	channelTimeMs := int(time.Since(channelStart)/(500*time.Millisecond)) * 500
