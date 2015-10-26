@@ -669,3 +669,18 @@ func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
 func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
 }
+
+func writeHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
+	writeHistogramForDuration(expvarMap, time.Since(since), prefix)
+}
+
+func writeHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
+
+	var durationMs int
+	if duration < 1 * time.Second {
+		durationMs = int(duration/(100*time.Millisecond)) * 100
+	} else {
+		durationMs = int(duration/(1000*time.Millisecond)) * 1000
+	}
+	expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
+}

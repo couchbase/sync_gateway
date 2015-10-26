@@ -470,8 +470,13 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	updatedSequences := base.NewSequenceClockImpl()
 
 
-	// Record a histogram of the  feed's lag:
-	batchSizeWindow:= int(len(entries)/50) * 50
+	// Record a histogram of the batch sizes
+	var batchSizeWindow int
+	if len(entries) < 50 {
+		batchSizeWindow = int(len(entries)/5) * 5
+	} else {
+		batchSizeWindow = int(len(entries)/50) * 50
+	}
 	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
 
 
@@ -532,7 +537,6 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	indexEntryTimeMs := int(time.Since(batchStart)/(500*time.Millisecond)) * 500
 	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-entryTime-%06dms", indexEntryTimeMs), 1)
 
-	channelStart := time.Now()
 	// Wait group tracks when the current buffer has been completely processed
 	var channelWg sync.WaitGroup
 
@@ -550,8 +554,7 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	entryWg.Wait()
 	channelWg.Wait()
 
-	channelTimeMs := int(time.Since(channelStart)/(500*time.Millisecond)) * 500
-	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-channelTime-%06dms", channelTimeMs), 1)
+	writeHistogram(changeCacheExpvars, batchStart, "indexEntries-entryAndChannelTime")
 
 	stableStart := time.Now()
 	// Update stable sequence
@@ -560,23 +563,15 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 		base.LogPanic("Error updating stable sequence", err)
 	}
 
-	stableTimeMs := int(time.Since(stableStart)/(500*time.Millisecond)) * 500
-	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-stableSeqTime-%06dms", stableTimeMs), 1)
+	writeHistogram(changeCacheExpvars, stableStart, "indexEntries-stableSeqTime")
 
 	// TODO: remove - iterate once more for perf logging
-	indexTime := time.Now()
 	for _, logEntry := range entries {
-		feedLag := time.Since(logEntry.TimeReceived) - time.Since(indexTime)
-		lagMs := int(feedLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("lag-indexing-%04dms", lagMs), 1)
-
-		totalLag := time.Since(logEntry.TimeSaved) - time.Since(indexTime)
-		totalLagMs := int(totalLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("lag-totalWrite-%04dms", totalLagMs), 1)
+		writeHistogram(changeCacheExpvars, logEntry.TimeReceived, "lag-indexing")
+		writeHistogram(changeCacheExpvars, logEntry.TimeSaved, "lag-totalWrite")
 	}
 
-	batchTimeMs := int(time.Since(batchStart)/(500*time.Millisecond)) * 500
-	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-batchTime-%06dms", batchTimeMs), 1)
+	writeHistogram(changeCacheExpvars, batchStart, "indexEntries-batchTime")
 }
 
 // TODO: If mutex read lock is too much overhead every time we poll, could manage numReaders using
@@ -970,11 +965,11 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 						case ok:= <-unmarshalEntry.success:
 							if ok {
 								base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
-								processingLag := time.Since(unmarshalEntry.logEntry.TimeReceived)
-								lagMs := int(processingLag/(100*time.Millisecond)) * 100
-								changeCacheExpvars.Add(fmt.Sprintf("lag-processing-%04dms", lagMs), 1)
 
+								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-unmarshalling")
 								output <- unmarshalEntry.logEntry
+								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-toPendingChannel")
+
 							} else {
 								// error already logged - just ignore the entry
 							}
@@ -1057,8 +1052,7 @@ func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, se
 
 	// Record a histogram of the  feed's lag:
 	feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
-	lagMs := int(feedLag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-feed-%04dms", lagMs), 1)
+	writeHistogramForDuration(changeCacheExpvars, feedLag, "lag-feed")
 
 	// Now add the entry for the new doc revision:
 	logEntry := &LogEntry{
