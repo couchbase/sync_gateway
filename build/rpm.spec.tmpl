@@ -84,10 +84,8 @@ if [ -z `id -u sync_gateway 2>/dev/null` ]; then
   useradd -m sync_gateway
 fi
 
-if [ "$1" = "0" ]; then
-  cd @@PREFIX@@/service
-  ./sync_gateway_service_install.sh
-fi
+cd @@PREFIX@@/service
+./sync_gateway_service_install.sh
 
 if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
 then
@@ -105,9 +103,10 @@ exit 0
 
 %preun
 
-cd @@PREFIX@@/service
-./sync_gateway_service_uninstall.sh
-
+if [ "$1" = "0" ]; then
+  cd @@PREFIX@@/service
+  ./sync_gateway_service_uninstall.sh
+fi
 
 if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
   RPM_INSTALL_PREFIX0=@@PREFIX@@
