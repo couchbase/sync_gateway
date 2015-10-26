@@ -131,6 +131,8 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 		clockUpdates.SetMaxSequence(entry.VbNo, entry.Sequence)
 	}
 
+
+	changeCacheExpvars.Add(fmt.Sprintf("addEntrySet-blockSetSize-%03d", len(blockSets)), 1)
 	for blockKey, blockSet := range blockSets {
 		// update the block
 		err := b.writeSingleBlockWithCas(blockSet)
