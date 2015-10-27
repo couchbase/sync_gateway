@@ -23,7 +23,7 @@ import (
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 	"github.com/couchbaselabs/walrus"
 )
 

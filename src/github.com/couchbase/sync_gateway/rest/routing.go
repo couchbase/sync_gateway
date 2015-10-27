@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/rest"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/rest"
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )

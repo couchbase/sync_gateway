@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
