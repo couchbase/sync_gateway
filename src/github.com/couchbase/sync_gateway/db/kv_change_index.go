@@ -29,17 +29,18 @@ import (
 )
 
 const (
-	kIndexPrefix       = "_idx"
-	maxCacheUpdate     = 2000
-	minCacheUpdate     = 1
-	kPollFrequency     = 500
-	kIndexPartitionKey = "_idxPartitionMap"
+	kIndexPrefix          = "_idx"
+	maxCacheUpdate        = 2000
+	minCacheUpdate        = 1
+	kPollFrequency        = 500
+	kIndexPartitionKey    = "_idxPartitionMap"
+	maxUnmarshalProcesses = 16
 )
 
 type kvChangeIndex struct {
 	context                  *DatabaseContext           // Database context
-	indexReadBucket              base.Bucket                // Index bucket
-	indexWriteBucket              base.Bucket                // Index bucket
+	indexReadBucket          base.Bucket                // Index bucket
+	indexWriteBucket         base.Bucket                // Index bucket
 	maxVbNo                  uint16                     // Number of vbuckets
 	indexPartitions          IndexPartitionMap          // Partitioning of vbuckets in the index
 	channelIndexWriters      map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
@@ -49,6 +50,7 @@ type kvChangeIndex struct {
 	onChange                 func(base.Set)             // Client callback that notifies of channel changes
 	pending                  chan *LogEntry             // Incoming changes, pending indexing
 	unmarshalWorkers         []*unmarshalWorker         // Workers to unmarshal documents in parallel, while preserving vbucket ordering
+	unmarshalWorkQueue       chan *unmarshalEntry       // Queue for concurrent processing of incoming docs
 	stableSequence           *base.SyncSequenceClock    // Stable sequence in index
 	logsDisabled             bool                       // If true, ignore incoming tap changes
 	lastPolledStableSequence base.SequenceClock         // Used to identify changes
@@ -73,9 +75,10 @@ func init() {
 	indexExpvars.Set("latest_write_batch", &latestWriteBatch)
 	indexTimingExpvars = expvar.NewMap("syncGateway_indexTiming")
 }
+
 ////// Cache writer API
 
-func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error){
+func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error) {
 
 	// not sure yet whether we'll need initial sequence
 	k.channelIndexWriters = make(map[string]*kvChannelIndex)
@@ -91,17 +94,6 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 		// TODO: revert to local index?
 		return err
 	}
-
-	if indexOptions.Writer {
-		k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec)
-		if err != nil {
-			base.Logf("Error opening index bucket %q, pool %q, server <%s>",
-				indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
-			// TODO: revert to local index?
-			return err
-		}
-	}
-
 
 	cbBucket, ok := k.indexReadBucket.(base.CouchbaseBucket)
 	if ok {
@@ -142,6 +134,34 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 			}
 		}
 	}(k)
+
+	if indexOptions.Writer {
+		k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec)
+		if err != nil {
+			base.Logf("Error opening index bucket %q, pool %q, server <%s>",
+				indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
+			// TODO: revert to local index?
+			return err
+		}
+
+		// Set of worker goroutines used to process incoming entries
+		k.unmarshalWorkQueue = make(chan *unmarshalEntry, 500)
+
+		// Start fixed set of goroutines to work the unmarshal work queue
+		for i := 0; i < maxUnmarshalProcesses; i++ {
+			go func() {
+				for {
+					select {
+					case unmarshalEntry := <-k.unmarshalWorkQueue:
+						unmarshalEntry.process()
+					case <-k.terminator:
+						return
+					}
+				}
+			}()
+		}
+
+	}
 
 	// Initialize unmarshalWorkers
 	k.unmarshalWorkers = make([]*unmarshalWorker, k.maxVbNo)
@@ -339,12 +359,12 @@ func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbN
 	unmarshalWorker := k.unmarshalWorkers[vbNo]
 	if unmarshalWorker == nil {
 		// Initialize new worker that sends results to k.pending for processing by the indexPending loop
-		unmarshalWorker = NewUnmarshalWorker(k.pending)
+		unmarshalWorker = NewUnmarshalWorker(k.pending, k.unmarshalWorkQueue, k.terminator)
 		k.unmarshalWorkers[vbNo] = unmarshalWorker
 	}
 
 	// Is this a user/role doc?
-	if strings.HasPrefix(docID, auth.UserKeyPrefix) || strings.HasPrefix(docID, auth.RoleKeyPrefix){
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) || strings.HasPrefix(docID, auth.RoleKeyPrefix) {
 		unmarshalWorker.add(docID, docJSON, vbNo, seq, k.processPrincipalDoc)
 		return
 	}
@@ -498,11 +518,9 @@ func (k *kvChangeIndex) indexPending() {
 // updates using channel index.
 func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexPartitionMap, channelStorage ChannelStorage) {
 
-
 	batchStart := time.Now()
 	channelSets := make(map[string][]*LogEntry)
 	updatedSequences := base.NewSequenceClockImpl()
-
 
 	// Record a histogram of the batch sizes
 	var batchSizeWindow int
@@ -512,7 +530,6 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 		batchSizeWindow = int(len(entries)/50) * 50
 	}
 	indexTimingExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
-
 
 	// Wait group tracks when the current buffer has been completely processed
 	var entryWg sync.WaitGroup
@@ -975,56 +992,57 @@ func IsNotFoundError(err error) bool {
 }
 
 type unmarshalWorker struct {
-	output  chan<- *LogEntry
-	processing chan *unmarshalEntry
+	output             chan<- *LogEntry
+	processing         chan *unmarshalEntry
+	unmarshalWorkQueue chan<- *unmarshalEntry
 }
-
 
 // UnmarshalWorker is used to unmarshal incoming entries from the DCP feed in parallel, while maintaining ordering of
 // sequences per vbucket.  The main DocChanged loop creates one UnmarshalWorker per vbucket.
-func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
+func NewUnmarshalWorker(output chan<- *LogEntry, unmarshalWorkQueue chan<- *unmarshalEntry, terminator chan struct{}) *unmarshalWorker {
 
 	// goroutine to work the processing channel and return completed entries
 	// to the output channel
-	maxProcessing := 500
+	maxProcessing := 50
 
 	worker := &unmarshalWorker{
-		output: output,
-		processing: make(chan *unmarshalEntry, maxProcessing),
+		output:             output,
+		processing:         make(chan *unmarshalEntry, maxProcessing),
+		unmarshalWorkQueue: unmarshalWorkQueue,
 	}
 
 	// Start goroutine to work the worker's processing channel.  When an entry arrives on the
 	// processing channel, blocks waiting for success/fail for that document.
-	go func() {
+	go func(worker *unmarshalWorker, terminator chan struct{}) {
 		for {
 			select {
-				case unmarshalEntry:= <-worker.processing:
-					// Wait for entry processing to be done
-					entryTime := time.Now()
-					select {
-						case ok:= <-unmarshalEntry.success:
-							if ok {
-								base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
-								writeHistogram(indexTimingExpvars, entryTime, "lag-waitForSuccess")
-								writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
-								outputStart := time.Now()
-								output <- unmarshalEntry.logEntry
-								writeHistogram(indexTimingExpvars, outputStart, "lag-processedToOutput")
-								writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
+			case unmarshalEntry := <-worker.processing:
+				// Wait for entry processing to be done
+				entryTime := time.Now()
+				select {
+				case ok := <-unmarshalEntry.success:
+					if ok {
+						base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
+						writeHistogram(indexTimingExpvars, entryTime, "lag-waitForSuccess")
+						writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
+						outputStart := time.Now()
+						output <- unmarshalEntry.logEntry
+						writeHistogram(indexTimingExpvars, outputStart, "lag-processedToOutput")
+						writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
 
-							} else {
-								changeCacheExpvars.Add("unmarshalEntry_success_false", 1)
-								// error already logged - just ignore the entry
-							}
-
+					} else {
+						changeCacheExpvars.Add("unmarshalEntry_success_false", 1)
+						// error already logged - just ignore the entry
 					}
-					/*
-					case <- time.After(10 * time.Minute) :
-						terminate the worker if it's idle for some time window?
-						*/
+				case <-terminator:
+					return
+
+				}
+			case <-terminator:
+				return
 			}
 		}
-	}()
+	}(worker, terminator)
 
 	return worker
 }
@@ -1032,49 +1050,57 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 // Add document to the ordered processing results channel, and start goroutine to do processing work.
 func (uw *unmarshalWorker) add(docID string, docJSON []byte, vbNo uint16, seq uint64, callback processDocFunc) {
 	// create new unmarshal entry
-	unmarshalEntry := NewUnmarshalEntry()
+	unmarshalEntry := NewUnmarshalEntry(docID, docJSON, vbNo, seq, callback)
 
 	// Add it to the ordering queue.  Will block if we're at limit for concurrent processing for this vbucket (maxProcessing).
 	// TODO: This means that one full vbucket queue will block additions to all others (as the main DocChanged blocks on
 	// call to this method).  Leaving as-is to avoid complexity, and as it's probably reasonable for hotspot vbs to get priority.
 	uw.processing <- unmarshalEntry
 
-	// start goroutine to do the work on the document
-	go unmarshalEntry.process(docID, docJSON, vbNo, seq, callback)
-
+	// Send the entry to the entryWorker channel to get processed by the kvChangeIndex entry processors
+	uw.unmarshalWorkQueue <- unmarshalEntry
 }
 
 // An incoming document being unmarshalled by unmarshalWorker
 type unmarshalEntry struct {
 	entryTime time.Time
-	logEntry *LogEntry
-	success chan bool
-	err error
+	logEntry  *LogEntry
+	docID     string
+	docJSON   []byte
+	vbNo      uint16
+	seq       uint64
+	callback  processDocFunc
+	success   chan bool
+	err       error
 }
 
 // UnmarshalEntry represents a document being processed by an UnmarshalWorker.
-func NewUnmarshalEntry() *unmarshalEntry {
+func NewUnmarshalEntry(docID string, docJSON []byte, vbNo uint16, seq uint64, callback processDocFunc) *unmarshalEntry {
 
 	return &unmarshalEntry{
 		entryTime: time.Now(),
-		success: make(chan bool),
+		success:   make(chan bool),
+		docID:     docID,
+		docJSON:   docJSON,
+		vbNo:      vbNo,
+		seq:       seq,
+		callback:  callback,
 	}
 }
 
 // UnmarshalEntry.process executes the processing (via callback), then updates the entry's success channel on completion
-func (e *unmarshalEntry) process(docID string, docJSON []byte, vbNo uint16, seq uint64, callback processDocFunc) {
+func (e *unmarshalEntry) process() {
 
 	// Do the processing work
-	e.logEntry, e.err = callback(docID, docJSON, vbNo, seq)
+	e.logEntry, e.err = e.callback(e.docID, e.docJSON, e.vbNo, e.seq)
 
 	// Return completion status on the success channel
 	if e.err != nil || e.logEntry == nil {
-		e.success <-false
+		e.success <- false
 	} else {
-		e.success <-true
+		e.success <- true
 	}
 }
-
 
 type PrincipalIndex struct {
 	VbNo             uint16            `json:"vbucket"`        // vbucket number for user doc - for convenience
@@ -1084,13 +1110,12 @@ type PrincipalIndex struct {
 
 type processDocFunc func(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error)
 
-func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error){
+func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error) {
 
 	entryTime := time.Now()
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	doc, err := unmarshalDocumentSyncData(docJSON, false)
-
 
 	// Record histogram of time spent unmarshalling sync metadata
 	writeHistogram(changeCacheExpvars, entryTime, "lag-unmarshal")
@@ -1128,12 +1153,11 @@ func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, se
 	return logEntry, nil
 }
 
-
 func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, vbNo uint16, sequence uint64) (*LogEntry, error) {
 
 	entryTime := time.Now()
 
-	isUser :=  strings.HasPrefix(docID, auth.UserKeyPrefix)
+	isUser := strings.HasPrefix(docID, auth.UserKeyPrefix)
 	// We need to track vbucket/sequence numbers for admin-granted roles and channels in the index,
 	// since we can no longer store the sequence in the user doc body itself
 
@@ -1211,5 +1235,3 @@ func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, vbNo u
 	writeHistogram(changeCacheExpvars, entryTime, "lag-processPrincipalDoc")
 	return logEntry, nil
 }
-
-
