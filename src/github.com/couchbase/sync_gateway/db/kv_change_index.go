@@ -330,6 +330,8 @@ func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
 
 // Given a newly changed document (received from the feed), adds to the pending entries.
 // The JSON must be the raw document from the bucket, with the metadata and all.
+// NOTE: DocChanged is not thread-safe (due to k.unmarshalWorkers usage).  It should only
+// be getting called from a single process per change index (i.e. DCP feed processing.)
 func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
 
 	// Incoming docs are assigned to the appropriate unmarshalWorker for the vbucket, in order
