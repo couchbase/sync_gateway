@@ -195,6 +195,7 @@ case $OS in
                 chkconfig --add ${SERVICE_NAME}
                 chkconfig ${SERVICE_NAME} on
                 service ${SERVICE_NAME} start
+                export SERVICE_CMD_EXAMPLE="service ${SERVICE_NAME} start"
                 ;;
             6)
                 setup_output_dirs
