@@ -977,6 +977,9 @@ type unmarshalWorker struct {
 	processing chan *unmarshalEntry
 }
 
+
+// UnmarshalWorker is used to unmarshal incoming entries from the DCP feed in parallel, while maintaining ordering of
+// sequences per vbucket.  The main DocChanged loop creates one UnmarshalWorker per vbucket.
 func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 
 	// goroutine to work the processing channel and return completed entries
@@ -989,7 +992,7 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 	}
 
 	// Start goroutine to work the worker's processing channel.  When an entry arrives on the
-	// processing channel, blocks waits for success/fail for that document.
+	// processing channel, blocks waiting for success/fail for that document.
 	go func() {
 		for {
 			select {
@@ -1047,6 +1050,7 @@ type unmarshalEntry struct {
 	err error
 }
 
+// UnmarshalEntry represents a document being processed by an UnmarshalWorker.
 func NewUnmarshalEntry() *unmarshalEntry {
 
 	return &unmarshalEntry{
@@ -1055,6 +1059,7 @@ func NewUnmarshalEntry() *unmarshalEntry {
 	}
 }
 
+// UnmarshalEntry.process executes the processing (via callback), then updates the entry's success channel on completion
 func (e *unmarshalEntry) process(docID string, docJSON []byte, vbNo uint16, seq uint64, callback processDocFunc) {
 
 	// Do the processing work
