@@ -161,7 +161,7 @@ type CacheConfig struct {
 
 type ChannelIndexConfig struct {
 	BucketConfig
-	CacheWriter bool `json:"writer,omitempty"` // TODO: Partition information
+	IndexWriter bool `json:"writer,omitempty"` // TODO: Partition information
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -213,7 +213,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 	if dbConfig.ChannelIndex != nil {
 		url, err = url.Parse(*dbConfig.ChannelIndex.Server)
 		if err == nil && url.User != nil {
-			// Remove credentials from shadow URL and put them into the DbConfig.Shadow.Username and .Password:
+			// Remove credentials from shadow URL and put them into the DbConfig.ChannelIndex.Username and .Password:
 			if dbConfig.ChannelIndex.Username == "" {
 				dbConfig.ChannelIndex.Username = url.User.Username()
 			}

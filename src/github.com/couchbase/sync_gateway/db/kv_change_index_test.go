@@ -14,20 +14,21 @@ import (
 )
 
 func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
-	cacheBucket, err := ConnectToBucket(base.BucketSpec{
+	cacheBucketSpec:= base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: bucketname})
-	if err != nil {
-		log.Fatal("Couldn't connect to cache bucket")
-	}
+		BucketName: bucketname}
 	index := &kvChangeIndex{}
 
 	changeIndexOptions := &ChangeIndexOptions{
-		Bucket: cacheBucket,
+		Spec: cacheBucketSpec,
+		Writer: true,
 	}
-	index.Init(nil, SequenceID{}, nil, &CacheOptions{}, changeIndexOptions)
+	err := index.Init(nil, SequenceID{}, nil, &CacheOptions{}, changeIndexOptions)
+	if err != nil {
+		log.Fatal("Couldn't connect to index bucket")
+	}
 
-	return index, cacheBucket
+	return index, index.indexReadBucket
 }
 
 func setupTestDBForChangeIndex(t *testing.T) *Database {
@@ -37,16 +38,18 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 	}
 	vbEnabledBucket := testLeakyBucket(leakyBucketConfig)
 
-	indexBucket, err := ConnectToBucket(base.BucketSpec{
+	indexBucketSpec := base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: "indexBucket"})
+		BucketName: "indexBucket"}
+	indexBucket, err := ConnectToBucket(indexBucketSpec)
 
 	if err != nil {
 		log.Fatal("Couldn't connect to index bucket")
 	}
 	dbcOptions := DatabaseContextOptions{
 		IndexOptions: &ChangeIndexOptions{
-			Bucket: indexBucket,
+			Spec: indexBucketSpec,
+			Writer: true,
 		},
 		SequenceHashOptions: &SequenceHashOptions{
 			Bucket: indexBucket,
@@ -494,7 +497,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 
 	// Verify user entry in index
 	var principal PrincipalIndex
-	principalBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_idx_user:bob")
+	principalBytes, _, err := kvChangeIndex.indexReadBucket.GetRaw("_idx_user:bob")
 	assert.True(t, err == nil)
 	json.Unmarshal(principalBytes, &principal)
 	assert.Equals(t, principal.VbNo, uint16(1))
@@ -502,7 +505,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 
 	// Verify stable sequence was incremented
 	stableClock := base.NewSequenceClockImpl()
-	stableClockBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_idx_stableSeq")
+	stableClockBytes, _, err := kvChangeIndex.indexReadBucket.GetRaw("_idx_stableSeq")
 	assertNoError(t, err, "Unable to retrieve stable sequence")
 	stableClock.Unmarshal(stableClockBytes)
 	log.Printf("got clock:%s", base.PrintClock(stableClock))
@@ -512,7 +515,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["PBS", "NBC"]}`), uint64(2), uint16(1))
 	time.Sleep(100 * time.Millisecond) // wait for indexing
 
-	principalBytes, _, err = kvChangeIndex.indexBucket.GetRaw("_idx_user:bob")
+	principalBytes, _, err = kvChangeIndex.indexReadBucket.GetRaw("_idx_user:bob")
 	assert.True(t, err == nil)
 	json.Unmarshal(principalBytes, &principal)
 	assert.Equals(t, principal.VbNo, uint16(1))

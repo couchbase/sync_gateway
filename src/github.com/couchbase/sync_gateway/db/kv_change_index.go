@@ -38,7 +38,8 @@ const (
 
 type kvChangeIndex struct {
 	context                  *DatabaseContext           // Database context
-	indexBucket              base.Bucket                // Index bucket
+	indexReadBucket              base.Bucket                // Index bucket
+	indexWriteBucket              base.Bucket                // Index bucket
 	maxVbNo                  uint16                     // Number of vbuckets
 	indexPartitions          IndexPartitionMap          // Partitioning of vbuckets in the index
 	channelIndexWriters      map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
@@ -71,7 +72,7 @@ func init() {
 }
 ////// Cache writer API
 
-func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
+func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error){
 
 	// not sure yet whether we'll need initial sequence
 	k.channelIndexWriters = make(map[string]*kvChannelIndex)
@@ -79,9 +80,27 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	k.pending = make(chan *LogEntry, maxCacheUpdate)
 
 	k.context = context
-	k.indexBucket = indexOptions.Bucket
 
-	cbBucket, ok := k.indexBucket.(base.CouchbaseBucket)
+	k.indexReadBucket, err = base.GetBucket(indexOptions.Spec)
+	if err != nil {
+		base.Logf("Error opening index bucket %q, pool %q, server <%s>",
+			indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
+		// TODO: revert to local index?
+		return err
+	}
+
+	if indexOptions.Writer {
+		k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec)
+		if err != nil {
+			base.Logf("Error opening index bucket %q, pool %q, server <%s>",
+				indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
+			// TODO: revert to local index?
+			return err
+		}
+	}
+
+
+	cbBucket, ok := k.indexReadBucket.(base.CouchbaseBucket)
 	if ok {
 		k.maxVbNo, _ = cbBucket.GetMaxVbno()
 	} else {
@@ -124,6 +143,7 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	// Initialize unmarshalWorkers
 	k.unmarshalWorkers = make([]*unmarshalWorker, k.maxVbNo)
 
+	return nil
 }
 
 func (k *kvChangeIndex) Prune() {
@@ -139,14 +159,19 @@ func (k *kvChangeIndex) Clear() {
 
 func (k *kvChangeIndex) Stop() {
 	close(k.terminator)
-	k.indexBucket.Close()
+	if k.indexReadBucket != nil {
+		k.indexReadBucket.Close()
+	}
+	if k.indexWriteBucket != nil {
+		k.indexWriteBucket.Close()
+	}
 }
 
 // Returns the stable sequence for a document from the stable clock, based on the vbucket for the document.
 // Used during document write for handling deduplicated sequences on the DCP feed.
 func (k *kvChangeIndex) GetStableSequence(docID string) SequenceID {
 
-	vbNo := k.indexBucket.VBHash(docID)
+	vbNo := k.indexReadBucket.VBHash(docID)
 	return SequenceID{Seq: k.stableSequence.GetSequence(uint16(vbNo))}
 
 }
@@ -162,7 +187,7 @@ func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
 
 func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
 	clock := base.NewSyncSequenceClock()
-	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
+	value, cas, err := k.indexReadBucket.GetRaw(base.KStableSequenceKey)
 	indexExpvars.Add("get_loadStableClock", 1)
 	if err != nil {
 		base.Warn("Stable sequence not found in index - treating as 0")
@@ -185,7 +210,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 	if k.indexPartitions == nil || len(k.indexPartitions) == 0 {
 		var partitionDef []partitionStorage
 		// First attempt to load from the bucket
-		value, _, err := k.indexBucket.GetRaw(kIndexPartitionKey)
+		value, _, err := k.indexReadBucket.GetRaw(kIndexPartitionKey)
 		indexExpvars.Add("get_indexPartitionMap", 1)
 		if err == nil {
 			if err = json.Unmarshal(value, &partitionDef); err != nil {
@@ -240,7 +265,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 			if err != nil {
 				return nil, err
 			}
-			k.indexBucket.SetRaw(kIndexPartitionKey, 0, value)
+			k.indexReadBucket.SetRaw(kIndexPartitionKey, 0, value)
 		}
 
 		// Create k.indexPartitions based on partitionDef
@@ -351,7 +376,7 @@ func (k *kvChangeIndex) newChannelReader(channelName string) (*kvChannelIndex, e
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, k.onChange)
+	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.getStableClock, k.onChange)
 	k.channelIndexReaders[channelName].setType("reader")
 	indexExpvars.Add("polling_readers_added", 1)
 	return k.channelIndexReaders[channelName], nil
@@ -369,7 +394,7 @@ func (k *kvChangeIndex) newChannelWriter(channelName string) (*kvChannelIndex, e
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, nil)
+	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, k.getStableClock, nil)
 	k.channelIndexWriters[channelName].setType("writer")
 	return k.channelIndexWriters[channelName], nil
 }
@@ -396,7 +421,7 @@ func (k *kvChangeIndex) getOrCreateReader(channelName string, options ChangesOpt
 		if err != nil {
 			return nil, err
 		}
-		return NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, nil), nil
+		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.getStableClock, nil), nil
 
 	}
 }
@@ -449,7 +474,7 @@ func (k *kvChangeIndex) indexPending() {
 	}
 
 	// Generic channelStorage for log entry storage (if needed)
-	channelStorage := NewChannelStorage(k.indexBucket, "", indexPartitions)
+	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
 
 	// Continual processing of arriving entries from the feed.
 	for {
@@ -584,7 +609,7 @@ func (k *kvChangeIndex) hasActiveReaders() bool {
 
 func (k *kvChangeIndex) stableSequenceChanged() bool {
 
-	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
+	value, cas, err := k.indexReadBucket.GetRaw(base.KStableSequenceKey)
 	indexExpvars.Add("get_stableSequenceChanged", 1)
 	if err != nil {
 		base.Warn("Error loading stable sequence - skipping polling. Error:%v", err)
@@ -617,7 +642,7 @@ func (k *kvChangeIndex) pollReaders() bool {
 		keySet[index] = getChannelClockKey(reader.channelName)
 		index++
 	}
-	bulkGetResults, err := k.indexBucket.GetBulkRaw(keySet)
+	bulkGetResults, err := k.indexReadBucket.GetBulkRaw(keySet)
 
 	if err != nil {
 		base.Warn("Error retrieving channel clocks: %v", err)
@@ -766,7 +791,7 @@ func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 	if err != nil {
 		return err
 	}
-	casOut, err := writeCasRaw(k.indexBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
+	casOut, err := writeCasRaw(k.indexWriteBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 
 		changeCacheExpvars.Add("updateStableSequence-casRetryCount", 1)
@@ -913,7 +938,7 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 	}
 
 	// Retrieve index stats from bucket
-	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexBucket, indexPartitions, kvIndex.getStableClock, nil)
+	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexReadBucket, indexPartitions, kvIndex.getStableClock, nil)
 	indexClock, err := channelIndex.loadChannelClock()
 	if err == nil {
 		channelStats.IndexStats = ChannelIndexStats{}
@@ -1113,7 +1138,7 @@ func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, vbNo u
 
 	// Update the user doc in the index based on the principal
 	var principalIndex *PrincipalIndex
-	err = k.indexBucket.Update(indexDocID, 0, func(currentValue []byte) ([]byte, error) {
+	err = k.indexWriteBucket.Update(indexDocID, 0, func(currentValue []byte) ([]byte, error) {
 
 		// Be careful: this block can be invoked multiple times if there are races!
 		var principalRoleSet channels.TimedSet

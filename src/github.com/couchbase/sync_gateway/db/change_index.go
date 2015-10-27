@@ -24,7 +24,7 @@ import (
 type ChangeIndex interface {
 
 	// Initialize the index
-	Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChangeIndexOptions)
+	Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChangeIndexOptions) error
 
 	// Stop the index
 	Stop()
@@ -70,7 +70,9 @@ const (
 
 type ChangeIndexOptions struct {
 	Type    IndexType    // Index type
+	Spec    base.BucketSpec // Indexing bucket spec
 	Bucket  base.Bucket  // Indexing bucket
+	Writer  bool         // Cache Writer
 	Options CacheOptions // Caching options
 }
 

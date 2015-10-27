@@ -76,7 +76,7 @@ type CacheOptions struct {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) error {
 	c.context = context
 	c.initialSequence = lastSequence.Seq
 	c.nextSequence = lastSequence.Seq + 1
@@ -122,6 +122,8 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
 		}
 	}()
+
+	return nil
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.

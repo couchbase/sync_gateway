@@ -599,18 +599,18 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if config.ChannelIndex.Username != "" {
 			indexSpec.Auth = config.ChannelIndex
 		}
-		base.Logf("Opening index bucket %q, pool %q, server <%s>",
-			indexBucketName, indexPool, indexServer)
 
-		channelIndexOptions.Bucket, err = base.GetBucket(indexSpec)
+		channelIndexOptions.Spec = indexSpec
+		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
+
+		// TODO: separate config of hash bucket
+		sequenceHashOptions.Bucket, err = base.GetBucket(indexSpec)
 		if err != nil {
-			base.Logf("error Opening index bucket %q, pool %q, server <%s>",
+			base.Logf("Error opening sequence hash bucket %q, pool %q, server <%s>",
 				indexBucketName, indexPool, indexServer)
 			// TODO: revert to local index?
 			return nil, err
 		}
-		// TODO: separate config of hash bucket
-		sequenceHashOptions.Bucket = channelIndexOptions.Bucket
 		sequenceHashOptions.Size = 32
 	} else {
 		channelIndexOptions = nil

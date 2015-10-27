@@ -66,7 +66,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 				Server: &serverName,
 				Bucket: &indexBucketName,
 			},
-			CacheWriter: true,
+			IndexWriter: true,
 		}
 		dbConfig.ChannelIndex = channelIndexConfig
 	}
