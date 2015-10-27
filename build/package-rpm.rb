@@ -9,7 +9,7 @@ require 'rake'
 PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
 PRODUCT_KIND    = "sync-gateway"
-#SERVICE_CMD_EXAMPLE = "CentOS/RedHat 5/AmazonLinux: service sync_gateway start; CentOS/RedHat 6: initctl start sync_gateway; CentOS/RedHat 7: systemctl start sync_gateway"
+SERVICE_CMD_EXAMPLE = ENV['SERVICE_CMD_EXAMPLE']
 
 PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
 PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
@@ -45,7 +45,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}/rpmbuild/RPMS/x86_64"
                  sed -e s,@@PRODUCT@@,#{PRODUCT},g                        |
                  sed -e s,@@PRODUCT_BASE@@,#{PRODUCT_BASE},g              |
                  sed -e s,@@PRODUCT_BASE_CAP@@,#{product_base_cap},g      |
-                 sed -e s,@@SERVICE_CMD_EXAMPLE@@,"#{SERVICE_CMD_EXAMPLE}",g      |
+                 sed -e s,@@SERVICE_CMD_EXAMPLE@@,#{SERVICE_CMD_EXAMPLE},g      |
                  sed -e s,@@PRODUCT_KIND@@,#{PRODUCT_KIND},g > #{target}}
             sh %{chmod a+x #{target}}
         end
