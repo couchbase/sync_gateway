@@ -9,7 +9,7 @@ require 'rake'
 PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
 PRODUCT_KIND    = "sync-gateway"
-SERVICE_CMD_EXAMPLE = "CentOS/RedHat 5/AmazonLinux: service sync_gateway start\nCentOS/RedHat 6: initctl start sync_gateway\nCentOS/RedHat 7: systemctl start sync_gateway"
+SERVICE_CMD_EXAMPLE = "CentOS/RedHat 5/AmazonLinux: service sync_gateway start\\\nCentOS/RedHat 6: initctl start sync_gateway\\\nCentOS/RedHat 7: systemctl start sync_gateway"
 
 PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
 PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
