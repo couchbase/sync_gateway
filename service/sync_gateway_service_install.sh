@@ -13,6 +13,7 @@ GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sync-gateway
 GATEWAY_TEMPLATE_VAR=/opt/couchbase-sync-gateway/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
+SERVICE_CMD_ONLY=false
 
 
 usage()
@@ -119,6 +120,9 @@ while [ "$1" != "" ]; do
         --logsdir)
             LOGS_TEMPLATE_VAR=$VALUE
             ;;
+        --servicecmd)
+            SERVICE_CMD_ONLY=true
+            ;;
         *)
             echo "ERROR: unknown parameter \"$PARAM\""
             usage
@@ -166,6 +170,7 @@ fi
 # Copy a default config if defined config file does not exist
 if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
     cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+    chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
 fi
 
 #Install the service for the specific platform
@@ -173,9 +178,13 @@ case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
-                setup_output_dirs
-                render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                service ${SERVICE_NAME} start
+                if [ "$SERVICE_CMD_ONLY" = true ]; then
+                    echo "service ${SERVICE_NAME} start"
+                else
+                    setup_output_dirs
+                    render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                    service ${SERVICE_NAME} start
+                fi
                 ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
@@ -187,26 +196,37 @@ case $OS in
     RedHat|CentOS)
         case $OS_MAJOR_VERSION in
             5) 
-                setup_output_dirs
-                render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
-                chmod 755 /etc/init.d/${SERVICE_NAME}
-                cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
-                PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
-                chkconfig --add ${SERVICE_NAME}
-                chkconfig ${SERVICE_NAME} on
-                service ${SERVICE_NAME} start
-                export SERVICE_CMD_EXAMPLE="service ${SERVICE_NAME} start"
+                if [ "$SERVICE_CMD_ONLY" = true ]; then
+                    echo "service ${SERVICE_NAME} start"
+                else
+                    setup_output_dirs
+                    render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
+                    chmod 755 /etc/init.d/${SERVICE_NAME}
+                    cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+                    PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
+                    chkconfig --add ${SERVICE_NAME}
+                    chkconfig ${SERVICE_NAME} on
+                    service ${SERVICE_NAME} start
+                fi
                 ;;
             6)
-                setup_output_dirs
-                render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                initctl start ${SERVICE_NAME}
+                if [ "$SERVICE_CMD_ONLY" = true ]; then
+                    echo "initctl start ${SERVICE_NAME}"
+                else
+                    setup_output_dirs
+                    render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                    initctl start ${SERVICE_NAME}
+                fi
                 ;;
             7)
-                setup_output_dirs
-                render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
-                systemctl enable ${SERVICE_NAME}
-                systemctl start ${SERVICE_NAME}
+                if [ "$SERVICE_CMD_ONLY" = true ]; then
+                    echo "systemctl start ${SERVICE_NAME}"
+                else
+                    setup_output_dirs
+                    render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
+                    systemctl enable ${SERVICE_NAME}
+                    systemctl start ${SERVICE_NAME}
+                fi
                 ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
@@ -216,9 +236,13 @@ case $OS in
         esac
         ;;
     Darwin)
-        setup_output_dirs
-        render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
-        launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+        if [ "$SERVICE_CMD_ONLY" = true ]; then
+            echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist"
+        else
+            setup_output_dirs
+            render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+            launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+        fi
         ;;
     *)
         echo "ERROR: unknown OS \"$OS\""
