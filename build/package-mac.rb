@@ -17,6 +17,7 @@ require 'rake'
 PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
 PRODUCT_KIND    = "sync-gateway"
+SERVICE_CMD_EXAMPLE = "service sync_gateway start"
 
 PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
 PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"

@@ -10,6 +10,7 @@ PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
 PRODUCT_KIND    = "sync-gateway"
 DEBEMAIL        = "build@couchbase.com"
+SERVICE_CMD_EXAMPLE = "service sync_gateway start"
 
 PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
 PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
