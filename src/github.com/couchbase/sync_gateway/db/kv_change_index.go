@@ -64,11 +64,14 @@ type partitionStorage struct {
 }
 
 var indexExpvars *expvar.Map
+
+var indexTimingExpvars *expvar.Map
 var latestWriteBatch expvar.Int
 
 func init() {
 	indexExpvars = expvar.NewMap("syncGateway_index")
 	indexExpvars.Set("latest_write_batch", &latestWriteBatch)
+	indexTimingExpvars = expvar.NewMap("syncGateway_indexTiming")
 }
 ////// Cache writer API
 
@@ -465,6 +468,7 @@ func (k *kvChangeIndex) readFromPending() []*LogEntry {
 func (k *kvChangeIndex) indexPending() {
 
 	// Read entries from the pending list into array
+	readPendingTime := time.Now()
 	entries := k.readFromPending()
 
 	// Initialize partition map (lazy init)
@@ -479,8 +483,11 @@ func (k *kvChangeIndex) indexPending() {
 	// Continual processing of arriving entries from the feed.
 	for {
 		latestWriteBatch.Set(int64(len(entries)))
+		indexTimingExpvars.Add("batch_readPending", time.Since(readPendingTime).Nanoseconds())
+		indexTimingExpvars.Add("entryCount", int64(len(entries)))
 		k.indexEntries(entries, indexPartitions, channelStorage)
 		// Read next entries
+		readPendingTime = time.Now()
 		entries = k.readFromPending()
 	}
 }
@@ -502,7 +509,7 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	} else {
 		batchSizeWindow = int(len(entries)/50) * 50
 	}
-	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
+	indexTimingExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
 
 
 	// Wait group tracks when the current buffer has been completely processed
@@ -559,12 +566,9 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 
 	}
 
-	indexEntryTimeMs := int(time.Since(batchStart)/(500*time.Millisecond)) * 500
-	changeCacheExpvars.Add(fmt.Sprintf("indexEntries-entryTime-%06dms", indexEntryTimeMs), 1)
-
 	// Wait group tracks when the current buffer has been completely processed
 	var channelWg sync.WaitGroup
-
+	channelStart := time.Now()
 	// Iterate over channel sets to update channel index
 	for channelName, entrySet := range channelSets {
 		channelWg.Add(1)
@@ -579,7 +583,10 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	entryWg.Wait()
 	channelWg.Wait()
 
-	writeHistogram(changeCacheExpvars, batchStart, "indexEntries-entryAndChannelTime")
+	indexTimingExpvars.Add("batch_writeEntriesAndChannelBlocks", time.Since(batchStart).Nanoseconds())
+	indexTimingExpvars.Add("batch_writeChannelBlocks", time.Since(channelStart).Nanoseconds())
+
+	writeHistogram(indexTimingExpvars, batchStart, "indexEntries-entryAndChannelTime")
 
 	stableStart := time.Now()
 	// Update stable sequence
@@ -588,15 +595,17 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 		base.LogPanic("Error updating stable sequence", err)
 	}
 
-	writeHistogram(changeCacheExpvars, stableStart, "indexEntries-stableSeqTime")
+	indexTimingExpvars.Add("batch_updateStableSequence", time.Since(stableStart).Nanoseconds())
+	writeHistogram(indexTimingExpvars, stableStart, "indexEntries-stableSeqTime")
 
 	// TODO: remove - iterate once more for perf logging
 	for _, logEntry := range entries {
-		writeHistogram(changeCacheExpvars, logEntry.TimeReceived, "lag-indexing")
-		writeHistogram(changeCacheExpvars, logEntry.TimeSaved, "lag-totalWrite")
+		writeHistogram(indexTimingExpvars, logEntry.TimeReceived, "lag-indexing")
+		writeHistogram(indexTimingExpvars, logEntry.TimeSaved, "lag-totalWrite")
 	}
 
-	writeHistogram(changeCacheExpvars, batchStart, "indexEntries-batchTime")
+	writeHistogram(indexTimingExpvars, batchStart, "indexEntries-batchTime")
+	indexTimingExpvars.Add("batch_totalBatchTime", time.Since(batchStart).Nanoseconds())
 }
 
 // TODO: If mutex read lock is too much overhead every time we poll, could manage numReaders using
@@ -785,7 +794,7 @@ func (k *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 
 	// Initial set, for the first cas update attempt
-	changeCacheExpvars.Add("updateStableSequence-count", 1)
+	indexTimingExpvars.Add("updateStableSequence-count", 1)
 	k.stableSequence.UpdateWithClock(updates)
 	value, err := k.stableSequence.Marshal()
 	if err != nil {
@@ -794,7 +803,7 @@ func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 	casOut, err := writeCasRaw(k.indexWriteBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 
-		changeCacheExpvars.Add("updateStableSequence-casRetryCount", 1)
+		indexTimingExpvars.Add("updateStableSequence-casRetryCount", 1)
 		err = k.stableSequence.Unmarshal(value)
 		if err != nil {
 			return nil, err
@@ -972,7 +981,7 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 
 	// goroutine to work the processing channel and return completed entries
 	// to the output channel
-	maxProcessing := 50
+	maxProcessing := 500
 
 	worker := &unmarshalWorker{
 		output: output,
@@ -991,12 +1000,12 @@ func NewUnmarshalWorker(output chan<- *LogEntry) *unmarshalWorker {
 						case ok:= <-unmarshalEntry.success:
 							if ok {
 								base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
-								writeHistogram(changeCacheExpvars, entryTime, "lag-waitForSuccess")
-								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
+								writeHistogram(indexTimingExpvars, entryTime, "lag-waitForSuccess")
+								writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
 								outputStart := time.Now()
 								output <- unmarshalEntry.logEntry
-								writeHistogram(changeCacheExpvars, outputStart, "lag-processedToOutput")
-								writeHistogram(changeCacheExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
+								writeHistogram(indexTimingExpvars, outputStart, "lag-processedToOutput")
+								writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
 
 							} else {
 								changeCacheExpvars.Add("unmarshalEntry_success_false", 1)

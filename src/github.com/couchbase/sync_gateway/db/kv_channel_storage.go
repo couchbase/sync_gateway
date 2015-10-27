@@ -173,7 +173,7 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 		return errors.New("Error marshalling channel block")
 	}
 
-	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", len(localValue)), 1)
+	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500) * 500), 1)
 
 	casOut, err := writeCasRaw(b.bucket, block.Key(), localValue, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
@@ -192,6 +192,7 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 		return err
 	}
 	block.SetCas(casOut)
+
 	return nil
 }
 

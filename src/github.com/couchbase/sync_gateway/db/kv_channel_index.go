@@ -15,6 +15,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -82,13 +83,21 @@ func (k *kvChannelIndex) Add(entry *LogEntry) error {
 // Adds a set
 func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
 	base.LogTo("DIndex+", "Adding set of %d entries to channel %s", len(entries), k.channelName)
+
+	channelUpdateStart := time.Now()
 	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
 	if err != nil {
 		return err
 	}
+	indexTimingExpvars.Add("updateChannelEntries", time.Since(channelUpdateStart).Nanoseconds())
+
 	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
 	// round trips.
-	return k.writeClockCas(clockUpdates)
+	clockWriteStart := time.Now()
+	err = k.writeClockCas(clockUpdates)
+	indexTimingExpvars.Add("updateChannelClocks", time.Since(clockWriteStart).Nanoseconds())
+
+	return err
 }
 
 func (k *kvChannelIndex) Compact() {
