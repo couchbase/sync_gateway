@@ -29,16 +29,18 @@ import (
 )
 
 const (
-	kIndexPrefix       = "_idx"
-	maxCacheUpdate     = 500
-	minCacheUpdate     = 1
-	kPollFrequency     = 500
-	kIndexPartitionKey = "_idxPartitionMap"
+	kIndexPrefix          = "_idx"
+	maxCacheUpdate        = 2000
+	minCacheUpdate        = 1
+	kPollFrequency        = 500
+	kIndexPartitionKey    = "_idxPartitionMap"
+	maxUnmarshalProcesses = 16
 )
 
 type kvChangeIndex struct {
 	context                  *DatabaseContext           // Database context
-	indexBucket              base.Bucket                // Index bucket
+	indexReadBucket          base.Bucket                // Index bucket
+	indexWriteBucket         base.Bucket                // Index bucket
 	maxVbNo                  uint16                     // Number of vbuckets
 	indexPartitions          IndexPartitionMap          // Partitioning of vbuckets in the index
 	channelIndexWriters      map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
@@ -47,6 +49,8 @@ type kvChangeIndex struct {
 	channelIndexReaderLock   sync.RWMutex               // Coordinates read access to channel index reader map
 	onChange                 func(base.Set)             // Client callback that notifies of channel changes
 	pending                  chan *LogEntry             // Incoming changes, pending indexing
+	unmarshalWorkers         []*unmarshalWorker         // Workers to unmarshal documents in parallel, while preserving vbucket ordering
+	unmarshalWorkQueue       chan *unmarshalEntry       // Queue for concurrent processing of incoming docs
 	stableSequence           *base.SyncSequenceClock    // Stable sequence in index
 	logsDisabled             bool                       // If true, ignore incoming tap changes
 	lastPolledStableSequence base.SequenceClock         // Used to identify changes
@@ -61,11 +65,20 @@ type partitionStorage struct {
 	VbNos []uint16 `json:"vbNos"`
 }
 
-var indexExpvars = expvar.NewMap("syncGateway_index")
+var indexExpvars *expvar.Map
+
+var indexTimingExpvars *expvar.Map
+var latestWriteBatch expvar.Int
+
+func init() {
+	indexExpvars = expvar.NewMap("syncGateway_index")
+	indexExpvars.Set("latest_write_batch", &latestWriteBatch)
+	indexTimingExpvars = expvar.NewMap("syncGateway_indexTiming")
+}
 
 ////// Cache writer API
 
-func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
+func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error) {
 
 	// not sure yet whether we'll need initial sequence
 	k.channelIndexWriters = make(map[string]*kvChannelIndex)
@@ -73,9 +86,16 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	k.pending = make(chan *LogEntry, maxCacheUpdate)
 
 	k.context = context
-	k.indexBucket = indexOptions.Bucket
 
-	cbBucket, ok := k.indexBucket.(base.CouchbaseBucket)
+	k.indexReadBucket, err = base.GetBucket(indexOptions.Spec)
+	if err != nil {
+		base.Logf("Error opening index bucket %q, pool %q, server <%s>",
+			indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
+		// TODO: revert to local index?
+		return err
+	}
+
+	cbBucket, ok := k.indexReadBucket.(base.CouchbaseBucket)
 	if ok {
 		k.maxVbNo, _ = cbBucket.GetMaxVbno()
 	} else {
@@ -115,6 +135,38 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 		}
 	}(k)
 
+	if indexOptions.Writer {
+		k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec)
+		if err != nil {
+			base.Logf("Error opening index bucket %q, pool %q, server <%s>",
+				indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
+			// TODO: revert to local index?
+			return err
+		}
+
+		// Set of worker goroutines used to process incoming entries
+		k.unmarshalWorkQueue = make(chan *unmarshalEntry, 500)
+
+		// Start fixed set of goroutines to work the unmarshal work queue
+		for i := 0; i < maxUnmarshalProcesses; i++ {
+			go func() {
+				for {
+					select {
+					case unmarshalEntry := <-k.unmarshalWorkQueue:
+						unmarshalEntry.process()
+					case <-k.terminator:
+						return
+					}
+				}
+			}()
+		}
+
+	}
+
+	// Initialize unmarshalWorkers
+	k.unmarshalWorkers = make([]*unmarshalWorker, k.maxVbNo)
+
+	return nil
 }
 
 func (k *kvChangeIndex) Prune() {
@@ -130,14 +182,19 @@ func (k *kvChangeIndex) Clear() {
 
 func (k *kvChangeIndex) Stop() {
 	close(k.terminator)
-	k.indexBucket.Close()
+	if k.indexReadBucket != nil {
+		k.indexReadBucket.Close()
+	}
+	if k.indexWriteBucket != nil {
+		k.indexWriteBucket.Close()
+	}
 }
 
 // Returns the stable sequence for a document from the stable clock, based on the vbucket for the document.
 // Used during document write for handling deduplicated sequences on the DCP feed.
 func (k *kvChangeIndex) GetStableSequence(docID string) SequenceID {
 
-	vbNo := k.indexBucket.VBHash(docID)
+	vbNo := k.indexReadBucket.VBHash(docID)
 	return SequenceID{Seq: k.stableSequence.GetSequence(uint16(vbNo))}
 
 }
@@ -153,7 +210,7 @@ func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
 
 func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
 	clock := base.NewSyncSequenceClock()
-	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
+	value, cas, err := k.indexReadBucket.GetRaw(base.KStableSequenceKey)
 	indexExpvars.Add("get_loadStableClock", 1)
 	if err != nil {
 		base.Warn("Stable sequence not found in index - treating as 0")
@@ -164,11 +221,11 @@ func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
 	return clock
 }
 
-func (k *kvChangeIndex) AddToCache(change *LogEntry) base.Set {
+func (k *kvChangeIndex) addToCache(change *LogEntry) {
 	// queue for cache addition
 	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", change.DocID, change.VbNo, change.Sequence)
 	k.pending <- change
-	return base.Set{}
+	return
 }
 
 func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
@@ -176,7 +233,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 	if k.indexPartitions == nil || len(k.indexPartitions) == 0 {
 		var partitionDef []partitionStorage
 		// First attempt to load from the bucket
-		value, _, err := k.indexBucket.GetRaw(kIndexPartitionKey)
+		value, _, err := k.indexReadBucket.GetRaw(kIndexPartitionKey)
 		indexExpvars.Add("get_indexPartitionMap", 1)
 		if err == nil {
 			if err = json.Unmarshal(value, &partitionDef); err != nil {
@@ -231,7 +288,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 			if err != nil {
 				return nil, err
 			}
-			k.indexBucket.SetRaw(kIndexPartitionKey, 0, value)
+			k.indexReadBucket.SetRaw(kIndexPartitionKey, 0, value)
 		}
 
 		// Create k.indexPartitions based on partitionDef
@@ -293,139 +350,29 @@ func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
 
 // Given a newly changed document (received from the feed), adds to the pending entries.
 // The JSON must be the raw document from the bucket, with the metadata and all.
+// NOTE: DocChanged is not thread-safe (due to k.unmarshalWorkers usage).  It should only
+// be getting called from a single process per change index (i.e. DCP feed processing.)
 func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
 
-	entryTime := time.Now()
-	// ** This method does not directly access any state of c, so it doesn't lock.
-
-	// TODO: in order to work around https://github.com/couchbase/sync_gateway/issues/1139,
-	// I had to remove the code which spawned a goroutine, since it broke the strict
-	// ordering of how changes were being processed.  (see issue 1139).  To achieve
-	// parallelism, this kvChangeIndex could maintain a pool of worker goroutines
-	// that are reading from a channel.
+	// Incoming docs are assigned to the appropriate unmarshalWorker for the vbucket, in order
+	// to ensure docs are processed in sequence for a given vbucket.
+	unmarshalWorker := k.unmarshalWorkers[vbNo]
+	if unmarshalWorker == nil {
+		// Initialize new worker that sends results to k.pending for processing by the indexPending loop
+		unmarshalWorker = NewUnmarshalWorker(k.pending, k.unmarshalWorkQueue, k.terminator)
+		k.unmarshalWorkers[vbNo] = unmarshalWorker
+	}
 
 	// Is this a user/role doc?
-	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-		k.processPrincipalDoc(docID, docJSON, true, vbNo, seq)
-		return
-	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-		k.processPrincipalDoc(docID, docJSON, false, vbNo, seq)
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) || strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+		unmarshalWorker.add(docID, docJSON, vbNo, seq, k.processPrincipalDoc)
 		return
 	}
 
-	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, err := unmarshalDocumentSyncData(docJSON, false)
-	if err != nil || !doc.hasValidSyncData(false) {
-		base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
-		return
-	}
+	// Adds to the worker queue for processing, then returns.  Doesn't block unless
+	// worker queue is full.
+	unmarshalWorker.add(docID, docJSON, vbNo, seq, k.processDoc)
 
-	// Record a histogram of the  feed's lag:
-	feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
-	lagMs := int(feedLag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-feed-%04dms", lagMs), 1)
-
-	// Now add the entry for the new doc revision:
-	change := &LogEntry{
-		Sequence:     seq,
-		DocID:        docID,
-		RevID:        doc.CurrentRev,
-		Flags:        doc.Flags,
-		TimeReceived: time.Now(),
-		TimeSaved:    doc.TimeSaved,
-		Channels:     doc.Channels,
-		VbNo:         uint16(vbNo),
-	}
-	base.LogTo("DIndex+", "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLag/time.Millisecond), change.DocID, change.RevID)
-
-	if change.DocID == "" {
-		base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
-		changeCacheExpvars.Add("changes_without_id", 1)
-		return
-	}
-
-	k.AddToCache(change)
-
-}
-
-type PrincipalIndex struct {
-	VbNo             uint16            `json:"vbucket"`        // vbucket number for user doc - for convenience
-	ExplicitChannels channels.TimedSet `json:"admin_channels"` // Timed Set of channel names to vbucket seq no of first user version that granted access
-	ExplicitRoles    channels.TimedSet `json:"admin_roles"`    // Timed Set of role names to vbucket seq no of first user version that granted access
-}
-
-func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, isUser bool, vbNo uint16, sequence uint64) {
-	// We need to track vbucket/sequence numbers for admin-granted roles and channels in the index,
-	// since we can no longer store the sequence in the user doc body itself
-
-	base.LogTo("DIndex+", "Processing principal doc %s", docID)
-	// Index doc for a user stores the timed channel set of admin-granted channels.  These are merged with
-	// the document-granted channels during calculateChannels.
-	princ, err := k.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
-	if princ == nil {
-		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
-		return
-	}
-
-	var indexDocID string
-	if isUser {
-		indexDocID = kIndexPrefix + "_user:" + princ.Name()
-	} else {
-		indexDocID = kIndexPrefix + "_role:" + princ.Name()
-	}
-
-	// Update the user doc in the index based on the principal
-	var principalIndex *PrincipalIndex
-	err = k.indexBucket.Update(indexDocID, 0, func(currentValue []byte) ([]byte, error) {
-
-		// Be careful: this block can be invoked multiple times if there are races!
-		var principalRoleSet channels.TimedSet
-		principalChannelSet := princ.ExplicitChannels()
-		user, isUserPrincipal := princ.(auth.User)
-		if isUserPrincipal {
-			principalRoleSet = user.ExplicitRoles()
-		}
-
-		if currentValue == nil {
-			// User index entry doesn't yet exist - create as new if the principal has channels
-			// or roles
-			if len(principalChannelSet) == 0 && len(principalRoleSet) == 0 {
-				return nil, errors.New("No update required")
-			}
-			principalIndex = &PrincipalIndex{
-				VbNo:             vbNo,
-				ExplicitChannels: make(channels.TimedSet),
-				ExplicitRoles:    make(channels.TimedSet),
-			}
-
-		} else {
-			if err := json.Unmarshal(currentValue, &principalIndex); err != nil {
-				return nil, err
-			}
-		}
-		var rolesChanged, channelsChanged bool
-		channelsChanged = principalIndex.ExplicitChannels.UpdateAtSequence(principalChannelSet.AsSet(), sequence)
-
-		if isUserPrincipal {
-			rolesChanged = principalIndex.ExplicitRoles.UpdateAtSequence(principalRoleSet.AsSet(), sequence)
-		}
-
-		if channelsChanged || rolesChanged {
-			return json.Marshal(principalIndex)
-		} else {
-			return nil, errors.New("No update required")
-		}
-	})
-
-	// Add to cache so that the stable sequence gets updated
-	change := &LogEntry{
-		Sequence:     sequence,
-		DocID:        docID,
-		TimeReceived: time.Now(),
-		VbNo:         uint16(vbNo),
-		IsPrincipal:  true,
-	}
-	k.AddToCache(change)
 }
 
 func (k *kvChangeIndex) getChannelWriter(channelName string) *kvChannelIndex {
@@ -454,7 +401,7 @@ func (k *kvChangeIndex) newChannelReader(channelName string) (*kvChannelIndex, e
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, k.onChange)
+	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.getStableClock, k.onChange)
 	k.channelIndexReaders[channelName].setType("reader")
 	indexExpvars.Add("polling_readers_added", 1)
 	return k.channelIndexReaders[channelName], nil
@@ -472,7 +419,7 @@ func (k *kvChangeIndex) newChannelWriter(channelName string) (*kvChannelIndex, e
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, nil)
+	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, k.getStableClock, nil)
 	k.channelIndexWriters[channelName].setType("writer")
 	return k.channelIndexWriters[channelName], nil
 }
@@ -499,7 +446,7 @@ func (k *kvChangeIndex) getOrCreateReader(channelName string, options ChangesOpt
 		if err != nil {
 			return nil, err
 		}
-		return NewKvChannelIndex(channelName, k.indexBucket, indexPartitions, k.getStableClock, nil), nil
+		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.getStableClock, nil), nil
 
 	}
 }
@@ -543,6 +490,7 @@ func (k *kvChangeIndex) readFromPending() []*LogEntry {
 func (k *kvChangeIndex) indexPending() {
 
 	// Read entries from the pending list into array
+	readPendingTime := time.Now()
 	entries := k.readFromPending()
 
 	// Initialize partition map (lazy init)
@@ -552,12 +500,16 @@ func (k *kvChangeIndex) indexPending() {
 	}
 
 	// Generic channelStorage for log entry storage (if needed)
-	channelStorage := NewChannelStorage(k.indexBucket, "", indexPartitions)
+	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
 
 	// Continual processing of arriving entries from the feed.
 	for {
+		latestWriteBatch.Set(int64(len(entries)))
+		indexTimingExpvars.Add("batch_readPending", time.Since(readPendingTime).Nanoseconds())
+		indexTimingExpvars.Add("entryCount", int64(len(entries)))
 		k.indexEntries(entries, indexPartitions, channelStorage)
 		// Read next entries
+		readPendingTime = time.Now()
 		entries = k.readFromPending()
 	}
 }
@@ -565,11 +517,22 @@ func (k *kvChangeIndex) indexPending() {
 // Index a group of entries.  Iterates over the entry set to build updates per channel, then
 // updates using channel index.
 func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexPartitionMap, channelStorage ChannelStorage) {
-	// Wait group tracks when the current buffer has been completely processed
-	var wg sync.WaitGroup
+
+	batchStart := time.Now()
 	channelSets := make(map[string][]*LogEntry)
 	updatedSequences := base.NewSequenceClockImpl()
 
+	// Record a histogram of the batch sizes
+	var batchSizeWindow int
+	if len(entries) < 50 {
+		batchSizeWindow = int(len(entries)/5) * 5
+	} else {
+		batchSizeWindow = int(len(entries)/50) * 50
+	}
+	indexTimingExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
+
+	// Wait group tracks when the current buffer has been completely processed
+	var entryWg sync.WaitGroup
 	// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 	for _, logEntry := range entries {
 
@@ -581,7 +544,11 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 
 		// Add index log entry if needed
 		if channelStorage.StoresLogEntries() {
-			channelStorage.WriteLogEntry(logEntry)
+			entryWg.Add(1)
+			go func(logEntry *LogEntry) {
+				defer entryWg.Done()
+				channelStorage.WriteLogEntry(logEntry)
+			}(logEntry)
 		}
 		// Collect entries by channel
 		// Remove channels from entry to save space in memory, index entries
@@ -618,22 +585,46 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 
 	}
 
+	// Wait group tracks when the current buffer has been completely processed
+	var channelWg sync.WaitGroup
+	channelStart := time.Now()
 	// Iterate over channel sets to update channel index
 	for channelName, entrySet := range channelSets {
-		wg.Add(1)
+		channelWg.Add(1)
 		go func(channelName string, entrySet []*LogEntry) {
-			defer wg.Done()
+			defer channelWg.Done()
 			k.addSetToChannelIndex(channelName, entrySet)
 
 		}(channelName, entrySet)
 	}
-	wg.Wait()
 
+	// Wait for entry and channel processing to complete
+	entryWg.Wait()
+	channelWg.Wait()
+
+	indexTimingExpvars.Add("batch_writeEntriesAndChannelBlocks", time.Since(batchStart).Nanoseconds())
+	indexTimingExpvars.Add("batch_writeChannelBlocks", time.Since(channelStart).Nanoseconds())
+
+	writeHistogram(indexTimingExpvars, batchStart, "indexEntries-entryAndChannelTime")
+
+	stableStart := time.Now()
 	// Update stable sequence
 	err := k.updateStableSequence(updatedSequences)
 	if err != nil {
 		base.LogPanic("Error updating stable sequence", err)
 	}
+
+	indexTimingExpvars.Add("batch_updateStableSequence", time.Since(stableStart).Nanoseconds())
+	writeHistogram(indexTimingExpvars, stableStart, "indexEntries-stableSeqTime")
+
+	// TODO: remove - iterate once more for perf logging
+	for _, logEntry := range entries {
+		writeHistogram(indexTimingExpvars, logEntry.TimeReceived, "lag-indexing")
+		writeHistogram(indexTimingExpvars, logEntry.TimeSaved, "lag-totalWrite")
+	}
+
+	writeHistogram(indexTimingExpvars, batchStart, "indexEntries-batchTime")
+	indexTimingExpvars.Add("batch_totalBatchTime", time.Since(batchStart).Nanoseconds())
 }
 
 // TODO: If mutex read lock is too much overhead every time we poll, could manage numReaders using
@@ -646,7 +637,7 @@ func (k *kvChangeIndex) hasActiveReaders() bool {
 
 func (k *kvChangeIndex) stableSequenceChanged() bool {
 
-	value, cas, err := k.indexBucket.GetRaw(base.KStableSequenceKey)
+	value, cas, err := k.indexReadBucket.GetRaw(base.KStableSequenceKey)
 	indexExpvars.Add("get_stableSequenceChanged", 1)
 	if err != nil {
 		base.Warn("Error loading stable sequence - skipping polling. Error:%v", err)
@@ -679,7 +670,7 @@ func (k *kvChangeIndex) pollReaders() bool {
 		keySet[index] = getChannelClockKey(reader.channelName)
 		index++
 	}
-	bulkGetResults, err := k.indexBucket.GetBulkRaw(keySet)
+	bulkGetResults, err := k.indexReadBucket.GetBulkRaw(keySet)
 
 	if err != nil {
 		base.Warn("Error retrieving channel clocks: %v", err)
@@ -822,13 +813,16 @@ func (k *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
 
 	// Initial set, for the first cas update attempt
+	indexTimingExpvars.Add("updateStableSequence-count", 1)
 	k.stableSequence.UpdateWithClock(updates)
 	value, err := k.stableSequence.Marshal()
 	if err != nil {
 		return err
 	}
-	casOut, err := writeCasRaw(k.indexBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
+	casOut, err := writeCasRaw(k.indexWriteBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
+
+		indexTimingExpvars.Add("updateStableSequence-casRetryCount", 1)
 		err = k.stableSequence.Unmarshal(value)
 		if err != nil {
 			return nil, err
@@ -972,7 +966,7 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 	}
 
 	// Retrieve index stats from bucket
-	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexBucket, indexPartitions, kvIndex.getStableClock, nil)
+	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexReadBucket, indexPartitions, kvIndex.getStableClock, nil)
 	indexClock, err := channelIndex.loadChannelClock()
 	if err == nil {
 		channelStats.IndexStats = ChannelIndexStats{}
@@ -995,4 +989,249 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 
 func IsNotFoundError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+type unmarshalWorker struct {
+	output             chan<- *LogEntry
+	processing         chan *unmarshalEntry
+	unmarshalWorkQueue chan<- *unmarshalEntry
+}
+
+// UnmarshalWorker is used to unmarshal incoming entries from the DCP feed in parallel, while maintaining ordering of
+// sequences per vbucket.  The main DocChanged loop creates one UnmarshalWorker per vbucket.
+func NewUnmarshalWorker(output chan<- *LogEntry, unmarshalWorkQueue chan<- *unmarshalEntry, terminator chan struct{}) *unmarshalWorker {
+
+	// goroutine to work the processing channel and return completed entries
+	// to the output channel
+	maxProcessing := 50
+
+	worker := &unmarshalWorker{
+		output:             output,
+		processing:         make(chan *unmarshalEntry, maxProcessing),
+		unmarshalWorkQueue: unmarshalWorkQueue,
+	}
+
+	// Start goroutine to work the worker's processing channel.  When an entry arrives on the
+	// processing channel, blocks waiting for success/fail for that document.
+	go func(worker *unmarshalWorker, terminator chan struct{}) {
+		for {
+			select {
+			case unmarshalEntry := <-worker.processing:
+				// Wait for entry processing to be done
+				entryTime := time.Now()
+				select {
+				case ok := <-unmarshalEntry.success:
+					if ok {
+						base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
+						writeHistogram(indexTimingExpvars, entryTime, "lag-waitForSuccess")
+						writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
+						outputStart := time.Now()
+						output <- unmarshalEntry.logEntry
+						writeHistogram(indexTimingExpvars, outputStart, "lag-processedToOutput")
+						writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
+
+					} else {
+						changeCacheExpvars.Add("unmarshalEntry_success_false", 1)
+						// error already logged - just ignore the entry
+					}
+				case <-terminator:
+					return
+
+				}
+			case <-terminator:
+				return
+			}
+		}
+	}(worker, terminator)
+
+	return worker
+}
+
+// Add document to the ordered processing results channel, and start goroutine to do processing work.
+func (uw *unmarshalWorker) add(docID string, docJSON []byte, vbNo uint16, seq uint64, callback processDocFunc) {
+	// create new unmarshal entry
+	unmarshalEntry := NewUnmarshalEntry(docID, docJSON, vbNo, seq, callback)
+
+	// Add it to the ordering queue.  Will block if we're at limit for concurrent processing for this vbucket (maxProcessing).
+	// TODO: This means that one full vbucket queue will block additions to all others (as the main DocChanged blocks on
+	// call to this method).  Leaving as-is to avoid complexity, and as it's probably reasonable for hotspot vbs to get priority.
+	uw.processing <- unmarshalEntry
+
+	// Send the entry to the entryWorker channel to get processed by the kvChangeIndex entry processors
+	uw.unmarshalWorkQueue <- unmarshalEntry
+}
+
+// An incoming document being unmarshalled by unmarshalWorker
+type unmarshalEntry struct {
+	entryTime time.Time
+	logEntry  *LogEntry
+	docID     string
+	docJSON   []byte
+	vbNo      uint16
+	seq       uint64
+	callback  processDocFunc
+	success   chan bool
+	err       error
+}
+
+// UnmarshalEntry represents a document being processed by an UnmarshalWorker.
+func NewUnmarshalEntry(docID string, docJSON []byte, vbNo uint16, seq uint64, callback processDocFunc) *unmarshalEntry {
+
+	return &unmarshalEntry{
+		entryTime: time.Now(),
+		success:   make(chan bool),
+		docID:     docID,
+		docJSON:   docJSON,
+		vbNo:      vbNo,
+		seq:       seq,
+		callback:  callback,
+	}
+}
+
+// UnmarshalEntry.process executes the processing (via callback), then updates the entry's success channel on completion
+func (e *unmarshalEntry) process() {
+
+	// Do the processing work
+	e.logEntry, e.err = e.callback(e.docID, e.docJSON, e.vbNo, e.seq)
+
+	// Return completion status on the success channel
+	if e.err != nil || e.logEntry == nil {
+		e.success <- false
+	} else {
+		e.success <- true
+	}
+}
+
+type PrincipalIndex struct {
+	VbNo             uint16            `json:"vbucket"`        // vbucket number for user doc - for convenience
+	ExplicitChannels channels.TimedSet `json:"admin_channels"` // Timed Set of channel names to vbucket seq no of first user version that granted access
+	ExplicitRoles    channels.TimedSet `json:"admin_roles"`    // Timed Set of role names to vbucket seq no of first user version that granted access
+}
+
+type processDocFunc func(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error)
+
+func (k *kvChangeIndex) processDoc(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error) {
+
+	entryTime := time.Now()
+
+	// First unmarshal the doc (just its metadata, to save time/memory):
+	doc, err := unmarshalDocumentSyncData(docJSON, false)
+
+	// Record histogram of time spent unmarshalling sync metadata
+	writeHistogram(changeCacheExpvars, entryTime, "lag-unmarshal")
+
+	if err != nil || !doc.hasValidSyncData(false) {
+		base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
+		return nil, err
+	}
+
+	// Record a histogram of the  feed's lag:
+	feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
+	writeHistogramForDuration(changeCacheExpvars, feedLag, "lag-feed")
+
+	// Now add the entry for the new doc revision:
+	logEntry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docID,
+		RevID:        doc.CurrentRev,
+		Flags:        doc.Flags,
+		TimeReceived: time.Now(),
+		TimeSaved:    doc.TimeSaved,
+		Channels:     doc.Channels,
+		VbNo:         uint16(vbNo),
+	}
+	base.LogTo("DIndex+", "Received #%d after %3dms (%q / %q)", logEntry.Sequence, int(feedLag/time.Millisecond), logEntry.DocID, logEntry.RevID)
+
+	if logEntry.DocID == "" {
+		base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
+		changeCacheExpvars.Add("changes_without_id", 1)
+		return nil, errors.New(fmt.Sprintf("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo))
+	}
+
+	writeHistogram(changeCacheExpvars, entryTime, "lag-processDoc")
+
+	return logEntry, nil
+}
+
+func (k *kvChangeIndex) processPrincipalDoc(docID string, docJSON []byte, vbNo uint16, sequence uint64) (*LogEntry, error) {
+
+	entryTime := time.Now()
+
+	isUser := strings.HasPrefix(docID, auth.UserKeyPrefix)
+	// We need to track vbucket/sequence numbers for admin-granted roles and channels in the index,
+	// since we can no longer store the sequence in the user doc body itself
+
+	base.LogTo("DIndex+", "Processing principal doc %s", docID)
+	// Index doc for a user stores the timed channel set of admin-granted channels.  These are merged with
+	// the document-granted channels during calculateChannels.
+	princ, err := k.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	if princ == nil {
+		return nil, errors.New(fmt.Sprintf("kvChangeIndex: Error unmarshaling principal doc %q: %v", docID, err))
+	}
+
+	var indexDocID string
+	if isUser {
+		indexDocID = kIndexPrefix + "_user:" + princ.Name()
+	} else {
+		indexDocID = kIndexPrefix + "_role:" + princ.Name()
+	}
+
+	// Update the user doc in the index based on the principal
+	var principalIndex *PrincipalIndex
+	err = k.indexWriteBucket.Update(indexDocID, 0, func(currentValue []byte) ([]byte, error) {
+
+		// Be careful: this block can be invoked multiple times if there are races!
+		var principalRoleSet channels.TimedSet
+		principalChannelSet := princ.ExplicitChannels()
+		user, isUserPrincipal := princ.(auth.User)
+		if isUserPrincipal {
+			principalRoleSet = user.ExplicitRoles()
+		}
+
+		if currentValue == nil {
+			// User index entry doesn't yet exist - create as new if the principal has channels
+			// or roles
+			if len(principalChannelSet) == 0 && len(principalRoleSet) == 0 {
+				return nil, errors.New("No update required")
+			}
+			principalIndex = &PrincipalIndex{
+				VbNo:             vbNo,
+				ExplicitChannels: make(channels.TimedSet),
+				ExplicitRoles:    make(channels.TimedSet),
+			}
+
+		} else {
+			if err := json.Unmarshal(currentValue, &principalIndex); err != nil {
+				return nil, err
+			}
+		}
+		var rolesChanged, channelsChanged bool
+		channelsChanged = principalIndex.ExplicitChannels.UpdateAtSequence(principalChannelSet.AsSet(), sequence)
+
+		if isUserPrincipal {
+			rolesChanged = principalIndex.ExplicitRoles.UpdateAtSequence(principalRoleSet.AsSet(), sequence)
+		}
+
+		if channelsChanged || rolesChanged {
+			return json.Marshal(principalIndex)
+		} else {
+			return nil, errors.New("No update required")
+		}
+	})
+
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("kvChangeIndex: Error updating principal doc %q: %v", docID, err))
+	}
+
+	// Add to cache so that the stable sequence gets updated
+	logEntry := &LogEntry{
+		Sequence:     sequence,
+		DocID:        docID,
+		TimeReceived: time.Now(),
+		VbNo:         uint16(vbNo),
+		IsPrincipal:  true,
+	}
+
+	writeHistogram(changeCacheExpvars, entryTime, "lag-processPrincipalDoc")
+	return logEntry, nil
 }

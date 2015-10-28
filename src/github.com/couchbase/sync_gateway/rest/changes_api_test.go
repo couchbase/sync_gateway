@@ -66,7 +66,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 				Server: &serverName,
 				Bucket: &indexBucketName,
 			},
-			CacheWriter: true,
+			IndexWriter: true,
 		}
 		dbConfig.ChannelIndex = channelIndexConfig
 	}
@@ -365,6 +365,9 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
+	for _, result := range changes.Results {
+		log.Printf("changes result:%+v", result)
+	}
 	assert.Equals(t, len(changes.Results), 7)
 
 }

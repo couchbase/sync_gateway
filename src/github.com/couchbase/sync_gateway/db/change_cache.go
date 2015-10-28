@@ -76,7 +76,7 @@ type CacheOptions struct {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) error {
 	c.context = context
 	c.initialSequence = lastSequence.Seq
 	c.nextSequence = lastSequence.Seq + 1
@@ -122,6 +122,8 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
 		}
 	}()
+
+	return nil
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
@@ -668,4 +670,19 @@ func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
 // Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
 func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
+}
+
+func writeHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
+	writeHistogramForDuration(expvarMap, time.Since(since), prefix)
+}
+
+func writeHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
+
+	var durationMs int
+	if duration < 1 * time.Second {
+		durationMs = int(duration/(100*time.Millisecond)) * 100
+	} else {
+		durationMs = int(duration/(1000*time.Millisecond)) * 1000
+	}
+	expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
 }

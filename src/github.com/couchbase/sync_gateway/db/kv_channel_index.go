@@ -15,6 +15,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -82,13 +83,21 @@ func (k *kvChannelIndex) Add(entry *LogEntry) error {
 // Adds a set
 func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
 	base.LogTo("DIndex+", "Adding set of %d entries to channel %s", len(entries), k.channelName)
+
+	channelUpdateStart := time.Now()
 	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
 	if err != nil {
 		return err
 	}
+	indexTimingExpvars.Add("updateChannelEntries", time.Since(channelUpdateStart).Nanoseconds())
+
 	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
 	// round trips.
-	return k.writeClockCas(clockUpdates)
+	clockWriteStart := time.Now()
+	err = k.writeClockCas(clockUpdates)
+	indexTimingExpvars.Add("updateChannelClocks", time.Since(clockWriteStart).Nanoseconds())
+
+	return err
 }
 
 func (k *kvChannelIndex) Compact() {
@@ -327,13 +336,11 @@ func (k *kvChannelIndex) getChannelClock() (base.SequenceClock, error) {
 	var err error
 	// If we're polling, return a copy
 	if k.lastPolledChannelClock != nil {
-		indexExpvars.Add(fmt.Sprintf("getChannelClock_polled[%s]", k.channelName), 1)
 		k.lastPolledLock.RLock()
 		defer k.lastPolledLock.RUnlock()
 		channelClock = base.NewSequenceClockImpl()
 		channelClock.SetTo(k.lastPolledChannelClock)
 	} else {
-		indexExpvars.Add(fmt.Sprintf("getChannelClock_loaded[%s]", k.channelName), 1)
 		channelClock, err = k.loadChannelClock()
 		if err != nil {
 			return nil, err
@@ -348,7 +355,6 @@ func (k *kvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 	chanClock := base.NewSyncSequenceClock()
 	key := getChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
-	indexExpvars.Add(fmt.Sprintf("[%s]get_loadChannelClock[%s]", k.channelIndexType, k.channelName), 1)
 	if err != nil {
 		base.LogTo("DIndex+", "Error loading channel clock for key %s:%v", key, err)
 		return chanClock, err

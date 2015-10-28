@@ -14,20 +14,21 @@ import (
 )
 
 func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
-	cacheBucket, err := ConnectToBucket(base.BucketSpec{
+	cacheBucketSpec:= base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: bucketname})
-	if err != nil {
-		log.Fatal("Couldn't connect to cache bucket")
-	}
+		BucketName: bucketname}
 	index := &kvChangeIndex{}
 
 	changeIndexOptions := &ChangeIndexOptions{
-		Bucket: cacheBucket,
+		Spec: cacheBucketSpec,
+		Writer: true,
 	}
-	index.Init(nil, SequenceID{}, nil, &CacheOptions{}, changeIndexOptions)
+	err := index.Init(nil, SequenceID{}, nil, &CacheOptions{}, changeIndexOptions)
+	if err != nil {
+		log.Fatal("Couldn't connect to index bucket")
+	}
 
-	return index, cacheBucket
+	return index, index.indexReadBucket
 }
 
 func setupTestDBForChangeIndex(t *testing.T) *Database {
@@ -37,16 +38,18 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 	}
 	vbEnabledBucket := testLeakyBucket(leakyBucketConfig)
 
-	indexBucket, err := ConnectToBucket(base.BucketSpec{
+	indexBucketSpec := base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: "indexBucket"})
+		BucketName: "indexBucket"}
+	indexBucket, err := ConnectToBucket(indexBucketSpec)
 
 	if err != nil {
 		log.Fatal("Couldn't connect to index bucket")
 	}
 	dbcOptions := DatabaseContextOptions{
 		IndexOptions: &ChangeIndexOptions{
-			Bucket: indexBucket,
+			Spec: indexBucketSpec,
+			Writer: true,
 		},
 		SequenceHashOptions: &SequenceHashOptions{
 			Bucket: indexBucket,
@@ -93,7 +96,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	base.LogKeys["DCache+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
-	changeIndex.AddToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(50 * time.Millisecond)
@@ -150,9 +153,9 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	// Add entries across multiple partitions
-	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -163,9 +166,9 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add entries across multiple partitions in the same block
-	changeIndex.AddToCache(channelEntry(101, 1, "foo101-1", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(100, 8, "foo100-8", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(101, 1, "foo101-1", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(100, 8, "foo100-8", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -176,9 +179,9 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add entries across multiple partitions, multiple blocks
-	changeIndex.AddToCache(channelEntry(101, 10001, "foo101-10001", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(100, 10100, "foo100-10100", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(101, 10001, "foo101-10001", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(100, 10100, "foo100-10100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -198,8 +201,8 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add entries that skip a block in a partition
-	changeIndex.AddToCache(channelEntry(800, 100, "foo800-100", "1-a", []string{"ABC", "CBS"}))
-	changeIndex.AddToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(800, 100, "foo800-100", "1-a", []string{"ABC", "CBS"}))
+	changeIndex.addToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
@@ -209,11 +212,11 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Test deduplication by doc id, including across empty blocks
-	changeIndex.AddToCache(channelEntry(700, 100, "foo700", "1-a", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 200, "foo700", "1-b", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 300, "foo700", "1-c", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
-	changeIndex.AddToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 100, "foo700", "1-a", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 200, "foo700", "1-b", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 300, "foo700", "1-c", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
+	changeIndex.addToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
 	// wait for add
 	time.Sleep(10 * time.Millisecond)
 	// Verify entries
@@ -452,9 +455,9 @@ func TestLoadStableSequence(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	// Add entries across multiple partitions
-	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
 	time.Sleep(10 * time.Millisecond)
 
 	stableSequence := base.LoadStableSequence(bucket)
@@ -469,9 +472,9 @@ func TestStableSequenceCallback(t *testing.T) {
 	defer changeIndex.Stop()
 
 	// Add entries across multiple partitions
-	changeIndex.AddToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
-	changeIndex.AddToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
+	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
 	time.Sleep(10 * time.Millisecond)
 
 	stableSequence, err := base.StableCallbackTest(changeIndex.GetStableClock)
@@ -494,7 +497,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 
 	// Verify user entry in index
 	var principal PrincipalIndex
-	principalBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_idx_user:bob")
+	principalBytes, _, err := kvChangeIndex.indexReadBucket.GetRaw("_idx_user:bob")
 	assert.True(t, err == nil)
 	json.Unmarshal(principalBytes, &principal)
 	assert.Equals(t, principal.VbNo, uint16(1))
@@ -502,7 +505,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 
 	// Verify stable sequence was incremented
 	stableClock := base.NewSequenceClockImpl()
-	stableClockBytes, _, err := kvChangeIndex.indexBucket.GetRaw("_idx_stableSeq")
+	stableClockBytes, _, err := kvChangeIndex.indexReadBucket.GetRaw("_idx_stableSeq")
 	assertNoError(t, err, "Unable to retrieve stable sequence")
 	stableClock.Unmarshal(stableClockBytes)
 	log.Printf("got clock:%s", base.PrintClock(stableClock))
@@ -512,7 +515,7 @@ func TestChangeIndexPrincipal(t *testing.T) {
 	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["PBS", "NBC"]}`), uint64(2), uint16(1))
 	time.Sleep(100 * time.Millisecond) // wait for indexing
 
-	principalBytes, _, err = kvChangeIndex.indexBucket.GetRaw("_idx_user:bob")
+	principalBytes, _, err = kvChangeIndex.indexReadBucket.GetRaw("_idx_user:bob")
 	assert.True(t, err == nil)
 	json.Unmarshal(principalBytes, &principal)
 	assert.Equals(t, principal.VbNo, uint16(1))
