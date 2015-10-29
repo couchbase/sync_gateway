@@ -46,7 +46,9 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 
 	// Only wrap the gocb logging when the log key is set, to avoid the overhead of a log keys
 	// map lookup for every gocb log call
-	if LogEnabled("gocb") {
+
+	logKeys := GetLogKeys()
+	if logKeys["gocb"] {
 		EnableGoCBLogging()
 	}
 

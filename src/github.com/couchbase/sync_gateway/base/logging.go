@@ -95,7 +95,7 @@ func ParseLogFlags(flags []string) {
 				logStar = true
 			}
 			// gocb requires a call into the gocb library to enable logging
-			if key == "*" || key == "gocb" {
+			if key == "gocb" {
 				EnableGoCBLogging()
 			}
 			for strings.HasSuffix(key, "+") {
