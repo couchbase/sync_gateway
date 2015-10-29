@@ -87,6 +87,11 @@ func (b *LoggingBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUp
 	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
+func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "SetBulk(%q, ...) --> %v [%v]", entries, err, time.Since(start)) }()
+	return b.bucket.SetBulk(entries)
+}
 func (b *LoggingBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Incr(%q, %d, %d, %d) [%v]", k, amt, def, exp, time.Since(start)) }()

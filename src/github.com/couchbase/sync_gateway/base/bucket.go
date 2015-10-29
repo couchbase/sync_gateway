@@ -160,6 +160,10 @@ func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.Update
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
 }
 
+func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	panic("SetBulk not implemented")
+}
+
 func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, err := callback(current)

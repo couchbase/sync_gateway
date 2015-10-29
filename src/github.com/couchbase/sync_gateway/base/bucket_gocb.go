@@ -124,6 +124,47 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	return returnVal.([]byte), uint64(casGoCB), err
 }
 
+func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+
+	var items []gocb.BulkOp
+	for _, entry := range entries {
+		switch entry.Cas {
+		case 0:
+			// if no CAS val, treat it as an insert (similar to WriteCas())
+			item := &gocb.InsertOp{
+				Key:   entry.Key,
+				Value: entry.Value,
+			}
+			items = append(items, item)
+		default:
+			// otherwise, treat it as a replace
+			item := &gocb.ReplaceOp{
+				Key:   entry.Key,
+				Value: entry.Value,
+				Cas:   gocb.Cas(entry.Cas),
+			}
+			items = append(items, item)
+		}
+
+	}
+	if err := bucket.Do(items); err != nil {
+		return err
+	}
+	for index, item := range items {
+		entry := entries[index]
+		switch item := item.(type) {
+		case *gocb.InsertOp:
+			entry.Cas = uint64(item.Cas)
+			entry.Error = item.Err
+		case *gocb.ReplaceOp:
+			entry.Cas = uint64(item.Cas)
+			entry.Error = item.Err
+		}
+	}
+	return nil
+
+}
+
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
