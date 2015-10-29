@@ -8,9 +8,9 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-func testPartitionMap() IndexPartitionMap {
+func testPartitionMap() base.IndexPartitionMap {
 	// Simplified partition map of 64 sequential partitions, 16 vbuckets each
-	partitions := make(IndexPartitionMap, 64)
+	partitions := make(base.IndexPartitionMap, 64)
 
 	numPartitions := uint16(64)
 	vbPerPartition := 1024 / numPartitions
@@ -26,7 +26,7 @@ func testPartitionMap() IndexPartitionMap {
 func testContextAndChannelIndex(channelName string) (*DatabaseContext, *kvChannelIndex) {
 	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
 	// TODO: don't use the base bucket as the index bucket in tests
-	channelIndex := NewKvChannelIndex(channelName, context.Bucket, testPartitionMap(), testStableClock, testOnChange)
+	channelIndex := NewKvChannelIndex(channelName, context.Bucket, testPartitionMap(), testOnChange)
 	return context, channelIndex
 }
 
@@ -46,10 +46,6 @@ func testBitFlagStorage(channelName string) *BitFlagStorage {
 
 func testStableSequence() (uint64, error) {
 	return 0, nil
-}
-
-func testStableClock() base.SequenceClock {
-	return base.NewSequenceClockImpl()
 }
 
 func testOnChange(keys base.Set) {
@@ -132,12 +128,12 @@ func TestChannelIndexWrite(t *testing.T) {
 	log.Println("ADD COMPLETE")
 
 	// Reset the channel index to verify loading the block from the DB and validate contents
-	channelIndex = NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testStableClock, testOnChange)
+	channelIndex = NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testOnChange)
 	block := channelStorage.getIndexBlockForEntry(entry_5_100)
 	assert.Equals(t, len(block.GetAllEntries()), 1)
 
 	// Test CAS handling.  AnotherChannelIndex is another writer updating the same block in the DB.
-	anotherChannelIndex := NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testStableClock, testOnChange)
+	anotherChannelIndex := NewKvChannelIndex("ABC", context.Bucket, testPartitionMap(), testOnChange)
 	anotherChannelStorage, ok := channelIndex.channelStorage.(*BitFlagStorage)
 
 	// Init block for sequence 100, partition 1

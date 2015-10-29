@@ -23,13 +23,13 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 	}
 
-	base.LogTo("DIndex+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
-	base.LogTo("DIndex+", "Vector MultiChangesFeed since:%s", base.PrintClock(options.Since.Clock))
+	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+	base.LogTo("Changes+", "Vector MultiChangesFeed since:%s", base.PrintClock(options.Since.Clock))
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
 		defer func() {
-			base.LogTo("DIndex+", "MultiChangesFeed done %s", to)
+			base.LogTo("Changes+", "MultiChangesFeed done %s", to)
 			close(output)
 		}()
 
@@ -71,10 +71,10 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Populate the  array of feed channels:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 
-			base.LogTo("DIndex+", "GotChannelSince... %v", channelsSince)
+			base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
 			for name, seqAddedAt := range channelsSince {
 
-				base.LogTo("DIndex+", "Starting for channel... %s", name)
+				base.LogTo("Changes+", "Starting for channel... %s", name)
 				chanOpts := options
 
 				// Check whether requires backfill based on addedChannels in this _changes feed
@@ -174,7 +174,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				minEntry.Seq.Clock = cumulativeClock
 				clockHash, err := db.SequenceHasher.GetHash(minEntry.Seq.Clock)
 				minEntry.Seq.Clock = &base.SequenceClockImpl{}
-				base.LogTo("DIndex+", "calculated hash...%v", clockHash)
+				base.LogTo("Changes+", "calculated hash...%v", clockHash)
 				if err != nil {
 					base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
 				} else {

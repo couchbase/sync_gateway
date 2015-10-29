@@ -270,8 +270,21 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 }
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
-	LogPanic("Unimplemented method: Incr()")
-	return 0, nil
+
+	var result uint64
+	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
+	// attempt a simple get, which gocb will transcode to uint64
+	if amt == 0 {
+		_, err := bucket.Get(k, &result)
+		// If successful, return.  Otherwise fall through to Counter attempt (handles non-existent counter)
+		if err == nil {
+			return result, nil
+		}
+	}
+
+	// Otherwise, attempt to use counter to increment/create if non-existing
+	result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
+	return result, err
 }
 
 func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {

@@ -33,36 +33,27 @@ const (
 	maxCacheUpdate        = 2000
 	minCacheUpdate        = 1
 	kPollFrequency        = 500
-	kIndexPartitionKey    = "_idxPartitionMap"
 	maxUnmarshalProcesses = 16
 )
 
 type kvChangeIndex struct {
-	context                  *DatabaseContext           // Database context
-	indexReadBucket          base.Bucket                // Index bucket
-	indexWriteBucket         base.Bucket                // Index bucket
-	maxVbNo                  uint16                     // Number of vbuckets
-	indexPartitions          IndexPartitionMap          // Partitioning of vbuckets in the index
-	channelIndexWriters      map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
-	channelIndexWriterLock   sync.RWMutex               // Coordinates access to channel index writer map.
-	channelIndexReaders      map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
-	channelIndexReaderLock   sync.RWMutex               // Coordinates read access to channel index reader map
-	onChange                 func(base.Set)             // Client callback that notifies of channel changes
-	pending                  chan *LogEntry             // Incoming changes, pending indexing
-	unmarshalWorkers         []*unmarshalWorker         // Workers to unmarshal documents in parallel, while preserving vbucket ordering
-	unmarshalWorkQueue       chan *unmarshalEntry       // Queue for concurrent processing of incoming docs
-	stableSequence           *base.SyncSequenceClock    // Stable sequence in index
-	logsDisabled             bool                       // If true, ignore incoming tap changes
-	lastPolledStableSequence base.SequenceClock         // Used to identify changes
-	terminator               chan struct{}              // Ends polling
-}
-
-type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
-
-type partitionStorage struct {
-	Uuid  string   `json:"uuid"`
-	Index uint16   `json:"index"`
-	VbNos []uint16 `json:"vbNos"`
+	context                *DatabaseContext           // Database context
+	indexReadBucket        base.Bucket                // Index bucket
+	indexWriteBucket       base.Bucket                // Index bucket
+	maxVbNo                uint16                     // Number of vbuckets
+	indexPartitions        *base.IndexPartitions      // Partitioning of vbuckets in the index
+	channelIndexWriters    map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
+	channelIndexWriterLock sync.RWMutex               // Coordinates access to channel index writer map.
+	channelIndexReaders    map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
+	channelIndexReaderLock sync.RWMutex               // Coordinates read access to channel index reader map
+	onChange               func(base.Set)             // Client callback that notifies of channel changes
+	pending                chan *LogEntry             // Incoming changes, pending indexing
+	unmarshalWorkers       []*unmarshalWorker         // Workers to unmarshal documents in parallel, while preserving vbucket ordering
+	unmarshalWorkQueue     chan *unmarshalEntry       // Queue for concurrent processing of incoming docs
+	writerStableSequence   *base.ShardedClock         // Stable sequence used during index writes.  Initialized on first write
+	readerStableSequence   *base.ShardedClock         // Initialized on first polling, updated on subsequent polls
+	logsDisabled           bool                       // If true, ignore incoming tap changes
+	terminator             chan struct{}              // Ends polling
 }
 
 var indexExpvars *expvar.Map
@@ -81,7 +72,6 @@ func init() {
 func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error) {
 
 	// not sure yet whether we'll need initial sequence
-	k.channelIndexWriters = make(map[string]*kvChannelIndex)
 	k.channelIndexReaders = make(map[string]*kvChannelIndex)
 	k.pending = make(chan *LogEntry, maxCacheUpdate)
 
@@ -102,13 +92,6 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 		// walrus, for unit testing
 		k.maxVbNo = 1024
 	}
-
-	// Initialize stable sequence
-	k.stableSequence = k.loadStableClock()
-
-	// Initialize last polled stable sequence
-	k.lastPolledStableSequence = base.NewSequenceClockImpl()
-	k.lastPolledStableSequence.SetTo(k.stableSequence)
 
 	// Initialize notification Callback
 	k.onChange = onChange
@@ -136,6 +119,7 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 	}(k)
 
 	if indexOptions.Writer {
+		k.channelIndexWriters = make(map[string]*kvChannelIndex)
 		k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec)
 		if err != nil {
 			base.Logf("Error opening index bucket %q, pool %q, server <%s>",
@@ -190,37 +174,126 @@ func (k *kvChangeIndex) Stop() {
 	}
 }
 
-// Returns the stable sequence for a document from the stable clock, based on the vbucket for the document.
-// Used during document write for handling deduplicated sequences on the DCP feed.
-func (k *kvChangeIndex) GetStableSequence(docID string) SequenceID {
+// Returns the stable sequence for a document's vbucket from the stable clock.
+// Used during document write for handling deduplicated sequences on the DCP feed,
+// to determine when recent sequences can be pruned.
+// Uses reader's stable sequence to avoid db lookups, since document write doesn't
+// need the absolute latest version for pruning.
+func (k *kvChangeIndex) GetStableSequence(docID string) (seq SequenceID) {
 
 	vbNo := k.indexReadBucket.VBHash(docID)
-	return SequenceID{Seq: k.stableSequence.GetSequence(uint16(vbNo))}
-
-}
-
-// Returns the cached stable sequence clock for the index
-func (k *kvChangeIndex) getStableClock() base.SequenceClock {
-	return k.stableSequence.Clock
-}
-
-func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
-	return k.loadStableClock(), nil
-}
-
-func (k *kvChangeIndex) loadStableClock() *base.SyncSequenceClock {
-	clock := base.NewSyncSequenceClock()
-	value, cas, err := k.indexReadBucket.GetRaw(base.KStableSequenceKey)
-	indexExpvars.Add("get_loadStableClock", 1)
+	stableSequence, err := k.getReaderStableSequence()
 	if err != nil {
-		base.Warn("Stable sequence not found in index - treating as 0")
+		return seq
 	}
-	clock.Unmarshal(value)
-	clock.SetCas(cas)
-	base.LogTo("Feed", "loadStableClock:%s", base.PrintClock(clock))
-	return clock
+	return SequenceID{Seq: stableSequence.AsClock().GetSequence(uint16(vbNo))}
 }
 
+// Used for external retrieval of the stable clock by cbgt. If ipartition map is missing(potential race with cbgt),
+// check for existence of stable counter.  If present, but no partition map, there's a problem and return error.
+// If both partition map and counter are not present, can safely assume it's a
+// new index.  Return a zero clock and let cbgt initialize DCP feed from zero.
+func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
+
+	// Validation partition map is available.
+	_, err = k.getIndexPartitions()
+	if err != nil {
+		// Unable to load partitions.  Check whether the index has data (stable counter is non-zero)
+		_, err := base.LoadClockCounter(base.KStableSequenceKey, k.indexReadBucket)
+		// Index has data, but we can't get partition map.  Return error
+		if err == nil {
+			return nil, errors.New("Error: Unable to retrieve index partition map, but index counter exists")
+		} else {
+			// Index doesn't have data.  Return zero clock as stable clock
+			return base.NewSequenceClockImpl(), nil
+		}
+	}
+
+	clock = base.NewSequenceClockImpl()
+	stableShardedClock, err := k.loadStableSequence()
+	if err != nil {
+		base.Warn("Stable sequence and clock not found in index - returning err")
+		return nil, err
+	} else {
+		clock = stableShardedClock.AsClock()
+	}
+
+	return clock, nil
+}
+
+// Loads the full current stable sequence from the index bucket
+func (k *kvChangeIndex) loadStableSequence() (*base.ShardedClock, error) {
+	partitions, err := k.getIndexPartitions()
+	if err != nil {
+		return nil, err
+	}
+	stableSequence := base.NewShardedClockWithPartitions(base.KStableSequenceKey, partitions, k.indexReadBucket)
+	_, err = stableSequence.Load()
+	return stableSequence, err
+}
+
+// Initializes an empty stable sequence, with no partitions defined, for use by index writer.
+// The current value for each partition is loaded lazily on partition usage/initialization.
+func (k *kvChangeIndex) initWriterStableSequence() (*base.ShardedClock, error) {
+	partitions, err := k.getIndexPartitions()
+	if err != nil {
+		return nil, err
+	}
+	stableSequence := base.NewShardedClock(base.KStableSequenceKey, partitions, k.indexReadBucket)
+	stableSequence.Load()
+	return stableSequence, nil
+}
+
+// Returns the stable sequence used for index writes.  If it hasn't been initialized, loads from
+// bucket.
+func (k *kvChangeIndex) getWriterStableSequence() *base.ShardedClock {
+	var err error
+	if k.writerStableSequence == nil {
+		k.writerStableSequence, err = k.initWriterStableSequence()
+		if err != nil {
+			base.LogFatal("Unable to initialize writer stable sequence")
+		}
+	}
+	return k.writerStableSequence
+
+}
+
+// Returns the current reader stable sequence.  If undefined, retrieves from the index.  Note
+// that this isn't guaranteed to return the bucket version - use loadStableSequence() to guarantee
+// the index version
+func (k *kvChangeIndex) getReaderStableSequence() (*base.ShardedClock, error) {
+	if k.readerStableSequence == nil {
+		var err error
+		k.readerStableSequence, err = k.loadStableSequence()
+		if err != nil {
+			base.Warn("Error initializing reader stable sequence")
+			return nil, err
+		}
+	}
+	return k.readerStableSequence, nil
+}
+
+func (k *kvChangeIndex) stableSequenceChanged() bool {
+
+	if k.readerStableSequence == nil {
+		var err error
+		k.readerStableSequence, err = k.loadStableSequence()
+		if err != nil {
+			base.Warn("Error initializing reader stable sequence")
+			return false
+		}
+		return true
+	}
+
+	isChanged, err := k.readerStableSequence.Load()
+
+	if err != nil {
+		base.Warn("Error loading reader stable sequence")
+		return false
+	}
+
+	return isChanged
+}
 func (k *kvChangeIndex) addToCache(change *LogEntry) {
 	// queue for cache addition
 	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", change.DocID, change.VbNo, change.Sequence)
@@ -228,12 +301,13 @@ func (k *kvChangeIndex) addToCache(change *LogEntry) {
 	return
 }
 
-func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
+func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 
-	if k.indexPartitions == nil || len(k.indexPartitions) == 0 {
-		var partitionDef []partitionStorage
+	if k.indexPartitions == nil || len(k.indexPartitions.VbMap) == 0 {
+
+		var partitionDef []base.PartitionStorage
 		// First attempt to load from the bucket
-		value, _, err := k.indexReadBucket.GetRaw(kIndexPartitionKey)
+		value, _, err := k.indexReadBucket.GetRaw(base.KIndexPartitionKey)
 		indexExpvars.Add("get_indexPartitionMap", 1)
 		if err == nil {
 			if err = json.Unmarshal(value, &partitionDef); err != nil {
@@ -247,17 +321,11 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 			if k.context != nil {
 				manager = k.context.BucketSpec.CbgtContext.Manager
 			} else {
-				base.Warn("No database context - using generic partition map")
-				return k.testIndexPartitionMap(), nil
+				return nil, errors.New("Unable to determine partition map for index - not found in index, and no database context")
 			}
 
 			if manager == nil {
-				if _, ok := k.context.Bucket.(base.CouchbaseBucket); ok {
-					return nil, errors.New("No map definition in index bucket, and no cbgt manager available")
-				} else {
-					base.Warn("Non-couchbase bucket - using generic partition map")
-					return k.testIndexPartitionMap(), nil
-				}
+				return nil, errors.New("Unable to determine partition map for index - not found in index, and no CBGT manager")
 			}
 
 			_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
@@ -275,7 +343,7 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 					}
 					vbNos[i] = uint16(vbNumber)
 				}
-				entry := partitionStorage{
+				entry := base.PartitionStorage{
 					Index: uint16(index),
 					Uuid:  pIndex.UUID,
 					VbNos: vbNos,
@@ -288,39 +356,29 @@ func (k *kvChangeIndex) getIndexPartitionMap() (IndexPartitionMap, error) {
 			if err != nil {
 				return nil, err
 			}
-			k.indexReadBucket.SetRaw(kIndexPartitionKey, 0, value)
+			k.indexReadBucket.SetRaw(base.KIndexPartitionKey, 0, value)
 		}
 
 		// Create k.indexPartitions based on partitionDef
-		k.indexPartitions = make(map[uint16]uint16)
-		for _, partition := range partitionDef {
-			for _, vbNo := range partition.VbNos {
-				k.indexPartitions[vbNo] = partition.Index
-			}
-		}
+		k.indexPartitions = base.NewIndexPartitions(partitionDef)
 	}
 	return k.indexPartitions, nil
 }
 
-// Index partition map for testing
-func (k *kvChangeIndex) testIndexPartitionMap() IndexPartitionMap {
-	maxVbNo := uint16(1024)
-	partitions := make(IndexPartitionMap, maxVbNo)
+func (k *kvChangeIndex) getIndexPartitionMap() (base.IndexPartitionMap, error) {
 
-	numPartitions := uint16(32)
-	vbPerPartition := maxVbNo / numPartitions
-	for partition := uint16(0); partition < numPartitions; partition++ {
-		for index := uint16(0); index < vbPerPartition; index++ {
-			vb := partition*vbPerPartition + index
-			partitions[vb] = partition
-		}
+	partitions, err := k.getIndexPartitions()
+	if err != nil {
+		return nil, err
 	}
-	return partitions
+	return partitions.VbMap, nil
 }
 
 // Primarily for use by unit tests to avoid CBGT dependency for partition map
-func (k *kvChangeIndex) setIndexPartitionMap(partitionMap IndexPartitionMap) {
-	k.indexPartitions = partitionMap
+func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap) {
+	k.indexPartitions = &base.IndexPartitions{
+		VbMap: partitionMap,
+	}
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
@@ -401,7 +459,7 @@ func (k *kvChangeIndex) newChannelReader(channelName string) (*kvChannelIndex, e
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.getStableClock, k.onChange)
+	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.onChange)
 	k.channelIndexReaders[channelName].setType("reader")
 	indexExpvars.Add("polling_readers_added", 1)
 	return k.channelIndexReaders[channelName], nil
@@ -419,7 +477,7 @@ func (k *kvChangeIndex) newChannelWriter(channelName string) (*kvChannelIndex, e
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, k.getStableClock, nil)
+	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, nil)
 	k.channelIndexWriters[channelName].setType("writer")
 	return k.channelIndexWriters[channelName], nil
 }
@@ -446,7 +504,7 @@ func (k *kvChangeIndex) getOrCreateReader(channelName string, options ChangesOpt
 		if err != nil {
 			return nil, err
 		}
-		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.getStableClock, nil), nil
+		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, nil), nil
 
 	}
 }
@@ -516,7 +574,7 @@ func (k *kvChangeIndex) indexPending() {
 
 // Index a group of entries.  Iterates over the entry set to build updates per channel, then
 // updates using channel index.
-func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexPartitionMap, channelStorage ChannelStorage) {
+func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions base.IndexPartitionMap, channelStorage ChannelStorage) {
 
 	batchStart := time.Now()
 	channelSets := make(map[string][]*LogEntry)
@@ -535,7 +593,6 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 	var entryWg sync.WaitGroup
 	// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 	for _, logEntry := range entries {
-
 		// If principal, update the stable sequence and continue
 		if logEntry.IsPrincipal {
 			updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
@@ -609,7 +666,7 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 
 	stableStart := time.Now()
 	// Update stable sequence
-	err := k.updateStableSequence(updatedSequences)
+	err := k.getWriterStableSequence().UpdateAndWrite(updatedSequences)
 	if err != nil {
 		base.LogPanic("Error updating stable sequence", err)
 	}
@@ -633,26 +690,6 @@ func (k *kvChangeIndex) hasActiveReaders() bool {
 	k.channelIndexReaderLock.RLock()
 	defer k.channelIndexReaderLock.RUnlock()
 	return len(k.channelIndexReaders) > 0
-}
-
-func (k *kvChangeIndex) stableSequenceChanged() bool {
-
-	value, cas, err := k.indexReadBucket.GetRaw(base.KStableSequenceKey)
-	indexExpvars.Add("get_stableSequenceChanged", 1)
-	if err != nil {
-		base.Warn("Error loading stable sequence - skipping polling. Error:%v", err)
-		return false
-	}
-
-	if cas == k.lastPolledStableSequence.Cas() {
-		return false
-	}
-
-	// Stable sequence has changed.  Update lastPolled and return
-	k.lastPolledStableSequence.Unmarshal(value)
-	k.lastPolledStableSequence.SetCas(cas)
-	return true
-
 }
 
 func (k *kvChangeIndex) pollReaders() bool {
@@ -706,7 +743,7 @@ func (k *kvChangeIndex) pollReaders() bool {
 				}
 			}
 			// Poll for changes
-			hasChanges, cancelPolling := reader.pollForChanges(k.lastPolledStableSequence, newChannelClock)
+			hasChanges, cancelPolling := reader.pollForChanges(k.readerStableSequence.AsClock(), newChannelClock)
 			if hasChanges {
 				changedChannels <- reader.channelName
 			}
@@ -810,78 +847,6 @@ func (k *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) er
 	return nil
 }
 
-func (k *kvChangeIndex) updateStableSequence(updates base.SequenceClock) error {
-
-	// Initial set, for the first cas update attempt
-	indexTimingExpvars.Add("updateStableSequence-count", 1)
-	k.stableSequence.UpdateWithClock(updates)
-	value, err := k.stableSequence.Marshal()
-	if err != nil {
-		return err
-	}
-	casOut, err := writeCasRaw(k.indexWriteBucket, base.KStableSequenceKey, value, k.stableSequence.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
-		// Note: The following is invoked upon cas failure - may be called multiple times
-
-		indexTimingExpvars.Add("updateStableSequence-casRetryCount", 1)
-		err = k.stableSequence.Unmarshal(value)
-		if err != nil {
-			return nil, err
-		}
-		k.stableSequence.UpdateWithClock(updates)
-		return k.stableSequence.Marshal()
-	})
-	k.stableSequence.SetCas(casOut)
-	return nil
-}
-
-//////////  FakeBucket for testing KV flows:
-type FakeBucket struct {
-	docs map[string][]byte
-}
-
-func (fb *FakeBucket) Init() {
-	fb.docs = make(map[string][]byte)
-}
-
-func (fb *FakeBucket) Put(key string, value []byte) error {
-	fb.docs[key] = value
-	return nil
-}
-
-func (fb *FakeBucket) Get(key string) ([]byte, error) {
-	result, found := fb.docs[key]
-	if !found {
-		return result, errors.New("not found")
-	}
-	return result, nil
-}
-
-func (fb *FakeBucket) Incr(key string, amount int) error {
-
-	var value uint64
-	byteValue, found := fb.docs[key]
-	if !found {
-		value = 0
-	}
-	value = byteToUint64(byteValue)
-	value += uint64(amount)
-
-	return fb.Put(key, uint64ToByte(value))
-}
-
-func (fb *FakeBucket) SetIfGreater(key string, newValue uint64) {
-
-	byteValue, found := fb.docs[key]
-	if !found {
-		fb.Put(key, uint64ToByte(newValue))
-		return
-	}
-	value := byteToUint64(byteValue)
-	if value < newValue {
-		fb.Put(key, uint64ToByte(newValue))
-	}
-}
-
 // utils for int/byte
 
 func byteToUint64(input []byte) uint64 {
@@ -966,7 +931,7 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 	}
 
 	// Retrieve index stats from bucket
-	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexReadBucket, indexPartitions, kvIndex.getStableClock, nil)
+	channelIndex := NewKvChannelIndex(channelName, kvIndex.indexReadBucket, indexPartitions, nil)
 	indexClock, err := channelIndex.loadChannelClock()
 	if err == nil {
 		channelStats.IndexStats = ChannelIndexStats{}

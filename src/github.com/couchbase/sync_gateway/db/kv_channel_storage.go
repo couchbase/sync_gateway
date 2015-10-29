@@ -47,7 +47,7 @@ type ChannelStorage interface {
 	getIndexBlockForEntry(entry *LogEntry) IndexBlock
 }
 
-func NewChannelStorage(bucket base.Bucket, channelName string, partitions IndexPartitionMap) ChannelStorage {
+func NewChannelStorage(bucket base.Bucket, channelName string, partitions base.IndexPartitionMap) ChannelStorage {
 	return NewBitFlagStorage(bucket, channelName, partitions)
 
 }
@@ -55,12 +55,12 @@ func NewChannelStorage(bucket base.Bucket, channelName string, partitions IndexP
 type BitFlagStorage struct {
 	bucket              base.Bucket // Index bucket
 	channelName         string      // Channel name
-	partitionMap        IndexPartitionMap
+	partitionMap        base.IndexPartitionMap
 	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
 	indexBlockCacheLock sync.Mutex
 }
 
-func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions IndexPartitionMap) *BitFlagStorage {
+func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions base.IndexPartitionMap) *BitFlagStorage {
 
 	storage := &BitFlagStorage{
 		bucket:       bucket,
@@ -131,7 +131,6 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 		clockUpdates.SetMaxSequence(entry.VbNo, entry.Sequence)
 	}
 
-
 	changeCacheExpvars.Add(fmt.Sprintf("addEntrySet-blockSetSize-%03d", len(blockSets)), 1)
 	var wg sync.WaitGroup
 	for blockKey, blockSet := range blockSets {
@@ -153,7 +152,6 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 // Expects all incoming entries to target the same block
 func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 
-
 	changeCacheExpvars.Add("writeSingleBlock-count", 1)
 	if len(entries) == 0 {
 		return nil
@@ -173,7 +171,7 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 		return errors.New("Error marshalling channel block")
 	}
 
-	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500) * 500), 1)
+	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500)*500), 1)
 
 	casOut, err := writeCasRaw(b.bucket, block.Key(), localValue, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times

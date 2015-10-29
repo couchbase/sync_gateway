@@ -15,8 +15,8 @@ import (
 	"math"
 	"sort"
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -31,37 +31,31 @@ const (
 )
 
 type kvChannelIndex struct {
-	indexBucket            base.Bucket               // Database connection (used for connection queries)
-	partitionMap           IndexPartitionMap         // Index partition map
-	channelName            string                    // Channel name
-	lastPolledChanges      []*LogEntry               // Set of changes found in most recent polling.  Optimization for scenario where multiple continuous changes listeners are awakened at once
-	lastPolledSince        base.SequenceClock        // Since value used for most recent polling
-	lastPolledValidTo      base.SequenceClock        // Stable sequence at time of last polling that found changes
-	lastPolledChannelClock base.SequenceClock        // Channel clock value that triggered the most recent polling
-	lastPolledLock         sync.RWMutex              // Synchronization for lastPolled data
-	unreadPollCount        uint32                    // Number of times the channel has polled for data since the last non-empty poll, without a getChanges call
-	pollCount              uint32                    // Number of times the channel has polled for data and not found changes
-	stableSequence         base.SequenceClock        // Global stable sequence
-	stableSequenceCb       func() base.SequenceClock // Callback for retrieval of global stable sequence
-	onChange               func(base.Set)            // Notification callback
-	clock                  *base.SequenceClockImpl   // Channel clock
-	channelStorage         ChannelStorage            // Channel storage - manages interaction with the index format
-	channelIndexType       string                    // Optional type (writer, reader) - used for logging only
+	indexBucket            base.Bucket             // Database connection (used for connection queries)
+	partitionMap           base.IndexPartitionMap  // Index partition map
+	channelName            string                  // Channel name
+	lastPolledChanges      []*LogEntry             // Set of changes found in most recent polling.  Optimization for scenario where multiple continuous changes listeners are awakened at once
+	lastPolledSince        base.SequenceClock      // Since value used for most recent polling
+	lastPolledValidTo      base.SequenceClock      // Stable sequence at time of last polling that found changes
+	lastPolledChannelClock base.SequenceClock      // Channel clock value that triggered the most recent polling
+	lastPolledLock         sync.RWMutex            // Synchronization for lastPolled data
+	unreadPollCount        uint32                  // Number of times the channel has polled for data since the last non-empty poll, without a getChanges call
+	pollCount              uint32                  // Number of times the channel has polled for data and not found changes
+	onChange               func(base.Set)          // Notification callback
+	clock                  *base.SequenceClockImpl // Channel clock
+	channelStorage         ChannelStorage          // Channel storage - manages interaction with the index format
+	channelIndexType       string                  // Optional type (writer, reader) - used for logging only
 }
 
-func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions IndexPartitionMap, stableClockCallback func() base.SequenceClock, onChangeCallback func(base.Set)) *kvChannelIndex {
+func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions base.IndexPartitionMap, onChangeCallback func(base.Set)) *kvChannelIndex {
 
 	channelIndex := &kvChannelIndex{
-		channelName:      channelName,
-		indexBucket:      bucket,
-		partitionMap:     partitions,
-		stableSequenceCb: stableClockCallback,
-		onChange:         onChangeCallback,
-		channelStorage:   NewChannelStorage(bucket, channelName, partitions),
+		channelName:    channelName,
+		indexBucket:    bucket,
+		partitionMap:   partitions,
+		onChange:       onChangeCallback,
+		channelStorage: NewChannelStorage(bucket, channelName, partitions),
 	}
-
-	// Init stable sequence, last polled
-	channelIndex.stableSequence = channelIndex.stableSequenceCb()
 
 	// Initialize and load channel clock
 	channelIndex.loadClock()
@@ -213,8 +207,6 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 		return results
 	}
 
-	base.LogTo("IndexPoll", "checkLastPolled for %s: incoming since:    %v", k.channelName, base.PrintClock(since))
-
 	matchesLastPolledSince := true
 	lastPolledValue := k.lastPolledSince.Value()
 	validToValue := k.lastPolledValidTo.Value()
@@ -225,7 +217,6 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 			matchesLastPolledSince = false
 			if sequence < lastPolledVbValue || sequence > validToValue[vb] {
 				// poll results aren't sufficient for this request - return empty set
-				base.LogTo("IndexPoll", "checkLastPolled for %s: Doesn't match last polled since - returning empty changes", k.channelName)
 				return results
 			}
 		}
@@ -239,7 +230,6 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 		// but doesn't break when k.lastPolledChanges gets updated.
 		results := make([]*LogEntry, len(k.lastPolledChanges))
 		copy(results, k.lastPolledChanges)
-		base.LogTo("IndexPoll", "checkLastPolled for %s: Matches last polled since - returning %d changes", k.channelName, len(results))
 		return results
 	} else {
 		for _, entry := range k.lastPolledChanges {
@@ -288,11 +278,8 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	// greater than since inside this if clause, but leaving out as a performance optimization for
 	// now
 	if lastPolledResults := k.checkLastPolled(since, chanClock); len(lastPolledResults) > 0 {
-		base.LogTo("IndexPoll", "getChanges for channel %s, found %d lastPolledResults", k.channelName, len(lastPolledResults))
 		indexExpvars.Add("getChanges_lastPolled_hit", 1)
 		return lastPolledResults, nil
-	} else {
-		base.LogTo("IndexPoll", "getChanges for channel %s, found %d lastPolledResults", k.channelName, len(lastPolledResults))
 	}
 	indexExpvars.Add("getChanges_lastPolled_miss", 1)
 
