@@ -129,12 +129,12 @@ func CouchbaseTestWriteCas(t *testing.T) {
 
 	cas, err = bucket.WriteCas(key, 0, 0, cas, []byte("bar"), sgbucket.Raw)
 	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", cas)
+		t.Errorf("Error doing WriteCas: %v", err)
 	}
 
 	casOut, err := bucket.WriteCas(key, 0, 0, cas, val, sgbucket.Raw)
 	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", cas)
+		t.Errorf("Error doing WriteCas: %v", err)
 	}
 
 	if casOut == cas {
@@ -151,6 +151,104 @@ func CouchbaseTestWriteCas(t *testing.T) {
 		t.Errorf("Error removing key from bucket")
 	}
 
+}
+
+func CouchbaseTestSetBulk(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestSetBulk1"
+	key2 := "TestSetBulk2"
+	key3 := "TestSetBulk3"
+	var returnVal interface{}
+
+	// Cleanup
+	defer func() {
+		keys2del := []string{key, key2, key3}
+		for _, key2del := range keys2del {
+			err := bucket.Delete(key2del)
+			if err != nil {
+				t.Errorf("Error removing key from bucket")
+			}
+
+		}
+	}()
+
+	_, err := bucket.Get(key, &returnVal)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	// Write a single key, get cas val: casStale
+	casZero := uint64(0)
+	casStale, err := bucket.WriteCas(key, 0, 0, casZero, "key-initial", sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// Update that key so that casStale is now stale, get casFresh
+	casUpdated, err := bucket.WriteCas(key, 0, 0, casStale, "key-updated", sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// Do bulk set with a new key and the prev key with casStale
+	entries := []*sgbucket.BulkSetEntry{}
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key,
+		Value: "key-updated2",
+		Cas:   casStale,
+	})
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key2,
+		Value: "key2-initial",
+		Cas:   casZero,
+	})
+
+	err = bucket.SetBulk(entries)
+	assert.True(t, err == nil)
+
+	// Expect one error for the casStale key
+	assert.Equals(t, numNonNilErrors(entries), 1)
+
+	// Expect that the other key was correctly written
+	_, err = bucket.Get(key2, &returnVal)
+	assert.True(t, err == nil)
+	assert.Equals(t, returnVal, "key2-initial")
+
+	// Retry with bulk set with another new key and casFresh key
+	entries = []*sgbucket.BulkSetEntry{}
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key,
+		Value: "key-updated3",
+		Cas:   casUpdated,
+	})
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key3,
+		Value: "key3-initial",
+		Cas:   casZero,
+	})
+
+	err = bucket.SetBulk(entries)
+
+	// Expect no errors
+	assert.Equals(t, numNonNilErrors(entries), 0)
+
+	// Make sure the original key that previously failed now works
+	_, err = bucket.Get(key, &returnVal)
+	assert.True(t, err == nil)
+	assert.Equals(t, returnVal, "key-updated3")
+
+}
+
+func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
+	errorCount := 0
+	for _, entry := range entries {
+		if entry.Error != nil {
+			errorCount += 1
+		}
+	}
+	return errorCount
 }
 
 func CouchbaseTestUpdate(t *testing.T) {
