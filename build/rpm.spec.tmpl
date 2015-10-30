@@ -78,6 +78,15 @@ fi
 
 # ln -f -s $RPM_INSTALL_PREFIX0 @@PREFIX@@
 
+chmod a+x $RPM_INSTALL_PREFIX0/examples
+
+if [ -z `id -u sync_gateway 2>/dev/null` ]; then
+  useradd -m sync_gateway
+fi
+
+cd @@PREFIX@@/service
+./sync_gateway_service_install.sh
+
 if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
 then
   cat <<EOF
@@ -94,40 +103,16 @@ exit 0
 
 %preun
 
-check_upstart_service () {
-    if [ -f /etc/init/sync_gateway.conf ]; then
-        status $1 | grep -q "^$1 start" > /dev/null
-        return $?
-    else
-        return 1
-    fi
-}
-
-# stop upstart service if it's running
-if check_upstart_service sync_gateway; then
-    stop sync_gateway
+if [ "$1" = "0" ]; then
+  cd @@PREFIX@@/service
+  ./sync_gateway_service_uninstall.sh
 fi
-
-#uninstall upstart service start at boot
-if [ -f /etc/init/sync_gateway.conf ]; then
-    rm /etc/init/sync_gateway.conf
-fi
-
-# stop systemd service and disable start at boot
-if [ -f /usr/lib/systemd/system/sync_gateway.service ]; then
-    systemctl stop sync_gateway
-    systemctl disable sync_gateway
-    rm /usr/lib/systemd/system/sync_gateway.service
-fi
-
 
 if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
   RPM_INSTALL_PREFIX0=@@PREFIX@@
 fi
 
 find $RPM_INSTALL_PREFIX0 -name '*.pyc' | xargs rm -f || true
-
-rm -f $RPM_INSTALL_PREFIX0/bin/*
 
 cat <<EOF
 
@@ -139,12 +124,21 @@ exit 0
 
 %postun
 
-#kill any sync_gateway processes started by third party, sync_gateway has been uninstalled
-ps aux | grep -v grep | grep bin/sync_gateway | awk '{print $2}' |
-while read line; do
-  # kill process
-  kill -9 $line
-done
+if [ "$1" = "1" ]; then
+  cd @@PREFIX@@/service
+  ./sync_gateway_service_upgrade.sh
+fi
+
+if [ "$1" = "0" ]; then
+  #kill any sync_gateway processes started by third party, sync_gateway has been uninstalled
+  ps aux | grep -v grep | grep bin/sync_gateway | awk '{print $2}' |
+  while read line; do
+    # kill process
+    kill -9 $line
+  done
+
+  echo "The sync_gateway user account is still active, remove it manually if it is no longer required"
+fi
 
 exit 0
 
@@ -154,22 +148,26 @@ if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
   RPM_INSTALL_PREFIX0=@@PREFIX@@
 fi
 
+cd @@PREFIX@@/service
+SERVICE_CMD=`./sync_gateway_service_install.sh --servicecmd`
+
 cat <<EOF
 
 You have successfully installed @@PRODUCT_BASE_CAP@@ Sync Gateway.
 
-You can start Couchbase Sync Gateway by using the following command:
+You can control the Couchbase Sync Gateway service by using the following command:
 
-@@PREFIX@@/bin/sync_gateway
+  ${SERVICE_CMD}
 
-That's it! This command starts Sync Gateway on port 4984, connects to a limited in-memory database
- that lives on Sync Gateway called "walrus", and starts the admin server on port 4985. 
+That's it! Sync Gateway is now running on port 4984. We've setup a simple in-memory database
+which works great for exploring Sync Gateway's capabilities. A limited console is available
+by opening your browser to http://localhost:4985/_admin/.
 
 The command-line options are:
 
   -adminInterface=":4985": Address to bind admin interface to
   -bucket="sync_gateway": Name of bucket
-  -dbname="": Name of CouchDB database (defaults to name of bucket)
+  -dbname="": Name to assign to this database (defaults to name of bucket)
   -interface=":4984": Address to bind to
   -log="": Log keywords, comma separated
   -personaOrigin="": Base URL that clients use to connect to the server
