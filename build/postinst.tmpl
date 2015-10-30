@@ -36,18 +36,28 @@ EOF
 
     chmod 755 @@PREFIX@@/service/sync_gateway_service_install.sh
 
+    chmod 755 @@PREFIX@@/examples
+
+    if [ -z `id -u sync_gateway 2>/dev/null` ]; then
+      useradd -m sync_gateway
+    fi
+
+    cd @@PREFIX@@/service
+    ./sync_gateway_service_install.sh
+
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 
     cat <<EOF
 
 You have successfully installed @@PRODUCT_BASE_CAP@@ Sync Gateway.
 
-You can start Couchbase Sync Gateway by using the following command:
+You can control the Couchbase Sync Gateway service by using the following command:
 
-@@PREFIX@@/bin/sync_gateway
+  @@SERVICE_CMD_EXAMPLE@@
 
-That's it! This command starts Sync Gateway on port 4984, connects to a limited in-memory database
- that lives on Sync Gateway called "walrus", and starts the admin server on port 4985. 
+That's it! Sync Gateway is now running on port 4984. We've setup a simple in-memory database
+which works great for exploring Sync Gateway's capabilities. A limited console is available
+by opening your browser to http://localhost:4985/_admin/.
 
 The command-line options are:
 
