@@ -44,6 +44,7 @@ EOF
 
     cd @@PREFIX@@/service
     ./sync_gateway_service_install.sh
+    SERVICE_CMD=`./sync_gateway_service_install.sh --servicecmd`
 
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 
@@ -53,7 +54,7 @@ You have successfully installed @@PRODUCT_BASE_CAP@@ Sync Gateway.
 
 You can control the Couchbase Sync Gateway service by using the following command:
 
-  @@SERVICE_CMD_EXAMPLE@@
+  ${SERVICE_CMD}
 
 That's it! Sync Gateway is now running on port 4984. We've setup a simple in-memory database
 which works great for exploring Sync Gateway's capabilities. A limited console is available
