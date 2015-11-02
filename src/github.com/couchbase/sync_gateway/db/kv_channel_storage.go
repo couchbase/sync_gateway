@@ -131,7 +131,6 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 		clockUpdates.SetMaxSequence(entry.VbNo, entry.Sequence)
 	}
 
-
 	changeCacheExpvars.Add(fmt.Sprintf("addEntrySet-blockSetSize-%03d", len(blockSets)), 1)
 	var wg sync.WaitGroup
 	for blockKey, blockSet := range blockSets {
@@ -153,7 +152,6 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 // Expects all incoming entries to target the same block
 func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 
-
 	changeCacheExpvars.Add("writeSingleBlock-count", 1)
 	if len(entries) == 0 {
 		return nil
@@ -173,7 +171,7 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 		return errors.New("Error marshalling channel block")
 	}
 
-	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500) * 500), 1)
+	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500)*500), 1)
 
 	casOut, err := writeCasRaw(b.bucket, block.Key(), localValue, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
@@ -228,10 +226,10 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 	// deduplication once we've retrieved the full entry
 	entries := make([]*LogEntry, 0)
 	entryKeys := make([]string, 0)
-	for _, blockSet := range blocksByVb {
+	for blockSetIndex := len(blocksByVb) - 1; blockSetIndex >= 0; blockSetIndex-- {
+		blockSet := blocksByVb[blockSetIndex]
 		vbNo := blockSet.vbNo
 		blocks := blockSet.blocks
-		base.LogTo("Changes+", "GetChanges: Adding entries for vb: %v", vbNo)
 		fromVbSeq := fromSeq.GetSequence(vbNo) + 1
 		toVbSeq := toSeq.GetSequence(vbNo)
 
@@ -242,7 +240,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 		}
 	}
 
-	// Bulk retrieval of individual entries
+	// Bulk retrieval of individual entries.  Performs deduplication, and reordering into ascending vb and sequence order
 	results := b.bulkLoadEntries(entryKeys, entries)
 
 	base.LogTo("DIndex+", "[channelStorage.GetChanges] Returning %d entries...", len(results))
@@ -256,7 +254,7 @@ type vbBlockSet struct {
 }
 
 // Calculate the set of index blocks that need to be loaded.
-//   blocksByVb stores which blocks need to be processed for each vbucket.  Multiple vb map
+//   blocksByVb stores which blocks need to be processed for each vbucket, in ascending vbucket order.  Multiple vb map
 //   values can point to the same IndexBlock (i.e. when those vbs share a partition).
 //   blocksByKey stores all IndexBlocks to be retrieved, indexed by block key - no duplicates
 func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, channelClock base.SequenceClock) (blocksByKey map[string]IndexBlock, blocksByVb []vbBlockSet, err error) {
@@ -320,7 +318,8 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	wg.Wait()
 }
 
-// Bulk get the blocks from the index bucket, and unmarshal into the provided map.
+// Bulk get the blocks from the index bucket, and unmarshal into the provided map.  Expects incoming keySet descending by vbucket and sequence.
+// Returns entries ascending by vbucket and sequence
 func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEntry) (results []*LogEntry) {
 	// Do bulk retrieval of entries
 	// TODO: do in batches if keySet is very large?
@@ -332,24 +331,33 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 	indexExpvars.Add("bulkGet_bulkLoadEntries", 1)
 	indexExpvars.Add("bulkGet_bulkLoadEntriesCount", int64(len(keySet)))
 
-	docIDs := make(map[string]struct{}, len(blockEntries))
 	results = make([]*LogEntry, 0, len(blockEntries))
-	// Unmarshal and deduplicate
-	// TODO: unmarshalls sequentially on a single thread - consider unmarshalling in parallel, with a separate
+	// Unmarshal, deduplicate, and reorder to ascending by sequence within vbucket
+
+	// TODO: unmarshalls and deduplicates sequentially on a single thread - consider unmarshalling in parallel, with a separate
 	// iteration for deduplication - based on performance
+
+	currentVb := uint16(0)                       // tracks current vb for deduplication, as we only need to deduplicate within vb
+	currentVbDocIDs := make(map[string]struct{}) // set of doc IDs found in the current vb
 	for _, entry := range blockEntries {
+		// if vb has changed, reset the docID deduplication map
+		if entry.VbNo != currentVb {
+			currentVb = entry.VbNo
+			currentVbDocIDs = make(map[string]struct{})
+		}
+
 		entryKey := getEntryKey(entry.VbNo, entry.Sequence)
 		entryBytes := entries[entryKey]
 		removed := entry.isRemoved()
 		if err := json.Unmarshal(entryBytes, entry); err != nil {
 			base.Warn("Error unmarshalling entry for key", entryKey)
 		}
-		if _, exists := docIDs[entry.DocID]; !exists {
-			docIDs[entry.DocID] = struct{}{}
+		if _, exists := currentVbDocIDs[entry.DocID]; !exists {
+			currentVbDocIDs[entry.DocID] = struct{}{}
 			if removed {
 				entry.setRemoved()
 			}
-			// TODO: optimize performance for prepend
+			// TODO: optimize performance for prepend?
 			results = append([]*LogEntry{entry}, results...)
 		}
 	}
