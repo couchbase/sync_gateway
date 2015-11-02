@@ -186,6 +186,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				case <-options.Terminator:
 					return
 				case output <- minEntry:
+					//base.LogTo("Changes+", "vectorChangesFeed OUT, wrote entry [%v][%v]", minEntry.ID, minEntry.Seq)
 				}
 				sentSomething = true
 
@@ -239,7 +240,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
-	base.LogTo("DIndex+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +257,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 		defer close(feed)
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
-			base.LogTo("DIndex+", "vectorChangesFeed, adding entry for [%v,%v]", logEntry.VbNo, logEntry.Sequence)
+			//base.LogTo("Changes+", "vectorChangesFeed, adding entry for channel [%s], [%s], [%v,%v]", channel, logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
 			if logEntry.Sequence >= options.Since.TriggeredBy {
 				options.Since.TriggeredBy = 0
 			}

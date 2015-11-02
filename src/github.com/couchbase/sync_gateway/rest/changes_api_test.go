@@ -372,6 +372,132 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 
 }
 
+func TestMultiChannelUserAndDocs(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC", "NBC", "CBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put documents in ABC
+	for a := 0; a < 30; a++ {
+		// Put a doc with id "ABC_[a]"
+		url := fmt.Sprintf("/db/ABC_%d", a)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["ABC"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	// Put documents in NBC, CBS
+	for nc := 0; nc < 40; nc++ {
+		url := fmt.Sprintf("/db/NBC_CBS_%d", nc)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["NBC","CBS"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	// Put documents in ABC, NBC, CBS
+	for anc := 0; anc < 60; anc++ {
+		url := fmt.Sprintf("/db/ABC_NBC_CBS_%d", anc)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["ABC","NBC","CBS"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	type simpleChangeResult struct {
+		Seq string
+		ID  string
+	}
+
+	var changes struct {
+		Results  []simpleChangeResult
+		Last_Seq interface{}
+	}
+	//changesJSON := `{"filter":"sync_gateway/bychannel", "channels":"PBS"}`
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 130)
+	/*
+		for _, result := range changes.Results {
+			log.Printf("result: {%+v, %+v}", result.ID, result.Seq)
+		}
+		log.Printf("last_seq:%v", changes.Last_Seq)
+	*/
+}
+
+func TestDocDeduplication(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	var writeResponse struct {
+		Id  string
+		Rev string
+	}
+	revIds := make([]string, 10)
+	// Put documents in ABC
+	for a := 0; a < 10; a++ {
+		// Put a doc with id "ABC_[a]"
+		url := fmt.Sprintf("/db/ABC_%d", a)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["ABC"]}`)
+		json.Unmarshal(response.Body.Bytes(), &writeResponse)
+		revIds[a] = writeResponse.Rev
+		assertStatus(t, response, 201)
+	}
+
+	// Update some docs.  Based on body, new rev should be 2-2962c4281696f5b17dfdccd02d858114
+
+	url := fmt.Sprintf("/db/ABC_3?rev=%s", revIds[3])
+	response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+	url = fmt.Sprintf("/db/ABC_6?rev=%s", revIds[6])
+	response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+	url = fmt.Sprintf("/db/ABC_7?rev=%s", revIds[7])
+	response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	time.Sleep(1 * time.Second)
+
+	//changesJSON := `{"filter":"sync_gateway/bychannel", "channels":"PBS"}`
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 10)
+
+	// Verify that we're getting the correct revision for modified docs
+	for _, change := range changes.Results {
+		log.Printf("change: %+v", change)
+		var expectedRev string
+		if change.ID == "ABC_3" || change.ID == "ABC_6" || change.ID == "ABC_7" {
+			expectedRev = "2-2962c4281696f5b17dfdccd02d858114"
+		} else {
+			expectedRev = revIds[0]
+		}
+		rev, ok := change.Changes[0]["rev"]
+		assert.Equals(t, ok, true)
+		assert.Equals(t, rev, expectedRev)
+	}
+
+}
+
 //////// HELPERS:
 
 func assertNoError(t *testing.T, err error, message string) {

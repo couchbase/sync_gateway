@@ -542,6 +542,10 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 			continue
 		}
 
+		// Remove channels from entry to save space in memory, index entries
+		ch := logEntry.Channels
+		logEntry.Channels = nil
+
 		// Add index log entry if needed
 		if channelStorage.StoresLogEntries() {
 			entryWg.Add(1)
@@ -551,9 +555,6 @@ func (k *kvChangeIndex) indexEntries(entries []*LogEntry, indexPartitions IndexP
 			}(logEntry)
 		}
 		// Collect entries by channel
-		// Remove channels from entry to save space in memory, index entries
-		ch := logEntry.Channels
-		logEntry.Channels = nil
 		for channelName, removal := range ch {
 			if removal == nil || removal.RevID == logEntry.RevID {
 				// Store by channel and partition, to avoid having to iterate over results again in the channel index to group by partition
