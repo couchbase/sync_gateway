@@ -71,7 +71,15 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		dbConfig.ChannelIndex = channelIndexConfig
 	}
 
-	_, err := it._sc.AddDatabaseFromConfig(dbConfig)
+	dbContext, err := it._sc.AddDatabaseFromConfig(dbConfig)
+
+	if useBucketIndex {
+		err := SeedPartitionMap(dbContext.GetIndexBucket(), 64)
+		if err != nil {
+			panic(fmt.Sprintf("Error from seed partition map: %v", err))
+		}
+	}
+
 	if err != nil {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
@@ -510,4 +518,30 @@ func assertTrue(t *testing.T, success bool, message string) {
 	if !success {
 		t.Fatalf("%s", message)
 	}
+}
+
+// Index partitions for testing
+func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
+	maxVbNo := uint16(1024)
+	partitionDefs := make([]base.PartitionStorage, numPartitions)
+	vbPerPartition := maxVbNo / numPartitions
+	for partition := uint16(0); partition < numPartitions; partition++ {
+		storage := base.PartitionStorage{
+			Index: partition,
+			VbNos: make([]uint16, vbPerPartition),
+		}
+		for index := uint16(0); index < vbPerPartition; index++ {
+			vb := partition*vbPerPartition + index
+			storage.VbNos = append(storage.VbNos, vb)
+		}
+		partitionDefs[partition] = storage
+	}
+
+	// Persist to bucket
+	value, err := json.Marshal(partitionDefs)
+	if err != nil {
+		return err
+	}
+	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
+	return nil
 }

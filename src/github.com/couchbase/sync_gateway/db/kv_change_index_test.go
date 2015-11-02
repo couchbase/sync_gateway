@@ -14,19 +14,21 @@ import (
 )
 
 func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
-	cacheBucketSpec:= base.BucketSpec{
+	cacheBucketSpec := base.BucketSpec{
 		Server:     "walrus:",
 		BucketName: bucketname}
 	index := &kvChangeIndex{}
 
 	changeIndexOptions := &ChangeIndexOptions{
-		Spec: cacheBucketSpec,
+		Spec:   cacheBucketSpec,
 		Writer: true,
 	}
 	err := index.Init(nil, SequenceID{}, nil, &CacheOptions{}, changeIndexOptions)
 	if err != nil {
 		log.Fatal("Couldn't connect to index bucket")
 	}
+
+	SeedPartitionMap(index.indexReadBucket, 64)
 
 	return index, index.indexReadBucket
 }
@@ -48,7 +50,7 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 	}
 	dbcOptions := DatabaseContextOptions{
 		IndexOptions: &ChangeIndexOptions{
-			Spec: indexBucketSpec,
+			Spec:   indexBucketSpec,
 			Writer: true,
 		},
 		SequenceHashOptions: &SequenceHashOptions{
@@ -59,6 +61,8 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
+
+	SeedPartitionMap(context.GetIndexBucket(), 64)
 	return db
 }
 
@@ -120,11 +124,8 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assert.Equals(t, len(allEntries), 1)
 
 	// Verify stable sequence
-	stableClock := base.SequenceClockImpl{}
-	stableSeqBytes, _, err := bucket.GetRaw(base.KStableSequenceKey)
-	err = stableClock.Unmarshal(stableSeqBytes)
-	log.Println("bytes:", stableSeqBytes)
-	assertNoError(t, err, "Unmarshal stable sequence")
+	stableClock, err := changeIndex.GetStableClock()
+	assertNoError(t, err, "Get stable clock")
 	assert.Equals(t, stableClock.GetSequence(1), uint64(1))
 	assert.Equals(t, stableClock.GetSequence(2), uint64(0))
 
@@ -260,6 +261,7 @@ func TestPollingChangesFeed(t *testing.T) {
 	//base.LogKeys["DIndex+"] = true
 	db := setupTestDBForChangeIndex(t)
 	defer tearDownTestDB(t, db)
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Start a longpoll changes
@@ -267,6 +269,9 @@ func TestPollingChangesFeed(t *testing.T) {
 		abcHboChanges, err := db.GetChanges(base.SetOf("ABC", "HBO"), ChangesOptions{Since: simpleClockSequence(0), Wait: true})
 		assertTrue(t, err == nil, "Error getting changes")
 		// Expects two changes - the nil that's sent on initial wait, and then docABC_1
+		for _, change := range abcHboChanges {
+			log.Printf("abcHboChange:%v", change)
+		}
 		assert.Equals(t, len(abcHboChanges), 2)
 	}()
 
@@ -289,7 +294,9 @@ func TestPollingChangesFeed(t *testing.T) {
 	}()
 
 	// Write another entry to channel ABC to start the clock for unread polls
+	log.Println("Starting 5s wait")
 	time.Sleep(1000 * time.Millisecond)
+	log.Println("Ending 5s wait")
 	WriteDirectWithKey(db, "docABC_2", []string{"ABC"}, 1)
 
 	// Verify that the channel is initially in the polled set
@@ -451,6 +458,7 @@ func TestPollResultReuseContinuous(t *testing.T) {
 
 }
 
+/*
 func TestLoadStableSequence(t *testing.T) {
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
@@ -467,22 +475,7 @@ func TestLoadStableSequence(t *testing.T) {
 
 }
 
-func TestStableSequenceCallback(t *testing.T) {
-	changeIndex, _ := testKvChangeIndex("indexBucket")
-	defer changeIndex.Stop()
-
-	// Add entries across multiple partitions
-	changeIndex.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
-	changeIndex.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
-	changeIndex.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
-	time.Sleep(10 * time.Millisecond)
-
-	stableSequence, err := base.StableCallbackTest(changeIndex.GetStableClock)
-	assertNoError(t, err, "Got error on callback")
-	assert.Equals(t, stableSequence.GetSequence(100), uint64(1))
-	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
-	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))
-}
+*/
 
 func TestChangeIndexPrincipal(t *testing.T) {
 
@@ -503,11 +496,13 @@ func TestChangeIndexPrincipal(t *testing.T) {
 	assert.Equals(t, principal.VbNo, uint16(1))
 	assert.DeepEquals(t, principal.ExplicitChannels, channels.TimedSet{"ABC": 1, "PBS": 1})
 
+	time.Sleep(10 * time.Millisecond) // wait for indexing
+
+	kvChangeIndex.indexWriteBucket.Dump()
+
 	// Verify stable sequence was incremented
-	stableClock := base.NewSequenceClockImpl()
-	stableClockBytes, _, err := kvChangeIndex.indexReadBucket.GetRaw("_idx_stableSeq")
-	assertNoError(t, err, "Unable to retrieve stable sequence")
-	stableClock.Unmarshal(stableClockBytes)
+	stableClock, err := kvChangeIndex.GetStableClock()
+	assertNoError(t, err, "Unable to retrieve stable clock")
 	log.Printf("got clock:%s", base.PrintClock(stableClock))
 	assert.Equals(t, stableClock.GetSequence(1), uint64(1))
 
@@ -555,4 +550,30 @@ func TestChangeIndexAddSet(t *testing.T) {
 		assert.Equals(t, channelClock.GetSequence(vb), uint64(1))
 		assert.Equals(t, starChannelClock.GetSequence(vb), uint64(1))
 	}
+}
+
+// Index partitionsfor testing
+func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
+	maxVbNo := uint16(1024)
+	partitionDefs := make([]base.PartitionStorage, numPartitions)
+	vbPerPartition := maxVbNo / numPartitions
+	for partition := uint16(0); partition < numPartitions; partition++ {
+		storage := base.PartitionStorage{
+			Index: partition,
+			VbNos: make([]uint16, vbPerPartition),
+		}
+		for index := uint16(0); index < vbPerPartition; index++ {
+			vb := partition*vbPerPartition + index
+			storage.VbNos = append(storage.VbNos, vb)
+		}
+		partitionDefs[partition] = storage
+	}
+
+	// Persist to bucket
+	value, err := json.Marshal(partitionDefs)
+	if err != nil {
+		return err
+	}
+	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
+	return nil
 }

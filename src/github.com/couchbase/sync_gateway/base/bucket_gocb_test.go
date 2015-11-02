@@ -200,3 +200,44 @@ func CouchbaseTestUpdate(t *testing.T) {
 	}
 
 }
+
+func TestIncrCounter(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+	key := "TestIncr"
+
+	defer func() {
+		err := bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing counter from bucket")
+		}
+	}()
+
+	// New Counter - incr 1, default 1
+	value, err := bucket.Incr(key, 1, 1, 0)
+	if err != nil {
+		t.Errorf("Error incrementing non-existent counter")
+	}
+	assert.Equals(t, value, uint64(1))
+
+	// Retrieve an existing counter using delta=0
+	retrieval, err := bucket.Incr(key, 0, 0, 0)
+	if err != nil {
+		t.Errorf("Error retrieving value for existing counter")
+	}
+	assert.Equals(t, retrieval, uint64(1))
+
+	// Increment existing counter
+	retrieval, err = bucket.Incr(key, 1, 1, 0)
+	if err != nil {
+		t.Errorf("Error incrementing value for existing counter")
+	}
+	assert.Equals(t, retrieval, uint64(2))
+
+	// Attempt retrieval of a non-existent counter using delta=0
+	retrieval, err = bucket.Incr("badkey", 0, 0, 0)
+	if err == nil {
+		t.Errorf("Attempt to retrieve non-existent counter should return error")
+	}
+
+}

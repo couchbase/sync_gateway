@@ -47,7 +47,7 @@ type ChannelStorage interface {
 	getIndexBlockForEntry(entry *LogEntry) IndexBlock
 }
 
-func NewChannelStorage(bucket base.Bucket, channelName string, partitions IndexPartitionMap) ChannelStorage {
+func NewChannelStorage(bucket base.Bucket, channelName string, partitions base.IndexPartitionMap) ChannelStorage {
 	return NewBitFlagStorage(bucket, channelName, partitions)
 
 }
@@ -55,12 +55,12 @@ func NewChannelStorage(bucket base.Bucket, channelName string, partitions IndexP
 type BitFlagStorage struct {
 	bucket              base.Bucket // Index bucket
 	channelName         string      // Channel name
-	partitionMap        IndexPartitionMap
+	partitionMap        base.IndexPartitionMap
 	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
 	indexBlockCacheLock sync.Mutex
 }
 
-func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions IndexPartitionMap) *BitFlagStorage {
+func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions base.IndexPartitionMap) *BitFlagStorage {
 
 	storage := &BitFlagStorage{
 		bucket:       bucket,

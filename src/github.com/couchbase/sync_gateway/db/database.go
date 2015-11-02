@@ -789,6 +789,15 @@ func (db *Database) invalUserOrRoleChannels(name string) {
 	}
 }
 
+// Helper method for API unit test retrieval of index bucket
+func (context *DatabaseContext) GetIndexBucket() base.Bucket {
+	if kvChangeIndex, ok := context.changeCache.(*kvChangeIndex); ok {
+		return kvChangeIndex.indexReadBucket
+	} else {
+		return nil
+	}
+}
+
 //////// SEQUENCE ALLOCATION:
 
 func (context *DatabaseContext) LastSequence() (uint64, error) {
