@@ -201,7 +201,7 @@ func CouchbaseTestUpdate(t *testing.T) {
 
 }
 
-func TestIncrCounter(t *testing.T) {
+func CouchbaseTestIncrCounter(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 	key := "TestIncr"
