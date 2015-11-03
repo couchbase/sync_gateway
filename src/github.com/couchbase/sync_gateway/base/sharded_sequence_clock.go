@@ -1,13 +1,10 @@
 package base
 
 import (
-	"bytes"
-	"encoding/gob"
 	"expvar"
 	"fmt"
-	"sync"
-
 	"github.com/couchbase/sg-bucket"
+	"sync"
 )
 
 var shardedClockExpvars *expvar.Map
@@ -64,51 +61,6 @@ type ShardedClock struct {
 	partitionKeys []string                          // Keys for all partitions.  Convenience to avoid rebuilding set from partitions
 }
 
-// ShardedClockPartition manages storage for one clock partition, where a clock partition is a set of
-// {vb, seq} values for a subset of vbuckets.
-type ShardedClockPartition struct {
-	Index  uint16            // Partition Index
-	Key    string            // Clock partition document key
-	Values map[uint16]uint64 // Clock partition values, indexed by vb
-	cas    uint64            // cas value of partition doc
-	dirty  bool              // Whether values have been updated since last save/load
-}
-
-func NewShardedClockPartition(baseKey string, index uint16) *ShardedClockPartition {
-	return &ShardedClockPartition{
-		Index:  index,
-		Key:    fmt.Sprintf(kClockPartitionKeyFormat, baseKey, index),
-		Values: make(map[uint16]uint64),
-	}
-}
-
-// TODO: replace with something more intelligent than gob encode, to take advantage of known
-//       clock structure?
-func (scp *ShardedClockPartition) Marshal() ([]byte, error) {
-	var output bytes.Buffer
-	enc := gob.NewEncoder(&output)
-	err := enc.Encode(scp)
-	if err != nil {
-		return nil, err
-	}
-	return output.Bytes(), nil
-}
-
-func (scp *ShardedClockPartition) Unmarshal(value []byte) error {
-	input := bytes.NewBuffer(value)
-	dec := gob.NewDecoder(input)
-	err := dec.Decode(&scp)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (scp *ShardedClockPartition) SetSequence(vb uint16, seq uint64) {
-	scp.Values[vb] = seq
-	scp.dirty = true
-}
-
 func NewShardedClock(baseKey string, partitions *IndexPartitions, bucket Bucket) *ShardedClock {
 	clock := &ShardedClock{
 		baseKey:      baseKey,
@@ -143,7 +95,7 @@ func NewShardedClockWithPartitions(baseKey string, partitions *IndexPartitions, 
 
 	// Initialize empty clock partitions
 	for _, partitionDef := range partitions.PartitionDefs {
-		partition := NewShardedClockPartition(baseKey, partitionDef.Index)
+		partition := NewShardedClockPartition(baseKey, partitionDef.Index, partitions.PartitionDefs[partitionDef.Index].VbNos)
 		clock.partitions[partitionDef.Index] = partition
 		clock.partitionKeys[partitionDef.Index] = partition.Key
 	}
@@ -210,7 +162,7 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 				Warn("Error unmarshalling partition bytes")
 				return false, err
 			}
-			s.partitions[clockPartition.Index] = clockPartition
+			s.partitions[clockPartition.GetIndex()] = clockPartition
 		}
 	}
 
@@ -237,7 +189,7 @@ func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) error {
 func (s *ShardedClock) initPartition(partitionNo uint16) error {
 
 	// initialize the partition
-	s.partitions[partitionNo] = NewShardedClockPartition(s.baseKey, partitionNo)
+	s.partitions[partitionNo] = NewShardedClockPartition(s.baseKey, partitionNo, s.partitionMap.PartitionDefs[partitionNo].VbNos)
 	partitionKey := fmt.Sprintf(kClockPartitionKeyFormat, s.baseKey, partitionNo)
 
 	partitionBytes, casOut, err := s.bucket.GetRaw(partitionKey)
@@ -255,11 +207,96 @@ func (s *ShardedClock) initPartition(partitionNo uint16) error {
 func (s *ShardedClock) AsClock() *SequenceClockImpl {
 	clock := NewSequenceClockImpl()
 	for _, partition := range s.partitions {
-		for vb, seq := range partition.Values {
-			clock.SetSequence(vb, seq)
-		}
+		partition.AddToClock(clock)
 	}
 	return clock
+}
+
+const KPackedShardedClockMetaSize = 2
+
+// ShardedClockPartition manages storage for one clock partition, where a clock partition is a set of
+// {vb, seq} values for a subset of vbuckets.
+// Value is composed of:
+//    Index : uint16, 2 bytes
+//    vbucket sequences (one per vb in partition) : uint64, 8 bytes each
+type ShardedClockPartition struct {
+	Key            string            // Clock partition document key
+	value          []byte            // Clock partition values
+	cas            uint64            // cas value of partition doc
+	vbucketOffsets map[uint16]uint16 // Offset for vbuckets
+	dirty          bool              // Whether values have been updated since last save/load
+}
+
+func NewShardedClockPartition(baseKey string, index uint16, vbuckets []uint16) *ShardedClockPartition {
+
+	vbucketOffsets := make(map[uint16]uint16, len(vbuckets))
+	for index, vbNo := range vbuckets {
+		vbucketOffsets[vbNo] = uint16(KPackedShardedClockMetaSize + 8*index) // metadata + 8 per index
+	}
+
+	p := &ShardedClockPartition{
+		Key:            fmt.Sprintf(kClockPartitionKeyFormat, baseKey, index),
+		vbucketOffsets: vbucketOffsets,
+		value:          make([]byte, KPackedShardedClockMetaSize+len(vbuckets)*8),
+	}
+	p.SetIndex(index)
+	return p
+}
+
+// TODO: replace with something more intelligent than gob encode, to take advantage of known
+//       clock structure?
+func (p *ShardedClockPartition) Marshal() ([]byte, error) {
+	return p.value, nil
+}
+
+func (p *ShardedClockPartition) Unmarshal(value []byte) error {
+	p.value = value
+	return nil
+}
+
+func (p *ShardedClockPartition) SetSequence(vb uint16, seq uint64) {
+
+	offset := p.vbucketOffsets[vb]
+	p.value[offset] = byte(seq)
+	p.value[offset+1] = byte(seq >> 8)
+	p.value[offset+2] = byte(seq >> 16)
+	p.value[offset+3] = byte(seq >> 24)
+	p.value[offset+4] = byte(seq >> 32)
+	p.value[offset+5] = byte(seq >> 40)
+	p.value[offset+6] = byte(seq >> 48)
+	p.value[offset+7] = byte(seq >> 56)
+
+	p.dirty = true
+}
+
+func (p *ShardedClockPartition) GetSequence(vb uint16) (seq uint64) {
+
+	offset := p.vbucketOffsets[vb]
+	return uint64(p.value[offset]) |
+		uint64(p.value[offset+1])<<8 |
+		uint64(p.value[offset+2])<<16 |
+		uint64(p.value[offset+3])<<24 |
+		uint64(p.value[offset+4])<<32 |
+		uint64(p.value[offset+5])<<40 |
+		uint64(p.value[offset+6])<<48 |
+		uint64(p.value[offset+7])<<56
+}
+
+func (p *ShardedClockPartition) AddToClock(clock SequenceClock) error {
+
+	for vb, _ := range p.vbucketOffsets {
+		clock.SetSequence(vb, p.GetSequence(vb))
+	}
+	return nil
+}
+
+func (p *ShardedClockPartition) GetIndex() uint16 {
+	return uint16(p.value[0]) | uint16(p.value[1])<<8
+}
+
+func (p *ShardedClockPartition) SetIndex(index uint16) {
+	p.value[0] = byte(index)
+	p.value[1] = byte(index >> 8)
 }
 
 // Count retrieval - utility for use outside of the context of a sharded clock.
