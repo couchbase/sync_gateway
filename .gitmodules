@@ -70,3 +70,13 @@
 [submodule "src/github.com/couchbase/blance"]
 	path = src/github.com/couchbase/blance
 	url = https://github.com/couchbase/blance.git
+[submodule "src/github.com/xeipuuv/gojsonschema"]
+	path = src/github.com/xeipuuv/gojsonschema
+	url = https://github.com/xeipuuv/gojsonschema.git
+[submodule "src/github.com/xeipuuv/gojsonreference"]
+	path = src/github.com/xeipuuv/gojsonreference
+	url = https://github.com/xeipuuv/gojsonreference.git
+[submodule "src/github.com/xeipuuv/gojsonpointer"]
+	path = src/github.com/xeipuuv/gojsonpointer
+	url = https://github.com/xeipuuv/gojsonpointer.git
+
