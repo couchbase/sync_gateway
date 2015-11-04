@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -402,24 +401,24 @@ func installViews(bucket base.Bucket) error {
 	                    }
 	               }`
 
-	designDocMap := map[string]walrus.DesignDoc{}
+	designDocMap := map[string]sgbucket.DesignDoc{}
 
-	designDocMap[DesignDocSyncGateway] = walrus.DesignDoc{
-		Views: walrus.ViewMap{
-			ViewPrincipals: walrus.ViewDef{Map: principals_map},
-			ViewChannels:   walrus.ViewDef{Map: channels_map},
-			ViewAccess:     walrus.ViewDef{Map: access_map},
-			ViewRoleAccess: walrus.ViewDef{Map: roleAccess_map},
+	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
+			ViewChannels:   sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:     sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
 		},
 	}
 
-	designDocMap[DesignDocSyncHousekeeping] = walrus.DesignDoc{
-		Views: walrus.ViewMap{
-			ViewAllBits:  walrus.ViewDef{Map: allbits_map},
-			ViewAllDocs:  walrus.ViewDef{Map: alldocs_map, Reduce: "_count"},
-			ViewImport:   walrus.ViewDef{Map: import_map, Reduce: "_count"},
-			ViewOldRevs:  walrus.ViewDef{Map: oldrevs_map, Reduce: "_count"},
-			ViewSessions: walrus.ViewDef{Map: sessions_map},
+	designDocMap[DesignDocSyncHousekeeping] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			ViewAllBits:  sgbucket.ViewDef{Map: allbits_map},
+			ViewAllDocs:  sgbucket.ViewDef{Map: alldocs_map, Reduce: "_count"},
+			ViewImport:   sgbucket.ViewDef{Map: import_map, Reduce: "_count"},
+			ViewOldRevs:  sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
+			ViewSessions: sgbucket.ViewDef{Map: sessions_map},
 		},
 	}
 
