@@ -215,10 +215,13 @@ var kClockMaxSequences = []uint64{uint64(0), uint64(math.MaxUint16), uint64(math
 
 // ShardedClockPartition manages storage for one clock partition, where a clock partition is a set of
 // {vb, seq} values for a subset of vbuckets.
-// Value is composed of:
-//    Index : uint16, 2 bytes.  Partition Index
-//    SeqSize: uint8, 1 byte. 1-4, corresponds to
-//    vbucket sequences (one per vb in partition) : variable sized int based on SeqSize
+// Modifying clock values and metadata is done directly to the []byte storage, to avoid marshal/unmarshal overhead.
+// SeqSize defines how many bytes are used to store each clock value.  It is initialized at 2 bytes/value (uint16 capacity), but gets increased
+// via the resize() operation when a call to SetSequence would exceed the current capacity.
+// Structure of []byte:
+//    index : 2 bytes.  Partition Index, as uint16.
+//    seqSize: 1 byte.  Sequence Size.  Supports values 1-4, where max sequence for that size is defined in kClockMaxSequences[size]
+//    vbucket sequences: 2-8 bytes per sequence (depending on seqSize)
 type ShardedClockPartition struct {
 	Key            string            // Clock partition document key
 	value          []byte            // Clock partition values
