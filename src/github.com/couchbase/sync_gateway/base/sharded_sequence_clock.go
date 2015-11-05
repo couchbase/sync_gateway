@@ -3,8 +3,10 @@ package base
 import (
 	"expvar"
 	"fmt"
-	"github.com/couchbase/sg-bucket"
+	"math"
 	"sync"
+
+	"github.com/couchbase/sg-bucket"
 )
 
 var shardedClockExpvars *expvar.Map
@@ -154,14 +156,9 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 		Warn("Error retrieving partition keys")
 		return false, err
 	}
-	for _, partitionBytes := range resultsMap {
+	for key, partitionBytes := range resultsMap {
 		if len(partitionBytes) > 0 {
-			clockPartition := &ShardedClockPartition{}
-			err := clockPartition.Unmarshal(partitionBytes)
-			if err != nil {
-				Warn("Error unmarshalling partition bytes")
-				return false, err
-			}
+			clockPartition := NewShardedClockPartitionForBytes(key, partitionBytes, s.partitionMap)
 			s.partitions[clockPartition.GetIndex()] = clockPartition
 		}
 	}
@@ -212,13 +209,16 @@ func (s *ShardedClock) AsClock() *SequenceClockImpl {
 	return clock
 }
 
-const KPackedShardedClockMetaSize = 2
+const kShardedClockMetaSize = 3
+
+var kClockMaxSequences = []uint64{uint64(0), uint64(math.MaxUint16), uint64(math.MaxUint32), uint64(math.MaxUint32 << 16), math.MaxUint64}
 
 // ShardedClockPartition manages storage for one clock partition, where a clock partition is a set of
 // {vb, seq} values for a subset of vbuckets.
 // Value is composed of:
-//    Index : uint16, 2 bytes
-//    vbucket sequences (one per vb in partition) : uint64, 8 bytes each
+//    Index : uint16, 2 bytes.  Partition Index
+//    SeqSize: uint8, 1 byte. 1-4, corresponds to
+//    vbucket sequences (one per vb in partition) : variable sized int based on SeqSize
 type ShardedClockPartition struct {
 	Key            string            // Clock partition document key
 	value          []byte            // Clock partition values
@@ -229,22 +229,39 @@ type ShardedClockPartition struct {
 
 func NewShardedClockPartition(baseKey string, index uint16, vbuckets []uint16) *ShardedClockPartition {
 
-	vbucketOffsets := make(map[uint16]uint16, len(vbuckets))
-	for index, vbNo := range vbuckets {
-		vbucketOffsets[vbNo] = uint16(KPackedShardedClockMetaSize + 8*index) // metadata + 8 per index
-	}
+	initialSeqSize := 1
 
 	p := &ShardedClockPartition{
-		Key:            fmt.Sprintf(kClockPartitionKeyFormat, baseKey, index),
-		vbucketOffsets: vbucketOffsets,
-		value:          make([]byte, KPackedShardedClockMetaSize+len(vbuckets)*8),
+		Key:   fmt.Sprintf(kClockPartitionKeyFormat, baseKey, index),
+		value: make([]byte, kShardedClockMetaSize+len(vbuckets)*initialSeqSize*2),
 	}
+	p.SetSeqSize(uint8(initialSeqSize))
 	p.SetIndex(index)
+	p.Init(vbuckets)
 	return p
 }
 
-// TODO: replace with something more intelligent than gob encode, to take advantage of known
-//       clock structure?
+func NewShardedClockPartitionForBytes(key string, bytes []byte, partitions *IndexPartitions) *ShardedClockPartition {
+	p := &ShardedClockPartition{
+		Key:   key,
+		value: bytes,
+	}
+	// load the index from the incoming bytes, and use it to get the vb set for this partition
+	partitionIndex := p.GetIndex()
+	vbuckets := partitions.PartitionDefs[partitionIndex].VbNos
+	p.Init(vbuckets)
+	return p
+}
+
+// Initializes vbucketOffsets
+func (p *ShardedClockPartition) Init(vbuckets []uint16) {
+
+	p.vbucketOffsets = make(map[uint16]uint16, len(vbuckets)-1)
+	for index, vbNo := range vbuckets {
+		p.vbucketOffsets[vbNo] = uint16(kShardedClockMetaSize) + 2*uint16(p.GetSeqSize())*uint16(index) // metadata + (2*size) bytes per vbucket
+	}
+}
+
 func (p *ShardedClockPartition) Marshal() ([]byte, error) {
 	return p.value, nil
 }
@@ -254,32 +271,137 @@ func (p *ShardedClockPartition) Unmarshal(value []byte) error {
 	return nil
 }
 
+// Sets sequence.  Uses big endian byte ordering.
 func (p *ShardedClockPartition) SetSequence(vb uint16, seq uint64) {
 
-	offset := p.vbucketOffsets[vb]
-	p.value[offset] = byte(seq)
-	p.value[offset+1] = byte(seq >> 8)
-	p.value[offset+2] = byte(seq >> 16)
-	p.value[offset+3] = byte(seq >> 24)
-	p.value[offset+4] = byte(seq >> 32)
-	p.value[offset+5] = byte(seq >> 40)
-	p.value[offset+6] = byte(seq >> 48)
-	p.value[offset+7] = byte(seq >> 56)
+	if seq > kClockMaxSequences[p.GetSeqSize()] {
+		p.resize(seq)
+	}
+
+	p.setSequenceForOffset(p.vbucketOffsets[vb], p.GetSeqSize(), seq)
+}
+
+func (p *ShardedClockPartition) setSequenceForOffset(offset uint16, size uint8, seq uint64) {
+
+	switch size {
+	case 1:
+		p.setSequenceUint16(offset, seq)
+	case 2:
+		p.setSequenceUint32(offset, seq)
+	case 3:
+		p.setSequenceUint48(offset, seq)
+	case 4:
+		p.setSequenceUint64(offset, seq)
+	}
 
 	p.dirty = true
+
+}
+
+func (p *ShardedClockPartition) setSequenceUint16(offset uint16, seq uint64) {
+
+	p.value[offset] = byte(seq >> 8)
+	p.value[offset+1] = byte(seq)
+}
+
+func (p *ShardedClockPartition) setSequenceUint32(offset uint16, seq uint64) {
+
+	p.value[offset] = byte(seq >> 24)
+	p.value[offset+1] = byte(seq >> 16)
+	p.value[offset+2] = byte(seq >> 8)
+	p.value[offset+3] = byte(seq)
+}
+
+func (p *ShardedClockPartition) setSequenceUint48(offset uint16, seq uint64) {
+
+	p.value[offset] = byte(seq >> 40)
+	p.value[offset+1] = byte(seq >> 32)
+	p.value[offset+2] = byte(seq >> 24)
+	p.value[offset+3] = byte(seq >> 16)
+	p.value[offset+4] = byte(seq >> 8)
+	p.value[offset+5] = byte(seq)
+}
+
+func (p *ShardedClockPartition) setSequenceUint64(offset uint16, seq uint64) {
+
+	p.value[offset] = byte(seq >> 56)
+	p.value[offset+1] = byte(seq >> 48)
+	p.value[offset+2] = byte(seq >> 40)
+	p.value[offset+3] = byte(seq >> 32)
+	p.value[offset+4] = byte(seq >> 24)
+	p.value[offset+5] = byte(seq >> 16)
+	p.value[offset+6] = byte(seq >> 8)
+	p.value[offset+7] = byte(seq)
 }
 
 func (p *ShardedClockPartition) GetSequence(vb uint16) (seq uint64) {
+	return p.getSequenceForOffset(p.vbucketOffsets[vb], p.GetSeqSize())
+}
 
-	offset := p.vbucketOffsets[vb]
-	return uint64(p.value[offset]) |
-		uint64(p.value[offset+1])<<8 |
-		uint64(p.value[offset+2])<<16 |
-		uint64(p.value[offset+3])<<24 |
-		uint64(p.value[offset+4])<<32 |
-		uint64(p.value[offset+5])<<40 |
-		uint64(p.value[offset+6])<<48 |
-		uint64(p.value[offset+7])<<56
+func (p *ShardedClockPartition) getSequenceForOffset(offset uint16, size uint8) (seq uint64) {
+
+	switch size {
+	case 1:
+		return p.getSequenceUint16(offset)
+	case 2:
+		return p.getSequenceUint32(offset)
+	case 3:
+		return p.getSequenceUint48(offset)
+	case 4:
+		return p.getSequenceUint64(offset)
+	default:
+		return p.getSequenceUint64(offset)
+	}
+
+}
+
+func (p *ShardedClockPartition) getSequenceUint16(offset uint16) (seq uint64) {
+
+	return uint64(p.value[offset+1]) |
+		uint64(p.value[offset])<<8 |
+		uint64(0)<<16 |
+		uint64(0)<<24 |
+		uint64(0)<<32 |
+		uint64(0)<<40 |
+		uint64(0)<<48 |
+		uint64(0)<<56
+}
+
+func (p *ShardedClockPartition) getSequenceUint32(offset uint16) (seq uint64) {
+
+	return uint64(p.value[offset+3]) |
+		uint64(p.value[offset+2])<<8 |
+		uint64(p.value[offset+1])<<16 |
+		uint64(p.value[offset])<<24 |
+		uint64(0)<<32 |
+		uint64(0)<<40 |
+		uint64(0)<<48 |
+		uint64(0)<<56
+}
+
+func (p *ShardedClockPartition) getSequenceUint48(offset uint16) (seq uint64) {
+
+	seq = uint64(p.value[offset+5]) |
+		uint64(p.value[offset+4])<<8 |
+		uint64(p.value[offset+3])<<16 |
+		uint64(p.value[offset+2])<<24 |
+		uint64(p.value[offset+1])<<32 |
+		uint64(p.value[offset])<<40 |
+		uint64(0)<<48 |
+		uint64(0)<<56
+	return seq
+}
+
+func (p *ShardedClockPartition) getSequenceUint64(offset uint16) (seq uint64) {
+
+	return uint64(p.value[offset+7]) |
+		uint64(p.value[offset+6])<<8 |
+		uint64(p.value[offset+5])<<16 |
+		uint64(p.value[offset+4])<<24 |
+		uint64(p.value[offset+3])<<32 |
+		uint64(p.value[offset+2])<<40 |
+		uint64(p.value[offset+1])<<48 |
+		uint64(p.value[offset])<<56
 }
 
 func (p *ShardedClockPartition) AddToClock(clock SequenceClock) error {
@@ -291,12 +413,56 @@ func (p *ShardedClockPartition) AddToClock(clock SequenceClock) error {
 }
 
 func (p *ShardedClockPartition) GetIndex() uint16 {
-	return uint16(p.value[0]) | uint16(p.value[1])<<8
+	return uint16(p.value[1]) | uint16(p.value[0])<<8
 }
 
 func (p *ShardedClockPartition) SetIndex(index uint16) {
-	p.value[0] = byte(index)
-	p.value[1] = byte(index >> 8)
+	p.value[0] = byte(index >> 8)
+	p.value[1] = byte(index)
+}
+
+// Sequence Size - used as variable-length encoding, but for all sequences in the partition.
+func (p *ShardedClockPartition) GetSeqSize() uint8 {
+	return uint8(p.value[2])
+}
+
+func (p *ShardedClockPartition) SetSeqSize(size uint8) {
+	p.value[2] = byte(size)
+}
+
+// resize increases the number of bytes used to store each sequence in the clock partition.  Allows us to minimize document
+// size when sequence numbers are smaller
+func (p *ShardedClockPartition) resize(seq uint64) {
+
+	// Figure out what the new size should be
+	newSize := uint8(4)
+	for i := 2; i <= 4; i++ {
+		if seq < kClockMaxSequences[i] {
+			newSize = uint8(i)
+			break
+		}
+	}
+
+	// Increase the size of []byte to handle the new sizes
+	p.value = append(p.value, make([]byte, uint16(len(p.vbucketOffsets))*2*uint16((newSize-p.GetSeqSize())))...)
+
+	oldSize := p.GetSeqSize()
+
+	// Shift and resize existing entries
+	for index := len(p.vbucketOffsets) - 1; index >= 0; index-- {
+		oldOffset := uint16(kShardedClockMetaSize) + 2*uint16(oldSize)*uint16(index)
+		newOffset := uint16(kShardedClockMetaSize) + 2*uint16(newSize)*uint16(index)
+		seq := p.getSequenceForOffset(oldOffset, oldSize)
+		p.setSequenceForOffset(oldOffset, oldSize, uint64(0))
+		p.setSequenceForOffset(newOffset, newSize, seq)
+	}
+	// Update vbucket offset map
+	for vb, offset := range p.vbucketOffsets {
+		p.vbucketOffsets[vb] = (offset-kShardedClockMetaSize)*uint16(newSize)/uint16(oldSize) + kShardedClockMetaSize
+	}
+
+	p.SetSeqSize(newSize)
+
 }
 
 // Count retrieval - utility for use outside of the context of a sharded clock.

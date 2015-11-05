@@ -76,15 +76,86 @@ func InitShardedClockPartitionWithVbNos(vbnos []uint16) *ShardedClockPartition {
 	return p
 }
 
-func TestShardedClockPartition(t *testing.T) {
+func TestShardedClockPartitionBasic(t *testing.T) {
 
 	vbNos := GenerateTestIndexPartitions(maxVbNo, numShards).PartitionDefs[5].VbNos
 	p := NewShardedClockPartition("testKey", 5, vbNos)
-	assert.Equals(t, p.GetIndex(), uint16(5))
-
 	p.SetSequence(vbNos[0], 50)
 
 	assert.Equals(t, p.GetSequence(vbNos[0]), uint64(50))
+	assert.Equals(t, p.GetIndex(), uint16(5))
+
+	clock := NewSequenceClockImpl()
+	p.AddToClock(clock)
+
+}
+
+func TestShardedClockPartitionResize(t *testing.T) {
+
+	// initialized to 2-byte integer by default (maximum value MaxUint16, 65535)
+	vbNos := GenerateTestIndexPartitions(maxVbNo, numShards).PartitionDefs[5].VbNos
+	p := NewShardedClockPartition("testKey", 5, vbNos)
+
+	// initialize all values to less than Maxuint8
+	for i := 0; i < 15; i++ {
+		p.SetSequence(vbNos[i], uint64(i*1000))
+	}
+
+	// validate initial retrieval
+	for i := 0; i < 15; i++ {
+		assert.Equals(t, p.GetSequence(vbNos[i]), uint64(i*1000))
+	}
+
+	// Set a odd vbnos to higher values, but less than MaxUint32 (4294967295)
+	for i := 0; i < 7; i++ {
+		p.SetSequence(vbNos[2*i], uint64(2*i*10000000))
+	}
+
+	assert.Equals(t, p.GetSeqSize(), uint8(2))
+	// validate retrieval
+	for i := 0; i < 7; i++ {
+		assert.Equals(t, p.GetSequence(vbNos[2*i]), uint64(2*i*10000000))
+		assert.Equals(t, p.GetSequence(vbNos[2*i+1]), uint64((2*i+1)*1000))
+	}
+
+	// one more resize
+	p.SetSequence(vbNos[6], 6000000000)
+	assert.Equals(t, p.GetSeqSize(), uint8(3))
+	log.Printf("vbNos[4]:%d", p.GetSequence(vbNos[4]))
+	assert.Equals(t, p.GetSequence(vbNos[4]), uint64(40000000))
+	assert.Equals(t, p.GetSequence(vbNos[5]), uint64(5000))
+	assert.Equals(t, p.GetSequence(vbNos[6]), uint64(6000000000))
+
+}
+
+func TestShardedClockPartitionResizeLarge(t *testing.T) {
+
+	// initialized to 2-byte integer by default (maximum value MaxUint16, 65535)
+	vbNos := GenerateTestIndexPartitions(maxVbNo, numShards).PartitionDefs[5].VbNos
+	p := NewShardedClockPartition("testKey", 5, vbNos)
+
+	// initialize all values to less than Maxuint8
+	for i := 0; i < 15; i++ {
+		p.SetSequence(vbNos[i], uint64(i*1000))
+	}
+
+	// validate initial retrieval
+	for i := 0; i < 15; i++ {
+		assert.Equals(t, p.GetSequence(vbNos[i]), uint64(i*1000))
+	}
+
+	// Set a odd vbnos to higher values, greater than MaxUint32 (4294967295)
+	for i := 0; i < 7; i++ {
+		p.SetSequence(vbNos[2*i], uint64(i*100000000000000))
+	}
+
+	assert.Equals(t, p.GetSeqSize(), uint8(4))
+	// validate retrieval
+	for i := 0; i < 7; i++ {
+		assert.Equals(t, p.GetSequence(vbNos[2*i]), uint64(i*100000000000000))
+		assert.Equals(t, p.GetSequence(vbNos[2*i+1]), uint64((2*i+1)*1000))
+	}
+
 }
 
 func BenchmarkShardedClockPartitionInit(b *testing.B) {

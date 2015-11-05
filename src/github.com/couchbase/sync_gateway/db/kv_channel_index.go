@@ -122,7 +122,6 @@ func (k *kvChannelIndex) setType(channelIndexType string) {
 func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
 
 	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
-
 	// Increment the overall poll count since a changes request (regardless of whether there have been polled changes)
 	totalPollCount := atomic.AddUint32(&k.pollCount, 1)
 	unreadPollCount := atomic.LoadUint32(&k.unreadPollCount)
@@ -139,7 +138,6 @@ func (k *kvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 	k.lastPolledLock.Lock()
 	defer k.lastPolledLock.Unlock()
-	base.LogTo("IndexPoll", "Poll for changes for channel %s", k.channelName)
 
 	// First poll handling
 	if k.lastPolledChannelClock == nil {
