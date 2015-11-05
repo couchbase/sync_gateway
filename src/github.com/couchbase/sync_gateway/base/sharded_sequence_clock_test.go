@@ -159,8 +159,11 @@ func TestShardedClockPartitionResizeLarge(t *testing.T) {
 }
 
 func BenchmarkShardedClockPartitionInit(b *testing.B) {
+
+	vbNos := GenerateTestIndexPartitions(maxVbNo, numShards).PartitionDefs[0].VbNos
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		InitShardedClockPartition()
+		InitShardedClockPartitionWithVbNos(vbNos)
 	}
 }
 
@@ -191,6 +194,17 @@ func BenchmarkShardedClockPartitionSetSequence(b *testing.B) {
 	}
 }
 
+func BenchmarkShardedClockPartitionGetSequence(b *testing.B) {
+	scp := InitShardedClockPartition()
+	vbNo := uint16(12)
+	seq := uint64(453678593)
+	scp.SetSequence(vbNo, seq)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		scp.GetSequence(vbNo)
+	}
+}
+
 func BenchmarkShardedClockPartitionAddToClock(b *testing.B) {
 	scp := InitShardedClockPartition()
 	clock := NewSequenceClockImpl()
@@ -201,10 +215,9 @@ func BenchmarkShardedClockPartitionAddToClock(b *testing.B) {
 }
 
 func BenchmarkGobShardedClockPartitionInit(b *testing.B) {
-	vbNos := GenerateTestIndexPartitions(maxVbNo, numShards).PartitionDefs[0].VbNos
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		InitShardedClockPartitionWithVbNos(vbNos)
+		InitGobShardedClockPartition()
 	}
 }
 
@@ -232,6 +245,17 @@ func BenchmarkGobShardedClockPartitionSetSequence(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p.SetSequence(vbNo, seq)
+	}
+}
+
+func BenchmarkGobShardedClockPartitionGetSequence(b *testing.B) {
+	p := InitGobShardedClockPartition()
+	vbNo := uint16(12)
+	seq := uint64(453678593)
+	p.SetSequence(vbNo, seq)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p.GetSequence(vbNo)
 	}
 }
 
@@ -287,6 +311,10 @@ func (scp *GobShardedClockPartition) Unmarshal(value []byte) error {
 func (scp *GobShardedClockPartition) SetSequence(vb uint16, seq uint64) {
 	scp.values[vb] = seq
 	scp.dirty = true
+}
+
+func (scp *GobShardedClockPartition) GetSequence(vb uint16) (seq uint64) {
+	return scp.values[vb]
 }
 
 func (scp *GobShardedClockPartition) AddToClock(clock SequenceClock) error {
