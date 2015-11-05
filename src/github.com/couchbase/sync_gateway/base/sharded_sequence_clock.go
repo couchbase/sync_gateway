@@ -22,6 +22,14 @@ const (
 	kClockPartitionKeyFormat = "_idx_c:%s:clock-%d" // key, partition index
 )
 
+const (
+	_ = iota
+	seq_size_uint16
+	seq_size_uint32
+	seq_size_uint48
+	seq_size_uint64
+)
+
 type PartitionStorage struct {
 	Uuid  string   `json:"uuid"`
 	Index uint16   `json:"index"`
@@ -232,7 +240,7 @@ type ShardedClockPartition struct {
 
 func NewShardedClockPartition(baseKey string, index uint16, vbuckets []uint16) *ShardedClockPartition {
 
-	initialSeqSize := 1
+	initialSeqSize := seq_size_uint16
 
 	p := &ShardedClockPartition{
 		Key:   fmt.Sprintf(kClockPartitionKeyFormat, baseKey, index),
@@ -287,13 +295,13 @@ func (p *ShardedClockPartition) SetSequence(vb uint16, seq uint64) {
 func (p *ShardedClockPartition) setSequenceForOffset(offset uint16, size uint8, seq uint64) {
 
 	switch size {
-	case 1:
+	case seq_size_uint16:
 		p.setSequenceUint16(offset, seq)
-	case 2:
+	case seq_size_uint32:
 		p.setSequenceUint32(offset, seq)
-	case 3:
+	case seq_size_uint48:
 		p.setSequenceUint48(offset, seq)
-	case 4:
+	case seq_size_uint64:
 		p.setSequenceUint64(offset, seq)
 	}
 
@@ -344,13 +352,13 @@ func (p *ShardedClockPartition) GetSequence(vb uint16) (seq uint64) {
 func (p *ShardedClockPartition) getSequenceForOffset(offset uint16, size uint8) (seq uint64) {
 
 	switch size {
-	case 1:
+	case seq_size_uint16:
 		return p.getSequenceUint16(offset)
-	case 2:
+	case seq_size_uint32:
 		return p.getSequenceUint32(offset)
-	case 3:
+	case seq_size_uint48:
 		return p.getSequenceUint48(offset)
-	case 4:
+	case seq_size_uint64:
 		return p.getSequenceUint64(offset)
 	default:
 		return p.getSequenceUint64(offset)
@@ -438,8 +446,8 @@ func (p *ShardedClockPartition) SetSeqSize(size uint8) {
 func (p *ShardedClockPartition) resize(seq uint64) {
 
 	// Figure out what the new size should be
-	newSize := uint8(4)
-	for i := 2; i <= 4; i++ {
+	newSize := uint8(seq_size_uint64)
+	for i := seq_size_uint32; i <= seq_size_uint64; i++ {
 		if seq < kClockMaxSequences[i] {
 			newSize = uint8(i)
 			break
