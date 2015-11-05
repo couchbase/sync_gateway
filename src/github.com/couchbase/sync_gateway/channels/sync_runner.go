@@ -82,6 +82,10 @@ const funcWrapper = `
 					throw({forbidden: "missing channel access"});
 		}
 
+		function validate(schemaName) {
+			validateDoc(newDoc.toString(), schemaName)
+		}
+
 		try {
 			v(newDoc, oldDoc);
 		} catch(x) {
@@ -147,8 +151,8 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 		return otto.UndefinedValue()
 	})
 
-	// Implementation of the 'validate()' callback:
-	runner.DefineNativeFunction("validate", func(call otto.FunctionCall) otto.Value {
+	// Implementation of the 'validateDoc()' callback:
+	runner.DefineNativeFunction("validateDoc", func(call otto.FunctionCall) otto.Value {
 		valid, message := runner.validateDocument(call.Argument(0), call.Argument(1), runner.schemata)
 		if !valid{
 			runner.output.Rejection = base.HTTPErrorf(400, message)
@@ -161,7 +165,6 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 		runner.channels = []string{}
 		runner.access = map[string][]string{}
 		runner.roles = map[string][]string{}
-		runner.schemata = map[string]SchemaWrapper{}
 	}
 	runner.After = func(result otto.Value, err error) (interface{}, error) {
 		output := runner.output
