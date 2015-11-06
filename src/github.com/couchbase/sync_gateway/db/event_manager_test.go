@@ -400,7 +400,52 @@ func TestWebhookBasic(t *testing.T) {
 
 }
 
+func TestN1QLWebhook(t *testing.T) {
+
+	if !testLiveHTTP {
+		return
+	}
+	count, sum, _ := InitWebhookTest()
+	ids := make([]string, 200)
+	for i := 0; i < 200; i++ {
+		ids[i] = fmt.Sprintf("%d", i)
+	}
+
+	time.Sleep(1 * time.Second)
+	eventForTest := func(i int) (Body, base.Set) {
+		testBody := Body{
+			"_id":   ids[i],
+			"value": i,
+		}
+		var channelSet base.Set
+		if i%2 == 0 {
+			channelSet = base.SetFromArray([]string{"Even"})
+		} else {
+			channelSet = base.SetFromArray([]string{"Odd"})
+		}
+		return testBody, channelSet
+	}
+
+	// Test webhook filter function
+	log.Println("Test n1ql filter")
+	*count, *sum = 0, 0.0
+	em := NewEventManager()
+	em.Start(0, -1)
+	filterFunction := "WHERE `value` >= 6"
+	webhookHandler2, err := NewWebhook("http://localhost:8081/echo", filterFunction, nil)
+	log.Println("Compiled n1ql filter")
+	assert.Equals(t, err, nil)
+	em.RegisterEventHandler(webhookHandler2, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 4)
+}
+
 func TestWebhookTimeout(t *testing.T) {
+	log.Println("TestWebhookTimeout")
 
 	if !testLiveHTTP {
 		return

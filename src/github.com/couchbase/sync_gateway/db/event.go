@@ -1,13 +1,19 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/robertkrimen/otto"
+
+	"github.com/couchbase/query/expression"
+	"github.com/couchbase/query/expression/parser"
+	qv "github.com/couchbase/query/value"
 )
 
 // Event type
@@ -100,6 +106,47 @@ func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	}
 
 	return eventTask, nil
+}
+
+//////// N1QLEventFunction
+
+type N1QLEventFunction struct {
+	expr expression.Expression
+}
+
+func NewN1QLEventFunction(queryString string) (*N1QLEventFunction, error) {
+	prefix := "WHERE "
+	if strings.HasPrefix(queryString, prefix) {
+		exprString := queryString[len(prefix):]
+		expr, err := parser.Parse(exprString)
+		if err != nil {
+			base.Warn("Error parsing query `%s`: %v", queryString, err)
+			return nil, err
+		}
+		return &N1QLEventFunction{
+			expr: expr,
+		}, nil
+	}
+	return nil, errors.New("Query must start with `WHERE `.")
+}
+
+func (ef *N1QLEventFunction) CallFilterFunction(event Event) (bool, error) {
+	// Different events send different parameters
+	switch event := event.(type) {
+	case *DocumentChangeEvent:
+		// TODO can we avoid the serialization
+		docJSONbytes, err := json.Marshal(event.Doc)
+		if err != nil {
+			return false, err
+		}
+		n1qlDoc := qv.NewValue(docJSONbytes)
+		val, err := ef.expr.Evaluate(n1qlDoc, expression.NewIndexContext())
+		if err != nil {
+			return false, err
+		}
+		return val.Truth(), nil
+	}
+	return false, nil
 }
 
 //////// JSEventFunction
