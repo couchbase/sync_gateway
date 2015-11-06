@@ -159,7 +159,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	changeIndex.writer.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Verify entries
 	entries, err := changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
@@ -172,7 +172,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	changeIndex.writer.addToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	bucket.Dump()
 	// Verify entries
 	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
@@ -185,7 +185,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	changeIndex.writer.addToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	// Verify entries
 	entries, err = changeIndex.GetChanges("ABC", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 9)
