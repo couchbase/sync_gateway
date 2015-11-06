@@ -260,7 +260,7 @@ func TestPostChangesSinceClock(t *testing.T) {
 
 // Basic _changes test with since value
 func postChangesSince(t *testing.T, it indexTester) {
-	response := it.sendAdminRequest("PUT", "/_logging", `{"Poll+":true}`)
+	response := it.sendAdminRequest("PUT", "/_logging", `{"*":true}`)
 
 	//response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
 	assert.True(t, response != nil)
