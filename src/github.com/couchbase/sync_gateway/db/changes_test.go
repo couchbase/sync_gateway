@@ -79,7 +79,7 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	time.Sleep(100 * time.Millisecond)
 	db.Bucket.Dump()
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
-		changeCache.indexReadBucket.Dump()
+		changeCache.reader.indexReadBucket.Dump()
 	}
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))

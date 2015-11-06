@@ -161,7 +161,7 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 
 	resultsMap, err := s.bucket.GetBulkRaw(s.partitionKeys)
 	if err != nil {
-		Warn("Error retrieving partition keys")
+		Warn("Error retrieving partition keys:%v", err)
 		return false, err
 	}
 	for key, partitionBytes := range resultsMap {

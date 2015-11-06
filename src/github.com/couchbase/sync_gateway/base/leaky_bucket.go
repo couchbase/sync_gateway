@@ -88,7 +88,7 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 	if b.config.IncrTemporaryFail {
 		if b.incrCount < maxIncrFailures {
 			b.incrCount++
-			return 0, errors.New(fmt.Sprintf("Incr forced fail (%d/%d), try again maybe?", b.incrCount, maxIncrFailures))
+			return 0, errors.New(fmt.Sprintf("Incr forced abort (%d/%d), try again maybe?", b.incrCount, maxIncrFailures))
 		}
 		b.incrCount = 0
 
