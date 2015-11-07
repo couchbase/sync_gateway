@@ -172,14 +172,16 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				// update the cumulative clock, and stick it on the entry
 				cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
 				minEntry.Seq.Clock = cumulativeClock
-				clockHash, err := db.SequenceHasher.GetHash(minEntry.Seq.Clock)
-				minEntry.Seq.Clock = &base.SequenceClockImpl{}
-				base.LogTo("Changes+", "calculated hash...%v", clockHash)
-				if err != nil {
-					base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
-				} else {
-					minEntry.Seq.Clock.SetHashedValue(clockHash)
-				}
+				/*
+					clockHash, err := db.SequenceHasher.GetHash(minEntry.Seq.Clock)
+					minEntry.Seq.Clock = &base.SequenceClockImpl{}
+					base.LogTo("Changes+", "calculated hash...%v", clockHash)
+					if err != nil {
+						base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
+					} else {
+						minEntry.Seq.Clock.SetHashedValue(clockHash)
+					}
+				*/
 
 				// Send the entry, and repeat the loop:
 				select {
