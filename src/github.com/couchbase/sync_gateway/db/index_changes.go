@@ -11,6 +11,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -24,7 +25,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	}
 
 	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
-	base.LogTo("Changes+", "Vector MultiChangesFeed since:%s", base.PrintClock(options.Since.Clock))
+	//base.LogTo("Changes+", "Vector MultiChangesFeed since:%s", base.PrintClock(options.Since.Clock))
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -53,6 +54,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
+			iterationStartTime := time.Now()
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
 			var channelsSince channels.TimedSet
@@ -228,7 +230,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				output <- &change
 				return
 			}
-
+			writeHistogram(indexTimingExpvars, iterationStartTime, "index_changes_iterationTime")
 		}
 	}()
 

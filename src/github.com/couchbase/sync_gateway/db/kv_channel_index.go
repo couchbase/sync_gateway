@@ -189,11 +189,6 @@ func (k *kvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 		return errors.New("Expected changes based on clock, none found")
 	}
 
-	base.LogTo("IndexPoll", "updateLastPolled for %s: # changes:    %d", k.channelName, len(recentChanges))
-	base.LogTo("IndexPoll", "updateLastPolled for %s: since:        %v", k.channelName, base.PrintClock(k.lastPolledSince))
-	base.LogTo("IndexPoll", "updateLastPolled for %s: channelClock: %v", k.channelName, base.PrintClock(k.lastPolledChannelClock))
-	base.LogTo("IndexPoll", "updateLastPolled for %s: validTo:      %v", k.channelName, base.PrintClock(k.lastPolledValidTo))
-
 	return nil
 }
 
@@ -263,7 +258,6 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 		}
 	}
 
-	base.LogTo("DIndex+", "[channelIndex.GetChanges] Channel clock for channel %s: %s", k.channelName, base.PrintClock(chanClock))
 	// If requested clock is later than the channel clock, return empty
 	if since.AllAfter(chanClock) {
 		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")
@@ -368,7 +362,6 @@ func (k *kvChannelIndex) loadClock() {
 	}
 	k.clock.Unmarshal(data)
 	k.clock.SetCas(cas)
-	base.LogTo("DCache+", "Loaded channel clock: %s", base.PrintClock(k.clock))
 }
 
 func (k *kvChannelIndex) writeClockCas(updateClock base.SequenceClock) error {
