@@ -15,8 +15,18 @@
         `,
       "n1ql_queries" : {
         "type" : "SELECT DISTINCT(type) from \u0060travel-sample\u0060",
+        "type-positional" : "SELECT name from \u0060travel-sample\u0060 WHERE type = $1",
+        "type-named" : "SELECT name from \u0060travel-sample\u0060 WHERE type = $type",
         "airline" : "SELECT name from \u0060travel-sample\u0060 WHERE type = \"airline\"",
-        "name-filter" : "SELECT _sync.channels as _channels, name, country, type from \u0060travel-sample\u0060 WHERE country IS NOT NULL and name IS NOT NULL"
+        "name-filter" : "SELECT _sync.channels as _channels, name, country, type from \u0060travel-sample\u0060 WHERE country IS NOT NULL AND name IS NOT NULL",
+        "name-filter-advanced" : "SELECT name, country, type from \u0060travel-sample\u0060 WHERE country IS NOT NULL AND name IS NOT NULL AND (ANY _userChannel IN $_userChannels SATISFIES _userChannel = \"*\" END OR ANY _channel IN OBJECT_PAIRS(_sync.channels) SATISFIES _channel.\u0060value\u0060 is null AND _channel.name IN $_userChannels END)"
+      },
+      "event_handlers" : {
+        "document_changed": [{
+          "handler": "webhook",
+          "url": "http://127.0.0.1:4984/default/",
+          "filter": "SELECT type, callsign, country WHERE type = \"airline\""
+        }]
       },
       "users": { 
         "GUEST": { 
@@ -43,13 +53,14 @@
           channel("beer")
         if (doc.good)
           channel("good")
+        if (doc.type) channel(doc.type)
       }
       `,
       "bucket": "default",
       "users": { 
         "GUEST": { 
           "disabled": false, 
-          "admin_channels": ["good"] 
+          "admin_channels": ["*"] 
         } 
       }
     }

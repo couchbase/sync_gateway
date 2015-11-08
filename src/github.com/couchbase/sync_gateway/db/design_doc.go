@@ -137,26 +137,38 @@ type N1QLResult struct {
 func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, args []interface{}) (*N1QLResult, error) {
 	vres := N1QLResult{}
 
+	if params == nil {
+		params = make(map[string]interface{})
+	}
+
 	if queryString := db.N1QLQueries[queryName]; queryString != "" {
 		// queries that don't start with SELECT _channels are restricted to users with * access
 		hasMeta := strings.HasPrefix(queryString, "SELECT _sync.channels as _channels,")
+		queryDoesFilter := strings.Contains(queryString, "(ANY _userChannel IN $_userChannels SATISFIES _userChannel = \"*\" END OR ANY _channel IN OBJECT_PAIRS(_sync.channels) SATISFIES _channel.\u0060value\u0060 is null AND _channel.name IN $_userChannels END)")
 		query := db.N1QLStatements[queryName]
 
 		checkChannels := false
 		var visibleChannels ch.TimedSet
+		var userChannels []string
 		if db.user != nil {
 			visibleChannels = db.user.InheritedChannels()
+			userChannels = visibleChannels.AllChannels()
 			checkChannels = !visibleChannels.Contains("*")
+		} else {
+			userChannels = []string{"*"}
 		}
-		if checkChannels && !hasMeta {
-			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can query without `SELECT _sync.channels as _channels,` prefix.")
+		if checkChannels && !(hasMeta || queryDoesFilter) {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can request queries without `AND ANY _userChannel IN $_userChannels SATISFIES _userChannel = \"*\" OR ANY _channel IN OBJECT_PAIRS(_sync.channels) SATISFIES _channel.`value` is null AND _channel.name IN $_userChannels END` in the WHERE clause.")
 		}
 
 		var queryParams interface{};
 		if len(args) > 0 {
 			queryParams = args
 		} else {
-			queryParams = params
+			if queryDoesFilter {
+				params["_userChannels"] = userChannels
+				queryParams = params
+			}
 		}
 		rows, err := db.N1QLConnection.ExecuteN1qlQuery(query, queryParams)
 		if err != nil {
@@ -169,7 +181,7 @@ func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, a
 				break
 			}
 			// fmt.Printf("Row: %+v\n", row)
-			if checkChannels {
+			if checkChannels && !queryDoesFilter {
 				if docCh0 := row["_channels"]; docCh0 != nil {
 					docChannels := docCh0.(map[string]interface{})
 					docChannelsList := make([]interface{}, 0, len(docChannels))
