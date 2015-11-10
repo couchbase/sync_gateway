@@ -35,7 +35,7 @@ var DefaultPool = "default"
 var config *ServerConfig
 
 const (
-	DefaultMaxCouchbaseConnections = 16
+	DefaultMaxCouchbaseConnections         = 16
 	DefaultMaxCouchbaseOverflowConnections = 0
 
 	// Default value of ServerConfig.MaxIncomingConnections
@@ -142,6 +142,9 @@ type CacheConfig struct {
 	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
 	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
+	ChannelCacheMaxLength  *int    `json:"channel_cache_max_length"`   // Maximum number of entries maintained in cache per channel
+	ChannelCacheMinLength  *int    `json:"channel_cache_min_length"`   // Minimum number of entries maintained in cache per channel
+	ChannelCacheAge        *int    `json:"channel_cache_expiry"`       // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
