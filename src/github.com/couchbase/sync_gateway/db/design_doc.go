@@ -3,6 +3,7 @@ package db
 import (
 	"net/http"
 	"strings"
+	"fmt"
 	// "encoding/json"
 
 	"github.com/couchbase/sg-bucket"
@@ -142,9 +143,8 @@ func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, a
 	}
 
 	if queryString := db.N1QLQueries[queryName]; queryString != "" {
-		// queries that don't start with SELECT _channels are restricted to users with * access
-		hasMeta := strings.HasPrefix(queryString, "SELECT _sync.channels as _channels,")
-		queryDoesFilter := strings.Contains(queryString, "(ANY _userChannel IN $_userChannels SATISFIES _userChannel = \"*\" END OR ANY _channel IN OBJECT_PAIRS(_sync.channels) SATISFIES _channel.\u0060value\u0060 is null AND _channel.name IN $_userChannels END)")
+		// queries that don't include CHANNEL_FILTER() are restricted to users with * access
+		queryDoesFilter := strings.Contains(queryString, "CHANNEL_FILTER()")
 		query := db.N1QLStatements[queryName]
 
 		checkChannels := false
@@ -157,8 +157,8 @@ func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, a
 		} else {
 			userChannels = []string{"*"}
 		}
-		if checkChannels && !(hasMeta || queryDoesFilter) {
-			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can request queries without `AND ANY _userChannel IN $_userChannels SATISFIES _userChannel = \"*\" OR ANY _channel IN OBJECT_PAIRS(_sync.channels) SATISFIES _channel.`value` is null AND _channel.name IN $_userChannels END` in the WHERE clause.")
+		if checkChannels && !queryDoesFilter {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "Only users with acccess to `*` channel can request queries without `CHANNEL_FILTER()` in the WHERE clause.")
 		}
 
 		var queryParams interface{};
@@ -167,9 +167,12 @@ func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, a
 		} else {
 			if queryDoesFilter {
 				params["_userChannels"] = userChannels
-				queryParams = params
 			}
+			queryParams = params
 		}
+		fmt.Printf("query: %+v\n", queryString)
+		fmt.Printf("queryParams: %+v\n", queryParams)
+
 		rows, err := db.N1QLConnection.ExecuteN1qlQuery(query, queryParams)
 		if err != nil {
 			return nil, err
@@ -180,24 +183,8 @@ func (db *Database) N1QLQuery(queryName string, params map[string]interface{}, a
 			if !hasRow {
 				break
 			}
-			// fmt.Printf("Row: %+v\n", row)
-			if checkChannels && !queryDoesFilter {
-				if docCh0 := row["_channels"]; docCh0 != nil {
-					docChannels := docCh0.(map[string]interface{})
-					docChannelsList := make([]interface{}, 0, len(docChannels))
-					for k := range docChannels {
-						channelStatus := docChannels[k]
-						if channelStatus == nil {
-							docChannelsList = append(docChannelsList, k)
-						}
-					}
-					if channelsIntersect(visibleChannels, docChannelsList) {
-						vres.Rows = append(vres.Rows, row)
-					}
-				}
-			} else {
-				vres.Rows = append(vres.Rows, row)
-			}
+			fmt.Printf("Row: %+v\n", row)
+			vres.Rows = append(vres.Rows, row)
 		}
 		rows.Close()
 	}

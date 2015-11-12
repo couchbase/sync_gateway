@@ -252,7 +252,10 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 		dbcontext.N1QLConnection = bucket
 		for name := range dbcontext.N1QLQueries {
-			dbcontext.N1QLStatements[name] = gocb.NewN1qlQuery(dbcontext.N1QLQueries[name])
+			// todo make it work with positional params
+			// test for use of positionals, and replace $_userChannels
+			queryWithFilter := strings.Replace(dbcontext.N1QLQueries[name], "CHANNEL_FILTER()", "(ANY _userChannel IN $_userChannels SATISFIES _userChannel = \"*\" END OR ANY _channel IN OBJECT_PAIRS(_sync.channels) SATISFIES _channel.`value` is null AND _channel.name IN $_userChannels END)", -1)
+			dbcontext.N1QLStatements[name] = gocb.NewN1qlQuery(queryWithFilter)
 			dbcontext.N1QLStatements[name].AdHoc(false)
 		}
 	}
