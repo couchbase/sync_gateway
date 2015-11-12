@@ -33,7 +33,7 @@ var kValidChannelRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	kValidChannelRegexp, err = regexp.Compile(`^([-+=/_.@\p{L}\p{Nd}]+|[\*\!])$`)
+	kValidChannelRegexp, err = regexp.Compile(`,`)
 	if err != nil {
 		panic("Bad IsValidChannel regexp")
 	}
@@ -44,7 +44,7 @@ func illegalChannelError(name string) error {
 }
 
 func IsValidChannel(channel string) bool {
-	return kValidChannelRegexp.MatchString(channel)
+	return len(channel) > 0 && !kValidChannelRegexp.MatchString(channel)
 }
 
 // Creates a new Set from an array of strings. Returns an error if any names are invalid.
