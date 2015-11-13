@@ -371,13 +371,7 @@ func (p *ShardedClockPartition) getSequenceForOffset(offset uint16, size uint8) 
 func (p *ShardedClockPartition) getSequenceUint16(offset uint16) (seq uint64) {
 
 	return uint64(p.value[offset+1]) |
-		uint64(p.value[offset])<<8 |
-		uint64(0)<<16 |
-		uint64(0)<<24 |
-		uint64(0)<<32 |
-		uint64(0)<<40 |
-		uint64(0)<<48 |
-		uint64(0)<<56
+		uint64(p.value[offset])<<8
 }
 
 func (p *ShardedClockPartition) getSequenceUint32(offset uint16) (seq uint64) {
@@ -385,11 +379,7 @@ func (p *ShardedClockPartition) getSequenceUint32(offset uint16) (seq uint64) {
 	return uint64(p.value[offset+3]) |
 		uint64(p.value[offset+2])<<8 |
 		uint64(p.value[offset+1])<<16 |
-		uint64(p.value[offset])<<24 |
-		uint64(0)<<32 |
-		uint64(0)<<40 |
-		uint64(0)<<48 |
-		uint64(0)<<56
+		uint64(p.value[offset])<<24
 }
 
 func (p *ShardedClockPartition) getSequenceUint48(offset uint16) (seq uint64) {
@@ -399,9 +389,7 @@ func (p *ShardedClockPartition) getSequenceUint48(offset uint16) (seq uint64) {
 		uint64(p.value[offset+3])<<16 |
 		uint64(p.value[offset+2])<<24 |
 		uint64(p.value[offset+1])<<32 |
-		uint64(p.value[offset])<<40 |
-		uint64(0)<<48 |
-		uint64(0)<<56
+		uint64(p.value[offset])<<40
 	return seq
 }
 

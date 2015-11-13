@@ -207,6 +207,9 @@ func BenchmarkShardedClockPartitionGetSequence(b *testing.B) {
 
 func BenchmarkShardedClockPartitionAddToClock(b *testing.B) {
 	scp := InitShardedClockPartition()
+	vbNo := uint16(12)
+	seq := uint64(453678593)
+	scp.SetSequence(vbNo, seq)
 	clock := NewSequenceClockImpl()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
