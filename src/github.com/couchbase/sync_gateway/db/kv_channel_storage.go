@@ -179,16 +179,16 @@ func (b *BitFlagStorage) writeBlockSetsWithCas(blockSets BlockSet) error {
 	for _, bulkSet := range bulkSets {
 		if bulkSet.Error != nil {
 			wg.Add(1)
-			go func() {
+			go func(bulkSetEntryParam *sgbucket.BulkSetEntry) {
 				defer wg.Done()
 				if err := b.writeBlockWithCas(
-					blockKeyToBlock[bulkSet.Key],
-					blockSets[bulkSet.Key],
+					blockKeyToBlock[bulkSetEntryParam.Key],
+					blockSets[bulkSetEntryParam.Key],
 				); err != nil {
 					errorChan <- err
 				}
 
-			}()
+			}(bulkSet)
 
 		}
 	}
