@@ -355,7 +355,7 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	if err != nil {
 		// TODO FIX: if there's an error on a single block retrieval, differentiate between that
 		//  and an empty/non-existent block.  Requires identification of expected blocks by the cache.
-		base.Warn("Error doing bulk get:", err)
+		base.Warn("Error doing bulk get:%v", err)
 	}
 
 	indexExpvars.Add("bulkGet_bulkLoadBlocks", 1)
@@ -385,7 +385,7 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 
 	entries, err := b.bucket.GetBulkRaw(keySet)
 	if err != nil {
-		base.Warn("Error doing bulk get:", err)
+		base.Warn("Error doing bulk get:%v", err)
 	}
 	indexExpvars.Add("bulkGet_bulkLoadEntries", 1)
 	indexExpvars.Add("bulkGet_bulkLoadEntriesCount", int64(len(keySet)))
@@ -678,11 +678,8 @@ func (b *BitFlagBlock) GetAllEntries() []*LogEntry {
 // Block entry retrieval - used by GetEntries and GetEntriesAndKeys.
 func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, includeKeys bool) (entries []*LogEntry, keySet []string) {
 
-	// To avoid GC overhead when we append entries one-by-one into the results below, define the capacity as the
-	// max possible (toSeq - fromSeq).  This is going to be unnecessarily large in most cases - could consider writing
-	// a custom append
-	entries = make([]*LogEntry, 0, toSeq-fromSeq+1)
-	keySet = make([]string, 0, toSeq-fromSeq+1)
+	entries = make([]*LogEntry, 0)
+	keySet = make([]string, 0)
 	vbEntries, ok := b.value.Entries[vbNo]
 	if !ok { // nothing for this vbucket
 		base.LogTo("DIndex+", "No entries found for vbucket %d in block %s", vbNo, b.Key())
