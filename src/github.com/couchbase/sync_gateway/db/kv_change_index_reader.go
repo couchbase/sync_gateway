@@ -56,19 +56,29 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 	// Start background task to poll for changes
 	k.terminator = make(chan struct{})
 	go func(k *kvChangeIndexReader) {
+
+		pollStart := time.Now()
 		for {
+			timeSinceLastPoll := time.Since(pollStart)
+			waitTime := (kPollFrequency * time.Millisecond) - timeSinceLastPoll
+			if waitTime < 0 {
+				waitTime = 0 * time.Millisecond
+			}
 			select {
-			case <-time.After(kPollFrequency * time.Millisecond):
+			case <-time.After(waitTime):
 				// TODO: Doesn't trigger the reader removal processing (in pollReaders) during long
 				//       periods without changes to stableSequence.  In that scenario we'll continue
 				//       stable sequence polling each poll interval, even if we *actually* don't have any
 				//       active readers.
 				if k.hasActiveReaders() && k.stableSequenceChanged() {
 					k.pollReaders()
+					indexTimingExpvars.Add("indexRead_polls_withChanges", 1)
 				}
 			case <-k.terminator:
 				return
 			}
+
+			indexTimingExpvars.Add("indexRead_polls_all", 1)
 		}
 	}(k)
 
@@ -145,9 +155,9 @@ func (k *kvChangeIndexReader) GetStableClock() (clock base.SequenceClock, err er
 	_, err = k.indexPartitionsCallback()
 	if err != nil {
 		// Unable to load partitions.  Check whether the index has data (stable counter is non-zero)
-		_, err := base.LoadClockCounter(base.KStableSequenceKey, k.indexReadBucket)
+		count, err := base.LoadClockCounter(base.KStableSequenceKey, k.indexReadBucket)
 		// Index has data, but we can't get partition map.  Return error
-		if err == nil {
+		if err == nil && count > 0 {
 			return nil, errors.New("Error: Unable to retrieve index partition map, but index counter exists")
 		} else {
 			// Index doesn't have data.  Return zero clock as stable clock
@@ -246,7 +256,7 @@ func (k *kvChangeIndexReader) newChannelReader(channelName string) (*kvChannelIn
 	}
 	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions.VbMap, k.onChange)
 	k.channelIndexReaders[channelName].setType("reader")
-	indexExpvars.Add("polling_readers_added", 1)
+	indexExpvars.Add("pollingChannels_active", 1)
 	return k.channelIndexReaders[channelName], nil
 }
 
@@ -266,6 +276,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 		return true
 	}
 
+	channelClockStart := time.Now()
 	// Build the set of clock keys to retrieve.  Stable sequence, plus one per channel reader
 	keySet := make([]string, len(k.channelIndexReaders))
 	index := 0
@@ -280,9 +291,13 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 	}
 	indexExpvars.Add("bulkGet_channelClocks", 1)
 	indexExpvars.Add("bulkGet_channelClocks_keyCount", int64(len(keySet)))
-
+	writeHistogram(indexTimingExpvars, channelClockStart, "indexRead_timing_getBulkRaw_clocks")
 	changedChannels := make(chan string, len(k.channelIndexReaders))
 	cancelledChannels := make(chan string, len(k.channelIndexReaders))
+
+	indexTimingExpvars.Add("pollTotal_channelClocks", time.Since(channelClockStart).Nanoseconds())
+
+	pollReadersStart := time.Now()
 	var wg sync.WaitGroup
 	for _, reader := range k.channelIndexReaders {
 		// For each channel, unmarshal new channel clock, then check with reader whether this represents changes
@@ -291,7 +306,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 			defer func() {
 				wg.Done()
 			}()
-
+			channelStart := time.Now()
 			// Unmarshal channel clock.  If not present in the bulk get results, use empty clock to support
 			// channels that don't have any indexed data yet.  If clock was previously found successfully (i.e. empty clock is
 			// due to temporary error from server), empty clock treated safely as a non-update by pollForChanges.
@@ -308,6 +323,8 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 					return
 				}
 			}
+
+			indexTimingExpvars.Add("pollTotal_perChannel_unmarshalClock", time.Since(channelStart).Nanoseconds())
 			// Poll for changes
 			hasChanges, cancelPolling := reader.pollForChanges(k.readerStableSequence.AsClock(), newChannelClock)
 			if hasChanges {
@@ -317,12 +334,17 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 				cancelledChannels <- reader.channelName
 			}
 
+			indexTimingExpvars.Add("pollTotal_perChannel_total", time.Since(channelStart).Nanoseconds())
+
 		}(reader, &wg)
 	}
 
 	wg.Wait()
 	close(changedChannels)
 	close(cancelledChannels)
+
+	writeHistogram(indexTimingExpvars, channelClockStart, "indexRead_timing_readClocksAndPollReaders")
+	indexTimingExpvars.Add("pollTotal_pollReaders", time.Since(pollReadersStart).Nanoseconds())
 
 	// Build channel set from the changed channels
 	var channels []string
@@ -336,7 +358,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 
 	// Remove cancelled channels from channel readers
 	for channelName := range cancelledChannels {
-		indexExpvars.Add("polling_readers_removed", 1)
+		indexExpvars.Add("pollingChannels_active", -1)
 		delete(k.channelIndexReaders, channelName)
 	}
 

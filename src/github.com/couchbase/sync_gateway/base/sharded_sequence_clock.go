@@ -152,7 +152,9 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 
 	newCounter, err := s.bucket.Incr(s.countKey, 0, 0, 0)
 	if err != nil {
+		Warn("Error getting count for %s:%v", s.countKey, err)
 		LogTo("DIndex+", "Error getting count:%v", err)
+		return false, err
 	}
 	if newCounter == s.counter {
 		return false, nil

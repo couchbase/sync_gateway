@@ -281,6 +281,9 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		// If successful, return.  Otherwise fall through to Counter attempt (handles non-existent counter)
 		if err == nil {
 			return result, nil
+		} else {
+			Warn("Error during Get during Incr for key %s:%v", k, err)
+			return 0, nil
 		}
 	}
 
