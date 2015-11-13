@@ -179,6 +179,14 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			}
 		}
 
+		var closeNotify <-chan bool
+		cn, ok := h.response.(http.CloseNotifier)
+		if ok {
+			closeNotify = cn.CloseNotify()
+		} else {
+			base.LogTo("Changes","simple changes cannot get Close Notifier from ResponseWriter")
+		}
+
 		encoder := json.NewEncoder(h.response)
 	loop:
 		for {
@@ -206,6 +214,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 			case <-timeout:
 				message = "OK (timeout)"
+				break loop
+			case <-closeNotify:
+				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
 				break loop
 			}
 			if err != nil {
@@ -248,6 +259,14 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
 	var err error
+
+	var closeNotify <-chan bool
+	cn, ok := h.response.(http.CloseNotifier)
+	if ok {
+		closeNotify = cn.CloseNotify()
+	} else {
+		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
+	}
 
 loop:
 	for {
@@ -326,6 +345,9 @@ loop:
 			err = send(nil)
 			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 		case <-timeout:
+			break loop
+		case <-closeNotify:
+			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
 			break loop
 		}
 
