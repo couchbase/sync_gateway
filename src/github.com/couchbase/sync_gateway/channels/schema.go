@@ -12,20 +12,21 @@ type SchemaWrapper struct {
 	exists            bool
 }
 
-func (runner *SyncRunner) validateDocument(document otto.Value, url otto.Value, schemata map[string]SchemaWrapper) (bool, string) {
-	docString, err := document.ToString()
+func (runner *SyncRunner) validateDocument(documentValue otto.Value, urlValue otto.Value, schemata map[string]SchemaWrapper) (bool, string) {
+	urlString, err := urlValue.ToString()
 	if err != nil{
-		otto.FalseValue()
+		return false, "Validation Error - failed to convert schema url"
 	}
-	urlString, err := url.ToString()
+	document, err := documentValue.Export()
 	if err != nil{
-		otto.FalseValue()
+		return false, "Validation Error - failed to convert document"
 	}
-	return validate(schemata, docString, urlString)
+	return validate(document, urlString, schemata)
 
 }
 
-func validate(schemata map[string]SchemaWrapper, doc_string string, url string) (bool, string){
+func validate(document interface{}, url string, schemata map[string]SchemaWrapper) (bool, string){
+
 
     schemaWrapper := schemata[url]
 
@@ -55,17 +56,17 @@ func validate(schemata map[string]SchemaWrapper, doc_string string, url string) 
         }
 	}
 
-	documentLoader := gojsonschema.NewStringLoader(doc_string)
+	documentLoader := gojsonschema.NewGoLoader(document)
     result, err := sch.Validate(documentLoader)
 
     if err != nil {
-        return false, "Validation Error - "
+        return false, "Validation Error - Error during validation"
     }
 
     if result.Valid() {
         return true, "ok"
     } else {
-        return false, "Document failed validation"
+        return false, "Document in invalid"
     }
 
 }
