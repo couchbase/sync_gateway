@@ -25,12 +25,15 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-const ServerName = "Couchbase Sync Gateway"
-const VersionNumber float64 = 1.0                    // API/feature level
+const ServerName = "Couchbase Sync Gateway"          // DO NOT CHANGE; clients check this
+const VersionNumber float64 = 1.2                    // API/feature level
 const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
 const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
 
-// This appears in the "Server:" header of HTTP responses
+// This appears in the "Server:" header of HTTP responses.
+// This should be changed only very cautiously, because Couchbase Lite parses the header value
+// to determine whether it's talking to Sync Gateway (vs. CouchDB) and what version. This in turn
+// determines what replication API features it will use.
 var VersionString string
 
 // This includes build number; appears in the response of "GET /" and the initial log message
@@ -51,7 +54,7 @@ func init() {
 		VersionString = fmt.Sprintf("%s/%s", ServerName, BuildVersionString)
 	} else {
 		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
-		VersionString = fmt.Sprintf("%s/unofficial", ServerName)
+		VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", ServerName, VersionNumber, GitBranch, GitCommit, GitDirty)
 	}
 }
 
