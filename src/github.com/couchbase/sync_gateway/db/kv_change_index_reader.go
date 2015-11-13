@@ -155,9 +155,9 @@ func (k *kvChangeIndexReader) GetStableClock() (clock base.SequenceClock, err er
 	_, err = k.indexPartitionsCallback()
 	if err != nil {
 		// Unable to load partitions.  Check whether the index has data (stable counter is non-zero)
-		_, err := base.LoadClockCounter(base.KStableSequenceKey, k.indexReadBucket)
+		count, err := base.LoadClockCounter(base.KStableSequenceKey, k.indexReadBucket)
 		// Index has data, but we can't get partition map.  Return error
-		if err == nil {
+		if err == nil && count > 0 {
 			return nil, errors.New("Error: Unable to retrieve index partition map, but index counter exists")
 		} else {
 			// Index doesn't have data.  Return zero clock as stable clock
