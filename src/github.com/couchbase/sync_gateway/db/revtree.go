@@ -16,7 +16,6 @@ import (
 	"strconv"
 
 	"github.com/couchbase/sync_gateway/base"
-"errors"
 )
 
 type RevKey string
@@ -127,34 +126,26 @@ func (tree RevTree) contains(revid string) bool {
 }
 
 // Returns the RevInfo for a revision ID, or panics if it's not found
-func (tree RevTree) getInfo(revid string) (*RevInfo, error) {
+func (tree RevTree) getInfo(revid string) *RevInfo {
 	info, exists := tree[revid]
 	if !exists {
-		return nil, errors.New("getInfo can't find rev: " + revid)
+		panic("can't find rev: " + revid)
 	}
-	return info, nil
+	return info
 }
 
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
 // Panics if the revid is not in the map at all.
-func (tree RevTree) getParent(revid string) (string) {
-	info,err := tree.getInfo(revid)
-	if err != nil {
-		return ""
-	}
-	return info.Parent
+func (tree RevTree) getParent(revid string) string {
+	return tree.getInfo(revid).Parent
 }
 
 // Returns the history of a revid as an array of revids in reverse chronological order.
 func (tree RevTree) getHistory(revid string) []string {
 	history := make([]string, 0, 5)
 	for revid != "" {
-		info, err := tree.getInfo(revid)
-		if err != nil {
-			break
-		}
 		history = append(history, revid)
-		revid = info.Parent
+		revid = tree.getInfo(revid).Parent
 	}
 	return history
 }
@@ -231,11 +222,7 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 				return a
 			}
 		}
-		info, err := tree.getInfo(revid)
-		if err != nil {
-			break
-		}
-		revid = info.Parent
+		revid = tree.getInfo(revid).Parent
 	}
 	return ""
 }

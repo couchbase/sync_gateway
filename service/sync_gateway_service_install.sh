@@ -13,7 +13,6 @@ GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sync-gateway
 GATEWAY_TEMPLATE_VAR=/opt/couchbase-sync-gateway/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
-SERVICE_CMD_ONLY=false
 
 
 usage()
@@ -44,9 +43,6 @@ ostype() {
     elif [ -f /etc/redhat-release ]; then
         OS=RedHat
         VER=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
-    elif [ -f /etc/system-release ]; then
-        OS=RedHat
-        VER=5.0
     else
         OS=$(uname -s)
         VER=$(uname -r)
@@ -120,9 +116,6 @@ while [ "$1" != "" ]; do
         --logsdir)
             LOGS_TEMPLATE_VAR=$VALUE
             ;;
-        --servicecmd)
-            SERVICE_CMD_ONLY=true
-            ;;
         *)
             echo "ERROR: unknown parameter \"$PARAM\""
             usage
@@ -132,47 +125,44 @@ while [ "$1" != "" ]; do
     shift
 done
 
-if [ "$SERVICE_CMD_ONLY" = false ]; then
-    # Check that runtime user account exists
-    if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
-        echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
-        exit 1
-    fi
+# Check that runtime user account exists
+if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+    echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
+    exit 1
+fi
 
-    # Check that the runtime base directory exists
-    if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
-        echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
-        exit 1
-    fi
+# Check that the runtime base directory exists
+if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
+    echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
+    exit 1
+fi
 
-    # Check that the sync_gateway executable exists
-    if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
-        echo "The sync_gateway executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
-        exit 1
-    fi
+# Check that the sync_gateway executable exists
+if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
+    echo "The sync_gateway executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
+    exit 1
+fi
 
-    # Check that the sync_gateway src JSON config directory exists
-    if [ ! -d "$SRCCFGDIR" ]; then
-        echo "The sync_gateway source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
-        exit 1
-    fi
+# Check that the sync_gateway src JSON config directory exists
+if [ ! -d "$SRCCFGDIR" ]; then
+    echo "The sync_gateway source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
+    exit 1
+fi
 
-    # Check that the sync_gateway src JSON config file exists
-    if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
-        echo "The sync_gateway source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
-        exit 1
-    fi
+# Check that the sync_gateway src JSON config file exists
+if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
+    echo "The sync_gateway source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
+    exit 1
+fi
 
-    # If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
-    if [ -S /tmp/log_upr_client.sock ]; then
-        rm -f /tmp/log_upr_client.sock
-    fi
+# If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
+if [ -S /tmp/log_upr_client.sock ]; then
+    rm -f /tmp/log_upr_client.sock
+fi
 
-    # Copy a default config if defined config file does not exist
-    if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
-        cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
-        chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
-    fi
+# Copy a default config if defined config file does not exist
+if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
+    cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
 fi
 
 #Install the service for the specific platform
@@ -180,13 +170,9 @@ case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
-                if [ "$SERVICE_CMD_ONLY" = true ]; then
-                    echo "service ${SERVICE_NAME} start"
-                else
-                    setup_output_dirs
-                    render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                    service ${SERVICE_NAME} start
-                fi
+                setup_output_dirs
+                render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                service ${SERVICE_NAME} start
                 ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
@@ -197,37 +183,16 @@ case $OS in
         ;;
     RedHat|CentOS)
         case $OS_MAJOR_VERSION in
-            5) 
-                if [ "$SERVICE_CMD_ONLY" = true ]; then
-                    echo "service ${SERVICE_NAME} start"
-                else
-                    setup_output_dirs
-                    render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
-                    chmod 755 /etc/init.d/${SERVICE_NAME}
-                    PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
-                    chkconfig --add ${SERVICE_NAME}
-                    chkconfig ${SERVICE_NAME} on
-                    service ${SERVICE_NAME} start
-                fi
-                ;;
             6)
-                if [ "$SERVICE_CMD_ONLY" = true ]; then
-                    echo "initctl start ${SERVICE_NAME}"
-                else
-                    setup_output_dirs
-                    render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                    initctl start ${SERVICE_NAME}
-                fi
+                setup_output_dirs
+                render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
+                initctl start ${SERVICE_NAME}
                 ;;
             7)
-                if [ "$SERVICE_CMD_ONLY" = true ]; then
-                    echo "systemctl start ${SERVICE_NAME}"
-                else
-                    setup_output_dirs
-                    render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
-                    systemctl enable ${SERVICE_NAME}
-                    systemctl start ${SERVICE_NAME}
-                fi
+                setup_output_dirs
+                render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
+                systemctl enable ${SERVICE_NAME}
+                systemctl start ${SERVICE_NAME}
                 ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
@@ -237,13 +202,9 @@ case $OS in
         esac
         ;;
     Darwin)
-        if [ "$SERVICE_CMD_ONLY" = true ]; then
-            echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist"
-        else
-            setup_output_dirs
-            render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
-            launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
-        fi
+        setup_output_dirs
+        render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+        launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
         ;;
     *)
         echo "ERROR: unknown OS \"$OS\""

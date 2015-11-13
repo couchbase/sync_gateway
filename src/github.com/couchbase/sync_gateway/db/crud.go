@@ -551,7 +551,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// the same mutation queue processing window. This results in missing sequences on the change listener.
 		// To account for this, we track the recent sequence numbers for the document.
 		if doc.RecentSequences == nil {
-			doc.RecentSequences = make([]uint64, 0, 1 + len(unusedSequences))
+			doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
 		}
 
 		if len(doc.RecentSequences) > 20 {
@@ -599,8 +599,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 					}
 				} else {
 					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
-					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess " +
-					"on it (err=%v)", docid, doc.CurrentRev, err)
+					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+						"on it (err=%v)", docid, doc.CurrentRev, err)
 					channels = nil
 					access = nil
 					roles = nil
@@ -661,23 +661,17 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	dbExpvars.Add("revs_added", 1)
 
-	if (doc.History[newRevID] != nil) {
-		// Store the new revision in the cache
-		history := doc.History.getHistory(newRevID)
+	// Store the new revision in the cache
+	history := doc.History.getHistory(newRevID)
+	if doc.History[newRevID].Deleted {
+		body["_deleted"] = true
+	}
+	revChannels := doc.History[newRevID].Channels
+	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
-		if doc.History[newRevID].Deleted {
-			body["_deleted"] = true
-		}
-		revChannels := doc.History[newRevID].Channels
-		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
-
-		// Raise event
-		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
-		}
-	} else {
-		//Revision has been pruned away so won't be added to cache
-		base.LogTo("CRUD", "doc %q / %q, has been pruned, it has not been inserted into the revision cache", docid, newRevID)
+	// Raise event
+	if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+		db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:

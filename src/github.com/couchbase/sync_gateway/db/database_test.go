@@ -36,7 +36,7 @@ func init() {
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"})
+		BucketName: "sync_gateway_tests"},nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -642,13 +642,6 @@ func TestUpdateDesignDoc(t *testing.T) {
 	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
-
-	// Validate retrieval of the design doc by admin
-	var result DesignDoc
-	err = db.GetDesignDoc("official", &result)
-	assertNoError(t, err, "retrieve design doc as admin")
-
-
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", DesignDoc{})
@@ -848,7 +841,7 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
-			BucketName: fmt.Sprintf("b-%d", i)})
+			BucketName: fmt.Sprintf("b-%d", i)},nil)
 		context, _ := NewDatabaseContext("db", bucket, false, CacheOptions{}, RevisionCacheCapacity)
 		db, _ := CreateDatabase(context)
 
