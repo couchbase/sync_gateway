@@ -114,10 +114,10 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
-func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments, notify sgbucket.BucketNotifyFn) (sgbucket.TapFeed, error) {
 
 	if b.config.TapFeedDeDuplication {
-		return b.wrapFeedForDeduplication(args)
+		return b.wrapFeedForDeduplication(args, notify)
 	} else if len(b.config.TapFeedMissingDocs) > 0 {
 		callback := func(event *sgbucket.TapEvent) bool {
 			for _, key := range b.config.TapFeedMissingDocs {
@@ -127,19 +127,19 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 			}
 			return true
 		}
-		return b.wrapFeed(args, callback)
+		return b.wrapFeed(args, callback, notify)
 	} else {
-		return b.bucket.StartTapFeed(args)
+		return b.bucket.StartTapFeed(args, notify)
 	}
 
 }
 
 type EventUpdateFunc func(event *sgbucket.TapEvent) bool
 
-func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateFunc) (sgbucket.TapFeed, error) {
+func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateFunc, notify sgbucket.BucketNotifyFn) (sgbucket.TapFeed, error) {
 
 	// kick off the wrapped sgbucket tap feed
-	walrusTapFeed, err := b.bucket.StartTapFeed(args)
+	walrusTapFeed, err := b.bucket.StartTapFeed(args, notify)
 	if err != nil {
 		return walrusTapFeed, err
 	}
@@ -165,7 +165,12 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateF
 	return wrapperFeed, nil
 }
 
-func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+//Method stub to satisfy sg-bucket interface, awaiting merging of actual impl
+func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	return nil
+}
+
+func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments, notify sgbucket.BucketNotifyFn) (sgbucket.TapFeed, error) {
 	// create an output channel
 	// start a goroutine which reads off the sgbucket tap feed
 	//   - de-duplicate certain events
@@ -179,7 +184,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 	deDuplicationTimeoutMs := time.Millisecond * 1000
 
 	// kick off the wrapped sgbucket tap feed
-	walrusTapFeed, err := b.bucket.StartTapFeed(args)
+	walrusTapFeed, err := b.bucket.StartTapFeed(args, notify)
 	if err != nil {
 		return walrusTapFeed, err
 	}

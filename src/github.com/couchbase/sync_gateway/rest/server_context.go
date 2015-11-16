@@ -26,6 +26,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"sync/atomic"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -223,7 +224,14 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		}
 	}
 
-	bucket, err := db.ConnectToBucket(spec)
+	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
+		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
+
+		if dc := sc.databases_[dbName]; dc != nil {
+			dc.TakeDbOffline()
+		}
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -288,11 +296,24 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
+	dbcontext.ExitChanges = make(chan struct{})
+
+	if (config.StartOffline) {
+		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+	} else {
+		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+	}
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config
 	sc.config.Databases[config.Name] = config
+
+
+	//if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+	//	dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB started from config", *sc.config.AdminInterface)
+	//}
+
 	return dbcontext, nil
 }
 
@@ -407,7 +428,8 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		spec.Auth = shadow
 	}
 
-	bucket, err := base.GetBucket(spec)
+	bucket, err := base.GetBucket(spec, nil)
+
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
 			"Unable to connect to shadow bucket: %s", err)

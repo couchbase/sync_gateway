@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"sync/atomic"
 )
 
 const ServerName = "Couchbase Sync Gateway"          // DO NOT CHANGE; clients check this
@@ -112,16 +113,32 @@ func (h *handler) handleFlush() error {
 }
 
 func (h *handler) handleResync() error {
-	docsChanged, err := h.db.UpdateAllDocChannels(true, false)
-	if err != nil {
-		return err
+
+	//If the DB is already re syncing, return error to user
+	dbState := atomic.LoadUint32(&h.db.State)
+	if (dbState == db.DBResyncing) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is already in progress")
 	}
-	h.writeJSON(db.Body{"changes": docsChanged})
+
+	if (dbState != db.DBOffline) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling /_resync")
+	}
+
+	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
+
+		docsChanged, err := h.db.UpdateAllDocChannels(true, false)
+		if err != nil {
+			return err
+		}
+		h.writeJSON(db.Body{"changes": docsChanged})
+
+		atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
+	}
 	return nil
 }
 
 func (h *handler) instanceStartTime() json.Number {
-	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
+	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano() / 1000, 10))
 }
 
 func (h *handler) handleGetDB() error {
@@ -132,14 +149,16 @@ func (h *handler) handleGetDB() error {
 	if err != nil {
 		return err
 	}
+
 	response := db.Body{
 		"db_name":              h.db.Name,
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
 		"instance_start_time":  h.instanceStartTime(),
 		"compact_running":      false, // TODO: Implement this
-		"purge_seq":            0,     // TODO: Should track this value
-		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
+		"purge_seq":            0, // TODO: Should track this value
+		"disk_format_version":  0, // Probably meaningless, but add for compatibility
+		"state":               db.RunStateString[atomic.LoadUint32(&h.db.State)],
 		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)
