@@ -81,6 +81,27 @@ const funcWrapper = `
 					throw({forbidden: "missing channel access"});
 		}
 
+		// Validate username / rolenames for calls to access.
+
+		function roleAccess(roles, channels) {
+			roles = makeArray(roles);
+			channels = makeArray(channels);
+			for (var i = 0; i < roles.length; ++i) {
+				roles[i] = "role:" + roles[i];
+			}
+			access(roles, channels);
+		}
+
+		function userAccess(users, channels) {
+			users = makeArray(users);
+			channels = makeArray(channels);
+			for (var i = 0; i < users.length; ++i) {
+				if (users[i].indexOf("role:") == 0)
+					throw({forbidden: "call roleAccess to grant roles access to channels"});
+			}
+			access(users, channels);
+		}
+
 		try {
 			v(newDoc, oldDoc);
 		} catch(x) {

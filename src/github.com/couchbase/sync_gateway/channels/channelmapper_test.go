@@ -92,6 +92,30 @@ func TestAccessFunctionTakesArrayOfUsers(t *testing.T) {
 	assert.DeepEquals(t, res.Access, AccessMap{"bar": SetOf("ginger"), "baz": SetOf("ginger"), "foo": SetOf("ginger")})
 }
 
+// Just verify that the calls to the userAccess() fn show up in the output channel list.
+func TestUserAccessFunctionTakesArrayOfUsers(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc) {userAccess(["foo","bar","baz"], "ginger")}`)
+	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Access, AccessMap{"bar": SetOf("ginger"), "baz": SetOf("ginger"), "foo": SetOf("ginger")})
+} 
+// Just verify that the calls to the userAccess() fn reject roles.
+func TestUserAccessFunctionRejectsRoles(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc) {userAccess(["foo","role:bar","baz"], "ginger")}`)
+	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "call roleAccess to grant roles access to channels"))
+	assert.DeepEquals(t, res.Access, AccessMap{})
+}
+
+// Just verify that the calls to the roleAccess() fn prepend "role:"
+func TestRoleAccessFunctionTakesArrayOfRoles(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc) {roleAccess(["foo","bar","baz"], "ginger")}`)
+	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess failed")
+	assert.DeepEquals(t, res.Access, AccessMap{"role:bar": SetOf("ginger"), "role:baz": SetOf("ginger"), "role:foo": SetOf("ginger")})
+}
+
 // Just verify that the calls to the access() fn show up in the output channel list.
 func TestAccessFunctionTakesArrayOfChannels(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access("lee", ["ginger", "earl_grey", "green"])}`)
