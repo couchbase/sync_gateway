@@ -486,7 +486,7 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	}
 
 	var config DbConfig
-	j := json.NewDecoder(res.Body)
+	j := json.NewDecoder(base.ConvertBackQuotedStrings(res.Body))
 	if err = j.Decode(&config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)
