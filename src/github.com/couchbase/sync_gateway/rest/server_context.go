@@ -489,6 +489,7 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	var config DbConfig
 
 	var bodyBytes []byte
+	defer res.Body.Close()
 	if bodyBytes, err = ioutil.ReadAll(res.Body); err != nil {
 		return nil, err
 	}
