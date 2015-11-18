@@ -174,7 +174,8 @@ func (h *handler) invoke(method handlerMethod) error {
 		//If the Database is currently online process as normal
 		dbState := atomic.LoadUint32(&dbContext.State)
 		if (dbState == db.DBOnline) {
-			//Take a readlock for any method that does not run offline, run offline methods will take a write lock
+			//Take a readlock for any method that does not run offline, taking a DB offline will
+			//block until all normal calls have returned and released their read locks.
 			if (!h.runOffline) {
 				//get a read lock on the dbContext
 				dbContext.AccessLock.RLock()
@@ -182,10 +183,12 @@ func (h *handler) invoke(method handlerMethod) error {
 				//defer releasing the dbContext until after the handler method returns
 				defer dbContext.AccessLock.RUnlock()
 			}
-		} else { //DB is offline or in a transition state
-			if (!h.runOffline) { //only handlers with runOffline true can run if DB is not in Online state
+		} else if (dbState == db.DBOffline) { //DB is offline
+			if (!h.runOffline) { //only handlers with runOffline true can run if DB is in Offline state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
 			}
+		} else { //DB is in transition state, no calls will be accepted until it is Online or Offline state
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently in neither online or offline state, try again later")
 		}
 	}
 

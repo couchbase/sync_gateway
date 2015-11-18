@@ -107,23 +107,23 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	return vres, bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
 }
 
-func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments, notify sgbucket.BucketNotifyFn) (sgbucket.TapFeed, error) {
+func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	// Uses tap by default, unless DCP is explicitly specified
 	if bucket.spec.FeedType == DcpFeedType {
 		feed, err := bucket.StartDCPFeed(args)
 		if err != nil {
 			Warn("Unable to start DCP feed - reverting to using TAP feed: %s", err)
-			return bucket.StartCouchbaseTapFeed(args,notify)
+			return bucket.StartCouchbaseTapFeed(args)
 		}
 		LogTo("Feed", "Using DCP feed for bucket: %q", bucket.GetName())
 		return feed, nil
 	} else {
 		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
-		return bucket.StartCouchbaseTapFeed(args,notify)
+		return bucket.StartCouchbaseTapFeed(args)
 	}
 }
 
-func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments, notify sgbucket.BucketNotifyFn) (sgbucket.TapFeed, error) {
+func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	cbArgs := memcached.TapArguments{
 		Backfill: args.Backfill,
 		Dump:     args.Dump,

@@ -123,10 +123,10 @@ func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interfac
 func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	return nil
 }
-func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments, notify sgbucket.BucketNotifyFn) (sgbucket.TapFeed, error) {
+func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "StartTapFeed(...) [%v]", time.Since(start)) }()
-	return b.bucket.StartTapFeed(args,notify)
+	return b.bucket.StartTapFeed(args)
 }
 func (b *LoggingBucket) Close() {
 	start := time.Now()

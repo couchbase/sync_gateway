@@ -91,7 +91,7 @@ func (h *handler) handleDbOnline() error {
 				return
 			}
 
-			//Set DB state to DBOnline, this wil cause new API requests to be be rejected
+			//Set DB state to DBOnline, this wil cause new API requests to be be accepted
 			atomic.StoreUint32(&h.server.databases_[h.db.Name].State, db.DBOnline)
 		} else {
 			base.LogTo("CRUD", "Unable to take Database : %v, online after %v seconds, database must be in Offline state", h.db.Name, input.Delay)
