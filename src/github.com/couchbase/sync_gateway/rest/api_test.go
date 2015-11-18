@@ -45,8 +45,9 @@ var gBucketCounter = 0
 type restTester struct {
 	_bucket      base.Bucket
 	_sc          *ServerContext
-	noAdminParty bool   // Unless this is true, Admin Party is in full effect
-	syncFn       string // put the sync() function source in here (optional)
+	noAdminParty bool              // Unless this is true, Admin Party is in full effect
+	syncFn       string            // put the sync() function source in here (optional)
+	Queries      map[string]string // for N1QL tests
 }
 
 func (rt *restTester) bucket() base.Bucket {

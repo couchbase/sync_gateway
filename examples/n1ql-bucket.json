@@ -1,0 +1,69 @@
+{
+  "log": ["CRUD"],
+  "databases": {
+    "travel-sample": {
+      "server": "http://127.0.0.1:8091",
+      "import_docs" : true,
+      "sync" : 
+        `
+        function(doc)  {
+          if (doc.type)
+            channel(doc.type)
+          if (doc.country)
+            channel(doc.country.replace(" ","."))
+        }
+        `,
+      "queries" : {
+        "type" : "SELECT DISTINCT(type) from \u0060travel-sample\u0060",
+        "type-positional" : "SELECT name from \u0060travel-sample\u0060 WHERE type = $1",
+        "type-named" : "SELECT name from \u0060travel-sample\u0060 WHERE type = $type",
+        "airline" : "SELECT name from \u0060travel-sample\u0060 WHERE type = \"airline\"",
+        "type-filter" : "SELECT name from \u0060travel-sample\u0060 WHERE type = $type AND CHANNEL_FILTER()",
+        "airline-filter" : "SELECT name from \u0060travel-sample\u0060 WHERE type = \"airline\"",
+        "basic-filter" : "SELECT name, country, type from \u0060travel-sample\u0060 WHERE country IS NOT NULL AND name IS NOT NULL AND CHANNEL_FILTER()"
+      },
+      "event_handlers" : {
+        "document_changed": [{
+          "handler": "webhook",
+          "url": "http://127.0.0.1:4984/default/",
+          "filter": "SELECT type, callsign, country WHERE type = \"airline\""
+        }]
+      },
+      "users": { 
+        "GUEST": { 
+          "disabled": false, 
+          "admin_channels": ["France"] 
+        }
+      }
+    },
+    "default": {
+      "server": "http://localhost:8091",
+      "n1ql_queries" : {
+        "all" : "SELECT _sync.channels as _channels, * from default",
+        "beer" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer IS NOT NULL",
+        "good" : "SELECT _sync.channels as _channels, beer, good, META(default).id from default WHERE good IS NOT NULL",
+        "nofilter" : "SELECT good, beer as bier, META(default).id from default WHERE beer IS NOT NULL",
+        "beer-positional" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $1",
+        "beer-named" : "SELECT _sync.channels as _channels, beer, META(default).id from default WHERE beer = $beer",
+        "from-param" : "SELECT true as filter WHERE $1.beer = \"cider\" and $1.good = true"
+      },
+      "sync" : 
+`
+      function(doc)  {
+        if (doc.beer)
+          channel("beer")
+        if (doc.good)
+          channel("good")
+        if (doc.type) channel(doc.type)
+      }
+      `,
+      "bucket": "default",
+      "users": { 
+        "GUEST": { 
+          "disabled": false, 
+          "admin_channels": ["*"] 
+        } 
+      }
+    }
+  }
+}
