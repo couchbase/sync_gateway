@@ -42,6 +42,7 @@ type ChangeEntry struct {
 	Doc      Body        `json:"doc,omitempty"`
 	Changes  []ChangeRev `json:"changes"`
 	Err      error       `json:"err,omitempty"` // Used to notify feed consumer of errors
+	Channel  string      `json:"-"`
 	branched bool
 }
 
@@ -141,6 +142,7 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 		Deleted:  (logEntry.Flags & channels.Deleted) != 0,
 		Changes:  []ChangeRev{{"rev": logEntry.RevID}},
 		branched: (logEntry.Flags & channels.Branched) != 0,
+		Channel:  channelName,
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = channels.SetOf(channelName)

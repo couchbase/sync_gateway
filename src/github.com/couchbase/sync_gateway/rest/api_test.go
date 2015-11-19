@@ -1223,6 +1223,19 @@ func TestChannelAccessChanges(t *testing.T) {
 	// What happens if we call access() with a nonexistent username?
 	assertStatus(t, rt.send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
 
+	// test feed=channels
+	var channelChanges struct {
+		Results []string
+	}
+	response = rt.send(requestByUser("GET", "/db/_changes?feed=channels", "", "zegpold"))
+	log.Printf("_changes?feed=channels looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &channelChanges)
+	expectedChannels := []string{"gamma", "alpha"}
+	assert.Equals(t, len(channelChanges.Results), len(expectedChannels))
+	for i, expectedChannel := range expectedChannels {
+		assert.Equals(t, channelChanges.Results[i], expectedChannel)
+	}
+
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
@@ -1246,7 +1259,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	}
 
 	// Check accumulated statistics:
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
+	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(6))
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
 	db.ChangesClientStats.Reset()
 	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))

@@ -362,14 +362,14 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 
 	assert.Equals(t, len(changes), 2)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 2},
-		ID:      "doc1",
-		Changes: []ChangeRev{{"rev": revid}}})
-	assert.DeepEquals(t, changes[1], &ChangeEntry{
-		Seq:     SequenceID{Seq: 2},
-		ID:      "_user/naomi",
-		Changes: []ChangeRev{}})
+
+	assert.DeepEquals(t, changes[0].Seq, SequenceID{Seq: 1, TriggeredBy: 2})
+	assert.DeepEquals(t, changes[0].ID, "doc1")
+	assert.DeepEquals(t, changes[0].Changes, []ChangeRev{{"rev": revid}})
+
+	assert.DeepEquals(t, changes[1].Seq, SequenceID{Seq: 2})
+	assert.DeepEquals(t, changes[1].ID, "_user/naomi")
+	assert.DeepEquals(t, changes[1].Changes, []ChangeRev{})
 
 	// Add a new doc (sequence 3):
 	revid, _ = db.Put("doc2", Body{"channels": []string{"PBS"}})
@@ -382,6 +382,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Channel: "PBS",
 		Seq:     SequenceID{Seq: 3},
 		ID:      "doc2",
 		Changes: []ChangeRev{{"rev": revid}}})
@@ -477,11 +478,9 @@ func TestConflicts(t *testing.T) {
 	changes, err := db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:      SequenceID{Seq: 3},
-		ID:       "doc",
-		Changes:  []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
-		branched: true})
+	assert.DeepEquals(t, changes[0].Seq, SequenceID{Seq: 3})
+	assert.DeepEquals(t, changes[0].ID, "doc")
+	assert.DeepEquals(t, changes[0].Changes, []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}})
 
 	// Delete 2-b; verify this makes 2-a current:
 	rev3, err := db.DeleteDoc("doc", "2-b")
@@ -504,6 +503,7 @@ func TestConflicts(t *testing.T) {
 	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:      SequenceID{Seq: 4},
+		Channel:  "all",
 		ID:       "doc",
 		Changes:  []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched: true})
@@ -642,12 +642,10 @@ func TestUpdateDesignDoc(t *testing.T) {
 	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
-
 	// Validate retrieval of the design doc by admin
 	var result DesignDoc
 	err = db.GetDesignDoc("official", &result)
 	assertNoError(t, err, "retrieve design doc as admin")
-
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))

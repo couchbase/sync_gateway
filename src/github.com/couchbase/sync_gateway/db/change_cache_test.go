@@ -271,10 +271,9 @@ func TestChannelCacheBackfill(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 4)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+	assert.DeepEquals(t, changes[0].Seq, SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2})
+	assert.DeepEquals(t, changes[0].ID, "doc-1")
+	assert.DeepEquals(t, changes[0].Changes, []ChangeRev{{"rev": "1-a"}})
 
 	lastSeq := changes[len(changes)-1].Seq
 
@@ -299,11 +298,9 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// will be the late arriver (3) along with 5, 6)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 	assert.Equals(t, len(changes), 3)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 3, LowSeq: 3},
-		ID:      "doc-3",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
-
+	assert.DeepEquals(t, changes[0].Seq, SequenceID{Seq: 3, LowSeq: 3})
+	assert.DeepEquals(t, changes[0].ID, "doc-3")
+	assert.DeepEquals(t, changes[0].Changes, []ChangeRev{{"rev": "1-a"}})
 }
 
 // Test backfill of late arriving sequences to a continuous changes feed
@@ -350,10 +347,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	err = appendFromFeed(&changes, feed, 4)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 4)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+	assert.DeepEquals(t, changes[0].Seq, SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2})
+	assert.DeepEquals(t, changes[0].ID, "doc-1")
+	assert.DeepEquals(t, changes[0].Changes, []ChangeRev{{"rev": "1-a"}})
 
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
@@ -430,6 +426,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 4)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Channel: "ABC",
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
 		Changes: []ChangeRev{{"rev": "1-a"}}})

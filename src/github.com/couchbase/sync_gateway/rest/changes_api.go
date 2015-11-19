@@ -135,11 +135,11 @@ func (h *handler) handleChanges() error {
 	defer close(options.Terminator)
 
 	switch feed {
-	case "normal", "":
-		return h.sendSimpleChanges(userChannels, options)
+	case "normal", "", "channels":
+		return h.sendSimpleChanges(feed, userChannels, options)
 	case "longpoll":
 		options.Wait = true
-		return h.sendSimpleChanges(userChannels, options)
+		return h.sendSimpleChanges(feed, userChannels, options)
 	case "continuous":
 		return h.sendContinuousChangesByHTTP(userChannels, options)
 	case "websocket":
@@ -149,9 +149,14 @@ func (h *handler) handleChanges() error {
 	}
 }
 
-func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) error {
+func (h *handler) sendSimpleChanges(feedType string, channels base.Set, options db.ChangesOptions) error {
 	lastSeq := options.Since
 	var first bool = true
+	var channelNamesOnly bool = false
+	var wroteChannelNames map[string]bool = make(map[string]bool)
+	if feedType == "channels" {
+		channelNamesOnly = true
+	}
 	feed, err := h.db.MultiChangesFeed(channels, options)
 	if err != nil {
 		return err
@@ -184,7 +189,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes","simple changes cannot get Close Notifier from ResponseWriter")
+			base.LogTo("Changes", "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := json.NewEncoder(h.response)
@@ -199,12 +204,25 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					if entry.Err != nil {
 						break loop // error returned by feed - end changes
 					}
-					if first {
-						first = false
+					if channelNamesOnly {
+						// track which names we've shared, and mute duplicates
+						if wroteChannelNames[entry.Channel] == false {
+							wroteChannelNames[entry.Channel] = true
+							if first {
+								first = false
+							} else {
+								h.response.Write([]byte(","))
+							}
+							encoder.Encode(entry.Channel)
+						}
 					} else {
-						h.response.Write([]byte(","))
+						if first {
+							first = false
+						} else {
+							h.response.Write([]byte(","))
+						}
+						encoder.Encode(entry)
 					}
-					encoder.Encode(entry)
 					lastSeq = entry.Seq
 				}
 
@@ -216,7 +234,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				message = "OK (timeout)"
 				break loop
 			case <-closeNotify:
-				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 				break loop
 			}
 			if err != nil {
@@ -265,7 +283,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	if ok {
 		closeNotify = cn.CloseNotify()
 	} else {
-		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
+		base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
 	}
 
 loop:
@@ -347,7 +365,7 @@ loop:
 		case <-timeout:
 			break loop
 		case <-closeNotify:
-			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 			break loop
 		}
 
