@@ -188,7 +188,7 @@ func (h *handler) invoke(method handlerMethod) error {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
 			}
 		} else { //DB is in transition state, no calls will be accepted until it is Online or Offline state
-			return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently in neither online or offline state, try again later")
+			return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later",db.RunStateString[dbState]))
 		}
 	}
 
