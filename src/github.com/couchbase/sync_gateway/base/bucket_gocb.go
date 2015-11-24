@@ -108,6 +108,26 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 // and it's up to the caller to handle those.
 func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 
+	// Create the RetryWorker for BulkSet op
+	worker := bucket.newSetBulkRetryWorker(entries)
+
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, _ = RetryLoop(worker, sleeper)
+
+	return err
+
+}
+
+func (bucket CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.BulkSetEntry) RetryWorker {
+
+	// track the keys that either succeeded w/o error or had a CAS error that there's no point retrying
 	succeededKeys := map[string]interface{}{}
 	noRetryKeys := map[string]interface{}{}
 
@@ -157,30 +177,21 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 			case *gocb.InsertOp:
 				entry.Cas = uint64(item.Cas)
 				entry.Error = item.Err
-
 				if item.Err == nil {
-					// add to SucceededKeys
-					succeededKeys[entry.Key] = true
+					succeededKeys[entry.Key] = struct{}{}
 				}
-
 				if isCasFailure(item.Err) {
-					// add to NoRetryKeys
-					noRetryKeys[entry.Key] = true
+					noRetryKeys[entry.Key] = struct{}{}
 				}
-
 			case *gocb.ReplaceOp:
 				entry.Cas = uint64(item.Cas)
 				entry.Error = item.Err
 				if item.Err == nil {
-					// add to SucceededKeys
-					succeededKeys[entry.Key] = true
+					succeededKeys[entry.Key] = struct{}{}
 				}
-
 				if isCasFailure(item.Err) {
-					// add to NoRetryKeys
-					noRetryKeys[entry.Key] = true
+					noRetryKeys[entry.Key] = struct{}{}
 				}
-
 			}
 		}
 
@@ -193,18 +204,7 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 
 	}
 
-	// this is the function that will be called back by the RetryLoop to determine
-	// how long to sleep before retrying (uses backoff)
-	sleeper := CreateDoublingSleeperFunc(
-		bucket.spec.MaxNumRetries,
-		bucket.spec.InitialRetrySleepTimeMS,
-	)
-
-	// Kick off retry loop
-	err, _ = RetryLoop(worker, sleeper)
-
-	return err
-
+	return worker
 }
 
 // Retrieve keys in bulk for increased efficiency.  If any keys are not found, they
