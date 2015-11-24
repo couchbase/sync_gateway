@@ -162,6 +162,34 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 
 	gocbExpvars.Add("GetBulkRaw", 1)
 
+	// Create a RetryWorker for the GetBulkRaw operation
+	worker := bucket.newGetBulkRawRetryWorker(keys)
+
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// Type assertion into a map
+	if result == nil {
+		return nil, err
+	}
+	resultMap, ok := result.(map[string][]byte)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a map", result)
+	}
+
+	return resultMap, err
+
+}
+
+func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryWorker {
+
 	resultAccumulator := make(map[string][]byte, len(keys))
 	noRetryKeys := []string{}
 	retryKeys := []string{}
@@ -216,26 +244,8 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 
 	}
 
-	// this is the function that will be called back by the RetryLoop to determine
-	// how long to sleep before retrying (uses backoff)
-	sleeper := CreateDoublingSleeperFunc(
-		bucket.spec.MaxNumRetries,
-		bucket.spec.InitialRetrySleepTimeMS,
-	)
+	return worker
 
-	// Kick off retry loop
-	err, result := RetryLoop(worker, sleeper)
-
-	// Type assertion into a map
-	if result == nil {
-		return nil, err
-	}
-	resultMap, ok := result.(map[string][]byte)
-	if !ok {
-		LogPanic("Error doing type assertion of %v into a map", result)
-	}
-
-	return resultMap, err
 }
 
 func isNotFoundError(err error) bool {
