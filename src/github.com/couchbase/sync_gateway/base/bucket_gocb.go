@@ -69,7 +69,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 	}
 
 	spec.MaxNumRetries = 10
-	spec.InitialRetrySleepTimeMS = 500
+	spec.InitialRetrySleepTimeMS = 5
 
 	bucket = CouchbaseBucketGoCB{
 		goCBBucket,
