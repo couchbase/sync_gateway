@@ -12,6 +12,8 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocb/gocbcore"
@@ -144,39 +146,150 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
-	worker := func() (finished bool, err error, value interface{}) {
-
-		// do the underlying request
-		result, err := getBulkRawOneOff(bucket, keys)
-
-		// if we got an error, but it's "unrecoverable" and not worth
-		// retrying, then return an error
-		if err != nil && !shouldRetryError(err) {
-			return true, nil, err
-		}
-
-		// if no error, then return result
-		if err == nil {
-			return true, nil, result
-		}
-
-		// otherwise, we should retry
-		return true, nil, nil
-
-	}
-
+	numRetries := 0
 	timeToSleepMs := bucket.spec.InitialRetrySleepTimeMS
 
-	sleeper := func(numAttempts int) (bool, int) {
-		if numAttempts > bucket.spec.MaxNumRetries {
-			return false, -1
+	totalNumKeys := len(keys)
+	resultsAccumulator := make(map[string][]byte, len(keys))
+	keysRemaining := make([]string, totalNumKeys)
+	copy(keysRemaining, keys)
+
+	log.Printf("GetBulkRaw called with %v keys", totalNumKeys)
+	defer log.Printf("/GetBulkRaw finished with %v keys", totalNumKeys)
+
+	for {
+
+		log.Printf("GetBulkRaw calloing getBulkRawOneOff with %v / %v keys", len(keysRemaining), totalNumKeys)
+		result, err := getBulkRawOneOff(bucket, keysRemaining)
+
+		// if we get an "overall" error, as opposed to errors on some of the keys
+		// treat as fatal and just abort
+		if err != nil {
+			log.Printf("GetBulkRaw got an overall error: %v.  Aborting", err)
+			return nil, err
 		}
+
+		// if we didn't get an error, and no keys are missing from the result,
+		// then we're done
+		log.Printf("GetBulkRaw len(result): %v / %v", len(result), totalNumKeys)
+		if len(result) == totalNumKeys {
+			return result, nil
+		}
+
+		// otherwise, if we didn't get an overall error but the result has less
+		// than the total number of keys, add the result to the accumulated result
+		log.Printf("GetBulkRaw merge %v keys into resultsAccumulator, which currently has %v / %v keys", len(result), len(resultsAccumulator), totalNumKeys)
+
+		for key, val := range result {
+			resultsAccumulator[key] = val
+		}
+
+		log.Printf("GetBulkRaw merged %v keys into resultsAccumulator, which currently has %v / %v keys", len(result), len(resultsAccumulator), totalNumKeys)
+
+		// does the accumulated result have the total number of keys we want?
+		// if so, we're done
+		if len(resultsAccumulator) == totalNumKeys {
+			return resultsAccumulator, nil
+		}
+
+		// figure out the set of keys that we are still missing, and set keysRemaining to this
+		missingKeys := []string{}
+		for _, key := range keys {
+			_, ok := resultsAccumulator[key]
+			if !ok {
+				missingKeys = append(missingKeys, key)
+			}
+		}
+		keysRemaining = missingKeys
+
+		// if retry attempts exhausted, return the error
+		if numRetries >= bucket.spec.MaxNumRetries {
+			return nil, fmt.Errorf("Giving up GoCB request for key: %v after %v retries", keys, numRetries)
+		}
+
+		// sleep before retrying
+		Warn("Sleeping %v ms before retrying GoCB request for %v / %v keys remaining", timeToSleepMs, len(keysRemaining), totalNumKeys)
+
+		<-time.After(time.Duration(timeToSleepMs) * time.Millisecond)
+
+		// increase sleep time for next retry
 		timeToSleepMs *= 2
-		return true, timeToSleepMs
+
+		// increment retry counter
+		numRetries += 1
+
 	}
 
-	err, result := RetryLoop(worker, sleeper)
-	return result.(map[string][]byte), err
+	// call getBulkRawOneOff(bucket, keys)
+
+	/*
+		resultsAccumulator := make(map[string][]byte, len(keys))
+
+		worker := func() (finished bool, err error, value interface{}) {
+
+			// do the underlying request
+			result, err := getBulkRawOneOff(bucket, keys)
+
+			if err != nil {
+
+				// got an "overall error" -- eg, an error with the bulk operation,
+				// as opposed to some keys missing from the result due to partial errors
+
+				// if it's unrecoverable and not worth retrying, just return an error
+				if !shouldRetryError(err) {
+					return true, nil, err
+				}
+
+				// if we've already accumulated results from partial successes,
+				// and now we're getting an overall error, abort, since this is not
+				// taken into account in this code.
+				if len(resultsAccumulator) > 0 {
+					return true, nil, err
+				}
+
+				// otherwise, we should retry all of the keys
+				return true, nil, nil
+
+			} else {
+				// no "overall error", but there may be partial errors
+
+				// if no overall error and result contains all keys, then return result
+				if len(result) == len(keys) {
+					return true, nil, result
+				}
+
+				// save all the results we have so far, and retry with only the failed keys
+				for key, val := range result {
+					resultsAccumulator[key] = val
+				}
+
+				// find the failed keys by looping over all the keys, and only including
+				// the keys *not* present in the result
+				newKeys := []string{}
+				for _, key := range keys {
+					_, ok := result[key]
+					if !ok {
+						newKeys = append(newKeys, key)
+					}
+				}
+
+			}
+
+		}
+
+		timeToSleepMs := bucket.spec.InitialRetrySleepTimeMS
+
+		sleeper := func(numAttempts int) (bool, int) {
+			if numAttempts > bucket.spec.MaxNumRetries {
+				return false, -1
+			}
+			timeToSleepMs *= 2
+			return true, timeToSleepMs
+		}
+
+		err, result := RetryLoop(worker, sleeper)
+		return result.(map[string][]byte), err
+	*/
 
 	/*
 		numRetries := 0
