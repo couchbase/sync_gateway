@@ -247,7 +247,7 @@ func (v *IntMax) SetIfMax(value int64) {
 // A retry sleeper is called back by the retry loop and passed
 // the current retryCount, and should return the amount of milliseconds
 // that the retry should sleep.
-type RetrySleeper func(retryCount int) (bool, int)
+type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 
 // A RetryWorker encapsulates the work being done in a Retry Loop
 type RetryWorker func() (finished bool, err error, value interface{})
@@ -277,4 +277,23 @@ func RetryLoop(worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 		numAttempts += 1
 
 	}
+}
+
+// Create a RetrySleeper that will double the retry time on every iteration and
+// use the given parameters
+func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySleeper {
+
+	timeToSleepMs := initialTimeToSleepMs
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > maxNumAttempts {
+			return false, -1
+		}
+		if numAttempts > 1 {
+			timeToSleepMs *= 2
+		}
+		return true, timeToSleepMs
+	}
+	return sleeper
+
 }

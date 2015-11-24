@@ -12,7 +12,6 @@ package base
 import (
 	"expvar"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/couchbase/gocb"
@@ -162,19 +161,12 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
-	timeToSleepMs := bucket.spec.InitialRetrySleepTimeMS
 
 	resultAccumulator := make(map[string][]byte, len(keys))
 	noRetryKeys := []string{}
 	retryKeys := []string{}
 
 	worker := func() (finished bool, err error, value interface{}) {
-
-		// TODO: look at error codes for individual entries, can't just look at the
-		// counts.  If any of these have NOT FOUND status, don't retry that key.
-		// TODO: document behavior when not all keys are retreived.
-
-		// result, err := getBulkRawOneOff(bucket, keys)
 
 		var items []gocb.BulkOp
 		for _, key := range keys {
@@ -187,8 +179,6 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 			return true, err, nil
 		}
 
-		// TODO: only iterations
-		// TODO: stick failures in one collections, successes in another
 		for _, item := range items {
 			getOp, ok := item.(*gocb.GetOp)
 			if !ok {
@@ -226,18 +216,12 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 
 	}
 
-	// TODO: factory
-	// sleeper := createSleeperFunc(bucket.spec.MaxNumRetries)
-
 	// this is the function that will be called back by the RetryLoop to determine
 	// how long to sleep before retrying (uses backoff)
-	sleeper := func(numAttempts int) (bool, int) {
-		if numAttempts > bucket.spec.MaxNumRetries {
-			return false, -1
-		}
-		timeToSleepMs *= 2
-		return true, timeToSleepMs
-	}
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
 
 	// Kick off retry loop
 	err, result := RetryLoop(worker, sleeper)
@@ -256,47 +240,6 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 
 func isNotFoundError(err error) bool {
 	return strings.Contains(err.Error(), "Key not found")
-}
-
-// TODO: pass in results accumulator and have it add to that
-// TODO: minimize iterations, minimize map allocations
-func getBulkRawOneOff(bucket CouchbaseBucketGoCB, keys []string) (map[string][]byte, error) {
-
-	log.Printf("getBulkRawOneOff called with keys: %v", keys)
-
-	gocbExpvars.Add("GetBulkRaw", 1)
-	result := make(map[string][]byte)
-	var items []gocb.BulkOp
-	for _, key := range keys {
-		var value []byte
-		item := &gocb.GetOp{Key: key, Value: &value}
-		items = append(items, item)
-	}
-	err := bucket.Do(items)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: only iterations
-	// TODO: stick failures in one collections, successes in another
-	for _, item := range items {
-		getOp, ok := item.(*gocb.GetOp)
-		if !ok {
-			continue
-		}
-		// Ignore any ops with errors.
-		// NOTE: some of the errors are misleading:
-		// https://issues.couchbase.com/browse/GOCBC-64
-		if getOp.Err == nil {
-			byteValue, ok := getOp.Value.(*[]byte)
-			if ok {
-				result[getOp.Key] = *byteValue
-			}
-		}
-	}
-
-	return result, nil
-
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
