@@ -57,6 +57,8 @@ type BucketSpec struct {
 	FeedParams                             FeedParams
 	CbgtContext                            CbgtContext
 	CouchbaseDriver                        CouchbaseDriver
+	MaxNumRetries                          int // max number of retries before giving up
+	InitialRetrySleepTimeMS                int // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 }
 
 // These are used by CBGT to determine the sharding factor and other properties

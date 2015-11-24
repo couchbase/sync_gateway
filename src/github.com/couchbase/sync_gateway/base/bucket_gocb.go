@@ -68,6 +68,9 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 		return nil, err
 	}
 
+	spec.MaxNumRetries = 10
+	spec.InitialRetrySleepTimeMS = 500
+
 	bucket = CouchbaseBucketGoCB{
 		goCBBucket,
 		spec,
@@ -141,6 +144,83 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
+	worker := func() (finished bool, err error, value interface{}) {
+
+		// do the underlying request
+		result, err := getBulkRawOneOff(bucket, keys)
+
+		// if we got an error, but it's "unrecoverable" and not worth
+		// retrying, then return an error
+		if err != nil && !shouldRetryError(err) {
+			return true, nil, err
+		}
+
+		// if no error, then return result
+		if err == nil {
+			return true, nil, result
+		}
+
+		// otherwise, we should retry
+		return true, nil, nil
+
+	}
+
+	timeToSleepMs := bucket.spec.InitialRetrySleepTimeMS
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > bucket.spec.MaxNumRetries {
+			return false, -1
+		}
+		timeToSleepMs *= 2
+		return true, timeToSleepMs
+	}
+
+	err, result := RetryLoop(worker, sleeper)
+	return result.(map[string][]byte), err
+
+	/*
+		numRetries := 0
+		timeToSleepMs := bucket.spec.InitialRetrySleepTimeMS
+
+		for i := 0; i < bucket.spec.MaxNumRetries; i++ {
+
+			// do the underlying request
+			result, err := getBulkRawOneOff(bucket, keys)
+
+			// if no error, return result
+			if err == nil || !shouldRetryError(err) {
+				return result, err
+			}
+
+			// if retry attempts exhausted, return the error
+			if numRetries >= bucket.spec.MaxNumRetries {
+				Warn("Giving up GoCB request after %v retries", numRetries)
+				return nil, err
+			}
+
+			// sleep before retrying
+			LogTo("gocb", "Sleeping %v ms before retrying GoCB request", timeToSleepMs)
+			<-time.After(timeToSleepMs * time.Millisecond)
+
+			// increase sleep time for next retry
+			timeToSleepMs *= 2
+
+			// increment retry counter
+			numRetries += 1
+
+		}
+	*/
+
+}
+
+func shouldRetryError(err error) bool {
+	// TODO!! Do a string comparison to see if it's "not found" and therefore
+	// non-recoverable
+	return true
+}
+
+func getBulkRawOneOff(bucket CouchbaseBucketGoCB, keys []string) (map[string][]byte, error) {
+
 	gocbExpvars.Add("GetBulkRaw", 1)
 	result := make(map[string][]byte)
 	var items []gocb.BulkOp
@@ -171,6 +251,7 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 	}
 
 	return result, nil
+
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {

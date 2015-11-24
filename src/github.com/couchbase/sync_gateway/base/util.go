@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func GenerateRandomSecret() string {
@@ -240,5 +241,40 @@ func (v *IntMax) SetIfMax(value int64) {
 	defer v.mu.Unlock()
 	if value > v.i {
 		v.i = value
+	}
+}
+
+// A retry sleeper is called back by the retry loop and passed
+// the current retryCount, and should return the amount of milliseconds
+// that the retry should sleep.
+type RetrySleeper func(retryCount int) (bool, int)
+
+// A RetryWorker encapsulates the work being done in a Retry Loop
+type RetryWorker func() (finished bool, err error, value interface{})
+
+func RetryLoop(worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
+
+	numAttempts := 1
+
+	for {
+		workerFinished, err, value := worker()
+		if err != nil {
+			return err, nil
+		}
+
+		if workerFinished {
+			return nil, value
+		}
+
+		shouldContinue, sleepMs := sleeper(numAttempts)
+		if !shouldContinue {
+			err := fmt.Errorf("RetryLoop giving up after %v attempts", numAttempts)
+			return err, nil
+		}
+
+		<-time.After(time.Millisecond * time.Duration(sleepMs))
+
+		numAttempts += 1
+
 	}
 }
