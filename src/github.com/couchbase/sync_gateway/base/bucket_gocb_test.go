@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/couchbase/sg-bucket"
@@ -63,7 +64,7 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 
 }
 
-func TestBulkGetRaw(t *testing.T) {
+func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -174,7 +175,7 @@ func CouchbaseTestWriteCas(t *testing.T) {
 
 }
 
-func CouchbaseTestSetBulk(t *testing.T) {
+func TestSetBulk(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -227,6 +228,7 @@ func CouchbaseTestSetBulk(t *testing.T) {
 	})
 
 	err = bucket.SetBulk(entries)
+	log.Printf("setbulk err: %v", err)
 	assert.True(t, err == nil)
 
 	// Expect one error for the casStale key

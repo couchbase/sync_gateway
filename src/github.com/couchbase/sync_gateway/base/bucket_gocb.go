@@ -104,46 +104,106 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	return returnVal.([]byte), uint64(casGoCB), err
 }
 
-// Retry up to the retry limit, then return
-// Shouldn't retry on a CAS failure (Messy: how to distinguish between CAS failures.  do experiment)
+// Retry up to the retry limit, then return.  Does not retry items if they had CAS failures,
+// and it's up to the caller to handle those.
 func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 
-	var items []gocb.BulkOp
-	for _, entry := range entries {
-		switch entry.Cas {
-		case 0:
-			// if no CAS val, treat it as an insert (similar to WriteCas())
-			item := &gocb.InsertOp{
-				Key:   entry.Key,
-				Value: entry.Value,
+	succeededKeys := map[string]interface{}{}
+	noRetryKeys := map[string]interface{}{}
+
+	worker := func() (finished bool, err error, value interface{}) {
+
+		var items []gocb.BulkOp
+		for _, entry := range entries {
+
+			// skip any entries that have already succeeded or had cas errors
+			if mapContains(succeededKeys, entry.Key) || mapContains(noRetryKeys, entry.Key) {
+				continue
 			}
-			items = append(items, item)
-		default:
-			// otherwise, treat it as a replace
-			item := &gocb.ReplaceOp{
-				Key:   entry.Key,
-				Value: entry.Value,
-				Cas:   gocb.Cas(entry.Cas),
+
+			switch entry.Cas {
+			case 0:
+				// if no CAS val, treat it as an insert (similar to WriteCas())
+				item := &gocb.InsertOp{
+					Key:   entry.Key,
+					Value: entry.Value,
+				}
+				items = append(items, item)
+			default:
+				// otherwise, treat it as a replace
+				item := &gocb.ReplaceOp{
+					Key:   entry.Key,
+					Value: entry.Value,
+					Cas:   gocb.Cas(entry.Cas),
+				}
+				items = append(items, item)
 			}
-			items = append(items, item)
+
 		}
 
-	}
-	if err := bucket.Do(items); err != nil {
-		return err
-	}
-	for index, item := range items {
-		entry := entries[index]
-		switch item := item.(type) {
-		case *gocb.InsertOp:
-			entry.Cas = uint64(item.Cas)
-			entry.Error = item.Err
-		case *gocb.ReplaceOp:
-			entry.Cas = uint64(item.Cas)
-			entry.Error = item.Err
+		// If there are no items to process because they were all skipped, that means we're done!
+		if len(items) == 0 {
+			return true, nil, nil
 		}
+
+		// Do the underlying bulk operation
+		if err := bucket.Do(items); err != nil {
+			return true, err, nil
+		}
+
+		for index, item := range items {
+			entry := entries[index]
+			switch item := item.(type) {
+			case *gocb.InsertOp:
+				entry.Cas = uint64(item.Cas)
+				entry.Error = item.Err
+
+				if item.Err == nil {
+					// add to SucceededKeys
+					succeededKeys[entry.Key] = true
+				}
+
+				if isCasFailure(item.Err) {
+					// add to NoRetryKeys
+					noRetryKeys[entry.Key] = true
+				}
+
+			case *gocb.ReplaceOp:
+				entry.Cas = uint64(item.Cas)
+				entry.Error = item.Err
+				if item.Err == nil {
+					// add to SucceededKeys
+					succeededKeys[entry.Key] = true
+				}
+
+				if isCasFailure(item.Err) {
+					// add to NoRetryKeys
+					noRetryKeys[entry.Key] = true
+				}
+
+			}
+		}
+
+		// If every entry is either in the succeededKeys or the noRetryKeys, then we're done
+		if len(succeededKeys)+len(noRetryKeys) == len(entries) {
+			finished = true
+		}
+
+		return finished, nil, nil
+
 	}
-	return nil
+
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, _ = RetryLoop(worker, sleeper)
+
+	return err
 
 }
 
@@ -251,7 +311,31 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 }
 
 func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "Key not found")
+}
+
+func isCasFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "Key already exists")
+}
+
+func containsElement(items []string, itemToCheck string) bool {
+	for _, item := range items {
+		if item == itemToCheck {
+			return true
+		}
+	}
+	return false
+}
+
+func mapContains(mapInstance map[string]interface{}, key string) bool {
+	_, ok := mapInstance[key]
+	return ok
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
