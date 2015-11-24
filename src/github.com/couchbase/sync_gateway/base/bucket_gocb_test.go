@@ -18,6 +18,11 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+// NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
+// because they depend on a running Couchbase server.  To run these tests, manually rename
+// them to remove the Couchbase* prefix, and then rename them back before checking into
+// Git.
+
 func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
 		Server:     "http://localhost:8091",
