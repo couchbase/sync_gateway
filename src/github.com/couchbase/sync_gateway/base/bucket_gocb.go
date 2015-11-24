@@ -12,6 +12,8 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"log"
+	"strings"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocb/gocbcore"
@@ -93,6 +95,8 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	var returnVal interface{}
 
+	// TODO: ignore NOT FOUND
+
 	gocbExpvars.Add("GetRaw", 1)
 	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
 	if err != nil {
@@ -101,6 +105,8 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	return returnVal.([]byte), uint64(casGoCB), err
 }
 
+// Retry up to the retry limit, then return
+// Shouldn't retry on a CAS failure (Messy: how to distinguish between CAS failures.  do experiment)
 func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 
 	var items []gocb.BulkOp
@@ -142,56 +148,89 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 
 }
 
+// Retrieve keys in bulk for increased efficiency.  If any keys are not found, they
+// will not be returned, and so the size of the map may be less than the size of the
+// keys slice, and no error will be returned in that case since it's an expected
+// situation.
+//
+// If there is an "overall error" calling the underlying GoCB bulk operation, then
+// that error will be returned.
+//
+// If there are errors on individual keys -- aside from "not found" errors -- such as
+// QueueOverflow errors that can be retried successfully, they will be retried
+// with a backoff loop.
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
+	gocbExpvars.Add("GetBulkRaw", 1)
 	timeToSleepMs := bucket.spec.InitialRetrySleepTimeMS
-	totalNumKeys := len(keys)
-	resultsAccumulator := make(map[string][]byte, len(keys))
-	keysRemaining := make([]string, totalNumKeys)
-	copy(keysRemaining, keys)
+
+	resultAccumulator := make(map[string][]byte, len(keys))
+	noRetryKeys := []string{}
+	retryKeys := []string{}
 
 	worker := func() (finished bool, err error, value interface{}) {
 
-		result, err := getBulkRawOneOff(bucket, keysRemaining)
+		// TODO: look at error codes for individual entries, can't just look at the
+		// counts.  If any of these have NOT FOUND status, don't retry that key.
+		// TODO: document behavior when not all keys are retreived.
 
-		// if we get an "overall" error, as opposed to errors on some of the keys
-		// treat as fatal and just abort
+		// result, err := getBulkRawOneOff(bucket, keys)
+
+		var items []gocb.BulkOp
+		for _, key := range keys {
+			var value []byte
+			item := &gocb.GetOp{Key: key, Value: &value}
+			items = append(items, item)
+		}
+		err = bucket.Do(items)
 		if err != nil {
 			return true, err, nil
 		}
 
-		// if we didn't get an error, and no keys are missing from the result,
-		// then we're done
-		if len(result) == totalNumKeys {
-			return true, nil, result
-		}
-
-		// otherwise, if we didn't get an overall error but the result has less
-		// than the total number of keys, add the result to the accumulated result
-		for key, val := range result {
-			resultsAccumulator[key] = val
-		}
-
-		// does the accumulated result have the total number of keys we want?
-		// if so, we're done
-		if len(resultsAccumulator) == totalNumKeys {
-			return true, nil, resultsAccumulator
-		}
-
-		// figure out the set of keys that we are still missing, and set keysRemaining to this
-		missingKeys := []string{}
-		for _, key := range keys {
-			_, ok := resultsAccumulator[key]
+		// TODO: only iterations
+		// TODO: stick failures in one collections, successes in another
+		for _, item := range items {
+			getOp, ok := item.(*gocb.GetOp)
 			if !ok {
-				missingKeys = append(missingKeys, key)
+				continue
 			}
+			// Ignore any ops with errors.
+			// NOTE: some of the errors are misleading:
+			// https://issues.couchbase.com/browse/GOCBC-64
+			if getOp.Err == nil {
+				byteValue, ok := getOp.Value.(*[]byte)
+				if ok {
+					resultAccumulator[getOp.Key] = *byteValue
+				}
+			} else {
+				// if it's a "not found" error, then throw it in failure collection
+				// and don't retry.  Otherwise, throw it in retry collection.
+				if isNotFoundError(getOp.Err) {
+					noRetryKeys = append(noRetryKeys, getOp.Key)
+				} else {
+					retryKeys = append(retryKeys, getOp.Key)
+				}
+			}
+
 		}
-		keysRemaining = missingKeys
+
+		// if there are no keys to retry, then we're done.
+		if len(retryKeys) == 0 {
+			return true, nil, resultAccumulator
+		}
+
+		// otherwise, retry the keys the need to be retried
+		keys = retryKeys
 
 		return false, nil, nil
 
 	}
 
+	// TODO: factory
+	// sleeper := createSleeperFunc(bucket.spec.MaxNumRetries)
+
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
 	sleeper := func(numAttempts int) (bool, int) {
 		if numAttempts > bucket.spec.MaxNumRetries {
 			return false, -1
@@ -200,12 +239,30 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 		return true, timeToSleepMs
 	}
 
+	// Kick off retry loop
 	err, result := RetryLoop(worker, sleeper)
-	return result.(map[string][]byte), err
 
+	// Type assertion into a map
+	if result == nil {
+		return nil, err
+	}
+	resultMap, ok := result.(map[string][]byte)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a map", result)
+	}
+
+	return resultMap, err
 }
 
+func isNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "Key not found")
+}
+
+// TODO: pass in results accumulator and have it add to that
+// TODO: minimize iterations, minimize map allocations
 func getBulkRawOneOff(bucket CouchbaseBucketGoCB, keys []string) (map[string][]byte, error) {
+
+	log.Printf("getBulkRawOneOff called with keys: %v", keys)
 
 	gocbExpvars.Add("GetBulkRaw", 1)
 	result := make(map[string][]byte)
@@ -220,6 +277,8 @@ func getBulkRawOneOff(bucket CouchbaseBucketGoCB, keys []string) (map[string][]b
 		return nil, err
 	}
 
+	// TODO: only iterations
+	// TODO: stick failures in one collections, successes in another
 	for _, item := range items {
 		getOp, ok := item.(*gocb.GetOp)
 		if !ok {

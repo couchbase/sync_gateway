@@ -58,13 +58,25 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 
 }
 
-func CouchbaseTestBulkGetRaw(t *testing.T) {
+func TestBulkGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
 	keyPrefix := "TestBulkGetRaw"
 	keySet := make([]string, 10)
 	valueSet := make(map[string][]byte, 10)
+
+	defer func() {
+		// Clean up
+		for _, key := range keySet {
+			// Delete key
+			err := bucket.Delete(key)
+			if err != nil {
+				t.Errorf("Error removing key from bucket")
+			}
+		}
+
+	}()
 
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s%d", keyPrefix, i)
@@ -74,7 +86,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 		_, _, err := bucket.GetRaw(key)
 		if err == nil {
-			t.Errorf("Key [%s] should not exist yet, expected error but got nil", key)
+			t.Errorf("Key [%s] should not exist yet, expected error but didn't get one.", key)
 		}
 
 		if err := bucket.SetRaw(key, 0, val); err != nil {
@@ -100,15 +112,9 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
 	assert.True(t, len(results) == 10)
 
-	// Clean up
 	for _, key := range keySet {
 		// validate mixed results
 		assert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
-		// Delete key
-		err = bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing key from bucket")
-		}
 	}
 
 }
@@ -339,3 +345,6 @@ func CouchbaseTestIncrCounter(t *testing.T) {
 	}
 
 }
+
+// Get bulk get on keys that don't get, ensure that not retrying (even if logs)
+// Set with a bad CAS value, make sure it's not retrying
