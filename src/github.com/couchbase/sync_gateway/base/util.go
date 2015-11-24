@@ -269,7 +269,7 @@ func RetryLoop(worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 		shouldContinue, sleepMs := sleeper(numAttempts)
 		if !shouldContinue {
 			err := fmt.Errorf("RetryLoop giving up after %v attempts", numAttempts)
-			return err, nil
+			return err, value
 		}
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))

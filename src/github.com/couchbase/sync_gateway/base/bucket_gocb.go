@@ -175,10 +175,12 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 	// Kick off retry loop
 	err, result := RetryLoop(worker, sleeper)
 
-	// Type assertion into a map
+	// If the RetryLoop returns a nil result, convert to an empty map.
 	if result == nil {
-		return nil, err
+		return map[string][]byte{}, err
 	}
+
+	// Type assertion of result into a map
 	resultMap, ok := result.(map[string][]byte)
 	if !ok {
 		LogPanic("Error doing type assertion of %v into a map", result)
