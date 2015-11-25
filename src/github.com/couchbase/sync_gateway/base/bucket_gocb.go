@@ -127,48 +127,11 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 
-	// TODO: rework this method to leverage bucket.Get() and reduce code duplication
-
 	var returnVal interface{}
-	worker := func() (finished bool, err error, value interface{}) {
-
-		gocbExpvars.Add("GetRaw", 1)
-		casGoCB, err := bucket.Bucket.Get(k, &returnVal)
-
-		if err == nil {
-			finished = true
-		} else {
-			finished = isNotFoundError(err)
-		}
-
-		return finished, err, uint64(casGoCB)
-
-	}
-
-	sleeper := CreateDoublingSleeperFunc(
-		bucket.spec.MaxNumRetries,
-		bucket.spec.InitialRetrySleepTimeMS,
-	)
-
-	// Kick off retry loop
-	err, result := RetryLoop(worker, sleeper)
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		LogPanic("Error doing type assertion of %v into a uint64", result)
-	}
-
-	// If returnVal was never set to anything, return nil or else type assertion below will panic
+	cas, err = bucket.Get(k, &returnVal)
 	if returnVal == nil {
 		return nil, cas, err
 	}
-
 	return returnVal.([]byte), cas, err
 
 }
