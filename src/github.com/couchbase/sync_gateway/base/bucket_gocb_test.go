@@ -388,12 +388,12 @@ func TestGetAndTouchRaw(t *testing.T) {
 		t.Errorf("Error calling SetRaw(): %v", err)
 	}
 
-	rv, cas, err := bucket.GetRaw(key)
+	rv, _, err := bucket.GetRaw(key)
 	if string(rv) != string(val) {
 		t.Errorf("%v != %v", string(rv), string(val))
 	}
 
-	rv, newCas, err := bucket.GetAndTouchRaw(key, 1)
+	rv, _, err = bucket.GetAndTouchRaw(key, 1)
 
 	assert.Equals(t, len(rv), len(val))
 	assert.True(t, err == nil)
