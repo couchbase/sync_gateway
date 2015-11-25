@@ -63,10 +63,10 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	bucket := GetBucketOrPanic()
 
 	keyPrefix := "TestBulkGetRaw"
-	keySet := make([]string, 10)
-	valueSet := make(map[string][]byte, 10)
+	keySet := make([]string, 1000)
+	valueSet := make(map[string][]byte, 1000)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("%s%d", keyPrefix, i)
 		val := []byte(fmt.Sprintf("bar%d", i))
 		keySet[i] = key
@@ -84,10 +84,10 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 	results, err := bucket.GetBulkRaw(keySet)
 	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	assert.True(t, len(results) == 10)
+	assert.True(t, len(results) == 1000)
 
 	// validate results, and prepare new keySet with non-existent keys
-	mixedKeySet := make([]string, 20)
+	mixedKeySet := make([]string, 2000)
 	for index, key := range keySet {
 		// Verify value
 		assert.True(t, bytes.Equal(results[key], valueSet[key]))
@@ -98,7 +98,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	// Validate bulkGet that include non-existent keys work as expected
 	mixedResults, err := bucket.GetBulkRaw(mixedKeySet)
 	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	assert.True(t, len(results) == 10)
+	assert.True(t, len(results) == 1000)
 
 	// Clean up
 	for _, key := range keySet {
