@@ -12,7 +12,6 @@ package base
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/couchbase/sg-bucket"
@@ -36,7 +35,7 @@ func GetBucketOrPanic() Bucket {
 	return bucket
 }
 
-func CouchbaseTestSetGetRaw(t *testing.T) {
+func TestSetGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -228,7 +227,6 @@ func TestSetBulk(t *testing.T) {
 	})
 
 	err = bucket.SetBulk(entries)
-	log.Printf("setbulk err: %v", err)
 	assert.True(t, err == nil)
 
 	// Expect one error for the casStale key
@@ -363,5 +361,41 @@ func CouchbaseTestIncrCounter(t *testing.T) {
 
 }
 
-// Get bulk get on keys that don't get, ensure that not retrying (even if logs)
-// Set with a bad CAS value, make sure it's not retrying
+func TestGetAndTouchRaw(t *testing.T) {
+
+	// There's no easy way to validate the expiry time of a doc (that I know of)
+	// so this is just a smoke test
+
+	key := "TestGetAndTouchRaw"
+	val := []byte("bar")
+
+	bucket := GetBucketOrPanic()
+
+	defer func() {
+		err := bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+
+	}()
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	if err := bucket.SetRaw(key, 0, val); err != nil {
+		t.Errorf("Error calling SetRaw(): %v", err)
+	}
+
+	rv, cas, err := bucket.GetRaw(key)
+	if string(rv) != string(val) {
+		t.Errorf("%v != %v", string(rv), string(val))
+	}
+
+	rv, newCas, err := bucket.GetAndTouchRaw(key, 1)
+
+	assert.Equals(t, len(rv), len(val))
+	assert.True(t, err == nil)
+
+}
