@@ -613,23 +613,51 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
-	var result uint64
 	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
 	// attempt a simple get, which gocb will transcode to uint64
 	if amt == 0 {
+		var result uint64
 		_, err := bucket.Get(k, &result)
 		// If successful, return.  Otherwise fall through to Counter attempt (handles non-existent counter)
 		if err == nil {
 			return result, nil
 		} else {
 			Warn("Error during Get during Incr for key %s:%v", k, err)
-			return 0, nil
+			return 0, err
 		}
 	}
 
-	// Otherwise, attempt to use counter to increment/create if non-existing
-	result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
-	return result, err
+	worker := func() (finished bool, err error, value interface{}) {
+
+		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
+		if err == nil {
+			finished = true
+		}
+		return finished, err, result
+
+	}
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a uint64", result)
+	}
+
+	return cas, err
+
 }
 
 func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
