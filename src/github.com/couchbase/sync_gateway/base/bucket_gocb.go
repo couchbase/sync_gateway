@@ -504,18 +504,47 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 		LogPanic("flags must be 0")
 	}
 
-	if cas == 0 {
-		// Try to insert the value into the bucket
-		gocbExpvars.Add("WriteCas_Insert", 1)
-		newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
-		return uint64(newCas), err
+	worker := func() (finished bool, err error, value interface{}) {
+
+		if cas == 0 {
+			// Try to insert the value into the bucket
+			gocbExpvars.Add("WriteCas_Insert", 1)
+			newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
+			return true, err, uint64(newCas)
+		}
+
+		// Otherwise, replace existing value
+		gocbExpvars.Add("WriteCas_Replace", 1)
+		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+		if err == nil {
+			finished = true
+		} else {
+			finished = isNotFoundError(err)
+		}
+		return finished, err, uint64(newCas)
+
 	}
 
-	// Otherwise, replace existing value
-	gocbExpvars.Add("WriteCas_Replace", 1)
-	newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
 
-	return uint64(newCas), err
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a uint64", result)
+	}
+
+	return cas, err
 
 }
 
