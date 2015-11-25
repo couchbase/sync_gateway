@@ -20,14 +20,22 @@ import (
 
 var gocbExpvars *expvar.Map
 
+const (
+	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
+	MaxConcurrentBulkOps   = 35   // Max 35 concurrent bulk ops
+	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
+)
+
 func init() {
 	gocbExpvars = expvar.NewMap("syncGateway_gocb")
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
 type CouchbaseBucketGoCB struct {
-	*gocb.Bucket            // the underlying gocb bucket
-	spec         BucketSpec // keep a copy of the BucketSpec for DCP usage
+	*gocb.Bucket               // the underlying gocb bucket
+	spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
+	singleOps    chan struct{} // Manages max concurrent single ops
+	bulkOps      chan struct{} // Manages max concurrent bulk ops
 }
 
 type GoCBLogger struct{}
@@ -68,9 +76,13 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 		return nil, err
 	}
 
+	// Define channels to limit the number of concurrent single and bulk operations,
+	// to avoid gocb queue overflow issues
 	bucket = CouchbaseBucketGoCB{
 		goCBBucket,
 		spec,
+		make(chan struct{}, MaxConcurrentSingleOps),
+		make(chan struct{}, MaxConcurrentBulkOps),
 	}
 
 	return bucket, err
@@ -82,12 +94,26 @@ func (bucket CouchbaseBucketGoCB) GetName() string {
 }
 
 func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
+	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
+	defer func() {
+		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
+	}()
 	gocbExpvars.Add("Get", 1)
 	casGoCB, err := bucket.Bucket.Get(k, rv)
 	return uint64(casGoCB), err
 }
 
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
+
+	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
+	defer func() {
+		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
+	}()
+
 	var returnVal interface{}
 
 	gocbExpvars.Add("GetRaw", 1)
@@ -98,33 +124,95 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	return returnVal.([]byte), uint64(casGoCB), err
 }
 
+func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+
+	var items []gocb.BulkOp
+	for _, entry := range entries {
+		switch entry.Cas {
+		case 0:
+			// if no CAS val, treat it as an insert (similar to WriteCas())
+			item := &gocb.InsertOp{
+				Key:   entry.Key,
+				Value: entry.Value,
+			}
+			items = append(items, item)
+		default:
+			// otherwise, treat it as a replace
+			item := &gocb.ReplaceOp{
+				Key:   entry.Key,
+				Value: entry.Value,
+				Cas:   gocb.Cas(entry.Cas),
+			}
+			items = append(items, item)
+		}
+
+	}
+	if err := bucket.Do(items); err != nil {
+		return err
+	}
+	for index, item := range items {
+		entry := entries[index]
+		switch item := item.(type) {
+		case *gocb.InsertOp:
+			entry.Cas = uint64(item.Cas)
+			entry.Error = item.Err
+		case *gocb.ReplaceOp:
+			entry.Cas = uint64(item.Cas)
+			entry.Error = item.Err
+		}
+	}
+	return nil
+
+}
+
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
 	result := make(map[string][]byte)
-	var items []gocb.BulkOp
-	for _, key := range keys {
-		var value []byte
-		item := &gocb.GetOp{Key: key, Value: &value}
-		items = append(items, item)
-	}
-	err := bucket.Do(items)
-	if err != nil {
-		return nil, err
-	}
 
-	for _, item := range items {
-		getOp, ok := item.(*gocb.GetOp)
-		if !ok {
-			continue
+	bucket.bulkOps <- struct{}{}
+	gocbExpvars.Add("BulkOps", 1)
+	defer func() {
+		<-bucket.bulkOps
+		gocbExpvars.Add("BulkOps", -1)
+	}()
+
+	// Process in sets of MaxBulkBatchSize
+	for len(keys) > 0 {
+		var batchSize int
+		if len(keys) > MaxBulkBatchSize {
+			batchSize = MaxBulkBatchSize
+		} else {
+			batchSize = len(keys)
 		}
-		// Ignore any ops with errors.
-		// NOTE: some of the errors are misleading:
-		// https://issues.couchbase.com/browse/GOCBC-64
-		if getOp.Err == nil {
-			byteValue, ok := getOp.Value.(*[]byte)
-			if ok {
-				result[getOp.Key] = *byteValue
+		batchKeys := keys[0:batchSize]
+		keys = keys[batchSize:]
+
+		var items []gocb.BulkOp
+		for _, key := range batchKeys {
+			var value []byte
+			item := &gocb.GetOp{Key: key, Value: &value}
+			items = append(items, item)
+		}
+		err := bucket.Do(items)
+		if err != nil {
+			Warn("Bulk get error for batch size %d:%v", len(items), err)
+			return nil, err
+		}
+
+		for _, item := range items {
+			getOp, ok := item.(*gocb.GetOp)
+			if !ok {
+				continue
+			}
+			// Ignore any ops with errors.
+			// NOTE: some of the errors are misleading:
+			// https://issues.couchbase.com/browse/GOCBC-64
+			if getOp.Err == nil {
+				byteValue, ok := getOp.Value.(*[]byte)
+				if ok {
+					result[getOp.Key] = *byteValue
+				}
 			}
 		}
 	}
@@ -133,6 +221,13 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
+
+	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
+	defer func() {
+		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
+	}()
 	var returnVal interface{}
 	gocbExpvars.Add("GetAndTouchRaw", 1)
 	casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
@@ -159,18 +254,33 @@ func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {
 
 func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
 
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+
 	gocbExpvars.Add("Set", 1)
 	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
 	return err
 }
 
 func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
 	gocbExpvars.Add("SetRaw", 1)
 	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
 	return err
 }
 
 func (bucket CouchbaseBucketGoCB) Delete(k string) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
 	gocbExpvars.Add("Delete", 1)
 	_, err := bucket.Bucket.Remove(k, 0)
 	return err
@@ -182,6 +292,11 @@ func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interfac
 }
 
 func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
 
 	// we only support the sgbucket.Raw WriteOption at this point
 	if opt != sgbucket.Raw {
@@ -209,6 +324,11 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 }
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
 
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
@@ -272,6 +392,11 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 }
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
 
 	var result uint64
 	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first

@@ -23,7 +23,8 @@ type kvChangeIndexReader struct {
 	channelIndexReaders     map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
 	channelIndexReaderLock  sync.RWMutex               // Coordinates read access to channel index reader map
 	onChange                func(base.Set)             // Client callback that notifies of channel changes
-	terminator              chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions // Partitioning of vbuckets in the index
+	terminator              chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions
+	pollingActive           chan struct{}              // Detects polling closed
 	maxVbNo                 uint16                     // Number of vbuckets
 	indexPartitionsCallback IndexPartitionsFunc        // callback to retrieve the index partition map
 
@@ -55,8 +56,9 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 
 	// Start background task to poll for changes
 	k.terminator = make(chan struct{})
+	k.pollingActive = make(chan struct{})
 	go func(k *kvChangeIndexReader) {
-
+		defer close(k.pollingActive)
 		pollStart := time.Now()
 		for {
 			timeSinceLastPoll := time.Since(pollStart)
@@ -64,7 +66,10 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 			if waitTime < 0 {
 				waitTime = 0 * time.Millisecond
 			}
+
 			select {
+			case <-k.terminator:
+				return
 			case <-time.After(waitTime):
 				// TODO: Doesn't trigger the reader removal processing (in pollReaders) during long
 				//       periods without changes to stableSequence.  In that scenario we'll continue
@@ -74,8 +79,6 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 					k.pollReaders()
 					indexTimingExpvars.Add("indexRead_polls_withChanges", 1)
 				}
-			case <-k.terminator:
-				return
 			}
 
 			indexTimingExpvars.Add("indexRead_polls_all", 1)
@@ -91,6 +94,8 @@ func (k *kvChangeIndexReader) Clear() {
 
 func (k *kvChangeIndexReader) Stop() {
 	close(k.terminator)
+	// Closing the terminator tells polling loop to stop, but may not be immediate.  Wait for polling to actually stop before closing the bucket
+	<-k.pollingActive
 	if k.indexReadBucket != nil {
 		k.indexReadBucket.Close()
 	}
