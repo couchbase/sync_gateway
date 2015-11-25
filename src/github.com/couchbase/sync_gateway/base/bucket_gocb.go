@@ -561,7 +561,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		// serious error, it will probably recur when calling other ops below
 
 		gocbExpvars.Add("Update_Get", 1)
-		cas, _ := bucket.Bucket.Get(k, &value)
+		cas, _ := bucket.Get(k, &value)
 
 		var callbackParam []byte
 		if value != nil {
@@ -586,12 +586,12 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 				// In order to match the go-couchbase bucket behavior, if the
 				// callback returns nil, we delete the doc
 				gocbExpvars.Add("Update_Remove", 1)
-				_, err = bucket.Bucket.Remove(k, cas)
+				_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
 				gocbExpvars.Add("Update_Replace", 1)
-				_, err = bucket.Bucket.Replace(k, value, cas, uint32(exp))
+				_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), uint32(exp))
 			}
 		}
 
