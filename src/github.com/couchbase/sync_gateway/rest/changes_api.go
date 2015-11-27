@@ -78,6 +78,7 @@ func (h *handler) handleChanges() error {
 	var options db.ChangesOptions
 	var filter string
 	var channelsArray []string
+	var docIdsArray []string
 	if h.rq.Method == "GET" {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
@@ -93,6 +94,17 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
+		docidsParam := h.getQuery("doc_ids")
+		if docidsParam != "" {
+			var docidKeys []string
+			err := json.Unmarshal([]byte(docidsParam), &docidKeys)
+			if err != nil {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad doc id's")
+			}
+			if len(docidKeys) > 0 {
+				docIdsArray = docidKeys
+			}
+		}
 		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat*1000, true)
 		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS, true)
 
@@ -102,7 +114,7 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-		feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON(body)
+		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
 		if err != nil {
 			return err
 		}
@@ -112,19 +124,27 @@ func (h *handler) handleChanges() error {
 	// The default is all channels the user can access.
 	userChannels := channels.SetOf(channels.AllChannelWildcard)
 	if filter != "" {
-		if filter != "sync_gateway/bychannel" {
-			return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
-		}
-		if channelsArray == nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
-		}
-		var err error
-		userChannels, err = channels.SetFromArray(channelsArray, channels.ExpandStar)
-		if err != nil {
-			return err
-		}
-		if len(userChannels) == 0 {
-			return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
+		if filter == "sync_gateway/bychannel" {
+			if channelsArray == nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
+			}
+			var err error
+			userChannels, err = channels.SetFromArray(channelsArray, channels.ExpandStar)
+			if err != nil {
+				return err
+			}
+			if len(userChannels) == 0 {
+				return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
+			}
+		} else if filter == "_doc_ids" {
+			if docIdsArray == nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Missing 'doc_ids' filter parameter")
+			}
+			if len(docIdsArray) == 0 {
+				return base.HTTPErrorf(http.StatusBadRequest, "Empty doc_ids list")
+			}
+		} else {
+			return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel or _doc_ids")
 		}
 	}
 
@@ -136,7 +156,11 @@ func (h *handler) handleChanges() error {
 
 	switch feed {
 	case "normal", "":
-		return h.sendSimpleChanges(userChannels, options)
+		if filter == "_doc_ids" {
+			return h.sendOneShotChangesWithDocIds(userChannels, docIdsArray, options)
+		} else {
+			return h.sendSimpleChanges(userChannels, options)
+		}
 	case "longpoll":
 		options.Wait = true
 		return h.sendSimpleChanges(userChannels, options)
@@ -147,6 +171,175 @@ func (h *handler) handleChanges() error {
 	default:
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown feed type")
 	}
+}
+
+func (h *handler) sendOneShotChangesWithDocIds(cchannels base.Set, explicitDocIDs []string, options db.ChangesOptions) error {
+	lastSeq := options.Since
+	//var first bool = true
+	//feed, err := h.db.MultiChangesFeed(channels, options)
+	//if err != nil {
+	//	return err
+	//}
+
+	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
+	var availableChannels channels.TimedSet
+	if h.user != nil {
+		availableChannels = h.user.InheritedChannels()
+		if availableChannels == nil {
+			panic("no channels for user?")
+		}
+		if availableChannels.Contains(channels.UserStarChannel) {
+			availableChannels = nil
+		}
+	}
+
+	// Subroutines that filter a channel list down to the ones that the user has access to:
+	filterChannels := func(channels []string) []string {
+		if availableChannels == nil {
+			return channels
+		}
+		dst := 0
+		for _, ch := range channels {
+			if availableChannels.Contains(ch) {
+				channels[dst] = ch
+				dst++
+			}
+		}
+		if dst == 0 {
+			return nil
+		}
+		return channels[0:dst]
+	}
+
+	filterChannelSet := func(channelMap channels.ChannelMap) []string {
+		var result []string
+		if availableChannels == nil {
+			result = []string{}
+		}
+		for ch, rm := range channelMap {
+			if availableChannels == nil || availableChannels.Contains(ch) {
+				//Do not include channels doc removed from in this rev
+				if rm == nil {
+					result = append(result, ch)
+				}
+			}
+		}
+		return result
+	}
+
+	type allDocsRowValue struct {
+		Rev      string              `json:"rev"`
+		Channels []string            `json:"channels,omitempty"`
+		Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+	}
+	type allDocsRow struct {
+		UpdateSeq uint64           `json:"seq,omitempty"`
+		ID        string           `json:"id,omitempty"`
+		Changes   []*allDocsRowValue `json:"changes,omitempty"`
+		Doc       db.Body          `json:"doc,omitempty"`
+		Error     string           `json:"error,omitempty"`
+		Status    int              `json:"status,omitempty"`
+	}
+
+	// Subroutine that creates a response row for a document:
+	totalRows := 0
+	createRow := func(doc db.IDAndRev, channels []string) *allDocsRow {
+		row := &allDocsRow{ID: doc.DocID}
+		value := allDocsRowValue{}
+
+		// Filter channels to ones available to user, and bail out if inaccessible:
+		if explicitDocIDs == nil {
+			if channels = filterChannels(channels); channels == nil {
+				return nil // silently skip this doc
+			}
+		}
+
+		base.LogTo("Changes","Got here 1")
+		if explicitDocIDs != nil { //|| includeDocs || includeAccess {
+			// Fetch the document body and other metadata that lives with it:
+			body, channelSet, _, _, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, true)
+			if err != nil {
+				return nil
+			} else if body["_removed"] != nil {
+				row.Status = http.StatusForbidden
+				return row
+			}
+			if explicitDocIDs != nil {
+				if channels = filterChannelSet(channelSet); channels == nil {
+					row.Status = http.StatusForbidden
+					return row
+				}
+				doc.RevID = body["_rev"].(string)
+				doc.Sequence = sequence
+			}
+			//if includeDocs {
+			//	base.LogTo("Changes","doc body = %v",body)
+			//	row.Doc = body
+			//}
+			/*
+			if includeAccess && (access != nil || roleAccess != nil) {
+				value.Access = map[string]base.Set{}
+				for userName, channels := range access {
+					value.Access[userName] = channels.AsSet()
+				}
+				for roleName, channels := range roleAccess {
+					value.Access["role:"+roleName] = channels.AsSet()
+				}
+			}
+			*/
+		}
+
+		changes := make ([]*allDocsRowValue, 1)
+		changes[0] = &value
+		row.Changes = changes
+		row.ID = doc.DocID
+		value.Rev = doc.RevID
+		//if includeSeqs {
+			row.UpdateSeq = doc.Sequence
+		//}
+		//if includeChannels {
+		//	row.Value.Channels = channels
+		//}
+		return row
+	}
+
+	// Subroutine that writes a response entry for a document:
+	writeDoc := func(doc db.IDAndRev, channels []string) bool {
+		row := createRow(doc, channels)
+		if row != nil {
+			if row.Status >= 300 {
+				row.Error = base.CouchHTTPErrorName(row.Status)
+			}
+			if totalRows > 0 {
+				h.response.Write([]byte(","))
+			}
+			totalRows++
+			h.addJSON(row)
+			return true
+		}
+		return false
+	}
+
+	h.setHeader("Content-Type", "application/json")
+	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
+	h.response.Write([]byte("{\"results\":[\r\n"))
+
+	count := int(0)
+	for _, docID := range explicitDocIDs {
+		writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+		count++
+		if options.Limit > 0 && count == options.Limit {
+			break
+		}
+
+	}
+
+	message := "OK"
+
+	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
+	h.response.Write([]byte(s))
+	h.logStatus(http.StatusOK, message)
+	return nil
 }
 
 func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) error {
@@ -402,7 +595,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		} else {
 			var channelNames []string
 			var err error
-			if _, options, _, channelNames, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
+			if _, options, _, channelNames, _, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
 				return
 			}
 			if channelNames != nil {
@@ -458,7 +651,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 	return nil
 }
 
-func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, compress bool, err error) {
+func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, docIdsArray []string, compress bool, err error) {
 	var input struct {
 		Feed           string        `json:"feed"`
 		Since          db.SequenceID `json:"since"`
@@ -467,6 +660,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		IncludeDocs    bool          `json:"include_docs"`
 		Filter         string        `json:"filter"`
 		Channels       string        `json:"channels"` // a filter query param, so it has to be a string
+		DocIds		   []string		 `json:"doc_ids"`
 		HeartbeatMs    *uint64       `json:"heartbeat"`
 		TimeoutMs      *uint64       `json:"timeout"`
 		AcceptEncoding string        `json:"accept_encoding"`
@@ -484,6 +678,8 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 	if input.Channels != "" {
 		channelsArray = strings.Split(input.Channels, ",")
 	}
+
+	docIdsArray = input.DocIds
 
 	options.HeartbeatMs = getRestrictedInt(
 		input.HeartbeatMs,
