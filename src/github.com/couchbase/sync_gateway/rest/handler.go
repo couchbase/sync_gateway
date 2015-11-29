@@ -170,28 +170,28 @@ func (h *handler) invoke(method handlerMethod) error {
 		if err != nil {
 			return err
 		}
+		if (!h.runOffline) {
 
-		//If the Database is currently online process as normal
-		dbState := atomic.LoadUint32(&dbContext.State)
-		if (dbState == db.DBOnline) {
-			//Take a readlock for any method that does not run offline, taking a DB offline will
-			//block until all normal calls have returned and released their read locks.
-			if (!h.runOffline) {
-				//get a read lock on the dbContext
-				dbContext.AccessLock.RLock()
+			//get a read lock on the dbContext
+			//When the lock is returned we know that the db state will not be changed by
+			//any other call
+			dbContext.AccessLock.RLock()
 
-				//defer releasing the dbContext until after the handler method returns
-				defer dbContext.AccessLock.RUnlock()
-			}
-		} else if (dbState == db.DBOffline) { //DB is offline
-			if (!h.runOffline) { //only handlers with runOffline true can run if DB is in Offline state
+			//defer releasing the dbContext until after the handler method returns
+			defer dbContext.AccessLock.RUnlock()
+
+			dbState := atomic.LoadUint32(&dbContext.State)
+
+			//if dbState == db.DBOnline, continue flow and invoke the handler method
+			if (dbState == db.DBOffline) {
+				//DB is offline, only handlers with runOffline true can run in this state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
+			} else if (dbState != db.DBOnline) {
+			 	//DB is in transition state, no calls will be accepted until it is Online or Offline state
+				return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later", db.RunStateString[dbState]))
 			}
-		} else { //DB is in transition state, no calls will be accepted until it is Online or Offline state
-			return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later",db.RunStateString[dbState]))
 		}
 	}
-
 
 	return method(h) // Call the actual handler code
 }
