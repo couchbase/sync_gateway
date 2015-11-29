@@ -74,7 +74,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	dbContext, err := it._sc.AddDatabaseFromConfig(dbConfig)
 
 	if useBucketIndex {
-		err := SeedPartitionMap(dbContext.GetIndexBucket(), 64)
+		err := base.SeedTestPartitionMap(dbContext.GetIndexBucket(), 64)
 		if err != nil {
 			panic(fmt.Sprintf("Error from seed partition map: %v", err))
 		}
@@ -520,6 +520,7 @@ func assertTrue(t *testing.T, success bool, message string) {
 	}
 }
 
+/*
 // Index partitions for testing
 func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	maxVbNo := uint16(1024)
@@ -532,7 +533,7 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 		}
 		for index := uint16(0); index < vbPerPartition; index++ {
 			vb := partition*vbPerPartition + index
-			storage.VbNos = append(storage.VbNos, vb)
+			storage.VbNos[index] = append(storage.VbNos, vb)
 		}
 		partitionDefs[partition] = storage
 	}
@@ -545,3 +546,4 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
 	return nil
 }
+*/

@@ -127,6 +127,7 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
+	gocbExpvars.Add("GetBulkRaw_totalKeys", int64(len(keys)))
 	result := make(map[string][]byte)
 
 	bucket.bulkOps <- struct{}{}

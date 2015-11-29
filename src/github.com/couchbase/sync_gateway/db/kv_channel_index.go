@@ -24,15 +24,13 @@ import (
 var ByteCachePollingTime = 1000 // initial polling time for notify, ms
 
 const (
-	kSequenceOffsetLength = 0   // disabled until we actually need it
-	kMaxUnreadPollCount   = 10  // If the channel polls for (kMaxUnusedPollCount) times after publishing a notification without anyone calling getChanges(), terminates polling
-	kMaxEmptyPollCount    = 100 // If a channel is polled and finds no changes (kMaxEmptyPollCount) times, it triggers a null update in order to trigger unused poll handling (i.e. see if anyone is still listening)
+	kMaxUnreadPollCount = 10  // If the channel polls for (kMaxUnusedPollCount) times after publishing a notification without anyone calling getChanges(), terminates polling
+	kMaxEmptyPollCount  = 100 // If a channel is polled and finds no changes (kMaxEmptyPollCount) times, it triggers a null update in order to trigger unused poll handling (i.e. see if anyone is still listening)
 
 )
 
 type kvChannelIndex struct {
 	indexBucket            base.Bucket             // Database connection (used for connection queries)
-	partitionMap           base.IndexPartitionMap  // Index partition map
 	channelName            string                  // Channel name
 	lastPolledChanges      []*LogEntry             // Set of changes found in most recent polling.  Optimization for scenario where multiple continuous changes listeners are awakened at once
 	lastPolledSince        base.SequenceClock      // Since value used for most recent polling
@@ -47,12 +45,11 @@ type kvChannelIndex struct {
 	channelIndexType       string                  // Optional type (writer, reader) - used for logging only
 }
 
-func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions base.IndexPartitionMap, onChangeCallback func(base.Set)) *kvChannelIndex {
+func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.IndexPartitions, onChangeCallback func(base.Set)) *kvChannelIndex {
 
 	channelIndex := &kvChannelIndex{
 		channelName:    channelName,
 		indexBucket:    bucket,
-		partitionMap:   partitions,
 		onChange:       onChangeCallback,
 		channelStorage: NewChannelStorage(bucket, channelName, partitions),
 	}
@@ -278,26 +275,6 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	return k.channelStorage.GetChanges(since, chanClock)
 }
 
-// Returns the block keys needed to retrieve all changes between fromClock and toClock.  When
-// stableOnly is true, restricts to only those needed to retrieve changes earlier than the stable sequence
-/*
-func (k *kvChannelIndex) calculateBlocks(fromClock base.SequenceClock, toClock base.SequenceClock, stableOnly bool) BlockSet {
-
-	stableClock := k.stableSequence
-
-	sinceBlockSet := make(BlockSet)
-	for vb, sequence := range k.clock.value {
-		sinceSeq := since.GetSequence(vb)
-		if sequence > sinceSeq && (sinceSeq > toClock.GetSequence(vb) || stableOnly == false) {
-			sinceEntry := kvIndexEntry{vbNo: vb, sequence: sinceSeq}
-			blockKey := GenerateBlockKey(k.channelName, sinceSeq, k.partitionMap[vbNo])
-			sinceBlockSet[blockKey] = append(sinceBlockSet[blockKey], sinceEntry)
-		}
-	}
-
-}
-*/
-
 func (k *kvChannelIndex) getIndexCounter() (uint64, error) {
 	key := getIndexCountKey(k.channelName)
 	var intValue uint64
@@ -347,8 +324,8 @@ func (k *kvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 
 // Determine the cache block index for a sequence
 func (k *kvChannelIndex) getBlockIndex(sequence uint64) uint16 {
-	base.LogTo("DCache", "block index for sequence %d is %d", sequence, uint16(sequence/byteCacheBlockCapacity))
-	return uint16(sequence / byteCacheBlockCapacity)
+	base.LogTo("DCache", "block index for sequence %d is %d", sequence, uint16(sequence/byteIndexBlockCapacity))
+	return uint16(sequence / byteIndexBlockCapacity)
 }
 
 func (k *kvChannelIndex) loadClock() {

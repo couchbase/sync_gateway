@@ -336,7 +336,7 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 	}
 
 	// Create a clean channel reader to retrieve bucket index stats
-	indexPartitions, err := kvIndex.getIndexPartitionMap()
+	indexPartitions, err := kvIndex.getIndexPartitions()
 	if err != nil {
 		return nil, err
 	}

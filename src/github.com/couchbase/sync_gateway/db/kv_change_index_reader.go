@@ -235,7 +235,7 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options Chan
 		if err != nil {
 			return nil, err
 		}
-		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions.VbMap, nil), nil
+		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, nil), nil
 
 	}
 }
@@ -259,7 +259,7 @@ func (k *kvChangeIndexReader) newChannelReader(channelName string) (*kvChannelIn
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions.VbMap, k.onChange)
+	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.onChange)
 	k.channelIndexReaders[channelName].setType("reader")
 	indexExpvars.Add("pollingChannels_active", 1)
 	return k.channelIndexReaders[channelName], nil

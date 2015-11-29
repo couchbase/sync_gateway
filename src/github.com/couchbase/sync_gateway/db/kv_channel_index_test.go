@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"log"
 	"testing"
 
@@ -8,19 +9,27 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-func testPartitionMap() base.IndexPartitionMap {
-	// Simplified partition map of 64 sequential partitions, 16 vbuckets each
-	partitions := make(base.IndexPartitionMap, 64)
+func testPartitionMap() *base.IndexPartitions {
+
+	partitions := make([]base.PartitionStorage, 64)
 
 	numPartitions := uint16(64)
 	vbPerPartition := 1024 / numPartitions
 	for partition := uint16(0); partition < numPartitions; partition++ {
+		pStorage := base.PartitionStorage{
+			Index: partition,
+			Uuid:  fmt.Sprintf("partition_%d", partition),
+			VbNos: make([]uint16, vbPerPartition),
+		}
 		for index := uint16(0); index < vbPerPartition; index++ {
 			vb := partition*vbPerPartition + index
-			partitions[vb] = partition
+			pStorage.VbNos[index] = vb
 		}
+		partitions[partition] = pStorage
 	}
-	return partitions
+
+	indexPartitions := base.NewIndexPartitions(partitions)
+	return indexPartitions
 }
 
 func testContextAndChannelIndex(channelName string) (*DatabaseContext, *kvChannelIndex) {
@@ -104,7 +113,7 @@ func TestIndexBlockStorage(t *testing.T) {
 	assertNoError(t, err, "Marshal block")
 	log.Printf("Marshalled size: %d", len(marshalledBlock))
 
-	newBlock := BitFlagBlock{}
+	newBlock := newBitFlagBufferBlock("ABC", 0, 0, testStorage.partitions.VbPositionMaps[0])
 	assertNoError(t, newBlock.Unmarshal(marshalledBlock), "Unmarshal block")
 	loadedEntries := newBlock.GetAllEntries()
 	assert.Equals(t, 5, len(loadedEntries))
