@@ -165,6 +165,11 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateF
 	return wrapperFeed, nil
 }
 
+//Method stub to satisfy sg-bucket interface, awaiting merging of actual impl
+func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	return nil
+}
+
 func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	// create an output channel
 	// start a goroutine which reads off the sgbucket tap feed

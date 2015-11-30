@@ -2116,3 +2116,21 @@ func DisabledTestLongpollWithWildcard(t *testing.T) {
 	response = rt.send(request("PUT", "/db/sherlock", `{"channel":["PBS"]}`))
 	wg.Wait()
 }
+
+
+var prt restTester
+
+func Benchmark_RestApiGetDocPerformance (b *testing.B) {
+
+	//Create test document
+	prt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		//GET the document until test run has completed
+		for pb.Next() {
+			prt.sendRequest("GET", "/db/doc", "")
+		}
+	})
+}

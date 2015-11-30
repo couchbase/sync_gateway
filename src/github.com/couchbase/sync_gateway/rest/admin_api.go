@@ -18,7 +18,11 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"time"
+	"sync/atomic"
 )
+
+const kDefaultDBOnlineDelay = 0
 
 //////// DATABASE MAINTENANCE:
 
@@ -39,10 +43,92 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+// Take a DB online, first reload the DB config
+func (h *handler) handleDbOnline() error {
+	h.assertAdminOnly()
+	dbState := atomic.LoadUint32(&h.db.State)
+	//If the DB is already trasitioning to: online or is online silently return
+	if (dbState == db.DBOnline || dbState == db.DBStarting) {
+		return nil
+	}
+
+	//If the DB is currently re-syncing return an error asking the user to retry later
+	if (dbState == db.DBResyncing) {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is in progress, this may take some time, try again later")
+	}
+
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	var input struct {
+		Delay int           `json:"delay"`
+	}
+
+	input.Delay = kDefaultDBOnlineDelay;
+
+	json.Unmarshal(body, &input);
+
+	base.LogTo("CRUD", "Taking Database : %v, online in %v seconds", h.db.Name, input.Delay)
+
+	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
+	go func() {
+		<-timer.C
+
+		//We can only transition to Online from Offline state
+		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
+			//Take a write lock on the Database context, so that we can cycle the underlying Database
+			// without any other call running concurrently
+			h.db.AccessLock.Lock()
+			defer h.db.AccessLock.Unlock()
+
+			//Remove the database from the server context
+			h.server.RemoveDatabase(h.db.Name)
+
+			if _, err := h.server.AddDatabaseFromConfig(h.server.config.Databases[h.db.Name]); err != nil {
+				base.LogError(err)
+				return
+			}
+
+			//Set DB state to DBOnline, this wil cause new API requests to be be accepted
+			atomic.StoreUint32(&h.server.databases_[h.db.Name].State, db.DBOnline)
+		} else {
+			base.LogTo("CRUD", "Unable to take Database : %v, online after %v seconds, database must be in Offline state", h.db.Name, input.Delay)
+		}
+	}()
+
+	return nil
+}
+
+//Take a DB offline
+func (h *handler) handleDbOffline() error {
+	h.assertAdminOnly()
+	return h.db.TakeDbOffline()
+}
+
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
 	h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	return nil
+}
+
+// PUT a new database config
+func (h *handler) handlePutDbConfig() error {
+	h.assertAdminOnly()
+	dbName := h.db.Name
+	var config *DbConfig
+	if err := h.readJSONInto(&config); err != nil {
+		return err
+	}
+	if err := config.setup(dbName); err != nil {
+		return err
+	}
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+	h.server.config.Databases[dbName] = config
+
+	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)

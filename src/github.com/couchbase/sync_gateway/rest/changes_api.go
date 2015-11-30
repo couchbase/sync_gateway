@@ -218,6 +218,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-closeNotify:
 				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
 				break loop
+			case <-h.db.ExitChanges:
+				message = "OK DB has gone offline"
+				break loop
 			}
 			if err != nil {
 				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
@@ -348,6 +351,8 @@ loop:
 			break loop
 		case <-closeNotify:
 			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			break loop
+		case <-h.db.ExitChanges:
 			break loop
 		}
 
