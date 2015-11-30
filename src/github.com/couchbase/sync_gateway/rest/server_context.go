@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"sync/atomic"
+	"io/ioutil"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -508,7 +509,14 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	}
 
 	var config DbConfig
-	j := json.NewDecoder(res.Body)
+
+	var bodyBytes []byte
+	defer res.Body.Close()
+	if bodyBytes, err = ioutil.ReadAll(res.Body); err != nil {
+		return nil, err
+	}
+
+	j := json.NewDecoder(bytes.NewReader(base.ConvertBackQuotedStrings(bodyBytes)))
 	if err = j.Decode(&config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)
