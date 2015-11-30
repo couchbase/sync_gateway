@@ -830,6 +830,9 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	rt.sendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, 200)
 
+	//Allow online goroutine to get scheduled
+	time.Sleep(500*time.Millisecond)
+
 	response = rt.sendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
