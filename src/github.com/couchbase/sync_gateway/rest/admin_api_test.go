@@ -691,7 +691,8 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	}()
 
 	// Allow goroutine to get scheduled
-	time.Sleep(1*time.Millisecond)
+	time.Sleep(50*time.Millisecond)
+
 	assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 503)
 }
 
