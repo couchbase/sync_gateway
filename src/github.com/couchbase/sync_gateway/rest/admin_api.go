@@ -76,13 +76,14 @@ func (h *handler) handleDbOnline() error {
 	go func() {
 		<-timer.C
 
+		//Take a write lock on the Database context, so that we can cycle the underlying Database
+		// without any other call running concurrently
+		h.db.AccessLock.Lock()
+		defer h.db.AccessLock.Unlock()
+
 		//We can only transition to Online from Offline state
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
-			//Take a write lock on the Database context, so that we can cycle the underlying Database
-			// without any other call running concurrently
-			h.db.AccessLock.Lock()
-			defer h.db.AccessLock.Unlock()
-
+			
 			//Remove the database from the server context
 			h.server.RemoveDatabase(h.db.Name)
 
