@@ -143,18 +143,20 @@ type changeWaiter struct {
 	keys        []string
 	userKeys    []string
 	lastCounter uint64
+	terminator <-chan bool
 }
 
 // Creates a new changeWaiter that will wait for changes for the given document keys.
-func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
+func (listener *changeListener) NewWaiter(keys []string, terminator <-chan bool) *changeWaiter {
 	return &changeWaiter{
 		listener:    listener,
 		keys:        keys,
 		lastCounter: listener.CurrentCount(keys),
+		terminator: terminator,
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *changeWaiter {
+func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User, terminator <-chan bool) *changeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel, _ := range chans {
 		waitKeys = append(waitKeys, channel)
@@ -167,7 +169,7 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
-	waiter := listener.NewWaiter(waitKeys)
+	waiter := listener.NewWaiter(waitKeys, terminator)
 	waiter.userKeys = userKeys
 	return waiter
 }
