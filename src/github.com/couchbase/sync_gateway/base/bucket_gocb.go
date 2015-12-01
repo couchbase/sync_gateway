@@ -12,6 +12,7 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"strings"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocb/gocbcore"
@@ -76,6 +77,9 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 		return nil, err
 	}
 
+	spec.MaxNumRetries = 10
+	spec.InitialRetrySleepTimeMS = 5
+
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
 	bucket = CouchbaseBucketGoCB{
@@ -93,41 +97,135 @@ func (bucket CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName
 }
 
-func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
-	bucket.singleOps <- struct{}{}
-	gocbExpvars.Add("SingleOps", 1)
-	defer func() {
-		<-bucket.singleOps
-		gocbExpvars.Add("SingleOps", -1)
-	}()
-	gocbExpvars.Add("Get", 1)
-	casGoCB, err := bucket.Bucket.Get(k, rv)
-	return uint64(casGoCB), err
-}
-
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 
+	var returnVal interface{}
+	cas, err = bucket.Get(k, &returnVal)
+	if returnVal == nil {
+		return nil, cas, err
+	}
+	return returnVal.([]byte), cas, err
+
+}
+
+func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
+
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
 		gocbExpvars.Add("SingleOps", -1)
 	}()
+	worker := func() (finished bool, err error, value interface{}) {
 
-	var returnVal interface{}
+		gocbExpvars.Add("Get", 1)
+		casGoCB, err := bucket.Bucket.Get(k, rv)
 
-	gocbExpvars.Add("GetRaw", 1)
-	casGoCB, err := bucket.Bucket.Get(k, &returnVal)
-	if err != nil {
-		return nil, 0, err
+		if err == nil {
+			finished = true
+		} else {
+			finished = isNotFoundError(err)
+		}
+
+		return finished, err, uint64(casGoCB)
+
 	}
-	return returnVal.([]byte), uint64(casGoCB), err
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a uint64", result)
+	}
+
+	return cas, err
+
 }
 
+// Retry up to the retry limit, then return.  Does not retry items if they had CAS failures,
+// and it's up to the caller to handle those.
 func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 
+	// Create the RetryWorker for BulkSet op
+	worker := bucket.newSetBulkRetryWorker(entries)
+
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, _ = RetryLoop(worker, sleeper)
+
+	return err
+
+}
+
+func (bucket CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.BulkSetEntry) RetryWorker {
+
+	pendingKeys := createPendingKeysFromEntries(entries)
+	entriesKeysToIndex := createEntriesKeyToIndex(entries)
+
+	worker := func() (finished bool, err error, value interface{}) {
+
+		retryKeys := []string{}
+
+		// break up into batches
+		pendingKeysBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
+
+		for _, pendingKeysBatch := range pendingKeysBatches {
+			err, retryKeysForBatch := bucket.processEntriesBatch(
+				pendingKeysBatch,
+				entries,
+				entriesKeysToIndex,
+			)
+			retryKeys = append(retryKeys, retryKeysForBatch...)
+			if err != nil {
+				return true, err, nil
+			}
+		}
+
+		// if there are no keys to retry, then we're done.
+		if len(retryKeys) == 0 {
+			return true, nil, nil
+		}
+
+		// otherwise, retry the keys that need to be retried
+		pendingKeys = retryKeys
+
+		// return false to signal that this function needs to be retried
+		return false, nil, nil
+
+	}
+
+	return worker
+
+}
+
+func (bucket CouchbaseBucketGoCB) processEntriesBatch(pendingKeys []string, entries []*sgbucket.BulkSetEntry, keyToIndex map[string]int) (error, []string) {
+
+	retryKeys := []string{}
 	var items []gocb.BulkOp
-	for _, entry := range entries {
+
+	for _, pendingKey := range pendingKeys {
+
+		idx := keyToIndex[pendingKey]
+		entry := entries[idx]
+
 		switch entry.Cas {
 		case 0:
 			// if no CAS val, treat it as an insert (similar to WriteCas())
@@ -147,77 +245,235 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 		}
 
 	}
+
+	// Do the underlying bulk operation
 	if err := bucket.Do(items); err != nil {
-		return err
+		return err, retryKeys
 	}
+
 	for index, item := range items {
 		entry := entries[index]
 		switch item := item.(type) {
 		case *gocb.InsertOp:
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
+			if item.Err != nil && !isCasFailure(item.Err) {
+				retryKeys = append(retryKeys, entry.Key)
+			}
 		case *gocb.ReplaceOp:
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
+			if item.Err != nil && !isCasFailure(item.Err) {
+				retryKeys = append(retryKeys, entry.Key)
+			}
 		}
 	}
-	return nil
+
+	return nil, retryKeys
 
 }
 
+func createPendingKeysFromEntries(entries []*sgbucket.BulkSetEntry) []string {
+	pendingKeys := make([]string, len(entries))
+	for idx, entry := range entries {
+		pendingKeys[idx] = entry.Key
+	}
+	return pendingKeys
+}
+
+func createEntriesKeyToIndex(entries []*sgbucket.BulkSetEntry) map[string]int {
+
+	keyToIndex := map[string]int{}
+	for idx, entry := range entries {
+		keyToIndex[entry.Key] = idx
+	}
+	return keyToIndex
+
+}
+
+// Retrieve keys in bulk for increased efficiency.  If any keys are not found, they
+// will not be returned, and so the size of the map may be less than the size of the
+// keys slice, and no error will be returned in that case since it's an expected
+// situation.
+//
+// If there is an "overall error" calling the underlying GoCB bulk operation, then
+// that error will be returned.
+//
+// If there are errors on individual keys -- aside from "not found" errors -- such as
+// QueueOverflow errors that can be retried successfully, they will be retried
+// with a backoff loop.
 func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
-	result := make(map[string][]byte)
 
-	bucket.bulkOps <- struct{}{}
-	gocbExpvars.Add("BulkOps", 1)
-	defer func() {
-		<-bucket.bulkOps
-		gocbExpvars.Add("BulkOps", -1)
-	}()
+	// Create a RetryWorker for the GetBulkRaw operation
+	worker := bucket.newGetBulkRawRetryWorker(keys)
 
-	// Process in sets of MaxBulkBatchSize
-	for len(keys) > 0 {
-		var batchSize int
-		if len(keys) > MaxBulkBatchSize {
-			batchSize = MaxBulkBatchSize
-		} else {
-			batchSize = len(keys)
-		}
-		batchKeys := keys[0:batchSize]
-		keys = keys[batchSize:]
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
 
-		var items []gocb.BulkOp
-		for _, key := range batchKeys {
-			var value []byte
-			item := &gocb.GetOp{Key: key, Value: &value}
-			items = append(items, item)
-		}
-		err := bucket.Do(items)
-		if err != nil {
-			Warn("Bulk get error for batch size %d:%v", len(items), err)
-			return nil, err
-		}
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
 
-		for _, item := range items {
-			getOp, ok := item.(*gocb.GetOp)
-			if !ok {
-				continue
-			}
-			// Ignore any ops with errors.
-			// NOTE: some of the errors are misleading:
-			// https://issues.couchbase.com/browse/GOCBC-64
-			if getOp.Err == nil {
-				byteValue, ok := getOp.Value.(*[]byte)
-				if ok {
-					result[getOp.Key] = *byteValue
-				}
-			}
-		}
+	// If the RetryLoop returns a nil result, convert to an empty map.
+	if result == nil {
+		return map[string][]byte{}, err
 	}
 
-	return result, nil
+	// Type assertion of result into a map
+	resultMap, ok := result.(map[string][]byte)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a map", result)
+	}
+
+	return resultMap, err
+
+}
+
+func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryWorker {
+
+	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
+	resultAccumulator := make(map[string][]byte, len(keys))
+
+	// pendingKeys scoped in closure, represents set of keys that still need to be attempted or re-attempted
+	pendingKeys := keys
+
+	worker := func() (finished bool, err error, value interface{}) {
+
+		retryKeys := []string{}
+		keyBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
+		for _, keyBatch := range keyBatches {
+
+			// process batch and add successful results to resultAccumulator
+			// and recoverable (non "Not Found") errors to retryKeys
+			err := bucket.processBatch(keyBatch, resultAccumulator, retryKeys)
+			if err != nil {
+				return true, err, nil
+			}
+
+		}
+
+		// if there are no keys to retry, then we're done.
+		if len(retryKeys) == 0 {
+			return true, nil, resultAccumulator
+		}
+
+		// otherwise, retry the keys the need to be retried
+		keys = retryKeys
+
+		// return false to signal that this function needs to be retried
+		return false, nil, nil
+
+	}
+
+	return worker
+
+}
+
+func (bucket CouchbaseBucketGoCB) processBatch(keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
+
+	var items []gocb.BulkOp
+	for _, key := range keys {
+		var value []byte
+		item := &gocb.GetOp{Key: key, Value: &value}
+		items = append(items, item)
+	}
+	err := bucket.Do(items)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		getOp, ok := item.(*gocb.GetOp)
+		if !ok {
+			continue
+		}
+		// Ignore any ops with errors.
+		// NOTE: some of the errors are misleading:
+		// https://issues.couchbase.com/browse/GOCBC-64
+		if getOp.Err == nil {
+			byteValue, ok := getOp.Value.(*[]byte)
+			if ok {
+				resultAccumulator[getOp.Key] = *byteValue
+			}
+		} else {
+			// if it's a not "not found" error, then throw it in retry collection.
+			if !isNotFoundError(getOp.Err) {
+				retryKeys = append(retryKeys, getOp.Key)
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func createBatchesKeys(batchSize int, keys []string) [][]string {
+
+	// boundary checking
+	if len(keys) == 0 {
+		Warn("createBatchesKeys called with empty keys")
+		return [][]string{}
+	}
+	if batchSize == 0 {
+		Warn("createBatchesKeys called with invalid batchSize")
+		result := [][]string{}
+		return append(result, keys)
+	}
+
+	numBatches := len(keys) / batchSize
+	if len(keys)%batchSize > 0 {
+		// need another batch for the residue
+		numBatches += 1
+	}
+	batches := make([][]string, numBatches)
+
+	for idxBatch, batch := range batches {
+		for _, key := range keys {
+			batch = append(batch, key)
+			keys = keys[1:]
+			if len(batch) == batchSize {
+				// this batch is full
+				break
+			}
+		}
+		batches[idxBatch] = batch
+	}
+
+	return batches
+
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "Key not found")
+}
+
+func isCasFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "Key already exists")
+}
+
+func containsElement(items []string, itemToCheck string) bool {
+	for _, item := range items {
+		if item == itemToCheck {
+			return true
+		}
+	}
+	return false
+}
+
+func mapContains(mapInstance map[string]interface{}, key string) bool {
+	_, ok := mapInstance[key]
+	return ok
 }
 
 func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
@@ -228,13 +484,49 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 		<-bucket.singleOps
 		gocbExpvars.Add("SingleOps", -1)
 	}()
+
 	var returnVal interface{}
-	gocbExpvars.Add("GetAndTouchRaw", 1)
-	casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
-	if err != nil {
-		return nil, 0, err
+	worker := func() (finished bool, err error, value interface{}) {
+
+		gocbExpvars.Add("GetAndTouchRaw", 1)
+		casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
+
+		if err == nil {
+			finished = true
+		} else {
+			finished = isNotFoundError(err)
+		}
+
+		return finished, err, uint64(casGoCB)
+
 	}
-	return returnVal.([]byte), uint64(casGoCB), err
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a uint64", result)
+	}
+
+	// If returnVal was never set to anything, return nil or else type assertion below will panic
+	if returnVal == nil {
+		return nil, cas, err
+	}
+
+	return returnVal.([]byte), cas, err
+
 }
 
 func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added bool, err error) {
@@ -308,18 +600,47 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 		LogPanic("flags must be 0")
 	}
 
-	if cas == 0 {
-		// Try to insert the value into the bucket
-		gocbExpvars.Add("WriteCas_Insert", 1)
-		newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
-		return uint64(newCas), err
+	worker := func() (finished bool, err error, value interface{}) {
+
+		if cas == 0 {
+			// Try to insert the value into the bucket
+			gocbExpvars.Add("WriteCas_Insert", 1)
+			newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
+			return true, err, uint64(newCas)
+		}
+
+		// Otherwise, replace existing value
+		gocbExpvars.Add("WriteCas_Replace", 1)
+		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+		if err == nil {
+			finished = true
+		} else {
+			finished = isNotFoundError(err)
+		}
+		return finished, err, uint64(newCas)
+
 	}
 
-	// Otherwise, replace existing value
-	gocbExpvars.Add("WriteCas_Replace", 1)
-	newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
 
-	return uint64(newCas), err
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a uint64", result)
+	}
+
+	return cas, err
 
 }
 
@@ -341,7 +662,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		// serious error, it will probably recur when calling other ops below
 
 		gocbExpvars.Add("Update_Get", 1)
-		cas, _ := bucket.Bucket.Get(k, &value)
+		cas, _ := bucket.Get(k, &value)
 
 		var callbackParam []byte
 		if value != nil {
@@ -366,12 +687,12 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 				// In order to match the go-couchbase bucket behavior, if the
 				// callback returns nil, we delete the doc
 				gocbExpvars.Add("Update_Remove", 1)
-				_, err = bucket.Bucket.Remove(k, cas)
+				_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
 				gocbExpvars.Add("Update_Replace", 1)
-				_, err = bucket.Bucket.Replace(k, value, cas, uint32(exp))
+				_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), uint32(exp))
 			}
 		}
 
@@ -398,10 +719,10 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		<-bucket.singleOps
 	}()
 
-	var result uint64
 	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
 	// attempt a simple get, which gocb will transcode to uint64
 	if amt == 0 {
+		var result uint64
 		_, err := bucket.Get(k, &result)
 		// If successful, return.  Otherwise fall through to Counter attempt (handles non-existent counter)
 		if err == nil {
@@ -412,9 +733,37 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		}
 	}
 
-	// Otherwise, attempt to use counter to increment/create if non-existing
-	result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
-	return result, err
+	worker := func() (finished bool, err error, value interface{}) {
+
+		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
+		if err == nil {
+			finished = true
+		}
+		return finished, err, result
+
+	}
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	err, result := RetryLoop(worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		LogPanic("Error doing type assertion of %v into a uint64", result)
+	}
+
+	return cas, err
+
 }
 
 func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {

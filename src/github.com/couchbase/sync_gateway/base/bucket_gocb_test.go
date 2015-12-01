@@ -18,6 +18,11 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+// NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
+// because they depend on a running Couchbase server.  To run these tests, manually rename
+// them to remove the Couchbase* prefix, and then rename them back before checking into
+// Git.
+
 func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
 		Server:     "http://localhost:8091",
@@ -66,7 +71,20 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	keySet := make([]string, 1000)
 	valueSet := make(map[string][]byte, 1000)
 
+	defer func() {
+		// Clean up
+		for _, key := range keySet {
+			// Delete key
+			err := bucket.Delete(key)
+			if err != nil {
+				t.Errorf("Error removing key from bucket")
+			}
+		}
+
+	}()
+
 	for i := 0; i < 1000; i++ {
+
 		key := fmt.Sprintf("%s%d", keyPrefix, i)
 		val := []byte(fmt.Sprintf("bar%d", i))
 		keySet[i] = key
@@ -74,7 +92,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 		_, _, err := bucket.GetRaw(key)
 		if err == nil {
-			t.Errorf("Key [%s] should not exist yet, expected error but got nil", key)
+			t.Errorf("Key [%s] should not exist yet, expected error but didn't get one.", key)
 		}
 
 		if err := bucket.SetRaw(key, 0, val); err != nil {
@@ -100,16 +118,20 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
 	assert.True(t, len(results) == 1000)
 
-	// Clean up
 	for _, key := range keySet {
 		// validate mixed results
 		assert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
-		// Delete key
-		err = bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing key from bucket")
-		}
 	}
+
+	// if passed all non-existent keys, should return an empty map
+	nonExistentKeySet := make([]string, 1000)
+	for index, key := range keySet {
+		nonExistentKeySet[index] = fmt.Sprintf("%s_invalid", key)
+	}
+	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
+	assertNoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
+	assert.False(t, emptyResults == nil)
+	assert.True(t, len(emptyResults) == 0)
 
 }
 
@@ -338,4 +360,51 @@ func CouchbaseTestIncrCounter(t *testing.T) {
 		t.Errorf("Attempt to retrieve non-existent counter should return error")
 	}
 
+}
+
+func CouchbaseTestGetAndTouchRaw(t *testing.T) {
+
+	// There's no easy way to validate the expiry time of a doc (that I know of)
+	// so this is just a smoke test
+
+	key := "TestGetAndTouchRaw"
+	val := []byte("bar")
+
+	bucket := GetBucketOrPanic()
+
+	defer func() {
+		err := bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+
+	}()
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	if err := bucket.SetRaw(key, 0, val); err != nil {
+		t.Errorf("Error calling SetRaw(): %v", err)
+	}
+
+	rv, _, err := bucket.GetRaw(key)
+	if string(rv) != string(val) {
+		t.Errorf("%v != %v", string(rv), string(val))
+	}
+
+	rv, _, err = bucket.GetAndTouchRaw(key, 1)
+
+	assert.Equals(t, len(rv), len(val))
+	assert.True(t, err == nil)
+
+}
+
+func TestCreateBatchesKeys(t *testing.T) {
+	keys := []string{"one", "two", "three", "four", "five", "six", "seven"}
+	batchSize := 2
+	batches := createBatchesKeys(batchSize, keys)
+	assert.Equals(t, len(batches), 4)
+	assert.Equals(t, batches[0][0], "one")
 }
