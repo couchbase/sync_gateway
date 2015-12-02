@@ -676,7 +676,11 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
-	base.LogKeys["Access"] = true
+	var logKeys = map[string]bool {
+		"Access": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1358,9 +1362,14 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 }
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
-	base.LogKeys["Access"] = true
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Access": true,
+		"CRUD": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1402,9 +1411,14 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 }
 
 func TestRoleAccessChanges(t *testing.T) {
-	base.LogKeys["Access"] = true
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Access": true,
+		"CRUD": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1498,9 +1512,15 @@ func TestRoleAccessChanges(t *testing.T) {
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {
-	// See https://github.com/couchbase/couchbase-lite-ios/issues/59
-	// base.LogKeys["Changes"] = true
-	// base.LogKeys["Cache"] = true
+
+	/*
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+	*/
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1655,7 +1675,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 //Test for regression of issue #447
 func TestAttachmentsNoCrossTalk(t *testing.T) {
-	base.LogKeys["ANDY"] = true
+
 	var rt restTester
 
 	doc1revId := rt.createDoc(t, "doc1")
@@ -1766,7 +1786,12 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	var rt restTester
 
-	base.LogKeys["Changes+"] = true
+	var logKeys = map[string]bool {
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	var changes struct {
 		Results []db.ChangeEntry

@@ -92,7 +92,11 @@ func TestSlowExecutionProcessing(t *testing.T) {
 	em := NewEventManager()
 	em.Start(0, -1)
 
-	base.LogKeys["Events"] = true
+	var logKeys = map[string]bool {
+		"Events": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	ids := make([]string, 20)
 	for i := 0; i < 20; i++ {
@@ -405,7 +409,13 @@ func TestWebhookTimeout(t *testing.T) {
 	if !testLiveHTTP {
 		return
 	}
-	base.LogKeys["Events+"] = true
+
+	var logKeys = map[string]bool {
+		"Events+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	count, sum, _ := InitWebhookTest()
 	ids := make([]string, 200)
 	for i := 0; i < 200; i++ {

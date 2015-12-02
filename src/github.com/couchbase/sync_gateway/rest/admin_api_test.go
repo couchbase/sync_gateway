@@ -134,6 +134,10 @@ function(doc, oldDoc) {
 	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
 	assertStatus(t, response, 201)
 
+	//Try to force channel initialisation for user bernard
+	response = rt.sendAdminRequest("GET", "/db/_user/bernard","")
+	assertStatus(t, response, 200)
+
 	// Create list docs
 	input := `{"docs": [`
 
@@ -563,15 +567,17 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	var goroutineresponse1 *testResponse
 	go func() {
-		response = rt.sendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, response, 200)
+		goroutineresponse1 = rt.sendAdminRequest("POST", "/db/_offline", "")
+		assertStatus(t, goroutineresponse1, 200)
 		wg.Done()
 	}()
 
+	var goroutineresponse2 *testResponse
 	go func() {
-		response = rt.sendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, response, 200)
+		goroutineresponse2 = rt.sendAdminRequest("POST", "/db/_offline", "")
+		assertStatus(t, goroutineresponse2, 200)
 		wg.Done()
 	}()
 
@@ -747,15 +753,17 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	var goroutineresponse1 *testResponse
 	go func() {
-		response = rt.sendAdminRequest("POST", "/db/_online", "")
-		assertStatus(t, response, 200)
+		goroutineresponse1 = rt.sendAdminRequest("POST", "/db/_online", "")
+		assertStatus(t, goroutineresponse1, 200)
 		wg.Done()
 	}()
 
+	var goroutineresponse2 *testResponse
 	go func() {
-		response = rt.sendAdminRequest("POST", "/db/_online", "")
-		assertStatus(t, response, 200)
+		goroutineresponse2 = rt.sendAdminRequest("POST", "/db/_online", "")
+		assertStatus(t, goroutineresponse2, 200)
 		wg.Done()
 	}()
 

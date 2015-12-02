@@ -255,9 +255,9 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 func (c *changeCache) waitForSequence(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		c.lock.RLock()
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
 			base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 			return
@@ -271,17 +271,19 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		c.lock.RLock()
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
 			foundInMissing := false
+			c.skippedSeqLock.RLock()
 			for _, skippedSeq := range c.skippedSeqs {
 				if skippedSeq.seq == sequence {
 					foundInMissing = true
 					break
 				}
 			}
+			c.skippedSeqLock.RUnlock()
 			if !foundInMissing {
 				base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 				return
@@ -386,7 +388,10 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		return
 	}
 	sequence := princ.Sequence()
-	if sequence <= c.initialSequence {
+	c.lock.RLock()
+	initialSequence := c.initialSequence
+	c.lock.RUnlock()
+	if sequence <= initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
