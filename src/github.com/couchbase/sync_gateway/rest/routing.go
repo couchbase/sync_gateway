@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/rest"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )
@@ -234,6 +234,11 @@ func addCbgtRoutes(router *mux.Router, sc *ServerContext) error {
 
 	// only do this if CBGT is enabled
 	if !sc.config.ClusterConfig.CBGTEnabled() {
+		return nil
+	}
+
+	// likewise, if there are no index writers and CBGT is not initialized, skip this
+	if !sc.HasIndexWriters() {
 		return nil
 	}
 

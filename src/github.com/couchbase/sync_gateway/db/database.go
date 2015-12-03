@@ -48,6 +48,7 @@ type DatabaseContext struct {
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
+	Options            DatabaseContextOptions
 }
 
 type DatabaseContextOptions struct {
@@ -105,6 +106,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		StartTime:  time.Now(),
 		RevsLimit:  DefaultRevsLimit,
 		autoImport: autoImport,
+		Options:    options,
 	}
 	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
 

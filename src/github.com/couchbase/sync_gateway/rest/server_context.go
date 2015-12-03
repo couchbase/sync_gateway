@@ -26,9 +26,9 @@ import (
 	"time"
 
 	"github.com/couchbase/cb-heartbeat"
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
+	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -283,7 +283,36 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
+// Make sure that for all nodes that are feedtype=DCPSHARD, either all of them
+// are IndexWriters, or none of them are IndexWriters, otherwise return false.
+func (sc *ServerContext) numIndexWriters() (numIndexWriters, numIndexNonWriters int) {
+
+	for _, dbContext := range sc.databases_ {
+		if dbContext.BucketSpec.FeedType != base.DcpShardFeedType {
+			continue
+		}
+		if dbContext.Options.IndexOptions.Writer {
+			numIndexWriters += 1
+		} else {
+			numIndexNonWriters += 1
+		}
+	}
+
+	return numIndexWriters, numIndexNonWriters
+
+}
+
+func (sc *ServerContext) HasIndexWriters() bool {
+	numIndexWriters, _ := sc.numIndexWriters()
+	return numIndexWriters > 0
+}
+
 func (sc *ServerContext) InitCBGT() error {
+
+	if !sc.HasIndexWriters() {
+		base.Logf("Skipping CBGT initialization since no databases are configured as index writers")
+		return nil
+	}
 
 	cbgtContext, err := sc.InitCBGTManager()
 	if err != nil {
