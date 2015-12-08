@@ -50,7 +50,7 @@ var RunStateString = []string{
 type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
-	tapListener        changeListener          // Listens on server Tap feed
+	TapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime          time.Time               // Timestamp when context was instantiated
@@ -129,11 +129,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		return nil, err
 	}
 	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
-		context.tapListener.Notify(changedChannels)
+		context.TapListener.Notify(changedChannels)
 	}, cacheOptions)
-	context.tapListener.OnDocChanged = context.changeCache.DocChanged
+	context.TapListener.OnDocChanged = context.changeCache.DocChanged
 
-	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
+	if err = context.TapListener.Start(bucket, true, func(bucket string, err error) {
 		context.TakeDbOffline()
 	}); err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 }
 
 func (context *DatabaseContext) Close() {
-	context.tapListener.Stop()
+	context.TapListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
 	context.Bucket.Close()
@@ -156,10 +156,10 @@ func (context *DatabaseContext) IsClosed() bool {
 
 // For testing only!
 func (context *DatabaseContext) RestartListener() error {
-	context.tapListener.Stop()
+	context.TapListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	if err := context.tapListener.Start(context.Bucket, true, nil); err != nil {
+	if err := context.TapListener.Start(context.Bucket, true, nil); err != nil {
 		return err
 	}
 	return nil

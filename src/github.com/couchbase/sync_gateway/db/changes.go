@@ -200,7 +200,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			if db.user != nil {
 				waitChans = db.user.ExpandWildCardChannel(chans)
 			}
-			changeWaiter = db.tapListener.NewWaiterWithChannels(waitChans, db.user)
+			changeWaiter = db.TapListener.NewWaiterWithChannels(waitChans, db.user, options.Terminator)
 
 			userChangeCount = changeWaiter.CurrentUserCount()
 			// If a longpoll request has a low sequence that matches the current lowSequence,

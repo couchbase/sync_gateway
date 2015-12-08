@@ -103,7 +103,7 @@ func (listener *changeListener) notifyStopping() {
 }
 
 // Waits until the counter exceeds the given value. Returns the new counter.
-func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
+func (listener *changeListener) Wait(keys []string, counter uint64, terminator <-chan bool) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
@@ -113,7 +113,10 @@ func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 		if curCounter != counter {
 			return curCounter
 		}
-		listener.tapNotifier.Wait()
+		//Only wait if the parent changes feed has not been terminated
+		if _, more := <-terminator; more {
+			listener.tapNotifier.Wait()
+		}
 	}
 }
 
@@ -143,18 +146,20 @@ type changeWaiter struct {
 	keys        []string
 	userKeys    []string
 	lastCounter uint64
+	terminator <-chan bool
 }
 
 // Creates a new changeWaiter that will wait for changes for the given document keys.
-func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
+func (listener *changeListener) NewWaiter(keys []string, terminator <-chan bool) *changeWaiter {
 	return &changeWaiter{
 		listener:    listener,
 		keys:        keys,
 		lastCounter: listener.CurrentCount(keys),
+		terminator: terminator,
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *changeWaiter {
+func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User, terminator <-chan bool) *changeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel, _ := range chans {
 		waitKeys = append(waitKeys, channel)
@@ -167,14 +172,14 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
-	waiter := listener.NewWaiter(waitKeys)
+	waiter := listener.NewWaiter(waitKeys, terminator)
 	waiter.userKeys = userKeys
 	return waiter
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
 func (waiter *changeWaiter) Wait() bool {
-	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter)
+	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter, waiter.terminator)
 	return waiter.lastCounter > 0
 }
 

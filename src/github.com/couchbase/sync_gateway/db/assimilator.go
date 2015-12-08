@@ -9,11 +9,11 @@ import (
 // A goroutine that watches the tapListener for documents that don't have
 // sync metadata, and calls assimilate() on them.
 func (c *DatabaseContext) watchDocChanges() {
-	if c.tapListener.DocChannel == nil {
+	if c.TapListener.DocChannel == nil {
 		return
 	}
 	base.LogTo("Shadow", "Watching doc changes...")
-	for event := range c.tapListener.DocChannel {
+	for event := range c.TapListener.DocChannel {
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {
 			if doc.hasValidSyncData() {
