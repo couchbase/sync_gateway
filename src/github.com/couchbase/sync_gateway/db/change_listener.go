@@ -114,8 +114,15 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminator <
 			return curCounter
 		}
 		//Only wait if the parent changes feed has not been terminated
-		if _, more := <-terminator; more {
-			listener.tapNotifier.Wait()
+		select {
+			case _, more := <-terminator:
+				if more { //Terminator has been closed
+					listener.tapNotifier.Wait()
+				} else {
+					return counter
+				}
+			default:
+				listener.tapNotifier.Wait()
 		}
 	}
 }
