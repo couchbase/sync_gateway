@@ -648,16 +648,35 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 
 func TestBulkDocs(t *testing.T) {
 	var rt restTester
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
 	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 2)
+	assert.Equals(t, len(docs), 3)
 	assert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
+	response = rt.sendRequest("GET", "/db/bulk1", "")
+	assert.Equals(t, response.Body.String(), `{"_id":"bulk1","_rev":"1-50133ddd8e49efad34ad9ecae4cb9907","n":1}`)
 	assert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
+	assert.DeepEquals(t, docs[2],
+		map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"})
+	response = rt.sendRequest("GET", "/db/_local/bulk3", "")
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-1","n":3}`)
+	assertStatus(t, response, 200)
+
+	// update all documents
+	input = `{"docs": [{"_id": "bulk1", "_rev" : "1-50133ddd8e49efad34ad9ecae4cb9907", "n": 10}, {"_id": "bulk2", "_rev":"1-035168c88bd4b80fb098a8da72f881ce", "n": 20}, {"_id": "_local/bulk3","_rev":"0-1","n": 30}]}`
+	response = rt.sendRequest("POST", "/db/_bulk_docs", input)
+	json.Unmarshal(response.Body.Bytes(), &docs)
+	assert.Equals(t, len(docs), 3)
+	assert.DeepEquals(t, docs[0],
+		map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"})
+
+	response = rt.sendRequest("GET", "/db/_local/bulk3", "")
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-2","n":30}`)
+	assertStatus(t, response, 200)
 }
 
 func TestBulkDocsEmptyDocs(t *testing.T) {
@@ -2117,10 +2136,9 @@ func DisabledTestLongpollWithWildcard(t *testing.T) {
 	wg.Wait()
 }
 
-
 var prt restTester
 
-func Benchmark_RestApiGetDocPerformance (b *testing.B) {
+func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	//Create test document
 	prt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
