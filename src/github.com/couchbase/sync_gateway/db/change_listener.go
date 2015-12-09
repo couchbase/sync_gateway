@@ -103,7 +103,7 @@ func (listener *changeListener) notifyStopping() {
 }
 
 // Waits until the counter exceeds the given value. Returns the new counter.
-func (listener *changeListener) Wait(keys []string, counter uint64, terminator <-chan bool) uint64 {
+func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
@@ -113,17 +113,7 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminator <
 		if curCounter != counter {
 			return curCounter
 		}
-		//Only wait if the parent changes feed has not been terminated
-		select {
-			case _, more := <-terminator:
-				if more { //Terminator has been closed
-					listener.tapNotifier.Wait()
-				} else {
-					return counter
-				}
-			default:
-				listener.tapNotifier.Wait()
-		}
+		listener.tapNotifier.Wait()
 	}
 }
 
@@ -186,7 +176,7 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
 func (waiter *changeWaiter) Wait() bool {
-	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter, waiter.terminator)
+	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter)
 	return waiter.lastCounter > 0
 }
 

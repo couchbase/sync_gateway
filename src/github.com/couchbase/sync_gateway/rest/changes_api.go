@@ -374,10 +374,6 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.logStatus(http.StatusOK, "sending continuous feed")
 
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
-	defer h.db.DatabaseContext.TapListener.Notify(base.SetOf("user"))
-
 	return h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 		var err error
 		if changes != nil {
@@ -420,10 +416,6 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
 			}
 		}
-
-		options.Terminator = make(chan bool)
-		defer close(options.Terminator)
-		defer h.db.DatabaseContext.TapListener.Notify(base.SetOf("user"))
 
 		// Set up GZip compression
 		var writer *bytes.Buffer
