@@ -250,19 +250,19 @@ func (v *IntMax) SetIfMax(value int64) {
 type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 
 // A RetryWorker encapsulates the work being done in a Retry Loop
-type RetryWorker func() (finished bool, err error, value interface{})
+type RetryWorker func() (retryUnlessError bool, err error, value interface{})
 
 func RetryLoop(worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 
 	numAttempts := 1
 
 	for {
-		workerFinished, err, value := worker()
+		retryUnlessError, err, value := worker()
 		if err != nil {
 			return err, nil
 		}
 
-		if workerFinished {
+		if !retryUnlessError {
 			return nil, value
 		}
 

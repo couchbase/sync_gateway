@@ -12,6 +12,7 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/couchbase/gocb"
@@ -116,18 +117,13 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		<-bucket.singleOps
 		gocbExpvars.Add("SingleOps", -1)
 	}()
-	worker := func() (finished bool, err error, value interface{}) {
+	worker := func() (retryUnlessError bool, err error, value interface{}) {
 
 		gocbExpvars.Add("Get", 1)
 		casGoCB, err := bucket.Bucket.Get(k, rv)
+		retryUnlessError = shouldRetryGoCBOp(err)
 
-		if err == nil {
-			finished = true
-		} else {
-			finished = isNotFoundError(err)
-		}
-
-		return finished, err, uint64(casGoCB)
+		return retryUnlessError, err, uint64(casGoCB)
 
 	}
 
@@ -180,7 +176,7 @@ func (bucket CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.Bulk
 	pendingKeys := createPendingKeysFromEntries(entries)
 	entriesKeysToIndex := createEntriesKeyToIndex(entries)
 
-	worker := func() (finished bool, err error, value interface{}) {
+	worker := func() (retryUnlessError bool, err error, value interface{}) {
 
 		retryKeys := []string{}
 
@@ -195,20 +191,20 @@ func (bucket CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.Bulk
 			)
 			retryKeys = append(retryKeys, retryKeysForBatch...)
 			if err != nil {
-				return true, err, nil
+				return false, err, nil
 			}
 		}
 
 		// if there are no keys to retry, then we're done.
 		if len(retryKeys) == 0 {
-			return true, nil, nil
+			return false, nil, nil
 		}
 
 		// otherwise, retry the keys that need to be retried
 		pendingKeys = retryKeys
 
-		// return false to signal that this function needs to be retried
-		return false, nil, nil
+		// return true to signal that this function needs to be retried
+		return true, nil, nil
 
 	}
 
@@ -342,7 +338,7 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 	// pendingKeys scoped in closure, represents set of keys that still need to be attempted or re-attempted
 	pendingKeys := keys
 
-	worker := func() (finished bool, err error, value interface{}) {
+	worker := func() (retryUnlessError bool, err error, value interface{}) {
 
 		retryKeys := []string{}
 		keyBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
@@ -352,21 +348,21 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 			// and recoverable (non "Not Found") errors to retryKeys
 			err := bucket.processBatch(keyBatch, resultAccumulator, retryKeys)
 			if err != nil {
-				return true, err, nil
+				return false, err, nil
 			}
 
 		}
 
 		// if there are no keys to retry, then we're done.
 		if len(retryKeys) == 0 {
-			return true, nil, resultAccumulator
+			return false, nil, resultAccumulator
 		}
 
 		// otherwise, retry the keys the need to be retried
 		keys = retryKeys
 
-		// return false to signal that this function needs to be retried
-		return false, nil, nil
+		// return true to signal that this function needs to be retried
+		return true, nil, nil
 
 	}
 
@@ -401,8 +397,8 @@ func (bucket CouchbaseBucketGoCB) processBatch(keys []string, resultAccumulator 
 				resultAccumulator[getOp.Key] = *byteValue
 			}
 		} else {
-			// if it's a not "not found" error, then throw it in retry collection.
-			if !isNotFoundError(getOp.Err) {
+			// if it's a recoverable error, then throw it in retry collection.
+			if isRecoverableGoCBError(getOp.Err) {
 				retryKeys = append(retryKeys, getOp.Key)
 			}
 		}
@@ -450,9 +446,43 @@ func createBatchesKeys(batchSize int, keys []string) [][]string {
 
 func isNotFoundError(err error) bool {
 	if err == nil {
+		// not even an error!
 		return false
 	}
 	return strings.Contains(err.Error(), "Key not found")
+}
+
+func shouldRetryGoCBOp(err error) bool {
+
+	if err == nil {
+		// no error, no need to retry
+		return false
+	}
+
+	return isRecoverableGoCBError(err)
+
+}
+
+// There are several errors from GoCB that are known to happen when it becomes overloaded:
+//
+// 1) WARNING: WriteCasRaw got error when calling GetRaw:%!(EXTRA gocb.timeoutError=The operation has timed out.) -- db.writeCasRaw() at crud.go:958
+// 2) WARNING: WriteCasRaw got error when calling GetRaw:%!(EXTRA gocbcore.overloadError=Queue overflow.) -- db.writeCasRaw() at crud.go:958
+//
+// Other errors, such as "key not found" errors, which happen on CAS update failures and other
+// situations, should not be treated as recoverable
+//
+func isRecoverableGoCBError(err error) bool {
+	if err == nil {
+		// not even an error!
+		return true
+	}
+	if strings.Contains(err.Error(), "timed out") {
+		return true
+	}
+	if strings.Contains(err.Error(), "Queue overflow") {
+		return true
+	}
+	return false
 }
 
 func isCasFailure(err error) bool {
@@ -486,18 +516,12 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 	}()
 
 	var returnVal interface{}
-	worker := func() (finished bool, err error, value interface{}) {
+	worker := func() (retryUnlessError bool, err error, value interface{}) {
 
 		gocbExpvars.Add("GetAndTouchRaw", 1)
 		casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
-
-		if err == nil {
-			finished = true
-		} else {
-			finished = isNotFoundError(err)
-		}
-
-		return finished, err, uint64(casGoCB)
+		retryUnlessError = shouldRetryGoCBOp(err)
+		return retryUnlessError, err, uint64(casGoCB)
 
 	}
 
@@ -600,24 +624,23 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 		LogPanic("flags must be 0")
 	}
 
-	worker := func() (finished bool, err error, value interface{}) {
+	worker := func() (retryUnlessError bool, err error, value interface{}) {
+
+		log.Printf("Worker called")
 
 		if cas == 0 {
 			// Try to insert the value into the bucket
 			gocbExpvars.Add("WriteCas_Insert", 1)
 			newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
-			return true, err, uint64(newCas)
+			retryUnlessError = shouldRetryGoCBOp(err)
+			return retryUnlessError, err, uint64(newCas)
 		}
 
 		// Otherwise, replace existing value
 		gocbExpvars.Add("WriteCas_Replace", 1)
 		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
-		if err == nil {
-			finished = true
-		} else {
-			finished = isNotFoundError(err)
-		}
-		return finished, err, uint64(newCas)
+		retryUnlessError = shouldRetryGoCBOp(err)
+		return retryUnlessError, err, uint64(newCas)
 
 	}
 

@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/couchbase/sg-bucket"
@@ -135,7 +136,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 }
 
-func CouchbaseTestWriteCas(t *testing.T) {
+func CouchbaseTestWriteCasBasic(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -167,6 +168,45 @@ func CouchbaseTestWriteCas(t *testing.T) {
 	if string(rv) != string(val) {
 		t.Errorf("%v != %v", string(rv), string(val))
 	}
+
+	err = bucket.Delete(key)
+	if err != nil {
+		t.Errorf("Error removing key from bucket")
+	}
+
+}
+
+func TestWriteCasAdvanced(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestWriteCas"
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	casZero := uint64(0)
+
+	// write doc to bucket, giving cas value of 0
+	_, err = bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// try to write doc to bucket, giving cas value of 0 again -- exepct a failure
+	secondWriteCas, err := bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
+	log.Printf("err: %v", err)
+	assert.True(t, err != nil)
+
+	// try to write doc to bucket again, giving invalid cas value -- expect a failure
+	// also, expect no retries, however there is currently no easy way to detect that.
+	log.Printf("writeCas with %v", (secondWriteCas - 1))
+	_, err = bucket.WriteCas(key, 0, 0, secondWriteCas-1, []byte("bar"), sgbucket.Raw)
+	log.Printf("/writeCas with %v", (secondWriteCas - 1))
+	log.Printf("err: %v", err)
+	assert.True(t, err != nil)
 
 	err = bucket.Delete(key)
 	if err != nil {
