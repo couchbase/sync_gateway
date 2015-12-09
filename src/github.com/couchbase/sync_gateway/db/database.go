@@ -50,7 +50,7 @@ var RunStateString = []string{
 type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
-	TapListener        changeListener          // Listens on server Tap feed
+	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime          time.Time               // Timestamp when context was instantiated
@@ -129,11 +129,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		return nil, err
 	}
 	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
-		context.TapListener.Notify(changedChannels)
+		context.tapListener.Notify(changedChannels)
 	}, cacheOptions)
-	context.TapListener.OnDocChanged = context.changeCache.DocChanged
+	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
-	if err = context.TapListener.Start(bucket, true, func(bucket string, err error) {
+	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
 		context.TakeDbOffline()
 	}); err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 }
 
 func (context *DatabaseContext) Close() {
-	context.TapListener.Stop()
+	context.tapListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
 	context.Bucket.Close()
@@ -156,15 +156,18 @@ func (context *DatabaseContext) IsClosed() bool {
 
 // For testing only!
 func (context *DatabaseContext) RestartListener() error {
-	context.TapListener.Stop()
+	context.tapListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	if err := context.TapListener.Start(context.Bucket, true, nil); err != nil {
+	if err := context.tapListener.Start(context.Bucket, true, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
+func (context *DatabaseContext) NotifyUser(username string) {
+	context.tapListener.Notify(base.SetOf(auth.UserKeyPrefix + username))
+}
 
 func (dc *DatabaseContext) TakeDbOffline() error {
 	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)

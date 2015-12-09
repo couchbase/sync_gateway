@@ -133,7 +133,6 @@ func (h *handler) handleChanges() error {
 
 	options.Terminator = make(chan bool)
 	defer close(options.Terminator)
-	defer h.db.DatabaseContext.TapListener.Notify(base.SetOf("user"))
 
 	switch feed {
 	case "normal", "":
@@ -189,15 +188,19 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 
 		encoder := json.NewEncoder(h.response)
+
+		var forceClose bool = false
 	loop:
 		for {
 			select {
 			case entry, ok := <-feed:
 				if !ok {
+					forceClose = true
 					break loop // end of feed
 				}
 				if nil != entry {
 					if entry.Err != nil {
+						forceClose = true
 						break loop // error returned by feed - end changes
 					}
 					if first {
@@ -215,18 +218,25 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 			case <-timeout:
 				message = "OK (timeout)"
+				forceClose = true
 				break loop
 			case <-closeNotify:
 				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
 				message = "OK DB has gone offline"
+				forceClose = true
 				break loop
 			}
 			if err != nil {
 				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
 				return nil // error is probably because the client closed the connection
 			}
+		}
+
+		if forceClose {
+			h.db.DatabaseContext.NotifyUser(h.currentEffectiveUserName())
 		}
 	}
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
@@ -272,6 +282,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
 	}
 
+	var forceClose bool = false
 loop:
 	for {
 		if feed == nil {
@@ -280,6 +291,7 @@ loop:
 				options.Since = lastSeq
 			}
 			if h.db.IsClosed() {
+				forceClose = true
 				break loop
 			}
 			feed, err = h.db.MultiChangesFeed(inChannels, options)
@@ -302,6 +314,7 @@ loop:
 			} else if entry == nil {
 				err = send(nil)
 			} else if entry.Err != nil {
+				forceClose = true
 				break loop // error returned by feed - end changes
 			} else {
 				entries := []*db.ChangeEntry{entry}
@@ -318,6 +331,7 @@ loop:
 							waiting = true
 							break collect
 						} else if entry.Err != nil {
+							forceClose = true
 							break loop // error returned by feed - end changes
 						}
 						entries = append(entries, entry)
@@ -335,6 +349,7 @@ loop:
 				lastSeq = entries[len(entries)-1].Seq
 				if options.Limit > 0 {
 					if len(entries) >= options.Limit {
+						forceClose = true
 						break loop
 					}
 					options.Limit -= len(entries)
@@ -349,11 +364,14 @@ loop:
 			err = send(nil)
 			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 		case <-timeout:
+			forceClose = true
 			break loop
 		case <-closeNotify:
 			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			forceClose = true
 			break loop
 		case <-h.db.ExitChanges:
+			forceClose = true
 			break loop
 		}
 
@@ -362,6 +380,11 @@ loop:
 			return nil // error is probably because the client closed the connection
 		}
 	}
+
+	if forceClose {
+		h.db.DatabaseContext.NotifyUser(h.currentEffectiveUserName())
+	}
+
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return nil
 }
