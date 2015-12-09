@@ -78,3 +78,22 @@ func TestCouchbaseUrlWithAuth(t *testing.T) {
 	assert.Equals(t, result, "http://127.0.0.1:8091")
 
 }
+
+func TestCreateDoublingSleeperFunc(t *testing.T) {
+
+	maxNumAttempts := 2
+	initialTimeToSleepMs := 1
+	sleeper := CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs)
+
+	shouldContinue, timeTosleepMs := sleeper(1)
+	assert.True(t, shouldContinue)
+	assert.Equals(t, timeTosleepMs, initialTimeToSleepMs)
+
+	shouldContinue, timeTosleepMs = sleeper(2)
+	assert.True(t, shouldContinue)
+	assert.Equals(t, timeTosleepMs, initialTimeToSleepMs*2)
+
+	shouldContinue, _ = sleeper(3)
+	assert.False(t, shouldContinue)
+
+}

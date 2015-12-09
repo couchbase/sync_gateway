@@ -12,11 +12,17 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
 )
+
+// NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
+// because they depend on a running Couchbase server.  To run these tests, manually rename
+// them to remove the Couchbase* prefix, and then rename them back before checking into
+// Git.
 
 func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
@@ -66,7 +72,20 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	keySet := make([]string, 1000)
 	valueSet := make(map[string][]byte, 1000)
 
+	defer func() {
+		// Clean up
+		for _, key := range keySet {
+			// Delete key
+			err := bucket.Delete(key)
+			if err != nil {
+				t.Errorf("Error removing key from bucket")
+			}
+		}
+
+	}()
+
 	for i := 0; i < 1000; i++ {
+
 		key := fmt.Sprintf("%s%d", keyPrefix, i)
 		val := []byte(fmt.Sprintf("bar%d", i))
 		keySet[i] = key
@@ -74,7 +93,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 		_, _, err := bucket.GetRaw(key)
 		if err == nil {
-			t.Errorf("Key [%s] should not exist yet, expected error but got nil", key)
+			t.Errorf("Key [%s] should not exist yet, expected error but didn't get one.", key)
 		}
 
 		if err := bucket.SetRaw(key, 0, val); err != nil {
@@ -100,20 +119,24 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
 	assert.True(t, len(results) == 1000)
 
-	// Clean up
 	for _, key := range keySet {
 		// validate mixed results
 		assert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
-		// Delete key
-		err = bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing key from bucket")
-		}
 	}
+
+	// if passed all non-existent keys, should return an empty map
+	nonExistentKeySet := make([]string, 1000)
+	for index, key := range keySet {
+		nonExistentKeySet[index] = fmt.Sprintf("%s_invalid", key)
+	}
+	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
+	assertNoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
+	assert.False(t, emptyResults == nil)
+	assert.True(t, len(emptyResults) == 0)
 
 }
 
-func CouchbaseTestWriteCas(t *testing.T) {
+func CouchbaseTestWriteCasBasic(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -129,12 +152,12 @@ func CouchbaseTestWriteCas(t *testing.T) {
 
 	cas, err = bucket.WriteCas(key, 0, 0, cas, []byte("bar"), sgbucket.Raw)
 	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", cas)
+		t.Errorf("Error doing WriteCas: %v", err)
 	}
 
 	casOut, err := bucket.WriteCas(key, 0, 0, cas, val, sgbucket.Raw)
 	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", cas)
+		t.Errorf("Error doing WriteCas: %v", err)
 	}
 
 	if casOut == cas {
@@ -151,6 +174,143 @@ func CouchbaseTestWriteCas(t *testing.T) {
 		t.Errorf("Error removing key from bucket")
 	}
 
+}
+
+func TestWriteCasAdvanced(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestWriteCas"
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	casZero := uint64(0)
+
+	// write doc to bucket, giving cas value of 0
+	_, err = bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// try to write doc to bucket, giving cas value of 0 again -- exepct a failure
+	secondWriteCas, err := bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
+	log.Printf("err: %v", err)
+	assert.True(t, err != nil)
+
+	// try to write doc to bucket again, giving invalid cas value -- expect a failure
+	// also, expect no retries, however there is currently no easy way to detect that.
+	log.Printf("writeCas with %v", (secondWriteCas - 1))
+	_, err = bucket.WriteCas(key, 0, 0, secondWriteCas-1, []byte("bar"), sgbucket.Raw)
+	log.Printf("/writeCas with %v", (secondWriteCas - 1))
+	log.Printf("err: %v", err)
+	assert.True(t, err != nil)
+
+	err = bucket.Delete(key)
+	if err != nil {
+		t.Errorf("Error removing key from bucket")
+	}
+
+}
+
+func CouchbaseTestSetBulk(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestSetBulk1"
+	key2 := "TestSetBulk2"
+	key3 := "TestSetBulk3"
+	var returnVal interface{}
+
+	// Cleanup
+	defer func() {
+		keys2del := []string{key, key2, key3}
+		for _, key2del := range keys2del {
+			err := bucket.Delete(key2del)
+			if err != nil {
+				t.Errorf("Error removing key from bucket")
+			}
+
+		}
+	}()
+
+	_, err := bucket.Get(key, &returnVal)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	// Write a single key, get cas val: casStale
+	casZero := uint64(0)
+	casStale, err := bucket.WriteCas(key, 0, 0, casZero, "key-initial", sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// Update that key so that casStale is now stale, get casFresh
+	casUpdated, err := bucket.WriteCas(key, 0, 0, casStale, "key-updated", sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// Do bulk set with a new key and the prev key with casStale
+	entries := []*sgbucket.BulkSetEntry{}
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key,
+		Value: "key-updated2",
+		Cas:   casStale,
+	})
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key2,
+		Value: "key2-initial",
+		Cas:   casZero,
+	})
+
+	err = bucket.SetBulk(entries)
+	assert.True(t, err == nil)
+
+	// Expect one error for the casStale key
+	assert.Equals(t, numNonNilErrors(entries), 1)
+
+	// Expect that the other key was correctly written
+	_, err = bucket.Get(key2, &returnVal)
+	assert.True(t, err == nil)
+	assert.Equals(t, returnVal, "key2-initial")
+
+	// Retry with bulk set with another new key and casFresh key
+	entries = []*sgbucket.BulkSetEntry{}
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key,
+		Value: "key-updated3",
+		Cas:   casUpdated,
+	})
+	entries = append(entries, &sgbucket.BulkSetEntry{
+		Key:   key3,
+		Value: "key3-initial",
+		Cas:   casZero,
+	})
+
+	err = bucket.SetBulk(entries)
+
+	// Expect no errors
+	assert.Equals(t, numNonNilErrors(entries), 0)
+
+	// Make sure the original key that previously failed now works
+	_, err = bucket.Get(key, &returnVal)
+	assert.True(t, err == nil)
+	assert.Equals(t, returnVal, "key-updated3")
+
+}
+
+func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
+	errorCount := 0
+	for _, entry := range entries {
+		if entry.Error != nil {
+			errorCount += 1
+		}
+	}
+	return errorCount
 }
 
 func CouchbaseTestUpdate(t *testing.T) {
@@ -240,4 +400,51 @@ func CouchbaseTestIncrCounter(t *testing.T) {
 		t.Errorf("Attempt to retrieve non-existent counter should return error")
 	}
 
+}
+
+func CouchbaseTestGetAndTouchRaw(t *testing.T) {
+
+	// There's no easy way to validate the expiry time of a doc (that I know of)
+	// so this is just a smoke test
+
+	key := "TestGetAndTouchRaw"
+	val := []byte("bar")
+
+	bucket := GetBucketOrPanic()
+
+	defer func() {
+		err := bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+
+	}()
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	if err := bucket.SetRaw(key, 0, val); err != nil {
+		t.Errorf("Error calling SetRaw(): %v", err)
+	}
+
+	rv, _, err := bucket.GetRaw(key)
+	if string(rv) != string(val) {
+		t.Errorf("%v != %v", string(rv), string(val))
+	}
+
+	rv, _, err = bucket.GetAndTouchRaw(key, 1)
+
+	assert.Equals(t, len(rv), len(val))
+	assert.True(t, err == nil)
+
+}
+
+func TestCreateBatchesKeys(t *testing.T) {
+	keys := []string{"one", "two", "three", "four", "five", "six", "seven"}
+	batchSize := 2
+	batches := createBatchesKeys(batchSize, keys)
+	assert.Equals(t, len(batches), 4)
+	assert.Equals(t, batches[0][0], "one")
 }
