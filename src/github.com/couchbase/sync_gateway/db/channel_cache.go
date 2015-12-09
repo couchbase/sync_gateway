@@ -36,28 +36,40 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.options = &ChannelCacheOptions{
-		channelCacheMinLength: DefaultChannelCacheMinLength,
-		channelCacheMaxLength: DefaultChannelCacheMaxLength,
-		channelCacheAge:       DefaultChannelCacheAge,
+		ChannelCacheMinLength: DefaultChannelCacheMinLength,
+		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
+		ChannelCacheAge:       DefaultChannelCacheAge,
 	}
-	cache.logs = make(LogEntries, 0, cache.options.channelCacheMaxLength)
+	cache.logs = make(LogEntries, 0, cache.options.ChannelCacheMaxLength)
 
 	return cache
 }
 
-func newChannelCacheWithOptions(context *DatabaseContext, channelName string, validFrom uint64, options *ChannelCacheOptions) *channelCache {
+func newChannelCacheWithOptions(context *DatabaseContext, channelName string, validFrom uint64, options CacheOptions) *channelCache {
 	cache := newChannelCache(context, channelName, validFrom)
-	if options != nil {
-		cache.options = options
-		cache.logs = make(LogEntries, 0, cache.options.channelCacheMaxLength)
+
+	// Update cache options when present
+	if options.ChannelCacheMinLength > 0 {
+		cache.options.ChannelCacheMinLength = options.ChannelCacheMinLength
 	}
+
+	if options.ChannelCacheMaxLength > 0 {
+		cache.options.ChannelCacheMaxLength = options.ChannelCacheMaxLength
+	}
+
+	if options.ChannelCacheAge > 0 {
+		cache.options.ChannelCacheAge = options.ChannelCacheAge
+	}
+
+	base.LogTo("Cache", "Initialized cache for channel %q with options: %+v", cache.channelName, cache.options)
+
 	return cache
 }
 
 type ChannelCacheOptions struct {
-	channelCacheMinLength int           // Keep at least this many entries in cache
-	channelCacheMaxLength int           // Don't put more than this many entries in cache
-	channelCacheAge       time.Duration // Keep entries at least this long
+	ChannelCacheMinLength int           // Keep at least this many entries in cache
+	ChannelCacheMaxLength int           // Don't put more than this many entries in cache
+	ChannelCacheAge       time.Duration // Keep entries at least this long
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
@@ -81,8 +93,8 @@ func (c *channelCache) _pruneCache() {
 	pruned := 0
 
 	// If we are over max length, prune it down to max length
-	if len(c.logs) > c.options.channelCacheMaxLength {
-		pruned = len(c.logs) - c.options.channelCacheMaxLength
+	if len(c.logs) > c.options.ChannelCacheMaxLength {
+		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
 		for i := 0; i < pruned; i++ {
 			delete(c.cachedDocIDs, c.logs[i].DocID)
 		}
@@ -92,7 +104,7 @@ func (c *channelCache) _pruneCache() {
 
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
-	for len(c.logs) > c.options.channelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.channelCacheAge {
+	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
 		delete(c.cachedDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
@@ -191,7 +203,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	}
 
 	// Cache some of the view results, if there's room in the cache:
-	if len(resultFromCache) < c.options.channelCacheMaxLength {
+	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
 		c.prependChanges(resultFromView, startSeq, options.Limit == 0)
 	}
 
@@ -320,7 +332,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 			if !openEnded && changes[len(changes)-1].Sequence < c.validFrom {
 				return 0 // changes might not go all the way to the current time
 			}
-			if excess := len(changes) - c.options.channelCacheMaxLength; excess > 0 {
+			if excess := len(changes) - c.options.ChannelCacheMaxLength; excess > 0 {
 				changes = changes[excess:]
 				changesValidFrom = changes[0].Sequence
 			}
@@ -345,7 +357,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		if changes[0].Sequence <= firstSequence {
 			for i := len(changes) - 1; i >= 0; i-- {
 				if changes[i].Sequence == firstSequence {
-					if excess := i + len(log) - c.options.channelCacheMaxLength; excess > 0 {
+					if excess := i + len(log) - c.options.ChannelCacheMaxLength; excess > 0 {
 						changes = changes[excess:]
 						changesValidFrom = changes[0].Sequence
 						i -= excess

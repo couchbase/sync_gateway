@@ -66,6 +66,7 @@ type SkippedSequence struct {
 }
 
 type CacheOptions struct {
+	ChannelCacheOptions
 	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  int           // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
@@ -103,6 +104,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 		c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
 	}
 
+	c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
 
 	heap.Init(&c.pendingLogs)
@@ -553,7 +555,7 @@ func (c *changeCache) getNextSequence() uint64 {
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
-		cache = newChannelCache(c.context, channelName, c.initialSequence+1)
+		cache = newChannelCacheWithOptions(c.context, channelName, c.initialSequence+1, c.options)
 		c.channelCaches[channelName] = cache
 	}
 	return cache

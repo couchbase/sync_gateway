@@ -753,7 +753,45 @@ func TestStopChangeCache(t *testing.T) {
 
 	// Hang around a while to see if the housekeeping tasks fire and panic
 	time.Sleep(2 * time.Second)
+}
 
+// Test size config
+func TestChannelCacheSize(t *testing.T) {
+
+	base.LogKeys["Cache"] = true
+	channelOptions := ChannelCacheOptions{
+		ChannelCacheMinLength: 600,
+		ChannelCacheMaxLength: 600,
+	}
+	options := CacheOptions{
+		ChannelCacheOptions: channelOptions,
+	}
+
+	log.Printf("Options in test:%+v", options)
+	db := setupTestDBWithCacheOptions(t, options)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	authenticator.Save(user)
+
+	// Write 750 docs to channel ABC
+	for i := 1; i <= 750; i++ {
+		WriteDirect(db, []string{"ABC"}, uint64(i))
+	}
+
+	// Validate that retrieval returns expected sequences
+	db.changeCache.waitForSequence(750)
+	db.user, _ = authenticator.GetUser("naomi")
+	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 750)
+
+	// Validate that cache stores the expected number of values
+	abcCache := db.changeCache.channelCaches["ABC"]
+	assert.Equals(t, len(abcCache.logs), 600)
 }
 
 func shortWaitCache() CacheOptions {

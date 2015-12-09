@@ -223,6 +223,17 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if config.CacheConfig.EnableStarChannel != nil {
 			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
 		}
+
+		if config.CacheConfig.ChannelCacheMaxLength != nil && *config.CacheConfig.ChannelCacheMaxLength > 0 {
+			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheMaxLength
+		}
+		if config.CacheConfig.ChannelCacheMinLength != nil && *config.CacheConfig.ChannelCacheMinLength > 0 {
+			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheMinLength
+		}
+		if config.CacheConfig.ChannelCacheAge != nil && *config.CacheConfig.ChannelCacheAge > 0 {
+			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
+		}
+
 	}
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
