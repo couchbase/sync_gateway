@@ -10,6 +10,8 @@
 package rest
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -100,7 +102,7 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-		feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON(body)
+		feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON(body)
 		if err != nil {
 			return err
 		}
@@ -177,6 +179,14 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			}
 		}
 
+		var closeNotify <-chan bool
+		cn, ok := h.response.(http.CloseNotifier)
+		if ok {
+			closeNotify = cn.CloseNotify()
+		} else {
+			base.LogTo("Changes","simple changes cannot get Close Notifier from ResponseWriter")
+		}
+
 		encoder := json.NewEncoder(h.response)
 	loop:
 		for {
@@ -204,6 +214,12 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 			case <-timeout:
 				message = "OK (timeout)"
+				break loop
+			case <-closeNotify:
+				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+				break loop
+			case <-h.db.ExitChanges:
+				message = "OK DB has gone offline"
 				break loop
 			}
 			if err != nil {
@@ -246,6 +262,14 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
 	var err error
+
+	var closeNotify <-chan bool
+	cn, ok := h.response.(http.CloseNotifier)
+	if ok {
+		closeNotify = cn.CloseNotify()
+	} else {
+		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
+	}
 
 loop:
 	for {
@@ -325,6 +349,11 @@ loop:
 			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 		case <-timeout:
 			break loop
+		case <-closeNotify:
+			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			break loop
+		case <-h.db.ExitChanges:
+			break loop
 		}
 
 		if err != nil {
@@ -372,12 +401,13 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:
+		var compress bool
 		if msg, err := readWebSocketMessage(conn); err != nil {
 			return
 		} else {
 			var channelNames []string
 			var err error
-			if _, options, _, channelNames, err = h.readChangesOptionsFromJSON(msg); err != nil {
+			if _, options, _, channelNames, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
 				return
 			}
 			if channelNames != nil {
@@ -387,6 +417,14 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 
 		options.Terminator = make(chan bool)
 		defer close(options.Terminator)
+
+		// Set up GZip compression
+		var writer *bytes.Buffer
+		var zipWriter *gzip.Writer
+		if compress {
+			writer = bytes.NewBuffer(nil)
+			zipWriter = GetGZipWriter(writer)
+		}
 
 		caughtUp := false
 		h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
@@ -399,9 +437,23 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			} else {
 				data = []byte{}
 			}
+			if compress && len(data) > 8 {
+				// Compress JSON, using same GZip context, and send as binary msg:
+				zipWriter.Write(data)
+				zipWriter.Flush()
+				data = writer.Bytes()
+				writer.Reset()
+				conn.PayloadType = websocket.BinaryFrame
+			} else {
+				conn.PayloadType = websocket.TextFrame
+			}
 			_, err := conn.Write(data)
 			return err
 		})
+
+		if zipWriter != nil {
+			ReturnGZipWriter(zipWriter)
+		}
 	}
 	server := websocket.Server{
 		Handshake: func(*websocket.Config, *http.Request) error { return nil },
@@ -411,17 +463,18 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 	return nil
 }
 
-func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, err error) {
+func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, compress bool, err error) {
 	var input struct {
-		Feed        string        `json:"feed"`
-		Since       db.SequenceID `json:"since"`
-		Limit       int           `json:"limit"`
-		Style       string        `json:"style"`
-		IncludeDocs bool          `json:"include_docs"`
-		Filter      string        `json:"filter"`
-		Channels    string        `json:"channels"` // a filter query param, so it has to be a string
-		HeartbeatMs *uint64       `json:"heartbeat"`
-		TimeoutMs   *uint64       `json:"timeout"`
+		Feed           string        `json:"feed"`
+		Since          db.SequenceID `json:"since"`
+		Limit          int           `json:"limit"`
+		Style          string        `json:"style"`
+		IncludeDocs    bool          `json:"include_docs"`
+		Filter         string        `json:"filter"`
+		Channels       string        `json:"channels"` // a filter query param, so it has to be a string
+		HeartbeatMs    *uint64       `json:"heartbeat"`
+		TimeoutMs      *uint64       `json:"timeout"`
+		AcceptEncoding string        `json:"accept_encoding"`
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
@@ -452,6 +505,8 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		kMaxTimeoutMS,
 		true,
 	)
+
+	compress = (input.AcceptEncoding == "gzip")
 
 	return
 }

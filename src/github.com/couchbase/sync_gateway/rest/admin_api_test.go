@@ -529,6 +529,373 @@ func TestFlush(t *testing.T) {
 	assertStatus(t, rt.sendRequest("GET", "/db/doc2", ""), 404)
 }
 
+//Test a single call to take DB offline
+func TestDBOfflineSingle(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+}
+
+//Make two concurrent calls to take DB offline
+// Ensure both calls succeed and that DB is offline
+// when both calls return
+func TestDBOfflineConcurrent(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	//Take DB offline concurrently using two goroutines
+	//Both should return success and DB should be offline
+	//once both goroutines return
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		response = rt.sendAdminRequest("POST", "/db/_offline", "")
+		assertStatus(t, response, 200)
+		wg.Done()
+	}()
+
+	go func() {
+		response = rt.sendAdminRequest("POST", "/db/_offline", "")
+		assertStatus(t, response, 200)
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+}
+
+//Test that a DB can be created offline
+func TestStartDBOffline(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+}
+
+//Take DB offline and ensure that normal REST calls
+//fail with status 503
+func TestDBOffline503Response(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	assertStatus(t, rt.sendRequest("GET", "/db/doc1", ""), 503)
+}
+
+//Take DB offline and ensure can put db config
+func TestDBOfflinePutDbConfig(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	assertStatus(t, rt.sendRequest("PUT", "/db/_config", ""), 404)
+}
+
+//Take DB offline and ensure can post _resync
+func TestDBOfflinePostResync(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 200)
+}
+
+//Take DB offline and ensure only one _resync can be in progress
+func TestDBOfflineSingleResync(t *testing.T) {
+	var rt restTester
+
+	//create documents in DB to cause resync to take a few seconds
+	for i := 0; i < 1000; i++ {
+		rt.createDoc(t, fmt.Sprintf("doc%v",i))
+	}
+
+
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	go func() {
+		assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 200)
+	}()
+
+	// Allow goroutine to get scheduled
+	time.Sleep(50*time.Millisecond)
+
+	assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 503)
+}
+
+// Single threaded bring DB online
+func TestDBOnlineSingle(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	rt.sendAdminRequest("POST", "/db/_online", "")
+	assertStatus(t, response, 200)
+
+	time.Sleep(500*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+}
+
+
+//Take DB online concurrently using two goroutines
+//Both should return success and DB should be online
+//once both goroutines return
+func TestDBOnlineConcurrent(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		response = rt.sendAdminRequest("POST", "/db/_online", "")
+		assertStatus(t, response, 200)
+		wg.Done()
+	}()
+
+	go func() {
+		response = rt.sendAdminRequest("POST", "/db/_online", "")
+		assertStatus(t, response, 200)
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	time.Sleep(500*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+}
+
+
+// Test bring DB online with delay of 1 second
+func TestSingleDBOnlineWithDelay(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	rt.sendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	time.Sleep(1500*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+}
+
+// Test bring DB online with delay of 2 seconds
+// But bring DB online immediately in separate call
+// BD should should only be brought online once
+// there should be no errors
+func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	//Bring DB online with delay of two seconds
+	rt.sendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
+	assertStatus(t, response, 200)
+
+	// Bring DB online immediately
+	rt.sendAdminRequest("POST", "/db/_online", "")
+	assertStatus(t, response, 200)
+
+	//Allow online goroutine to get scheduled
+	time.Sleep(500*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	time.Sleep(2500*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+}
+
+// Test bring DB online concurrently with delay of 1 second
+// and delay of 2 seconds
+// BD should should only be brought online once
+// there should be no errors
+func TestDBOnlineWithTwoDelays(t *testing.T) {
+	var rt restTester
+	log.Printf("Taking DB offline")
+	response := rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	//Bring DB online with delay of one seconds
+	rt.sendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
+	assertStatus(t, response, 200)
+
+	//Bring DB online with delay of two seconds
+	rt.sendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+
+	time.Sleep(1500*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	time.Sleep(600*time.Millisecond)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+}
+
+
 func (rt *restTester) createSession(t *testing.T, username string) string {
 
 	response := rt.sendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))

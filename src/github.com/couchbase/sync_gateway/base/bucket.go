@@ -225,6 +225,11 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	return &dcpFeed, nil
 }
 
+//Method stub to satisfy sg-bucket interface, awaiting merging of actual impl
+func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	return nil
+}
+
 func (bucket CouchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
 
 	// Auth handler for DCP connection needs to support bucket name defaults
@@ -325,7 +330,7 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
 	if err != nil {
 		return
@@ -343,6 +348,10 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// Start bucket updater - see SG issue 1011
 		cbbucket.RunBucketUpdater(func(bucket string, err error) {
 			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+
+			if(callback != nil) {
+				callback(bucket, err)
+			}
 		})
 		bucket = CouchbaseBucket{cbbucket, spec}
 	}
@@ -350,7 +359,7 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 	return
 }
 
-func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		sgbucket.Logging = LogKeys["Walrus"]
@@ -362,7 +371,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 			suffix = fmt.Sprintf(" as user %q", username)
 		}
 		Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
-		bucket, err = GetCouchbaseBucket(spec)
+		bucket, err = GetCouchbaseBucket(spec, callback)
 	}
 
 	if LogKeys["Bucket"] {

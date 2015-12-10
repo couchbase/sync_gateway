@@ -26,6 +26,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"sync/atomic"
+	"io/ioutil"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -225,9 +227,27 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if config.CacheConfig.EnableStarChannel != nil {
 			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
 		}
+
+		if config.CacheConfig.ChannelCacheMaxLength != nil && *config.CacheConfig.ChannelCacheMaxLength > 0 {
+			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheMaxLength
+		}
+		if config.CacheConfig.ChannelCacheMinLength != nil && *config.CacheConfig.ChannelCacheMinLength > 0 {
+			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheMinLength
+		}
+		if config.CacheConfig.ChannelCacheAge != nil && *config.CacheConfig.ChannelCacheAge > 0 {
+			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
+		}
+
 	}
 
-	bucket, err := db.ConnectToBucket(spec)
+	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
+		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
+
+		if dc := sc.databases_[dbName]; dc != nil {
+			dc.TakeDbOffline()
+		}
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +312,13 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
+	dbcontext.ExitChanges = make(chan struct{})
+
+	if (config.StartOffline) {
+		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+	} else {
+		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+	}
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	
@@ -422,7 +449,8 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		spec.Auth = shadow
 	}
 
-	bucket, err := base.GetBucket(spec)
+	bucket, err := base.GetBucket(spec, nil)
+
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
 			"Unable to connect to shadow bucket: %s", err)
@@ -501,7 +529,14 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	}
 
 	var config DbConfig
-	j := json.NewDecoder(res.Body)
+
+	var bodyBytes []byte
+	defer res.Body.Close()
+	if bodyBytes, err = ioutil.ReadAll(res.Body); err != nil {
+		return nil, err
+	}
+
+	j := json.NewDecoder(bytes.NewReader(base.ConvertBackQuotedStrings(bodyBytes)))
 	if err = j.Decode(&config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)

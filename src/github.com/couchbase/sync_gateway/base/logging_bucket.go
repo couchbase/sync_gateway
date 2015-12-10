@@ -112,10 +112,16 @@ func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (
 	defer func() { LogTo("Bucket", "View(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
 	return b.bucket.View(ddoc, name, params)
 }
+
 func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "ViewCustom(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
+}
+
+//Method stub to satisfy sg-bucket interface, awaiting merging of actual impl
+func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	return nil
 }
 func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	start := time.Now()
