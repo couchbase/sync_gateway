@@ -52,12 +52,15 @@ func main() {
 		Description: "Couchbase Sync Gateway mobile application gateway service.",
 	}
 
+	var configPath string
 	if len(os.Args) > 1 {
-		configPath := os.Args[1]
+		configPath = os.Args[1]
 		svcConfig.Arguments = []string { configPath }
 	}
 
-	prg := &program{}
+	prg := &program{
+		ConfigPath: configPath,
+	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		log.Fatal(err)
