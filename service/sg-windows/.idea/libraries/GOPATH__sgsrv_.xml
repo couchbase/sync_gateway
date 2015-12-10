@@ -1,0 +1,29 @@
+<component name="libraryTable">
+  <library name="GOPATH &lt;sgsrv&gt;">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/.DS_Store" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/bitbucket.org" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+    <excluded>
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/antonholmquist/jason/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/kardianos/osext/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/nsf/termbox-go/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/kardianos/service/.git" />
+      <root url="file://$PROJECT_DIR$" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/nsf/termbox-go/_demos" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/mattn/go-runewidth/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/bitbucket.org/kardianos/osext/.hg" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/divan/expvarmon/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/go-martini/martini/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/gizak/termui/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/pyk/byten/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/zgramana/expvarmon/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/bitbucket.org/kardianos/service/.hg" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/bsiegert/ranges/.git" />
+      <root url="file://$PROJECT_DIR$/../../../gocode/src/github.com/codegangsta/inject/.git" />
+    </excluded>
+  </library>
+</component>
