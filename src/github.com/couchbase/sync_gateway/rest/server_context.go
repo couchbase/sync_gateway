@@ -92,9 +92,8 @@ func (sc *ServerContext) Close() {
 	sc.stopStatsReporter()
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
-
 		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Sync Gateway context closed", *sc.config.AdminInterface)
+			ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
 		}
 	}
 	sc.databases_ = nil
@@ -314,21 +313,25 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	dbcontext.ExitChanges = make(chan struct{})
 
-	if (config.StartOffline) {
-		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
-	} else {
-		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
-	}
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	
 	// Save the config
 	sc.config.Databases[config.Name] = config
 
+	if (config.StartOffline) {
+		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	} else {
+		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	}
 
-	//if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-	//	dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB started from config", *sc.config.AdminInterface)
-	//}
+
 
 	return dbcontext, nil
 }
