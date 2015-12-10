@@ -298,10 +298,6 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	// Save the config
 	sc.config.Databases[config.Name] = config
 
-	if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-		dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB started from config", *sc.config.AdminInterface)
-	}
-
 	return dbcontext, nil
 }
 
