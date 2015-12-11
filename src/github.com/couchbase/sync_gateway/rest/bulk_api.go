@@ -379,11 +379,25 @@ func (h *handler) handleBulkDocs() error {
 		newEdits = true
 	}
 
-	docs, ok := body["docs"].([]interface{})
+	userDocs, ok := body["docs"].([]interface{})
 	if !ok {
 		err = base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
 		return err
 	}
+	lenDocs := len(userDocs)
+	// split out local docs, save them on their own
+	localDocs := make([]interface{}, 0, lenDocs)
+	docs := make([]interface{}, 0, lenDocs)
+	for _, item := range userDocs {
+		doc := item.(map[string]interface{})
+		docid, _ := doc["_id"].(string)
+		if strings.HasPrefix(docid, "_local/") {
+			localDocs = append(localDocs, doc)
+		} else {
+			docs = append(docs, doc)
+		}
+	}
+
 	h.db.ReserveSequences(uint64(len(docs)))
 
 	result := make([]db.Body, 0, len(docs))
@@ -419,6 +433,32 @@ func (h *handler) handleBulkDocs() error {
 			status["reason"] = msg
 			base.Logf("\tBulkDocs: Doc %q --> %d %s (%v)", docid, code, msg, err)
 			err = nil // wrote it to output already; not going to return it
+		} else {
+			status["rev"] = revid
+		}
+		result = append(result, status)
+	}
+
+	for _, item := range localDocs {
+		doc := item.(map[string]interface{})
+		for k, v := range doc {
+			doc[k] = base.FixJSONNumbers(v)
+		}
+		var err error
+		var revid string
+		offset := len("_local/")
+		docid, _ := doc["_id"].(string)
+		idslug := docid[offset:]
+		revid, err = h.db.PutSpecial("local", idslug, doc)
+		status := db.Body{}
+		status["id"] = docid
+		if err != nil {
+			code, msg := base.ErrorAsHTTPStatus(err)
+			status["status"] = code
+			status["error"] = base.CouchHTTPErrorName(code)
+			status["reason"] = msg
+			base.Logf("\tBulkDocs: Local Doc %q --> %d %s (%v)", docid, code, msg, err)
+			err = nil
 		} else {
 			status["rev"] = revid
 		}
