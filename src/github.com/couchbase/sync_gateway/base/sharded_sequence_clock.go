@@ -1,6 +1,7 @@
 package base
 
 import (
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"math"
@@ -35,10 +36,12 @@ type PartitionStorage struct {
 }
 
 type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
+type VbPositionMap map[uint16]uint64     // Map from vbucket to position within partition.  Stored as uint64 to avoid cast during arithmetic
 
 type IndexPartitions struct {
-	VbMap         IndexPartitionMap
-	PartitionDefs []PartitionStorage
+	PartitionDefs  []PartitionStorage       // Partition definitions, as stored in bucket _idxPartitionMap
+	VbMap          IndexPartitionMap        // Map from vbucket to partition
+	VbPositionMaps map[uint16]VbPositionMap // VBPositionMaps, keyed by partition
 }
 
 func NewIndexPartitions(partitions []PartitionStorage) *IndexPartitions {
@@ -49,10 +52,15 @@ func NewIndexPartitions(partitions []PartitionStorage) *IndexPartitions {
 	copy(indexPartitions.PartitionDefs, partitions)
 
 	indexPartitions.VbMap = make(map[uint16]uint16)
+	indexPartitions.VbPositionMaps = make(map[uint16]VbPositionMap)
+
 	for _, partition := range partitions {
-		for _, vbNo := range partition.VbNos {
+		vbPosMap := make(VbPositionMap)
+		for vbIndex, vbNo := range partition.VbNos {
 			indexPartitions.VbMap[vbNo] = partition.Index
+			vbPosMap[vbNo] = uint64(vbIndex)
 		}
+		indexPartitions.VbPositionMaps[partition.Index] = vbPosMap
 	}
 	return indexPartitions
 }
@@ -530,4 +538,30 @@ func (p *ShardedClockPartition) resize(seq uint64) {
 func LoadClockCounter(baseKey string, bucket Bucket) (uint64, error) {
 	countKey := fmt.Sprintf(kCountKeyFormat, baseKey)
 	return bucket.Incr(countKey, 0, 0, 0)
+}
+
+// Index partitions for unit tests
+func SeedTestPartitionMap(bucket Bucket, numPartitions uint16) error {
+	maxVbNo := uint16(1024)
+	partitionDefs := make([]PartitionStorage, numPartitions)
+	vbPerPartition := maxVbNo / numPartitions
+	for partition := uint16(0); partition < numPartitions; partition++ {
+		storage := PartitionStorage{
+			Index: partition,
+			VbNos: make([]uint16, vbPerPartition),
+		}
+		for index := uint16(0); index < vbPerPartition; index++ {
+			vb := partition*vbPerPartition + index
+			storage.VbNos[index] = vb
+		}
+		partitionDefs[partition] = storage
+	}
+
+	// Persist to bucket
+	value, err := json.Marshal(partitionDefs)
+	if err != nil {
+		return err
+	}
+	bucket.SetRaw(KIndexPartitionKey, 0, value)
+	return nil
 }

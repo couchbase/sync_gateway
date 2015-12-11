@@ -29,7 +29,7 @@ func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
 		log.Fatal("Couldn't connect to index bucket")
 	}
 
-	SeedPartitionMap(index.reader.indexReadBucket, 64)
+	base.SeedTestPartitionMap(index.reader.indexReadBucket, 64)
 
 	return index, index.reader.indexReadBucket
 }
@@ -63,7 +63,7 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
 
-	SeedPartitionMap(context.GetIndexBucket(), 64)
+	base.SeedTestPartitionMap(context.GetIndexBucket(), 64)
 	return db
 }
 
@@ -116,7 +116,9 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assert.Equals(t, entry.RevID, "1-a")
 
 	// Verify Channel Index Block
-	block := NewIndexBlock("ABC", 1, 1)
+	partitions, err := changeIndex.getIndexPartitions()
+	assertNoError(t, err, "Get index partitions")
+	block := NewIndexBlock("ABC", 1, 1, partitions)
 	blockBytes, _, err := bucket.GetRaw(getIndexBlockKey("ABC", 0, 0))
 	bucket.Dump()
 	err = block.Unmarshal(blockBytes)
@@ -463,24 +465,50 @@ func TestPollResultReuseContinuous(t *testing.T) {
 
 }
 
-/*
-func TestLoadStableSequence(t *testing.T) {
-	changeIndex, bucket := testKvChangeIndex("indexBucket")
-	defer changeIndex.Stop()
-	// Add entries across multiple partitions
-	changeIndex.writer.addToCache(channelEntry(100, 1, "foo1", "1-a", []string{}))
-	changeIndex.writer.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{}))
-	changeIndex.writer.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{}))
-	time.Sleep(10 * time.Millisecond)
+func TestPollResultLongRunningContinuous(t *testing.T) {
+	// Reset the index expvars
+	indexExpvars.Init()
+	base.LogKeys["IndexPoll"] = true
+	db := setupTestDBForChangeIndex(t)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	stableSequence := base.LoadStableSequence(bucket)
-	assert.Equals(t, stableSequence.GetSequence(100), uint64(1))
-	assert.Equals(t, stableSequence.GetSequence(300), uint64(5))
-	assert.Equals(t, stableSequence.GetSequence(500), uint64(1))
+	WriteDirectWithKey(db, "docABC_1", []string{"ABC"}, 1)
+	time.Sleep(100 * time.Millisecond)
+	// Do a basic changes to trigger start of polling for channel
+	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0)})
+	assertTrue(t, err == nil, "Error getting changes")
+	assert.Equals(t, len(changes), 1)
+	log.Printf("Changes:%+v", changes[0])
 
+	// Start a continuous changes on channel (ABC).  Waitgroup keeps test open until continuous is terminated
+	var wg sync.WaitGroup
+	continuousTerminator := make(chan bool)
+	go func() {
+		defer wg.Done()
+		wg.Add(1)
+		since, err := db.ParseSequenceID("2-0")
+		abcChanges, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: since, Wait: true, Continuous: true, Terminator: continuousTerminator})
+		assertTrue(t, err == nil, "Error getting changes")
+		log.Printf("Got %d changes", len(abcChanges))
+		log.Println("Continuous completed")
+
+	}()
+
+	for i := 0; i < 10000; i++ {
+		WriteDirectWithKey(db, fmt.Sprintf("docABC_%d", i), []string{"ABC"}, 3)
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	time.Sleep(1000 * time.Millisecond) // wait for indexing, polling, and changes processing
+	close(continuousTerminator)
+	log.Println("closed terminator")
+
+	time.Sleep(100 * time.Millisecond)
+	WriteDirectWithKey(db, "terminatorCheck", []string{"ABC"}, 1)
+
+	wg.Wait()
 }
-
-*/
 
 func TestChangeIndexPrincipal(t *testing.T) {
 
@@ -536,7 +564,7 @@ func TestChangeIndexAddSet(t *testing.T) {
 
 	indexPartitions := testPartitionMap()
 	channelStorage := NewChannelStorage(bucket, "", indexPartitions)
-	changeIndex.writer.indexEntries(entries, indexPartitions, channelStorage)
+	changeIndex.writer.indexEntries(entries, indexPartitions.VbMap, channelStorage)
 
 	// wait for add to complete
 	time.Sleep(50 * time.Millisecond)

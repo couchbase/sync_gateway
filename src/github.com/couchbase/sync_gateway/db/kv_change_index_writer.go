@@ -173,7 +173,7 @@ func (k *kvChangeIndexWriter) indexPending() {
 	}
 
 	// Generic channelStorage for log entry storage (if needed)
-	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions.VbMap)
+	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
 
 	// Continual processing of arriving entries from the feed.
 	for {
@@ -242,7 +242,7 @@ func (k *kvChangeIndexWriter) newChannelWriter(channelName string) (*kvChannelIn
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions.VbMap, nil)
+	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, nil)
 	k.channelIndexWriters[channelName].setType("writer")
 	return k.channelIndexWriters[channelName], nil
 }
