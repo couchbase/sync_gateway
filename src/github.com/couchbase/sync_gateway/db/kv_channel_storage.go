@@ -173,7 +173,7 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 
 	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500)*500), 1)
 
-	casOut, err := writeCasRaw(b.bucket, block.Key(), localValue, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
+	casOut, err := base.WriteCasRaw(b.bucket, block.Key(), localValue, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		changeCacheExpvars.Add("writeSingleBlock-casRetryCount", 1)
 		err = block.Unmarshal(value)

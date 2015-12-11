@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"log"
 	"sync"
@@ -390,8 +391,8 @@ func TestPollResultReuseLongpoll(t *testing.T) {
 
 	// Use expvars to confirm poll hits/misses (can't tell from changes response whether it used poll results,
 	// or reloaded from index).  Expect one poll hit (the longpoll request), and one miss (the basic changes request)
-	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_hit").String(), "1")
-	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_miss").String(), "1")
+	assert.Equals(t, getExpvarAsString(indexExpvars, "getChanges_lastPolled_hit"), "1")
+	assert.Equals(t, getExpvarAsString(indexExpvars, "getChanges_lastPolled_miss"), "1")
 
 }
 
@@ -445,16 +446,20 @@ func TestPollResultReuseContinuous(t *testing.T) {
 	WriteDirectWithKey(db, "terminatorCheck", []string{"HBO"}, 1)
 
 	wg.Wait()
+
 	// Use expvars to confirm poll hits/misses (can't tell from changes response whether it used poll results,
 	// or reloaded from index).  Expect two poll hits (docHBO_1, docABC_2), and one miss (the initial changes request)
-	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_hit").String(), "2")
-	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_miss").String(), "1")
+
+	assert.Equals(t, getExpvarAsString(indexExpvars, "getChanges_lastPolled_hit"), "2")
+	assert.Equals(t, getExpvarAsString(indexExpvars, "getChanges_lastPolled_miss"), "1")
+
+	time.Sleep(100 * time.Millisecond)
 
 	// Make a changes request prior to the last polled range, ensure it doesn't reuse polled results
 	changes, err = db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: simpleClockSequence(0)})
 
-	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_hit").String(), "2")
-	assert.Equals(t, indexExpvars.Get("getChanges_lastPolled_miss").String(), "2")
+	assert.Equals(t, getExpvarAsString(indexExpvars, "getChanges_lastPolled_hit"), "2")
+	assert.Equals(t, getExpvarAsString(indexExpvars, "getChanges_lastPolled_miss"), "2")
 
 }
 
@@ -576,4 +581,13 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	}
 	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
 	return nil
+}
+
+func getExpvarAsString(expvar *expvar.Map, name string) string {
+	value := expvar.Get(name)
+	if value != nil {
+		return value.String()
+	} else {
+		return ""
+	}
 }

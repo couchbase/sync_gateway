@@ -11,6 +11,9 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+//const kTestURL = "http://localhost:8091"
+const kTestURL = "walrus:"
+
 var numShards = uint16(64)
 var maxVbNo = uint16(1024)
 
@@ -31,6 +34,77 @@ func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPar
 	}
 
 	return NewIndexPartitions(partitionDefs)
+}
+
+func testIndexBucket() Bucket {
+	bucket, err := GetBucket(BucketSpec{
+		Server:     kTestURL,
+		BucketName: "index_tests"})
+	if err != nil {
+		log.Fatalf("Couldn't connect to bucket: %v", err)
+	}
+	return bucket
+}
+
+func TestShardedSequenceClock(t *testing.T) {
+
+	testBucket := testIndexBucket()
+	//defer testBucket.Close()
+	shardedClock := NewShardedClockWithPartitions("myClock", GenerateTestIndexPartitions(maxVbNo, numShards), testBucket)
+
+	updateClock := NewSequenceClockImpl()
+	updateClock.SetSequence(50, 100)
+
+	shardedClock.UpdateAndWrite(updateClock)
+
+	// Validate sequence
+	postUpdateClock := shardedClock.AsClock()
+	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
+
+	testBucket.Dump()
+
+}
+
+func TestShardedSequenceClockCasError(t *testing.T) {
+
+	testBucket := testIndexBucket()
+	indexPartitions := GenerateTestIndexPartitions(maxVbNo, numShards)
+	//defer testBucket.Close()
+	shardedClock1 := NewShardedClockWithPartitions("myClock", indexPartitions, testBucket)
+	shardedClock2 := NewShardedClockWithPartitions("myClock", indexPartitions, testBucket)
+
+	updateClock := NewSequenceClockImpl()
+	updateClock.SetSequence(50, 100)
+
+	shardedClock1.UpdateAndWrite(updateClock)
+
+	updateClock2 := NewSequenceClockImpl()
+	updateClock2.SetSequence(51, 101)
+	assertNoError(t, shardedClock2.UpdateAndWrite(updateClock2), "Second update failed")
+
+	// Validate sequence
+	postUpdateClock := shardedClock2.AsClock()
+	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
+	assert.Equals(t, postUpdateClock.GetSequence(51), uint64(101))
+
+	// Apply a second uipdate using the first sharded clock (which should now have invalid cas value for the partition)
+	updateClock3 := NewSequenceClockImpl()
+	updateClock3.SetSequence(51, 102)
+	shardedClock1.UpdateAndWrite(updateClock3)
+	// Validate sequence
+	postUpdateClock = shardedClock1.AsClock()
+	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
+	assert.Equals(t, postUpdateClock.GetSequence(51), uint64(102))
+	testBucket.Dump()
+
+	// Check the partition contents directly from the bucket
+	key := "_idx_c:myClock:clock-3"
+	bytes, _, err := testBucket.GetRaw(key)
+	assertTrue(t, err == nil, fmt.Sprintf("Error retrieving partition from bucket:%v", err))
+
+	partition := NewShardedClockPartitionForBytes(key, bytes, indexPartitions)
+	assert.Equals(t, partition.GetSequence(50), uint64(100))
+	assert.Equals(t, partition.GetSequence(51), uint64(102))
 }
 
 func TestShardedClockSizes(t *testing.T) {

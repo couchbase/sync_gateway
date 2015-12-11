@@ -169,7 +169,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		if err != nil {
 			return err
 		}
-		_, err = writeCasRaw(s.bucket, key, initialValue, storedClocks.cas, int(s.hashExpiry), func(value []byte) (updatedValue []byte, err error) {
+		_, err = base.WriteCasRaw(s.bucket, key, initialValue, storedClocks.cas, int(s.hashExpiry), func(value []byte) (updatedValue []byte, err error) {
 			// Note: The following is invoked upon cas failure - may be called multiple times
 			base.LogTo("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", key)
 			err = storedClocks.Unmarshal(value)
