@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-
-	"github.com/couchbase/sg-bucket"
 )
 
 var shardedClockExpvars *expvar.Map
@@ -57,6 +55,12 @@ func NewIndexPartitions(partitions []PartitionStorage) *IndexPartitions {
 		}
 	}
 	return indexPartitions
+}
+
+// VbSequence supports collections of {vb, seq} without requiring a map.
+type VbSequence struct {
+	vbNo uint16
+	seq  uint64
 }
 
 // ShardedClock maintains the collection of clock shards (ShardedClockPartitions), and also manages
@@ -114,7 +118,8 @@ func NewShardedClockWithPartitions(baseKey string, partitions *IndexPartitions, 
 
 }
 
-func (s *ShardedClock) Write() (err error) {
+/*
+func (s *ShardedClock) write() (err error) {
 	// write all modified partitions to bucket
 	shardedClockExpvars.Add("count_write", 1)
 	var wg sync.WaitGroup
@@ -144,6 +149,7 @@ func (s *ShardedClock) Write() (err error) {
 	s.counter, err = s.bucket.Incr(s.countKey, 1, 1, 0)
 	return err
 }
+*/
 
 // Loads clock from bucket.  If counter isn't changed, returns false and leaves as-is.
 // For newly initialized ShardedClocks (counter=0), this will only happen if there are no
@@ -176,21 +182,75 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 	return true, nil
 }
 
-func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) error {
+func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) (err error) {
+
+	// Build set of sequence updates by partition
+	// Future optimization: have method accept sequences already grouped by partition - potentially
+	// in a clock implementation
+	partitionSequences := make(map[uint16][]VbSequence)
+
 	for vb, sequence := range updateClock.Value() {
 		if sequence > 0 {
 			partitionNo := s.partitionMap.VbMap[uint16(vb)]
-			if s.partitions[partitionNo] == nil {
-				shardedClockExpvars.Add("count_update_partition_not_found", 1)
-				err := s.initPartition(partitionNo)
-				if err != nil {
-					return err
-				}
+			_, ok := partitionSequences[partitionNo]
+			if !ok {
+				partitionSequences[partitionNo] = make([]VbSequence, 0)
 			}
-			s.partitions[partitionNo].SetSequence(uint16(vb), sequence)
+			partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSequence{vbNo: uint16(vb), seq: sequence})
 		}
 	}
-	return s.Write()
+
+	var wg sync.WaitGroup
+	// Update and cas write each changed partition
+	for partitionNo, sequences := range partitionSequences {
+		wg.Add(1)
+		// Initialize partition if needed
+		if s.partitions[partitionNo] == nil {
+			shardedClockExpvars.Add("count_update_partition_not_found", 1)
+			err = s.initPartition(partitionNo)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Update partitions in parallel goroutines.
+		// Future optimization: implement a bulk set based version of WriteCasRaw
+		go func(p *ShardedClockPartition, seqs []VbSequence) {
+			defer wg.Done()
+			// Apply sequences to clock partition
+			for _, vbSeq := range seqs {
+				p.SetSequence(vbSeq.vbNo, vbSeq.seq)
+			}
+			value, err := p.Marshal()
+
+			// Cas Write - reapplies sequences updates on cas failure/retry
+			casOut, err := WriteCasRaw(s.bucket, p.Key, value, p.cas, 0, func(value []byte) (updatedValue []byte, err error) {
+				// Note: The following is invoked upon cas failure - may be called multiple times
+				err = p.Unmarshal(value)
+				if err != nil {
+					Warn("Error unmarshalling clock during update", err)
+					return nil, err
+				}
+				// Reapply sequences to partition
+				for _, vbSeq := range seqs {
+					p.SetSequence(vbSeq.vbNo, vbSeq.seq)
+				}
+				return p.Marshal()
+			})
+			if err != nil {
+				Warn("Error writing sharded clock partition [%d]:%v", p.Key, err)
+				shardedClockExpvars.Add("partition_cas_failures", 1)
+				return
+			}
+			p.cas = casOut
+		}(s.partitions[partitionNo], sequences)
+
+	}
+	wg.Wait()
+	// Increment the clock count
+	s.counter, err = s.bucket.Incr(s.countKey, 1, 1, 0)
+
+	return err
 }
 
 func (s *ShardedClock) initPartition(partitionNo uint16) error {

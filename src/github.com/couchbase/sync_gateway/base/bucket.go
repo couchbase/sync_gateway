@@ -512,3 +512,37 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	}
 	return
 }
+
+func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
+
+	// If there's an incoming value, attempt to write with that first
+	if len(value) > 0 {
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, sgbucket.Raw)
+		if err == nil {
+			return casOut, nil
+		}
+	}
+
+	for {
+		currentValue, cas, err := bucket.GetRaw(key)
+		if err != nil {
+			Warn("WriteCasRaw got error when calling GetRaw:", err)
+			return 0, err
+		}
+		currentValue, err = callback(currentValue)
+		if err != nil {
+			Warn("WriteCasRaw got error when calling callback:", err)
+			return 0, err
+		}
+		if len(currentValue) == 0 {
+			// callback returned empty value - cancel write
+			return cas, nil
+		}
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, currentValue, sgbucket.Raw)
+		if err != nil {
+			// CAS failure - reload block for another try
+		} else {
+			return casOut, nil
+		}
+	}
+}
