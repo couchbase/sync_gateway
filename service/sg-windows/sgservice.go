@@ -11,8 +11,8 @@ import (
 
 var logger service.Logger
 
-type program struct{
-	ExePath 	string
+type program struct {
+	ExePath     string
 	ConfigPath  string
 	SyncGateway *exec.Cmd
 }
@@ -59,21 +59,21 @@ func main() {
 	switch len(os.Args) {
 	case 2:
 		exePath = "C:\\Program Files (x86)\\Couchbase\\sync_gateway.exe" // Uses default binary image path
-		svcConfig.Arguments = []string { "start" } // Uses the default config
+		svcConfig.Arguments = []string{"start"}                          // Uses the default config
 	case 3:
 		exePath = "C:\\Program Files (x86)\\Couchbase\\sync_gateway.exe" // Uses default binary image path
-		configPath = os.Args[2] // Uses custom config
-		svcConfig.Arguments = []string { "start", configPath }
+		configPath = os.Args[2]                                          // Uses custom config
+		svcConfig.Arguments = []string{"start", configPath}
 	case 4:
-		exePath = os.Args[2] // Uses custom binary image path
+		exePath = os.Args[2]    // Uses custom binary image path
 		configPath = os.Args[3] // Uses custom config
-		svcConfig.Arguments = []string { "start", exePath, configPath }
+		svcConfig.Arguments = []string{"start", exePath, configPath}
 	default:
 		panic("Valid parameters combinations are: COMMAND [none, custom config path, or custom exe path and custom config path].")
 	}
 
 	prg := &program{
-		ExePath: exePath,
+		ExePath:    exePath,
 		ConfigPath: configPath,
 	}
 	s, err := service.New(prg, svcConfig)
