@@ -31,6 +31,7 @@ const CookieName = "SyncGatewaySession"
 const SessionKeyPrefix = "_sync:session:"
 
 func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
+
 	cookie, _ := rq.Cookie(CookieName)
 	if cookie == nil {
 		return nil, nil
@@ -60,10 +61,11 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		if err = auth.bucket.Set(docIDForSession(session.ID), ttlSec, session); err != nil {
 			return nil, err
 		}
-
+		base.AddDbPathToCookie(rq, cookie)
 		cookie.Expires = session.Expiration
 		http.SetCookie(response, cookie)
 	}
+
 	user, err := auth.GetUser(session.Username)
 	if user != nil && user.Disabled() {
 		user = nil
