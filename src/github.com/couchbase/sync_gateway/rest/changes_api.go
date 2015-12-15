@@ -195,12 +195,10 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			select {
 			case entry, ok := <-feed:
 				if !ok {
-					forceClose = true
 					break loop // end of feed
 				}
 				if nil != entry {
 					if entry.Err != nil {
-						forceClose = true
 						break loop // error returned by feed - end changes
 					}
 					if first {
@@ -314,7 +312,6 @@ loop:
 			} else if entry == nil {
 				err = send(nil)
 			} else if entry.Err != nil {
-				forceClose = true
 				break loop // error returned by feed - end changes
 			} else {
 				entries := []*db.ChangeEntry{entry}
@@ -331,7 +328,6 @@ loop:
 							waiting = true
 							break collect
 						} else if entry.Err != nil {
-							forceClose = true
 							break loop // error returned by feed - end changes
 						}
 						entries = append(entries, entry)
