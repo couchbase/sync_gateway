@@ -165,6 +165,9 @@ func (context *DatabaseContext) RestartListener() error {
 	return nil
 }
 
+func (context *DatabaseContext) NotifyUser(username string) {
+	context.tapListener.Notify(base.SetOf(auth.UserKeyPrefix + username))
+}
 
 func (dc *DatabaseContext) TakeDbOffline() error {
 	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
