@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func GenerateRandomSecret() string {
@@ -241,4 +242,61 @@ func (v *IntMax) SetIfMax(value int64) {
 	if value > v.i {
 		v.i = value
 	}
+}
+
+// A retry sleeper is called back by the retry loop and passed
+// the current retryCount, and should return the amount of milliseconds
+// that the retry should sleep.
+type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
+
+// A RetryWorker encapsulates the work being done in a Retry Loop.  The shouldRetry
+// return value determines whether the worker will retry, regardless of the err value.
+// If the worker has exceeded it's retry attempts, then it will not be called again
+// even if it returns shouldRetry = true.
+type RetryWorker func() (shouldRetry bool, err error, value interface{})
+
+func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
+
+	numAttempts := 1
+
+	for {
+		shouldRetry, err, value := worker()
+		if !shouldRetry {
+			if err != nil {
+				return err, nil
+			}
+			return nil, value
+		}
+
+		shouldContinue, sleepMs := sleeper(numAttempts)
+		if !shouldContinue {
+			err := fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			return err, value
+		}
+		Warn("RetryLoop retrying %v after %v ms.", description, sleepMs)
+
+		<-time.After(time.Millisecond * time.Duration(sleepMs))
+
+		numAttempts += 1
+
+	}
+}
+
+// Create a RetrySleeper that will double the retry time on every iteration and
+// use the given parameters
+func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySleeper {
+
+	timeToSleepMs := initialTimeToSleepMs
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > maxNumAttempts {
+			return false, -1
+		}
+		if numAttempts > 1 {
+			timeToSleepMs *= 2
+		}
+		return true, timeToSleepMs
+	}
+	return sleeper
+
 }

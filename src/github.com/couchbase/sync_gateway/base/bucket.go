@@ -57,6 +57,8 @@ type BucketSpec struct {
 	FeedParams                             FeedParams
 	CbgtContext                            CbgtContext
 	CouchbaseDriver                        CouchbaseDriver
+	MaxNumRetries                          int // max number of retries before giving up
+	InitialRetrySleepTimeMS                int // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 }
 
 // These are used by CBGT to determine the sharding factor and other properties
@@ -158,6 +160,10 @@ func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64,
 
 func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
+}
+
+func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	panic("SetBulk not implemented")
 }
 
 func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -146,48 +147,85 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	}
 
 	changeCacheExpvars.Add(fmt.Sprintf("addEntrySet-blockSetSize-%03d", len(blockSets)), 1)
-	var wg sync.WaitGroup
-	for blockKey, blockSet := range blockSets {
-		// update the block
-		wg.Add(1)
-		go func(blockKey string, blockSet []*LogEntry) {
-			defer wg.Done()
-			err := b.writeSingleBlockWithCas(blockSet)
-			if err != nil {
-				base.Warn("Error writing single block with cas for block %s: %+v", blockKey, err)
-			}
-		}(blockKey, blockSet)
+	err = b.writeBlockSetsWithCas(blockSets)
+	if err != nil {
+		base.Warn("Error writing blockSets with cas for block %s: %+v", blockSets, err)
 	}
-	wg.Wait()
 
 	return clockUpdates, err
 }
 
-// Expects all incoming entries to target the same block
-func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
+func (b *BitFlagStorage) writeBlockSetsWithCas(blockSets BlockSet) error {
 
-	changeCacheExpvars.Add("writeSingleBlock-count", 1)
-	if len(entries) == 0 {
-		return nil
-	}
-	// Get block based on first entry
-	block := b.getIndexBlockForEntry(entries[0])
-	// Apply updates to the in-memory block
-	for _, entry := range entries {
-		err := block.AddEntry(entry)
-		if err != nil { // Wrong block for this entry
+	bulkSets := []*sgbucket.BulkSetEntry{}
+	blockKeyToBlock := make(map[string]IndexBlock, len(blockSets))
+
+	for blockKey, logEntries := range blockSets {
+		if len(logEntries) == 0 {
+			continue
+		}
+		value, block, err := b.marshalBlock(logEntries)
+		if err != nil {
 			return err
 		}
+
+		// save the IndexBlock for later in case we need it
+		blockKeyToBlock[blockKey] = block
+
+		bulkSets = append(bulkSets, &sgbucket.BulkSetEntry{
+			Key:   blockKey,
+			Value: value,
+			Cas:   block.Cas(),
+		})
 	}
-	localValue, err := block.Marshal()
-	if err != nil {
-		base.Warn("Unable to marshal channel block - cancelling block update")
-		return errors.New("Error marshalling channel block")
+	if err := b.bucket.SetBulk(bulkSets); err != nil {
+		return err
 	}
 
-	changeCacheExpvars.Add(fmt.Sprintf("writeSingleBlock-blockSize-%09d", int(len(localValue)/500)*500), 1)
+	// Cas retry for failed ops
 
-	casOut, err := base.WriteCasRaw(b.bucket, block.Key(), localValue, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
+	// create an error channel where goroutines can write errors.
+	// make it a buffered channel with enough capacity to handle an error from
+	// each goroutine (worst case)
+	errorChan := make(chan error, len(bulkSets))
+
+	wg := sync.WaitGroup{}
+	for _, bulkSet := range bulkSets {
+		if bulkSet.Error != nil {
+			wg.Add(1)
+			go func(bulkSetEntryParam *sgbucket.BulkSetEntry) {
+				defer wg.Done()
+				if err := b.writeBlockWithCas(
+					blockKeyToBlock[bulkSetEntryParam.Key],
+					blockSets[bulkSetEntryParam.Key],
+				); err != nil {
+					errorChan <- err
+				}
+
+			}(bulkSet)
+
+		}
+	}
+
+	// wait for goroutines to finish
+	wg.Wait()
+
+	// if any errors, return the first error
+	if len(errorChan) > 0 {
+		return <-errorChan
+	}
+
+	return nil
+
+}
+
+func (b *BitFlagStorage) writeBlockWithCas(block IndexBlock, entries []*LogEntry) error {
+
+	// use an empty initial value to force writeCasRaw() to call GET first
+	value := []byte{}
+
+	casOut, err := base.WriteCasRaw(b.bucket, block.Key(), value, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
+
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		changeCacheExpvars.Add("writeSingleBlock-casRetryCount", 1)
 		err = block.Unmarshal(value)
@@ -204,8 +242,30 @@ func (b *BitFlagStorage) writeSingleBlockWithCas(entries []*LogEntry) error {
 		return err
 	}
 	block.SetCas(casOut)
-
 	return nil
+
+}
+
+func (b *BitFlagStorage) marshalBlock(entries []*LogEntry) ([]byte, IndexBlock, error) {
+	if len(entries) == 0 {
+		return nil, nil, nil
+	}
+	// Get block based on first entry
+	block := b.getIndexBlockForEntry(entries[0])
+	// Apply updates to the in-memory block
+	for _, entry := range entries {
+		err := block.AddEntry(entry)
+		if err != nil { // Wrong block for this entry
+			return nil, nil, err
+		}
+	}
+	localValue, err := block.Marshal()
+	if err != nil {
+		base.Warn("Unable to marshal channel block - cancelling block update")
+		return nil, block, errors.New("Error marshalling channel block")
+	}
+	return localValue, block, nil
+
 }
 
 func (b *BitFlagStorage) loadBlock(block IndexBlock) error {

@@ -141,7 +141,7 @@ func (s *ShardedClock) write() (err error) {
 				casOut, err := s.bucket.WriteCas(p.Key, 0, 0, p.cas, value, sgbucket.Raw)
 
 				if err != nil {
-					Warn("Error writing sharded clock partition [%d]:%v", p.Key, err)
+					Warn("Error writing sharded clock partition key: %v.  Error: %v, p.cas: %v, casOut: %v", p.Key, err, p.cas, casOut)
 					shardedClockExpvars.Add("partition_cas_failures", 1)
 					return
 				}
