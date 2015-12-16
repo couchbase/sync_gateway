@@ -108,12 +108,12 @@ func (b *BitFlagStorage) readIndexEntryInto(vbNo uint16, sequence uint64, entry 
 	key := getEntryKey(vbNo, sequence)
 	value, _, err := b.bucket.GetRaw(key)
 	if err != nil {
-		base.Warn("DCache", "Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
+		base.Warn("Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
 		return err
 	}
 	err = json.Unmarshal(value, entry)
 	if err != nil {
-		base.Warn("DCache", "Error unmarshalling entry for sequence %d, key %s", sequence, key)
+		base.Warn("Error unmarshalling entry for sequence %d, key %s", sequence, key)
 		return err
 	}
 	return nil
@@ -137,7 +137,7 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	clockUpdates = base.NewSequenceClockImpl()
 	for _, entry := range entries {
 		// Update the sequence in the appropriate cache block
-		base.LogTo("DCache+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.isRemoved())
+		base.LogTo("DIndex+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.isRemoved())
 		blockKey := GenerateBlockKey(b.channelName, entry.Sequence, b.partitions.VbMap[entry.VbNo])
 		if _, ok := blockSets[blockKey]; !ok {
 			blockSets[blockKey] = make([]*LogEntry, 0)
@@ -508,7 +508,6 @@ func GenerateBlockKeys(channelName string, minSeq uint64, maxSeq uint64, partiti
 
 // Determine the cache block key for a sequence
 func generateBitFlagBlockKey(channelName string, minSequence uint64, partition uint16) string {
-	base.LogTo("DCache", "block index for minSequence %d is %d", minSequence, uint16(minSequence/byteIndexBlockCapacity))
 	index := uint16(minSequence / byteIndexBlockCapacity)
 	return getIndexBlockKey(channelName, index, partition)
 }
@@ -672,7 +671,6 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 	keySet = make([]string, 0)
 	vbEntries, ok := b.value.Entries[vbNo]
 	if !ok { // nothing for this vbucket
-		base.LogTo("DIndex+", "No entries found for vbucket %d in block %s", vbNo, b.Key())
 		return entries, keySet
 	}
 
@@ -711,8 +709,6 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 			}
 		}
 	}
-
-	base.LogTo("DIndex+", "Block.GetEntries for block %s - returning %d entries...", b.Key(), len(entries))
 
 	return entries, keySet
 }

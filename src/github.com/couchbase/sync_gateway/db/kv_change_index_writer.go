@@ -10,7 +10,6 @@
 package db
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -129,7 +128,7 @@ func (k *kvChangeIndexWriter) getWriterStableSequence() *base.ShardedClock {
 
 func (k *kvChangeIndexWriter) addToCache(change *LogEntry) {
 	// queue for cache addition
-	base.LogTo("DCache+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", change.DocID, change.VbNo, change.Sequence)
+	base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", change.DocID, change.VbNo, change.Sequence)
 	k.pending <- change
 	return
 }
@@ -427,66 +426,13 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 	entryTime := time.Now()
 
 	isUser := strings.HasPrefix(docID, auth.UserKeyPrefix)
-	// We need to track vbucket/sequence numbers for admin-granted roles and channels in the index,
-	// since we can no longer store the sequence in the user doc body itself
 
-	base.LogTo("DIndex+", "Processing principal doc %s", docID)
-	// Index doc for a user stores the timed channel set of admin-granted channels.  These are merged with
-	// the document-granted channels during calculateChannels.
-	princ, err := k.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
-	if princ == nil {
-		return nil, errors.New(fmt.Sprintf("kvChangeIndex: Error unmarshaling principal doc %q: %v", docID, err))
-	}
-
-	var indexDocID string
+	var err error
 	if isUser {
-		indexDocID = kIndexPrefix + "_user:" + princ.Name()
+		err = k.context.Authenticator().UpdateUserVbucketSequences(docID, sequence)
 	} else {
-		indexDocID = kIndexPrefix + "_role:" + princ.Name()
+		err = k.context.Authenticator().UpdateRoleVbucketSequences(docID, sequence)
 	}
-
-	// Update the user doc in the index based on the principal
-	var principalIndex *PrincipalIndex
-	err = k.indexWriteBucket.Update(indexDocID, 0, func(currentValue []byte) ([]byte, error) {
-
-		// Be careful: this block can be invoked multiple times if there are races!
-		var principalRoleSet channels.TimedSet
-		principalChannelSet := princ.ExplicitChannels()
-		user, isUserPrincipal := princ.(auth.User)
-		if isUserPrincipal {
-			principalRoleSet = user.ExplicitRoles()
-		}
-
-		if currentValue == nil {
-			// User index entry doesn't yet exist - create as new if the principal has channels
-			// or roles
-			if len(principalChannelSet) == 0 && len(principalRoleSet) == 0 {
-				return nil, errors.New("No update required")
-			}
-			principalIndex = &PrincipalIndex{
-				VbNo:             vbNo,
-				ExplicitChannels: make(channels.TimedSet),
-				ExplicitRoles:    make(channels.TimedSet),
-			}
-
-		} else {
-			if err := json.Unmarshal(currentValue, &principalIndex); err != nil {
-				return nil, err
-			}
-		}
-		var rolesChanged, channelsChanged bool
-		channelsChanged = principalIndex.ExplicitChannels.UpdateAtSequence(principalChannelSet.AsSet(), sequence)
-
-		if isUserPrincipal {
-			rolesChanged = principalIndex.ExplicitRoles.UpdateAtSequence(principalRoleSet.AsSet(), sequence)
-		}
-
-		if channelsChanged || rolesChanged {
-			return json.Marshal(principalIndex)
-		} else {
-			return nil, errors.New("No update required")
-		}
-	})
 
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("kvChangeIndex: Error updating principal doc %q: %v", docID, err))

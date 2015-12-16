@@ -26,10 +26,11 @@ type SequenceID struct {
 	LowSeq           uint64             // Int sequence: Lowest contiguous sequence seen on the feed
 	Seq              uint64             // Int sequence: The actual internal sequence
 	Clock            base.SequenceClock // Clock sequence: Sequence (distributed index)
-	TriggeredByClock base.SequenceClock // Clock sequence: Sequence (distributed index)
+	TriggeredByClock base.SequenceClock // Clock sequence: Sequence (distributed index) that triggered this
 	ClockHash        string             // String representation of clock hash
 	SequenceHasher   *sequenceHasher    // Sequence hasher - used when unmarshalling clock-based sequences
 	vbNo             uint16             // Vbucket number for actual sequence
+	TriggeredByVbNo  uint16             // Vbucket number for triggered by sequence
 }
 
 type SequenceType int
@@ -83,10 +84,8 @@ func (s SequenceID) clockSeqToString() string {
 		// If the clock has been set, return it's hashed value.  Otherwise, return
 		// vb, sequence as vb.seq
 		if s.Clock != nil {
-			base.LogTo("DIndex+", "Clock is non nil, returning hashed value [%s]", s.Clock.GetHashedValue())
 			return s.Clock.GetHashedValue()
 		} else {
-			base.LogTo("DIndex+", "Clock is nil, returning vbno, seq")
 			return fmt.Sprintf("%d.%d", s.vbNo, s.Seq)
 		}
 	}
@@ -95,10 +94,8 @@ func (s SequenceID) clockSeqToString() string {
 func (dbc *DatabaseContext) ParseSequenceID(str string) (s SequenceID, err error) {
 	// If there's a sequence hasher defined, we're expecting clock-based sequences
 	if dbc.SequenceHasher != nil {
-		base.LogTo("DIndex+", "Handling changes as clock sequence...")
 		return parseClockSequenceID(str, dbc.SequenceHasher)
 	} else {
-		base.LogTo("DIndex+", "Handling changes as int sequence...")
 		return parseIntegerSequenceID(str)
 	}
 }
@@ -166,11 +163,23 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 			}
 		}
 	} else if len(components) == 2 {
-		// TriggeredBy and Clock
-		// TODO: parse triggered by
-		if s.Clock, err = sequenceHasher.GetClock(components[0]); err != nil {
+		// TriggeredBy Clock Hash, and vb.seq sequence
+		if s.TriggeredByClock, err = sequenceHasher.GetClock(components[0]); err != nil {
 			return SequenceID{}, err
 		}
+		sequenceComponents := strings.Split(components[1], ".")
+		if len(sequenceComponents) != 2 {
+			base.Warn("Unexpected sequence format - ignoring and relying on triggered by")
+			return
+		} else {
+			if vb64, err := strconv.ParseUint(sequenceComponents[0], 10, 16); err != nil {
+				base.Warn("Unable to convert sequence %v to int.", sequenceComponents[0])
+			} else {
+				s.vbNo = uint16(vb64)
+				s.Seq, err = strconv.ParseUint(sequenceComponents[1], 10, 64)
+			}
+		}
+
 	} else {
 		err = base.HTTPErrorf(400, "Invalid sequence")
 	}
@@ -194,10 +203,8 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
 	if s.SeqType == ClockSequenceType {
-		base.LogTo("DIndex+", "Marshalling clock sequence...%v", s.clockSeqToString())
 		return []byte(fmt.Sprintf("\"%s\"", s.clockSeqToString())), nil
 	} else {
-		base.LogTo("DIndex+", "Marshalling int sequence...%v", s.String())
 		if s.TriggeredBy > 0 || s.LowSeq > 0 {
 			return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
 		} else {
@@ -288,7 +295,6 @@ func (s SequenceID) IsNonZero() bool {
 func (s SequenceID) Before(s2 SequenceID) bool {
 	if s.SeqType == ClockSequenceType {
 		vbefore := s.vectorBefore(s2)
-		base.LogTo("DIndex+", "Is [%v,%v] before [%v,%v]? %v", s.vbNo, s.Seq, s2.vbNo, s2.Seq, vbefore)
 		return vbefore
 	} else {
 		return s.intBefore(s2)
@@ -311,27 +317,41 @@ func (s SequenceID) intBefore(s2 SequenceID) bool {
 	}
 }
 
-// For vector sequences, triggered by is always a full clock, and
+// For vector sequences, triggered by is always a full clock.
 func (s SequenceID) vectorBefore(s2 SequenceID) bool {
 
 	if s.TriggeredByClock == nil && s2.TriggeredByClock == nil { // No triggered by - return based on vb.seq only
-		return s.vbucketSequenceBefore(s2)
-	} else if s.TriggeredByClock == nil { // s2 triggered but not s.  Backfill gets priority
-		return false
-	} else if s2.TriggeredByClock == nil { // s2 triggered but not s.  Backfill gets priority
-		return true
+		return s.VbucketSequenceBefore(s2.vbNo, s2.Seq)
+	} else if s.TriggeredByClock == nil {
+		// s2 triggered but not s.  Compare s with s2.triggered by
+		return s.VbucketSequenceBefore(s2.TriggeredByVbNo, s2.TriggeredBy)
+	} else if s2.TriggeredByClock == nil {
+		// s triggered but not s2.  Compare s.Triggered by with s2.
+		// Check for equality first, since equality won't return false for !s2.VbucketSequenceBefore
+		if s2.Seq == s.TriggeredBy && s2.vbNo == s.TriggeredByVbNo {
+			return false
+		}
+		return !s2.VbucketSequenceBefore(s.TriggeredByVbNo, s.TriggeredBy)
 	} else if s.TriggeredByClock.Equals(s2.TriggeredByClock) { // Both triggered by the same clock - return based on vb.seq
-		return s.vbucketSequenceBefore(s2)
-	} else { // Triggered by difference clocks - return based on earlier triggeredBy
+		return s.VbucketSequenceBefore(s2.vbNo, s2.Seq)
+	} else { // Triggered by different clocks - return based on earlier triggeredBy
 		return s.TriggeredByClock.AllBefore(s2.TriggeredByClock)
 	}
 
 }
 
-func (s SequenceID) vbucketSequenceBefore(s2 SequenceID) bool {
-	if s.vbNo == s2.vbNo {
-		return s.Seq < s2.Seq
+func (s SequenceID) VbucketSequenceBefore(vbNo uint16, seq uint64) bool {
+	if s.vbNo == vbNo {
+		return s.Seq < seq
 	} else {
-		return s.vbNo < s2.vbNo
+		return s.vbNo < vbNo
+	}
+}
+
+func (s SequenceID) VbucketSequenceAfter(vbNo uint16, seq uint64) bool {
+	if s.vbNo == vbNo {
+		return s.Seq > seq
+	} else {
+		return s.vbNo > vbNo
 	}
 }

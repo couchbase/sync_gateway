@@ -100,12 +100,11 @@ func (k *kvChannelIndex) updateIndexCount() error {
 	// increment index count
 	key := getIndexCountKey(k.channelName)
 
-	newValue, err := k.indexBucket.Incr(key, 1, 1, 0)
+	_, err := k.indexBucket.Incr(key, 1, 1, 0)
 	if err != nil {
 		base.Warn("Error from Incr in updateCacheClock(%s): %v", key, err)
 		return err
 	}
-	base.LogTo("DCache", "Updated clock for %s (%s) to %d", k.channelName, key, newValue)
 
 	return nil
 
@@ -324,7 +323,6 @@ func (k *kvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 
 // Determine the cache block index for a sequence
 func (k *kvChannelIndex) getBlockIndex(sequence uint64) uint16 {
-	base.LogTo("DCache", "block index for sequence %d is %d", sequence, uint16(sequence/byteIndexBlockCapacity))
 	return uint16(sequence / byteIndexBlockCapacity)
 }
 
@@ -335,7 +333,7 @@ func (k *kvChannelIndex) loadClock() {
 	}
 	data, cas, err := k.indexBucket.GetRaw(getChannelClockKey(k.channelName))
 	if err != nil {
-		base.LogTo("DCache+", "Unable to find existing channel clock for channel %s - treating as new", k.channelName)
+		base.LogTo("DIndex+", "Unable to find existing channel clock for channel %s - treating as new", k.channelName)
 	}
 	k.clock.Unmarshal(data)
 	k.clock.SetCas(cas)

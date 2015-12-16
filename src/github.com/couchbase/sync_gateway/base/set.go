@@ -102,6 +102,7 @@ func (set Set) Removing(str string) Set {
 // JSON encoding/decoding:
 
 func (set Set) MarshalJSON() ([]byte, error) {
+
 	if set == nil {
 		return []byte("null"), nil
 	}

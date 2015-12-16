@@ -16,7 +16,7 @@ import (
 
 func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
 	cacheBucketSpec := base.BucketSpec{
-		Server:     "walrus:",
+		Server:     kTestURL,
 		BucketName: bucketname}
 	index := &kvChangeIndex{}
 
@@ -36,14 +36,21 @@ func testKvChangeIndex(bucketname string) (*kvChangeIndex, base.Bucket) {
 
 func setupTestDBForChangeIndex(t *testing.T) *Database {
 
-	leakyBucketConfig := base.LeakyBucketConfig{
-		TapFeedVbuckets: true,
+	var vbEnabledBucket base.Bucket
+	if kTestURL == "walrus:" {
+		log.Println("LEAKY BUCKET")
+		leakyBucketConfig := base.LeakyBucketConfig{
+			TapFeedVbuckets: true,
+		}
+		vbEnabledBucket = testLeakyBucket(leakyBucketConfig)
+	} else {
+		log.Println("TEST BUCKET")
+		vbEnabledBucket = testBucket()
 	}
-	vbEnabledBucket := testLeakyBucket(leakyBucketConfig)
 
 	indexBucketSpec := base.BucketSpec{
-		Server:     "walrus:",
-		BucketName: "indexBucket"}
+		Server:     kTestURL,
+		BucketName: "test_indexBucket"}
 	indexBucket, err := ConnectToBucket(indexBucketSpec)
 
 	if err != nil {
@@ -98,7 +105,7 @@ func simpleClockSequence(seq uint64) SequenceID {
 
 func TestChangeIndexAddEntry(t *testing.T) {
 
-	base.LogKeys["DCache+"] = true
+	base.LogKeys["DIndex+"] = true
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	changeIndex.writer.addToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
@@ -510,47 +517,6 @@ func TestPollResultLongRunningContinuous(t *testing.T) {
 	wg.Wait()
 }
 
-func TestChangeIndexPrincipal(t *testing.T) {
-
-	base.LogKeys["DIndex+"] = true
-	db := setupTestDBForChangeIndex(t)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
-	kvChangeIndex, _ := db.changeCache.(*kvChangeIndex)
-
-	defer tearDownTestDB(t, db)
-	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["ABC", "PBS"]}`), uint64(1), uint16(1))
-	time.Sleep(100 * time.Millisecond) // wait for indexing
-
-	// Verify user entry in index
-	var principal PrincipalIndex
-	principalBytes, _, err := kvChangeIndex.reader.indexReadBucket.GetRaw("_idx_user:bob")
-	assert.True(t, err == nil)
-	json.Unmarshal(principalBytes, &principal)
-	assert.Equals(t, principal.VbNo, uint16(1))
-	assert.DeepEquals(t, principal.ExplicitChannels, channels.TimedSet{"ABC": 1, "PBS": 1})
-
-	time.Sleep(10 * time.Millisecond) // wait for indexing
-
-	kvChangeIndex.writer.indexWriteBucket.Dump()
-
-	// Verify stable sequence was incremented
-	stableClock, err := kvChangeIndex.GetStableClock()
-	assertNoError(t, err, "Unable to retrieve stable clock")
-	log.Printf("got clock:%s", base.PrintClock(stableClock))
-	assert.Equals(t, stableClock.GetSequence(1), uint64(1))
-
-	// Update the user to add a channel, remove a channel
-	kvChangeIndex.DocChanged("_sync:user:bob", []byte(`{"name": "bob", "admin_channels":["PBS", "NBC"]}`), uint64(2), uint16(1))
-	time.Sleep(100 * time.Millisecond) // wait for indexing
-
-	principalBytes, _, err = kvChangeIndex.reader.indexReadBucket.GetRaw("_idx_user:bob")
-	assert.True(t, err == nil)
-	json.Unmarshal(principalBytes, &principal)
-	assert.Equals(t, principal.VbNo, uint16(1))
-	assert.DeepEquals(t, principal.ExplicitChannels, channels.TimedSet{"PBS": 1, "NBC": 2})
-
-}
-
 func TestChangeIndexAddSet(t *testing.T) {
 
 	base.LogKeys["DIndex+"] = true
@@ -587,7 +553,9 @@ func TestChangeIndexAddSet(t *testing.T) {
 
 // Index partitionsfor testing
 func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
+	log.Printf("Seeding partition map for %d partitions", numPartitions)
 	maxVbNo := uint16(1024)
+	//maxVbNo := uint16(64)
 	partitionDefs := make([]base.PartitionStorage, numPartitions)
 	vbPerPartition := maxVbNo / numPartitions
 	for partition := uint16(0); partition < numPartitions; partition++ {
@@ -597,7 +565,7 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 		}
 		for index := uint16(0); index < vbPerPartition; index++ {
 			vb := partition*vbPerPartition + index
-			storage.VbNos = append(storage.VbNos, vb)
+			storage.VbNos[index] = vb
 		}
 		partitionDefs[partition] = storage
 	}
@@ -607,6 +575,7 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("Seeding partition map:%s", value)
 	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
 	return nil
 }

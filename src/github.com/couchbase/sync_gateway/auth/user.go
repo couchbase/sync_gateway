@@ -102,9 +102,10 @@ func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string, defaul
 	if user.Name_ == "" {
 		user.Name_ = defaultName
 	}
+	defaultVbSequence := ch.NewVbSimpleSequence(defaultSequence)
 	for channel, seq := range user.ExplicitChannels_ {
-		if seq == 0 {
-			user.ExplicitChannels_[channel] = defaultSequence
+		if seq.Sequence == 0 {
+			user.ExplicitChannels_[channel] = defaultVbSequence
 		}
 	}
 	if err := user.validate(); err != nil {
@@ -137,7 +138,7 @@ func docIDForUser(username string) string {
 	return UserKeyPrefix + username
 }
 
-func (user *userImpl) docID() string {
+func (user *userImpl) DocID() string {
 	return docIDForUser(user.Name_)
 }
 
@@ -267,7 +268,7 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
 		roleSince := user.RolesSince_[role.Name()]
-		channels.AddAtSequence(role.Channels(), roleSince)
+		channels.AddAtSequence(role.Channels(), roleSince.Sequence)
 	}
 	return channels
 }

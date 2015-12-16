@@ -876,6 +876,19 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 }
 
 func TestAccessControl(t *testing.T) {
+	restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
+	defer restTester.Close()
+	testAccessControl(t, restTester)
+}
+
+func TestVbSeqAccessControl(t *testing.T) {
+
+	restTester := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`)
+	defer restTester.Close()
+	testAccessControl(t, restTester)
+}
+
+func testAccessControl(t *testing.T, rt indexTester) {
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -894,7 +907,6 @@ func TestAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	var rt restTester
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1112,9 +1124,9 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "alpha": 0x1, "delta": 0x3})
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "gamma": 0x4})
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x4)})
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
@@ -1122,9 +1134,9 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "delta": 0x3})
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "alpha": 0x9, "gamma": 0x4})
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
 
 	// Look at alice's _changes feed:
 	changes.Results = nil
@@ -1377,10 +1389,10 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": 0x1, "alpha": 0x1, "gamma": 0x1})
-	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": 0x1, "hipster": 0x1})
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": channels.NewVbSimpleSequence(0x1), "hipster": channels.NewVbSimpleSequence(0x1)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": 0x1, "beta": 0x1})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1)})
 	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
@@ -1408,9 +1420,9 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": 0x1, "alpha": 0x1})
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": 0x1, "beta": 0x1, "gamma": 0x6})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x6)})
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil

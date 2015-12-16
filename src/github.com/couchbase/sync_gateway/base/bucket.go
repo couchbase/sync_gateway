@@ -437,7 +437,7 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
-		sgbucket.Logging = LogKeys["Walrus"]
+		sgbucket.SetLogging(LogEnabled("Walrus"))
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 		// If feed type is specified and isn't TAP, wrap with pseudo-vbucket handling for walrus
 		if spec.FeedType != "" && spec.FeedType != TapFeedType {

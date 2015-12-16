@@ -40,6 +40,7 @@ type SequenceClock interface {
 	AnyAfter(otherClock SequenceClock) bool        // True if any entries in clock are greater than the corresponding values in otherClock
 	AnyBefore(otherClock SequenceClock) bool       // True if any entries in clock are less than the corresponding values in otherClock
 	SetTo(otherClock SequenceClock)                // Sets the current clock to a copy of the other clock
+	Copy() SequenceClock                           // Returns a copy of the clock
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -401,6 +402,17 @@ func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.Clock.UpdateWithClock(updateClock)
+}
+
+func (c *SyncSequenceClock) Copy() SequenceClock {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	result := NewSyncSequenceClock()
+	for key, value := range c.Clock.value {
+		result.Clock.value[key] = value
+	}
+	return result
 }
 
 // Clock utility functions

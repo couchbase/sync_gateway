@@ -18,6 +18,7 @@ const (
 	ViewPrincipals            = "principals"
 	ViewChannels              = "channels"
 	ViewAccess                = "access"
+	ViewAccessVbSeq           = "access_vbseq"
 	ViewRoleAccess            = "role_access"
 	ViewAllBits               = "all_bits"
 	ViewAllDocs               = "all_docs"
@@ -122,14 +123,14 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (r
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
 		checkChannels = !visibleChannels.Contains("*")
-		if (reduce) {
-			return; // this is an error
+		if reduce {
+			return // this is an error
 		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		if (reduce){
+		if reduce {
 			// Add the raw row:
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,

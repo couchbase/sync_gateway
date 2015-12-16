@@ -88,7 +88,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
-	base.LogTo("DCache+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	base.LogTo("DIndex+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	if err != nil {
 		return nil, err
 	}
@@ -314,8 +314,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
 			// could be written to channel X during one iteration, and channel Y during another.  Users
 			// with access to both channels would see two versions on the feed.
-			for name, seqAddedAt := range channelsSince {
+			for name, vbSeqAddedAt := range channelsSince {
 				chanOpts := options
+				seqAddedAt := vbSeqAddedAt.Sequence
 
 				// Check whether requires backfill based on addedChannels in this _changes feed
 				isNewChannel := false

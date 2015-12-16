@@ -108,6 +108,7 @@ func (k *kvChangeIndexReader) Stop() {
 // need the absolute latest version for pruning.
 func (k *kvChangeIndexReader) GetStableSequence(docID string) (seq SequenceID) {
 
+	// TODO: needs to be db bucket, since gocbbucket doesn't implement VBHash.  Currently not used.
 	vbNo := k.indexReadBucket.VBHash(docID)
 	if k.readerStableSequence == nil {
 		var err error
@@ -188,8 +189,14 @@ func (k *kvChangeIndexReader) SetNotifier(onChange func(base.Set)) {
 
 func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 
-	if options.Since.Clock == nil {
-		options.Since.Clock = base.NewSequenceClockImpl()
+	sinceClock := options.Since.Clock
+	if sinceClock == nil {
+		// If there's no since clock, we may be in backfill for another channel - revert to the triggered by clock.
+		if options.Since.TriggeredByClock != nil {
+			sinceClock = options.Since.TriggeredByClock
+		} else {
+			sinceClock = base.NewSequenceClockImpl()
+		}
 	}
 
 	reader, err := k.getOrCreateReader(channelName, options)
@@ -197,9 +204,9 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 		base.Warn("Error obtaining channel reader (need partition index?) for channel %s", channelName)
 		return nil, err
 	}
-	changes, err := reader.getChanges(options.Since.Clock)
+	changes, err := reader.getChanges(sinceClock)
 	if err != nil {
-		base.LogTo("DIndex+", "No clock found for channel %d, assuming no entries in index")
+		base.LogTo("DIndex+", "No clock found for channel %d, assuming no entries in index", channelName)
 		return nil, nil
 	}
 

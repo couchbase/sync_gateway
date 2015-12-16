@@ -19,15 +19,37 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+type VbSequence struct {
+	VbNo     *uint16 `json:"vb,omitempty"`
+	Sequence uint64  `json:"seq"`
+}
+
+func NewVbSequence(vbNo uint16, sequence uint64) VbSequence {
+	return VbSequence{VbNo: &vbNo, Sequence: sequence}
+}
+
+func NewVbSimpleSequence(sequence uint64) VbSequence {
+	return VbSequence{Sequence: sequence}
+}
+
+func (vbs VbSequence) Copy() VbSequence {
+	if vbs.VbNo == nil {
+		return NewVbSimpleSequence(vbs.Sequence)
+	} else {
+		vbInt := *vbs.VbNo
+		return NewVbSequence(vbInt, vbs.Sequence)
+	}
+}
+
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
 // the channel was added.)
-type TimedSet map[string]uint64
+type TimedSet map[string]VbSequence
 
 // Creates a new TimedSet from a Set plus a sequence
 func AtSequence(set base.Set, sequence uint64) TimedSet {
 	result := make(TimedSet, len(set))
 	for name, _ := range set {
-		result[name] = sequence
+		result[name] = NewVbSimpleSequence(sequence)
 	}
 	return result
 }
@@ -64,7 +86,7 @@ func (set TimedSet) AllChannels() []string {
 func (set TimedSet) Copy() TimedSet {
 	result := make(TimedSet, len(set))
 	for name, sequence := range set {
-		result[name] = sequence
+		result[name] = sequence.Copy()
 	}
 	return result
 }
@@ -86,7 +108,7 @@ func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 	}
 	for name, _ := range other {
 		if !set.Contains(name) {
-			set[name] = sequence
+			set[name] = NewVbSimpleSequence(sequence)
 			changed = true
 		}
 	}
@@ -111,8 +133,8 @@ func (set TimedSet) Equals(other base.Set) bool {
 
 func (set TimedSet) AddChannel(channelName string, atSequence uint64) bool {
 	if atSequence > 0 {
-		if oldSequence := set[channelName]; oldSequence == 0 || atSequence < oldSequence {
-			set[channelName] = atSequence
+		if oldSequence := set[channelName]; oldSequence.Sequence == 0 || atSequence < oldSequence.Sequence {
+			set[channelName] = NewVbSimpleSequence(atSequence)
 			return true
 		}
 	}
@@ -127,35 +149,109 @@ func (set TimedSet) Add(other TimedSet) bool {
 // Merges the other set into the receiver at a given sequence. */
 func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 	changed := false
-	for ch, sequence := range other {
-		if sequence < atSequence {
-			sequence = atSequence
-		}
-		if set.AddChannel(ch, sequence) {
+	for ch, vbSeq := range other {
+		// If vbucket is present, do a straight replace
+		if vbSeq.VbNo != nil {
+			set[ch] = vbSeq
 			changed = true
+		} else {
+			if vbSeq.Sequence < atSequence {
+				vbSeq.Sequence = atSequence
+			}
+			if set.AddChannel(ch, vbSeq.Sequence) {
+				changed = true
+			}
 		}
 	}
 	return changed
 }
 
-// TimedSet can unmarshal either from the regular format {"channel":sequence, ...}
-// or from an array of channel names. In the latter case all the sequences will be 0.
+// For any channel present in both the set and the other set, updates the sequence to the value
+// from the other set
+func (set TimedSet) UpdateIfPresent(other TimedSet) {
+	for ch, _ := range set {
+		if otherSeq, ok := other[ch]; ok {
+			set[ch] = otherSeq
+		}
+	}
+}
+
+// TimedSet can unmarshal either from the regular format {"channel":vbSequence, ...},
+// from the sequence-only format {"channel":uint64, ...},
+// or from an array of channel names.
+// In the last two cases, all vbNos will be 0.
+// In the latter case all the sequences will be 0.
 func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
-	var normalForm map[string]uint64
+
+	var normalForm map[string]VbSequence
 	if err := json.Unmarshal(data, &normalForm); err != nil {
-		var altForm []string
-		if err2 := json.Unmarshal(data, &altForm); err2 == nil {
-			set, err := SetFromArray(altForm, KeepStar)
-			if err == nil {
-				*setPtr = AtSequence(set, 0)
+		var sequenceOnlyForm map[string]uint64
+		if err := json.Unmarshal(data, &sequenceOnlyForm); err != nil {
+			var altForm []string
+			if err2 := json.Unmarshal(data, &altForm); err2 == nil {
+				set, err := SetFromArray(altForm, KeepStar)
+				if err == nil {
+					*setPtr = AtSequence(set, 0)
+				}
+				return err
 			}
 			return err
 		}
-		return err
+
+		*setPtr = TimedSetFromSequenceOnlySet(sequenceOnlyForm)
+		return nil
 	}
 	*setPtr = TimedSet(normalForm)
 	return nil
+}
 
+func (set TimedSet) MarshalJSON() ([]byte, error) {
+
+	// If no vbuckets are defined, marshal as SequenceOnlySet for backwards compatibility.  Otherwise marshal with vbuckets
+	hasVbucket := false
+	for _, vbSeq := range set {
+		if vbSeq.VbNo != nil {
+			hasVbucket = true
+			break
+		}
+	}
+
+	if hasVbucket {
+		// Normal form - unmarshal as map[string]VbSequence.  Need to convert back to simple map[string]VbSequence to avoid
+		// having json.Marshal just call back into this function.
+		// Marshals entries as "ABC":{"vb":5,"seq":1} or "CBS":{"seq":1}, depending on whether VbSequence.VbNo is nil
+		var plainMap map[string]VbSequence
+		plainMap = set
+		return json.Marshal(plainMap)
+	} else {
+		// Sequence-only form.
+		// Marshals entries as "ABC":1, "CBS":1  - backwards compatibility when vbuckets aren't present.
+		return json.Marshal(set.SequenceOnlySet())
+	}
+}
+
+func (set TimedSet) SequenceOnlySet() map[string]uint64 {
+	var sequenceOnlySet map[string]uint64
+
+	if set != nil {
+		sequenceOnlySet = make(map[string]uint64)
+		for ch, vbSeq := range set {
+			sequenceOnlySet[ch] = vbSeq.Sequence
+		}
+	}
+
+	return sequenceOnlySet
+}
+
+func TimedSetFromSequenceOnlySet(sequenceOnlySet map[string]uint64) TimedSet {
+	var timedSet TimedSet
+	if sequenceOnlySet != nil {
+		timedSet = make(TimedSet)
+		for ch, sequence := range sequenceOnlySet {
+			timedSet[ch] = NewVbSimpleSequence(sequence)
+		}
+	}
+	return timedSet
 }
 
 //////// STRING ENCODING:
@@ -170,9 +266,14 @@ func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 // This string can later be turned back into a TimedSet by calling TimedSetFromString().
 func (set TimedSet) String() string {
 	var items []string
-	for channel, seqNo := range set {
-		if seqNo > 0 {
-			items = append(items, fmt.Sprintf("%s:%d", channel, seqNo))
+	for channel, vbSeq := range set {
+		if vbSeq.Sequence > 0 {
+			if vbSeq.VbNo != nil {
+				items = append(items, fmt.Sprintf("%s:%d.%d", channel, *vbSeq.VbNo, vbSeq.Sequence))
+			} else {
+				items = append(items, fmt.Sprintf("%s:%d", channel, vbSeq.Sequence))
+
+			}
 		}
 	}
 	sort.Strings(items) // not strictly necessary but makes the string reproducible
@@ -191,14 +292,36 @@ func TimedSetFromString(encoded string) TimedSet {
 				return nil
 			}
 			channel := components[0]
-			seqNo, err := strconv.ParseUint(components[1], 10, 64)
-			if err != nil || seqNo == 0 || !IsValidChannel(channel) {
-				return nil
-			}
+
 			if _, found := set[channel]; found {
 				return nil // duplicate channel
 			}
-			set[channel] = seqNo
+
+			if !IsValidChannel(channel) {
+				return nil
+			}
+
+			// VB sequence handling
+			if strings.Contains(components[1], ".") {
+				seqComponents := strings.Split(components[1], ".")
+				if len(seqComponents) != 2 {
+					return nil
+				}
+				vbNo, err := strconv.ParseUint(seqComponents[0], 10, 16)
+				vbSeq, err := strconv.ParseUint(seqComponents[1], 10, 64)
+				if err != nil {
+					return nil
+				}
+				set[channel] = NewVbSequence(uint16(vbNo), vbSeq)
+			} else {
+				// Simple sequence handling
+				seqNo, err := strconv.ParseUint(components[1], 10, 64)
+				if err != nil || seqNo == 0 {
+					return nil
+				}
+				set[channel] = NewVbSimpleSequence(seqNo)
+			}
+
 		}
 	}
 	return set
