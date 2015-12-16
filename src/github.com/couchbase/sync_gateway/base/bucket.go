@@ -362,7 +362,8 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
-		sgbucket.Logging = LogKeys["Walrus"]
+		sgbucket.SetLogging(LogKeys["Walrus"])
+
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 	} else {
 		suffix := ""

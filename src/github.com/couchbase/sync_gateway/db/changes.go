@@ -457,7 +457,6 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 						base.LogTo("Changes+", "New channels found after user reload: %v", addedChannels)
 					}
 				}
-
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)

@@ -21,7 +21,12 @@ import (
 
 func TestDuplicateDocID(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	var logKeys = map[string]bool {
+		"Cache": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -64,7 +69,12 @@ func TestDuplicateDocID(t *testing.T) {
 
 func TestLateArrivingSequence(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	var logKeys = map[string]bool {
+		"Cache": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -93,7 +103,12 @@ func TestLateArrivingSequence(t *testing.T) {
 
 func TestLateSequenceAsFirst(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	var logKeys = map[string]bool {
+		"Cache": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -122,7 +137,12 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 func TestDuplicateLateArrivingSequence(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	var logKeys = map[string]bool {
+		"Cache": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Test1", 0)
 
@@ -304,7 +324,12 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	base.LogKeys["CacheTest"] = true
+	var logKeys = map[string]bool {
+		"CacheTest": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	//base.SetLogLevel(2) // disables logging
 	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
 	cache := newChannelCache(context, "Benchmark", 0)

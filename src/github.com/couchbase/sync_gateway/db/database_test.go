@@ -333,9 +333,15 @@ func TestAllDocs(t *testing.T) {
 
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -389,9 +395,15 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -425,9 +437,15 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	//base.LogKeys["Cache"] = true
-	// base.LogKeys["CRUD"] = true
-	// base.LogKeys["Changes"] = true
+	/*
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+	*/
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -589,8 +607,15 @@ func TestAccessFunctionValidation(t *testing.T) {
 }
 
 func TestAccessFunction(t *testing.T) {
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["Access"] = true
+
+	/*
+	var logKeys = map[string]bool {
+		"CRUD": true,
+		"Access": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+	*/
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)

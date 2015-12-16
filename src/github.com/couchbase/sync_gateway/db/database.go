@@ -50,6 +50,7 @@ var RunStateString = []string{
 type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
+	BucketLock         sync.RWMutex			   // Control Access to the underlying bucket object
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
@@ -143,6 +144,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 }
 
 func (context *DatabaseContext) Close() {
+	context.BucketLock.Lock()
+	defer context.BucketLock.Unlock()
+
 	context.tapListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
