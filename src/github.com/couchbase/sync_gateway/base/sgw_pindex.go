@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/sg-bucket"
-	"github.com/couchbase/cbgt"
 )
 
 // The two "handles" we have for CBGT are the manager and Cfg objects.
@@ -373,6 +373,32 @@ func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
 			Warn("Warning: attempted to remove %v (%v) from CBGT but failed: %v", nodeUuid, kind, err)
 		}
 
+	}
+
+}
+
+func CBGTPlanParams(numShards, numVbuckets uint16) cbgt.PlanParams {
+
+	// Make sure the number of vbuckets is a power of two, since it's possible
+	// (but not common) to configure the number of vbuckets as such.
+	if !IsPowerOfTwo(numVbuckets) {
+		LogPanic("The number of vbuckets is %v, but Sync Gateway expects this to be a power of two", numVbuckets)
+	}
+
+	// We can't allow more shards than vbuckets, that makes no sense because each
+	// shard would be responsible for less than one vbucket.
+	if numShards > numVbuckets {
+		LogPanic("The number of shards (%v) must be less than the number of vbuckets (%v)", numShards, numVbuckets)
+	}
+
+	// Calculate numVbucketsPerShard based on numVbuckets and num_shards.
+	// Due to the guarantees above and the ValidateOrPanic() method, this
+	// is guaranteed to divide evenly.
+	numVbucketsPerShard := numVbuckets / numShards
+
+	return cbgt.PlanParams{
+		MaxPartitionsPerPIndex: int(numVbucketsPerShard),
+		NumReplicas:            0, // no use case for Sync Gateway to have pindex replicas
 	}
 
 }

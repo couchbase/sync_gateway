@@ -109,7 +109,6 @@ type DbConfig struct {
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
 	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	FeedParams         *base.FeedParams               `json:"feed_params,omitempty"`          // Feed params.  Currently only used for CBGT
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitEmpty"`        // Channel index settings
@@ -161,7 +160,8 @@ type CacheConfig struct {
 
 type ChannelIndexConfig struct {
 	BucketConfig
-	IndexWriter bool `json:"writer,omitempty"` // TODO: Partition information
+	IndexWriter bool   `json:"writer,omitempty"` // TODO: Partition information
+	NumShards   uint16 `json:"num_shards"`
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
