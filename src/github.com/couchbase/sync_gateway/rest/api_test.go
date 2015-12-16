@@ -1519,8 +1519,13 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Cache"] = true
+	var additionalLogKeys = map[string]bool {
+		"Changes": true,
+		"Cache": true,
+	}
+
+	base.UpdateLogKeys(additionalLogKeys, false)
+	
 	response = rt.send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
