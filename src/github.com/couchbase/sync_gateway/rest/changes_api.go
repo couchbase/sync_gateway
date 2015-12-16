@@ -93,7 +93,7 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
-		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat*1000, true)
+		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat * 1000, true)
 		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS, true)
 
 	} else {
@@ -132,29 +132,40 @@ func (h *handler) handleChanges() error {
 	defer h.db.ChangesClientStats.Decrement()
 
 	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+
+	var err error
+	forceClose := false
 
 	switch feed {
 	case "normal", "":
-		return h.sendSimpleChanges(userChannels, options)
+		err, forceClose = h.sendSimpleChanges(userChannels, options)
 	case "longpoll":
 		options.Wait = true
-		return h.sendSimpleChanges(userChannels, options)
+		err, forceClose = h.sendSimpleChanges(userChannels, options)
 	case "continuous":
-		return h.sendContinuousChangesByHTTP(userChannels, options)
+		err, forceClose = h.sendContinuousChangesByHTTP(userChannels, options)
 	case "websocket":
-		return h.sendContinuousChangesByWebSocket(userChannels, options)
+		err, forceClose = h.sendContinuousChangesByWebSocket(userChannels, options)
 	default:
-		return base.HTTPErrorf(http.StatusBadRequest, "Unknown feed type")
+		err = base.HTTPErrorf(http.StatusBadRequest, "Unknown feed type")
+		forceClose = false
 	}
+
+	close(options.Terminator)
+
+	if forceClose && h.user != nil {
+		h.db.DatabaseContext.NotifyUser(h.user.Name())
+	}
+
+	return err
 }
 
-func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) error {
+func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) (error, bool) {
 	lastSeq := options.Since
 	var first bool = true
 	feed, err := h.db.MultiChangesFeed(channels, options)
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	h.setHeader("Content-Type", "application/json")
@@ -164,6 +175,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		h.flush()
 	}
 	message := "OK"
+	forceClose := false
 	if feed != nil {
 		var heartbeat, timeout <-chan time.Time
 		if options.Wait {
@@ -184,12 +196,12 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes","simple changes cannot get Close Notifier from ResponseWriter")
+			base.LogTo("Changes", "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := json.NewEncoder(h.response)
-		var forceClose bool = false
-	loop:
+		forceClose := false
+		loop:
 		for {
 			select {
 			case entry, ok := <-feed:
@@ -218,17 +230,16 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
 				message = "OK DB has gone offline"
 				forceClose = true
-				break loop
 			}
 			if err != nil {
 				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
-				return nil // error is probably because the client closed the connection
+				return nil, forceClose // error is probably because the client closed the connection
 			}
 		}
 		if forceClose {
@@ -238,14 +249,14 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	h.response.Write([]byte(s))
 	h.logStatus(http.StatusOK, message)
-	return nil
+	return nil, forceClose
 }
 
 // This is the core functionality of both the HTTP and WebSocket-based continuous change feed.
 // It defers to a callback function 'send()' to actually send the changes to the client.
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
 // a periodic heartbeat while waiting.
-func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) error {
+func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -275,11 +286,12 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	if ok {
 		closeNotify = cn.CloseNotify()
 	} else {
-		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
+		base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
 	}
 
-	var forceClose bool = false
-loop:
+	forceClose := false
+
+	loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
@@ -287,11 +299,12 @@ loop:
 				options.Since = lastSeq
 			}
 			if h.db.IsClosed() {
+				forceClose = true
 				break loop
 			}
 			feed, err = h.db.MultiChangesFeed(inChannels, options)
 			if err != nil || feed == nil {
-				return err
+				return err, forceClose
 			}
 		}
 
@@ -314,7 +327,7 @@ loop:
 				entries := []*db.ChangeEntry{entry}
 				waiting := false
 				// Batch up as many entries as we can without waiting:
-			collect:
+				collect:
 				for len(entries) < 20 {
 					select {
 					case entry, ok = <-feed:
@@ -339,15 +352,16 @@ loop:
 					err = send(nil)
 				}
 
-				lastSeq = entries[len(entries)-1].Seq
+				lastSeq = entries[len(entries) - 1].Seq
 				if options.Limit > 0 {
 					if len(entries) >= options.Limit {
+						forceClose = true
 						break loop
 					}
 					options.Limit -= len(entries)
 				}
 			}
-			// Reset the timeout after sending an entry:
+		// Reset the timeout after sending an entry:
 			if timer != nil {
 				timer.Stop()
 				timer = nil
@@ -359,17 +373,16 @@ loop:
 			forceClose = true
 			break loop
 		case <-closeNotify:
-			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 			forceClose = true
 			break loop
 		case <-h.db.ExitChanges:
 			forceClose = true
-			break loop
 		}
 
 		if err != nil {
 			h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
-			return nil // error is probably because the client closed the connection
+			return nil, forceClose // error is probably because the client closed the connection
 		}
 	}
 	if forceClose {
@@ -377,10 +390,10 @@ loop:
 	}
 
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
-	return nil
+	return nil, forceClose
 }
 
-func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.ChangesOptions) error {
+func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.ChangesOptions) (error, bool) {
 	// Setting a non-default content type will keep the client HTTP framework from trying to sniff
 	// a real content-type from the response text, which can delay or prevent the client app from
 	// receiving the response.
@@ -407,7 +420,9 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 	})
 }
 
-func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options db.ChangesOptions) error {
+func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options db.ChangesOptions) (error, bool) {
+
+	forceClose := false
 	handler := func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
@@ -439,7 +454,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		}
 
 		caughtUp := false
-		h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
+		_, forceClose = h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 			var data []byte
 			if changes != nil {
 				data, _ = json.Marshal(changes)
@@ -472,7 +487,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		Handler:   handler,
 	}
 	server.ServeHTTP(h.response, h.rq)
-	return nil
+	return nil, forceClose
 }
 
 func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, compress bool, err error) {
@@ -506,7 +521,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		input.HeartbeatMs,
 		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
-		h.server.config.MaxHeartbeat*1000,
+		h.server.config.MaxHeartbeat * 1000,
 		true,
 	)
 
