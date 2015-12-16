@@ -141,6 +141,10 @@ func (context *DatabaseContext) RestartListener() error {
 	return nil
 }
 
+func (context *DatabaseContext) NotifyUser(username string) {
+	context.tapListener.Notify(base.SetOf(auth.UserKeyPrefix + username))
+}
+
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	return auth.NewAuthenticator(context.Bucket, context)
