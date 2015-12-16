@@ -10,12 +10,13 @@
 package base
 
 import (
-	"strconv"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -160,10 +161,25 @@ func (v *IntMax) SetIfMax(value int64) {
 //
 //This function takes a ttl as a Duration and returns an int
 //formatted as required by CBS expiry processing
-func DurationToCbsExpiry (ttl time.Duration) int {
-	if (ttl <= kMaxDeltaTtl) {
+func DurationToCbsExpiry(ttl time.Duration) int {
+	if ttl <= kMaxDeltaTtl {
 		return int(ttl.Seconds())
 	} else {
 		return int(time.Now().Add(ttl).Unix())
 	}
+}
+
+// Needed due to https://github.com/couchbase/sync_gateway/issues/1345
+func AddDbPathToCookie(rq *http.Request, cookie *http.Cookie) {
+
+	// "/db/foo" -> "db/foo"
+	urlPathWithoutLeadingSlash := strings.TrimPrefix(rq.URL.Path, "/")
+
+	dbPath := "/"
+	pathComponents := strings.Split(urlPathWithoutLeadingSlash, "/")
+	if len(pathComponents) > 0 && pathComponents[0] != "" {
+		dbPath = fmt.Sprintf("/%v", pathComponents[0])
+	}
+	cookie.Path = dbPath
+
 }
