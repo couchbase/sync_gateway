@@ -168,7 +168,8 @@ func (context *DatabaseContext) CreateCBGTIndex() error {
 			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
 		}
 		if !alreadyExists {
-			if err := createCBGTIndex(context.Bucket, context.BucketSpec); err != nil {
+			numShards := context.Options.IndexOptions.NumShards
+			if err := createCBGTIndex(numShards, context.Bucket, context.BucketSpec); err != nil {
 				return fmt.Errorf("Unable to initialize CBGT index: %v", err)
 			}
 		}
@@ -205,14 +206,14 @@ func checkCBGTIndexExists(cbgtContext base.CbgtContext, indexName string) (bool,
 
 // Create an "index" in CBGT which will cause it to start streaming
 // DCP events to us for our shard of the full DCP stream.
-func createCBGTIndex(baseBucket base.Bucket, spec base.BucketSpec) error {
+func createCBGTIndex(numShards uint16, baseBucket base.Bucket, spec base.BucketSpec) error {
 
 	bucket, ok := baseBucket.(base.CouchbaseBucket)
 	if !ok {
 		return fmt.Errorf("Type assertion failure from base.Bucket -> CouchbaseBucket")
 	}
 
-	return bucket.CreateCBGTIndex(spec)
+	return bucket.CreateCBGTIndex(numShards, spec)
 
 }
 

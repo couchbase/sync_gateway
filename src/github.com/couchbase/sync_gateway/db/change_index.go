@@ -69,11 +69,12 @@ const (
 )
 
 type ChangeIndexOptions struct {
-	Type    IndexType    // Index type
-	Spec    base.BucketSpec // Indexing bucket spec
-	Bucket  base.Bucket  // Indexing bucket
-	Writer  bool         // Cache Writer
-	Options CacheOptions // Caching options
+	Type      IndexType       // Index type
+	Spec      base.BucketSpec // Indexing bucket spec
+	Bucket    base.Bucket     // Indexing bucket
+	Writer    bool            // Cache Writer
+	Options   CacheOptions    // Caching options
+	NumShards uint16          // The number of CBGT shards to use
 }
 
 type SequenceHashOptions struct {
@@ -98,4 +99,18 @@ func (entry *LogEntry) isRemoved() bool {
 
 func (entry *LogEntry) setRemoved() {
 	entry.Flags |= channels.Removed
+}
+
+func (c ChangeIndexOptions) ValidateOrPanic() {
+	if c.NumShards == 0 {
+		base.LogPanic("The number of shards must be greater than 0")
+	}
+
+	// make sure num_shards is a power of two, or panic
+	isPowerOfTwo := base.IsPowerOfTwo(c.NumShards)
+	if !isPowerOfTwo {
+		errMsg := "Invalid value for num_shards in feed_params: %v Must be a power of 2 so that all shards have the same number of vbuckets"
+		base.LogPanic(errMsg, c.NumShards)
+	}
+
 }

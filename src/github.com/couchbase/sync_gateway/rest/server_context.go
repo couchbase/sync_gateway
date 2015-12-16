@@ -573,12 +573,6 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		spec.Auth = config
 	}
 
-	if config.FeedParams != nil {
-		config.FeedParams.SetDefaultValues()
-		spec.FeedParams = *config.FeedParams
-		spec.FeedParams.ValidateOrPanic()
-	}
-
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
 	if config.CacheConfig != nil {
@@ -603,7 +597,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	}
 
 	// Channel index definition, if present
-	channelIndexOptions := &db.ChangeIndexOptions{}
+	channelIndexOptions := &db.ChangeIndexOptions{} // TODO: this is confusing!  why is it called both a "change index" and a "channel index"?
 	sequenceHashOptions := &db.SequenceHashOptions{}
 	if config.ChannelIndex != nil {
 		indexServer := "http://localhost:8091"
@@ -628,6 +622,14 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if config.ChannelIndex.Username != "" {
 			indexSpec.Auth = config.ChannelIndex
 		}
+
+		if config.ChannelIndex.NumShards != 0 {
+			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
+		} else {
+			channelIndexOptions.NumShards = 64
+		}
+
+		channelIndexOptions.ValidateOrPanic()
 
 		channelIndexOptions.Spec = indexSpec
 		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
