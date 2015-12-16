@@ -188,6 +188,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 
 		encoder := json.NewEncoder(h.response)
+		var forceClose bool = false
 	loop:
 		for {
 			select {
@@ -214,18 +215,24 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 			case <-timeout:
 				message = "OK (timeout)"
+				forceClose = true
 				break loop
 			case <-closeNotify:
 				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
 				message = "OK DB has gone offline"
+				forceClose = true
 				break loop
 			}
 			if err != nil {
 				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
 				return nil // error is probably because the client closed the connection
 			}
+		}
+		if forceClose {
+			h.db.DatabaseContext.NotifyUser(h.currentEffectiveUserName())
 		}
 	}
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
@@ -271,6 +278,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
 	}
 
+	var forceClose bool = false
 loop:
 	for {
 		if feed == nil {
@@ -348,11 +356,14 @@ loop:
 			err = send(nil)
 			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
 		case <-timeout:
+			forceClose = true
 			break loop
 		case <-closeNotify:
 			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			forceClose = true
 			break loop
 		case <-h.db.ExitChanges:
+			forceClose = true
 			break loop
 		}
 
@@ -361,6 +372,10 @@ loop:
 			return nil // error is probably because the client closed the connection
 		}
 	}
+	if forceClose {
+		h.db.DatabaseContext.NotifyUser(h.currentEffectiveUserName())
+	}
+
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return nil
 }
@@ -414,9 +429,6 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
 			}
 		}
-
-		options.Terminator = make(chan bool)
-		defer close(options.Terminator)
 
 		// Set up GZip compression
 		var writer *bytes.Buffer
