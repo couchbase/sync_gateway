@@ -326,7 +326,7 @@ func (s *SyncGatewayPIndex) Rollback(partition string, rollbackSeq uint64) error
 	// As of the time of this writing, I believe this is also broken in the master branch
 	// of Sync Gateway.
 
-	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
+	Warn("DCP Rollback request SyncGatewayPIndex - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
 
 	s.rollbackSeq(partition, rollbackSeq)
 
@@ -362,8 +362,11 @@ type HeartbeatStoppedHandler struct {
 
 func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
 
+	LogTo("DIndex+", "StaleHeartBeatDetected for node: %v", nodeUuid)
+
 	kinds := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
 	for _, kind := range kinds {
+		LogTo("DIndex+", "Telling CBGT to remove node: %v (kind: %v, cbgt version: %v)", nodeUuid, kind, h.CbgtVersion)
 		if err := cbgt.CfgRemoveNodeDef(
 			h.Cfg,
 			kind,

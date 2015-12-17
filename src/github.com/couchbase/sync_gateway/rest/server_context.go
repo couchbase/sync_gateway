@@ -375,6 +375,8 @@ func (sc *ServerContext) validateCBGTPartitionMap() error {
 
 func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 
+	base.LogTo("DIndex+", "Initializing CBGT")
+
 	couchbaseUrl, err := base.CouchbaseUrlWithAuth(
 		*sc.config.ClusterConfig.Server,
 		sc.config.ClusterConfig.Username,
@@ -467,6 +469,7 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 
 func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manager, cfg cbgt.Cfg, uuid, couchbaseUrl, keyPrefix string) error {
 
+	base.LogTo("DIndex+", "Enabling CBGT auto-failover")
 	cbHeartbeater, err := cbheartbeat.NewCouchbaseHeartbeater(
 		couchbaseUrl,
 		*sc.config.ClusterConfig.Bucket,
@@ -483,6 +486,7 @@ func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manage
 		intervalMs = int(*sc.config.ClusterConfig.HeartbeatIntervalSeconds) * 1000
 	}
 
+	base.LogTo("DIndex+", "Sending CBGT node heartbeats at interval: %v ms", intervalMs)
 	cbHeartbeater.StartSendingHeartbeats(intervalMs)
 
 	deadNodeHandler := base.HeartbeatStoppedHandler{
@@ -495,6 +499,7 @@ func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manage
 	if err := cbHeartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
 		return err
 	}
+	base.LogTo("DIndex+", "Checking CBGT node heartbeats with stale threshold: %v ms", staleThresholdMs)
 
 	return nil
 
