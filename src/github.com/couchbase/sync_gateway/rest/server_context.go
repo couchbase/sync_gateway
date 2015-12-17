@@ -92,6 +92,9 @@ func (sc *ServerContext) Close() {
 	sc.stopStatsReporter()
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
+		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
+		}
 	}
 	sc.databases_ = nil
 }
@@ -310,21 +313,25 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	dbcontext.ExitChanges = make(chan struct{})
 
-	if (config.StartOffline) {
-		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
-	} else {
-		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
-	}
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
-
+	
 	// Save the config
 	sc.config.Databases[config.Name] = config
 
+	if (config.StartOffline) {
+		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	} else {
+		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	}
 
-	//if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-	//	dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB started from config", *sc.config.AdminInterface)
-	//}
+
 
 	return dbcontext, nil
 }
@@ -349,7 +356,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		// validate event-related keys
 		for k, _ := range eventHandlersMap {
-			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" {
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed"{
 				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
 			}
 		}
@@ -364,6 +371,11 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		// Process document commit event handlers
 		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+			return err
+		}
+
+		// Process db state change event handlers
+		if err = sc.processEventHandlersForEvent(eventHandlers.DBStateChanged, db.DBStateChange, dbcontext); err != nil {
 			return err
 		}
 		// WaitForProcess uses string, to support both omitempty and zero values

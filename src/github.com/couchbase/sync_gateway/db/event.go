@@ -15,6 +15,7 @@ type EventType uint8
 
 const (
 	DocumentChange EventType = iota
+	DBStateChange
 	UserAdd
 )
 
@@ -25,18 +26,10 @@ type Event interface {
 	String() string
 }
 
-type EventImpl struct {
-	eventType EventType
-}
-
-func (e *EventImpl) EventType() EventType {
-	return e.eventType
-}
-
 // Currently the AsyncEvent type only manages the Synchronous() check.  Future enhancements
 // around async processing would leverage this type.
 type AsyncEvent struct {
-	EventImpl
+	//EventImpl
 }
 
 func (ae AsyncEvent) Synchronous() bool {
@@ -53,6 +46,26 @@ type DocumentChangeEvent struct {
 
 func (dce *DocumentChangeEvent) String() string {
 	return fmt.Sprintf("Document change event for doc id: %s", dce.Doc["_id"])
+}
+
+func (dce *DocumentChangeEvent) EventType() EventType {
+	return DocumentChange
+}
+
+// DBStateChangeEvent is raised when a DB goes online or offline.
+// Event has name of DB that is firing event, the admin interface address for interacting with the db.
+// The new state, the reason for the state change, the local system time of the change
+type DBStateChangeEvent struct {
+	AsyncEvent
+	Doc	Body
+}
+
+func (dsce *DBStateChangeEvent) String() string {
+	return fmt.Sprintf("DB state change event for db name: %s", dsce.Doc["dbname"])
+}
+
+func (dsce *DBStateChangeEvent) EventType() EventType {
+	return DBStateChange
 }
 
 // Javascript function handling for events
@@ -130,6 +143,8 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	switch event := event.(type) {
 
 	case *DocumentChangeEvent:
+		result, err = ef.Call(event.Doc)
+	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	}
 
