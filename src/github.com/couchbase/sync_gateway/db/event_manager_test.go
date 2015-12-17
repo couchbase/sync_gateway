@@ -11,20 +11,24 @@ import (
 	"strconv"
 	"testing"
 	"time"
+	"net"
 )
 
 // Webhook tests use an HTTP listener.  Use of this listener is disabled by default, to avoid
 // port conflicts/permission issues when running tests on a non-dev machine.
 const testLiveHTTP = false
 
-// Testing handler tracks recieved events in ResultChannel
+// Testing handler tracks received events in ResultChannel
 type TestingHandler struct {
 	receivedType  EventType
 	payload       Body
 	ResultChannel chan Body // channel for tracking async results
 	HandledEvent  EventType
 	handleDelay   int // long running handler execution
+	t *testing.T  //enclosing test instance
 }
+
+
 
 func (th *TestingHandler) HandleEvent(event Event) {
 
@@ -36,6 +40,30 @@ func (th *TestingHandler) HandleEvent(event Event) {
 	}
 
 	if dsceEvent, ok := event.(*DBStateChangeEvent); ok {
+
+		doc := dsceEvent.Doc
+
+		assert.True(th.t, len(doc) == 5)
+
+		state := doc["state"]
+
+		//state must be online or offline
+		assert.True(th.t, state != nil && (state == "online" || state == "offline"))
+
+		//admin interface must resolve to a a valis tcp address
+		adminInterface := (doc["admininterface"]).(string)
+
+		_, err := net.ResolveTCPAddr("tcp", adminInterface)
+
+		assert.True(th.t, err == nil)
+
+		//localtime must parse from an ISO8601 Format string
+		localtime := (doc["localtime"]).(string)
+
+		_, err = time.Parse(base.ISO8601Format, localtime)
+
+		assert.True(th.t, err == nil)
+
 		th.ResultChannel <- dsceEvent.Doc
 	}
 	return
@@ -100,19 +128,25 @@ func TestDBStateChangeEvent(t *testing.T) {
 		ids[i] = fmt.Sprintf("db%d", i)
 	}
 
-	resultChannel := make(chan Body, 10)
+	resultChannel := make(chan Body, 20)
 	//Setup test handler
-	testHandler := &TestingHandler{HandledEvent: DBStateChange}
+	testHandler := &TestingHandler{HandledEvent: DBStateChange, t: t}
 	testHandler.SetChannel(resultChannel)
 	em.RegisterEventHandler(testHandler, DBStateChange)
-	//Raise events
+	//Raise online events
 	for i := 0; i < 10; i++ {
 		em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", "0.0.0.0:0000")
+	}
+	//Raise offline events
+	for i := 10; i < 20; i++ {
+		em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000")
 	}
 	// wait for Event Manager queue worker to process
 	time.Sleep(10 * time.Millisecond)
 
-	assert.True(t, len(resultChannel) == 10)
+	fmt.Println("resultChannel:", len(resultChannel))
+
+	assert.True(t, len(resultChannel) == 20)
 
 }
 
