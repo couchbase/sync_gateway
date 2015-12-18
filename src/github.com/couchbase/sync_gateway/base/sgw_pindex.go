@@ -7,11 +7,14 @@ import (
 	"log"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/sg-bucket"
 )
+
+var numCallsOpaqueSet int32
 
 // The two "handles" we have for CBGT are the manager and Cfg objects.
 // This struct makes it easy to pass them around together as a unit.
@@ -236,6 +239,9 @@ func (s *SyncGatewayPIndex) OpaqueSet(partition string, value []byte) error {
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	curVal := atomic.AddInt32(&numCallsOpaqueSet, 1)
+	LogTo("DIndex+", "OpaqueSet called %v times", curVal)
 
 	vbucketNumber := partitionToVbucketId(partition)
 
