@@ -161,7 +161,7 @@ type CacheConfig struct {
 type ChannelIndexConfig struct {
 	BucketConfig
 	IndexWriter bool   `json:"writer,omitempty"` // TODO: Partition information
-	NumShards   uint16 `json:"num_shards"`
+	NumShards   uint16 `json:"num_shards,omitempty"`
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
