@@ -343,7 +343,7 @@ func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]
 			//   vb_nn:abs_high_seqno
 			//   vb_nn:purge_seqno
 			uuidKey := fmt.Sprintf("vb_%d:uuid", i)
-			highSeqnoKey := fmt.Sprintf("vb_%d:high_seqno", i)
+			highSeqnoKey := fmt.Sprintf("vb_%d:abs_high_seqno", i)
 
 			highSeqno, err := strconv.ParseUint(serverMap[highSeqnoKey], 10, 64)
 			if err == nil && highSeqno > 0 {
