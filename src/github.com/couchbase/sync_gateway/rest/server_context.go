@@ -139,6 +139,11 @@ func (sc *ServerContext) NewSyncGatewayPIndexFactory(indexType, indexParams, pat
 		return nil, nil, err
 	}
 
+	if pindexImpl == nil {
+		base.Warn("PIndex for dest %v is nil", dest)
+		return nil, nil, fmt.Errorf("PIndex for dest %v is nil.  This could be due to the pindex stored on disk not corresponding to any configured databases.", dest)
+	}
+
 	return pindexImpl, dest, nil
 
 }
@@ -166,6 +171,11 @@ func (sc *ServerContext) OpenSyncGatewayPIndexFactory(indexType, path string, re
 		return nil, nil, err
 	}
 
+	if pindexImpl == nil {
+		base.Warn("PIndex for dest %v is nil", dest)
+		return nil, nil, fmt.Errorf("PIndex for dest %v is nil.  This could be due to the pindex stored on disk not corresponding to any configured databases.", dest)
+	}
+
 	return pindexImpl, dest, nil
 
 }
@@ -177,9 +187,8 @@ func (sc *ServerContext) SyncGatewayPIndexFactoryCommon(indexParams base.SyncGat
 	// lookup the database context based on the indexParams
 	dbName := sc.findDbByBucketName(bucketName)
 	if dbName == "" {
-		err := fmt.Errorf("Could not find database for bucket name: %v", bucketName)
-		log.Fatalf("%v", err)
-		return nil, nil, err
+		base.Warn("Could not find database for bucket name: %v.  Unable to instantiate this pindex from disk.", bucketName)
+		return nil, nil, nil
 	}
 
 	dbContext, ok := sc.databases_[dbName]
@@ -361,12 +370,8 @@ func (sc *ServerContext) validateCBGTPartitionMap() error {
 	for cbgtIndexName, _ := range planPIndexesByName {
 		_, ok := validCBGTIndexNames[cbgtIndexName]
 		if !ok {
-			return fmt.Errorf(
-				"CBGT contains an invalid index name: %v.  Aborting. "+
-					"Valid index names: %v",
-				cbgtIndexName,
-				validCBGTIndexNames,
-			)
+			base.Warn("Deleting CBGT index %v since it is invalid for the current Sync Gateway configuration.  Valid index names: %v", cbgtIndexName, validCBGTIndexNames)
+			sc.CbgtContext.Manager.DeleteIndex(cbgtIndexName)
 		}
 	}
 
