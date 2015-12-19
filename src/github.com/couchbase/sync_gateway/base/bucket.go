@@ -279,7 +279,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
 	// DCP stream from that position.  Also being used as a check on whether the server supports
 	// DCP.
-	statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
+	statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno)
 	if err != nil {
 		return nil, errors.New("Error retrieving stats-vbseqno - DCP not supported")
 	}
@@ -323,7 +323,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	return &dcpFeed, nil
 }
 
-func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	stats := bucket.Bucket.GetStats("vbucket-seqno")
 	if len(stats) == 0 {
@@ -343,14 +343,7 @@ func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bo
 			//   vb_nn:abs_high_seqno
 			//   vb_nn:purge_seqno
 			uuidKey := fmt.Sprintf("vb_%d:uuid", i)
-
-			// workaround for https://github.com/couchbase/sync_gateway/issues/1371
-			highSeqnoKey := ""
-			if useAbsHighSeqNo {
-				highSeqnoKey = fmt.Sprintf("vb_%d:abs_high_seqno", i)
-			} else {
-				highSeqnoKey = fmt.Sprintf("vb_%d:high_seqno", i)
-			}
+			highSeqnoKey := fmt.Sprintf("vb_%d:high_seqno", i)
 
 			highSeqno, err := strconv.ParseUint(serverMap[highSeqnoKey], 10, 64)
 			if err == nil && highSeqno > 0 {

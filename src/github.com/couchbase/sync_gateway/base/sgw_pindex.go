@@ -92,7 +92,7 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
 	// DCP stream from that position.  Also being used as a check on whether the server supports
 	// DCP.
-	statsUuids, highSeqnosFromBucket, err := s.bucket.GetStatsVbSeqno(maxVbno, true)
+	statsUuids, _, err := s.bucket.GetStatsVbSeqno(maxVbno)
 	if err != nil {
 		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 	}
@@ -113,18 +113,9 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 	// The implementation has been reviewed with the cbdatasource owners and they agree this is a
 	// reasonable approach, as the structure of VBucketMetaData is expected to rarely change.
 	for vbucketId, vbuuid := range vbuuids {
-
 		failOver := make([][]uint64, 1)
 		failOverEntry := []uint64{vbuuid, 0}
 		failOver[0] = failOverEntry
-
-		highSeqnoFromStableClock := s.seqs[vbucketId]
-		highSeqnoFromBucket := highSeqnosFromBucket[vbucketId]
-
-		if highSeqnoFromStableClock > highSeqnoFromBucket {
-			Warn("issue_1259 highSeqnoFromStableClock (%d) > highSeqnoFromBucket (%d) for vb %d", highSeqnoFromStableClock, highSeqnoFromBucket, vbucketId)
-		}
-
 		metadata := &cbdatasource.VBucketMetaData{
 			SeqStart:    s.seqs[vbucketId],
 			SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
@@ -283,7 +274,7 @@ func (s *SyncGatewayPIndex) updateMeta(partition string, seq uint64) error {
 
 	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
 	// DCP stream from that position.
-	vbuuids, _, err := s.bucket.GetStatsVbSeqno(maxVbno, true)
+	vbuuids, _, err := s.bucket.GetStatsVbSeqno(maxVbno)
 	if err != nil {
 		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 	}
