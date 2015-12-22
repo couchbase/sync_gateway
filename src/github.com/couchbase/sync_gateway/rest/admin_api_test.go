@@ -751,22 +751,20 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	wg.Add(2)
 
 	var goroutineresponse1 *testResponse
-	go func() {
+	go func(rt restTester) {
 		defer wg.Done()
 		goroutineresponse1 = rt.sendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse1, 200)
-	}()
+	}(rt)
 
 	var goroutineresponse2 *testResponse
-	go func() {
+	go func(rt restTester) {
 		defer wg.Done()
 		goroutineresponse2 = rt.sendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse2, 200)
-	}()
+	}(rt)
 
 	wg.Wait()
-
-	time.Sleep(500 * time.Millisecond)
 
 	response = rt.sendAdminRequest("GET", "/db/", "")
 	body = nil
