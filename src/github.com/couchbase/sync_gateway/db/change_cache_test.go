@@ -466,9 +466,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	db.changeCache.waitForSequence(9)
 	appendFromFeed(&changes, feed, 5)
-	//assert.True(t, err == nil)
-	//assert.Equals(t, len(changes), 9)
-	log.Printf("Changes:%v", changes)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
