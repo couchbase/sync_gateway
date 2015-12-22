@@ -383,7 +383,11 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 
 	c.context.BucketLock.RLock()
 	defer c.context.BucketLock.RUnlock()
-	return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	if c.context.Bucket != nil {
+		return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	} else {
+		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
+	}
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
