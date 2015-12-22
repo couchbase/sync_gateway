@@ -101,7 +101,7 @@ func TestUserAPI(t *testing.T) {
 }
 
 // Test user access grant while that user has an active changes feed.  (see issue #880)
-func TestUserAccessRace(t *testing.T) {
+func DisabledTestUserAccessRace(t *testing.T) {
 
 	syncFunction := `
 function(doc, oldDoc) {
