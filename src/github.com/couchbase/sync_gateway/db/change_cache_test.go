@@ -835,7 +835,7 @@ func shortWaitCache() CacheOptions {
 	return CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CachePendingSeqMaxNum:  50,
-		CacheSkippedSeqMaxWait: 60 * time.Minute}
+		CacheSkippedSeqMaxWait: 10 * time.Second}
 }
 
 func verifySkippedSequences(queue SkippedSequenceQueue, sequences []uint64) bool {
