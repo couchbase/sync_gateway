@@ -379,12 +379,22 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 		}
 	}()
 }
+func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
+
+	c.context.BucketLock.RLock()
+	defer c.context.BucketLock.RUnlock()
+	if c.context.Bucket != nil {
+		return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	} else {
+		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
+	}
+}
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
-	princ, err := c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	princ, err := c.unmarshalPrincipal(docJSON, isUser)
 	if princ == nil {
 		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 		return
