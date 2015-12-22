@@ -45,6 +45,12 @@ type ChangeEntry struct {
 	branched bool
 }
 
+const (
+	WaiterCountUnchanged uint32 = iota
+	WaiterCountChanged
+	WaiterCheckTerminated
+)
+
 type ChangeRev map[string]string // Key is always "rev", value is rev ID
 
 type ViewDoc struct {
@@ -421,16 +427,22 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// First notify the reader that we're waiting by sending a nil.
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
-			if !changeWaiter.Wait() {
-				break
+			for {
+				waitResponse := changeWaiter.Wait()
+				if waitResponse == WaiterCountUnchanged {
+					break outer
+				} else if waitResponse == WaiterCountChanged {
+					break
+				} else if waitResponse == WaiterCheckTerminated {
+					// Check whether I was terminated while waiting for a change:
+					select {
+					case <-options.Terminator:
+						return
+					default:
+					}
+				}
 			}
 
-			// Check whether I was terminated while waiting for a change:
-			select {
-			case <-options.Terminator:
-				return
-			default:
-			}
 
 			// Reset added channels
 			addedChannels = nil

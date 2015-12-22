@@ -9,18 +9,20 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"math"
 )
 
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	bucket       base.Bucket
-	tapFeed      base.TapFeed         // Observes changes to bucket
-	tapNotifier  *sync.Cond           // Posts notifications when documents are updated
-	counter      uint64               // Event counter; increments on every doc update
-	keyCounts    map[string]uint64    // Latest count at which each doc key was updated
-	DocChannel   chan walrus.TapEvent // Passthru channel for doc mutations
-	OnDocChanged func(docID string, jsonData []byte)
+	bucket                base.Bucket
+	tapFeed               base.TapFeed         // Observes changes to bucket
+	tapNotifier           *sync.Cond           // Posts notifications when documents are updated
+	counter               uint64               // Event counter; increments on every doc update
+	terminateCheckCounter uint64               // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts             map[string]uint64    // Latest count at which each doc key was updated
+	DocChannel            chan walrus.TapEvent // Passthru channel for doc mutations
+	OnDocChanged          func(docID string, jsonData []byte)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -33,6 +35,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 
 	listener.tapFeed = tapFeed
 	listener.counter = 1
+	listener.terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	if trackDocs {
@@ -51,7 +54,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error 
 			if event.Opcode == walrus.TapMutation || event.Opcode == walrus.TapDeletion {
 				key := string(event.Key)
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
-					strings.HasPrefix(key, auth.RoleKeyPrefix) {
+				strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					if listener.OnDocChanged != nil {
 						listener.OnDocChanged(key, event.Value)
 					}
@@ -94,6 +97,26 @@ func (listener *changeListener) Notify(keys base.Set) {
 	listener.tapNotifier.L.Unlock()
 }
 
+// Changes the counter, notifying waiting clients.
+func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
+	if len(keys) == 0 {
+		return
+	}
+	listener.tapNotifier.L.Lock()
+
+	//Increment terminateCheckCounter, but loop back to zero
+	//if we have reached maximum value for uint64 type
+	if listener.terminateCheckCounter < math.MaxUint64 {
+		listener.terminateCheckCounter++
+	} else {
+		listener.terminateCheckCounter = 0
+	}
+
+	base.LogTo("Changes+", "Notifying to check for _changes feed termination")
+	listener.tapNotifier.Broadcast()
+	listener.tapNotifier.L.Unlock()
+}
+
 func (listener *changeListener) notifyStopping() {
 	listener.tapNotifier.L.Lock()
 	listener.counter = 0
@@ -103,16 +126,17 @@ func (listener *changeListener) notifyStopping() {
 	listener.tapNotifier.L.Unlock()
 }
 
-// Waits until the counter exceeds the given value. Returns the new counter.
-func (listener *changeListener) Wait(keys []string, counter uint64) uint64 {
+// Waits until either the counter, or terminateCheckCounter exceeds the given value. Returns the new counters.
+func (listener *changeListener) Wait(keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
 		listener.bucket.GetName(), counter)
 	for {
 		curCounter := listener._currentCount(keys)
-		if curCounter != counter {
-			return curCounter
+
+		if curCounter != counter || listener.terminateCheckCounter != terminateCheckCounter {
+			return curCounter, listener.terminateCheckCounter
 		}
 		listener.tapNotifier.Wait()
 	}
@@ -140,10 +164,11 @@ func (listener *changeListener) _currentCount(keys []string) uint64 {
 // Helper for waiting on a changeListener. Every call to wait() will wait for the
 // listener's counter to increment from the value at the last call.
 type changeWaiter struct {
-	listener    *changeListener
-	keys        []string
-	userKeys    []string
-	lastCounter uint64
+	listener                  *changeListener
+	keys                      []string
+	userKeys                  []string
+	lastCounter               uint64
+	lastTerminateCheckCounter uint64
 }
 
 // Creates a new changeWaiter that will wait for changes for the given document keys.
@@ -152,6 +177,7 @@ func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
 		listener:    listener,
 		keys:        keys,
 		lastCounter: listener.CurrentCount(keys),
+		lastTerminateCheckCounter: listener.terminateCheckCounter,
 	}
 }
 
@@ -164,7 +190,7 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 	if user != nil {
 		userKeys = []string{auth.UserKeyPrefix + user.Name()}
 		for role, _ := range user.RoleNames() {
-			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
+			userKeys = append(userKeys, auth.RoleKeyPrefix + role)
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
@@ -174,9 +200,23 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
-func (waiter *changeWaiter) Wait() bool {
-	waiter.lastCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter)
-	return waiter.lastCounter > 0
+func (waiter *changeWaiter) Wait() uint32 {
+
+	lastTerminateCheckCounter := waiter.lastTerminateCheckCounter
+	lastCounter := waiter.lastCounter
+	waiter.lastCounter, waiter.lastTerminateCheckCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter, waiter.lastTerminateCheckCounter)
+	countChanged := waiter.lastCounter > lastCounter
+
+	//Uses != to compare as value can cycle back through 0
+	terminateCheckCountChanged := waiter.lastTerminateCheckCounter != lastTerminateCheckCounter
+
+	if countChanged {
+		return WaiterCountChanged
+	} else if terminateCheckCountChanged {
+		return WaiterCheckTerminated
+	} else {
+		return WaiterCountUnchanged
+	}
 }
 
 // Returns the current counter value for the waiter's user (and roles).
