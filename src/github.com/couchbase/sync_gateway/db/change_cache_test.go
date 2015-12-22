@@ -247,9 +247,9 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Cache": true,
-		"Changes": true,
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
 		"Changes+": true,
 	}
 
@@ -314,10 +314,10 @@ func TestChannelCacheBackfill(t *testing.T) {
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Sequences": true,
-		"Cache": true,
-		"Changes+": true,
+		"Cache":     true,
+		"Changes+":  true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
@@ -398,9 +398,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Cache": true,
-		"Changes": true,
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
 		"Changes+": true,
 	}
 
@@ -477,13 +477,13 @@ func TestLowSequenceHandling(t *testing.T) {
 func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	/*
-	var logKeys = map[string]bool {
-		"Cache": true,
-		"Changes": true,
-		"Changes+": true,
-	}
+		var logKeys = map[string]bool {
+			"Cache": true,
+			"Changes": true,
+			"Changes+": true,
+		}
 
-	base.UpdateLogKeys(logKeys, true)
+		base.UpdateLogKeys(logKeys, true)
 	*/
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -543,12 +543,11 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Sequence": true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
-
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -634,7 +633,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 // Test current fails intermittently on concurrent access to var changes.  Disabling for now - should be refactored.
 func FailingTestChannelRace(t *testing.T) {
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Sequences": true,
 	}
 
@@ -726,8 +725,8 @@ func FailingTestChannelRace(t *testing.T) {
 // been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
 func TestSkippedViewRetrieval(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Cache": true,
+	var logKeys = map[string]bool{
+		"Cache":  true,
 		"Cache+": true,
 	}
 
@@ -781,7 +780,9 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	db.changeCache.skippedSeqLock.Lock()
 	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.skippedSeqLock.Unlock()
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	tearDownTestDB(t, db)
@@ -793,7 +794,7 @@ func TestStopChangeCache(t *testing.T) {
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
+	base.EnableLogKey("Cache")
 	channelOptions := ChannelCacheOptions{
 		ChannelCacheMinLength: 600,
 		ChannelCacheMaxLength: 600,
