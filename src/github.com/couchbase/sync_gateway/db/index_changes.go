@@ -77,7 +77,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
 			for name, vbSeqAddedAt := range channelsSince {
-
 				seqAddedAt := vbSeqAddedAt.Sequence
 				// If there's no vbNo on the channelsSince, it indicates a user doc channel grant - use the userVbNo.
 				var vbAddedAt uint16
@@ -101,7 +100,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				//   Case 1. No backfill in progress, no backfill required - use the incoming since to get changes
 				//   Case 2. No backfill in progress, backfill required for this channel.  Get changes since zero, backfilling to the incoming since
 				//   Case 3. Backfill in progress.  Get changes since zero, backfilling to incoming triggered by, filtered to later than incoming since.
-
 				backfillInProgress := false
 				if options.Since.TriggeredByClock != nil {
 					// There's a backfill in progress for SOME channel - check if it's this one
@@ -137,7 +135,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				} else {
 					// Case 1.  Leave chanOpts.Since set to options.Since.
 				}
-
 				feed, err := db.vectorChangesFeed(name, chanOpts)
 				if err != nil {
 					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
@@ -152,7 +149,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
-
 			// This loop reads the available entries from all the feeds in parallel, merges them,
 			// and writes them to the output channel:
 			var sentSomething bool
@@ -222,8 +218,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
 						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
 						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
-						base.LogTo("Changes+", "calculated hash...%v", clockHash)
-						base.LogTo("Changes+", "for triggered by clock...%v", base.PrintClock(cumulativeClock))
 						if err != nil {
 							base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
 						} else {
@@ -231,7 +225,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						}
 					}
 				}
-
 				// Send the entry, and repeat the loop:
 				select {
 				case <-options.Terminator:
@@ -248,7 +241,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						break outer
 					}
 				}
-
 				// Update options.Since for use in the next outer loop iteration.
 				options.Since.Clock = cumulativeClock
 			}
@@ -314,7 +306,6 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 		if options.Since.TriggeredByClock != nil {
 			for i := 0; i < len(log); i++ {
 				logEntry := log[i]
-
 				// If sequence is less than the backfillTo clock sequence for its vbucket, send as backfill (i.e. with triggered by)
 				isBackfill := logEntry.Sequence <= options.Since.TriggeredByClock.GetSequence(logEntry.VbNo)
 
@@ -370,7 +361,6 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions, userVbNo uint16) ([]<-chan *ChangeEntry, []string) {
 
 	if db.user.Sequence() > 0 {
-
 		userSeq := SequenceID{
 			SeqType: ClockSequenceType,
 			Seq:     db.user.Sequence(),

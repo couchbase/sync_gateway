@@ -405,8 +405,8 @@ func (c *SyncSequenceClock) UpdateWithClock(updateClock SequenceClock) {
 }
 
 func (c *SyncSequenceClock) Copy() SequenceClock {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 
 	result := NewSyncSequenceClock()
 	for key, value := range c.Clock.value {

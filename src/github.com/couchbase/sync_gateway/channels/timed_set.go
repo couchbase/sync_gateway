@@ -176,9 +176,10 @@ func (set TimedSet) UpdateIfPresent(other TimedSet) {
 	}
 }
 
-// TimedSet can unmarshal either from the regular format {"channel":vbSequence, ...},
-// from the sequence-only format {"channel":uint64, ...},
-// or from an array of channel names.
+// TimedSet can unmarshal from either:
+//   1. The regular format {"channel":vbSequence, ...}
+//   2. The sequence-only format {"channel":uint64, ...} or
+//   3. An array of channel names.
 // In the last two cases, all vbNos will be 0.
 // In the latter case all the sequences will be 0.
 func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
@@ -197,7 +198,6 @@ func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 			}
 			return err
 		}
-
 		*setPtr = TimedSetFromSequenceOnlySet(sequenceOnlyForm)
 		return nil
 	}
@@ -215,7 +215,6 @@ func (set TimedSet) MarshalJSON() ([]byte, error) {
 			break
 		}
 	}
-
 	if hasVbucket {
 		// Normal form - unmarshal as map[string]VbSequence.  Need to convert back to simple map[string]VbSequence to avoid
 		// having json.Marshal just call back into this function.
@@ -232,14 +231,12 @@ func (set TimedSet) MarshalJSON() ([]byte, error) {
 
 func (set TimedSet) SequenceOnlySet() map[string]uint64 {
 	var sequenceOnlySet map[string]uint64
-
 	if set != nil {
 		sequenceOnlySet = make(map[string]uint64)
 		for ch, vbSeq := range set {
 			sequenceOnlySet[ch] = vbSeq.Sequence
 		}
 	}
-
 	return sequenceOnlySet
 }
 
@@ -272,7 +269,6 @@ func (set TimedSet) String() string {
 				items = append(items, fmt.Sprintf("%s:%d.%d", channel, *vbSeq.VbNo, vbSeq.Sequence))
 			} else {
 				items = append(items, fmt.Sprintf("%s:%d", channel, vbSeq.Sequence))
-
 			}
 		}
 	}
@@ -292,15 +288,12 @@ func TimedSetFromString(encoded string) TimedSet {
 				return nil
 			}
 			channel := components[0]
-
 			if _, found := set[channel]; found {
 				return nil // duplicate channel
 			}
-
 			if !IsValidChannel(channel) {
 				return nil
 			}
-
 			// VB sequence handling
 			if strings.Contains(components[1], ".") {
 				seqComponents := strings.Split(components[1], ".")
@@ -321,7 +314,6 @@ func TimedSetFromString(encoded string) TimedSet {
 				}
 				set[channel] = NewVbSimpleSequence(seqNo)
 			}
-
 		}
 	}
 	return set

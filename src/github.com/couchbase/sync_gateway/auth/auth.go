@@ -236,7 +236,7 @@ func (auth *Authenticator) Save(p Principal) error {
 func (auth *Authenticator) InvalidateChannels(p Principal) error {
 	if p != nil && p.Channels() != nil {
 		base.LogTo("Access", "Invalidate access of %q", p.Name())
-		if !auth.channelComputer.UseGlobalSequence() {
+		if auth.channelComputer != nil && !auth.channelComputer.UseGlobalSequence() {
 			p.SetPreviousChannels(p.Channels())
 		}
 		p.setChannels(nil)
@@ -294,30 +294,6 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 	return user, err
 }
-
-/*
-// Updates any entries in the admin (explicit) channel set that have
-// their sequence set to zero, to the provided sequence, and invalidates the user channels.
-// Used during distributed index processing, where the sequence value is the vb sequence, and
-// isn't known at initial write time.
-func (auth *Authenticator) UpdateChannelSequences(p Principal, sequence uint64) error {
-	if p != nil && p.ExplicitChannels() != nil {
-		for channel, seq := range p.ExplicitChannels() {
-			if seq == 0 {
-				role.ExplicitChannels_[channel] = sequence
-			}
-		}
-		// Invalidate calculated channels, to trigger recalculation based on the new sequence information
-		// TODO: should we just update the information in channels as well?
-		p.setChannels(nil)
-
-		if err := auth.Save(p); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-*/
 
 func (auth *Authenticator) UpdateRoleVbucketSequences(docID string, sequence uint64) error {
 	return auth.updateVbucketSequences(docID, func() Principal { return &roleImpl{} }, sequence)

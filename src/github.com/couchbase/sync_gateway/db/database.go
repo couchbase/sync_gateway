@@ -153,6 +153,10 @@ func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err 
 }
 
 func (context *DatabaseContext) writeSequences() bool {
+	return context.UseGlobalSequence()
+}
+
+func (context *DatabaseContext) UseGlobalSequence() bool {
 	return context.SequenceType != ClockSequenceType
 }
 
@@ -401,8 +405,8 @@ func installViews(bucket base.Bucket) error {
 		                    var access = sync.access;
 		                    if (access) {
 		                        for (var name in access) {
-				                    // Build a timed set based on vb and vbseq of this revision
-				                    var value = {};
+		                        	// Build a timed set based on vb and vbseq of this revision
+		                        	var value = {};
 		                        	for (var channel in access[name]) {
 		                        		var timedSetWithVbucket = {};
 				                        timedSetWithVbucket["vb"] = parseInt(meta.vb, 10);

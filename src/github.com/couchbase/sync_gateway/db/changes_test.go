@@ -52,8 +52,6 @@ func getZeroSequence(db *Database) ChangesOptions {
 func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	base.LogKeys["IndexChanges"] = true
 	base.LogKeys["Hash+"] = true
-	base.LogKeys["Changes+"] = true
-	base.LogKeys["Backfill"] = true
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -86,34 +84,29 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
 	assert.Equals(t, len(changes), 3)
-	/*
-		assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from ABC
-			Seq:     SequenceID{Seq: 1},
-			ID:      "doc1",
-			Changes: []ChangeRev{{"rev": revid}}})
-		assert.DeepEquals(t, changes[1], &ChangeEntry{ // Seq 1, from PBS backfill
-			Seq:     SequenceID{Seq: 1, TriggeredBy: 2},
-			ID:      "doc1",
-			Changes: []ChangeRev{{"rev": revid}}})
-		assert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
-			Seq:     SequenceID{Seq: 2},
-			ID:      "_user/naomi",
-			Changes: []ChangeRev{}})
-	*/
+	assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from ABC
+		Seq:     SequenceID{Seq: 1},
+		ID:      "doc1",
+		Changes: []ChangeRev{{"rev": revid}}})
+	assert.DeepEquals(t, changes[1], &ChangeEntry{ // Seq 1, from PBS backfill
+		Seq:     SequenceID{Seq: 1, TriggeredBy: 2},
+		ID:      "doc1",
+		Changes: []ChangeRev{{"rev": revid}}})
+	assert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
+		Seq:     SequenceID{Seq: 2},
+		ID:      "_user/naomi",
+		Changes: []ChangeRev{}})
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
 	revid, _ = db.Put("doc2", Body{"channels": []string{"PBS"}})
 
-	time.Sleep(100 * time.Millisecond)
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
 	db.changeCache.waitForSequence(3)
-	// changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: db.ParseSequenceID(lastSeq)})
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
-	printChanges(changes)
 	assertNoError(t, err, "Couldn't GetChanges (2nd)")
 
 	assert.Equals(t, len(changes), 1)
@@ -123,8 +116,6 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 		Changes: []ChangeRev{{"rev": revid}}})
 
 	// validate from zero
-	log.Println("From zero:")
-	//changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 1, TriggeredBy: 2}})
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)

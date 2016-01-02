@@ -38,13 +38,11 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 
 	var vbEnabledBucket base.Bucket
 	if kTestURL == "walrus:" {
-		log.Println("LEAKY BUCKET")
 		leakyBucketConfig := base.LeakyBucketConfig{
 			TapFeedVbuckets: true,
 		}
 		vbEnabledBucket = testLeakyBucket(leakyBucketConfig)
 	} else {
-		log.Println("TEST BUCKET")
 		vbEnabledBucket = testBucket()
 	}
 
@@ -553,7 +551,6 @@ func TestChangeIndexAddSet(t *testing.T) {
 
 // Index partitionsfor testing
 func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
-	log.Printf("Seeding partition map for %d partitions", numPartitions)
 	maxVbNo := uint16(1024)
 	//maxVbNo := uint16(64)
 	partitionDefs := make([]base.PartitionStorage, numPartitions)
@@ -575,7 +572,6 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Seeding partition map:%s", value)
 	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
 	return nil
 }

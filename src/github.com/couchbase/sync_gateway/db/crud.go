@@ -842,7 +842,7 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 
-	if context.writeSequences() {
+	if context.UseGlobalSequence() {
 		return context.ComputeSequenceChannelsForPrincipal(princ)
 	} else {
 		return context.ComputeVbSequenceChannelsForPrincipal(princ)
@@ -878,7 +878,6 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
-
 	if _, ok := princ.(auth.User); !ok {
 		key = "role:" + key // Roles are identified in access view by a "role:" prefix
 	}
@@ -924,10 +923,6 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.Ti
 		}
 	}
 	return result, nil
-}
-
-func (context *DatabaseContext) UseGlobalSequence() bool {
-	return context.SequenceType != ClockSequenceType
 }
 
 //////// REVS_DIFF:

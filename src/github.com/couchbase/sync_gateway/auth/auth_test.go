@@ -158,13 +158,9 @@ func TestSerializeRole(t *testing.T) {
 	encoded, _ := json.Marshal(role)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled Role as: %s", encoded)
-
 	elor := &roleImpl{}
-
-	log.Printf("unmarshalling elor")
 	err := json.Unmarshal(encoded, elor)
 
-	log.Printf("unmarshalled elor: %+v", elor)
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, elor.Name(), role.Name())
 	assert.DeepEquals(t, elor.ExplicitChannels(), role.ExplicitChannels())
