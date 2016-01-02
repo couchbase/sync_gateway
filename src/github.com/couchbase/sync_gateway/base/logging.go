@@ -36,13 +36,10 @@ var logFile *os.File
 
 var logStar bool // enabling log key "*" enables all key-based logging
 
-var timestampPattern string
-
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", 0)
 	LogKeys = make(map[string]bool)
-	timestampPattern = "2006-01-02T15:04:05.000Z07:00" //ISO 8601
 	logNoTime = false
 }
 
@@ -130,7 +127,12 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 			logStar = v
 		}
 	}
+}
 
+func EnableLogKey(key string) {
+	logLock.Lock()
+	defer logLock.Unlock()
+	LogKeys[key] = true
 }
 
 // Returns a string identifying a function on the call stack.
@@ -264,7 +266,7 @@ func printf(format string, args ...interface{}) {
 
 	if ok {
 		if !logNoTime {
-			timestampedFormat := strings.Join([]string{time.Now().Format(timestampPattern), format}, " ")
+			timestampedFormat := strings.Join([]string{time.Now().Format(ISO8601Format), format}, " ")
 			logger.Printf(timestampedFormat, args...)
 		} else {
 			logger.Printf(format, args...)

@@ -10,18 +10,20 @@
 package base
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+const kMaxDeltaTtl = 60 * 60 * 24 * 30 * time.Second
 
 func GenerateRandomSecret() string {
 	randomBytes := make([]byte, 20)
@@ -244,6 +246,40 @@ func (v *IntMax) SetIfMax(value int64) {
 	}
 }
 
+// This is how Couchbase Server handles document expiration times
+//
+//The actual value sent may either be
+//Unix time (number of seconds since January 1, 1970, as a 32-bit
+//value), or a number of seconds starting from current time. In the
+//latter case, this number of seconds may not exceed 60*60*24*30 (number
+//of seconds in 30 days); if the number sent by a client is larger than
+//that, the server will consider it to be real Unix time value rather
+//than an offset from current time.
+//
+//This function takes a ttl as a Duration and returns an int
+//formatted as required by CBS expiry processing
+func DurationToCbsExpiry(ttl time.Duration) int {
+	if ttl <= kMaxDeltaTtl {
+		return int(ttl.Seconds())
+	} else {
+		return int(time.Now().Add(ttl).Unix())
+	}
+}
+
+// Needed due to https://github.com/couchbase/sync_gateway/issues/1345
+func AddDbPathToCookie(rq *http.Request, cookie *http.Cookie) {
+
+	// "/db/foo" -> "db/foo"
+	urlPathWithoutLeadingSlash := strings.TrimPrefix(rq.URL.Path, "/")
+
+	dbPath := "/"
+	pathComponents := strings.Split(urlPathWithoutLeadingSlash, "/")
+	if len(pathComponents) > 0 && pathComponents[0] != "" {
+		dbPath = fmt.Sprintf("/%v", pathComponents[0])
+	}
+	cookie.Path = dbPath
+
+}
 // A retry sleeper is called back by the retry loop and passed
 // the current retryCount, and should return the amount of milliseconds
 // that the retry should sleep.

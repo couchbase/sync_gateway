@@ -18,6 +18,9 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+// Number of recently-accessed doc revisions to cache in RAM
+const RevisionCacheCapacity = 5000
+
 func unjson(j string) Body {
 	var body Body
 	err := json.Unmarshal([]byte(j), &body)
@@ -33,7 +36,7 @@ func tojson(obj interface{}) string {
 }
 
 func TestAttachments(t *testing.T) {
-	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{}, RevisionCacheCapacity)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)

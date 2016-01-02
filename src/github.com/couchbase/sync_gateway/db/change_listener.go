@@ -24,9 +24,11 @@ type changeListener struct {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
-	listener.TapArgs = sgbucket.TapArguments{Backfill: sgbucket.TapNoBackfill}
+	listener.TapArgs = sgbucket.TapArguments{
+		Backfill: sgbucket.TapNoBackfill,
+		Notify: notify,}
 	tapFeed, err := bucket.StartTapFeed(listener.TapArgs)
 	if err != nil {
 		return err

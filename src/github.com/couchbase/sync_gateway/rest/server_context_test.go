@@ -51,6 +51,58 @@ func TestConfigServer(t *testing.T) {
 	rt.bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 }
 
+// Tests the ConfigServer feature.
+func TestConfigServerWithSyncFunction(t *testing.T) {
+	fakeConfigURL := "http://example.com/config"
+	fakeConfig := `{
+			"bucket": "fivez",
+			"server": "walrus:/fake",
+			"users": {
+				"GUEST": {"disabled": false, "admin_channels": ["*"] }
+			},
+			"sync":%s%s%s
+		}`
+
+	fakeSyncFunction := `
+      function(doc, oldDoc) {
+        if (doc.type == "reject_me") {
+	      throw({forbidden : "Rejected document"})
+        } else if (doc.type == "bar") {
+	  // add "bar" docs to the "important" channel
+            channel("important");
+	} else if (doc.type == "secret") {
+          if (!doc.owner) {
+            throw({forbidden : "Secret documents must have an owner field"})
+          }
+	} else {
+	    // all other documents just go into all channels listed in the doc["channels"] field
+	    channel(doc.channels)
+	}
+      }
+    `
+	//Create config with embedded sync function in back quotes
+	responseBody := fmt.Sprintf(fakeConfig,"`",fakeSyncFunction,"`")
+
+	mockClient := NewMockClient()
+	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
+
+	var rt restTester
+	sc := rt.ServerContext()
+	sc.HTTPClient = mockClient.Client
+	sc.config.ConfigServer = &fakeConfigURL
+
+	dbc, err := sc.GetDatabase("db")
+	assert.Equals(t, err, nil)
+	assert.Equals(t, dbc.Name, "db")
+
+	dbc, err = sc.GetDatabase("db2")
+	assert.Equals(t, err, nil)
+	assert.Equals(t, dbc.Name, "db2")
+	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
+
+	rt.bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
+}
+
 //////// MOCK HTTP CLIENT: (TODO: Move this into a separate package)
 
 // Creates a filled-in http.Response from minimal details

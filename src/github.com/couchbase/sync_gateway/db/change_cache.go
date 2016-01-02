@@ -66,6 +66,7 @@ type SkippedSequence struct {
 }
 
 type CacheOptions struct {
+	ChannelCacheOptions
 	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  int           // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
@@ -105,20 +106,23 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 		}
 	}
 
+	c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
 
 	heap.Init(&c.pendingLogs)
 
 	// Start a background task for periodic housekeeping:
 	go func() {
-		for c.CleanUp() {
+		time.Sleep(c.options.CachePendingSeqMaxWait / 2)
+		for !c.IsStopped() && c.CleanUp() {
 			time.Sleep(c.options.CachePendingSeqMaxWait / 2)
 		}
 	}()
 
 	// Start a background task for SkippedSequenceQueue housekeeping:
 	go func() {
-		for c.CleanSkippedSequenceQueue() {
+		time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
+		for !c.IsStopped() && c.CleanSkippedSequenceQueue() {
 			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
 		}
 	}()
@@ -132,6 +136,12 @@ func (c *changeCache) Stop() {
 	c.stopped = true
 	c.logsDisabled = true
 	c.lock.Unlock()
+}
+
+func (c *changeCache) IsStopped() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.stopped
 }
 
 // Forgets all cached changes for all channels.
@@ -189,16 +199,28 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		var deletes []uint64
 		for _, skippedSeq := range c.skippedSeqs {
 			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-				// Attempt to retrieve the sequence from the view before we remove
-				options := ChangesOptions{Since: SequenceID{Seq: skippedSeq.seq}}
-				entries, err := c.context.getChangesInChannelFromView("*", skippedSeq.seq, options)
-				if err != nil && len(entries) > 0 {
+				// Attempt to retrieve the sequence from the view before we remove.  View call
+				// expects 'since' value, and returns results greater than the since value, so
+				// set 'since' to our target sequence - 1
+				sinceSequence := skippedSeq.seq - 1
+				endSequence := skippedSeq.seq
+				options := ChangesOptions{Since: SequenceID{Seq: sinceSequence}}
+				// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
+				//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
+				//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
+				//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
+				entries, err := c.context.getChangesInChannelFromView("*", endSequence, options)
+				if err == nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					found = append(found, entries[0])
 				} else {
-					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view - will be abandoned.", skippedSeq.seq)
-					deletes = append(deletes, skippedSeq.seq)
+					if err != nil {
+						base.Warn("Error retrieving changes from view during skipped sequence check:", err)
+					}
+					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq.seq)
 				}
+				// Remove from skipped queue
+				deletes = append(deletes, skippedSeq.seq)
 			} else {
 				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
 				// still inside the time window
@@ -210,6 +232,15 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Add found entries
 	for _, entry := range foundEntries {
+		entry.Skipped = true
+		// Need to populate the actual channels for this entry - the entry returned from the * channel
+		// view will only have the * channel
+		doc, err := c.context.GetDoc(entry.DocID)
+		if err != nil {
+			base.Warn("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", entry.DocID, entry.Sequence)
+			continue
+		}
+		entry.Channels = doc.Channels
 		c.processEntry(entry)
 	}
 
@@ -234,9 +265,9 @@ func (c *changeCache) waitForSequenceID(sequence SequenceID) {
 func (c *changeCache) waitForSequence(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		c.lock.RLock()
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
 			base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 			return
@@ -250,17 +281,19 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		c.lock.RLock()
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
 			foundInMissing := false
+			c.skippedSeqLock.RLock()
 			for _, skippedSeq := range c.skippedSeqs {
 				if skippedSeq.seq == sequence {
 					foundInMissing = true
 					break
 				}
 			}
+			c.skippedSeqLock.RUnlock()
 			if !foundInMissing {
 				base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 				return
@@ -354,18 +387,31 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		}
 	}()
 }
+func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
+
+	c.context.BucketLock.RLock()
+	defer c.context.BucketLock.RUnlock()
+	if c.context.Bucket != nil {
+		return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	} else {
+		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
+	}
+}
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
-	princ, err := c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	princ, err := c.unmarshalPrincipal(docJSON, isUser)
 	if princ == nil {
 		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 		return
 	}
 	sequence := princ.Sequence()
-	if sequence <= c.initialSequence {
+	c.lock.RLock()
+	initialSequence := c.initialSequence
+	c.lock.RUnlock()
+	if sequence <= initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -389,7 +435,6 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	if c.logsDisabled {
 		return nil
 	}
@@ -500,6 +545,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 // Returns the channels that changed.
 func (c *changeCache) _addPendingLogs() base.Set {
 	var changedChannels base.Set
+
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
@@ -543,7 +589,7 @@ func (c *changeCache) GetStableClock() (clock base.SequenceClock, err error) {
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
-		cache = newChannelCache(c.context, channelName, c.initialSequence+1)
+		cache = newChannelCacheWithOptions(c.context, channelName, c.initialSequence+1, c.options)
 		c.channelCaches[channelName] = cache
 	}
 	return cache

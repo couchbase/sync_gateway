@@ -413,7 +413,7 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
 	if err != nil {
 		return
@@ -428,13 +428,21 @@ func GetCouchbaseBucket(spec BucketSpec) (bucket Bucket, err error) {
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
 	if err == nil {
+		// Start bucket updater - see SG issue 1011
+		cbbucket.RunBucketUpdater(func(bucket string, err error) {
+			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+
+			if(callback != nil) {
+				callback(bucket, err)
+			}
+		})
 		bucket = CouchbaseBucket{cbbucket, spec}
 	}
 
 	return
 }
 
-func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		sgbucket.SetLogging(LogEnabled("Walrus"))
@@ -455,7 +463,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.CouchbaseDriver == GoCB {
 			bucket, err = GetCouchbaseBucketGoCB(spec)
 		} else {
-			bucket, err = GetCouchbaseBucket(spec)
+			bucket, err = GetCouchbaseBucket(spec, callback)
 		}
 
 	}

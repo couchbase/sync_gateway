@@ -112,6 +112,8 @@ type DbConfig struct {
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitEmpty"`        // Channel index settings
+	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
+	StartOffline	   bool							  `json:"offline,omitempty"`		      // start the DB in the offline state, defaults to false
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -142,6 +144,7 @@ type EventHandlerConfig struct {
 	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
 	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
 	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
+	DBStateChanged []*EventConfig  `json:"db_state_changed,omitempty"` // DB state change
 }
 
 type EventConfig struct {
@@ -156,6 +159,9 @@ type CacheConfig struct {
 	CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
 	EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
+	ChannelCacheMaxLength  *int    `json:"channel_cache_max_length"`   // Maximum number of entries maintained in cache per channel
+	ChannelCacheMinLength  *int    `json:"channel_cache_min_length"`   // Minimum number of entries maintained in cache per channel
+	ChannelCacheAge        *int    `json:"channel_cache_expiry"`       // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
 type ChannelIndexConfig struct {

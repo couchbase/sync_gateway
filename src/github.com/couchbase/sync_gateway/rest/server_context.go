@@ -32,12 +32,16 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"sync/atomic"
+	"io/ioutil"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
+// Number of recently-accessed doc revisions to cache in RAM
+const kDefaultRevisionCacheCapacity = 5000
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -244,6 +248,9 @@ func (sc *ServerContext) Close() {
 	sc.stopStatsReporter()
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
+		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
+		}
 	}
 	sc.databases_ = nil
 }
@@ -599,9 +606,27 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		if config.CacheConfig.EnableStarChannel != nil {
 			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
 		}
+
+		if config.CacheConfig.ChannelCacheMaxLength != nil && *config.CacheConfig.ChannelCacheMaxLength > 0 {
+			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheMaxLength
+		}
+		if config.CacheConfig.ChannelCacheMinLength != nil && *config.CacheConfig.ChannelCacheMinLength > 0 {
+			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheMinLength
+		}
+		if config.CacheConfig.ChannelCacheAge != nil && *config.CacheConfig.ChannelCacheAge > 0 {
+			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
+		}
+
 	}
 
-	bucket, err := db.ConnectToBucket(spec)
+	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
+		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
+
+		if dc := sc.databases_[dbName]; dc != nil {
+			dc.TakeDbOffline()
+		}
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +688,14 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		SequenceHashOptions: sequenceHashOptions,
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
+	var revCacheSize uint32
+	if config.RevCacheSize != nil && *config.RevCacheSize > 0 {
+		revCacheSize = *config.RevCacheSize
+	} else {
+		revCacheSize = kDefaultRevisionCacheCapacity
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions, revCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -716,11 +748,28 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
+	dbcontext.ExitChanges = make(chan struct{})
+
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
-
+	
 	// Save the config
 	sc.config.Databases[config.Name] = config
+
+	if (config.StartOffline) {
+		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	} else {
+		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	}
+
+
+
 	return dbcontext, nil
 }
 
@@ -744,7 +793,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		// validate event-related keys
 		for k, _ := range eventHandlersMap {
-			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" {
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed"{
 				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
 			}
 		}
@@ -759,6 +808,11 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		// Process document commit event handlers
 		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
+			return err
+		}
+
+		// Process db state change event handlers
+		if err = sc.processEventHandlersForEvent(eventHandlers.DBStateChanged, db.DBStateChange, dbcontext); err != nil {
 			return err
 		}
 		// WaitForProcess uses string, to support both omitempty and zero values
@@ -835,7 +889,8 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		spec.Auth = shadow
 	}
 
-	bucket, err := base.GetBucket(spec)
+	bucket, err := base.GetBucket(spec, nil)
+
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
 			"Unable to connect to shadow bucket: %s", err)
@@ -914,7 +969,14 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	}
 
 	var config DbConfig
-	j := json.NewDecoder(res.Body)
+
+	var bodyBytes []byte
+	defer res.Body.Close()
+	if bodyBytes, err = ioutil.ReadAll(res.Body); err != nil {
+		return nil, err
+	}
+
+	j := json.NewDecoder(bytes.NewReader(base.ConvertBackQuotedStrings(bodyBytes)))
 	if err = j.Decode(&config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)

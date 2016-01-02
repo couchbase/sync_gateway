@@ -200,7 +200,6 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 // simulating out-of-order arrivals on the tap feed using walrus.
 
 func WriteDirect(db *Database, channelArray []string, sequence uint64) {
-
 	docId := fmt.Sprintf("doc-%v", sequence)
 	WriteDirectWithKey(db, docId, channelArray, sequence)
 }
@@ -208,6 +207,11 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
 
 	rev := "1-a"
+	WriteDirectForDoc(db, channelArray, docId, rev, sequence)
+}
+
+func WriteDirectForDoc(db *Database, channelArray []string, docID string, revID string, sequence uint64) {
+
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
 	for _, channel := range channelArray {
@@ -215,7 +219,7 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 	}
 
 	syncData := &syncData{
-		CurrentRev: rev,
+		CurrentRev: revID,
 		Sequence:   sequence,
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
@@ -313,10 +317,14 @@ func TestChannelCacheBackfill(t *testing.T) {
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
 
-	base.LogKeys["Sequences"] = true
-	base.LogKeys["Cache"] = true
-	//base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+	var logKeys = map[string]bool{
+		"Sequences": true,
+		"Cache":     true,
+		"Changes+":  true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -378,17 +386,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	err = appendFromFeed(&changes, feed, 4)
-	assert.Equals(t, len(changes), 10)
 	// We can't guarantee how compound sequences will be generated in a multi-core test - will
 	// depend on timing of arrival in late sequence logs.  e.g. could come through as any one of
 	// the following (where all are valid), depending on timing:
 	//  ..."4","7","8","8::13"
 	//  ..."4", "6::7", "6::8", "6::13"
 	//  ..."3::4", "3::7", "3::8", "3::13"
-	// For this reason, we're just verifying that the expected sequences come through (ignoring
-	// prefix)
-	assert.True(t, verifyChangesSequences(changes, []uint64{
-		1, 2, 5, 6, 3, 12, 4, 7, 8, 13}))
+	// For this reason, we're just verifying the number of sequences is correct
+	assert.Equals(t, len(changes), 10)
 
 	close(options.Terminator)
 }
@@ -396,9 +401,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
-	//base.LogKeys["Cache"] = true
-	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -422,6 +432,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
 	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -451,27 +462,31 @@ func TestLowSequenceHandling(t *testing.T) {
 	err = appendFromFeed(&changes, feed, 2)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
-	assert.True(t, verifyChangesSequences(changes, []uint64{1, 2, 5, 6, 3, 4}))
+	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
 
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 9})
-	err = appendFromFeed(&changes, feed, 3)
-	assert.True(t, err == nil)
-	assert.Equals(t, len(changes), 9)
-	assert.True(t, verifyChangesSequences(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+	db.changeCache.waitForSequence(9)
+	appendFromFeed(&changes, feed, 5)
+	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
-	close(options.Terminator)
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user doesn't have visibility to some of the late arriving sequences
 func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
-	//base.LogKeys["Cache"] = true
-	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	/*
+		var logKeys = map[string]bool {
+			"Cache": true,
+			"Changes": true,
+			"Changes+": true,
+		}
+
+		base.UpdateLogKeys(logKeys, true)
+	*/
+
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -529,9 +544,12 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	base.LogKeys["Sequence"] = true
-	//base.LogKeys["Changes"] = true
-	//base.LogKeys["Changes+"] = true
+	var logKeys = map[string]bool{
+		"Sequence": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -616,7 +634,12 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 // Test current fails intermittently on concurrent access to var changes.  Disabling for now - should be refactored.
 func FailingTestChannelRace(t *testing.T) {
 
-	base.LogKeys["Sequences"] = true
+	var logKeys = map[string]bool{
+		"Sequences": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -697,12 +720,123 @@ func FailingTestChannelRace(t *testing.T) {
 	close(options.Terminator)
 }
 
+// Test retrieval of skipped sequence using view.  Unit test catches panic, but we don't currently have a way
+// to simulate an entry that makes it to the bucket (and so is accessible to the view), but doesn't show up on the TAP feed.
+// Cache logging in this test validates that view retrieval is working because of TAP latency (item is in the bucket, but hasn't
+// been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
+func TestSkippedViewRetrieval(t *testing.T) {
+
+	var logKeys = map[string]bool{
+		"Cache":  true,
+		"Cache+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	// Use leaky bucket to have the tap feed 'lose' document 3
+	leakyConfig := base.LeakyBucketConfig{
+		TapFeedMissingDocs: []string{"doc-3"},
+	}
+	db := setupTestLeakyDBWithCacheOptions(t, shortWaitCache(), leakyConfig)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Allow db to initialize and run initial CleanSkippedSequenceQueue
+	time.Sleep(10 * time.Millisecond)
+
+	// Write sequences direct
+	WriteDirect(db, []string{"ABC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC"}, 3)
+
+	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.CleanSkippedSequenceQueue()
+
+	// Validate that 3 is in the channel cache, 5 isn't
+	entries, err := db.changeCache.GetChangesInChannel("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	assertNoError(t, err, "Get Changes returned error")
+	assertTrue(t, len(entries) == 1, "Incorrect number of entries returned")
+	assert.Equals(t, entries[0].DocID, "doc-3")
+
+}
+
+// Test that housekeeping goroutines get terminated when change cache is stopped
+func TestStopChangeCache(t *testing.T) {
+	// Setup short-wait cache to ensure cleanup goroutines fire often
+	cacheOptions := CacheOptions{
+		CachePendingSeqMaxWait: 10 * time.Millisecond,
+		CachePendingSeqMaxNum:  50,
+		CacheSkippedSeqMaxWait: 1 * time.Second}
+	// Use leaky bucket to have the tap feed 'lose' document 3
+	leakyConfig := base.LeakyBucketConfig{
+		TapFeedMissingDocs: []string{"doc-3"},
+	}
+	db := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
+
+	// Write sequences direct
+	WriteDirect(db, []string{"ABC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC"}, 3)
+
+	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	db.changeCache.skippedSeqLock.Lock()
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.skippedSeqLock.Unlock()
+
+	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
+	tearDownTestDB(t, db)
+
+	// Hang around a while to see if the housekeeping tasks fire and panic
+	time.Sleep(2 * time.Second)
+}
+
+// Test size config
+func TestChannelCacheSize(t *testing.T) {
+
+	base.EnableLogKey("Cache")
+	channelOptions := ChannelCacheOptions{
+		ChannelCacheMinLength: 600,
+		ChannelCacheMaxLength: 600,
+	}
+	options := CacheOptions{
+		ChannelCacheOptions: channelOptions,
+	}
+
+	log.Printf("Options in test:%+v", options)
+	db := setupTestDBWithCacheOptions(t, options)
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	authenticator.Save(user)
+
+	// Write 750 docs to channel ABC
+	for i := 1; i <= 750; i++ {
+		WriteDirect(db, []string{"ABC"}, uint64(i))
+	}
+
+	// Validate that retrieval returns expected sequences
+	db.changeCache.waitForSequence(750)
+	db.user, _ = authenticator.GetUser("naomi")
+	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	assertNoError(t, err, "Couldn't GetChanges")
+	assert.Equals(t, len(changes), 750)
+
+	// Validate that cache stores the expected number of values
+	abcCache := db.changeCache.channelCaches["ABC"]
+	assert.Equals(t, len(abcCache.logs), 600)
+}
+
 func shortWaitCache() CacheOptions {
 
 	return CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CachePendingSeqMaxNum:  50,
-		CacheSkippedSeqMaxWait: 60 * time.Minute}
+		CacheSkippedSeqMaxWait: 2 * time.Minute}
 }
 
 func verifySkippedSequences(queue SkippedSequenceQueue, sequences []uint64) bool {
@@ -766,6 +900,26 @@ func verifyChangesSequences(changes []*ChangeEntry, sequences []uint64) bool {
 		if changes[index].Seq.Seq != seq {
 			log.Printf("verifyChangesSequences: sequence mismatch at index %v, changes=%d, sequences=%d",
 				index, changes[index].Seq.Seq, seq)
+			return false
+		}
+	}
+	return true
+}
+
+// verifyChangesSequencesIgnoreOrder compares for a match on sequence number only and ignores sequenceID order
+func verifyChangesSequencesIgnoreOrder(changes []*ChangeEntry, sequences []uint64) bool {
+
+	for _, seq := range sequences {
+		matchingSequence := false
+		for _, change := range changes {
+			log.Printf("Change entry sequenceID = %d:%d:%d", change.Seq.LowSeq, change.Seq.TriggeredBy, change.Seq.Seq)
+			if change.Seq.Seq == seq {
+				matchingSequence = true
+				break
+			}
+		}
+		if !matchingSequence {
+			log.Printf("verifyChangesSequencesIgnorerder: sequenceID %d missing in changes", seq)
 			return false
 		}
 	}

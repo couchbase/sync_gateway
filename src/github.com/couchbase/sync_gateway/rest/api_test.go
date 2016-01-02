@@ -304,12 +304,51 @@ func TestDocEtag(t *testing.T) {
 	response = rt.sendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
 	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 
 	//Validate Etag returned from retrieving an attachment
 	assert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
 
+}
+
+// Add and retrieve an attachment, including a subrange
+func TestDocAttachment(t *testing.T) {
+	var rt restTester
+
+	response := rt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid := body["rev"].(string)
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc/attach1", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	assert.Equals(t, response.Header().Get("Content-Length"), "30")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+
+	// retrieve subrange
+	response = rt.sendRequestWithHeaders("GET", "/db/doc/attach1", "", map[string]string{"Range": "bytes=5-6"})
+	assertStatus(t, response, 206)
+	assert.Equals(t, string(response.Body.Bytes()), "is")
+	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	assert.Equals(t, response.Header().Get("Content-Length"), "2")
+	assert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
+	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 }
 
 func TestFunkyDocIDs(t *testing.T) {
@@ -407,6 +446,21 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertStatus(t, response, 401)
+}
+
+// #issue 991
+func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+
+	// Set CORS to nil
+	sc := rt.ServerContext()
+	sc.config.CORS = nil
+
+	response := rt.sendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
+	assertStatus(t, response, 400)
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
@@ -596,21 +650,58 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 
 func TestBulkDocs(t *testing.T) {
 	var rt restTester
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
 	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 2)
+	assert.Equals(t, len(docs), 3)
 	assert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
+	response = rt.sendRequest("GET", "/db/bulk1", "")
+	assert.Equals(t, response.Body.String(), `{"_id":"bulk1","_rev":"1-50133ddd8e49efad34ad9ecae4cb9907","n":1}`)
 	assert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
+	assert.DeepEquals(t, docs[2],
+		map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"})
+	response = rt.sendRequest("GET", "/db/_local/bulk3", "")
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-1","n":3}`)
+	assertStatus(t, response, 200)
+
+	// update all documents
+	input = `{"docs": [{"_id": "bulk1", "_rev" : "1-50133ddd8e49efad34ad9ecae4cb9907", "n": 10}, {"_id": "bulk2", "_rev":"1-035168c88bd4b80fb098a8da72f881ce", "n": 20}, {"_id": "_local/bulk3","_rev":"0-1","n": 30}]}`
+	response = rt.sendRequest("POST", "/db/_bulk_docs", input)
+	json.Unmarshal(response.Body.Bytes(), &docs)
+	assert.Equals(t, len(docs), 3)
+	assert.DeepEquals(t, docs[0],
+		map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"})
+
+	response = rt.sendRequest("GET", "/db/_local/bulk3", "")
+	assert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-2","n":30}`)
+	assertStatus(t, response, 200)
+}
+
+func TestBulkDocsEmptyDocs(t *testing.T) {
+	var rt restTester
+	input := `{}`
+	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 400)
+}
+
+func TestBulkGetEmptyDocs(t *testing.T) {
+	var rt restTester
+	input := `{}`
+	response := rt.sendRequest("POST", "/db/_bulk_get", input)
+	assertStatus(t, response, 400)
 }
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
-	base.LogKeys["Access"] = true
+	var logKeys = map[string]bool {
+		"Access": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -825,7 +916,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
 				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
-	feed, options, filter, channelsArray, err := h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, err := h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
 
@@ -842,27 +933,27 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 
 	// Attempt to set heartbeat, timeout to valid values
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
-	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(30000))
 	assert.Equals(t, options.TimeoutMs, uint64(60000))
 
 	// Attempt to set valid timeout, no heartbeat
 	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
-	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.TimeoutMs, uint64(2000))
 
 	// Disable heartbeat, timeout by explicitly setting to zero
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
-	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(0))
 	assert.Equals(t, options.TimeoutMs, uint64(0))
 
 	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
-	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
 	assert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
@@ -870,7 +961,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
 	h.server.config.MaxHeartbeat = 60
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
-	feed, options, filter, channelsArray, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
@@ -1160,7 +1251,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since),
 		"", "zegpold"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -1239,7 +1330,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since, db.SequenceID{Seq: 50})
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user1"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "", "user1"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
@@ -1276,7 +1367,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since.TriggeredBy, uint64(103))
 
 	//// Get remainder of changes i.e. no limit parameter
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since), "", "user3"))
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since), "", "user3"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
@@ -1308,9 +1399,14 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 }
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
-	base.LogKeys["Access"] = true
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Access": true,
+		"CRUD": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1352,9 +1448,14 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 }
 
 func TestRoleAccessChanges(t *testing.T) {
-	base.LogKeys["Access"] = true
-	base.LogKeys["CRUD"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Access": true,
+		"CRUD": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1436,8 +1537,13 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Cache"] = true
+	var additionalLogKeys = map[string]bool {
+		"Changes": true,
+		"Cache": true,
+	}
+
+	base.UpdateLogKeys(additionalLogKeys, false)
+	
 	response = rt.send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -1445,6 +1551,80 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	base.LogKeys["Cache"] = false
+}
+
+func TestDocDeletionFromChannel(t *testing.T) {
+
+	/*
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+	*/
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+
+	// Create user:
+	alice, _ := a.NewUser("alice", "letmein", channels.SetOf("zero"))
+	a.Save(alice)
+
+	// Create a doc Alice can see:
+	response := rt.send(request("PUT", "/db/alpha", `{"channel":"zero"}`))
+
+	// Check the _changes feed:
+	rt.ServerContext().Database("db").WaitForPendingChanges()
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	since := changes.Results[0].Seq
+	assert.Equals(t, since, db.SequenceID{Seq: 1})
+
+	assert.Equals(t, changes.Results[0].ID, "alpha")
+	rev1 := changes.Results[0].Changes[0]["rev"]
+
+	// Delete the document:
+	assertStatus(t, rt.send(request("DELETE", "/db/alpha?rev="+rev1, "")), 200)
+
+	// Get the updates from the _changes feed:
+	time.Sleep(100 * time.Millisecond)
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
+		"", "alice"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	changes.Results = nil
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+
+	assert.Equals(t, changes.Results[0].ID, "alpha")
+	assert.Equals(t, changes.Results[0].Deleted, true)
+	assert.DeepEquals(t, changes.Results[0].Removed, base.SetOf("zero"))
+	rev2 := changes.Results[0].Changes[0]["rev"]
+
+	// Now get the deleted revision:
+	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev2, "", "alice"))
+	assert.Equals(t, response.Code, 200)
+	log.Printf("Deletion looks like: %s", response.Body.Bytes())
+	var docBody db.Body
+	json.Unmarshal(response.Body.Bytes(), &docBody)
+	assert.DeepEquals(t, docBody, db.Body{"_id": "alpha", "_rev": rev2, "_deleted": true})
+
+	// Access without deletion revID shouldn't be allowed (since doc is not in Alice's channels):
+	response = rt.send(requestByUser("GET", "/db/alpha", "", "alice"))
+	assert.Equals(t, response.Code, 403)
+
+	// A bogus rev ID should return a 404:
+	response = rt.send(requestByUser("GET", "/db/alpha?rev=bogus", "", "alice"))
+	assert.Equals(t, response.Code, 404)
+
+	// Get the old revision, which should still be accessible:
+	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
+	assert.Equals(t, response.Code, 200)
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
@@ -1537,7 +1717,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 //Test for regression of issue #447
 func TestAttachmentsNoCrossTalk(t *testing.T) {
-	base.LogKeys["ANDY"] = true
+
 	var rt restTester
 
 	doc1revId := rt.createDoc(t, "doc1")
@@ -1648,7 +1828,12 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	var rt restTester
 
-	base.LogKeys["Changes+"] = true
+	var logKeys = map[string]bool {
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	var changes struct {
 		Results []db.ChangeEntry
@@ -1997,4 +2182,21 @@ func DisabledTestLongpollWithWildcard(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	response = rt.send(request("PUT", "/db/sherlock", `{"channel":["PBS"]}`))
 	wg.Wait()
+}
+
+var prt restTester
+
+func Benchmark_RestApiGetDocPerformance(b *testing.B) {
+
+	//Create test document
+	prt.sendRequest("PUT", "/db/doc", `{"prop":true}`)
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		//GET the document until test run has completed
+		for pb.Next() {
+			prt.sendRequest("GET", "/db/doc", "")
+		}
+	})
 }

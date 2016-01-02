@@ -37,7 +37,7 @@ func init() {
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"})
+		BucketName: "sync_gateway_tests"},nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -59,7 +59,15 @@ func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
-	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
+	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions, RevisionCacheCapacity)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, options, RevisionCacheCapacity)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -330,9 +338,15 @@ func TestAllDocs(t *testing.T) {
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -366,9 +380,15 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	//base.LogKeys["Cache"] = true
-	// base.LogKeys["CRUD"] = true
-	// base.LogKeys["Changes"] = true
+	/*
+	var logKeys = map[string]bool {
+		"Cache": true,
+		"Changes": true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+	*/
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -530,8 +550,15 @@ func TestAccessFunctionValidation(t *testing.T) {
 }
 
 func TestAccessFunction(t *testing.T) {
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["Access"] = true
+
+	/*
+	var logKeys = map[string]bool {
+		"CRUD": true,
+		"Access": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+	*/
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
@@ -633,6 +660,13 @@ func TestUpdateDesignDoc(t *testing.T) {
 	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
+
+	// Validate retrieval of the design doc by admin
+	var result DesignDoc
+	err = db.GetDesignDoc("official", &result)
+	assertNoError(t, err, "retrieve design doc as admin")
+
+
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", DesignDoc{})
@@ -711,6 +745,20 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 	assert.True(t, rev1id == "")
 	assert.True(t, docid == "")
 	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
+}
+
+// Unit test for issue #976
+func TestWithNullPropertyKey(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Test creating a document with null property key
+	customDocId := "customIdValue"
+	log.Printf("Create document with empty property key")
+	body := Body{"_id": customDocId, "": "value1"}
+	docid, rev1id, _ := db.Post(body)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != "")
 }
 
 // Unit test for issue #507
@@ -821,7 +869,7 @@ func BenchmarkDatabase(b *testing.B) {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
 			BucketName: fmt.Sprintf("b-%d", i)})
-		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{}, RevisionCacheCapacity)
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

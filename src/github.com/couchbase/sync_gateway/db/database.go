@@ -25,7 +25,25 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"sync"
+	"sync/atomic"
 )
+
+const (
+	DBOffline uint32 = iota
+	DBStarting
+	DBOnline
+	DBStopping
+	DBResyncing
+)
+
+var RunStateString = []string{
+	DBOffline:        "Offline",
+	DBStarting:        "Starting",
+	DBOnline:        "Online",
+	DBStopping:        "Stopping",
+	DBResyncing:    "Resyncing",
+}
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
@@ -33,6 +51,7 @@ type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
 	BucketSpec         base.BucketSpec         // The BucketSpec
+	BucketLock         sync.RWMutex			   // Control Access to the underlying bucket object
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
@@ -48,6 +67,10 @@ type DatabaseContext struct {
 	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
 	Options            DatabaseContextOptions
+	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State              uint32                  //The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
+
 }
 
 type DatabaseContextOptions struct {
@@ -57,9 +80,6 @@ type DatabaseContextOptions struct {
 }
 
 const DefaultRevsLimit = 1000
-
-// Number of recently-accessed doc revisions to cache in RAM
-const RevisionCacheCapacity = 5000
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -83,8 +103,8 @@ func ValidateDatabaseName(dbName string) error {
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(spec)
+func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err error)) (bucket base.Bucket, err error) {
+	bucket, err = base.GetBucket(spec, callback)
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
 			"Unable to connect to server: %s", err)
@@ -95,10 +115,11 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions, revCacheSize uint32) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
+
 	context := &DatabaseContext{
 		Name:       dbName,
 		Bucket:     bucket,
@@ -107,7 +128,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		autoImport: autoImport,
 		Options:    options,
 	}
-	context.revisionCache = NewRevisionCache(RevisionCacheCapacity, context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(int(revCacheSize), context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
@@ -140,7 +161,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}, options.CacheOptions, options.IndexOptions)
 	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
-	if err = context.tapListener.Start(bucket, true); err != nil {
+	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
+		context.TakeDbOffline()
+	}); err != nil {
 		return nil, err
 	}
 
@@ -226,6 +249,9 @@ func (context *DatabaseContext) TapListener() changeListener {
 }
 
 func (context *DatabaseContext) Close() {
+	context.BucketLock.Lock()
+	defer context.BucketLock.Unlock()
+
 	context.tapListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
@@ -242,10 +268,40 @@ func (context *DatabaseContext) RestartListener() error {
 	context.tapListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	if err := context.tapListener.Start(context.Bucket, true); err != nil {
+	if err := context.tapListener.Start(context.Bucket, true, nil); err != nil {
 		return err
 	}
 	return nil
+}
+
+
+func (dc *DatabaseContext) TakeDbOffline() error {
+	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
+	dbState := atomic.LoadUint32(&dc.State)
+	//If the DB is already trasitioning to: offline or is offline silently return
+	if (dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping ) {
+		return nil
+	}
+
+	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
+
+		//notify all active _changes feeds to close
+		close(dc.ExitChanges)
+
+		base.LogTo("CRUD", "Waiting for all active calls to complete on Database : %v", dc.Name)
+		//Block until all current calls have returned, including _changes feeds
+		dc.AccessLock.Lock()
+		defer dc.AccessLock.Unlock()
+
+		base.LogTo("CRUD", "Database : %v, is offline", dc.Name)
+		//set DB state to Offline
+		atomic.StoreUint32(&dc.State, DBOffline)
+
+		return nil
+	} else {
+		base.LogTo("CRUD", "Unable to take Database offline, database must be in Online state")
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to take Database offline, database must be in Online state")
+	}
 }
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
@@ -795,21 +851,27 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 func (db *Database) invalUserRoles(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateRoles(user)
+		if err := authr.InvalidateRoles(user); err != nil {
+			base.Warn("Error invalidating roles for user %s: %v", username, err)
+		}
 	}
 }
 
 func (db *Database) invalUserChannels(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		authr.InvalidateChannels(user)
+		if err := authr.InvalidateChannels(user); err != nil {
+			base.Warn("Error invalidating channels for user %s: %v", username, err)
+		}
 	}
 }
 
 func (db *Database) invalRoleChannels(rolename string) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
-		authr.InvalidateChannels(role)
+		if err := authr.InvalidateChannels(role); err != nil {
+			base.Warn("Error invalidating channels for role %s: %v", rolename, err)
+		}
 	}
 }
 

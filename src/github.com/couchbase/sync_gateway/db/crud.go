@@ -604,8 +604,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 					}
 				} else {
 					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
-					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-						"on it (err=%v)", docid, doc.CurrentRev, err)
+					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess " +
+					"on it (err=%v)", docid, doc.CurrentRev, err)
 					channels = nil
 					access = nil
 					roles = nil
@@ -666,17 +666,23 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	dbExpvars.Add("revs_added", 1)
 
-	// Store the new revision in the cache
-	history := doc.History.getHistory(newRevID)
-	if doc.History[newRevID].Deleted {
-		body["_deleted"] = true
-	}
-	revChannels := doc.History[newRevID].Channels
-	db.revisionCache.Put(body, encodeRevisions(history), revChannels)
+	if (doc.History[newRevID] != nil) {
+		// Store the new revision in the cache
+		history := doc.History.getHistory(newRevID)
 
-	// Raise event
-	if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-		db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
+		if doc.History[newRevID].Deleted {
+			body["_deleted"] = true
+		}
+		revChannels := doc.History[newRevID].Channels
+		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
+
+		// Raise event
+		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+			db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
+		}
+	} else {
+		//Revision has been pruned away so won't be added to cache
+		base.LogTo("CRUD", "doc %q / %q, has been pruned, it has not been inserted into the revision cache", docid, newRevID)
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:

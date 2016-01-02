@@ -40,7 +40,10 @@ func (h *handler) handleSessionPOST() error {
 	// CORS not allowed for login #115 #762
 	originHeader := h.rq.Header["Origin"]
 	if len(originHeader) > 0 {
-		matched := matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		matched := ""
+		if h.server.config.CORS != nil {
+			matched = matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		}
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
 		}
@@ -91,7 +94,7 @@ func (h *handler) makeSession(user auth.User) error {
 		return err
 	}
 	cookie := auth.MakeSessionCookie(session)
-	cookie.Path = "/" + h.db.Name + "/"
+	base.AddDbPathToCookie(h.rq, cookie)
 	http.SetCookie(h.response, cookie)
 	return h.respondWithSessionInfo()
 }
@@ -189,6 +192,7 @@ func (h *handler) createUserSession() error {
 		}
 		return err
 	}
+
 	ttl := time.Duration(params.TTL) * time.Second
 	if ttl < 1.0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")

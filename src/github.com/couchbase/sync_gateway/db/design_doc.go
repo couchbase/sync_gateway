@@ -47,6 +47,22 @@ func (db *Database) GetDesignDoc(ddocName string, result interface{}) (err error
 }
 
 func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
+	wrap := true
+	if opts := ddoc.Options; opts != nil {
+		if opts.Raw == true {
+			wrap = false
+		}
+	}
+	if wrap {
+		wrapViews(&ddoc)
+	}
+	if err = db.checkDDocAccess(ddocName); err == nil {
+		err = db.Bucket.PutDDoc(ddocName, ddoc)
+	}
+	return
+}
+
+func wrapViews(ddoc *DesignDoc) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata:
 	for name, view := range ddoc.Views {
 		view.Map = `function(doc,meta) {
@@ -75,14 +91,10 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 		                    };
 							(` + view.Map + `) (doc, meta);
 						}());
+						doc._sync = sync;
 					}`
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
-
-	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.PutDDoc(ddocName, ddoc)
-	}
-	return
 }
 
 func (db *Database) DeleteDesignDoc(ddocName string) (err error) {

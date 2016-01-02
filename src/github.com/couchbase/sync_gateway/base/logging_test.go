@@ -15,7 +15,12 @@ import (
 )
 
 func Benchmark_LoggingPerformance(b *testing.B) {
-    LogKeys["CRUD"] = true
+
+    var logKeys = map[string]bool {
+        "CRUD": true,
+    }
+
+    UpdateLogKeys(logKeys, true)
 
     b.ResetTimer()
 

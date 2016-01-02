@@ -31,7 +31,7 @@ func init() {
 	var err error
 	gTestBucket, err = base.GetBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"})
+		BucketName: "sync_gateway_tests"},nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

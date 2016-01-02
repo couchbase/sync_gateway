@@ -238,31 +238,25 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	if len(data) > 0 && data[0] == '"' {
 		var raw string
-		err := json.Unmarshal(data, &raw)
-		if err == nil {
-			*s, err = parseIntegerSequenceID(string(raw))
+		err := json.Unmarshal(data, &js); if err != nil {
+			*s, err = parseIntegerSequenceID(string(data))
+		} else {
+			*s, err = parseIntegerSequenceID(raw)
 		}
 		return err
 	} else {
-		s.TriggeredBy = 0
-		return json.Unmarshal(data, &s.Seq)
+		*s, err = ParseSequenceID(js)
 	}
+	return err
 }
 
 // Unmarshals clock sequence.  If s.SequenceHasher is nil, UnmarshalClockSequence only populates the s.ClockHash value.
 func (s *SequenceID) unmarshalClockSequence(data []byte) error {
 	var hashValue string
-	if len(data) > 0 && data[0] == '"' {
-		json.Unmarshal(data, &hashValue)
-	} else {
-		// Sequence coming in as simple int.  Convert to string
-		var intValue uint64
-		if err := json.Unmarshal(data, &intValue); err != nil {
-			return err
-		}
-		// Check whether it's a valid hash
-		hashValue = strconv.FormatUint(intValue, 10)
-	}
+	err := json.Unmarshal(data, &hashValue); if err != nil {
+		hashValue = string(data)
+	} 
+
 	if s.SequenceHasher != nil {
 		var err error
 		*s, err = parseClockSequenceID(hashValue, s.SequenceHasher)
