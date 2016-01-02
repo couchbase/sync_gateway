@@ -160,6 +160,12 @@ func LogTo(key string, format string, args ...interface{}) {
 	}
 }
 
+func EnableLogKey(key string) {
+	logLock.Lock()
+	defer logLock.Unlock()
+	LogKeys[key] = true
+}
+
 func LogEnabled(key string) bool {
 	logLock.RLock()
 	defer logLock.RUnlock()

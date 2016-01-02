@@ -678,11 +678,13 @@ func writeHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
 
 func writeHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
 
-	var durationMs int
-	if duration < 1 * time.Second {
-		durationMs = int(duration/(100*time.Millisecond)) * 100
-	} else {
-		durationMs = int(duration/(1000*time.Millisecond)) * 1000
+	if base.LogEnabled("PerfStats") {
+		var durationMs int
+		if duration < 1*time.Second {
+			durationMs = int(duration/(100*time.Millisecond)) * 100
+		} else {
+			durationMs = int(duration/(1000*time.Millisecond)) * 1000
+		}
+		expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
 	}
-	expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
 }

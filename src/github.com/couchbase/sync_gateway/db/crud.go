@@ -841,6 +841,17 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
+
+	if context.UseGlobalSequence() {
+		return context.ComputeSequenceChannelsForPrincipal(princ)
+	} else {
+		return context.ComputeVbSequenceChannelsForPrincipal(princ)
+	}
+}
+
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = "role:" + key // Roles are identified in access view by a "role:" prefix
@@ -856,6 +867,32 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
+	channelSet := channels.TimedSet{}
+	for _, row := range vres.Rows {
+		channelSet.Add(row.Value)
+	}
+	return channelSet, nil
+}
+
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
+	key := princ.Name()
+	if _, ok := princ.(auth.User); !ok {
+		key = "role:" + key // Roles are identified in access view by a "role:" prefix
+	}
+
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
+	opts := map[string]interface{}{"stale": false, "key": key}
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccessVbSeq, opts, &vres); verr != nil {
+		return nil, verr
+	}
+
 	channelSet := channels.TimedSet{}
 	for _, row := range vres.Rows {
 		channelSet.Add(row.Value)

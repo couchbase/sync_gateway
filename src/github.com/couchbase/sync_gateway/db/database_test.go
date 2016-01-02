@@ -542,7 +542,7 @@ func TestAccessFunction(t *testing.T) {
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	user.SetExplicitRoles(channels.TimedSet{"animefan": 1, "tumblr": 1})
+	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)})
 	assertNoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
@@ -565,6 +565,56 @@ func TestAccessFunction(t *testing.T) {
 
 	expected.AddChannel("CrunchyRoll", 2)
 	assert.DeepEquals(t, user.InheritedChannels(), expected)
+}
+
+func CouchbaseTestAccessFunctionWithVbuckets(t *testing.T) {
+	//base.LogKeys["CRUD"] = true
+	//base.LogKeys["Access"] = true
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.SequenceType = ClockSequenceType
+
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+
+	var err error
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+
+	user, _ := authenticator.NewUser("bernard", "letmein", channels.SetOf("Netflix"))
+	assertNoError(t, authenticator.Save(user), "Save")
+
+	body := Body{"users": []string{"bernard"}, "userChannels": []string{"ABC"}}
+	_, err = db.Put("doc1", body)
+	assertNoError(t, err, "")
+	time.Sleep(100 * time.Millisecond)
+
+	user, err = authenticator.GetUser("bernard")
+	assertNoError(t, err, "GetUser")
+	expected := channels.TimedSetFromString("ABC:5.1,Netflix:1,!:1")
+	assert.DeepEquals(t, user.Channels(), expected)
+
+	body = Body{"users": []string{"bernard"}, "userChannels": []string{"NBC"}}
+	_, err = db.Put("doc2", body)
+	assertNoError(t, err, "")
+	time.Sleep(100 * time.Millisecond)
+
+	user, err = authenticator.GetUser("bernard")
+	assertNoError(t, err, "GetUser")
+	expected = channels.TimedSetFromString("ABC:5.1,NBC:12.1,Netflix:1,!:1")
+	assert.DeepEquals(t, user.Channels(), expected)
+
+	// Have another doc assign a new channel, and one of the previously present channels
+	body = Body{"users": []string{"bernard"}, "userChannels": []string{"ABC", "PBS"}}
+	_, err = db.Put("doc3", body)
+	assertNoError(t, err, "")
+	time.Sleep(100 * time.Millisecond)
+
+	user, err = authenticator.GetUser("bernard")
+	assertNoError(t, err, "GetUser")
+	expected = channels.TimedSetFromString("ABC:5.1,NBC:12.1,PBS:11.1,Netflix:1,!:1")
+	assert.DeepEquals(t, user.Channels(), expected)
+
 }
 
 func TestDocIDs(t *testing.T) {

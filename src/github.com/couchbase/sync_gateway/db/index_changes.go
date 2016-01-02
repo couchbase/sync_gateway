@@ -20,12 +20,13 @@ import (
 // Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	to := ""
+	var userVbNo uint16
 	if db.user != nil && db.user.Name() != "" {
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
+		userVbNo = uint16(db.Bucket.VBHash(db.user.DocID()))
 	}
 
 	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
-	//base.LogTo("Changes+", "Vector MultiChangesFeed since:%s", base.PrintClock(options.Since.Clock))
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -49,7 +50,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			changeWaiter = db.startChangeWaiter(chans)
 			userChangeCount = changeWaiter.CurrentUserCount()
 		}
-		cumulativeClock := options.Since.Clock
+
+		cumulativeClock := getChangesClock(options.Since).Copy()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -74,9 +76,17 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 
 			base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
-			for name, seqAddedAt := range channelsSince {
+			for name, vbSeqAddedAt := range channelsSince {
+				seqAddedAt := vbSeqAddedAt.Sequence
+				// If there's no vbNo on the channelsSince, it indicates a user doc channel grant - use the userVbNo.
+				var vbAddedAt uint16
+				if vbSeqAddedAt.VbNo == nil {
+					vbAddedAt = userVbNo
+				} else {
+					vbAddedAt = *vbSeqAddedAt.VbNo
+				}
 
-				base.LogTo("Changes+", "Starting for channel... %s", name)
+				base.LogTo("Changes+", "Starting for channel... %s, %d", name, seqAddedAt)
 				chanOpts := options
 
 				// Check whether requires backfill based on addedChannels in this _changes feed
@@ -85,24 +95,45 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					_, isNewChannel = addedChannels[name]
 				}
 
-				// Check whether requires backfill based on current sequence, seqAddedAt
-				// Triggered by handling:
-				//   1. options.Since.TriggeredBy == seqAddedAt : We're in the middle of backfill for this channel, based
-				//    on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill would be done in one
-				//    changes feed iteration, but this can be split over multiple iterations when 'limit' is used.
-				//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
-				//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
-				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
+				// Three possible scenarios for backfill handling, based on whether the incoming since value indicates a backfill in progress
+				// for this channel, and whether the channel requires a new backfill to be started
+				//   Case 1. No backfill in progress, no backfill required - use the incoming since to get changes
+				//   Case 2. No backfill in progress, backfill required for this channel.  Get changes since zero, backfilling to the incoming since
+				//   Case 3. Backfill in progress.  Get changes since zero, backfilling to incoming triggered by, filtered to later than incoming since.
+				backfillInProgress := false
+				if options.Since.TriggeredByClock != nil {
+					// There's a backfill in progress for SOME channel - check if it's this one
+					if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt {
+						backfillInProgress = true
+					}
+				}
 
-				// Backfill required when seqAddedAt is before current sequence
-				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt})
+				sinceSeq := getChangesClock(options.Since).GetSequence(vbAddedAt)
+				backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt
 
-				// Ensure backfill isn't already in progress for this seqAddedAt
-				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
-
-				if isNewChannel || (backfillRequired && backfillPending) {
-					// Newly added channel so initiate backfill:
-					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
+				if isNewChannel || (backfillRequired && !backfillInProgress) {
+					// Case 2.  No backfill in progress, backfill required
+					base.LogTo("Changes+", "Starting backfill for channel... %s, %d", name, seqAddedAt)
+					chanOpts.Since = SequenceID{
+						Seq:              0,
+						vbNo:             0,
+						Clock:            base.NewSequenceClockImpl(),
+						TriggeredBy:      seqAddedAt,
+						TriggeredByVbNo:  vbAddedAt,
+						TriggeredByClock: getChangesClock(options.Since).Copy(),
+					}
+				} else if backfillInProgress {
+					// Case 3.  Backfill in progress.
+					chanOpts.Since = SequenceID{
+						Seq:              options.Since.Seq,
+						vbNo:             options.Since.vbNo,
+						Clock:            base.NewSequenceClockImpl(),
+						TriggeredBy:      seqAddedAt,
+						TriggeredByVbNo:  vbAddedAt,
+						TriggeredByClock: options.Since.TriggeredByClock,
+					}
+				} else {
+					// Case 1.  Leave chanOpts.Since set to options.Since.
 				}
 				feed, err := db.vectorChangesFeed(name, chanOpts)
 				if err != nil {
@@ -114,11 +145,10 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
-				feeds, _ = db.appendVectorUserFeed(feeds, []string{}, options)
+				feeds, _ = db.appendVectorUserFeed(feeds, []string{}, options, userVbNo)
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
-
 			// This loop reads the available entries from all the feeds in parallel, merges them,
 			// and writes them to the output channel:
 			var sentSomething bool
@@ -163,26 +193,38 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
-				// Update options.Since for use in the next outer loop iteration.
-				options.Since.Clock = cumulativeClock
-
 				// Add the doc body or the conflicting rev IDs, if those options are set:
 				if options.IncludeDocs || options.Conflicts {
 					db.addDocToChangeEntry(minEntry, options)
 				}
 
-				// update the cumulative clock, and stick it on the entry
-				cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
-				minEntry.Seq.Clock = cumulativeClock
-				clockHash, err := db.SequenceHasher.GetHash(minEntry.Seq.Clock)
-				minEntry.Seq.Clock = &base.SequenceClockImpl{}
-				base.LogTo("Changes+", "calculated hash...%v", clockHash)
-				if err != nil {
-					base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
+				if minEntry.Seq.TriggeredBy == 0 {
+					// Update the cumulative clock, and stick it on the entry.
+					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
+					clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+					// Change entries only need the hash value, not the full clock.  Creating a new
+					// clock here to avoid the overhead of cumulativeClock.copy()
+					minEntry.Seq.Clock = &base.SequenceClockImpl{}
+					if err != nil {
+						base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
+					} else {
+						minEntry.Seq.Clock.SetHashedValue(clockHash)
+					}
 				} else {
-					minEntry.Seq.Clock.SetHashedValue(clockHash)
+					// For backfill (triggered by), we don't want to update the cumulative clock.  All entries triggered by the
+					// same sequence reference the same triggered by clock, so it should only need to get hashed once.
+					// If this is the first entry for this triggered by, initialize the triggered by clock's
+					// hash value.
+					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
+						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
+						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+						if err != nil {
+							base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
+						} else {
+							minEntry.Seq.TriggeredByClock.SetHashedValue(clockHash)
+						}
+					}
 				}
-
 				// Send the entry, and repeat the loop:
 				select {
 				case <-options.Terminator:
@@ -199,6 +241,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						break outer
 					}
 				}
+				// Update options.Since for use in the next outer loop iteration.
+				options.Since.Clock = cumulativeClock
 			}
 
 			if !options.Continuous && (sentSomething || changeWaiter == nil) {
@@ -257,49 +301,99 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
-		// Now write each log entry to the 'feed' channel in turn:
+
+		// Send backfill first
+		if options.Since.TriggeredByClock != nil {
+			for i := 0; i < len(log); i++ {
+				logEntry := log[i]
+				// If sequence is less than the backfillTo clock sequence for its vbucket, send as backfill (i.e. with triggered by)
+				isBackfill := logEntry.Sequence <= options.Since.TriggeredByClock.GetSequence(logEntry.VbNo)
+
+				// Only send backfill that's hasn't already been sent (i.e. after the sequence part of options.Since)
+				isPending := options.Since.VbucketSequenceBefore(logEntry.VbNo, logEntry.Sequence)
+
+				if isBackfill && isPending {
+					seqID := SequenceID{
+						SeqType:          ClockSequenceType,
+						Seq:              logEntry.Sequence,
+						vbNo:             logEntry.VbNo,
+						TriggeredBy:      options.Since.TriggeredBy,
+						TriggeredByVbNo:  options.Since.TriggeredByVbNo,
+						TriggeredByClock: options.Since.TriggeredByClock,
+					}
+					change := makeChangeEntry(logEntry, seqID, channel)
+					select {
+					case <-options.Terminator:
+						base.LogTo("Changes+", "Aborting changesFeed")
+						return
+					case feed <- &change:
+					}
+				}
+				if isBackfill {
+					// remove from the set, so that it's not resent below
+					log[i] = nil
+				}
+			}
+		}
+
+		// Now send any remaining entries
 		for _, logEntry := range log {
-			//base.LogTo("Changes+", "vectorChangesFeed, adding entry for channel [%s], [%s], [%v,%v]", channel, logEntry.DocID, logEntry.VbNo, logEntry.Sequence)
-			if logEntry.Sequence >= options.Since.TriggeredBy {
-				options.Since.TriggeredBy = 0
-			}
-			seqID := SequenceID{
-				SeqType:          ClockSequenceType,
-				Seq:              logEntry.Sequence,
-				vbNo:             logEntry.VbNo,
-				TriggeredByClock: options.Since.TriggeredByClock,
-			}
-
-			change := makeChangeEntry(logEntry, seqID, channel)
-
-			select {
-			case <-options.Terminator:
-				base.LogTo("Changes+", "Aborting changesFeed")
-				return
-			case feed <- &change:
+			// Ignore any already sent as backfill
+			if logEntry != nil {
+				seqID := SequenceID{
+					SeqType: ClockSequenceType,
+					Seq:     logEntry.Sequence,
+					vbNo:    logEntry.VbNo,
+				}
+				change := makeChangeEntry(logEntry, seqID, channel)
+				select {
+				case <-options.Terminator:
+					base.LogTo("Changes+", "Aborting changesFeed")
+					return
+				case feed <- &change:
+				}
 			}
 		}
 	}()
 	return feed, nil
 }
 
-func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions) ([]<-chan *ChangeEntry, []string) {
-	userSeq := SequenceID{Seq: db.user.Sequence()}
-	if options.Since.Before(userSeq) {
-		name := db.user.Name()
-		if name == "" {
-			name = base.GuestUsername
+func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions, userVbNo uint16) ([]<-chan *ChangeEntry, []string) {
+
+	if db.user.Sequence() > 0 {
+		userSeq := SequenceID{
+			SeqType: ClockSequenceType,
+			Seq:     db.user.Sequence(),
+			vbNo:    userVbNo,
 		}
-		entry := ChangeEntry{
-			Seq:     userSeq,
-			ID:      "_user/" + name,
-			Changes: []ChangeRev{},
+
+		// Get since sequence for the userSeq's vbucket
+		sinceSeq := getChangesClock(options.Since).GetSequence(userVbNo)
+
+		if sinceSeq < userSeq.Seq {
+			name := db.user.Name()
+			if name == "" {
+				name = base.GuestUsername
+			}
+			entry := ChangeEntry{
+				Seq:     userSeq,
+				ID:      "_user/" + name,
+				Changes: []ChangeRev{},
+			}
+			userFeed := make(chan *ChangeEntry, 1)
+			userFeed <- &entry
+			close(userFeed)
+			feeds = append(feeds, userFeed)
+			names = append(names, entry.ID)
 		}
-		userFeed := make(chan *ChangeEntry, 1)
-		userFeed <- &entry
-		close(userFeed)
-		feeds = append(feeds, userFeed)
-		names = append(names, entry.ID)
 	}
 	return feeds, names
+}
+
+func getChangesClock(sequence SequenceID) base.SequenceClock {
+	if sequence.TriggeredByClock != nil {
+		return sequence.TriggeredByClock
+	} else {
+		return sequence.Clock
+	}
 }

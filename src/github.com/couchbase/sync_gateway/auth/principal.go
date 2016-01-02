@@ -32,6 +32,12 @@ type Principal interface {
 	// Sets the explicit channels the Principal has access to.
 	SetExplicitChannels(ch.TimedSet)
 
+	// The previous set of channels the Principal was granted.  Used to maintain sequence history.
+	PreviousChannels() ch.TimedSet
+
+	// Sets the previous set of channels the Principal has access to.
+	SetPreviousChannels(ch.TimedSet)
+
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
 
@@ -49,7 +55,7 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
-	docID() string
+	DocID() string
 	accessViewKey() string
 	validate() error
 	setChannels(ch.TimedSet)

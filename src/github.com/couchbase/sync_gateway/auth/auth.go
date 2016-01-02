@@ -29,6 +29,7 @@ type Authenticator struct {
 type ChannelComputer interface {
 	ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error)
 	ComputeRolesForUser(User) (ch.TimedSet, error)
+	UseGlobalSequence() bool
 }
 
 type userByEmailInfo struct {
@@ -135,20 +136,38 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	channels := princ.ExplicitChannels().Copy()
+
+	// Changes for vbucket sequence management.  We can't determine relative ordering of sequences
+	// across vbuckets.  To avoid redundant channel backfills during changes processing, we maintain
+	// the previous vb/seq for a channel in PreviousChannels.  If that channel is still present during
+	// this rebuild, we reuse the vb/seq from PreviousChannels (using UpdateIfPresent).  If PreviousChannels
+	// is nil, reverts to normal sequence handling.
+
+	previousChannels := princ.PreviousChannels().Copy()
+	if previousChannels != nil {
+		channels.UpdateIfPresent(previousChannels)
+	}
+
 	if auth.channelComputer != nil {
-		set, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
+		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
-			base.Warn("channelComputer.ComputeChannelsForPrincipal failed on %s: %v", princ, err)
+			base.Warn("channelComputer.ComputeChannelsForPrincipal failed on %v: %v", princ, err)
 			return err
 		}
-		channels.Add(set)
+		if previousChannels != nil {
+			viewChannels.UpdateIfPresent(previousChannels)
+		}
+		channels.Add(viewChannels)
 	}
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
 	base.LogTo("Access", "Computed channels for %q: %s", princ.Name(), channels)
+	princ.SetPreviousChannels(nil)
 	princ.setChannels(channels)
+
 	return nil
+
 }
 
 func (auth *Authenticator) rebuildRoles(user User) error {
@@ -191,11 +210,12 @@ func (auth *Authenticator) Save(p Principal) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
+
 	data, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
-	if err := auth.bucket.SetRaw(p.docID(), 0, data); err != nil {
+	if err := auth.bucket.SetRaw(p.DocID(), 0, data); err != nil {
 		return err
 	}
 	if user, ok := p.(User); ok {
@@ -208,7 +228,7 @@ func (auth *Authenticator) Save(p Principal) error {
 			//FIX: Unregister old email address if any
 		}
 	}
-	base.LogTo("Auth", "Saved %s: %s", p.docID(), data)
+	base.LogTo("Auth", "Saved %s: %s", p.DocID(), data)
 	return nil
 }
 
@@ -216,6 +236,9 @@ func (auth *Authenticator) Save(p Principal) error {
 func (auth *Authenticator) InvalidateChannels(p Principal) error {
 	if p != nil && p.Channels() != nil {
 		base.LogTo("Access", "Invalidate access of %q", p.Name())
+		if auth.channelComputer != nil && !auth.channelComputer.UseGlobalSequence() {
+			p.SetPreviousChannels(p.Channels())
+		}
 		p.setChannels(nil)
 		if err := auth.Save(p); err != nil {
 			return err
@@ -243,7 +266,7 @@ func (auth *Authenticator) Delete(p Principal) error {
 			auth.bucket.Delete(docIDForUserEmail(user.Email()))
 		}
 	}
-	return auth.bucket.Delete(p.docID())
+	return auth.bucket.Delete(p.DocID())
 }
 
 // Authenticates a user given the username and password.
@@ -270,4 +293,78 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 		return nil, err
 	}
 	return user, err
+}
+
+func (auth *Authenticator) UpdateRoleVbucketSequences(docID string, sequence uint64) error {
+	return auth.updateVbucketSequences(docID, func() Principal { return &roleImpl{} }, sequence)
+}
+
+func (auth *Authenticator) UpdateUserVbucketSequences(docID string, sequence uint64) error {
+	return auth.updateVbucketSequences(docID, func() Principal { return &userImpl{} }, sequence)
+}
+
+// Updates any entries in the admin (explicit) channel set that have
+// their sequence set to zero, to the provided sequence, and invalidates the user channels.
+// Used during distributed index processing, where the sequence value is the vb sequence, and
+// isn't known at initial write time. Using bucket.Update for cas handling, similar to updatePrincipal.
+func (auth *Authenticator) updateVbucketSequences(docID string, factory func() Principal, seq uint64) error {
+
+	sequence := ch.NewVbSimpleSequence(seq)
+	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, error) {
+		// Be careful: this block can be invoked multiple times if there are races!
+		if currentValue == nil {
+			return nil, couchbase.UpdateCancel
+		}
+		princ := factory()
+		if err := json.Unmarshal(currentValue, princ); err != nil {
+			return nil, err
+		}
+		channelsChanged := false
+		for channel, vbSeq := range princ.ExplicitChannels() {
+			seq := vbSeq.Sequence
+			if seq == 0 {
+				switch p := princ.(type) {
+				case *roleImpl:
+					p.ExplicitChannels_[channel] = sequence
+				case *userImpl:
+					p.ExplicitChannels_[channel] = sequence
+				}
+				channelsChanged = true
+			}
+		}
+		// Invalidate calculated channels if changed.
+		if channelsChanged {
+			princ.setChannels(nil)
+		}
+
+		// If user, also check for explicit roles.
+		rolesChanged := false
+		if userPrinc, ok := princ.(*userImpl); ok {
+			for role, vbSeq := range userPrinc.ExplicitRoles() {
+				seq := vbSeq.Sequence
+				if seq == 0 {
+					userPrinc.ExplicitRoles_[role] = sequence
+				}
+			}
+			// Invalidate calculated roles if changed.
+			if rolesChanged {
+				userPrinc.setRolesSince(nil)
+			}
+		}
+
+		princ.SetSequence(seq)
+
+		if channelsChanged || rolesChanged {
+			// Save the updated principal doc.
+			return json.Marshal(princ)
+		} else {
+			// No entries found requiring update, so cancel update.
+			return nil, couchbase.UpdateCancel
+		}
+	})
+
+	if err != nil && err != couchbase.UpdateCancel {
+		return err
+	}
+	return nil
 }

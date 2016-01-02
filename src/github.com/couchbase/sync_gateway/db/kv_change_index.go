@@ -265,7 +265,7 @@ func byteToUint64(input []byte) uint64 {
 	var result uint64
 	err := binary.Read(readBuffer, binary.LittleEndian, &result)
 	if err != nil {
-		base.LogTo("DCache", "byteToUint64 error:%v", err)
+		base.Warn("byteToUint64 error:%v", err)
 	}
 	return result
 }

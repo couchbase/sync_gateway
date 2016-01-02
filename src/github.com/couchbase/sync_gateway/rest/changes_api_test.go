@@ -25,6 +25,15 @@ import (
 
 type indexTester struct {
 	restTester
+	_indexBucket base.Bucket
+}
+
+func initRestTester(sequenceType db.SequenceType, syncFn string) indexTester {
+	if sequenceType == db.ClockSequenceType {
+		return initIndexTester(true, syncFn)
+	} else {
+		return initIndexTester(false, syncFn)
+	}
 }
 
 func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
@@ -85,6 +94,10 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	}
 
 	it._bucket = it._sc.Database("db").Bucket
+
+	if useBucketIndex {
+		it._indexBucket = it._sc.Database("db").GetIndexBucket()
+	}
 
 	return it
 }
@@ -265,11 +278,9 @@ func postChangesSince(t *testing.T, it indexTester) {
 	//response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
 	assert.True(t, response != nil)
 
-	// Create user:
-	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
-	assert.True(t, err == nil)
-	a.Save(bernard)
+	// Create user
+	response = it.sendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	assertStatus(t, response, 201)
 
 	// Put several documents
 	response = it.sendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
@@ -290,9 +301,10 @@ func postChangesSince(t *testing.T, it indexTester) {
 	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
 	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 
-	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	log.Printf("Changes:%s", changesResponse.Body.Bytes())
 	assertNoError(t, err, "Error unmarshalling changes response")
-	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, len(changes.Results), 5)
 
 	// Put several more documents, some to the same vbuckets
 	response = it.sendAdminRequest("PUT", "/db/pbs1-0000799", `{"value":1, "channel":["PBS"]}`)
@@ -307,6 +319,7 @@ func postChangesSince(t *testing.T, it indexTester) {
 	changesJSON = fmt.Sprintf(`{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"%s"}`, changes.Last_Seq)
 	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	log.Printf("Changes:%s", changesResponse.Body.Bytes())
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 3)
 
@@ -503,6 +516,99 @@ func TestDocDeduplication(t *testing.T) {
 		assert.Equals(t, ok, true)
 		assert.Equals(t, rev, expectedRev)
 	}
+
+}
+
+func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChangesAdminChannelGrant(t, it)
+}
+
+func TempTestPostChangesAdminChannelGrantClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	postChangesAdminChannelGrant(t, it)
+	it._bucket.Dump()
+}
+
+// _changes with admin-based channel grant
+func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Backfill":true}`)
+
+	//response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user with access to channel ABC:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents in channel ABC and PBS
+	response = it.sendAdminRequest("PUT", "/db/pbs-1", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs-2", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs-3", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs-4", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/abc-1", `{"channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Issue simple changes request
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	assertStatus(t, changesResponse, 200)
+
+	log.Printf("Response:%+v", changesResponse.Body)
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 1)
+
+	// Update the user doc to grant access to PBS
+	response = it.sendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS"]}`)
+	assertStatus(t, response, 200)
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
+	changesResponse = it.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
+		"", "bernard"))
+	assertStatus(t, changesResponse, 200)
+
+	log.Printf("Response:%+v", changesResponse.Body)
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	assert.Equals(t, len(changes.Results), 5) // 4 PBS docs, plus the updated user doc
+
+	// Write a few more docs
+	response = it.sendAdminRequest("PUT", "/db/pbs-5", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/abc-2", `{"channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Issue another changes request - ensure we don't backfill again
+	changesResponse = it.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
+		"", "bernard"))
+	assertStatus(t, changesResponse, 200)
+	log.Printf("Response:%+v", changesResponse.Body)
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	assert.Equals(t, len(changes.Results), 2) // 2 docs
 
 }
 

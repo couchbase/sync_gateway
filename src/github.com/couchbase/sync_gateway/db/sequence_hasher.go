@@ -103,7 +103,6 @@ func (s *sequenceHasher) calculateHash(clock base.SequenceClock) uint64 {
 	for _, value := range clock.Value() {
 		sum += value & s.modMinus1
 	}
-	base.LogTo("DIndex+", "calculate hash for sum:%v, s:%v", sum, s)
 	return sum & s.modMinus1
 }
 

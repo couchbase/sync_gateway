@@ -220,7 +220,11 @@ func (b *LeakyBucket) Dump() {
 	b.bucket.Dump()
 }
 func (b *LeakyBucket) VBHash(docID string) uint32 {
-	return b.bucket.VBHash(docID)
+	if b.config.TapFeedVbuckets {
+		return VBHash(docID, 1024)
+	} else {
+		return b.bucket.VBHash(docID)
+	}
 }
 
 // An implementation of a sgbucket tap feed that wraps
