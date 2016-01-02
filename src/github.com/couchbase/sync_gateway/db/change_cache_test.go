@@ -252,8 +252,8 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
-	base.EnableLog("Cache")
-	base.EnableLog("Changes+")
+	base.EnableLogKey("Cache")
+	base.EnableLogKey("Changes+")
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
