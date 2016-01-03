@@ -23,25 +23,21 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/cb-heartbeat"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
 	"github.com/couchbase/go-couchbase"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"sync/atomic"
-	"io/ioutil"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
-// Number of recently-accessed doc revisions to cache in RAM
-const kDefaultRevisionCacheCapacity = 5000
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -670,7 +666,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
 
 		// TODO: separate config of hash bucket
-		sequenceHashOptions.Bucket, err = base.GetBucket(indexSpec)
+		sequenceHashOptions.Bucket, err = base.GetBucket(indexSpec, nil)
 		if err != nil {
 			base.Logf("Error opening sequence hash bucket %q, pool %q, server <%s>",
 				indexBucketName, indexPool, indexServer)
@@ -682,20 +678,21 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		channelIndexOptions = nil
 	}
 
-	contextOptions := db.DatabaseContextOptions{
-		CacheOptions:        &cacheOptions,
-		IndexOptions:        channelIndexOptions,
-		SequenceHashOptions: sequenceHashOptions,
-	}
-
 	var revCacheSize uint32
 	if config.RevCacheSize != nil && *config.RevCacheSize > 0 {
 		revCacheSize = *config.RevCacheSize
 	} else {
-		revCacheSize = kDefaultRevisionCacheCapacity
+		revCacheSize = db.KDefaultRevisionCacheCapacity
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions, revCacheSize)
+	contextOptions := db.DatabaseContextOptions{
+		CacheOptions:          &cacheOptions,
+		IndexOptions:          channelIndexOptions,
+		SequenceHashOptions:   sequenceHashOptions,
+		RevisionCacheCapacity: revCacheSize,
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -752,23 +749,21 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
-	
+
 	// Save the config
 	sc.config.Databases[config.Name] = config
 
-	if (config.StartOffline) {
-		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+	if config.StartOffline {
+		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
 			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	} else {
-		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
 			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	}
-
-
 
 	return dbcontext, nil
 }
@@ -793,7 +788,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		// validate event-related keys
 		for k, _ := range eventHandlersMap {
-			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed"{
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed" {
 				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
 			}
 		}

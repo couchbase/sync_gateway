@@ -10,12 +10,13 @@
 package base
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -280,6 +281,7 @@ func AddDbPathToCookie(rq *http.Request, cookie *http.Cookie) {
 	cookie.Path = dbPath
 
 }
+
 // A retry sleeper is called back by the retry loop and passed
 // the current retryCount, and should return the amount of milliseconds
 // that the retry should sleep.

@@ -104,9 +104,9 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 		if options.CacheSkippedSeqMaxWait > 0 {
 			c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
 		}
+		c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	}
 
-	c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
 
 	heap.Init(&c.pendingLogs)

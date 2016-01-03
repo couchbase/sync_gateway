@@ -207,11 +207,6 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
 
 	rev := "1-a"
-	WriteDirectForDoc(db, channelArray, docId, rev, sequence)
-}
-
-func WriteDirectForDoc(db *Database, channelArray []string, docID string, revID string, sequence uint64) {
-
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
 	for _, channel := range channelArray {
@@ -219,7 +214,7 @@ func WriteDirectForDoc(db *Database, channelArray []string, docID string, revID 
 	}
 
 	syncData := &syncData{
-		CurrentRev: revID,
+		CurrentRev: rev,
 		Sequence:   sequence,
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
@@ -749,13 +744,16 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC"}, 3)
 
+	changeCache, ok := db.changeCache.(*changeCache)
+	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
-	db.changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
-	db.changeCache.CleanSkippedSequenceQueue()
+	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.CleanSkippedSequenceQueue()
 
 	// Validate that 3 is in the channel cache, 5 isn't
-	entries, err := db.changeCache.GetChangesInChannel("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assertNoError(t, err, "Get Changes returned error")
 	assertTrue(t, len(entries) == 1, "Incorrect number of entries returned")
 	assert.Equals(t, entries[0].DocID, "doc-3")
@@ -780,10 +778,13 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC"}, 3)
 
+	changeCache, ok := db.changeCache.(*changeCache)
+	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	db.changeCache.skippedSeqLock.Lock()
-	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
-	db.changeCache.skippedSeqLock.Unlock()
+	changeCache.skippedSeqLock.Lock()
+	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqLock.Unlock()
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	tearDownTestDB(t, db)
@@ -827,7 +828,9 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Equals(t, len(changes), 750)
 
 	// Validate that cache stores the expected number of values
-	abcCache := db.changeCache.channelCaches["ABC"]
+	changeCache, ok := db.changeCache.(*changeCache)
+	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+	abcCache := changeCache.channelCaches["ABC"]
 	assert.Equals(t, len(abcCache.logs), 600)
 }
 

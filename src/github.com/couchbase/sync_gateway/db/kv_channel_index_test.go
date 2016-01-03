@@ -42,7 +42,7 @@ func testContextAndChannelIndex(channelName string) (*DatabaseContext, *kvChanne
 func testIndexBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "index_tests"})
+		BucketName: "index_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

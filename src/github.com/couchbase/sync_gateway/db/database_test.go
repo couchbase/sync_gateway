@@ -37,7 +37,7 @@ func init() {
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"},nil)
+		BucketName: "sync_gateway_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -59,7 +59,7 @@ func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
-	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions, RevisionCacheCapacity)
+	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -67,7 +67,10 @@ func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
-	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, options, RevisionCacheCapacity)
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -339,9 +342,9 @@ func TestAllDocs(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Cache": true,
-		"Changes": true,
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
 		"Changes+": true,
 	}
 
@@ -381,13 +384,13 @@ func TestConflicts(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	/*
-	var logKeys = map[string]bool {
-		"Cache": true,
-		"Changes": true,
-		"Changes+": true,
-	}
+		var logKeys = map[string]bool {
+			"Cache": true,
+			"Changes": true,
+			"Changes+": true,
+		}
 
-	base.UpdateLogKeys(logKeys, true)
+		base.UpdateLogKeys(logKeys, true)
 	*/
 
 	// Create rev 1 of "doc":
@@ -552,12 +555,12 @@ func TestAccessFunctionValidation(t *testing.T) {
 func TestAccessFunction(t *testing.T) {
 
 	/*
-	var logKeys = map[string]bool {
-		"CRUD": true,
-		"Access": true,
-	}
+		var logKeys = map[string]bool {
+			"CRUD": true,
+			"Access": true,
+		}
 
-	base.UpdateLogKeys(logKeys, true)
+		base.UpdateLogKeys(logKeys, true)
 	*/
 
 	db := setupTestDB(t)
@@ -660,12 +663,10 @@ func TestUpdateDesignDoc(t *testing.T) {
 	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
-
 	// Validate retrieval of the design doc by admin
 	var result DesignDoc
 	err = db.GetDesignDoc("official", &result)
 	assertNoError(t, err, "retrieve design doc as admin")
-
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
@@ -868,8 +869,8 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
-			BucketName: fmt.Sprintf("b-%d", i)})
-		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{}, RevisionCacheCapacity)
+			BucketName: fmt.Sprintf("b-%d", i)}, nil)
+		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

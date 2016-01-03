@@ -29,8 +29,8 @@ type LeakyBucketConfig struct {
 	// window of # of mutations or a timeout, mutations for a given document
 	// will be filtered such that only the _latest_ mutation will make it through.
 	TapFeedDeDuplication bool
-	TapFeedVbuckets      bool      // Emulate vbucket numbers on feed
-	TapFeedMissingDocs []string    // Emulate entry not appearing on tap feed
+	TapFeedVbuckets      bool     // Emulate vbucket numbers on feed
+	TapFeedMissingDocs   []string // Emulate entry not appearing on tap feed
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -131,7 +131,7 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 			return true
 		}
 		return b.wrapFeed(args, callback)
-	}  else if b.config.TapFeedVbuckets {
+	} else if b.config.TapFeedVbuckets {
 		// kick off the wrapped sgbucket tap feed
 		walrusTapFeed, err := b.bucket.StartTapFeed(args)
 		if err != nil {
@@ -140,7 +140,7 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 		// this is the sgbucket.TapFeed impl we'll return to callers, which
 		// will add vbucket information
 		channel := make(chan sgbucket.TapEvent, 10)
-		vbTapFeed := &wrapperTapFeedImpl{
+		vbTapFeed := &wrappedTapFeedImpl{
 			channel:        channel,
 			wrappedTapFeed: walrusTapFeed,
 		}
@@ -190,32 +190,27 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateF
 	return wrapperFeed, nil
 }
 
-//Method stub to satisfy sg-bucket interface, awaiting merging of actual impl
-func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
-	return nil
-}
-
 func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	// create an output channel
 	// start a goroutine which reads off the sgbucket tap feed
 	//   - de-duplicate certain events
 	//   - puts them to output channel
 
-		// the number of changes that it will buffer up before de-duplicating
-		deDuplicationWindowSize := 5
+	// the number of changes that it will buffer up before de-duplicating
+	deDuplicationWindowSize := 5
 
-		// the timeout window in milliseconds after which it will flush to output, even if
-		// the dedupe buffer has not filled up yet.
-		deDuplicationTimeoutMs := time.Millisecond * 1000
+	// the timeout window in milliseconds after which it will flush to output, even if
+	// the dedupe buffer has not filled up yet.
+	deDuplicationTimeoutMs := time.Millisecond * 1000
 
-		// kick off the wrapped sgbucket tap feed
-		walrusTapFeed, err := b.bucket.StartTapFeed(args)
-		if err != nil {
-			return walrusTapFeed, err
-		}
+	// kick off the wrapped sgbucket tap feed
+	walrusTapFeed, err := b.bucket.StartTapFeed(args)
+	if err != nil {
+		return walrusTapFeed, err
+	}
 
-		// create an output channel for de-duplicated events
-		channel := make(chan sgbucket.TapEvent, 10)
+	// create an output channel for de-duplicated events
+	channel := make(chan sgbucket.TapEvent, 10)
 
 	// this is the sgbucket.TapFeed impl we'll return to callers, which
 	// will reead from the de-duplicated events channel
@@ -224,43 +219,43 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 		wrappedTapFeed: walrusTapFeed,
 	}
 
-		go func() {
+	go func() {
 
-			// the buffer to hold tap events that are candidates for de-duplication
-			deDupeBuffer := []sgbucket.TapEvent{}
+		// the buffer to hold tap events that are candidates for de-duplication
+		deDupeBuffer := []sgbucket.TapEvent{}
 
-			for {
-				select {
-				case tapEvent, ok := <-walrusTapFeed.Events():
-					if !ok {
-						// channel closed, goroutine is done
-						// dedupe and send what we currently have
-						dedupeAndForward(deDupeBuffer, channel)
-						deDupeBuffer = []sgbucket.TapEvent{}
-						return
-					}
-					deDupeBuffer = append(deDupeBuffer, tapEvent)
-
-					// if we've collected enough, dedeupe and send what we have,
-					// and reset buffer.
-					if len(deDupeBuffer) >= deDuplicationWindowSize {
-						dedupeAndForward(deDupeBuffer, channel)
-						deDupeBuffer = []sgbucket.TapEvent{}
-					}
-
-				case <-time.After(deDuplicationTimeoutMs):
-
-					// give up on waiting for the buffer to fill up,
-					// de-dupe and send what we currently have
+		for {
+			select {
+			case tapEvent, ok := <-walrusTapFeed.Events():
+				if !ok {
+					// channel closed, goroutine is done
+					// dedupe and send what we currently have
 					dedupeAndForward(deDupeBuffer, channel)
 					deDupeBuffer = []sgbucket.TapEvent{}
-
+					return
 				}
-			}
+				deDupeBuffer = append(deDupeBuffer, tapEvent)
 
-		}()
+				// if we've collected enough, dedeupe and send what we have,
+				// and reset buffer.
+				if len(deDupeBuffer) >= deDuplicationWindowSize {
+					dedupeAndForward(deDupeBuffer, channel)
+					deDupeBuffer = []sgbucket.TapEvent{}
+				}
+
+			case <-time.After(deDuplicationTimeoutMs):
+
+				// give up on waiting for the buffer to fill up,
+				// de-dupe and send what we currently have
+				dedupeAndForward(deDupeBuffer, channel)
+				deDupeBuffer = []sgbucket.TapEvent{}
+
+			}
+		}
+
+	}()
 	return dupeTapFeed, nil
-	}
+}
 
 func (b *LeakyBucket) Close() {
 	b.bucket.Close()

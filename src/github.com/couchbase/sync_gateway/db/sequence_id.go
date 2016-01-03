@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -139,10 +138,6 @@ func parseIntegerSequenceID(str string) (s SequenceID, err error) {
 
 func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s SequenceID, err error) {
 
-	if sequenceHasher == nil {
-		return SequenceID{}, errors.New("No Sequence Hasher available to parse clock sequence ID")
-	}
-
 	if str == "" {
 		return SequenceID{
 			SeqType: ClockSequenceType,
@@ -215,6 +210,7 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
+
 	if s.SeqType == ClockSequenceType {
 		return s.unmarshalClockSequence(data)
 	} else if s.SeqType == IntSequenceType {
@@ -236,36 +232,33 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 }
 
 func (s *SequenceID) unmarshalIntSequence(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		var raw string
-		err := json.Unmarshal(data, &js); if err != nil {
-			*s, err = parseIntegerSequenceID(string(data))
-		} else {
-			*s, err = parseIntegerSequenceID(raw)
-		}
-		return err
+	var raw string
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		*s, err = parseIntegerSequenceID(string(data))
 	} else {
-		*s, err = ParseSequenceID(js)
+		*s, err = parseIntegerSequenceID(raw)
 	}
 	return err
+
 }
 
 // Unmarshals clock sequence.  If s.SequenceHasher is nil, UnmarshalClockSequence only populates the s.ClockHash value.
 func (s *SequenceID) unmarshalClockSequence(data []byte) error {
-	var hashValue string
-	err := json.Unmarshal(data, &hashValue); if err != nil {
-		hashValue = string(data)
-	} 
 
-	if s.SequenceHasher != nil {
-		var err error
-		*s, err = parseClockSequenceID(hashValue, s.SequenceHasher)
-		return err
-	} else {
-		s.ClockHash = hashValue
-		return nil
+	base.LogTo("Debug", "Unmarshalling clock sequence: %d", s.SeqType)
+	var hashValue string
+	err := json.Unmarshal(data, &hashValue)
+	if err != nil {
+		hashValue = string(data)
 	}
 
+	if s.SequenceHasher != nil {
+		*s, err = parseClockSequenceID(hashValue, s.SequenceHasher)
+	} else {
+		s.ClockHash = hashValue
+	}
+	return err
 }
 
 func (s SequenceID) SafeSequence() uint64 {

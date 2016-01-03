@@ -135,7 +135,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, since, db.SequenceID{Seq: 1})
+	assert.Equals(t, since.Seq, uint64(1))
 
 	assert.Equals(t, changes.Results[0].ID, "alpha")
 	rev1 := changes.Results[0].Changes[0]["rev"]
@@ -396,7 +396,7 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 func TestMultiChannelUserAndDocs(t *testing.T) {
 	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
-	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "Debug":true}`)
 	assert.True(t, response != nil)
 
 	// Create user:

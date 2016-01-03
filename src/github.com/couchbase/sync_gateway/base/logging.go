@@ -129,12 +129,6 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	}
 }
 
-func EnableLogKey(key string) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	LogKeys[key] = true
-}
-
 // Returns a string identifying a function on the call stack.
 // Use depth=1 for the caller of the function that calls GetCallersName, etc.
 func GetCallersName(depth int) string {

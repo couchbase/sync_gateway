@@ -46,7 +46,7 @@ func (k *kvChangeIndexWriter) Init(context *DatabaseContext, options *CacheOptio
 	go k.indexPending()
 
 	k.channelIndexWriters = make(map[string]*kvChannelIndex)
-	k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec)
+	k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec, nil)
 	if err != nil {
 		base.Logf("Error opening index bucket %q, pool %q, server <%s>",
 			indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)

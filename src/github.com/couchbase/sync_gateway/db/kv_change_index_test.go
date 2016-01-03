@@ -49,7 +49,7 @@ func setupTestDBForChangeIndex(t *testing.T) *Database {
 	indexBucketSpec := base.BucketSpec{
 		Server:     kTestURL,
 		BucketName: "test_indexBucket"}
-	indexBucket, err := ConnectToBucket(indexBucketSpec)
+	indexBucket, err := ConnectToBucket(indexBucketSpec, nil)
 
 	if err != nil {
 		log.Fatal("Couldn't connect to index bucket")

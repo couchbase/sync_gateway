@@ -39,7 +39,7 @@ func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPar
 func testIndexBucket() Bucket {
 	bucket, err := GetBucket(BucketSpec{
 		Server:     kTestURL,
-		BucketName: "index_tests"})
+		BucketName: "index_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

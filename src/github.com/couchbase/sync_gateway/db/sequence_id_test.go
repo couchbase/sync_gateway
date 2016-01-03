@@ -43,7 +43,7 @@ func TestParseSequenceID(t *testing.T) {
 }
 
 func TestMarshalSequenceID(t *testing.T) {
-	s := SequenceID{Seq: 1234}
+	s := SequenceID{Seq: 1234, SeqType: IntSequenceType}
 	assert.Equals(t, s.String(), "1234")
 	asJson, err := json.Marshal(s)
 	assertNoError(t, err, "Marshal failed")
@@ -61,37 +61,37 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 	s := SequenceID{}
 	err := s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
-	assert.Equals(t, s, SequenceID{Seq: 123})
+	assert.Equals(t, s, SequenceID{Seq: 123, SeqType: IntSequenceType})
 
 	str = "456:123"
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
-	assert.Equals(t, s, SequenceID{TriggeredBy: 456, Seq: 123})
+	assert.Equals(t, s, SequenceID{TriggeredBy: 456, Seq: 123, SeqType: IntSequenceType})
 
 	str = "220::222"
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
-	assert.Equals(t, s, SequenceID{ LowSeq: 220, TriggeredBy: 0, Seq: 222})
+	assert.Equals(t, s, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222, SeqType: IntSequenceType})
 
 	str = "\"234\""
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
-	assert.Equals(t, s, SequenceID{Seq: 234})
+	assert.Equals(t, s, SequenceID{Seq: 234, SeqType: IntSequenceType})
 
 	str = "\"567:234\""
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
-	assert.Equals(t, s, SequenceID{TriggeredBy: 567, Seq: 234})
+	assert.Equals(t, s, SequenceID{TriggeredBy: 567, Seq: 234, SeqType: IntSequenceType})
 
 	str = "\"220::222\""
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assertNoError(t, err, "UnmarshalJSON failed")
-	assert.Equals(t, s, SequenceID{ LowSeq: 220, TriggeredBy: 0, Seq: 222})
+	assert.Equals(t, s, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222, SeqType: IntSequenceType})
 }
 
 func TestMarshalTriggeredSequenceID(t *testing.T) {

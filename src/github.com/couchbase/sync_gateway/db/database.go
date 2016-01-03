@@ -38,11 +38,11 @@ const (
 )
 
 var RunStateString = []string{
-	DBOffline:        "Offline",
-	DBStarting:        "Starting",
-	DBOnline:        "Online",
-	DBStopping:        "Stopping",
-	DBResyncing:    "Resyncing",
+	DBOffline:   "Offline",
+	DBStarting:  "Starting",
+	DBOnline:    "Online",
+	DBStopping:  "Stopping",
+	DBResyncing: "Resyncing",
 }
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -51,7 +51,7 @@ type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
 	BucketSpec         base.BucketSpec         // The BucketSpec
-	BucketLock         sync.RWMutex			   // Control Access to the underlying bucket object
+	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
@@ -67,16 +67,17 @@ type DatabaseContext struct {
 	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
 	Options            DatabaseContextOptions
-	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              uint32                  //The runtime state of the DB from a service perspective
-	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
+	AccessLock         sync.RWMutex  // Allows DB offline to block until synchronous calls have completed
+	State              uint32        //The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{} //active _changes feeds on the DB will close when this channel is closed
 
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions        *CacheOptions
-	IndexOptions        *ChangeIndexOptions
-	SequenceHashOptions *SequenceHashOptions
+	CacheOptions          *CacheOptions
+	IndexOptions          *ChangeIndexOptions
+	SequenceHashOptions   *SequenceHashOptions
+	RevisionCacheCapacity uint32
 }
 
 const DefaultRevsLimit = 1000
@@ -115,7 +116,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions, revCacheSize uint32) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -128,7 +129,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		autoImport: autoImport,
 		Options:    options,
 	}
-	context.revisionCache = NewRevisionCache(int(revCacheSize), context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(int(options.RevisionCacheCapacity), context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
@@ -274,12 +275,11 @@ func (context *DatabaseContext) RestartListener() error {
 	return nil
 }
 
-
 func (dc *DatabaseContext) TakeDbOffline() error {
 	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
 	dbState := atomic.LoadUint32(&dc.State)
 	//If the DB is already trasitioning to: offline or is offline silently return
-	if (dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping ) {
+	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
 	}
 

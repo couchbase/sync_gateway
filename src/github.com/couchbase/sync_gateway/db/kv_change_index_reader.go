@@ -38,7 +38,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 	// Initialize notification Callback
 	k.onChange = onChange
 
-	k.indexReadBucket, err = base.GetBucket(indexOptions.Spec)
+	k.indexReadBucket, err = base.GetBucket(indexOptions.Spec, nil)
 	if err != nil {
 		base.Logf("Error opening index bucket %q, pool %q, server <%s>",
 			indexOptions.Spec.BucketName, indexOptions.Spec.PoolName, indexOptions.Spec.Server)
