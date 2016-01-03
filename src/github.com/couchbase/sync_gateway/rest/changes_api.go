@@ -82,7 +82,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if err = options.Since.UnmarshalJSON([]byte(h.getQuery("since"))); err != nil {
+		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -184,7 +184,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes","simple changes cannot get Close Notifier from ResponseWriter")
+			base.LogTo("Changes", "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := json.NewEncoder(h.response)
@@ -216,7 +216,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				message = "OK (timeout)"
 				break loop
 			case <-closeNotify:
-				base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 				break loop
 			case <-h.db.ExitChanges:
 				message = "OK DB has gone offline"
@@ -268,14 +268,14 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	if ok {
 		closeNotify = cn.CloseNotify()
 	} else {
-		base.LogTo("Changes","continuous changes cannot get Close Notifier from ResponseWriter")
+		base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
 	}
 
 loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			if lastSeq.Seq > 0 { // start after end of last feed
+			if lastSeq.IsNonZero() { // start after end of last feed
 				options.Since = lastSeq
 			}
 			if h.db.IsClosed() {
@@ -350,7 +350,7 @@ loop:
 		case <-timeout:
 			break loop
 		case <-closeNotify:
-			base.LogTo("Changes","Connection lost from client: %v", h.currentEffectiveUserName())
+			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 			break loop
 		case <-h.db.ExitChanges:
 			break loop
@@ -475,6 +475,12 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		HeartbeatMs    *uint64       `json:"heartbeat"`
 		TimeoutMs      *uint64       `json:"timeout"`
 		AcceptEncoding string        `json:"accept_encoding"`
+	}
+	// Initialize since clock and hasher ahead of unmarshalling sequence
+	if h.db != nil && h.db.SequenceType == db.ClockSequenceType {
+		input.Since.Clock = base.NewSequenceClockImpl()
+		input.Since.SeqType = h.db.SequenceType
+		input.Since.SequenceHasher = h.db.SequenceHasher
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return

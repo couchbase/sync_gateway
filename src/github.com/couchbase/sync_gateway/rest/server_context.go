@@ -14,28 +14,30 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/cb-heartbeat"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/cmd"
 	"github.com/couchbase/go-couchbase"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"sync/atomic"
-	"io/ioutil"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
-// Number of recently-accessed doc revisions to cache in RAM
-const kDefaultRevisionCacheCapacity = 5000
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -47,6 +49,7 @@ type ServerContext struct {
 	lock        sync.RWMutex
 	statsTicker *time.Ticker
 	HTTPClient  *http.Client
+	CbgtContext base.CbgtContext
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
@@ -82,7 +85,156 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
 	}
+
+	if err := sc.registerCbgtPindexType(); err != nil {
+		log.Fatalf("Fatal error initializing CBGT: %v", err)
+	}
+
 	return sc
+}
+
+func (sc *ServerContext) registerCbgtPindexType() error {
+
+	// The Description format is:
+	//
+	//     $categoryName/$indexType - short descriptive string
+	//
+	// where $categoryName is something like "advanced", or "general".
+	description := fmt.Sprintf("%v/%v - Sync Gateway", base.IndexCategorySyncGateway, base.IndexTypeSyncGateway)
+
+	// Register with CBGT
+	cbgt.RegisterPIndexImplType(base.IndexTypeSyncGateway, &cbgt.PIndexImplType{
+		New:         sc.NewSyncGatewayPIndexFactory,
+		Open:        sc.OpenSyncGatewayPIndexFactory,
+		Count:       nil,
+		Query:       nil,
+		Description: description,
+	})
+	return nil
+
+}
+
+// When CBGT is opening a PIndex for the first time, it will call back this method.
+func (sc *ServerContext) NewSyncGatewayPIndexFactory(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	os.MkdirAll(path, 0700)
+
+	indexParamsStruct := base.SyncGatewayIndexParams{}
+	err := json.Unmarshal([]byte(indexParams), &indexParamsStruct)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Error unmarshalling indexParams: %v.  indexParams: %v", err, indexParams)
+	}
+
+	pathMeta := path + string(os.PathSeparator) + "SyncGatewayIndexParams.json"
+	err = ioutil.WriteFile(pathMeta, []byte(indexParams), 0600)
+	if err != nil {
+		errWrap := fmt.Errorf("Error writing %v to %v. Err: %v", indexParams, pathMeta, err)
+		log.Fatalf("%v", errWrap)
+		return nil, nil, errWrap
+	}
+
+	pindexImpl, dest, err := sc.SyncGatewayPIndexFactoryCommon(indexParamsStruct)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	if pindexImpl == nil {
+		base.Warn("PIndex for dest %v is nil", dest)
+		return nil, nil, fmt.Errorf("PIndex for dest %v is nil.  This could be due to the pindex stored on disk not corresponding to any configured databases.", dest)
+	}
+
+	return pindexImpl, dest, nil
+
+}
+
+// When CBGT is re-opening an existing PIndex (after a Sync Gw restart for example), it will call back this method.
+func (sc *ServerContext) OpenSyncGatewayPIndexFactory(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	buf, err := ioutil.ReadFile(path +
+		string(os.PathSeparator) + "SyncGatewayIndexParams.json")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	indexParams := base.SyncGatewayIndexParams{}
+	err = json.Unmarshal(buf, &indexParams)
+	if err != nil {
+		errWrap := fmt.Errorf("Could not unmarshal buf: %v err: %v", buf, err)
+		log.Fatalf("%v", errWrap)
+		return nil, nil, errWrap
+	}
+
+	pindexImpl, dest, err := sc.SyncGatewayPIndexFactoryCommon(indexParams)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	if pindexImpl == nil {
+		base.Warn("PIndex for dest %v is nil", dest)
+		return nil, nil, fmt.Errorf("PIndex for dest %v is nil.  This could be due to the pindex stored on disk not corresponding to any configured databases.", dest)
+	}
+
+	return pindexImpl, dest, nil
+
+}
+
+func (sc *ServerContext) SyncGatewayPIndexFactoryCommon(indexParams base.SyncGatewayIndexParams) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	bucketName := indexParams.BucketName
+
+	// lookup the database context based on the indexParams
+	dbName := sc.findDbByBucketName(bucketName)
+	if dbName == "" {
+		base.Warn("Could not find database for bucket name: %v.  Unable to instantiate this pindex from disk.", bucketName)
+		return nil, nil, nil
+	}
+
+	dbContext, ok := sc.databases_[dbName]
+	if !ok {
+		err := fmt.Errorf("Could not find database for name: %v", dbName)
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	// get the bucket, and type assert to a couchbase bucket
+	baseBucket := dbContext.Bucket
+	bucket, ok := baseBucket.(base.CouchbaseBucket)
+	if !ok {
+		err := fmt.Errorf("Type assertion fail to Couchbasebucket: %+v", baseBucket)
+		log.Fatalf("%v", err)
+		return nil, nil, err
+	}
+
+	tapListener := dbContext.TapListener()
+
+	eventFeed := tapListener.TapFeed().WriteEvents()
+
+	stableClock, err := dbContext.GetStableClock()
+	if err != nil {
+		errWrap := fmt.Errorf("Error getting stable clock: %v", err)
+		log.Fatalf("%v", errWrap)
+		return nil, nil, errWrap
+	}
+
+	result := base.NewSyncGatewayPIndex(eventFeed, bucket, tapListener.TapArgs, stableClock)
+
+	return result, result, nil
+
+}
+
+func (sc *ServerContext) findDbByBucketName(bucketName string) string {
+
+	// Loop through all known database contexts and return the first one
+	// that has the bucketName specified above.
+	for dbName, dbContext := range sc.databases_ {
+		if dbContext.Bucket.GetName() == bucketName {
+			return dbName
+		}
+	}
+	return ""
+
 }
 
 func (sc *ServerContext) Close() {
@@ -141,6 +293,224 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// Make sure that for all nodes that are feedtype=DCPSHARD, either all of them
+// are IndexWriters, or none of them are IndexWriters, otherwise return false.
+func (sc *ServerContext) numIndexWriters() (numIndexWriters, numIndexNonWriters int) {
+
+	for _, dbContext := range sc.databases_ {
+		if dbContext.BucketSpec.FeedType != base.DcpShardFeedType {
+			continue
+		}
+		if dbContext.Options.IndexOptions.Writer {
+			numIndexWriters += 1
+		} else {
+			numIndexNonWriters += 1
+		}
+	}
+
+	return numIndexWriters, numIndexNonWriters
+
+}
+
+func (sc *ServerContext) HasIndexWriters() bool {
+	numIndexWriters, _ := sc.numIndexWriters()
+	return numIndexWriters > 0
+}
+
+func (sc *ServerContext) InitCBGT() error {
+
+	if !sc.HasIndexWriters() {
+		base.Logf("Skipping CBGT initialization since no databases are configured as index writers")
+		return nil
+	}
+
+	cbgtContext, err := sc.InitCBGTManager()
+	if err != nil {
+		return err
+	}
+	sc.CbgtContext = cbgtContext
+
+	// loop through all databases and init CBGT index
+	for _, dbContext := range sc.databases_ {
+		dbContext.BucketSpec.CbgtContext = sc.CbgtContext
+		if err := dbContext.CreateCBGTIndex(); err != nil {
+			return err
+		}
+	}
+
+	// Since we've created new indexes via the dbContext.InitCBGT() calls above,
+	// we need to kick the manager to recognize them.
+	cbgtContext.Manager.Kick("NewIndexesCreated")
+
+	// Make sure that we don't have multiple partitions subscribed to the same DCP shard
+	// for a given bucket.
+	if err := sc.validateCBGTPartitionMap(); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+// This was created in reaction to a development bug that was found:
+//    https://github.com/couchbase/sync_gateway/issues/1129
+// What this method does is to loop through all the databases and build
+// up a map of what the CBGT index names _should be_.  Then, it loops over
+// all of the known CBGT indexes, and makes sure the CBGT index name is a valid
+// name by checking if it's in the map.  If not, return an error.
+func (sc *ServerContext) validateCBGTPartitionMap() error {
+
+	validCBGTIndexNames := map[string]string{}
+	for _, dbContext := range sc.databases_ {
+		cbgtIndexName := dbContext.GetCBGTIndexNameForBucket(dbContext.Bucket)
+		validCBGTIndexNames[cbgtIndexName] = "n/a"
+	}
+
+	_, planPIndexesByName, _ := sc.CbgtContext.Manager.GetPlanPIndexes(true)
+
+	for cbgtIndexName, _ := range planPIndexesByName {
+		_, ok := validCBGTIndexNames[cbgtIndexName]
+		if !ok {
+			base.Warn("Deleting CBGT index %v since it is invalid for the current Sync Gateway configuration.  Valid index names: %v", cbgtIndexName, validCBGTIndexNames)
+			sc.CbgtContext.Manager.DeleteIndex(cbgtIndexName)
+		}
+	}
+
+	return nil
+}
+
+func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
+
+	base.LogTo("DIndex+", "Initializing CBGT")
+
+	couchbaseUrl, err := base.CouchbaseUrlWithAuth(
+		*sc.config.ClusterConfig.Server,
+		sc.config.ClusterConfig.Username,
+		sc.config.ClusterConfig.Password,
+		*sc.config.ClusterConfig.Bucket,
+	)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	uuid, err := cmd.MainUUID(base.IndexTypeSyncGateway, sc.config.ClusterConfig.DataDir)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	// this tells CBGT that we are brining a new CBGT node online
+	register := "wanted"
+
+	// use the uuid as the bindHttp so that we don't have to make the user
+	// configure this, and since as far as the REST Api interface, we'll be using
+	// whatever is configured in adminInterface anyway.
+	// More info here:
+	//   https://github.com/couchbaselabs/cbgt/issues/1
+	//   https://github.com/couchbaselabs/cbgt/issues/25
+	bindHttp := uuid
+
+	options := map[string]interface{}{
+		"keyPrefix": db.KSyncKeyPrefix,
+	}
+
+	cfgCb, err := cbgt.NewCfgCBEx(
+		couchbaseUrl,
+		*sc.config.ClusterConfig.Bucket,
+		options,
+	)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	tags := []string{"feed", "janitor", "pindex", "planner"}
+	container := ""
+	weight := 1                               // this would allow us to have more pindexes serviced by this node
+	server := *sc.config.ClusterConfig.Server // or use "." (don't bother checking)
+	extras := ""
+	var managerEventHandlers cbgt.ManagerEventHandlers
+
+	// refresh it so we have a fresh copy
+	if err := cfgCb.Refresh(); err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	manager := cbgt.NewManager(
+		cbgt.VERSION,
+		cfgCb,
+		uuid,
+		tags,
+		container,
+		weight,
+		extras,
+		bindHttp,
+		sc.config.ClusterConfig.DataDir,
+		server,
+		managerEventHandlers,
+	)
+
+	err = manager.Start(register)
+	if err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	if err := sc.enableCBGTAutofailover(
+		cbgt.VERSION,
+		manager,
+		cfgCb,
+		uuid,
+		couchbaseUrl,
+		db.KSyncKeyPrefix,
+	); err != nil {
+		return base.CbgtContext{}, err
+	}
+
+	cbgtContext := base.CbgtContext{
+		Manager: manager,
+		Cfg:     cfgCb,
+	}
+
+	return cbgtContext, nil
+
+}
+
+func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manager, cfg cbgt.Cfg, uuid, couchbaseUrl, keyPrefix string) error {
+
+	base.LogTo("DIndex+", "Enabling CBGT auto-failover")
+	cbHeartbeater, err := cbheartbeat.NewCouchbaseHeartbeater(
+		couchbaseUrl,
+		*sc.config.ClusterConfig.Bucket,
+		keyPrefix,
+		uuid,
+	)
+	if err != nil {
+		return err
+	}
+
+	intervalMs := 10000
+
+	if sc.config.ClusterConfig.HeartbeatIntervalSeconds != nil {
+		intervalMs = int(*sc.config.ClusterConfig.HeartbeatIntervalSeconds) * 1000
+	}
+
+	base.LogTo("DIndex+", "Sending CBGT node heartbeats at interval: %v ms", intervalMs)
+	cbHeartbeater.StartSendingHeartbeats(intervalMs)
+
+	deadNodeHandler := base.HeartbeatStoppedHandler{
+		Cfg:         cfg,
+		CbgtVersion: version,
+		Manager:     mgr,
+	}
+
+	staleThresholdMs := intervalMs * 10
+	if err := cbHeartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
+		return err
+	}
+	base.LogTo("DIndex+", "Checking CBGT node heartbeats with stale threshold: %v ms", staleThresholdMs)
+
+	return nil
+
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
@@ -206,6 +576,12 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		BucketName: bucketName,
 		FeedType:   feedType,
 	}
+
+	// If we are using DCPSHARD feed type, set CbgtContext on bucket spec
+	if feedType == strings.ToLower(base.DcpShardFeedType) {
+		spec.CbgtContext = sc.CbgtContext
+	}
+
 	if config.Username != "" {
 		spec.Auth = config
 	}
@@ -251,18 +627,76 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 		return nil, err
 	}
 
-	var revCacheSize uint32
+	// Channel index definition, if present
+	channelIndexOptions := &db.ChangeIndexOptions{} // TODO: this is confusing!  why is it called both a "change index" and a "channel index"?
+	sequenceHashOptions := &db.SequenceHashOptions{}
+	if config.ChannelIndex != nil {
+		indexServer := "http://localhost:8091"
+		indexPool := "default"
+		indexBucketName := ""
 
+		if config.ChannelIndex.Server != nil {
+			indexServer = *config.ChannelIndex.Server
+		}
+		if config.ChannelIndex.Pool != nil {
+			indexPool = *config.ChannelIndex.Pool
+		}
+		if config.ChannelIndex.Bucket != nil {
+			indexBucketName = *config.ChannelIndex.Bucket
+		}
+		indexSpec := base.BucketSpec{
+			Server:          indexServer,
+			PoolName:        indexPool,
+			BucketName:      indexBucketName,
+			CouchbaseDriver: base.GoCB,
+		}
+		if config.ChannelIndex.Username != "" {
+			indexSpec.Auth = config.ChannelIndex
+		}
+
+		if config.ChannelIndex.NumShards != 0 {
+			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
+		} else {
+			channelIndexOptions.NumShards = 64
+		}
+
+		channelIndexOptions.ValidateOrPanic()
+
+		channelIndexOptions.Spec = indexSpec
+		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
+
+		// TODO: separate config of hash bucket
+		sequenceHashOptions.Bucket, err = base.GetBucket(indexSpec, nil)
+		if err != nil {
+			base.Logf("Error opening sequence hash bucket %q, pool %q, server <%s>",
+				indexBucketName, indexPool, indexServer)
+			// TODO: revert to local index?
+			return nil, err
+		}
+		sequenceHashOptions.Size = 32
+	} else {
+		channelIndexOptions = nil
+	}
+
+	var revCacheSize uint32
 	if config.RevCacheSize != nil && *config.RevCacheSize > 0 {
 		revCacheSize = *config.RevCacheSize
 	} else {
-		revCacheSize = kDefaultRevisionCacheCapacity
+		revCacheSize = db.KDefaultRevisionCacheCapacity
 	}
 
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, cacheOptions, revCacheSize)
+	contextOptions := db.DatabaseContextOptions{
+		CacheOptions:          &cacheOptions,
+		IndexOptions:          channelIndexOptions,
+		SequenceHashOptions:   sequenceHashOptions,
+		RevisionCacheCapacity: revCacheSize,
+	}
+
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}
+	dbcontext.BucketSpec = spec
 
 	syncFn := ""
 	if config.Sync != nil {
@@ -315,23 +749,21 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
-	
+
 	// Save the config
 	sc.config.Databases[config.Name] = config
 
-	if (config.StartOffline) {
-		atomic.StoreUint32(&dbcontext.State,db.DBOffline)
+	if config.StartOffline {
+		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
 			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	} else {
-		atomic.StoreUint32(&dbcontext.State,db.DBOnline)
+		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
 			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	}
-
-
 
 	return dbcontext, nil
 }
@@ -356,7 +788,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		// validate event-related keys
 		for k, _ := range eventHandlersMap {
-			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed"{
+			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed" {
 				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
 			}
 		}
@@ -442,7 +874,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	spec := base.BucketSpec{
 		Server:     *shadow.Server,
 		PoolName:   "default",
-		BucketName: shadow.Bucket,
+		BucketName: *shadow.Bucket,
 		FeedType:   shadow.FeedType,
 	}
 	if shadow.Pool != nil {

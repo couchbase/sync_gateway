@@ -13,15 +13,17 @@ type LogEntry struct {
 	DocID        string     // Document ID
 	RevID        string     // Revision ID
 	Flags        uint8      // Deleted/Removed/Hidden flags
+	VbNo         uint16     // vbucket number
 	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
 	TimeReceived time.Time  // Time received from tap feed
 	Channels     ChannelMap // Channels this entry is in or was removed from
 	Skipped      bool       // Late arriving entry
+	IsPrincipal  bool       // Entry for a user or role
 }
 
 type ChannelMap map[string]*ChannelRemoval
 type ChannelRemoval struct {
-	Seq     uint64 `json:"seq"`
+	Seq     uint64 `json:"seq,omitempty"`
 	RevID   string `json:"rev"`
 	Deleted bool   `json:"del,omitempty"`
 }

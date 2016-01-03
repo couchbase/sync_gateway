@@ -91,6 +91,10 @@ func ParseLogFlags(flags []string) {
 			if key == "*" {
 				logStar = true
 			}
+			// gocb requires a call into the gocb library to enable logging
+			if key == "gocb" {
+				EnableGoCBLogging()
+			}
 			for strings.HasSuffix(key, "+") {
 				key = key[0 : len(key)-1]
 				LogKeys[key] = true // "foo+" also enables "foo"
@@ -125,12 +129,6 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	}
 }
 
-func EnableLogKey(key string) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	LogKeys[key] = true
-}
-
 // Returns a string identifying a function on the call stack.
 // Use depth=1 for the caller of the function that calls GetCallersName, etc.
 func GetCallersName(depth int) string {
@@ -156,6 +154,18 @@ func LogTo(key string, format string, args ...interface{}) {
 	if ok {
 		printf(fgYellow+key+": "+reset+format, args...)
 	}
+}
+
+func EnableLogKey(key string) {
+	logLock.Lock()
+	defer logLock.Unlock()
+	LogKeys[key] = true
+}
+
+func LogEnabled(key string) bool {
+	logLock.RLock()
+	defer logLock.RUnlock()
+	return logStar || LogKeys[key]
 }
 
 // Logs a message to the console.

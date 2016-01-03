@@ -31,6 +31,11 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 	}
 }
 
+func testBucketContext() *DatabaseContext {
+	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	return context
+}
+
 func TestSkippedSequenceQueue(t *testing.T) {
 
 	var skipQueue SkippedSequenceQueue
@@ -80,7 +85,7 @@ func TestSkippedSequenceQueue(t *testing.T) {
 
 func TestLateSequenceHandling(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -143,7 +148,7 @@ func TestLateSequenceHandling(t *testing.T) {
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -196,12 +201,12 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 	docId := fmt.Sprintf("doc-%v", sequence)
-	rev := "1-a"
-	WriteDirectForDoc(db, channelArray, docId, rev, sequence)
+	WriteDirectWithKey(db, docId, channelArray, sequence)
 }
 
-func WriteDirectForDoc(db *Database, channelArray []string, docID string, revID string, sequence uint64) {
+func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
 
+	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
 	for _, channel := range channelArray {
@@ -209,13 +214,12 @@ func WriteDirectForDoc(db *Database, channelArray []string, docID string, revID 
 	}
 
 	syncData := &syncData{
-		CurrentRev: revID,
+		CurrentRev: rev,
 		Sequence:   sequence,
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-
-	db.Bucket.Set(docID, 0, Body{"_sync": syncData, "key": docID})
+	db.Bucket.Add(key, 0, Body{"_sync": syncData, "key": key})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -247,14 +251,8 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Cache":    true,
-		"Changes":  true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
-
+	base.EnableLogKey("Cache")
+	base.EnableLogKey("Changes+")
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -271,7 +269,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
 	// Test that retrieval isn't blocked by skipped sequences
-	db.changeCache.waitForSequence(6)
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assertNoError(t, err, "Couldn't GetChanges")
@@ -286,18 +284,18 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Validate insert to various cache states
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
-	db.changeCache.waitForSequence(7)
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 7})
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.channelCaches["PBS"]
+	pbsCache := db.changeCache.getChannelCache("PBS")
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.channelCaches["ABC"]
+	abcCache := db.changeCache.getChannelCache("ABC")
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.channelCaches["NBC"]
+	nbcCache := db.changeCache.getChannelCache("NBC")
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.channelCaches["TBS"]
+	tbsCache := db.changeCache.getChannelCache("TBS")
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -337,7 +335,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"CBS"}, 6)
 
-	db.changeCache.waitForSequence(6)
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -367,7 +365,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
 
-	db.changeCache.waitForSequence(12)
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 12})
 	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 2)
 
@@ -379,7 +377,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
 	WriteDirect(db, []string{"ABC", "PBS"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
-	db.changeCache.waitForSequence(13)
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 13})
 	time.Sleep(50 * time.Millisecond)
 
 	err = appendFromFeed(&changes, feed, 4)
@@ -421,7 +419,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequence(6)
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -746,13 +744,16 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC"}, 3)
 
+	changeCache, ok := db.changeCache.(*changeCache)
+	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
-	db.changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
-	db.changeCache.CleanSkippedSequenceQueue()
+	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.CleanSkippedSequenceQueue()
 
 	// Validate that 3 is in the channel cache, 5 isn't
-	entries, err := db.changeCache.GetChangesInChannel("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assertNoError(t, err, "Get Changes returned error")
 	assertTrue(t, len(entries) == 1, "Incorrect number of entries returned")
 	assert.Equals(t, entries[0].DocID, "doc-3")
@@ -777,10 +778,13 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC"}, 3)
 
+	changeCache, ok := db.changeCache.(*changeCache)
+	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	db.changeCache.skippedSeqLock.Lock()
-	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
-	db.changeCache.skippedSeqLock.Unlock()
+	changeCache.skippedSeqLock.Lock()
+	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqLock.Unlock()
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	tearDownTestDB(t, db)
@@ -824,7 +828,9 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Equals(t, len(changes), 750)
 
 	// Validate that cache stores the expected number of values
-	abcCache := db.changeCache.channelCaches["ABC"]
+	changeCache, ok := db.changeCache.(*changeCache)
+	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+	abcCache := changeCache.channelCaches["ABC"]
 	assert.Equals(t, len(abcCache.logs), 600)
 }
 

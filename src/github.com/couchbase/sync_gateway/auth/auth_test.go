@@ -158,9 +158,9 @@ func TestSerializeRole(t *testing.T) {
 	encoded, _ := json.Marshal(role)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled Role as: %s", encoded)
-
 	elor := &roleImpl{}
 	err := json.Unmarshal(encoded, elor)
+
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, elor.Name(), role.Name())
 	assert.DeepEquals(t, elor.ExplicitChannels(), role.ExplicitChannels())
@@ -296,6 +296,10 @@ func (self *mockComputer) ComputeRolesForUser(User) (ch.TimedSet, error) {
 	return self.roles, self.err
 }
 
+func (self *mockComputer) UseGlobalSequence() bool {
+	return true
+}
+
 func TestRebuildUserChannels(t *testing.T) {
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
 	auth := NewAuthenticator(gTestBucket, &computer)
@@ -303,10 +307,9 @@ func TestRebuildUserChannels(t *testing.T) {
 	user.setChannels(nil)
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
-	//
+
 	user2, err := auth.GetUser("testUser")
 	assert.Equals(t, err, nil)
-	log.Printf("Channels = %s", user2.Channels())
 	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("explicit1", "derived1", "derived2", "!"), 1))
 }
 
@@ -340,7 +343,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	user, _ := auth.NewUser("testUser", "letmein", nil)
-	user.SetExplicitRoles(ch.TimedSet{"role3": 1, "role1": 1})
+	user.SetExplicitRoles(ch.TimedSet{"role3": ch.NewVbSimpleSequence(1), "role1": ch.NewVbSimpleSequence(1)})
 	err := auth.InvalidateRoles(user)
 	assert.Equals(t, err, nil)
 
@@ -360,8 +363,8 @@ func TestRoleInheritance(t *testing.T) {
 	assert.Equals(t, auth.Save(role), nil)
 
 	user, _ := auth.NewUser("arthur", "password", ch.SetOf("britain"))
-	user.(*userImpl).setRolesSince(ch.TimedSet{"square": 0x3, "nonexistent": 0x42, "frood": 0x4})
-	assert.DeepEquals(t, user.RoleNames(), ch.TimedSet{"square": 0x3, "nonexistent": 0x42, "frood": 0x4})
+	user.(*userImpl).setRolesSince(ch.TimedSet{"square": ch.NewVbSimpleSequence(0x3), "nonexistent": ch.NewVbSimpleSequence(0x42), "frood": ch.NewVbSimpleSequence(0x4)})
+	assert.DeepEquals(t, user.RoleNames(), ch.TimedSet{"square": ch.NewVbSimpleSequence(0x3), "nonexistent": ch.NewVbSimpleSequence(0x42), "frood": ch.NewVbSimpleSequence(0x4)})
 	auth.Save(user)
 
 	user2, err := auth.GetUser("arthur")
@@ -369,7 +372,7 @@ func TestRoleInheritance(t *testing.T) {
 	log.Printf("Channels = %s", user2.Channels())
 	assert.DeepEquals(t, user2.Channels(), ch.AtSequence(ch.SetOf("!", "britain"), 1))
 	assert.DeepEquals(t, user2.InheritedChannels(),
-		ch.TimedSet{"!": 0x1, "britain": 0x1, "dull": 0x3, "duller": 0x3, "dullest": 0x3, "hoopy": 0x4, "hoopier": 0x4, "hoopiest": 0x4})
+		ch.TimedSet{"!": ch.NewVbSimpleSequence(0x1), "britain": ch.NewVbSimpleSequence(0x1), "dull": ch.NewVbSimpleSequence(0x3), "duller": ch.NewVbSimpleSequence(0x3), "dullest": ch.NewVbSimpleSequence(0x3), "hoopy": ch.NewVbSimpleSequence(0x4), "hoopier": ch.NewVbSimpleSequence(0x4), "hoopiest": ch.NewVbSimpleSequence(0x4)})
 	assert.True(t, user2.CanSeeChannel("britain"))
 	assert.True(t, user2.CanSeeChannel("duller"))
 	assert.True(t, user2.CanSeeChannel("hoopy"))

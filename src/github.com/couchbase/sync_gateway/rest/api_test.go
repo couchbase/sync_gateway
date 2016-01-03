@@ -43,10 +43,11 @@ func init() {
 var gBucketCounter = 0
 
 type restTester struct {
-	_bucket      base.Bucket
-	_sc          *ServerContext
-	noAdminParty bool   // Unless this is true, Admin Party is in full effect
-	syncFn       string // put the sync() function source in here (optional)
+	_bucket          base.Bucket
+	_sc              *ServerContext
+	noAdminParty     bool   // Unless this is true, Admin Party is in full effect
+	distributedIndex bool   // Test with walrus-based index bucket
+	syncFn           string // put the sync() function source in here (optional)
 }
 
 func (rt *restTester) bucket() base.Bucket {
@@ -74,10 +75,11 @@ func (rt *restTester) bucket() base.Bucket {
 		})
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
-			Server: &server,
-			Bucket: &bucketName,
-			Name:   "db",
-			Sync:   syncFnPtr,
+			BucketConfig: BucketConfig{
+				Server: &server,
+				Bucket: &bucketName},
+			Name: "db",
+			Sync: syncFnPtr,
 		})
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
@@ -695,7 +697,7 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Access": true,
 	}
 
@@ -918,7 +920,8 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
 
-	assert.Equals(t, options.Since, db.SequenceID{Seq: 78, TriggeredBy: 123456})
+	assert.Equals(t, options.Since.Seq, uint64(78))
+	assert.Equals(t, options.Since.TriggeredBy, uint64(123456))
 	assert.Equals(t, options.Limit, 123)
 	assert.Equals(t, options.Conflicts, true)
 	assert.Equals(t, options.IncludeDocs, true)
@@ -964,6 +967,19 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 }
 
 func TestAccessControl(t *testing.T) {
+	restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
+	defer restTester.Close()
+	testAccessControl(t, restTester)
+}
+
+func TestVbSeqAccessControl(t *testing.T) {
+
+	restTester := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`)
+	defer restTester.Close()
+	testAccessControl(t, restTester)
+}
+
+func testAccessControl(t *testing.T, rt indexTester) {
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -982,7 +998,6 @@ func TestAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	var rt restTester
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1152,7 +1167,7 @@ func TestAccessControl(t *testing.T) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
-	// base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD"})
+	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1196,13 +1211,13 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "g1")
-	assert.Equals(t, since, db.SequenceID{Seq: 8})
+	assert.Equals(t, since.Seq, uint64(8))
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "alpha": 0x1, "delta": 0x3})
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "gamma": 0x4})
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x4)})
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
@@ -1210,9 +1225,9 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "delta": 0x3})
+	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": 0x1, "zero": 0x1, "alpha": 0x9, "gamma": 0x4})
+	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
 
 	// Look at alice's _changes feed:
 	changes.Results = nil
@@ -1229,9 +1244,10 @@ func TestChannelAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	assert.Equals(t, changes.Results[0].ID, "g1")
-	assert.Equals(t, changes.Results[0].Seq, db.SequenceID{Seq: 8})
+	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
 	assert.Equals(t, changes.Results[1].ID, "a1")
-	assert.Equals(t, changes.Results[1].Seq, db.SequenceID{Seq: 5, TriggeredBy: 9})
+	assert.Equals(t, changes.Results[1].Seq.Seq, uint64(5))
+	assert.Equals(t, changes.Results[1].Seq.TriggeredBy, uint64(9))
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
@@ -1311,7 +1327,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 50)
 	since := changes.Results[49].Seq
 	assert.Equals(t, changes.Results[49].ID, "doc48")
-	assert.Equals(t, since, db.SequenceID{Seq: 50})
+	assert.Equals(t, since.Seq, uint64(50))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "", "user1"))
@@ -1321,7 +1337,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 50)
 	since = changes.Results[49].Seq
 	assert.Equals(t, changes.Results[49].ID, "doc98")
-	assert.Equals(t, since, db.SequenceID{Seq: 100})
+	assert.Equals(t, since.Seq, uint64(100))
 
 	// Create user2
 	response = rt.sendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
@@ -1347,7 +1363,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 50)
 	since = changes.Results[49].Seq
 	assert.Equals(t, changes.Results[49].ID, "doc49")
-	assert.Equals(t, since, db.SequenceID{TriggeredBy: 103, Seq: 51})
+	assert.Equals(t, since.Seq, uint64(51))
+	assert.Equals(t, since.TriggeredBy, uint64(103))
 
 	//// Get remainder of changes i.e. no limit parameter
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since), "", "user3"))
@@ -1368,7 +1385,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 50)
 	since = changes.Results[49].Seq
 	assert.Equals(t, changes.Results[49].ID, "doc49")
-	assert.Equals(t, since, db.SequenceID{TriggeredBy: 104, Seq: 51})
+	assert.Equals(t, since.Seq, uint64(51))
+	assert.Equals(t, since.TriggeredBy, uint64(104))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "", "user4"))
@@ -1382,9 +1400,9 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Access": true,
-		"CRUD": true,
+	var logKeys = map[string]bool{
+		"Access":   true,
+		"CRUD":     true,
 		"Changes+": true,
 	}
 
@@ -1431,9 +1449,9 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 func TestRoleAccessChanges(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Access": true,
-		"CRUD": true,
+	var logKeys = map[string]bool{
+		"Access":   true,
+		"CRUD":     true,
 		"Changes+": true,
 	}
 
@@ -1472,10 +1490,10 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": 0x1, "alpha": 0x1, "gamma": 0x1})
-	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": 0x1, "hipster": 0x1})
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": channels.NewVbSimpleSequence(0x1), "hipster": channels.NewVbSimpleSequence(0x1)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": 0x1, "beta": 0x1})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1)})
 	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
@@ -1503,9 +1521,9 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": 0x1, "alpha": 0x1})
+	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1)})
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": 0x1, "beta": 0x1, "gamma": 0x6})
+	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x6)})
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
@@ -1519,13 +1537,13 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	var additionalLogKeys = map[string]bool {
+	var additionalLogKeys = map[string]bool{
 		"Changes": true,
-		"Cache": true,
+		"Cache":   true,
 	}
 
 	base.UpdateLogKeys(additionalLogKeys, false)
-	
+
 	response = rt.send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -1533,80 +1551,6 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	base.LogKeys["Cache"] = false
-}
-
-func TestDocDeletionFromChannel(t *testing.T) {
-
-	/*
-	var logKeys = map[string]bool {
-		"Cache": true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
-	*/
-
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
-	a := rt.ServerContext().Database("db").Authenticator()
-
-	// Create user:
-	alice, _ := a.NewUser("alice", "letmein", channels.SetOf("zero"))
-	a.Save(alice)
-
-	// Create a doc Alice can see:
-	response := rt.send(request("PUT", "/db/alpha", `{"channel":"zero"}`))
-
-	// Check the _changes feed:
-	rt.ServerContext().Database("db").WaitForPendingChanges()
-	var changes struct {
-		Results []db.ChangeEntry
-	}
-	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-	since := changes.Results[0].Seq
-	assert.Equals(t, since, db.SequenceID{Seq: 1})
-
-	assert.Equals(t, changes.Results[0].ID, "alpha")
-	rev1 := changes.Results[0].Changes[0]["rev"]
-
-	// Delete the document:
-	assertStatus(t, rt.send(request("DELETE", "/db/alpha?rev="+rev1, "")), 200)
-
-	// Get the updates from the _changes feed:
-	time.Sleep(100 * time.Millisecond)
-	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
-		"", "alice"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	changes.Results = nil
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-
-	assert.Equals(t, changes.Results[0].ID, "alpha")
-	assert.Equals(t, changes.Results[0].Deleted, true)
-	assert.DeepEquals(t, changes.Results[0].Removed, base.SetOf("zero"))
-	rev2 := changes.Results[0].Changes[0]["rev"]
-
-	// Now get the deleted revision:
-	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev2, "", "alice"))
-	assert.Equals(t, response.Code, 200)
-	log.Printf("Deletion looks like: %s", response.Body.Bytes())
-	var docBody db.Body
-	json.Unmarshal(response.Body.Bytes(), &docBody)
-	assert.DeepEquals(t, docBody, db.Body{"_id": "alpha", "_rev": rev2, "_deleted": true})
-
-	// Access without deletion revID shouldn't be allowed (since doc is not in Alice's channels):
-	response = rt.send(requestByUser("GET", "/db/alpha", "", "alice"))
-	assert.Equals(t, response.Code, 403)
-
-	// A bogus rev ID should return a 404:
-	response = rt.send(requestByUser("GET", "/db/alpha?rev=bogus", "", "alice"))
-	assert.Equals(t, response.Code, 404)
-
-	// Get the old revision, which should still be accessible:
-	response = rt.send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
-	assert.Equals(t, response.Code, 200)
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
@@ -1810,7 +1754,7 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	var rt restTester
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Changes+": true,
 	}
 
@@ -1877,7 +1821,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 3)
 	since := changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, since, db.SequenceID{Seq: 1})
+	assert.Equals(t, since.Seq, uint64(1))
 
 	// GET /db/_changes for single channel
 	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard"))
@@ -1887,7 +1831,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 1)
 	since = changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, since, db.SequenceID{Seq: 1})
+	assert.Equals(t, since.Seq, uint64(1))
 
 	// GET /db/_changes for ! channel
 	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard"))
@@ -1897,7 +1841,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since, db.SequenceID{Seq: 3})
+	assert.Equals(t, since.Seq, uint64(3))
 
 	// GET /db/_changes for unauthorized channel
 	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard"))
@@ -1942,7 +1886,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 6)
 	since = changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, since, db.SequenceID{Seq: 1})
+	assert.Equals(t, since.Seq, uint64(1))
 
 	// GET /db/_changes for ! channel
 	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran"))
@@ -1952,7 +1896,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since, db.SequenceID{Seq: 3})
+	assert.Equals(t, since.Seq, uint64(3))
 
 	//
 	// Part 3 - Tests for user with no user channel access
@@ -1987,7 +1931,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since, db.SequenceID{Seq: 3})
+	assert.Equals(t, since.Seq, uint64(3))
 
 	// GET /db/_changes for ! channel
 	response = rt.send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny"))
@@ -1997,7 +1941,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since, db.SequenceID{Seq: 3})
+	assert.Equals(t, since.Seq, uint64(3))
 }
 
 // Test for issue #562

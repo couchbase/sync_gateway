@@ -25,7 +25,7 @@ type syncData struct {
 	CurrentRev      string              `json:"rev"`
 	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
 	Flags           uint8               `json:"flags,omitempty"`
-	Sequence        uint64              `json:"sequence"`
+	Sequence        uint64              `json:"sequence,omitempty"`
 	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused due to update conflicts
 	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
 	History         RevTree             `json:"history"`
@@ -90,8 +90,8 @@ func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 	return root.SyncData, nil
 }
 
-func (doc *syncData) hasValidSyncData() bool {
-	return doc != nil && doc.CurrentRev != "" && doc.Sequence > 0
+func (doc *syncData) hasValidSyncData(requireSequence bool) bool {
+	return doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
 }
 
 func (doc *document) hasFlag(flag uint8) bool {

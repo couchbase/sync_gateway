@@ -10,11 +10,13 @@
 package base
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -129,6 +131,102 @@ func ToInt64(value interface{}) (int64, bool) {
 	return 0, false
 }
 
+func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (string, error) {
+
+	// parse url and reconstruct it piece by piece
+	u, err := url.Parse(serverUrl)
+	if err != nil {
+		return "", err
+	}
+
+	userPass := bytes.Buffer{}
+	addedUsername := false
+
+	// do we have a username?  if so add it
+	if username != "" {
+		userPass.WriteString(username)
+		addedUsername = true
+	} else {
+		// do we have a non-default bucket name?  if so, use that as the username
+		if bucketname != "" && bucketname != "default" {
+			userPass.WriteString(bucketname)
+			addedUsername = true
+		}
+	}
+
+	if addedUsername {
+		if password != "" {
+			userPass.WriteString(":")
+			userPass.WriteString(password)
+		}
+
+	}
+
+	if addedUsername {
+		return fmt.Sprintf(
+			"%v://%v@%v%v",
+			u.Scheme,
+			userPass.String(),
+			u.Host,
+			u.Path,
+		), nil
+	} else {
+		// just return the original
+		return serverUrl, nil
+	}
+
+}
+
+// Callback function to return the stable sequence
+type StableSequenceFunc func() (clock SequenceClock, err error)
+
+func LoadStableSequence(bucket Bucket) SequenceClock {
+	stableSequence := NewSequenceClockImpl()
+	value, cas, err := bucket.GetRaw(KStableSequenceKey)
+	if err != nil {
+		Warn("Stable sequence not found in index - resetting to 0.  Err: %v.  Bucket: %+v", err, bucket)
+		return stableSequence
+	}
+	stableSequence.Unmarshal(value)
+	stableSequence.SetCas(cas)
+	return stableSequence
+}
+
+func StableCallbackTest(callback StableSequenceFunc) (SequenceClock, error) {
+	return callback()
+}
+
+// This transforms raw input bucket credentials (for example, from config), to input
+// credentials expected by Couchbase server, based on a few rules
+func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {
+
+	username = inputUsername
+	password = inputPassword
+
+	// If the username is empty then set the username to the bucketname.
+	if inputUsername == "" {
+		username = inputBucketname
+	}
+
+	// if the username is empty, then the password should be empty too
+	if username == "" {
+		password = ""
+	}
+
+	// If it's the default bucket, then set the username to "default"
+	// workaround for https://github.com/couchbaselabs/cbgt/issues/32#issuecomment-136481228
+	if inputBucketname == "" || inputBucketname == "default" {
+		username = "default"
+	}
+
+	return username, password, inputBucketname
+
+}
+
+func IsPowerOfTwo(n uint16) bool {
+	return (n & (n - 1)) == 0
+}
+
 // IntMax is an expvar.Value that tracks the maximum value it's given.
 type IntMax struct {
 	i  int64
@@ -181,5 +279,62 @@ func AddDbPathToCookie(rq *http.Request, cookie *http.Cookie) {
 		dbPath = fmt.Sprintf("/%v", pathComponents[0])
 	}
 	cookie.Path = dbPath
+
+}
+
+// A retry sleeper is called back by the retry loop and passed
+// the current retryCount, and should return the amount of milliseconds
+// that the retry should sleep.
+type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
+
+// A RetryWorker encapsulates the work being done in a Retry Loop.  The shouldRetry
+// return value determines whether the worker will retry, regardless of the err value.
+// If the worker has exceeded it's retry attempts, then it will not be called again
+// even if it returns shouldRetry = true.
+type RetryWorker func() (shouldRetry bool, err error, value interface{})
+
+func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
+
+	numAttempts := 1
+
+	for {
+		shouldRetry, err, value := worker()
+		if !shouldRetry {
+			if err != nil {
+				return err, nil
+			}
+			return nil, value
+		}
+
+		shouldContinue, sleepMs := sleeper(numAttempts)
+		if !shouldContinue {
+			err := fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			return err, value
+		}
+		Warn("RetryLoop retrying %v after %v ms.", description, sleepMs)
+
+		<-time.After(time.Millisecond * time.Duration(sleepMs))
+
+		numAttempts += 1
+
+	}
+}
+
+// Create a RetrySleeper that will double the retry time on every iteration and
+// use the given parameters
+func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySleeper {
+
+	timeToSleepMs := initialTimeToSleepMs
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > maxNumAttempts {
+			return false, -1
+		}
+		if numAttempts > 1 {
+			timeToSleepMs *= 2
+		}
+		return true, timeToSleepMs
+	}
+	return sleeper
 
 }

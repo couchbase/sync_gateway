@@ -148,11 +148,15 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	// And finally save the Principal:
 	if changed {
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
-		nextSeq, err := dbc.sequences.nextSequence()
-		if err != nil {
-			return replaced, err
+		nextSeq := uint64(0)
+		if dbc.writeSequences() {
+			var err error
+			nextSeq, err = dbc.sequences.nextSequence()
+			if err != nil {
+				return replaced, err
+			}
+			princ.SetSequence(nextSeq)
 		}
-		princ.SetSequence(nextSeq)
 
 		// Now update the Principal object from the properties in the request, first the channels:
 		if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {

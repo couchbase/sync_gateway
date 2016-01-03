@@ -11,6 +11,7 @@ package channels
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -45,34 +46,38 @@ func TestTimedSetUnmarshal(t *testing.T) {
 	assert.DeepEquals(t, str.Channels, TimedSet(nil))
 
 	err = json.Unmarshal([]byte(`{"channels":{}}`), &str)
-	assertNoError(t, err, "Unmarshal")
+	assertNoError(t, err, "Unmarshal empty")
 	assert.DeepEquals(t, str.Channels, TimedSet{})
 
 	err = json.Unmarshal([]byte(`{"channels":{"a":17,"b":17}}`), &str)
-	assertNoError(t, err, "Unmarshal")
-	assert.DeepEquals(t, str.Channels, TimedSet{"a": 17, "b": 17})
+	assertNoError(t, err, "Unmarshal sequence only")
+	assert.DeepEquals(t, str.Channels, TimedSet{"a": NewVbSimpleSequence(17), "b": NewVbSimpleSequence(17)})
 
 	// Now try unmarshaling the alternative array form:
 	err = json.Unmarshal([]byte(`{"channels":[]}`), &str)
-	assertNoError(t, err, "Unmarshal")
+	assertNoError(t, err, "Unmarshal empty array")
 	assert.DeepEquals(t, str.Channels, TimedSet{})
 
 	err = json.Unmarshal([]byte(`{"channels":["a","b"]}`), &str)
-	assertNoError(t, err, "Unmarshal")
-	assert.DeepEquals(t, str.Channels, TimedSet{"a": 0, "b": 0})
+	assertNoError(t, err, "Unmarshal populated array")
+	assert.DeepEquals(t, str.Channels, TimedSet{"a": NewVbSimpleSequence(0), "b": NewVbSimpleSequence(0)})
+
+	err = json.Unmarshal([]byte(`{"channels":{"a":{"seq":17, "vb":21},"b":{"seq":23, "vb":25}}}`), &str)
+	assertNoError(t, err, "Unmarshal sequence and vbucket only")
+	assert.Equals(t, fmt.Sprintf("%s", str.Channels), fmt.Sprintf("%s", TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}))
 }
 
 func TestEncodeSequenceID(t *testing.T) {
-	set := TimedSet{"ABC": 17, "CBS": 23, "BBC": 1}
+	set := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
 	encoded := set.String()
 	assert.Equals(t, encoded, "ABC:17,BBC:1,CBS:23")
 	decoded := TimedSetFromString(encoded)
 	assert.DeepEquals(t, decoded, set)
 
-	assert.Equals(t, TimedSet{"ABC": 17, "CBS": 0}.String(), "ABC:17")
+	assert.Equals(t, TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(0)}.String(), "ABC:17")
 
 	assert.DeepEquals(t, TimedSetFromString(""), TimedSet{})
-	assert.DeepEquals(t, TimedSetFromString("ABC:17"), TimedSet{"ABC": 17})
+	assert.DeepEquals(t, TimedSetFromString("ABC:17"), TimedSet{"ABC": NewVbSimpleSequence(17)})
 
 	assert.DeepEquals(t, TimedSetFromString(":17"), TimedSet(nil))
 	assert.DeepEquals(t, TimedSetFromString("ABC:"), TimedSet(nil))
@@ -85,14 +90,14 @@ func TestEncodeSequenceID(t *testing.T) {
 }
 
 func TestEqualsWithEqualSet(t *testing.T) {
-	set1 := TimedSet{"ABC": 17, "CBS": 23, "BBC": 1}
+	set1 := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
 	set2 := base.SetFromArray([]string{"ABC", "CBS", "BBC"})
 	assert.True(t, set1.Equals(set2))
 
 }
 
 func TestEqualsWithUnequalSet(t *testing.T) {
-	set1 := TimedSet{"ABC": 17, "CBS": 23, "BBC": 1}
+	set1 := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
 	set2 := base.SetFromArray([]string{"ABC", "BBC"})
 	assert.True(t, !set1.Equals(set2))
 	set3 := base.SetFromArray([]string{"ABC", "BBC", "CBS", "FOO"})

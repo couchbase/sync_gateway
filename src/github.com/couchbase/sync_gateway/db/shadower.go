@@ -53,7 +53,7 @@ func (s *Shadower) docIDMatches(docID string) bool {
 			return false
 		}
 	}
-	return !strings.HasPrefix(docID, kSyncKeyPrefix)
+	return !strings.HasPrefix(docID, KSyncKeyPrefix)
 }
 
 // Main loop that pulls changes from the external bucket. (Runs in its own goroutine.)

@@ -16,7 +16,7 @@ func (c *DatabaseContext) watchDocChanges() {
 	for event := range c.tapListener.DocChannel {
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {
-			if doc.hasValidSyncData() {
+			if doc.hasValidSyncData(c.writeSequences()) {
 				if c.Shadower != nil {
 					c.Shadower.PushRevision(doc)
 				}
@@ -34,7 +34,7 @@ func (c *DatabaseContext) assimilate(docid string) {
 	base.LogTo("CRUD", "Importing new doc %q", docid)
 	db := Database{DatabaseContext: c, user: nil}
 	_, err := db.updateDoc(docid, true, func(doc *document) (Body, error) {
-		if doc.hasValidSyncData() {
+		if doc.hasValidSyncData(c.writeSequences()) {
 			return nil, couchbase.UpdateCancel // someone beat me to it
 		}
 		if err := db.initializeSyncData(doc); err != nil {

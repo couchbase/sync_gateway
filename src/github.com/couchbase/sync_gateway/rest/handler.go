@@ -113,7 +113,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		status:       http.StatusOK,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
 		startTime:    time.Now(),
-		runOffline:      runOffline,
+		runOffline:   runOffline,
 	}
 }
 
@@ -170,7 +170,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		if err != nil {
 			return err
 		}
-		if (!h.runOffline) {
+		if !h.runOffline {
 
 			//get a read lock on the dbContext
 			//When the lock is returned we know that the db state will not be changed by
@@ -183,11 +183,11 @@ func (h *handler) invoke(method handlerMethod) error {
 			dbState := atomic.LoadUint32(&dbContext.State)
 
 			//if dbState == db.DBOnline, continue flow and invoke the handler method
-			if (dbState == db.DBOffline) {
+			if dbState == db.DBOffline {
 				//DB is offline, only handlers with runOffline true can run in this state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
-			} else if (dbState != db.DBOnline) {
-			 	//DB is in transition state, no calls will be accepted until it is Online or Offline state
+			} else if dbState != db.DBOnline {
+				//DB is in transition state, no calls will be accepted until it is Online or Offline state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later", db.RunStateString[dbState]))
 			}
 		}
@@ -218,7 +218,7 @@ func (h *handler) logDuration(realTime bool) {
 	var duration time.Duration
 	if realTime {
 		duration = time.Since(h.startTime)
-		bin := int(duration / (100 * time.Millisecond)) * 100
+		bin := int(duration/(100*time.Millisecond)) * 100
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 
@@ -228,7 +228,7 @@ func (h *handler) logDuration(realTime bool) {
 	}
 	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
 		h.serialNumber, h.status, h.statusMessage,
-		float64(duration) / float64(time.Millisecond))
+		float64(duration)/float64(time.Millisecond))
 }
 
 // Used for indefinitely-long handlers like _changes that we don't want to track duration of
@@ -299,6 +299,17 @@ func (h *handler) SetPathVar(name string, value string) {
 
 func (h *handler) getQuery(query string) string {
 	return h.rq.URL.Query().Get(query)
+}
+
+func (h *handler) getJSONStringQuery(query string) string {
+	var jsonString string
+	rawString := h.getQuery(query)
+	err := json.Unmarshal([]byte(rawString), &jsonString)
+	if err != nil {
+		return rawString
+	} else {
+		return jsonString
+	}
 }
 
 func (h *handler) getBoolQuery(query string) bool {
@@ -637,7 +648,7 @@ func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, st
 	}
 	if start >= contentLength {
 		return http.StatusRequestedRangeNotSatisfiable, 0, 0
-	} else if start == 0 && end == contentLength - 1 {
+	} else if start == 0 && end == contentLength-1 {
 		return // no-op
 	}
 

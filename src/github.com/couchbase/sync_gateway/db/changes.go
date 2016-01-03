@@ -87,8 +87,8 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
-	log, err := db.changeCache.GetChangesInChannel(channel, options)
-
+	log, err := db.changeCache.GetChanges(channel, options)
+	base.LogTo("DIndex+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +123,7 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 			change := makeChangeEntry(logEntry, seqID, channel)
 
+			base.LogTo("Changes+", "Sending seq:%v from channel %s", seqID, channel)
 			select {
 			case <-options.Terminator:
 				base.LogTo("Changes+", "Aborting changesFeed")
@@ -156,23 +157,87 @@ func makeErrorEntry(message string) ChangeEntry {
 	return change
 }
 
-// Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	if len(chans) == 0 {
 		return nil, nil
 	}
+
+	if (options.Continuous || options.Wait) && options.Terminator == nil {
+		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
+	}
+	if db.SequenceType == IntSequenceType {
+		base.LogTo("Changes+", "Int sequence multi changes feed...")
+		return db.SimpleMultiChangesFeed(chans, options)
+	} else {
+		base.LogTo("Changes+", "Vector multi changes feed...")
+		return db.VectorMultiChangesFeed(chans, options)
+	}
+}
+
+func (db *Database) startChangeWaiter(chans base.Set) *changeWaiter {
+	waitChans := chans
+	if db.user != nil {
+		waitChans = db.user.ExpandWildCardChannel(chans)
+	}
+	return db.tapListener.NewWaiterWithChannels(waitChans, db.user)
+}
+
+func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions) ([]<-chan *ChangeEntry, []string) {
+	userSeq := SequenceID{Seq: db.user.Sequence()}
+	if options.Since.Before(userSeq) {
+		name := db.user.Name()
+		if name == "" {
+			name = base.GuestUsername
+		}
+		entry := ChangeEntry{
+			Seq:     userSeq,
+			ID:      "_user/" + name,
+			Changes: []ChangeRev{},
+		}
+		userFeed := make(chan *ChangeEntry, 1)
+		userFeed <- &entry
+		close(userFeed)
+		feeds = append(feeds, userFeed)
+		names = append(names, entry.ID)
+	}
+	return feeds, names
+}
+
+func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter) (newCount uint64, newChannels base.Set, err error) {
+	if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
+		var previousChannels channels.TimedSet
+		var newChannels base.Set
+		base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
+		userChangeCount = newCount
+
+		if db.user != nil {
+			previousChannels = db.user.InheritedChannels()
+			if err := db.ReloadUser(); err != nil {
+				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+				return 0, nil, err
+			}
+			// check whether channels have changed
+			newChannels = db.user.GetAddedChannels(previousChannels)
+			if len(newChannels) > 0 {
+				base.LogTo("Changes+", "New channels found after user reload: %v", newChannels)
+			}
+		}
+		return newCount, newChannels, nil
+	} else {
+		return userChangeCount, nil, nil
+	}
+}
+
+// Returns the (ordered) union of all of the changes made to multiple channels.
+func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	to := ""
 	if db.user != nil && db.user.Name() != "" {
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 	}
 
 	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
-
-	if (options.Continuous || options.Wait) && options.Terminator == nil {
-		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
-	}
-
 	output := make(chan *ChangeEntry, 50)
+
 	go func() {
 		defer func() {
 			base.LogTo("Changes", "MultiChangesFeed done %s", to)
@@ -196,13 +261,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 		if options.Wait {
 			options.Wait = false
-			waitChans := chans
-			if db.user != nil {
-				waitChans = db.user.ExpandWildCardChannel(chans)
-			}
-			changeWaiter = db.tapListener.NewWaiterWithChannels(waitChans, db.user)
-
+			changeWaiter = db.startChangeWaiter(chans)
 			userChangeCount = changeWaiter.CurrentUserCount()
+
 			// If a longpoll request has a low sequence that matches the current lowSequence,
 			// ignore the low sequence.  This avoids infinite looping of the records between
 			// low::high.  It also means any additional skipped sequences between low::high won't
@@ -253,8 +314,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
 			// could be written to channel X during one iteration, and channel Y during another.  Users
 			// with access to both channels would see two versions on the feed.
-			for name, seqAddedAt := range channelsSince {
+			for name, vbSeqAddedAt := range channelsSince {
 				chanOpts := options
+				seqAddedAt := vbSeqAddedAt.Sequence
 
 				// Check whether requires backfill based on addedChannels in this _changes feed
 				isNewChannel := false
@@ -312,26 +374,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 					}
 				}
 			}
-
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
-				userSeq := SequenceID{Seq: db.user.Sequence()}
-				if options.Since.Before(userSeq) {
-					name := db.user.Name()
-					if name == "" {
-						name = base.GuestUsername
-					}
-					entry := ChangeEntry{
-						Seq:     userSeq,
-						ID:      "_user/" + name,
-						Changes: []ChangeRev{},
-					}
-					userFeed := make(chan *ChangeEntry, 1)
-					userFeed <- &entry
-					close(userFeed)
-					feeds = append(feeds, userFeed)
-					names = append(names, entry.ID)
-				}
+				feeds, names = db.appendUserFeed(feeds, names, options)
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
@@ -432,31 +477,14 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 			default:
 			}
 
-			// Reset added channels
-			addedChannels = nil
-
-			// Before checking again, update the User object in case its channel access has
-			// changed while waiting:
-			if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
-				var previousChannels channels.TimedSet
-				base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
-				userChangeCount = newCount
-
-				if db.user != nil {
-					previousChannels = db.user.InheritedChannels()
-					if err := db.ReloadUser(); err != nil {
-						base.Warn("Error reloading user %q: %v", db.user.Name(), err)
-						change := makeErrorEntry("User not found during reload - terminating changes feed")
-						base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
-						output <- &change
-						return
-					}
-					// check whether channels have changed
-					addedChannels = db.user.GetAddedChannels(previousChannels)
-					if len(addedChannels) > 0 {
-						base.LogTo("Changes+", "New channels found after user reload: %v", addedChannels)
-					}
-				}
+			// Check whether user channel access has changed while waiting:
+			var err error
+			userChangeCount, addedChannels, err = db.checkForUserUpdates(userChangeCount, changeWaiter)
+			if err != nil {
+				change := makeErrorEntry("User not found during reload - terminating changes feed")
+				base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
+				output <- &change
+				return
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
@@ -476,8 +504,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 // Synchronous convenience function that returns all changes as a simple array.
 func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	if options.Terminator == nil {
+		options.Terminator = make(chan bool)
+		defer close(options.Terminator)
+	}
 
 	var changes = make([]*ChangeEntry, 0, 50)
 	feed, err := db.MultiChangesFeed(channels, options)
@@ -499,7 +529,7 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
 	if err == nil {
-		context.changeCache.waitForSequence(lastSequence)
+		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence})
 	}
 	return
 }
@@ -516,7 +546,7 @@ type lateSequenceFeed struct {
 // skipped) sequences that have been sent to the channel cache.  The lateSequenceFeed stores the last (late)
 // sequence seen by this particular _changes feed to support continuous changes.
 func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
-	chanCache := db.changeCache.channelCaches[channelName]
+	chanCache := db.changeCache.getChannelCache(channelName)
 	if chanCache == nil {
 		return nil
 	}

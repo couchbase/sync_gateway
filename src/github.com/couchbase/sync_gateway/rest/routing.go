@@ -10,12 +10,16 @@
 package rest
 
 import (
-	"github.com/couchbaselabs/sync_gateway_admin_ui"
-	"github.com/gorilla/mux"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/rest"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/sync_gateway_admin_ui"
+	"github.com/gorilla/mux"
 )
 
 // Regexes that match database or doc ID component of a path.
@@ -183,6 +187,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handlePprofBlock)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/threadcreate",
 		makeHandler(sc, adminPrivs, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
+	r.Handle("/_debug/pprof/trace",
+		makeHandler(sc, adminPrivs, (*handler).handlePprofTrace)).Methods("GET", "POST")
 
 	// Database-relative handlers:
 	dbr.Handle("/_config",
@@ -205,6 +211,10 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
+	dbr.Handle("/_index/channel/{channel}",
+		makeHandler(sc, adminPrivs, (*handler).handleIndexChannel)).Methods("GET")
+	dbr.Handle("/_index/channels",
+		makeHandler(sc, adminPrivs, (*handler).handleIndexAllChannels)).Methods("GET")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
@@ -218,7 +228,50 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
 
+	// Add CBGT REST api if it's enabled
+	if err := addCbgtRoutes(r, sc); err != nil {
+		base.Warn("CBGT routes will not be available due to error: %v", err)
+	}
+
 	return wrapRouter(sc, adminPrivs, r)
+}
+
+func addCbgtRoutes(router *mux.Router, sc *ServerContext) error {
+
+	// only do this if CBGT is enabled
+	if !sc.config.ClusterConfig.CBGTEnabled() {
+		return nil
+	}
+
+	// likewise, if there are no index writers and CBGT is not initialized, skip this
+	if !sc.HasIndexWriters() {
+		return nil
+	}
+
+	subrouter := router.PathPrefix("/_cbgt").Subrouter()
+
+	versionString := "0.0.0"
+	staticDir := ""
+	staticETag := ""
+	var messageRing *cbgt.MsgRing
+	assetDir := rest.AssetDir
+	asset := rest.Asset
+
+	cbgtManager := sc.CbgtContext.Manager
+	_, _, err := rest.InitRESTRouter(
+		subrouter,
+		versionString,
+		cbgtManager,
+		staticDir,
+		staticETag,
+		messageRing,
+		assetDir,
+		asset,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't

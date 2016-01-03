@@ -10,6 +10,7 @@
 package base
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -21,11 +22,21 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
+
+	"github.com/couchbase/cbgt"
 	"github.com/couchbaselabs/walrus"
 )
 
-const TapFeedType = "tap"
-const DcpFeedType = "dcp"
+const (
+	TapFeedType      = "tap"
+	DcpFeedType      = "dcp"
+	DcpShardFeedType = "dcpshard"
+)
+
+const (
+	GoCouchbase CouchbaseDriver = iota
+	GoCB
+)
 
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
@@ -37,17 +48,22 @@ type Bucket sgbucket.Bucket
 type TapArguments sgbucket.TapArguments
 type TapFeed sgbucket.TapFeed
 type AuthHandler couchbase.AuthHandler
+type CouchbaseDriver int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
+	CbgtContext                            CbgtContext
+	CouchbaseDriver                        CouchbaseDriver
+	MaxNumRetries                          int // max number of retries before giving up
+	InitialRetrySleepTimeMS                int // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
-	*couchbase.Bucket
-	spec BucketSpec // keep a copy of the BucketSpec for DCP usage
+	*couchbase.Bucket            // the underlying go-couchbase bucket
+	spec              BucketSpec // keep a copy of the BucketSpec for DCP usage
 }
 
 type couchbaseFeedImpl struct {
@@ -55,7 +71,9 @@ type couchbaseFeedImpl struct {
 	events chan sgbucket.TapEvent
 }
 
-var versionString string
+var (
+	versionString string
+)
 
 func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.TapEvent {
 	return feed.events
@@ -84,13 +102,15 @@ func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{},
 }
 
 func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
-
-	casOut, err = bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
-	return casOut, err
+	return bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
 }
 
 func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
+}
+
+func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	panic("SetBulk not implemented")
 }
 
 func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
@@ -108,8 +128,10 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 }
 
 func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+
 	// Uses tap by default, unless DCP is explicitly specified
-	if bucket.spec.FeedType == DcpFeedType {
+	switch bucket.spec.FeedType {
+	case DcpFeedType:
 		feed, err := bucket.StartDCPFeed(args)
 		if err != nil {
 			Warn("Unable to start DCP feed - reverting to using TAP feed: %s", err)
@@ -117,10 +139,87 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 		}
 		LogTo("Feed", "Using DCP feed for bucket: %q", bucket.GetName())
 		return feed, nil
-	} else {
+
+	case DcpShardFeedType:
+
+		// CBGT initialization
+
+		// Create the TapEvent feed channel that will be passed back to the caller
+		eventFeed := make(chan sgbucket.TapEvent, 10)
+
+		//  - create a new CBGTDCPFeed and pass in the eventFeed channel
+		feed := &CBGTDCPFeed{
+			eventFeed: eventFeed,
+		}
+		return feed, nil
+
+	default:
 		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
 		return bucket.StartCouchbaseTapFeed(args)
+
 	}
+
+}
+
+func (bucket CouchbaseBucket) CreateCBGTIndex(numShards uint16, spec BucketSpec) error {
+
+	var user, pwd string
+	if bucket.spec.Auth != nil {
+		user, pwd, _ = bucket.spec.Auth.GetCredentials()
+	} else {
+		user, pwd, _ = TransformBucketCredentials(user, pwd, bucket.Name)
+	}
+
+	sourceParams := cbgt.NewDCPFeedParams()
+	sourceParams.AuthUser = user
+	sourceParams.AuthPassword = pwd
+
+	sourceParamsBytes, err := json.Marshal(sourceParams)
+	if err != nil {
+		return err
+	}
+
+	indexParams := SyncGatewayIndexParams{
+		BucketName: bucket.Name,
+	}
+	indexParamsBytes, err := json.Marshal(indexParams)
+	if err != nil {
+		return err
+	}
+
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	err = spec.CbgtContext.Manager.CreateIndex(
+		SourceTypeCouchbase,                    // sourceType
+		bucket.Name,                            // sourceName
+		bucket.UUID,                            // sourceUUID
+		string(sourceParamsBytes),              // sourceParams
+		IndexTypeSyncGateway,                   // indexType
+		bucket.GetCBGTIndexName(),              // indexName
+		string(indexParamsBytes),               // indexParams
+		CBGTPlanParams(numShards, numVbuckets), // planParams
+		"", // prevIndexUUID
+	)
+	if err != nil {
+		LogTo("DCP", "Error creating CBGT index: %v", err)
+	}
+
+	// if it's an "index exists" error, then ignore it.
+	// otherwise, propagate it.
+	if err != nil && strings.Contains(err.Error(), "exists") {
+		LogTo("DCP", "Unable to create CBGT index, already exists: %v", err)
+		return nil
+	}
+
+	return err
+
+}
+
+func (bucket CouchbaseBucket) GetCBGTIndexName() string {
+	return bucket.Name + bucket.UUID
 }
 
 func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
@@ -146,6 +245,7 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) 
 				Key:      cbEvent.Key,
 				Value:    cbEvent.Value,
 				Sequence: cbEvent.Cas,
+				VbNo:     cbEvent.VBucket,
 			}
 		}
 	}()
@@ -168,7 +268,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 
 	dcpReceiver := NewDCPReceiver()
 
-	maxVbno, err := bucket.getMaxVbno()
+	maxVbno, err := bucket.GetMaxVbno()
 	if err != nil {
 		return nil, err
 	}
@@ -192,16 +292,14 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	}
 	dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
 
-	auth := bucket.getDcpAuthHandler()
-
-	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, auth)
+	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, bucket.spec.Auth)
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
 		poolName,
 		bucketName,
 		"",
 		vbucketIdsArr,
-		auth,
+		bucket.spec.Auth,
 		dcpReceiver,
 		nil,
 	)
@@ -223,21 +321,6 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	}()
 
 	return &dcpFeed, nil
-}
-
-//Method stub to satisfy sg-bucket interface, awaiting merging of actual impl
-func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
-	return nil
-}
-
-func (bucket CouchbaseBucket) getDcpAuthHandler() couchbase.AuthHandler {
-
-	// Auth handler for DCP connection needs to support bucket name defaults
-	username, password := "", ""
-	if bucket.spec.Auth != nil {
-		username, password, _ = bucket.spec.Auth.GetCredentials()
-	}
-	return &dcpAuth{username, password, bucket.spec.BucketName}
 }
 
 func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
@@ -277,7 +360,7 @@ func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16) (uuids map[uint16]
 	return
 }
 
-func (bucket CouchbaseBucket) getMaxVbno() (uint16, error) {
+func (bucket CouchbaseBucket) GetMaxVbno() (uint16, error) {
 
 	var maxVbno uint16
 	vbsMap := bucket.Bucket.VBServerMap()
@@ -362,21 +445,65 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
-		sgbucket.SetLogging(LogKeys["Walrus"])
-
+		sgbucket.SetLogging(LogEnabled("Walrus"))
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+		// If feed type is specified and isn't TAP, wrap with pseudo-vbucket handling for walrus
+		if spec.FeedType != "" && spec.FeedType != TapFeedType {
+			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
+		}
 	} else {
+
 		suffix := ""
 		if spec.Auth != nil {
 			username, _, _ := spec.Auth.GetCredentials()
 			suffix = fmt.Sprintf(" as user %q", username)
 		}
 		Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
-		bucket, err = GetCouchbaseBucket(spec, callback)
+
+		if spec.CouchbaseDriver == GoCB {
+			bucket, err = GetCouchbaseBucketGoCB(spec)
+		} else {
+			bucket, err = GetCouchbaseBucket(spec, callback)
+		}
+
 	}
 
 	if LogKeys["Bucket"] {
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return
+}
+
+func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
+
+	// If there's an incoming value, attempt to write with that first
+	if len(value) > 0 {
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, sgbucket.Raw)
+		if err == nil {
+			return casOut, nil
+		}
+	}
+
+	for {
+		currentValue, cas, err := bucket.GetRaw(key)
+		if err != nil {
+			Warn("WriteCasRaw got error when calling GetRaw:", err)
+			return 0, err
+		}
+		currentValue, err = callback(currentValue)
+		if err != nil {
+			Warn("WriteCasRaw got error when calling callback:", err)
+			return 0, err
+		}
+		if len(currentValue) == 0 {
+			// callback returned empty value - cancel write
+			return cas, nil
+		}
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, currentValue, sgbucket.Raw)
+		if err != nil {
+			// CAS failure - reload block for another try
+		} else {
+			return casOut, nil
+		}
+	}
 }

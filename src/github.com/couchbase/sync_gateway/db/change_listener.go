@@ -16,16 +16,20 @@ type changeListener struct {
 	bucket       base.Bucket
 	tapFeed      base.TapFeed           // Observes changes to bucket
 	tapNotifier  *sync.Cond             // Posts notifications when documents are updated
+	TapArgs      sgbucket.TapArguments  // The Tap Args (backfill, etc)
 	counter      uint64                 // Event counter; increments on every doc update
 	keyCounts    map[string]uint64      // Latest count at which each doc key was updated
 	DocChannel   chan sgbucket.TapEvent // Passthru channel for doc mutations
-	OnDocChanged func(docID string, jsonData []byte)
+	OnDocChanged func(docID string, jsonData []byte, seq uint64, vbNo uint16)
 }
 
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
-	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: sgbucket.TapNoBackfill, Notify: notify})
+	listener.TapArgs = sgbucket.TapArguments{
+		Backfill: sgbucket.TapNoBackfill,
+		Notify: notify,}
+	tapFeed, err := bucket.StartTapFeed(listener.TapArgs)
 	if err != nil {
 		return err
 	}
@@ -52,12 +56,12 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value)
+						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
 					listener.Notify(base.SetOf(key))
-				} else if trackDocs && !strings.HasPrefix(key, kSyncKeyPrefix) {
+				} else if trackDocs && !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, kIndexPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value)
+						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
 					listener.DocChannel <- event
 				}
@@ -73,6 +77,10 @@ func (listener *changeListener) Stop() {
 	if listener.tapFeed != nil {
 		listener.tapFeed.Close()
 	}
+}
+
+func (listener changeListener) TapFeed() base.TapFeed {
+	return listener.tapFeed
 }
 
 //////// NOTIFICATIONS:

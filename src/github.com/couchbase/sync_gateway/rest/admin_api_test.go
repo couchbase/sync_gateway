@@ -54,7 +54,7 @@ func TestUserAPI(t *testing.T) {
 	user, _ := rt.ServerContext().Database("db").Authenticator().GetUser("snej")
 	assert.Equals(t, user.Name(), "snej")
 	assert.Equals(t, user.Email(), "jens@couchbase.com")
-	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{"bar": 0x1, "foo": 0x1})
+	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)})
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
