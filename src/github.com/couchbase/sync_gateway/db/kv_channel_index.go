@@ -290,9 +290,9 @@ func (k *kvChannelIndex) getChannelClock() (base.SequenceClock, error) {
 	var channelClock base.SequenceClock
 	var err error
 	// If we're polling, return a copy
+	k.lastPolledLock.RLock()
+	defer k.lastPolledLock.RUnlock()
 	if k.lastPolledChannelClock != nil {
-		k.lastPolledLock.RLock()
-		defer k.lastPolledLock.RUnlock()
 		channelClock = base.NewSequenceClockImpl()
 		channelClock.SetTo(k.lastPolledChannelClock)
 	} else {
