@@ -197,7 +197,7 @@ func (h *handler) invoke(method handlerMethod) error {
 }
 
 func (h *handler) logRequestLine() {
-	if !base.LogKeys["HTTP"] {
+	if !base.LogEnabled("HTTP") {
 		return
 	}
 	as := ""

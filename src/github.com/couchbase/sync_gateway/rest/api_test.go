@@ -1550,7 +1550,6 @@ func TestRoleAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "g1")
-	base.LogKeys["Cache"] = false
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {

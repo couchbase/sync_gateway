@@ -50,8 +50,8 @@ func getZeroSequence(db *Database) ChangesOptions {
 }
 
 func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
-	base.LogKeys["IndexChanges"] = true
-	base.LogKeys["Hash+"] = true
+	base.EnableLogKey("IndexChanges")
+	base.EnableLogKey("Hash+")
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC

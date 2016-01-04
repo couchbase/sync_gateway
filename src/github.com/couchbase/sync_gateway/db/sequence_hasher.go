@@ -158,34 +158,35 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		}
 
 		// Add our clock to the cached clocks for this hash
-		storedClocks := cachedValue.clocks
-		storedClocks.Sequences = append(storedClocks.Sequences, clockValue)
+		existingClocks := cachedValue.clocks
+		existingClocks.Sequences = append(existingClocks.Sequences, clockValue)
 
 		// Update the hash entry in the bucket
 		key := kHashPrefix + strconv.FormatUint(hashValue, 10)
-		initialValue, err := storedClocks.Marshal()
-		index = len(storedClocks.Sequences) - 1
+		initialValue, err := existingClocks.Marshal()
+		index = len(existingClocks.Sequences) - 1
 		if err != nil {
 			return err
 		}
-		_, err = base.WriteCasRaw(s.bucket, key, initialValue, storedClocks.cas, int(s.hashExpiry), func(value []byte) (updatedValue []byte, err error) {
+		_, err = base.WriteCasRaw(s.bucket, key, initialValue, existingClocks.cas, int(s.hashExpiry), func(value []byte) (updatedValue []byte, err error) {
 			// Note: The following is invoked upon cas failure - may be called multiple times
 			base.LogTo("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", key)
-			err = storedClocks.Unmarshal(value)
+			var sClocks storedClocks
+			err = sClocks.Unmarshal(value)
 			if err != nil {
 				base.Warn("Error unmarshalling hash storage during update", err)
 				return nil, err
 			}
-			exists, index = storedClocks.Contains(clockValue)
+			exists, index = sClocks.Contains(clockValue)
 			if exists {
 				// return empty byte array to cancel the update
 				return []byte{}, nil
 			}
 			// Not found - add
-			storedClocks.Sequences = append(storedClocks.Sequences, clockValue)
+			sClocks.Sequences = append(sClocks.Sequences, clockValue)
 			base.LogTo("DIndex+", "Reattempting stored hash write for key %s:", key)
-			index = len(storedClocks.Sequences) - 1
-			return storedClocks.Marshal()
+			index = len(sClocks.Sequences) - 1
+			return sClocks.Marshal()
 		})
 		return nil
 	}()
