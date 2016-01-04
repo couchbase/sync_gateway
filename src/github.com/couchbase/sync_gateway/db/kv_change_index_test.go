@@ -103,7 +103,7 @@ func simpleClockSequence(seq uint64) SequenceID {
 
 func TestChangeIndexAddEntry(t *testing.T) {
 
-	base.LogKeys["DIndex+"] = true
+	base.EnableLogKey("DIndex+")
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	changeIndex.writer.addToCache(channelEntry(1, 1, "foo1", "1-a", []string{"ABC", "CBS"}))
@@ -158,7 +158,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 
 func TestChangeIndexGetChanges(t *testing.T) {
 
-	base.LogKeys["DIndex+"] = true
+	base.EnableLogKey("DIndex+")
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 	// Add entries across multiple partitions
@@ -237,8 +237,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 }
 
 func TestChangeIndexChanges(t *testing.T) {
-	base.LogKeys["DIndex+"] = true
-	base.LogKeys["DIndex"] = true
+	base.EnableLogKey("DIndex+")
 	db := setupTestDBForChangeIndex(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -364,7 +363,7 @@ func TestPollingChangesFeed(t *testing.T) {
 func TestPollResultReuseLongpoll(t *testing.T) {
 	// Reset the index expvars
 	indexExpvars.Init()
-	base.LogKeys["IndexPoll"] = true
+	base.EnableLogKey("IndexPoll")
 	db := setupTestDBForChangeIndex(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -379,8 +378,8 @@ func TestPollResultReuseLongpoll(t *testing.T) {
 
 	// Start a longpoll changes, use waitgroup to delay the test until it returns.
 	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		since, err := db.ParseSequenceID("2-0")
 		assertTrue(t, err == nil, "Error parsing sequence ID")
@@ -406,7 +405,7 @@ func TestPollResultReuseLongpoll(t *testing.T) {
 func TestPollResultReuseContinuous(t *testing.T) {
 	// Reset the index expvars
 	indexExpvars.Init()
-	base.LogKeys["IndexPoll"] = true
+	base.EnableLogKey("IndexPoll")
 	db := setupTestDBForChangeIndex(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -422,9 +421,9 @@ func TestPollResultReuseContinuous(t *testing.T) {
 	// Start a continuous changes on a different channel (CBS).  Waitgroup keeps test open until continuous is terminated
 	var wg sync.WaitGroup
 	continuousTerminator := make(chan bool)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		wg.Add(1)
 		since, err := db.ParseSequenceID("2-0")
 		abcHboChanges, err := db.GetChanges(base.SetOf("ABC", "HBO"), ChangesOptions{Since: since, Wait: true, Continuous: true, Terminator: continuousTerminator})
 		assertTrue(t, err == nil, "Error getting changes")
@@ -434,7 +433,6 @@ func TestPollResultReuseContinuous(t *testing.T) {
 			log.Printf("Got change:%+v", abcHboChanges[i])
 		}
 		log.Println("Continuous completed")
-
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -473,7 +471,7 @@ func TestPollResultReuseContinuous(t *testing.T) {
 func TestPollResultLongRunningContinuous(t *testing.T) {
 	// Reset the index expvars
 	indexExpvars.Init()
-	base.LogKeys["IndexPoll"] = true
+	base.EnableLogKey("IndexPoll")
 	db := setupTestDBForChangeIndex(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -517,7 +515,7 @@ func TestPollResultLongRunningContinuous(t *testing.T) {
 
 func TestChangeIndexAddSet(t *testing.T) {
 
-	base.LogKeys["DIndex+"] = true
+	base.EnableLogKey("DIndex+")
 	changeIndex, bucket := testKvChangeIndex("indexBucket")
 	defer changeIndex.Stop()
 

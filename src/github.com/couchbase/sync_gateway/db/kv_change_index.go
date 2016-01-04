@@ -112,7 +112,7 @@ func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
 
 func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 
-	if k.indexPartitions == nil || len(k.indexPartitions.VbMap) == 0 {
+	if k.indexPartitions == nil {
 
 		var partitionDef []base.PartitionStorage
 		// First attempt to load from the bucket
