@@ -106,14 +106,13 @@ func (h *handler) handleDbOnline() error {
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
-	if err = h.db.TakeDbOffline(); err != nil {
+	if err = h.db.TakeDbOffline(); err == nil {
 		if h.db.DatabaseContext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
 			h.db.DatabaseContext.EventMgr.RaiseDBStateChangeEvent(h.db.DatabaseContext.Name, "offline", "ADMIN Request", *h.server.config.AdminInterface)
 		}
 	}
 
 	return err
-
 }
 
 // Get admin database info
