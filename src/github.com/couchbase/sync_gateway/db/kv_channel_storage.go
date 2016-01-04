@@ -861,9 +861,6 @@ func (b *BitFlagBufferBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint6
 			}
 		}
 	}
-
-	base.LogTo("DIndex+", "Block.GetEntries for block %s - returning %d entries...", b.Key(), len(entries))
-
 	return entries, keySet
 }
 

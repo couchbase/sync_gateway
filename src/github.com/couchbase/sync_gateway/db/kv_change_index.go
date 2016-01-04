@@ -17,9 +17,9 @@ import (
 	"expvar"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/cbgt"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -35,10 +35,11 @@ const (
 // into reader and writer functionality.  A single index partition definition is shared between reader and
 // writer, as this partition definition is immutable and defined at index creation time
 type kvChangeIndex struct {
-	context         *DatabaseContext      // Database context
-	indexPartitions *base.IndexPartitions // Partitioning of vbuckets in the index
-	reader          *kvChangeIndexReader  // Index reader
-	writer          *kvChangeIndexWriter  // Index writer
+	context             *DatabaseContext      // Database context
+	indexPartitions     *base.IndexPartitions // Partitioning of vbuckets in the index
+	indexPartitionsLock sync.RWMutex          // Manages access to indexPartitions
+	reader              *kvChangeIndexReader  // Index reader
+	writer              *kvChangeIndexWriter  // Index writer
 }
 
 type IndexPartitionsFunc func() (*base.IndexPartitions, error)
@@ -112,65 +113,86 @@ func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
 
 func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 
-	if k.indexPartitions == nil {
+	var result *base.IndexPartitions
+	func() {
+		k.indexPartitionsLock.RLock()
+		defer k.indexPartitionsLock.RUnlock()
+		result = k.indexPartitions
+	}()
 
-		var partitionDef []base.PartitionStorage
-		// First attempt to load from the bucket
-		value, _, err := k.reader.indexReadBucket.GetRaw(base.KIndexPartitionKey)
-		indexExpvars.Add("get_indexPartitionMap", 1)
-		if err == nil {
-			if err = json.Unmarshal(value, &partitionDef); err != nil {
-				return nil, err
-			}
-		}
-
-		// If unable to load from index bucket - attempt to initialize based on cbgt partitions
-		if partitionDef == nil {
-			var manager *cbgt.Manager
-			if k.context != nil {
-				manager = k.context.BucketSpec.CbgtContext.Manager
-			} else {
-				return nil, errors.New("Unable to determine partition map for index - not found in index, and no database context")
-			}
-
-			if manager == nil {
-				return nil, errors.New("Unable to determine partition map for index - not found in index, and no CBGT manager")
-			}
-
-			_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
-			indexName := k.context.GetCBGTIndexNameForBucket(k.context.Bucket)
-			pindexes := planPIndexesByName[indexName]
-
-			for index, pIndex := range pindexes {
-				vbStrings := strings.Split(pIndex.SourcePartitions, ",")
-				// convert string vbNos to uint16
-				vbNos := make([]uint16, len(vbStrings))
-				for i := 0; i < len(vbStrings); i++ {
-					vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
-					if err != nil {
-						base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
-					}
-					vbNos[i] = uint16(vbNumber)
-				}
-				entry := base.PartitionStorage{
-					Index: uint16(index),
-					Uuid:  pIndex.UUID,
-					VbNos: vbNos,
-				}
-				partitionDef = append(partitionDef, entry)
-			}
-
-			// Persist to bucket
-			value, err = json.Marshal(partitionDef)
-			if err != nil {
-				return nil, err
-			}
-			k.reader.indexReadBucket.SetRaw(base.KIndexPartitionKey, 0, value)
-		}
-
-		// Create k.indexPartitions based on partitionDef
-		k.indexPartitions = base.NewIndexPartitions(partitionDef)
+	if result != nil {
+		return result, nil
+	} else {
+		return k.initIndexPartitions()
 	}
+}
+
+func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
+
+	k.indexPartitionsLock.Lock()
+	defer k.indexPartitionsLock.Unlock()
+
+	// Check if it's been initialized while we waited for the lock
+	if k.indexPartitions != nil {
+		return k.indexPartitions, nil
+	}
+
+	var partitionDef []base.PartitionStorage
+	// First attempt to load from the bucket
+	value, _, err := k.reader.indexReadBucket.GetRaw(base.KIndexPartitionKey)
+	indexExpvars.Add("get_indexPartitionMap", 1)
+	if err == nil {
+		if err = json.Unmarshal(value, &partitionDef); err != nil {
+			return nil, err
+		}
+	}
+
+	// If unable to load from index bucket - attempt to initialize based on cbgt partitions
+	if partitionDef == nil {
+		var manager *cbgt.Manager
+		if k.context != nil {
+			manager = k.context.BucketSpec.CbgtContext.Manager
+		} else {
+			return nil, errors.New("Unable to determine partition map for index - not found in index, and no database context")
+		}
+
+		if manager == nil {
+			return nil, errors.New("Unable to determine partition map for index - not found in index, and no CBGT manager")
+		}
+
+		_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
+		indexName := k.context.GetCBGTIndexNameForBucket(k.context.Bucket)
+		pindexes := planPIndexesByName[indexName]
+
+		for index, pIndex := range pindexes {
+			vbStrings := strings.Split(pIndex.SourcePartitions, ",")
+			// convert string vbNos to uint16
+			vbNos := make([]uint16, len(vbStrings))
+			for i := 0; i < len(vbStrings); i++ {
+				vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
+				if err != nil {
+					base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
+				}
+				vbNos[i] = uint16(vbNumber)
+			}
+			entry := base.PartitionStorage{
+				Index: uint16(index),
+				Uuid:  pIndex.UUID,
+				VbNos: vbNos,
+			}
+			partitionDef = append(partitionDef, entry)
+		}
+
+		// Persist to bucket
+		value, err = json.Marshal(partitionDef)
+		if err != nil {
+			return nil, err
+		}
+		k.reader.indexReadBucket.SetRaw(base.KIndexPartitionKey, 0, value)
+	}
+
+	// Create k.indexPartitions based on partitionDef
+	k.indexPartitions = base.NewIndexPartitions(partitionDef)
 	return k.indexPartitions, nil
 }
 
