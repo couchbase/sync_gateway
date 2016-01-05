@@ -612,6 +612,81 @@ func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
 
 }
 
+// Test low sequence handling of late arriving sequences to a continuous changes feed, ensuring that
+// subsequent requests for the current low sequence value don't return results (avoids loops for
+// longpoll as well as clients doing repeated one-off changes requests - see #1309)
+func TestChangesLoopingWhenLowSequence(t *testing.T) {
+
+	pendingMaxWait := uint32(5)
+	maxNum := 50
+	skippedMaxWait := uint32(120000)
+
+	shortWaitCache := &CacheConfig{
+		CachePendingSeqMaxWait: &pendingMaxWait,
+		CachePendingSeqMaxNum:  &maxNum,
+		CacheSkippedSeqMaxWait: &skippedMaxWait,
+	}
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`, cacheConfig: shortWaitCache}
+	testDb := rt.ServerContext().Database("db")
+
+	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
+	// Create user:
+	assertStatus(t, rt.sendAdminRequest("GET", "/db/_user/bernard", ""), 404)
+	response = rt.sendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
+	WriteDirect(testDb, []string{"PBS"}, 2)
+	WriteDirect(testDb, []string{"PBS"}, 5)
+	WriteDirect(testDb, []string{"PBS"}, 6)
+	testDb.WaitForSequenceWithMissing(6)
+
+	// Check the _changes feed:
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 4)
+	since := changes.Results[0].Seq
+	assert.Equals(t, since.Seq, uint64(1))
+	assert.Equals(t, changes.Last_Seq, "2::6")
+
+	// Send another changes request before any changes, with the last_seq received from the last changes ("2::6")
+	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 0)
+
+	// Send a missing doc - low sequence should move to 3
+	WriteDirect(testDb, []string{"PBS"}, 3)
+	testDb.WaitForSequence(3)
+
+	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
+	response = rt.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 3)
+
+	// Send a later doc - low sequence still 3, high sequence goes to 7
+	WriteDirect(testDb, []string{"PBS"}, 7)
+	testDb.WaitForSequenceWithMissing(7)
+
+	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+
+}
+
 //////// HELPERS:
 
 func assertNoError(t *testing.T, err error, message string) {
@@ -653,3 +728,31 @@ func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	return nil
 }
 */
+
+func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uint64) {
+	docId := fmt.Sprintf("doc-%v", sequence)
+	WriteDirectWithKey(testDb, docId, channelArray, sequence)
+}
+
+func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []string, sequence uint64) {
+
+	rev := "1-a"
+	chanMap := make(map[string]*channels.ChannelRemoval, 10)
+
+	for _, channel := range channelArray {
+		chanMap[channel] = nil
+	}
+	var syncData struct {
+		CurrentRev string              `json:"rev"`
+		Sequence   uint64              `json:"sequence,omitempty"`
+		Channels   channels.ChannelMap `json:"channels,omitempty"`
+		TimeSaved  time.Time           `json:"time_saved,omitempty"`
+	}
+	syncData.CurrentRev = rev
+	syncData.Sequence = sequence
+	syncData.Channels = chanMap
+	syncData.TimeSaved = time.Now()
+	//syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
+
+	testDb.Bucket.Add(key, 0, db.Body{"_sync": syncData, "key": key})
+}

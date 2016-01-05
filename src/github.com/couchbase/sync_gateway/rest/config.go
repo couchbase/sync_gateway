@@ -111,7 +111,7 @@ type DbConfig struct {
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
-	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitEmpty"`        // Channel index settings
+	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
 	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
 	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
 }

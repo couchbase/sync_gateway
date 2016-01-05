@@ -264,13 +264,14 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			changeWaiter = db.startChangeWaiter(chans)
 			userChangeCount = changeWaiter.CurrentUserCount()
 
-			// If a longpoll request has a low sequence that matches the current lowSequence,
-			// ignore the low sequence.  This avoids infinite looping of the records between
-			// low::high.  It also means any additional skipped sequences between low::high won't
-			// be sent until low arrives or is abandoned.
-			if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
-				options.Since.LowSeq = 0
-			}
+		}
+
+		// If a request has a low sequence that matches the current lowSequence,
+		// ignore the low sequence.  This avoids infinite looping of the records between
+		// low::high.  It also means any additional skipped sequences between low::high won't
+		// be sent until low arrives or is abandoned.
+		if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
+			options.Since.LowSeq = 0
 		}
 
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
@@ -526,8 +527,27 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 }
 
 // Wait until the change-cache has caught up with the latest writes to the database.
+func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
+	base.LogTo("Debug", "Waiting for sequence: %d", sequence)
+	if err == nil {
+		context.changeCache.waitForSequenceID(SequenceID{Seq: sequence})
+	}
+	return
+}
+
+// Wait until the change-cache has caught up with the latest writes to the database.
+func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err error) {
+	base.LogTo("Debug", "Waiting for sequence: %d", sequence)
+	if err == nil {
+		context.changeCache.waitForSequenceWithMissing(sequence)
+	}
+	return
+}
+
+// Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
+	base.LogTo("Debug", "Waiting for sequence: %d", lastSequence)
 	if err == nil {
 		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence})
 	}
