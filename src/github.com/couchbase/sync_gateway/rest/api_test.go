@@ -45,9 +45,10 @@ var gBucketCounter = 0
 type restTester struct {
 	_bucket          base.Bucket
 	_sc              *ServerContext
-	noAdminParty     bool   // Unless this is true, Admin Party is in full effect
-	distributedIndex bool   // Test with walrus-based index bucket
-	syncFn           string // put the sync() function source in here (optional)
+	noAdminParty     bool         // Unless this is true, Admin Party is in full effect
+	distributedIndex bool         // Test with walrus-based index bucket
+	syncFn           string       // put the sync() function source in here (optional)
+	cacheConfig      *CacheConfig // Cache options (optional)
 }
 
 func (rt *restTester) bucket() base.Bucket {
@@ -78,8 +79,9 @@ func (rt *restTester) bucket() base.Bucket {
 			BucketConfig: BucketConfig{
 				Server: &server,
 				Bucket: &bucketName},
-			Name: "db",
-			Sync: syncFnPtr,
+			Name:        "db",
+			Sync:        syncFnPtr,
+			CacheConfig: rt.cacheConfig,
 		})
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
