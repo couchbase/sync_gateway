@@ -24,6 +24,7 @@ import (
 )
 
 //const kTestURL = "http://localhost:8091"
+
 const kTestURL = "walrus:"
 
 func init() {
@@ -36,7 +37,7 @@ func init() {
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"},nil)
+		BucketName: "sync_gateway_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -54,7 +55,11 @@ func setupTestDB(t *testing.T) *Database {
 }
 
 func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
-	context, err := NewDatabaseContext("db", testBucket(), false, options, RevisionCacheCapacity)
+
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -62,7 +67,10 @@ func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
-	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, options, RevisionCacheCapacity)
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -331,67 +339,17 @@ func TestAllDocs(t *testing.T) {
 	}
 }
 
-// Unit test for bug #314
-func TestChangesAfterChannelAdded(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
-	db := setupTestDB(t)
-	defer tearDownTestDB(t, db)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
-	// Create a user with access to channel ABC
-	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
-	authenticator.Save(user)
-
-	// Create a doc on two channels (sequence 1):
-	revid, _ := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
-
-	// Modify user to have access to both channels (sequence 2):
-	userInfo, err := db.GetPrincipal("naomi", true)
-	assert.True(t, userInfo != nil)
-	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(*userInfo, true, true)
-	assertNoError(t, err, "UpdatePrincipal failed")
-
-	// Check the _changes feed:
-	db.changeCache.waitForSequence(1)
-	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 1}})
-	assertNoError(t, err, "Couldn't GetChanges")
-
-	assert.Equals(t, len(changes), 2)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 2},
-		ID:      "doc1",
-		Changes: []ChangeRev{{"rev": revid}}})
-	assert.DeepEquals(t, changes[1], &ChangeEntry{
-		Seq:     SequenceID{Seq: 2},
-		ID:      "_user/naomi",
-		Changes: []ChangeRev{}})
-
-	// Add a new doc (sequence 3):
-	revid, _ = db.Put("doc2", Body{"channels": []string{"PBS"}})
-
-	// Check the _changes feed -- this is to make sure the changeCache properly received
-	// sequence 2 (the user doc) and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3)
-	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 2}})
-	assertNoError(t, err, "Couldn't GetChanges (2nd)")
-
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 3},
-		ID:      "doc2",
-		Changes: []ChangeRev{{"rev": revid}}})
-}
-
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
-	base.LogKeys["Cache"] = true
-	base.LogKeys["Changes"] = true
-	base.LogKeys["Changes+"] = true
+
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -425,9 +383,15 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	//base.LogKeys["Cache"] = true
-	// base.LogKeys["CRUD"] = true
-	// base.LogKeys["Changes"] = true
+	/*
+		var logKeys = map[string]bool {
+			"Cache": true,
+			"Changes": true,
+			"Changes+": true,
+		}
+
+		base.UpdateLogKeys(logKeys, true)
+	*/
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -589,8 +553,15 @@ func TestAccessFunctionValidation(t *testing.T) {
 }
 
 func TestAccessFunction(t *testing.T) {
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["Access"] = true
+
+	/*
+		var logKeys = map[string]bool {
+			"CRUD": true,
+			"Access": true,
+		}
+
+		base.UpdateLogKeys(logKeys, true)
+	*/
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
@@ -601,7 +572,7 @@ func TestAccessFunction(t *testing.T) {
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	user.SetExplicitRoles(channels.TimedSet{"animefan": 1, "tumblr": 1})
+	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)})
 	assertNoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
@@ -626,6 +597,56 @@ func TestAccessFunction(t *testing.T) {
 	assert.DeepEquals(t, user.InheritedChannels(), expected)
 }
 
+func CouchbaseTestAccessFunctionWithVbuckets(t *testing.T) {
+	//base.LogKeys["CRUD"] = true
+	//base.LogKeys["Access"] = true
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.SequenceType = ClockSequenceType
+
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+
+	var err error
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+
+	user, _ := authenticator.NewUser("bernard", "letmein", channels.SetOf("Netflix"))
+	assertNoError(t, authenticator.Save(user), "Save")
+
+	body := Body{"users": []string{"bernard"}, "userChannels": []string{"ABC"}}
+	_, err = db.Put("doc1", body)
+	assertNoError(t, err, "")
+	time.Sleep(100 * time.Millisecond)
+
+	user, err = authenticator.GetUser("bernard")
+	assertNoError(t, err, "GetUser")
+	expected := channels.TimedSetFromString("ABC:5.1,Netflix:1,!:1")
+	assert.DeepEquals(t, user.Channels(), expected)
+
+	body = Body{"users": []string{"bernard"}, "userChannels": []string{"NBC"}}
+	_, err = db.Put("doc2", body)
+	assertNoError(t, err, "")
+	time.Sleep(100 * time.Millisecond)
+
+	user, err = authenticator.GetUser("bernard")
+	assertNoError(t, err, "GetUser")
+	expected = channels.TimedSetFromString("ABC:5.1,NBC:12.1,Netflix:1,!:1")
+	assert.DeepEquals(t, user.Channels(), expected)
+
+	// Have another doc assign a new channel, and one of the previously present channels
+	body = Body{"users": []string{"bernard"}, "userChannels": []string{"ABC", "PBS"}}
+	_, err = db.Put("doc3", body)
+	assertNoError(t, err, "")
+	time.Sleep(100 * time.Millisecond)
+
+	user, err = authenticator.GetUser("bernard")
+	assertNoError(t, err, "GetUser")
+	expected = channels.TimedSetFromString("ABC:5.1,NBC:12.1,PBS:11.1,Netflix:1,!:1")
+	assert.DeepEquals(t, user.Channels(), expected)
+
+}
+
 func TestDocIDs(t *testing.T) {
 	assert.Equals(t, realDocID(""), "")
 	assert.Equals(t, realDocID("_"), "")
@@ -642,12 +663,10 @@ func TestUpdateDesignDoc(t *testing.T) {
 	err := db.PutDesignDoc("official", DesignDoc{})
 	assertNoError(t, err, "add design doc as admin")
 
-
 	// Validate retrieval of the design doc by admin
 	var result DesignDoc
 	err = db.GetDesignDoc("official", &result)
 	assertNoError(t, err, "retrieve design doc as admin")
-
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
@@ -816,6 +835,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		revid, err = db.Put("doc1", body)
 		// Sleep needed to ensure consistent results when running single-threaded vs. multi-threaded test:
 		// without it we can't predict the relative update times of nextSequence and RecentSequences
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	db.changeCache.waitForSequence(24)
@@ -823,6 +843,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	revid, err = db.Put("doc1", body)
 	doc, err = db.GetDoc("doc1")
 	assert.True(t, err == nil)
+	log.Printf("recent:%d, max:%d", len(doc.RecentSequences), kMaxRecentSequences)
 	assert.True(t, len(doc.RecentSequences) < kMaxRecentSequences)
 
 	// Ensure pruning works when sequences aren't sequential
@@ -848,8 +869,8 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:     kTestURL,
-			BucketName: fmt.Sprintf("b-%d", i)},nil)
-		context, _ := NewDatabaseContext("db", bucket, false, CacheOptions{}, RevisionCacheCapacity)
+			BucketName: fmt.Sprintf("b-%d", i)}, nil)
+		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

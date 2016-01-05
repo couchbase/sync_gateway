@@ -94,7 +94,7 @@ func (h *handler) makeSession(user auth.User) error {
 		return err
 	}
 	cookie := auth.MakeSessionCookie(session)
-	cookie.Path = "/" + h.db.Name + "/"
+	base.AddDbPathToCookie(h.rq, cookie)
 	http.SetCookie(h.response, cookie)
 	return h.respondWithSessionInfo()
 }

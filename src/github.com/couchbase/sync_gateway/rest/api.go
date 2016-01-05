@@ -12,6 +12,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	httpprof "net/http/pprof"
 	"os"
@@ -255,6 +256,13 @@ func (h *handler) handleHeapProfiling() error {
 
 func (h *handler) handlePprofGoroutine() error {
 	httpprof.Handler("goroutine").ServeHTTP(h.response, h.rq)
+	return nil
+}
+
+// Go execution tracer
+func (h *handler) handlePprofTrace() error {
+	log.Panicf("Disabled until we require Go1.5 as minimal version to build with")
+	// httpprof.Trace(h.response, h.rq)
 	return nil
 }
 

@@ -82,7 +82,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if err = options.Since.UnmarshalJSON([]byte(h.getQuery("since"))); err != nil {
+		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -292,7 +292,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
-			if lastSeq.Seq > 0 { // start after end of last feed
+			if lastSeq.IsNonZero() { // start after end of last feed
 				options.Since = lastSeq
 			}
 			if h.db.IsClosed() {
@@ -496,6 +496,12 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		HeartbeatMs    *uint64       `json:"heartbeat"`
 		TimeoutMs      *uint64       `json:"timeout"`
 		AcceptEncoding string        `json:"accept_encoding"`
+	}
+	// Initialize since clock and hasher ahead of unmarshalling sequence
+	if h.db != nil && h.db.SequenceType == db.ClockSequenceType {
+		input.Since.Clock = base.NewSequenceClockImpl()
+		input.Since.SeqType = h.db.SequenceType
+		input.Since.SequenceHasher = h.db.SequenceHasher
 	}
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return

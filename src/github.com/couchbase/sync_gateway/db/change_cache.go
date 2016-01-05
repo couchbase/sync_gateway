@@ -77,10 +77,10 @@ type CacheOptions struct {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChange func(base.Set), options CacheOptions) {
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) error {
 	c.context = context
-	c.initialSequence = lastSequence
-	c.nextSequence = lastSequence + 1
+	c.initialSequence = lastSequence.Seq
+	c.nextSequence = lastSequence.Seq + 1
 	c.onChange = onChange
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
@@ -92,19 +92,21 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 		CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
 	}
 
-	if options.CachePendingSeqMaxNum > 0 {
-		c.options.CachePendingSeqMaxNum = options.CachePendingSeqMaxNum
+	if options != nil {
+		if options.CachePendingSeqMaxNum > 0 {
+			c.options.CachePendingSeqMaxNum = options.CachePendingSeqMaxNum
+		}
+
+		if options.CachePendingSeqMaxWait > 0 {
+			c.options.CachePendingSeqMaxWait = options.CachePendingSeqMaxWait
+		}
+
+		if options.CacheSkippedSeqMaxWait > 0 {
+			c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
+		}
+		c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	}
 
-	if options.CachePendingSeqMaxWait > 0 {
-		c.options.CachePendingSeqMaxWait = options.CachePendingSeqMaxWait
-	}
-
-	if options.CacheSkippedSeqMaxWait > 0 {
-		c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
-	}
-
-	c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
 
 	heap.Init(&c.pendingLogs)
@@ -124,6 +126,8 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence uint64, onChan
 			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
 		}
 	}()
+
+	return nil
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
@@ -141,7 +145,7 @@ func (c *changeCache) IsStopped() bool {
 }
 
 // Forgets all cached changes for all channels.
-func (c *changeCache) ClearLogs() {
+func (c *changeCache) Clear() {
 	c.lock.Lock()
 	c.initialSequence, _ = c.context.LastSequence()
 	c.channelCaches = make(map[string]*channelCache, 10)
@@ -151,7 +155,7 @@ func (c *changeCache) ClearLogs() {
 }
 
 // If set to false, DocChanged() becomes a no-op.
-func (c *changeCache) EnableChannelLogs(enable bool) {
+func (c *changeCache) EnableChannelIndexing(enable bool) {
 	c.lock.Lock()
 	c.logsDisabled = !enable
 	c.lock.Unlock()
@@ -254,12 +258,16 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 }
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequenceID(sequence SequenceID) {
+	c.waitForSequence(sequence.Seq)
+}
+
 func (c *changeCache) waitForSequence(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		c.lock.RLock()
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
 			base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 			return
@@ -273,17 +281,19 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 	var i int
 	for i = 0; i < 20; i++ {
-		c.lock.Lock()
+		c.lock.RLock()
 		nextSequence := c.nextSequence
-		c.lock.Unlock()
+		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
 			foundInMissing := false
+			c.skippedSeqLock.RLock()
 			for _, skippedSeq := range c.skippedSeqs {
 				if skippedSeq.seq == sequence {
 					foundInMissing = true
 					break
 				}
 			}
+			c.skippedSeqLock.RUnlock()
 			if !foundInMissing {
 				base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 				return
@@ -298,7 +308,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(docID string, docJSON []byte) {
+func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
@@ -313,7 +323,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, err := unmarshalDocumentSyncData(docJSON, false)
-		if err != nil || !doc.hasValidSyncData() {
+		if err != nil || !doc.hasValidSyncData(c.context.writeSequences()) {
 			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
 		}
@@ -377,18 +387,31 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte) {
 		}
 	}()
 }
+func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
+
+	c.context.BucketLock.RLock()
+	defer c.context.BucketLock.RUnlock()
+	if c.context.Bucket != nil {
+		return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	} else {
+		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
+	}
+}
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
-	princ, err := c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
+	princ, err := c.unmarshalPrincipal(docJSON, isUser)
 	if princ == nil {
 		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 		return
 	}
 	sequence := princ.Sequence()
-	if sequence <= c.initialSequence {
+	c.lock.RLock()
+	initialSequence := c.initialSequence
+	c.lock.RUnlock()
+	if sequence <= initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -552,6 +575,17 @@ func (c *changeCache) getNextSequence() uint64 {
 	return c.nextSequence
 }
 
+func (c *changeCache) GetStableSequence(docID string) SequenceID {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	// Stable sequence is independent of docID in changeCache
+	return SequenceID{Seq: c.nextSequence - 1}
+}
+
+func (c *changeCache) GetStableClock() (clock base.SequenceClock, err error) {
+	return nil, errors.New("Change cache doesn't use vector clocks")
+}
+
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
@@ -563,11 +597,15 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 
 //////// CHANGE ACCESS:
 
-func (c *changeCache) GetChangesInChannel(channelName string, options ChangesOptions) ([]*LogEntry, error) {
-	if c.IsStopped() {
+func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+	if c.stopped {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.getChannelCache(channelName).GetChanges(options)
+}
+
+func (c *changeCache) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
+	return c.getChannelCache(channelName).getCachedChanges(options)
 }
 
 // Returns the sequence number the cache is up-to-date with.
@@ -678,4 +716,21 @@ func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
 // Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
 func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
+}
+
+func writeHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
+	writeHistogramForDuration(expvarMap, time.Since(since), prefix)
+}
+
+func writeHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
+
+	if base.LogEnabled("PerfStats") {
+		var durationMs int
+		if duration < 1*time.Second {
+			durationMs = int(duration/(100*time.Millisecond)) * 100
+		} else {
+			durationMs = int(duration/(1000*time.Millisecond)) * 1000
+		}
+		expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
+	}
 }

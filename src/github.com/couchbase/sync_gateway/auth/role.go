@@ -25,6 +25,7 @@ type roleImpl struct {
 	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet `json:"all_channels"`
 	Sequence_         uint64      `json:"sequence"`
+	PreviousChannels_ ch.TimedSet `json:"previous_channels,omitempty"`
 }
 
 var kValidNameRegexp *regexp.Regexp
@@ -69,14 +70,17 @@ func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string, defaul
 	if role.Name_ == "" {
 		role.Name_ = defaultName
 	}
+
+	defaultVbSeq := ch.NewVbSimpleSequence(defaultSeq)
 	for channel, seq := range role.ExplicitChannels_ {
-		if seq == 0 {
-			role.ExplicitChannels_[channel] = defaultSeq
+		if seq.Sequence == 0 {
+			role.ExplicitChannels_[channel] = defaultVbSeq
 		}
 	}
 	if err := role.validate(); err != nil {
 		return nil, err
 	}
+
 	return role, nil
 }
 
@@ -87,7 +91,7 @@ func docIDForRole(name string) string {
 	return RoleKeyPrefix + name
 }
 
-func (role *roleImpl) docID() string {
+func (role *roleImpl) DocID() string {
 	return docIDForRole(role.Name_)
 }
 
@@ -126,6 +130,14 @@ func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet) {
 	role.setChannels(nil)
 }
 
+func (role *roleImpl) PreviousChannels() ch.TimedSet {
+	return role.PreviousChannels_
+}
+
+func (role *roleImpl) SetPreviousChannels(channels ch.TimedSet) {
+	role.PreviousChannels_ = channels
+}
+
 // Checks whether this role object contains valid data; if not, returns an error.
 func (role *roleImpl) validate() error {
 	if !IsValidPrincipalName(role.Name_) {
@@ -152,10 +164,10 @@ func (role *roleImpl) CanSeeChannel(channel string) bool {
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
 func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
 	seq := role.Channels_[channel]
-	if seq == 0 {
+	if seq.Sequence == 0 {
 		seq = role.Channels_[ch.UserStarChannel]
 	}
-	return seq
+	return seq.Sequence
 }
 
 func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {

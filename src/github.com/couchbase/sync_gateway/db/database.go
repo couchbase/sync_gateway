@@ -38,11 +38,11 @@ const (
 )
 
 var RunStateString = []string{
-	DBOffline:        "Offline",
-	DBStarting:        "Starting",
-	DBOnline:        "Online",
-	DBStopping:        "Stopping",
-	DBResyncing:    "Resyncing",
+	DBOffline:   "Offline",
+	DBStarting:  "Starting",
+	DBOnline:    "Online",
+	DBStopping:  "Stopping",
+	DBResyncing: "Resyncing",
 }
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -50,6 +50,8 @@ var RunStateString = []string{
 type DatabaseContext struct {
 	Name               string                  // Database name
 	Bucket             base.Bucket             // Storage
+	BucketSpec         base.BucketSpec         // The BucketSpec
+	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
 	tapListener        changeListener          // Listens on server Tap feed
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
@@ -59,12 +61,23 @@ type DatabaseContext struct {
 	autoImport         bool                    // Add sync data to new untracked docs?
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
-	changeCache        changeCache             //
+	changeCache        ChangeIndex             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
-	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              uint32                  //The runtime state of the DB from a service perspective
-	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
+	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
+	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
+	Options            DatabaseContextOptions
+	AccessLock         sync.RWMutex  // Allows DB offline to block until synchronous calls have completed
+	State              uint32        //The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{} //active _changes feeds on the DB will close when this channel is closed
+
+}
+
+type DatabaseContextOptions struct {
+	CacheOptions          *CacheOptions
+	IndexOptions          *ChangeIndexOptions
+	SequenceHashOptions   *SequenceHashOptions
+	RevisionCacheCapacity uint32
 }
 
 const DefaultRevsLimit = 1000
@@ -77,7 +90,7 @@ type Database struct {
 }
 
 // All special/internal documents the gateway creates have this prefix in their keys.
-const kSyncKeyPrefix = "_sync:"
+const KSyncKeyPrefix = "_sync:"
 
 var dbExpvars = expvar.NewMap("syncGateway_db")
 
@@ -103,7 +116,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 }
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cacheOptions CacheOptions, revCacheSize uint32) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -114,8 +127,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 		StartTime:  time.Now(),
 		RevsLimit:  DefaultRevsLimit,
 		autoImport: autoImport,
+		Options:    options,
 	}
-	context.revisionCache = NewRevisionCache(int(revCacheSize), context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(int(options.RevisionCacheCapacity), context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
@@ -128,9 +142,24 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 	if err != nil {
 		return nil, err
 	}
-	context.changeCache.Init(context, lastSeq, func(changedChannels base.Set) {
+
+	if options.IndexOptions == nil {
+		// In-memory channel cache
+		context.SequenceType = IntSequenceType
+		context.changeCache = &changeCache{}
+	} else {
+		// KV channel index
+		context.SequenceType = ClockSequenceType
+		context.changeCache = &kvChangeIndex{}
+		context.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {
 		context.tapListener.Notify(changedChannels)
-	}, cacheOptions)
+	}, options.CacheOptions, options.IndexOptions)
 	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
 	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
@@ -138,11 +167,92 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, cach
 	}); err != nil {
 		return nil, err
 	}
+
 	go context.watchDocChanges()
 	return context, nil
 }
 
+func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
+	return context.changeCache.GetStableClock()
+}
+
+func (context *DatabaseContext) writeSequences() bool {
+	return context.UseGlobalSequence()
+}
+
+func (context *DatabaseContext) UseGlobalSequence() bool {
+	return context.SequenceType != ClockSequenceType
+}
+
+func (context *DatabaseContext) CreateCBGTIndex() error {
+
+	// Create the CBGT index.  This must be done _after_ the tapListener is started,
+	// as the tapFeed will be created at that point, and it must be already created
+	// at the point we try to create a CBGT index.
+	if context.BucketSpec.FeedType == strings.ToLower(base.DcpShardFeedType) {
+		// create the index]
+		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.GetCBGTIndexNameForBucket(context.Bucket))
+		if err != nil {
+			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
+		}
+		if !alreadyExists {
+			numShards := context.Options.IndexOptions.NumShards
+			if err := createCBGTIndex(numShards, context.Bucket, context.BucketSpec); err != nil {
+				return fmt.Errorf("Unable to initialize CBGT index: %v", err)
+			}
+		}
+
+	}
+
+	return nil
+
+}
+
+func (context *DatabaseContext) GetCBGTIndexNameForBucket(bucket base.Bucket) (indexName string) {
+	// Real Couchbase buckets use an index name that includes UUID.
+	cbBucket, ok := bucket.(base.CouchbaseBucket)
+	if ok {
+		indexName = cbBucket.GetCBGTIndexName()
+	} else {
+		indexName = bucket.GetName()
+	}
+	return indexName
+
+}
+
+// Check if this CBGT index already exists
+func checkCBGTIndexExists(cbgtContext base.CbgtContext, indexName string) (bool, error) {
+
+	_, indexDefsMap, err := cbgtContext.Manager.GetIndexDefs(true)
+	if err != nil {
+		return false, err
+	}
+
+	return (indexDefsMap[indexName] != nil), nil
+
+}
+
+// Create an "index" in CBGT which will cause it to start streaming
+// DCP events to us for our shard of the full DCP stream.
+func createCBGTIndex(numShards uint16, baseBucket base.Bucket, spec base.BucketSpec) error {
+
+	bucket, ok := baseBucket.(base.CouchbaseBucket)
+	if !ok {
+		return fmt.Errorf("Type assertion failure from base.Bucket -> CouchbaseBucket")
+	}
+
+	return bucket.CreateCBGTIndex(numShards, spec)
+
+}
+
+func (context *DatabaseContext) TapListener() changeListener {
+	return context.tapListener
+}
+
 func (context *DatabaseContext) Close() {
+	context.BucketLock.Lock()
+	defer context.BucketLock.Unlock()
+
 	context.tapListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
@@ -173,7 +283,7 @@ func (dc *DatabaseContext) TakeDbOffline() error {
 	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
 	dbState := atomic.LoadUint32(&dc.State)
 	//If the DB is already trasitioning to: offline or is offline silently return
-	if (dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping ) {
+	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
 	}
 
@@ -344,6 +454,31 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
+
+	// Vbucket sequence version of channel access view, used by ComputeChannelsForPrincipal()
+	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
+
+	access_vbSeq_map := `function (doc, meta) {
+		                    var sync = doc._sync;
+		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+		                        return;
+		                    var access = sync.access;
+		                    if (access) {
+		                        for (var name in access) {
+		                        	// Build a timed set based on vb and vbseq of this revision
+		                        	var value = {};
+		                        	for (var channel in access[name]) {
+		                        		var timedSetWithVbucket = {};
+				                        timedSetWithVbucket["vb"] = parseInt(meta.vb, 10);
+				                        timedSetWithVbucket["seq"] = parseInt(meta.seq, 10);
+				                        value[channel] = timedSetWithVbucket;
+			                        }
+		                            emit(name, value)
+		                        }
+
+		                    }
+		               }`
+
 	// Role access view, used by ComputeRolesForUser()
 	// Key is username; value is array of role names
 	roleAccess_map := `function (doc, meta) {
@@ -362,10 +497,11 @@ func installViews(bucket base.Bucket) error {
 
 	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
-			ViewChannels:   sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:     sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
+			ViewPrincipals:  sgbucket.ViewDef{Map: principals_map},
+			ViewChannels:    sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:      sgbucket.ViewDef{Map: access_map},
+			ViewAccessVbSeq: sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccess:  sgbucket.ViewDef{Map: roleAccess_map},
 		},
 	}
 
@@ -628,9 +764,9 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 
 	// We are about to alter documents without updating their sequence numbers, which would
 	// really confuse the changeCache, so turn it off until we're done:
-	db.changeCache.EnableChannelLogs(false)
-	defer db.changeCache.EnableChannelLogs(true)
-	db.changeCache.ClearLogs()
+	db.changeCache.EnableChannelIndexing(false)
+	defer db.changeCache.EnableChannelIndexing(true)
+	db.changeCache.Clear()
 
 	base.Logf("Re-running sync function on all %d documents...", len(vres.Rows))
 	changeCount := 0
@@ -650,7 +786,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			}
 
 			imported := false
-			if !doc.hasValidSyncData() {
+			if !doc.hasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore or import it:
 				if !doImportDocs {
 					return nil, couchbase.UpdateCancel
@@ -748,6 +884,15 @@ func (db *Database) invalUserOrRoleChannels(name string) {
 		db.invalRoleChannels(name[5:])
 	} else {
 		db.invalUserChannels(name)
+	}
+}
+
+// Helper method for API unit test retrieval of index bucket
+func (context *DatabaseContext) GetIndexBucket() base.Bucket {
+	if kvChangeIndex, ok := context.changeCache.(*kvChangeIndex); ok {
+		return kvChangeIndex.reader.indexReadBucket
+	} else {
+		return nil
 	}
 }
 

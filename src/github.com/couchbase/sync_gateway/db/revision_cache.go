@@ -7,6 +7,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// Number of recently-accessed doc revisions to cache in RAM
+const KDefaultRevisionCacheCapacity = 5000
+
 // An LRU cache of document revision bodies, together with their channel access.
 type RevisionCache struct {
 	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
@@ -30,6 +33,11 @@ type revCacheValue struct {
 
 // Creates a revision cache with the given capacity and an optional loader function.
 func NewRevisionCache(capacity int, loaderFunc RevisionCacheLoaderFunc) *RevisionCache {
+
+	if capacity == 0 {
+		capacity = KDefaultRevisionCacheCapacity
+	}
+
 	return &RevisionCache{
 		cache:      map[IDAndRev]*list.Element{},
 		lruList:    list.New(),

@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -73,16 +74,33 @@ type ServerConfig struct {
 	CompressResponses              *bool           // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
 	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
+	ClusterConfig                  ClusterConfig   `json:"cluster_config"` // Bucket and other config related to CBGT
+}
+
+// Bucket configuration elements - used by db, shadow, index
+type BucketConfig struct {
+	Server   *string `json:"server"`             // Couchbase server URL
+	Pool     *string `json:"pool,omitempty"`     // Couchbase pool name, default "default"
+	Bucket   *string `json:"bucket"`             // Bucket name
+	Username string  `json:"username,omitempty"` // Username for authenticating to server
+	Password string  `json:"password,omitempty"` // Password for authenticating to server
+}
+
+type ClusterConfig struct {
+	BucketConfig
+	DataDir                  string  `json:"data_dir"`
+	HeartbeatIntervalSeconds *uint16 `json:"heartbeat_interval_seconds"`
+}
+
+func (c ClusterConfig) CBGTEnabled() bool {
+	// if we have a non-empty server field, then assume CBGT is enabled.
+	return c.Server != nil && *c.Server != ""
 }
 
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
+	BucketConfig
 	Name               string                         `json:"name"`                           // Database name in REST API (stored as key in JSON)
-	Server             *string                        `json:"server"`                         // Couchbase (or Walrus) server URL, default "http://localhost:8091"
-	Username           string                         `json:"username,omitempty"`             // Username for authenticating to server
-	Password           string                         `json:"password,omitempty"`             // Password for authenticating to server
-	Bucket             *string                        `json:"bucket"`                         // Bucket name on server; defaults to same as 'name'
-	Pool               *string                        `json:"pool"`                           // Couchbase pool name, default "default"
 	Sync               *string                        `json:"sync"`                           // Sync function defines which users can see which data
 	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
 	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
@@ -93,8 +111,9 @@ type DbConfig struct {
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
+	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
 	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
-	StartOffline	   bool							  `json:"offline,omitempty"`		      // start the DB in the offline state, defaults to false
+	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -116,11 +135,7 @@ type CORSConfig struct {
 }
 
 type ShadowConfig struct {
-	Server       *string `json:"server"`                 // Couchbase server URL
-	Pool         *string `json:"pool,omitempty"`         // Couchbase pool name, default "default"
-	Bucket       string  `json:"bucket"`                 // Bucket name
-	Username     string  `json:"username,omitempty"`     // Username for authenticating to server
-	Password     string  `json:"password,omitempty"`     // Password for authenticating to server
+	BucketConfig
 	Doc_id_regex *string `json:"doc_id_regex,omitempty"` // Optional regex that doc IDs must match
 	FeedType     string  `json:"feed_type,omitempty"`    // Feed type - "DCP" or "TAP"; defaults to TAP
 }
@@ -129,6 +144,7 @@ type EventHandlerConfig struct {
 	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
 	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
 	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
+	DBStateChanged  []*EventConfig `json:"db_state_changed,omitempty"` // DB state change
 }
 
 type EventConfig struct {
@@ -146,6 +162,12 @@ type CacheConfig struct {
 	ChannelCacheMaxLength  *int    `json:"channel_cache_max_length"`   // Maximum number of entries maintained in cache per channel
 	ChannelCacheMinLength  *int    `json:"channel_cache_min_length"`   // Minimum number of entries maintained in cache per channel
 	ChannelCacheAge        *int    `json:"channel_cache_expiry"`       // Time (seconds) to keep entries in cache beyond the minimum retained
+}
+
+type ChannelIndexConfig struct {
+	BucketConfig
+	IndexWriter bool   `json:"writer,omitempty"` // TODO: Partition information
+	NumShards   uint16 `json:"num_shards,omitempty"`
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -194,17 +216,73 @@ func (dbConfig *DbConfig) setup(name string) error {
 		}
 	}
 
+	if dbConfig.ChannelIndex != nil {
+		url, err = url.Parse(*dbConfig.ChannelIndex.Server)
+		if err == nil && url.User != nil {
+			// Remove credentials from shadow URL and put them into the DbConfig.ChannelIndex.Username and .Password:
+			if dbConfig.ChannelIndex.Username == "" {
+				dbConfig.ChannelIndex.Username = url.User.Username()
+			}
+			if dbConfig.ChannelIndex.Password == "" {
+				if password, exists := url.User.Password(); exists {
+					dbConfig.ChannelIndex.Password = password
+				}
+			}
+			url.User = nil
+			urlStr := url.String()
+			dbConfig.ChannelIndex.Server = &urlStr
+		}
+	}
+
 	return err
+}
+
+func (dbConfig DbConfig) validate() error {
+
+	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
+	if dbConfig.ChannelIndex != nil {
+		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
+			msg := "ChannelIndex declared in config, but the FeedType is %v " +
+				"rather than expected value of DCPSHARD"
+			return fmt.Errorf(msg, dbConfig.FeedType)
+		}
+	}
+
+	// if the feed type is DCPSHARD, then there must be a ChannelIndex
+	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
+		if dbConfig.ChannelIndex == nil {
+			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
+			return fmt.Errorf(msg)
+		}
+	}
+
+	return nil
+
+}
+
+func (dbConfig *DbConfig) modifyConfig() {
+	if dbConfig.ChannelIndex != nil {
+		// if there is NO feed type, set to DCPSHARD, since that's the only
+		// valid config when a Channel Index is specified
+		if dbConfig.FeedType == "" {
+			dbConfig.FeedType = base.DcpShardFeedType
+		}
+	}
 }
 
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
-	return dbConfig.Username, dbConfig.Password, *dbConfig.Bucket
+	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
 }
 
 // Implementation of AuthHandler interface for ShadowConfig
 func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
-	return shadowConfig.Username, shadowConfig.Password, shadowConfig.Bucket
+	return base.TransformBucketCredentials(shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket)
+}
+
+// Implementation of AuthHandler interface for ChannelIndexConfig
+func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
 }
 
 // Reads a ServerConfig from raw data
@@ -217,9 +295,10 @@ func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
 	}
 
 	// Validation:
-	for name, dbConfig := range config.Databases {
-		dbConfig.setup(name)
+	if err := config.setupAndValidateDatabases(); err != nil {
+		return nil, err
 	}
+
 	return config, nil
 }
 
@@ -268,10 +347,29 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 	}
 
 	// Validation:
-	for name, dbConfig := range config.Databases {
-		dbConfig.setup(name)
+	if err := config.setupAndValidateDatabases(); err != nil {
+		return nil, err
 	}
 	return config, nil
+
+}
+
+func (config *ServerConfig) setupAndValidateDatabases() error {
+	for name, dbConfig := range config.Databases {
+		dbConfig.setup(name)
+		if err := config.validateDbConfig(dbConfig); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
+
+	dbConfig.modifyConfig()
+
+	return dbConfig.validate()
+
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
@@ -408,10 +506,12 @@ func ParseCommandLine() {
 			Pretty:           *pretty,
 			Databases: map[string]*DbConfig{
 				*dbName: {
-					Name:   *dbName,
-					Server: couchbaseURL,
-					Bucket: bucketName,
-					Pool:   poolName,
+					Name: *dbName,
+					BucketConfig: BucketConfig{
+						Server: couchbaseURL,
+						Bucket: bucketName,
+						Pool:   poolName,
+					},
 					Users: map[string]*db.PrincipalConfig{
 						base.GuestUsername: &db.PrincipalConfig{
 							Disabled:         false,
@@ -430,9 +530,9 @@ func ParseCommandLine() {
 		config.Persona.Origin = *siteURL
 	}
 
-	base.LogKeys["HTTP"] = true
+	base.EnableLogKey("HTTP")
 	if *verbose {
-		base.LogKeys["HTTP+"] = true
+		base.EnableLogKey("HTTP+")
 	}
 	base.ParseLogFlag(*logKeys)
 
@@ -482,6 +582,13 @@ func RunServer(config *ServerConfig) {
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
+		}
+	}
+
+	// Initialize CBGT if needed
+	if config.ClusterConfig.CBGTEnabled() {
+		if err := sc.InitCBGT(); err != nil {
+			log.Fatalf("%v", err)
 		}
 	}
 

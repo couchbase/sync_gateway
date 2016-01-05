@@ -21,8 +21,8 @@ import (
 
 func TestDuplicateDocID(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -64,8 +64,8 @@ func TestDuplicateDocID(t *testing.T) {
 
 func TestLateArrivingSequence(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -93,8 +93,8 @@ func TestLateArrivingSequence(t *testing.T) {
 
 func TestLateSequenceAsFirst(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -122,8 +122,8 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 func TestDuplicateLateArrivingSequence(t *testing.T) {
 
-	base.LogKeys["Cache"] = true
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -232,7 +232,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	base.SetLogLevel(2) // disables logging
 	//base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 	docIDs := make([]string, b.N)
@@ -248,7 +248,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 	base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -263,7 +263,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	//base.LogKeys["Cache+"] = true
 	base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -277,7 +277,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -291,7 +291,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -304,9 +304,9 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	base.LogKeys["CacheTest"] = true
+	base.EnableLogKey("CacheTest")
 	//base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -320,7 +320,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	base.SetLogLevel(2) // disables logging
-	context, _ := NewDatabaseContext("db", testBucket(), false, CacheOptions{}, RevisionCacheCapacity)
+	context := testBucketContext()
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate docs
 	docs := make([]*LogEntry, b.N)

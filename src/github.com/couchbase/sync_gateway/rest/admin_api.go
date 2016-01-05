@@ -105,7 +105,14 @@ func (h *handler) handleDbOnline() error {
 //Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
-	return h.db.TakeDbOffline()
+	var err error
+	if err = h.db.TakeDbOffline(); err == nil {
+		if h.db.DatabaseContext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			h.db.DatabaseContext.EventMgr.RaiseDBStateChangeEvent(h.db.DatabaseContext.Name, "offline", "ADMIN Request", *h.server.config.AdminInterface)
+		}
+	}
+
+	return err
 }
 
 // Get admin database info
@@ -338,6 +345,35 @@ func (h *handler) getRoles() error {
 		return err
 	}
 	bytes, err := json.Marshal(roles)
+	h.response.Write(bytes)
+	return err
+}
+
+// HTTP handler for /index/channel
+func (h *handler) handleIndexChannel() error {
+	channelName := h.PathVar("channel")
+	base.LogTo("HTTP", "Index channel %q", channelName)
+
+	channelStats, err := h.db.IndexChannelStats(channelName)
+
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(channelStats)
+	h.response.Write(bytes)
+	return err
+}
+
+// HTTP handler for /index/channels
+func (h *handler) handleIndexAllChannels() error {
+	base.LogTo("HTTP", "Index channels")
+
+	channelStats, err := h.db.IndexAllChannelStats()
+
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(channelStats)
 	h.response.Write(bytes)
 	return err
 }
