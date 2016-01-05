@@ -242,9 +242,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				return nil, forceClose // error is probably because the client closed the connection
 			}
 		}
-		if forceClose {
-			h.db.DatabaseContext.NotifyUser(h.currentEffectiveUserName())
-		}
 	}
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	h.response.Write([]byte(s))
@@ -384,9 +381,6 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 			h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
 			return nil, forceClose // error is probably because the client closed the connection
 		}
-	}
-	if forceClose {
-		h.db.DatabaseContext.NotifyUser(h.currentEffectiveUserName())
 	}
 
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
