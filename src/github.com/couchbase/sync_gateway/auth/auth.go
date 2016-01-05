@@ -344,6 +344,7 @@ func (auth *Authenticator) updateVbucketSequences(docID string, factory func() P
 				seq := vbSeq.Sequence
 				if seq == 0 {
 					userPrinc.ExplicitRoles_[role] = sequence
+					rolesChanged = true
 				}
 			}
 			// Invalidate calculated roles if changed.
