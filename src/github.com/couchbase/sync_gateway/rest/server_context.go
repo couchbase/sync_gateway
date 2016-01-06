@@ -525,7 +525,7 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string, useExisti
 
 	config := sc.config.Databases[reloadDbName]
 
-	return sc._getOrAddDatabaseFromConfig(config *DbConfig, useExisting)
+	return sc._getOrAddDatabaseFromConfig(config, useExisting)
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
