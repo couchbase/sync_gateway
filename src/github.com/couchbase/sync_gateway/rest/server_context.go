@@ -516,10 +516,33 @@ func (sc *ServerContext) enableCBGTAutofailover(version string, mgr *cbgt.Manage
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
+func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string, useExisting bool) (*db.DatabaseContext, error) {
+	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	sc._removeDatabase(reloadDbName)
+
+	config := sc.config.Databases[reloadDbName]
+
+	return sc._getOrAddDatabaseFromConfig(config, useExisting)
+}
+
+// Adds a database to the ServerContext.  Attempts a read after it gets the write
+// lock to see if it's already been added by another process. If so, returns either the
+// existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	return sc._getOrAddDatabaseFromConfig(config, useExisting)
+}
+
+// Adds a database to the ServerContext.  Attempts a read after it gets the write
+// lock to see if it's already been added by another process. If so, returns either the
+// existing DatabaseContext or an error based on the useExisting flag.
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 
 	server := "http://localhost:8091"
 	pool := "default"
@@ -909,6 +932,11 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	return sc._removeDatabase(dbName)
+}
+
+func (sc *ServerContext) _removeDatabase(dbName string) bool {
 
 	context := sc.databases_[dbName]
 	if context == nil {
