@@ -83,9 +83,6 @@ func (h *handler) handleDbOnline() error {
 
 		//We can only transition to Online from Offline state
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
-			
-			//Remove the database from the server context
-			//h.server.RemoveDatabase(h.db.Name)
 
 			if _, err := h.server.ReloadDatabaseFromConfig(h.db.Name, true); err != nil {
 				base.LogError(err)
