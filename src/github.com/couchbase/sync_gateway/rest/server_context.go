@@ -521,260 +521,11 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string, useExisti
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	context := sc.databases_[reloadDbName]
-	if context != nil {
+	sc._removeDatabase(reloadDbName)
 
-		base.Logf("Closing db /%s (bucket %q)", context.Name, context.Bucket.GetName())
-		context.Close()
-		delete(sc.databases_, reloadDbName)
-	}
-
-	server := "http://localhost:8091"
-	pool := "default"
 	config := sc.config.Databases[reloadDbName]
-	bucketName := config.Name
 
-	if config.Server != nil {
-		server = *config.Server
-	}
-	if config.Pool != nil {
-		pool = *config.Pool
-	}
-	if config.Bucket != nil {
-		bucketName = *config.Bucket
-	}
-	dbName := config.Name
-	if dbName == "" {
-		dbName = bucketName
-	}
-
-	if sc.databases_[dbName] != nil {
-		if useExisting {
-			return sc.databases_[dbName], nil
-		} else {
-			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
-				"Duplicate database name %q", dbName)
-		}
-	}
-
-	base.Logf("Opening db /%s as bucket %q, pool %q, server <%s>",
-		dbName, bucketName, pool, server)
-
-	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return nil, err
-	}
-
-	var importDocs, autoImport bool
-	switch config.ImportDocs {
-	case nil, false:
-	case true:
-		importDocs = true
-	case "continuous":
-		importDocs = true
-		autoImport = true
-	default:
-		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
-	}
-
-	feedType := strings.ToLower(config.FeedType)
-
-	// Connect to the bucket and add the database:
-	spec := base.BucketSpec{
-		Server:     server,
-		PoolName:   pool,
-		BucketName: bucketName,
-		FeedType:   feedType,
-	}
-
-	// If we are using DCPSHARD feed type, set CbgtContext on bucket spec
-	if feedType == strings.ToLower(base.DcpShardFeedType) {
-		spec.CbgtContext = sc.CbgtContext
-	}
-
-	if config.Username != "" {
-		spec.Auth = config
-	}
-
-	// Set cache properties, if present
-	cacheOptions := db.CacheOptions{}
-	if config.CacheConfig != nil {
-		if config.CacheConfig.CachePendingSeqMaxNum != nil && *config.CacheConfig.CachePendingSeqMaxNum > 0 {
-			cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.CachePendingSeqMaxNum
-		}
-		if config.CacheConfig.CachePendingSeqMaxWait != nil && *config.CacheConfig.CachePendingSeqMaxWait > 0 {
-			cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.CachePendingSeqMaxWait) * time.Millisecond
-		}
-		if config.CacheConfig.CacheSkippedSeqMaxWait != nil && *config.CacheConfig.CacheSkippedSeqMaxWait > 0 {
-			cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.CacheSkippedSeqMaxWait) * time.Millisecond
-		}
-		// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
-		if config.CacheConfig.EnableStarChannel != nil {
-			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
-		}
-
-		if config.CacheConfig.ChannelCacheMaxLength != nil && *config.CacheConfig.ChannelCacheMaxLength > 0 {
-			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheMaxLength
-		}
-		if config.CacheConfig.ChannelCacheMinLength != nil && *config.CacheConfig.ChannelCacheMinLength > 0 {
-			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheMinLength
-		}
-		if config.CacheConfig.ChannelCacheAge != nil && *config.CacheConfig.ChannelCacheAge > 0 {
-			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
-		}
-
-	}
-
-	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
-		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
-
-		if dc := sc.databases_[dbName]; dc != nil {
-			dc.TakeDbOffline()
-		}
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Channel index definition, if present
-	channelIndexOptions := &db.ChangeIndexOptions{} // TODO: this is confusing!  why is it called both a "change index" and a "channel index"?
-	sequenceHashOptions := &db.SequenceHashOptions{}
-	if config.ChannelIndex != nil {
-		indexServer := "http://localhost:8091"
-		indexPool := "default"
-		indexBucketName := ""
-
-		if config.ChannelIndex.Server != nil {
-			indexServer = *config.ChannelIndex.Server
-		}
-		if config.ChannelIndex.Pool != nil {
-			indexPool = *config.ChannelIndex.Pool
-		}
-		if config.ChannelIndex.Bucket != nil {
-			indexBucketName = *config.ChannelIndex.Bucket
-		}
-		indexSpec := base.BucketSpec{
-			Server:          indexServer,
-			PoolName:        indexPool,
-			BucketName:      indexBucketName,
-			CouchbaseDriver: base.GoCB,
-		}
-		if config.ChannelIndex.Username != "" {
-			indexSpec.Auth = config.ChannelIndex
-		}
-
-		if config.ChannelIndex.NumShards != 0 {
-			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
-		} else {
-			channelIndexOptions.NumShards = 64
-		}
-
-		channelIndexOptions.ValidateOrPanic()
-
-		channelIndexOptions.Spec = indexSpec
-		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
-
-		// TODO: separate config of hash bucket
-		sequenceHashOptions.Bucket, err = base.GetBucket(indexSpec, nil)
-		if err != nil {
-			base.Logf("Error opening sequence hash bucket %q, pool %q, server <%s>",
-				indexBucketName, indexPool, indexServer)
-			// TODO: revert to local index?
-			return nil, err
-		}
-		sequenceHashOptions.Size = 32
-	} else {
-		channelIndexOptions = nil
-	}
-
-	var revCacheSize uint32
-	if config.RevCacheSize != nil && *config.RevCacheSize > 0 {
-		revCacheSize = *config.RevCacheSize
-	} else {
-		revCacheSize = db.KDefaultRevisionCacheCapacity
-	}
-
-	contextOptions := db.DatabaseContextOptions{
-		CacheOptions:          &cacheOptions,
-		IndexOptions:          channelIndexOptions,
-		SequenceHashOptions:   sequenceHashOptions,
-		RevisionCacheCapacity: revCacheSize,
-	}
-
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
-	if err != nil {
-		return nil, err
-	}
-	dbcontext.BucketSpec = spec
-
-	syncFn := ""
-	if config.Sync != nil {
-		syncFn = *config.Sync
-	}
-	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
-		return nil, err
-	}
-
-	if importDocs {
-		db, _ := db.GetDatabase(dbcontext, nil)
-		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
-			return nil, err
-		}
-	}
-
-	if config.RevsLimit != nil && *config.RevsLimit > 0 {
-		dbcontext.RevsLimit = *config.RevsLimit
-	}
-
-	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
-
-	if dbcontext.ChannelMapper == nil {
-		base.Logf("Using default sync function 'channel(doc.channels)' for database %q", dbName)
-	}
-
-	// Create default users & roles:
-	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return nil, err
-	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return nil, err
-	}
-
-	emitAccessRelatedWarnings(config, dbcontext)
-
-	// Install bucket-shadower if any:
-	if shadow := config.Shadow; shadow != nil {
-		if err := sc.startShadowing(dbcontext, shadow); err != nil {
-			base.Warn("Database %q: unable to connect to external bucket for shadowing: %v",
-				dbName, err)
-		}
-	}
-
-	// Initialize event handlers
-	if err := sc.initEventHandlers(dbcontext, config); err != nil {
-		return nil, err
-	}
-
-	dbcontext.ExitChanges = make(chan struct{})
-
-	// Register it so HTTP handlers can find it:
-	sc.databases_[dbcontext.Name] = dbcontext
-
-	// Save the config
-	sc.config.Databases[config.Name] = config
-
-	if config.StartOffline {
-		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
-		}
-	} else {
-		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
-		}
-	}
-
-	return dbcontext, nil
+	return sc._getOrAddDatabaseFromConfig(config *DbConfig, useExisting)
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
@@ -784,6 +535,14 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	return sc._getOrAddDatabaseFromConfig(config, useExisting)
+}
+
+// Adds a database to the ServerContext.  Attempts a read after it gets the write
+// lock to see if it's already been added by another process. If so, returns either the
+// existing DatabaseContext or an error based on the useExisting flag.
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 
 	server := "http://localhost:8091"
 	pool := "default"
@@ -1173,6 +932,11 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	return sc._removeDatabase(dbName)
+}
+
+func (sc *ServerContext) _removeDatabase(dbName string) bool {
 
 	context := sc.databases_[dbName]
 	if context == nil {
