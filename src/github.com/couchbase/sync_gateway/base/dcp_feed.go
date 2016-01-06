@@ -42,6 +42,8 @@ type Receiver interface {
 	SetEventFeed(chan sgbucket.TapEvent)
 	GetOutput() chan sgbucket.TapEvent
 	updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool)
+	SetBucketNotifyFn(sgbucket.BucketNotifyFn)
+	GetBucketNotifyFn() sgbucket.BucketNotifyFn
 }
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
@@ -52,7 +54,8 @@ type DCPReceiver struct {
 	seqs      map[uint16]uint64 // To track max seq #'s we received per vbucketId.
 	meta      map[uint16][]byte // To track metadata blob's per vbucketId.
 	eventFeed <-chan sgbucket.TapEvent
-	output    chan sgbucket.TapEvent // Same as EventFeed but writeably-typed
+	output    chan sgbucket.TapEvent  // Same as EventFeed but writeably-typed
+	notify    sgbucket.BucketNotifyFn // Function to callback when we lose our dcp feed
 }
 
 func NewDCPReceiver() Receiver {
@@ -70,6 +73,14 @@ func NewDCPReceiver() Receiver {
 	return r
 }
 
+func (r *DCPReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
+	r.notify = notify
+}
+
+func (r *DCPReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
+	return r.notify
+}
+
 func (r *DCPReceiver) SetEventFeed(c chan sgbucket.TapEvent) {
 	r.output = c
 }
@@ -84,6 +95,10 @@ func (r *DCPReceiver) GetOutput() chan sgbucket.TapEvent {
 
 func (r *DCPReceiver) OnError(err error) {
 	Warn("Feed", "Error processing DCP stream: %v", err)
+
+	bucketName := "unknown" // this is currently ignored anyway
+	r.notify(bucketName, err)
+
 }
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
@@ -234,6 +249,16 @@ func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64
 	req *gomemcached.MCRequest) error {
 	LogTo("DCP", "DataUpdate:%d, %s, %d, %v", vbucketId, key, seq, req)
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
+}
+
+func (r *DCPLoggingReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
+	LogTo("DCP", "SetBucketNotifyFn()")
+	r.rec.SetBucketNotifyFn(notify)
+}
+
+func (r *DCPLoggingReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
+	LogTo("DCP", "GetBucketNotifyFn()")
+	return r.rec.GetBucketNotifyFn()
 }
 
 func (r *DCPLoggingReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,

@@ -268,6 +268,8 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 
 	dcpReceiver := NewDCPReceiver()
 
+	dcpReceiver.SetBucketNotifyFn(args.Notify)
+
 	maxVbno, err := bucket.GetMaxVbno()
 	if err != nil {
 		return nil, err
@@ -432,7 +434,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		cbbucket.RunBucketUpdater(func(bucket string, err error) {
 			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
 
-			if(callback != nil) {
+			if callback != nil {
 				callback(bucket, err)
 			}
 		})
