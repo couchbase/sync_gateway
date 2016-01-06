@@ -123,8 +123,31 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 }
 
 func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-	vres := sgbucket.ViewResult{}
-	return vres, bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
+
+	//Query view in retry loop backing off double the delay each time
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		vres := sgbucket.ViewResult{}
+
+		err = bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
+
+		//Only retry if view Object not found as view may still be initialising
+		shouldRetry = err != nil && strings.Contains(err.Error(), "404 Object Not Found")
+
+		return shouldRetry, err, vres
+	}
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	description := fmt.Sprintf("Query View: %v", name)
+	err, result := RetryLoop(description, worker, sleeper)
+
+	vres := result.(sgbucket.ViewResult)
+	return vres, err;
 }
 
 func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
