@@ -136,7 +136,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 }
 
-func CouchbaseTestWriteCasBasic(t *testing.T) {
+func TestWriteCasBasic(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -155,6 +155,7 @@ func CouchbaseTestWriteCasBasic(t *testing.T) {
 		t.Errorf("Error doing WriteCas: %v", err)
 	}
 
+	cas = uint64(44)
 	casOut, err := bucket.WriteCas(key, 0, 0, cas, val, sgbucket.Raw)
 	if err != nil {
 		t.Errorf("Error doing WriteCas: %v", err)
