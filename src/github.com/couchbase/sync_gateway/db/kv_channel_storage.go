@@ -318,7 +318,6 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 	// Bulk retrieval of individual entries.  Performs deduplication, and reordering into ascending vb and sequence order
 	results := b.bulkLoadEntries(entryKeys, entries)
 
-	base.LogTo("DIndex+", "[channelStorage.GetChanges] Returning %d entries...", len(results))
 	return results, nil
 
 }
@@ -532,7 +531,6 @@ func generateBitFlagBlockIndexes(channelName string, minSequence uint64, maxSequ
 	for index := firstIndex; index <= lastIndex; index++ {
 		indexes = append(indexes, index)
 	}
-	base.LogTo("DIndex+", "generatedBitFlagBlockIndexes for (%d, %d): %+v", minSequence, maxSequence, indexes)
 	return indexes
 }
 
@@ -787,7 +785,6 @@ func (b *BitFlagBufferBlock) AddEntry(entry *LogEntry) error {
 	if err != nil {
 		return err
 	}
-	base.LogTo("DIndex+", "Adding entry (%d, %d) at index: %d", entry.VbNo, entry.Sequence, index)
 	if entry.isRemoved() {
 		b.value[index] = byte(2)
 	} else {

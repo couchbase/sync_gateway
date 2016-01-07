@@ -128,7 +128,6 @@ func (k *kvChangeIndexWriter) getWriterStableSequence() *base.ShardedClock {
 
 func (k *kvChangeIndexWriter) addToCache(change *LogEntry) {
 	// queue for cache addition
-	base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", change.DocID, change.VbNo, change.Sequence)
 	k.pending <- change
 	return
 }
@@ -478,18 +477,10 @@ func NewUnmarshalWorker(output chan<- *LogEntry, unmarshalWorkQueue chan<- *unma
 			select {
 			case unmarshalEntry := <-worker.processing:
 				// Wait for entry processing to be done
-				entryTime := time.Now()
 				select {
 				case ok := <-unmarshalEntry.success:
 					if ok {
-						base.LogTo("DIndex+", "Change Index: Adding Entry with Key [%s], VbNo [%d], Seq [%d]", unmarshalEntry.logEntry.DocID, unmarshalEntry.logEntry.VbNo, unmarshalEntry.logEntry.Sequence)
-						writeHistogram(indexTimingExpvars, entryTime, "lag-waitForSuccess")
-						writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-readyForPending")
-						outputStart := time.Now()
 						output <- unmarshalEntry.logEntry
-						writeHistogram(indexTimingExpvars, outputStart, "lag-processedToOutput")
-						writeHistogram(indexTimingExpvars, unmarshalEntry.logEntry.TimeReceived, "lag-incomingToPending")
-
 					} else {
 						changeCacheExpvars.Add("unmarshalEntry_success_false", 1)
 						// error already logged - just ignore the entry
