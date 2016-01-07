@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -43,7 +44,13 @@ func (k *kvChangeIndexWriter) Init(context *DatabaseContext, options *CacheOptio
 	k.indexPartitionsCallback = indexPartitionsCallback
 
 	// start process to work pending sequences
-	go k.indexPending()
+	go func() {
+		err := k.indexPending()
+		if err != nil {
+			base.LogFatal("Indexer failed with unrecoverable error:%v", err)
+		}
+
+	}()
 
 	k.channelIndexWriters = make(map[string]*kvChannelIndex)
 	k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec, nil)
@@ -158,10 +165,9 @@ func (k *kvChangeIndexWriter) DocChanged(docID string, docJSON []byte, seq uint6
 	unmarshalWorker.add(docID, docJSON, vbNo, seq, k.processDoc)
 }
 
-func (k *kvChangeIndexWriter) indexPending() {
+func (k *kvChangeIndexWriter) indexPending() error {
 
 	// Read entries from the pending list into array
-	readPendingTime := time.Now()
 	entries := k.readFromPending()
 
 	// Initialize partition map (lazy init)
@@ -173,15 +179,29 @@ func (k *kvChangeIndexWriter) indexPending() {
 	// Generic channelStorage for log entry storage (if needed)
 	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
 
+	indexRetryCount := 0
+	maxRetries := 10
+
 	// Continual processing of arriving entries from the feed.
+	var sleeper base.RetrySleeper
 	for {
 		latestWriteBatch.Set(int64(len(entries)))
-		indexTimingExpvars.Add("batch_readPending", time.Since(readPendingTime).Nanoseconds())
-		indexTimingExpvars.Add("entryCount", int64(len(entries)))
-		k.indexEntries(entries, indexPartitions.VbMap, channelStorage)
-		// Read next entries
-		readPendingTime = time.Now()
-		entries = k.readFromPending()
+		err := k.indexEntries(entries, indexPartitions.VbMap, channelStorage)
+		if err != nil {
+			if indexRetryCount == 0 {
+				sleeper = base.CreateDoublingSleeperFunc(10, 5)
+			}
+			indexRetryCount++
+			shouldContinue, sleepMs := sleeper(indexRetryCount)
+			if !shouldContinue {
+				return errors.New(fmt.Sprintf("Unable to successfully write to index after %d attempts", maxRetries))
+			}
+			<-time.After(time.Millisecond * time.Duration(sleepMs))
+		} else {
+			// Successful indexing, read next entries
+			indexRetryCount = 0
+			entries = k.readFromPending()
+		}
 	}
 }
 
@@ -247,23 +267,14 @@ func (k *kvChangeIndexWriter) newChannelWriter(channelName string) (*kvChannelIn
 
 // Index a group of entries.  Iterates over the entry set to build updates per channel, then
 // updates using channel index.
-func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions base.IndexPartitionMap, channelStorage ChannelStorage) {
+func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions base.IndexPartitionMap, channelStorage ChannelStorage) error {
 
-	batchStart := time.Now()
 	channelSets := make(map[string][]*LogEntry)
 	updatedSequences := base.NewSequenceClockImpl()
 
-	// Record a histogram of the batch sizes
-	var batchSizeWindow int
-	if len(entries) < 50 {
-		batchSizeWindow = int(len(entries)/5) * 5
-	} else {
-		batchSizeWindow = int(len(entries)/50) * 50
-	}
-	indexTimingExpvars.Add(fmt.Sprintf("indexEntries-batchsize-%04d", batchSizeWindow), 1)
-
 	// Wait group tracks when the current buffer has been completely processed
 	var entryWg sync.WaitGroup
+	entryErrorCount := uint32(0)
 	// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 	for _, logEntry := range entries {
 		// If principal, update the stable sequence and continue
@@ -274,15 +285,17 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 
 		// Remove channels from entry to save space in memory, index entries
 		ch := logEntry.Channels
-		logEntry.Channels = nil
 
 		// Add index log entry if needed
 		if channelStorage.StoresLogEntries() {
 			entryWg.Add(1)
-			go func(logEntry *LogEntry) {
+			go func(logEntry *LogEntry, errorCount uint32) {
 				defer entryWg.Done()
-				channelStorage.WriteLogEntry(logEntry)
-			}(logEntry)
+				err := channelStorage.WriteLogEntry(logEntry)
+				if err != nil {
+					atomic.AddUint32(&errorCount, 1)
+				}
+			}(logEntry, entryErrorCount)
 		}
 		// Collect entries by channel
 		for channelName, removal := range ch {
@@ -313,60 +326,48 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 
 		// Track vbucket sequences for clock update
 		updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
-
 	}
 
 	// Wait group tracks when the current buffer has been completely processed
 	var channelWg sync.WaitGroup
-	channelStart := time.Now()
+
+	channelErrorCount := uint32(0)
 	// Iterate over channel sets to update channel index
 	for channelName, entrySet := range channelSets {
 		channelWg.Add(1)
-		go func(channelName string, entrySet []*LogEntry) {
+		go func(channelName string, entrySet []*LogEntry, errorCount uint32) {
 			defer channelWg.Done()
-			k.addSetToChannelIndex(channelName, entrySet)
-
-		}(channelName, entrySet)
+			err := k.addSetToChannelIndex(channelName, entrySet)
+			if err != nil {
+				atomic.AddUint32(&errorCount, 1)
+			}
+		}(channelName, entrySet, channelErrorCount)
 	}
 
 	// Wait for entry and channel processing to complete
 	entryWg.Wait()
 	channelWg.Wait()
+	if atomic.LoadUint32(&entryErrorCount) > 0 || atomic.LoadUint32(&channelErrorCount) > 0 {
+		return errors.New("Unrecoverable error indexing entry or channel")
+	}
 
-	indexTimingExpvars.Add("batch_writeEntriesAndChannelBlocks", time.Since(batchStart).Nanoseconds())
-	indexTimingExpvars.Add("batch_writeChannelBlocks", time.Since(channelStart).Nanoseconds())
-
-	writeHistogram(indexTimingExpvars, batchStart, "indexEntries-entryAndChannelTime")
-
-	stableStart := time.Now()
 	// Update stable sequence
 	err := k.getWriterStableSequence().UpdateAndWrite(updatedSequences)
-	if err != nil {
-		base.LogPanic("Error updating stable sequence", err)
-	}
-
-	indexTimingExpvars.Add("batch_updateStableSequence", time.Since(stableStart).Nanoseconds())
-	writeHistogram(indexTimingExpvars, stableStart, "indexEntries-stableSeqTime")
-
-	// TODO: remove - iterate once more for perf logging
-	for _, logEntry := range entries {
-		writeHistogram(indexTimingExpvars, logEntry.TimeReceived, "lag-indexing")
-		writeHistogram(indexTimingExpvars, logEntry.TimeSaved, "lag-totalWrite")
-	}
-
-	writeHistogram(indexTimingExpvars, batchStart, "indexEntries-batchTime")
-	indexTimingExpvars.Add("batch_totalBatchTime", time.Since(batchStart).Nanoseconds())
+	return err
 }
 
-func (k *kvChangeIndexWriter) addSetToChannelIndex(channelName string, entries []*LogEntry) {
+func (k *kvChangeIndexWriter) addSetToChannelIndex(channelName string, entries []*LogEntry) error {
 	writer, err := k.getOrCreateWriter(channelName)
 	if err != nil {
 		base.LogFatal("Unable to obtain channel writer - partition map not defined?")
+		return err
 	}
 	err = writer.AddSet(entries)
 	if err != nil {
 		base.Warn("Error writing %d entries for channel [%s]: %+v", len(entries), channelName, err)
+		return err
 	}
+	return nil
 }
 
 type PrincipalIndex struct {
