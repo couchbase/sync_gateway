@@ -487,9 +487,9 @@ func TestPollResultLongRunningContinuous(t *testing.T) {
 	// Start a continuous changes on channel (ABC).  Waitgroup keeps test open until continuous is terminated
 	var wg sync.WaitGroup
 	continuousTerminator := make(chan bool)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		wg.Add(1)
 		since, err := db.ParseSequenceID("2-0")
 		abcChanges, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: since, Wait: true, Continuous: true, Terminator: continuousTerminator})
 		assertTrue(t, err == nil, "Error getting changes")
@@ -511,6 +511,7 @@ func TestPollResultLongRunningContinuous(t *testing.T) {
 	WriteDirectWithKey(db, "terminatorCheck", []string{"ABC"}, 1)
 
 	wg.Wait()
+
 }
 
 func TestChangeIndexAddSet(t *testing.T) {
