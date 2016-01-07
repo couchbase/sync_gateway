@@ -41,6 +41,7 @@ func (ae AsyncEvent) Synchronous() bool {
 type DocumentChangeEvent struct {
 	AsyncEvent
 	Doc      Body
+	OldDoc   string
 	Channels base.Set
 }
 
@@ -143,7 +144,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	switch event := event.(type) {
 
 	case *DocumentChangeEvent:
-		result, err = ef.Call(event.Doc)
+		result, err = ef.Call(event.Doc, sgbucket.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	}
