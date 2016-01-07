@@ -358,8 +358,9 @@ func (s *SyncGatewayPIndex) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 	return nil
 }
 
-func (s *SyncGatewayPIndex) Stats(io.Writer) error {
-	return nil
+func (s *SyncGatewayPIndex) Stats(w io.Writer) error {
+	_, err := w.Write(cbgt.JsonNULL)
+	return err
 }
 
 // When we detect other nodes have stopped pushing heartbeats, remove from CBGT cluster
