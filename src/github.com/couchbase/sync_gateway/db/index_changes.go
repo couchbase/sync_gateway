@@ -21,12 +21,15 @@ import (
 func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	to := ""
 	var userVbNo uint16
+	userLogging := "UserLogging"
 	if db.user != nil && db.user.Name() != "" {
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 		userVbNo = uint16(db.Bucket.VBHash(db.user.DocID()))
+		userLogging = db.user.Name()
 	}
 
 	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+	base.LogTo(userLogging, "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -56,6 +59,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
+			if userLogging != "UserLogging" {
+				base.LogTo(userLogging, "Outer iteration starts, since:%s", base.PrintClock(options.Since.Clock))
+			}
 			iterationStartTime := time.Now()
 			// Restrict to available channels, expand wild-card, and find since when these channels
 			// have been available to the user:
@@ -114,6 +120,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				if isNewChannel || (backfillRequired && !backfillInProgress) {
 					// Case 2.  No backfill in progress, backfill required
 					base.LogTo("Changes+", "Starting backfill for channel... %s, %d", name, seqAddedAt)
+
+					base.LogTo(userLogging, "Starting backfill for channel %s for user %s", name, userLogging)
 					chanOpts.Since = SequenceID{
 						Seq:              0,
 						vbNo:             0,
@@ -124,6 +132,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				} else if backfillInProgress {
 					// Case 3.  Backfill in progress.
+					base.LogTo(userLogging, "Backfill in progress for channel %s for user %s", name, userLogging)
 					chanOpts.Since = SequenceID{
 						Seq:              options.Since.Seq,
 						vbNo:             options.Since.vbNo,
@@ -134,8 +143,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				} else {
 					// Case 1.  Leave chanOpts.Since set to options.Since.
+					base.LogTo(userLogging, "No backfill for channel %s for user %s", name, userLogging)
 				}
-				feed, err := db.vectorChangesFeed(name, chanOpts)
+				feed, err := db.vectorChangesFeed(name, chanOpts, userLogging)
 				if err != nil {
 					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 					return
@@ -171,9 +181,13 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					if cur != nil && cur.Seq.Before(minSeq) {
 						minSeq = cur.Seq
 						minEntry = cur
+					} else {
+
+						base.LogTo(userLogging, "Not sending because not minimum sequence:%v, %v", cur, minSeq)
 					}
 				}
 
+				base.LogTo(userLogging, "minEntry:")
 				if minEntry == nil {
 					break // Exit the loop when there are no more entries
 				}
@@ -230,7 +244,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				case <-options.Terminator:
 					return
 				case output <- minEntry:
-					//base.LogTo("Changes+", "vectorChangesFeed OUT, wrote entry [%v][%v]", minEntry.ID, minEntry.Seq)
+					base.LogTo(userLogging, "vectorChangesFeed, wrote entry [%v][%v]", minEntry.ID, minEntry.Seq)
 				}
 				sentSomething = true
 
@@ -283,10 +297,12 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, userLogging string) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
 	base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	base.LogTo(userLogging, "[changesFeed] Found %d changes for channel %s (%s)", len(log), channel, userLogging)
+
 	if err != nil {
 		return nil, err
 	}
@@ -371,6 +387,7 @@ func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []st
 		sinceSeq := getChangesClock(options.Since).GetSequence(userVbNo)
 
 		if sinceSeq < userSeq.Seq {
+
 			name := db.user.Name()
 			if name == "" {
 				name = base.GuestUsername
@@ -380,6 +397,7 @@ func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []st
 				ID:      "_user/" + name,
 				Changes: []ChangeRev{},
 			}
+			base.LogTo(name, "Sending user doc to user feed")
 			userFeed := make(chan *ChangeEntry, 1)
 			userFeed <- &entry
 			close(userFeed)
