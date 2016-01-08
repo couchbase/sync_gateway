@@ -16,7 +16,6 @@ require 'rake'
 
 PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
-PRODUCT_KIND    = "sync-gateway"
 
 PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
 PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
@@ -24,7 +23,9 @@ PRODUCT_VERSION = ARGV[2] || "0.0.0-1234"
 REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || 'windows-x64'
 ARCH            = ARGV[5] || 'x64'
+PRODUCT_KIND    = ARGV[6] || "sync-gateway"
 
+PRODUCT         = "#{PRODUCT_BASE}-#{PRODUCT_KIND}"
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0.0
 BLDNUM          = PRODUCT_VERSION.split('-')[1]    # e.g., 1234
 
