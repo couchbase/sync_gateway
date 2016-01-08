@@ -296,6 +296,9 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 		keySet[index] = getChannelClockKey(reader.channelName)
 		index++
 	}
+	if len(keySet) == 0 {
+		base.Warn("pollReaders - keySet is empty for channel clock GetBulkRaw")
+	}
 	bulkGetResults, err := k.indexReadBucket.GetBulkRaw(keySet)
 
 	if err != nil {

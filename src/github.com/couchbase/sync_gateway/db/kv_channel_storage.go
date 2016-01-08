@@ -369,6 +369,10 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	for key, _ := range loadedBlocks {
 		keySet = append(keySet, key)
 	}
+
+	if len(keySet == 0) {
+		base.Warn("bulkLoadBlocks: keyset is empty")
+	}
 	blocks, err := b.bucket.GetBulkRaw(keySet)
 	if err != nil {
 		// TODO FIX: if there's an error on a single block retrieval, differentiate between that
@@ -401,6 +405,9 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 	// Do bulk retrieval of entries
 	// TODO: do in batches if keySet is very large?
 
+	if len(keySet == 0) {
+		base.Warn("bulkLoadEntries: keyset is empty")
+	}
 	entries, err := b.bucket.GetBulkRaw(keySet)
 	if err != nil {
 		base.Warn("Error doing bulk get:%v", err)
