@@ -154,22 +154,8 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
-	// Authenticate, if not on admin port:
-	if h.privs != adminPrivs {
-		if err = h.checkAuth(dbContext); err != nil {
-			h.logRequestLine()
-			return err
-		}
-	}
-
-	h.logRequestLine()
-
-	// Now set the request's Database (i.e. context + user)
+	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
-		h.db, err = db.GetDatabase(dbContext, h.user)
-		if err != nil {
-			return err
-		}
 		if !h.runOffline {
 
 			//get a read lock on the dbContext
@@ -192,6 +178,25 @@ func (h *handler) invoke(method handlerMethod) error {
 			}
 		}
 	}
+
+	// Authenticate, if not on admin port:
+	if h.privs != adminPrivs {
+		if err = h.checkAuth(dbContext); err != nil {
+			h.logRequestLine()
+			return err
+		}
+	}
+
+	h.logRequestLine()
+
+	// Now set the request's Database (i.e. context + user)
+	if dbContext != nil {
+		h.db, err = db.GetDatabase(dbContext, h.user)
+		if err != nil {
+			return err
+		}
+	}
+
 
 	return method(h) // Call the actual handler code
 }
