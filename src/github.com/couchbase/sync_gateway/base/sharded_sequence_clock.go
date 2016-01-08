@@ -175,7 +175,7 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 	}
 	s.counter = newCounter
 
-	if len(s.partitionKeys == 0) {
+	if len(s.partitionKeys) == 0 {
 		Warn("Loading sharded clock - partition keys are empty")
 	}
 	resultsMap, err := s.bucket.GetBulkRaw(s.partitionKeys)
