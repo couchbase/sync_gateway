@@ -66,7 +66,7 @@
 	url = https://github.com/couchbase/gocb.git
 [submodule "src/github.com/couchbase/cbgt"]
 	path = src/github.com/couchbase/cbgt
-	url = https://github.com/couchbase/cbgt.git
+	url = https://github.com/steveyen/cbgt.git
 [submodule "src/github.com/couchbase/blance"]
 	path = src/github.com/couchbase/blance
 	url = https://github.com/couchbase/blance.git
