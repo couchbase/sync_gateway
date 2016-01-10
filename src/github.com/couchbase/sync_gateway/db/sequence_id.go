@@ -30,6 +30,7 @@ type SequenceID struct {
 	SequenceHasher   *sequenceHasher    // Sequence hasher - used when unmarshalling clock-based sequences
 	vbNo             uint16             // Vbucket number for actual sequence
 	TriggeredByVbNo  uint16             // Vbucket number for triggered by sequence
+	LowHash          string             // Clock hash used for continuous feed where some entries aren't hashed
 }
 
 type SequenceType int
@@ -77,12 +78,18 @@ func (s SequenceID) intSeqToString() string {
 
 func (s SequenceID) clockSeqToString() string {
 
-	if s.TriggeredByClock != nil {
+	// If TriggeredBy hash has been set, return it and vbucket sequence as triggeredByHash:vb.seq
+	if s.TriggeredByClock != nil && s.TriggeredByClock.GetHashedValue() != "" {
 		return fmt.Sprintf("%s:%d.%d", s.TriggeredByClock.GetHashedValue(), s.vbNo, s.Seq)
 	} else {
-		// If the clock has been set, return it's hashed value.  Otherwise, return
-		// vb, sequence as vb.seq
-		if s.Clock != nil {
+		// If lowHash is defined, send that and the vbucket sequence as lowHash::vb.seq
+		if s.LowHash != "" {
+			return fmt.Sprintf("%s::%d.%d", s.LowHash, s.vbNo, s.Seq)
+		}
+		// If the clock hash has been set, return it.  Otherwise, return vbucket sequence as vb.seq
+		if s.ClockHash != "" {
+			return s.ClockHash
+		} else if s.Clock != nil && s.Clock.GetHashedValue() != "" {
 			return s.Clock.GetHashedValue()
 		} else {
 			return fmt.Sprintf("%d.%d", s.vbNo, s.Seq)
@@ -175,6 +182,12 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 			}
 		}
 
+	} else if len(components) == 3 {
+		// Low hash, and vb.seq sequence.  Use low hash as clock, ignore vb.seq
+		if s.Clock, err = sequenceHasher.GetClock(components[0]); err != nil {
+			return SequenceID{}, err
+		}
+
 	} else {
 		err = base.HTTPErrorf(400, "Invalid sequence")
 	}
@@ -223,7 +236,7 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return err
 			}
-			if strings.Contains(raw, "-") {
+			if strings.Contains(raw, "-") || strings.Contains(raw, ".") {
 				return s.unmarshalClockSequence(data)
 			}
 		}

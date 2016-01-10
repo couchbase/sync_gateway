@@ -435,6 +435,7 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 	}
 
 	if err != nil {
+		base.Warn("Error updating principal doc %s: %v", docID, err)
 		return nil, errors.New(fmt.Sprintf("kvChangeIndex: Error updating principal doc %q: %v", docID, err))
 	}
 
@@ -443,7 +444,7 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 		Sequence:     sequence,
 		DocID:        docID,
 		TimeReceived: time.Now(),
-		VbNo:         uint16(vbNo),
+		VbNo:         vbNo,
 		IsPrincipal:  true,
 	}
 

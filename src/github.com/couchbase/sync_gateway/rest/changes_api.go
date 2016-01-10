@@ -93,7 +93,7 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
-		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat * 1000, true)
+		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat*1000, true)
 		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS, true)
 
 	} else {
@@ -201,7 +201,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 
 		encoder := json.NewEncoder(h.response)
 		forceClose := false
-		loop:
+	loop:
 		for {
 			select {
 			case entry, ok := <-feed:
@@ -243,6 +243,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			}
 		}
 	}
+
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	h.response.Write([]byte(s))
 	h.logStatus(http.StatusOK, message)
@@ -288,7 +289,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 
 	forceClose := false
 
-	loop:
+loop:
 	for {
 		if feed == nil {
 			// Refresh the feed of all current changes:
@@ -324,7 +325,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 				entries := []*db.ChangeEntry{entry}
 				waiting := false
 				// Batch up as many entries as we can without waiting:
-				collect:
+			collect:
 				for len(entries) < 20 {
 					select {
 					case entry, ok = <-feed:
@@ -349,7 +350,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 					err = send(nil)
 				}
 
-				lastSeq = entries[len(entries) - 1].Seq
+				lastSeq = entries[len(entries)-1].Seq
 				if options.Limit > 0 {
 					if len(entries) >= options.Limit {
 						forceClose = true
@@ -358,7 +359,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 					options.Limit -= len(entries)
 				}
 			}
-		// Reset the timeout after sending an entry:
+			// Reset the timeout after sending an entry:
 			if timer != nil {
 				timer.Stop()
 				timer = nil
@@ -521,7 +522,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		input.HeartbeatMs,
 		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
-		h.server.config.MaxHeartbeat * 1000,
+		h.server.config.MaxHeartbeat*1000,
 		true,
 	)
 

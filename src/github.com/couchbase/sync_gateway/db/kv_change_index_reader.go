@@ -66,7 +66,6 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 			if waitTime < 0 {
 				waitTime = 0 * time.Millisecond
 			}
-
 			select {
 			case <-k.terminator:
 				return
@@ -75,6 +74,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 				//       periods without changes to stableSequence.  In that scenario we'll continue
 				//       stable sequence polling each poll interval, even if we *actually* don't have any
 				//       active readers.
+				pollStart = time.Now()
 				if k.hasActiveReaders() && k.stableSequenceChanged() {
 					k.pollReaders()
 					indexTimingExpvars.Add("indexRead_polls_withChanges", 1)
@@ -189,14 +189,16 @@ func (k *kvChangeIndexReader) SetNotifier(onChange func(base.Set)) {
 
 func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 
-	sinceClock := options.Since.Clock
-	if sinceClock == nil {
+	var sinceClock base.SequenceClock
+	if options.Since.Clock == nil {
 		// If there's no since clock, we may be in backfill for another channel - revert to the triggered by clock.
 		if options.Since.TriggeredByClock != nil {
 			sinceClock = options.Since.TriggeredByClock
 		} else {
 			sinceClock = base.NewSequenceClockImpl()
 		}
+	} else {
+		sinceClock = options.Since.Clock
 	}
 
 	reader, err := k.getOrCreateReader(channelName, options)

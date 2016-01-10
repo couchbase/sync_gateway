@@ -426,7 +426,7 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 		entryBytes := entries[entryKey]
 		removed := entry.isRemoved()
 		if err := json.Unmarshal(entryBytes, entry); err != nil {
-			base.Warn("Error unmarshalling entry for key", entryKey)
+			base.Warn("Error unmarshalling entry for key %s: %v", entryKey, err)
 		}
 		if _, exists := currentVbDocIDs[entry.DocID]; !exists {
 			currentVbDocIDs[entry.DocID] = struct{}{}
