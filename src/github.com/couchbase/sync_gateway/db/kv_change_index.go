@@ -27,7 +27,7 @@ const (
 	kIndexPrefix          = "_idx"
 	maxCacheUpdate        = 2000
 	minCacheUpdate        = 1
-	kPollFrequency        = 500
+	kPollFrequency        = 2000
 	maxUnmarshalProcesses = 16
 )
 
