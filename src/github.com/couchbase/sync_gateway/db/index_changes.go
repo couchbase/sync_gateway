@@ -219,15 +219,15 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				if minEntry.Seq.TriggeredBy == 0 {
 					// Update the cumulative clock, and stick it on the entry.
 					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
-					clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+					//clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 					// Change entries only need the hash value, not the full clock.  Creating a new
 					// clock here to avoid the overhead of cumulativeClock.copy()
 					minEntry.Seq.Clock = &base.SequenceClockImpl{}
-					if err != nil {
-						base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
-					} else {
-						minEntry.Seq.Clock.SetHashedValue(clockHash)
-					}
+					//if err != nil {
+					//	base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
+					//} else {
+					//minEntry.Seq.Clock.SetHashedValue(clockHash)
+					//}
 				} else {
 					// For backfill (triggered by), we don't want to update the cumulative clock.  All entries triggered by the
 					// same sequence reference the same triggered by clock, so it should only need to get hashed once.
@@ -235,12 +235,14 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					// hash value.
 					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
 						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
-						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
-						if err != nil {
-							base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
-						} else {
-							minEntry.Seq.TriggeredByClock.SetHashedValue(clockHash)
-						}
+						/*
+							clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+							if err != nil {
+								base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
+							} else {
+								minEntry.Seq.TriggeredByClock.SetHashedValue(clockHash)
+							}
+						*/
 					}
 				}
 				// Send the entry, and repeat the loop:
