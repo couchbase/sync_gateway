@@ -182,8 +182,12 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						minSeq = cur.Seq
 						minEntry = cur
 					} else {
+						if cur != nil {
+							base.LogTo(userLogging, "Not sending because not minimum sequence:%v, %v", cur.Seq, minSeq)
+						} else {
 
-						base.LogTo(userLogging, "Not sending because not minimum sequence:%v, %v", cur, minSeq)
+							base.LogTo(userLogging, "Not sending because not minimum sequence:%v, %v", cur, minSeq)
+						}
 					}
 				}
 
@@ -299,6 +303,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, userLogging string) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
+
 	log, err := db.changeCache.GetChanges(channel, options)
 	base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	base.LogTo(userLogging, "[changesFeed] Found %d changes for channel %s (%s)", len(log), channel, userLogging)

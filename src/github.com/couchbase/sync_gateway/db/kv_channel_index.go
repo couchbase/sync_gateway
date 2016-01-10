@@ -188,7 +188,7 @@ func (k *kvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 	return nil
 }
 
-func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock base.SequenceClock) (results []*LogEntry) {
+func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock) (results []*LogEntry) {
 
 	k.lastPolledLock.RLock()
 	defer k.lastPolledLock.RUnlock()
@@ -216,7 +216,7 @@ func (k *kvChannelIndex) checkLastPolled(since base.SequenceClock, chanClock bas
 	// than the since value
 	if matchesLastPolledSince {
 		// TODO: come up with a solution that doesn't make as much GC work on every checkLastPolled hit,
-		// but doesn't break when k.lastPolledChanges gets updated.
+		// but doesn't break when k.lastPolledChanges gets updated mid-request.
 		results := make([]*LogEntry, len(k.lastPolledChanges))
 		copy(results, k.lastPolledChanges)
 		return results
@@ -265,7 +265,7 @@ func (k *kvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, erro
 	// lastPolledClock, but these duplicates will be ignored by replication.  Could validate
 	// greater than since inside this if clause, but leaving out as a performance optimization for
 	// now
-	if lastPolledResults := k.checkLastPolled(since, chanClock); len(lastPolledResults) > 0 {
+	if lastPolledResults := k.checkLastPolled(since); len(lastPolledResults) > 0 {
 		indexExpvars.Add("getChanges_lastPolled_hit", 1)
 		return lastPolledResults, nil
 	}
