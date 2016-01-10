@@ -59,13 +59,16 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 	k.pollingActive = make(chan struct{})
 	go func(k *kvChangeIndexReader) {
 		defer close(k.pollingActive)
-		pollStart := time.Now()
+		//pollStart := time.Now()
 		for {
-			timeSinceLastPoll := time.Since(pollStart)
-			waitTime := (kPollFrequency * time.Millisecond) - timeSinceLastPoll
-			if waitTime < 0 {
-				waitTime = 0 * time.Millisecond
-			}
+			//timeSinceLastPoll := time.Since(pollStart)
+			waitTime := (kPollFrequency * time.Millisecond)
+			/*
+				waitTime := (kPollFrequency * time.Millisecond) - timeSinceLastPoll
+				if waitTime < 0 {
+					waitTime = 0 * time.Millisecond
+				}
+			*/
 			select {
 			case <-k.terminator:
 				return
@@ -74,7 +77,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 				//       periods without changes to stableSequence.  In that scenario we'll continue
 				//       stable sequence polling each poll interval, even if we *actually* don't have any
 				//       active readers.
-				pollStart = time.Now()
+				//pollStart = time.Now()
 				if k.hasActiveReaders() && k.stableSequenceChanged() {
 					k.pollReaders()
 					indexTimingExpvars.Add("indexRead_polls_withChanges", 1)
