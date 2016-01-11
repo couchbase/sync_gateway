@@ -667,6 +667,10 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	testDb.WaitForSequence(3)
 
+	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
+	// low is updated before making the next changes request.
+	time.Sleep(50 * time.Millisecond)
+
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	response = rt.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
