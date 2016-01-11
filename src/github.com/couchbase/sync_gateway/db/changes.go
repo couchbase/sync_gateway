@@ -46,8 +46,8 @@ type ChangeEntry struct {
 }
 
 const (
-	WaiterCountUnchanged uint32 = iota
-	WaiterCountChanged
+	WaiterClosed uint32 = iota
+	WaiterHasChanges
 	WaiterCheckTerminated
 )
 
@@ -473,14 +473,20 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// First notify the reader that we're waiting by sending a nil.
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
+		waitForChanges:
 			for {
 				waitResponse := changeWaiter.Wait()
-				if waitResponse == WaiterCountUnchanged {
+				if waitResponse == WaiterClosed {
 					break outer
-				} else if waitResponse == WaiterCountChanged {
-					break
+				} else if waitResponse == WaiterHasChanges {
+					select {
+					case <-options.Terminator:
+						return
+					default:
+						break waitForChanges
+					}
 				} else if waitResponse == WaiterCheckTerminated {
-					// Check whether I was terminated while waiting for a change:
+					// Check whether I was terminated while waiting for a change.  If not, resume wait.
 					select {
 					case <-options.Terminator:
 						return
@@ -488,7 +494,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 			}
-
 
 			// Check whether user channel access has changed while waiting:
 			var err error

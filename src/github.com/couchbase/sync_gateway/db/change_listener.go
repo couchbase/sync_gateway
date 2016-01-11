@@ -14,15 +14,15 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	bucket       base.Bucket
-	tapFeed      base.TapFeed           // Observes changes to bucket
-	tapNotifier  *sync.Cond             // Posts notifications when documents are updated
-	TapArgs      sgbucket.TapArguments  // The Tap Args (backfill, etc)
-	counter      uint64                 // Event counter; increments on every doc update
-	terminateCheckCounter uint64               // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts    map[string]uint64      // Latest count at which each doc key was updated
-	DocChannel   chan sgbucket.TapEvent // Passthru channel for doc mutations
-	OnDocChanged func(docID string, jsonData []byte, seq uint64, vbNo uint16)
+	bucket                base.Bucket
+	tapFeed               base.TapFeed           // Observes changes to bucket
+	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
+	TapArgs               sgbucket.TapArguments  // The Tap Args (backfill, etc)
+	counter               uint64                 // Event counter; increments on every doc update
+	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
+	DocChannel            chan sgbucket.TapEvent // Passthru channel for doc mutations
+	OnDocChanged          func(docID string, jsonData []byte, seq uint64, vbNo uint16)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -30,7 +30,8 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 	listener.bucket = bucket
 	listener.TapArgs = sgbucket.TapArguments{
 		Backfill: sgbucket.TapNoBackfill,
-		Notify: notify,}
+		Notify:   notify,
+	}
 	tapFeed, err := bucket.StartTapFeed(listener.TapArgs)
 	if err != nil {
 		return err
@@ -57,7 +58,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 			if event.Opcode == sgbucket.TapMutation || event.Opcode == sgbucket.TapDeletion {
 				key := string(event.Key)
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
-				strings.HasPrefix(key, auth.RoleKeyPrefix) {
+					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					if listener.OnDocChanged != nil {
 						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
@@ -181,9 +182,9 @@ type changeWaiter struct {
 // Creates a new changeWaiter that will wait for changes for the given document keys.
 func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
 	return &changeWaiter{
-		listener:    listener,
-		keys:        keys,
-		lastCounter: listener.CurrentCount(keys),
+		listener:                  listener,
+		keys:                      keys,
+		lastCounter:               listener.CurrentCount(keys),
 		lastTerminateCheckCounter: listener.terminateCheckCounter,
 	}
 }
@@ -197,7 +198,7 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 	if user != nil {
 		userKeys = []string{auth.UserKeyPrefix + user.Name()}
 		for role, _ := range user.RoleNames() {
-			userKeys = append(userKeys, auth.RoleKeyPrefix + role)
+			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
@@ -218,11 +219,11 @@ func (waiter *changeWaiter) Wait() uint32 {
 	terminateCheckCountChanged := waiter.lastTerminateCheckCounter != lastTerminateCheckCounter
 
 	if countChanged {
-		return WaiterCountChanged
+		return WaiterHasChanges
 	} else if terminateCheckCountChanged {
 		return WaiterCheckTerminated
 	} else {
-		return WaiterCountUnchanged
+		return WaiterClosed
 	}
 }
 

@@ -254,14 +254,20 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
 
+		waitForChanges:
 			for {
 				waitResponse := changeWaiter.Wait()
-				if waitResponse == WaiterCountUnchanged {
+				if waitResponse == WaiterClosed {
 					break outer
-				} else if waitResponse == WaiterCountChanged {
-					break
+				} else if waitResponse == WaiterHasChanges {
+					select {
+					case <-options.Terminator:
+						return
+					default:
+						break waitForChanges
+					}
 				} else if waitResponse == WaiterCheckTerminated {
-					// Check whether I was terminated while waiting for a change:
+					// Check whether I was terminated while waiting for a change.  If not, resume wait.
 					select {
 					case <-options.Terminator:
 						return
@@ -269,7 +275,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 			}
-
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
