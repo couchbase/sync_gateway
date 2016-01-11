@@ -12,7 +12,7 @@ package rest
 import (
 	"encoding/json"
 	"net/http"
-
+	"fmt"
 	"github.com/gorilla/mux"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -373,4 +373,69 @@ func (h *handler) handleIndexAllChannels() error {
 	bytes, err := json.Marshal(channelStats)
 	h.response.Write(bytes)
 	return err
+}
+
+
+func (h *handler) handlePurge() error {
+	h.assertAdminOnly()
+
+	message := "OK"
+
+	//Get the list of docs to purge
+
+	input, err := h.readJSON()
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "_purge document ID's must be passed as a JSON")
+	}
+
+	h.setHeader("Content-Type", "application/json")
+	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
+	h.response.Write([]byte("{\"purged\":{\r\n"))
+	var first bool = true
+
+	for key, value := range input {
+		//For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
+		base.LogTo("CRUD","purging document = %v",key)
+
+		if revisionList, ok := value.([]interface{}); ok {
+
+			//There should only be a single revision entry of "*"
+			if len(revisionList) != 1 {
+				base.LogTo("CRUD","Revision list for doc ID %v, should contain exactly one entry",key)
+				continue //skip this entry its not valid
+			}
+
+			if revisionList[0] != "*" {
+				base.LogTo("CRUD","Revision entry for doc ID %v, should be the '*' revison", key)
+				continue //skip this entry its not valid
+			}
+
+			//Attempt to delete document, if successful add to response, otherwise log warning
+			err = h.db.Bucket.Delete(key)
+			if err == nil {
+
+				if first {
+					first = false
+				} else {
+					h.response.Write([]byte(","))
+				}
+
+				s := fmt.Sprintf("\"%v\" : [\"*\"]\n", key)
+				h.response.Write([]byte(s))
+
+			} else {
+				base.LogTo("CRUD", "Failed to purge document %v, err = %v", key, err)
+				continue //skip this entry its not valid
+			}
+
+		} else {
+			base.LogTo("CRUD","Revision list for doc ID %v, is not an array, ", key)
+			continue //skip this entry its not valid
+		}
+	}
+
+	h.response.Write([]byte("}\n}\n"))
+	h.logStatus(http.StatusOK, message)
+
+	return nil
 }

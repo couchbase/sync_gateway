@@ -908,3 +908,71 @@ func (rt *restTester) createSession(t *testing.T, username string) string {
 
 	return sessionId
 }
+
+
+func TestPurgeWithBadJsonPayload(t *testing.T) {
+	var rt restTester
+	response := rt.sendAdminRequest("POST", "/db/_purge", "foo")
+	assertStatus(t, response, 400)
+}
+
+func TestPurgeWithNonArrayRevisionList(t *testing.T) {
+	var rt restTester
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
+	assertStatus(t, response, 200)
+}
+
+func TestPurgeWithEmptyRevisionList(t *testing.T) {
+	var rt restTester
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
+	assertStatus(t, response, 200)
+}
+
+func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
+	var rt restTester
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
+	assertStatus(t, response, 200)
+}
+
+func TestPurgeWithNonStarRevision(t *testing.T) {
+	var rt restTester
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
+	assertStatus(t, response, 200)
+}
+
+func TestPurgeWithStarRevision(t *testing.T) {
+	var rt restTester
+
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
+	assertStatus(t, response, 200)
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+}
+
+func TestPurgeWithMultipleValidDocs(t *testing.T) {
+	var rt restTester
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["*"]}`)
+	assertStatus(t, response, 200)
+
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"},"doc2" : []interface {}{"*"}}})
+}
+
+func TestPurgeWithSomeInvalidDocs(t *testing.T) {
+	var rt restTester
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+
+	response := rt.sendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
+	assertStatus(t, response, 200)
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+}
