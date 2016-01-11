@@ -22,5 +22,5 @@ sed -i.bak -e 's/GitDirty.*=.*/GitDirty = "'$GIT_DIRTY'"/' $BUILD_INFO
 export GOBIN="`pwd`/bin"
 
 ./go.sh install "$@" -v github.com/couchbase/sync_gateway
-./go.sh install "$@" -v github.com/couchbase/sync_gateway/index_writer
-echo "Success! Output is bin/sync_gateway and bin/index_writer"
+./go.sh install "$@" -v github.com/couchbase/sync_gateway/sg_accel
+echo "Success! Output is bin/sync_gateway and bin/sg_accel"
