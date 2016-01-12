@@ -402,10 +402,9 @@ func (bucket CouchbaseBucketGoCB) processGetBatch(keys []string, resultAccumulat
 				Warn("Recoverable error during processGetBatch - adding key %s to retryKeys", getOp.Key)
 				retryKeys = append(retryKeys, getOp.Key)
 			} else if getOp.Err != nil {
-				Warn("Non-recoverable error during processGetBatch:%v", err)
+				Warn("Non-recoverable error during processGetBatch for key %s :%v", getOp.Key, getOp.Err)
 			}
 		}
-
 	}
 
 	return nil
