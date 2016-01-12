@@ -27,6 +27,26 @@ const (
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 )
 
+// GoCB error types - workaround until gocb has public error type lookup support
+type GoCBError uint8
+
+const (
+	GoCBErr_MemdStatusKeyNotFound GoCBError = iota
+	GoCBErr_MemdStatusKeyExists
+	GoCBErr_MemdStatusBusy
+	GoCBErr_MemdStatusTmpFail
+	GoCBErr_Timeout
+	GoCBErr_QueueOverflow
+	GoCBErr_Unknown
+)
+
+var recoverableGoCBErrors = map[GoCBError]struct{}{
+	GoCBErr_Timeout:           struct{}{},
+	GoCBErr_QueueOverflow:     struct{}{},
+	GoCBErr_MemdStatusBusy:    struct{}{},
+	GoCBErr_MemdStatusTmpFail: struct{}{},
+}
+
 func init() {
 	gocbExpvars = expvar.NewMap("syncGateway_gocb")
 }
@@ -476,13 +496,45 @@ func isRecoverableGoCBError(err error) bool {
 	if err == nil {
 		return false
 	}
+
+	goCBErr := GoCBErrorType(err)
+
+	_, ok := recoverableGoCBErrors[goCBErr]
+
+	return ok
+}
+
+// GoCB error types - workaround until gocb has public error type lookup support
+func GoCBErrorType(err error) GoCBError {
+
+	// gocb internal errors
 	if strings.Contains(err.Error(), "timed out") {
-		return true
+		return GoCBErr_Timeout
 	}
 	if strings.Contains(err.Error(), "Queue overflow") {
-		return true
+		return GoCBErr_QueueOverflow
 	}
-	return false
+
+	// Transient Couchbase Server errors.  Copy-pasted from
+	// https://github.com/couchbase/gocb/blob/master/gocbcore/error.go#L62
+	// until gocb provides a way to validate.
+	if strings.Contains(err.Error(), "The server is busy. Try again later.") {
+		return GoCBErr_MemdStatusBusy
+	}
+	if strings.Contains(err.Error(), "A temporary failure occurred.  Try again later.") {
+		return GoCBErr_MemdStatusTmpFail
+	}
+
+	if strings.Contains(err.Error(), "Key not found.") {
+		return GoCBErr_MemdStatusKeyNotFound
+	}
+
+	if strings.Contains(err.Error(), "Key already exists.") {
+		return GoCBErr_MemdStatusKeyExists
+	}
+
+	return GoCBErr_Unknown
+
 }
 
 func isCasFailure(err error) bool {

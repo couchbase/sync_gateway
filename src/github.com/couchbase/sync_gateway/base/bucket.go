@@ -147,7 +147,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	err, result := RetryLoop(description, worker, sleeper)
 
 	vres := result.(sgbucket.ViewResult)
-	return vres, err;
+	return vres, err
 }
 
 func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
