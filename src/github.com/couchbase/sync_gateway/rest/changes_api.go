@@ -236,6 +236,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-h.db.ExitChanges:
 				message = "OK DB has gone offline"
 				forceClose = true
+				break loop
 			}
 			if err != nil {
 				h.logStatus(599, fmt.Sprintf("Write error: %v", err))
@@ -375,6 +376,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 			break loop
 		case <-h.db.ExitChanges:
 			forceClose = true
+			break loop
 		}
 
 		if err != nil {
