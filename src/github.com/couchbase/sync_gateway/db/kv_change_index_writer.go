@@ -180,7 +180,7 @@ func (k *kvChangeIndexWriter) indexPending() error {
 	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
 
 	indexRetryCount := 0
-	maxRetries := 10
+	maxRetries := 15
 
 	// Continual processing of arriving entries from the feed.
 	var sleeper base.RetrySleeper
@@ -189,7 +189,7 @@ func (k *kvChangeIndexWriter) indexPending() error {
 		err := k.indexEntries(entries, indexPartitions.VbMap, channelStorage)
 		if err != nil {
 			if indexRetryCount == 0 {
-				sleeper = base.CreateDoublingSleeperFunc(10, 5)
+				sleeper = base.CreateDoublingSleeperFunc(maxRetries, 5)
 			}
 			indexRetryCount++
 			shouldContinue, sleepMs := sleeper(indexRetryCount)
@@ -359,7 +359,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 func (k *kvChangeIndexWriter) addSetToChannelIndex(channelName string, entries []*LogEntry) error {
 	writer, err := k.getOrCreateWriter(channelName)
 	if err != nil {
-		base.LogFatal("Unable to obtain channel writer - partition map not defined?")
+		base.Warn("Unable to obtain channel writer - partition map not defined?")
 		return err
 	}
 	err = writer.AddSet(entries)
