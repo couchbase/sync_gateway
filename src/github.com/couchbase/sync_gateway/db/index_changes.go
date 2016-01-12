@@ -16,8 +16,15 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
+// kContinuousHashFrequency defines, for a continuous feed, how frequently a hash value is calculated.
+// Set to 100 (hash is calculated once every 100 docs in the changes response).  Frequent hashing has
+// two main performance impacts.  The first is just the time spent storing the hash value in the DB.  The
+// second is that increased hashing results in increased hash collisions (which will further increase the
+// time spent storing the hash value in the DB).
+// Changes feeds that are interrupted will resume from the most recent hash - so the number needs to
+// be small enough to avoid unreasonably large re-processing of changes entries by clients.
 const (
-	kContinuousHashFrequency = 100 // For a continuous feed, how frequently a hash value is calculated
+	kContinuousHashFrequency = 100
 )
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
@@ -70,7 +77,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 		cumulativeClock = base.NewSyncSequenceClock()
 		cumulativeClock.SetTo(getChangesClock(options.Since))
-		//cumulativeClock = getChangesClock(options.Since).Copy()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -150,7 +156,13 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					// Update the cumulative clock, and stick it on the entry.
 					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
 					// TODO: Potential enhancement - for first iteration loop, always set hash on last entry.
-					continuousLastHash = db.calculateHashWhenNeeded(options, minEntry, cumulativeClock, &hashedEntryCount, continuousLastHash)
+					continuousLastHash = db.calculateHashWhenNeeded(
+						options,
+						minEntry,
+						cumulativeClock,
+						&hashedEntryCount,
+						continuousLastHash,
+					)
 
 				} else {
 					// For backfill (triggered by), we don't want to update the cumulative clock.  All entries triggered by the

@@ -76,6 +76,11 @@ func (s SequenceID) intSeqToString() string {
 	}
 }
 
+// Clock sequences follow the same LowSeq:TriggeredBy:Seq used for integer sequences, but each
+// sequence is represented as either a clock hash (in the form 0-0), or as a vbucket sequence pair
+// (in the form vb.seq)
+// e.g. sending document with vbucket 10, sequence 5, triggered by the vbucket clock with hash 31-1
+// would look like 31-1:10.5
 func (s SequenceID) clockSeqToString() string {
 
 	// If TriggeredBy hash has been set, return it and vbucket sequence as triggeredByHash:vb.seq
@@ -229,7 +234,8 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 	} else if s.SeqType == IntSequenceType {
 		return s.unmarshalIntSequence(data)
 	} else {
-		// Type not explicitly defined.  If sequence is string and contains "-", treat as clock.  Otherwise treat as int.
+		// Type not explicitly defined.  If sequence is string and either contains "-" or ".", treat as clock (sequence hash format,
+		// and vb.seq format).  Otherwise treat as int.
 		if len(data) > 0 && data[0] == '"' {
 			var raw string
 			err := json.Unmarshal(data, &raw)

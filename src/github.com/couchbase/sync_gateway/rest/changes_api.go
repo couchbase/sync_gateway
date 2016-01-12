@@ -93,8 +93,22 @@ func (h *handler) handleChanges() error {
 		if channelsParam != "" {
 			channelsArray = strings.Split(channelsParam, ",")
 		}
-		options.HeartbeatMs = getRestrictedIntQuery(h.rq.URL.Query(), "heartbeat", kDefaultHeartbeatMS, kMinHeartbeatMS, h.server.config.MaxHeartbeat*1000, true)
-		options.TimeoutMs = getRestrictedIntQuery(h.rq.URL.Query(), "timeout", kDefaultTimeoutMS, 0, kMaxTimeoutMS, true)
+		options.HeartbeatMs = getRestrictedIntQuery(
+			h.rq.URL.Query(),
+			"heartbeat",
+			kDefaultHeartbeatMS,
+			kMinHeartbeatMS,
+			h.server.config.MaxHeartbeat*1000,
+			true,
+		)
+		options.TimeoutMs = getRestrictedIntQuery(
+			h.rq.URL.Query(),
+			"timeout",
+			kDefaultTimeoutMS,
+			0,
+			kMaxTimeoutMS,
+			true,
+		)
 
 	} else {
 		// POST request has parameters in JSON body:
