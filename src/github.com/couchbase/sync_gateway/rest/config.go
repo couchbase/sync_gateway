@@ -588,7 +588,7 @@ func RunServer(config *ServerConfig) {
 	// Initialize CBGT if needed
 	if config.ClusterConfig.CBGTEnabled() {
 		if err := sc.InitCBGT(); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("Fatal Error initializing CBGT: %v", err)
 		}
 	}
 
