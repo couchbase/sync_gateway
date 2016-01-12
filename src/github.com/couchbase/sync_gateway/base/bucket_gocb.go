@@ -338,6 +338,9 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		retryKeys := []string{}
+		if len(pendingKeys) == 0 {
+			Warn("newGetBulkRawRetryWorker invoked with empty pending keys")
+		}
 		keyBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
 		for _, keyBatch := range keyBatches {
 
@@ -396,7 +399,10 @@ func (bucket CouchbaseBucketGoCB) processGetBatch(keys []string, resultAccumulat
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
 			if isRecoverableGoCBError(getOp.Err) {
+				Warn("Recoverable error during processGetBatch - adding key %s to retryKeys", getOp.Key)
 				retryKeys = append(retryKeys, getOp.Key)
+			} else {
+				Warn("Non-recoverable error during processGetBatch:%v", err)
 			}
 		}
 
