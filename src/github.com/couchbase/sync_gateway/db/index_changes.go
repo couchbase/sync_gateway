@@ -35,7 +35,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	go func() {
 		// lastSent is used to force clock hashing for the last sequence returned (for use as last_seq)
 		var lastSent *ChangeEntry
-		var cumulativeClock base.SequenceClock
+		var cumulativeClock *base.SyncSequenceClock
 		var continuousLastHash string
 		hashedEntryCount := 0
 		defer func() {
@@ -68,7 +68,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			userChangeCount = changeWaiter.CurrentUserCount()
 		}
 
-		cumulativeClock = getChangesClock(options.Since).Copy()
+		cumulativeClock = base.NewSyncSequenceClock()
+		cumulativeClock.SetTo(getChangesClock(options.Since))
+		//cumulativeClock = getChangesClock(options.Since).Copy()
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -242,7 +244,7 @@ func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *Chang
 
 	if options.Continuous != true {
 		// For non-continuous, only need to calculate hash for lastSent entry.  Initialize empty clock and return
-		entry.Seq.Clock = base.NewSequenceClockImpl()
+		entry.Seq.Clock = base.NewSyncSequenceClock()
 	} else {
 		// When hashedEntryCount == 0, recalculate hash
 		if *hashedEntryCount == 0 {
@@ -251,7 +253,7 @@ func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *Chang
 				base.Warn("Error calculating hash for clock:%v", base.PrintClock(cumulativeClock))
 				return continuousLastHash
 			} else {
-				entry.Seq.Clock = base.NewSequenceClockImpl()
+				entry.Seq.Clock = base.NewSyncSequenceClock()
 				entry.Seq.Clock.SetHashedValue(clockHash)
 				continuousLastHash = clockHash
 			}

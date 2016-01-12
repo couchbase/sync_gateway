@@ -330,8 +330,8 @@ func (c *SyncSequenceClock) GetHashedValue() string {
 }
 
 func (c *SyncSequenceClock) SetHashedValue(value string) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.Clock.SetHashedValue(value)
 }
 
