@@ -45,7 +45,7 @@ type ChangeIndex interface {
 
 	// Retrieves stable sequence for index
 	GetStableSequence(docID string) SequenceID
-	GetStableClock() (clock base.SequenceClock, err error)
+	GetStableClock(stale bool) (clock base.SequenceClock, err error)
 
 	// Utility functions for unit testing
 	waitForSequenceID(sequence SequenceID)
