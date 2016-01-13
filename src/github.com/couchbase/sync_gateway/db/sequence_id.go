@@ -30,6 +30,7 @@ type SequenceID struct {
 	SequenceHasher   *sequenceHasher    // Sequence hasher - used when unmarshalling clock-based sequences
 	vbNo             uint16             // Vbucket number for actual sequence
 	TriggeredByVbNo  uint16             // Vbucket number for triggered by sequence
+	LowHash          string             // Clock hash used for continuous feed where some entries aren't hashed
 }
 
 type SequenceType int
@@ -75,14 +76,25 @@ func (s SequenceID) intSeqToString() string {
 	}
 }
 
+// Clock sequences follow the same LowSeq:TriggeredBy:Seq used for integer sequences, but each
+// sequence is represented as either a clock hash (in the form 0-0), or as a vbucket sequence pair
+// (in the form vb.seq)
+// e.g. sending document with vbucket 10, sequence 5, triggered by the vbucket clock with hash 31-1
+// would look like 31-1:10.5
 func (s SequenceID) clockSeqToString() string {
 
-	if s.TriggeredByClock != nil {
+	// If TriggeredBy hash has been set, return it and vbucket sequence as triggeredByHash:vb.seq
+	if s.TriggeredByClock != nil && s.TriggeredByClock.GetHashedValue() != "" {
 		return fmt.Sprintf("%s:%d.%d", s.TriggeredByClock.GetHashedValue(), s.vbNo, s.Seq)
 	} else {
-		// If the clock has been set, return it's hashed value.  Otherwise, return
-		// vb, sequence as vb.seq
-		if s.Clock != nil {
+		// If lowHash is defined, send that and the vbucket sequence as lowHash::vb.seq
+		if s.LowHash != "" {
+			return fmt.Sprintf("%s::%d.%d", s.LowHash, s.vbNo, s.Seq)
+		}
+		// If the clock hash has been set, return it.  Otherwise, return vbucket sequence as vb.seq
+		if s.ClockHash != "" {
+			return s.ClockHash
+		} else if s.Clock != nil && s.Clock.GetHashedValue() != "" {
 			return s.Clock.GetHashedValue()
 		} else {
 			return fmt.Sprintf("%d.%d", s.vbNo, s.Seq)
@@ -175,6 +187,12 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 			}
 		}
 
+	} else if len(components) == 3 {
+		// Low hash, and vb.seq sequence.  Use low hash as clock, ignore vb.seq
+		if s.Clock, err = sequenceHasher.GetClock(components[0]); err != nil {
+			return SequenceID{}, err
+		}
+
 	} else {
 		err = base.HTTPErrorf(400, "Invalid sequence")
 	}
@@ -216,14 +234,15 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 	} else if s.SeqType == IntSequenceType {
 		return s.unmarshalIntSequence(data)
 	} else {
-		// Type not explicitly defined.  If sequence is string and contains "-", treat as clock.  Otherwise treat as int.
+		// Type not explicitly defined.  If sequence is string and either contains "-" or ".", treat as clock (sequence hash format,
+		// and vb.seq format).  Otherwise treat as int.
 		if len(data) > 0 && data[0] == '"' {
 			var raw string
 			err := json.Unmarshal(data, &raw)
 			if err != nil {
 				return err
 			}
-			if strings.Contains(raw, "-") {
+			if strings.Contains(raw, "-") || strings.Contains(raw, ".") {
 				return s.unmarshalClockSequence(data)
 			}
 		}

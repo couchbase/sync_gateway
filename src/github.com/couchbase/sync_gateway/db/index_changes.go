@@ -11,10 +11,20 @@ package db
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+)
+
+// kContinuousHashFrequency defines, for a continuous feed, how frequently a hash value is calculated.
+// Set to 100 (hash is calculated once every 100 docs in the changes response).  Frequent hashing has
+// two main performance impacts.  The first is just the time spent storing the hash value in the DB.  The
+// second is that increased hashing results in increased hash collisions (which will further increase the
+// time spent storing the hash value in the DB).
+// Changes feeds that are interrupted will resume from the most recent hash - so the number needs to
+// be small enough to avoid unreasonably large re-processing of changes entries by clients.
+const (
+	kContinuousHashFrequency = 100
 )
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
@@ -30,8 +40,22 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
+		// lastSent is used to force clock hashing for the last sequence returned (for use as last_seq)
+		var lastSent *ChangeEntry
+		var cumulativeClock *base.SyncSequenceClock
+		var continuousLastHash string
+		hashedEntryCount := 0
 		defer func() {
 			base.LogTo("Changes+", "MultiChangesFeed done %s", to)
+			// Calculate hash for last entry sent, if not already present
+			if lastSent != nil && cumulativeClock != nil && lastSent.Seq.ClockHash == "" {
+				clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+				if err != nil {
+					base.Warn("Error calculating hash for last sent sequence: %v", err)
+				} else {
+					lastSent.Seq.Clock.SetHashedValue(clockHash)
+				}
+			}
 			close(output)
 		}()
 
@@ -51,14 +75,13 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			userChangeCount = changeWaiter.CurrentUserCount()
 		}
 
-		cumulativeClock := getChangesClock(options.Since).Copy()
+		cumulativeClock = base.NewSyncSequenceClock()
+		cumulativeClock.SetTo(getChangesClock(options.Since))
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
-			iterationStartTime := time.Now()
-			// Restrict to available channels, expand wild-card, and find since when these channels
-			// have been available to the user:
+			// Restrict to available channels, expand wild-card, and find since when these channels have been available to the user:
 			var channelsSince channels.TimedSet
 			if db.user != nil {
 				channelsSince = db.user.FilterToAvailableChannels(chans)
@@ -66,91 +89,21 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				channelsSince = channels.AtSequence(chans, 0)
 			}
 
-			// Updates the changeWaiter to the current set of available channels
+			// Updates the changeWaiter to the current set of available channels.
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
 			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
 
-			// Populate the  array of feed channels:
-			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
-
-			base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
-			for name, vbSeqAddedAt := range channelsSince {
-				seqAddedAt := vbSeqAddedAt.Sequence
-				// If there's no vbNo on the channelsSince, it indicates a user doc channel grant - use the userVbNo.
-				var vbAddedAt uint16
-				if vbSeqAddedAt.VbNo == nil {
-					vbAddedAt = userVbNo
-				} else {
-					vbAddedAt = *vbSeqAddedAt.VbNo
-				}
-
-				base.LogTo("Changes+", "Starting for channel... %s, %d", name, seqAddedAt)
-				chanOpts := options
-
-				// Check whether requires backfill based on addedChannels in this _changes feed
-				isNewChannel := false
-				if addedChannels != nil {
-					_, isNewChannel = addedChannels[name]
-				}
-
-				// Three possible scenarios for backfill handling, based on whether the incoming since value indicates a backfill in progress
-				// for this channel, and whether the channel requires a new backfill to be started
-				//   Case 1. No backfill in progress, no backfill required - use the incoming since to get changes
-				//   Case 2. No backfill in progress, backfill required for this channel.  Get changes since zero, backfilling to the incoming since
-				//   Case 3. Backfill in progress.  Get changes since zero, backfilling to incoming triggered by, filtered to later than incoming since.
-				backfillInProgress := false
-				if options.Since.TriggeredByClock != nil {
-					// There's a backfill in progress for SOME channel - check if it's this one
-					if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt {
-						backfillInProgress = true
-					}
-				}
-
-				sinceSeq := getChangesClock(options.Since).GetSequence(vbAddedAt)
-				backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt
-
-				if isNewChannel || (backfillRequired && !backfillInProgress) {
-					// Case 2.  No backfill in progress, backfill required
-					base.LogTo("Changes+", "Starting backfill for channel... %s, %d", name, seqAddedAt)
-					chanOpts.Since = SequenceID{
-						Seq:              0,
-						vbNo:             0,
-						Clock:            base.NewSequenceClockImpl(),
-						TriggeredBy:      seqAddedAt,
-						TriggeredByVbNo:  vbAddedAt,
-						TriggeredByClock: getChangesClock(options.Since).Copy(),
-					}
-				} else if backfillInProgress {
-					// Case 3.  Backfill in progress.
-					chanOpts.Since = SequenceID{
-						Seq:              options.Since.Seq,
-						vbNo:             options.Since.vbNo,
-						Clock:            base.NewSequenceClockImpl(),
-						TriggeredBy:      seqAddedAt,
-						TriggeredByVbNo:  vbAddedAt,
-						TriggeredByClock: options.Since.TriggeredByClock,
-					}
-				} else {
-					// Case 1.  Leave chanOpts.Since set to options.Since.
-				}
-				feed, err := db.vectorChangesFeed(name, chanOpts)
-				if err != nil {
-					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
-					return
-				}
-				feeds = append(feeds, feed)
+			// Build the channel feeds.
+			feeds, err := db.initializeChannelFeeds(channelsSince, options, addedChannels, userVbNo)
+			if err != nil {
+				return
 			}
 
-			// If the user object has changed, create a special pseudo-feed for it:
-			if db.user != nil {
-				feeds, _ = db.appendVectorUserFeed(feeds, []string{}, options, userVbNo)
-			}
-
-			current := make([]*ChangeEntry, len(feeds))
 			// This loop reads the available entries from all the feeds in parallel, merges them,
 			// and writes them to the output channel:
+			current := make([]*ChangeEntry, len(feeds))
 			var sentSomething bool
 			for {
 				// Read more entries to fill up the current[] array:
@@ -178,7 +131,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					break // Exit the loop when there are no more entries
 				}
 
-				// Clear the current entries for the sequence just sent:
+				// Clear the current entries for any duplicates of the sequence just sent:
 				for i, cur := range current {
 					if cur != nil && cur.Seq == minSeq {
 						current[i] = nil
@@ -198,18 +151,19 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					db.addDocToChangeEntry(minEntry, options)
 				}
 
+				// Clock handling
 				if minEntry.Seq.TriggeredBy == 0 {
 					// Update the cumulative clock, and stick it on the entry.
 					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
-					clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
-					// Change entries only need the hash value, not the full clock.  Creating a new
-					// clock here to avoid the overhead of cumulativeClock.copy()
-					minEntry.Seq.Clock = &base.SequenceClockImpl{}
-					if err != nil {
-						base.Warn("Error calculating hash for clock:%v", base.PrintClock(minEntry.Seq.Clock))
-					} else {
-						minEntry.Seq.Clock.SetHashedValue(clockHash)
-					}
+					// TODO: Potential enhancement - for first iteration loop, always set hash on last entry.
+					continuousLastHash = db.calculateHashWhenNeeded(
+						options,
+						minEntry,
+						cumulativeClock,
+						&hashedEntryCount,
+						continuousLastHash,
+					)
+
 				} else {
 					// For backfill (triggered by), we don't want to update the cumulative clock.  All entries triggered by the
 					// same sequence reference the same triggered by clock, so it should only need to get hashed once.
@@ -225,12 +179,13 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						}
 					}
 				}
+
 				// Send the entry, and repeat the loop:
 				select {
 				case <-options.Terminator:
 					return
 				case output <- minEntry:
-					//base.LogTo("Changes+", "vectorChangesFeed OUT, wrote entry [%v][%v]", minEntry.ID, minEntry.Seq)
+					lastSent = minEntry
 				}
 				sentSomething = true
 
@@ -241,13 +196,14 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						break outer
 					}
 				}
-				// Update options.Since for use in the next outer loop iteration.
-				options.Since.Clock = cumulativeClock
 			}
 
 			if !options.Continuous && (sentSomething || changeWaiter == nil) {
 				break
 			}
+
+			// Update options.Since for use in the next outer loop iteration.
+			options.Since.Clock = cumulativeClock
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
@@ -278,7 +234,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
-			var err error
 			userChangeCount, addedChannels, err = db.checkForUserUpdates(userChangeCount, changeWaiter)
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
@@ -286,11 +241,121 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				output <- &change
 				return
 			}
-			writeHistogram(indexTimingExpvars, iterationStartTime, "index_changes_iterationTime")
 		}
 	}()
 
 	return output, nil
+}
+
+// Determines whether the clock hash should be calculated for the entry. For non-continuous changes feeds, hash is only calculated for
+// the last entry sent (for use in last_seq), and is done in the defer for the main VectorMultiChangesFeed.
+// For continuous changes feeds, we want to calculate the hash for every nth entry, where n=kContinuousHashFrequency.  To ensure that
+// clients can restart a new changes feed based on any sequence in the continuous feed, we set the last hash calculated as the LowHash
+// value on the sequence.
+func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *ChangeEntry, cumulativeClock base.SequenceClock, hashedEntryCount *int, continuousLastHash string) string {
+
+	if options.Continuous != true {
+		// For non-continuous, only need to calculate hash for lastSent entry.  Initialize empty clock and return
+		entry.Seq.Clock = base.NewSyncSequenceClock()
+	} else {
+		// When hashedEntryCount == 0, recalculate hash
+		if *hashedEntryCount == 0 {
+			clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+			if err != nil {
+				base.Warn("Error calculating hash for clock:%v", base.PrintClock(cumulativeClock))
+				return continuousLastHash
+			} else {
+				entry.Seq.Clock = base.NewSyncSequenceClock()
+				entry.Seq.Clock.SetHashedValue(clockHash)
+				continuousLastHash = clockHash
+			}
+			*hashedEntryCount = kContinuousHashFrequency
+		} else {
+			entry.Seq.LowHash = continuousLastHash
+			*hashedEntryCount--
+		}
+	}
+	return continuousLastHash
+}
+
+// Creates a go-channel of ChangeEntry for each channel in channelsSince.  Each go-channel sends the ordered entries for that channel.
+func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, options ChangesOptions, addedChannels base.Set, userVbNo uint16) ([]<-chan *ChangeEntry, error) {
+	// Populate the  array of feed channels:
+	feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
+
+	base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
+	for name, vbSeqAddedAt := range channelsSince {
+		seqAddedAt := vbSeqAddedAt.Sequence
+		// If there's no vbNo on the channelsSince, it indicates a user doc channel grant - use the userVbNo.
+		var vbAddedAt uint16
+		if vbSeqAddedAt.VbNo == nil {
+			vbAddedAt = userVbNo
+		} else {
+			vbAddedAt = *vbSeqAddedAt.VbNo
+		}
+
+		base.LogTo("Changes+", "Starting for channel... %s, %d", name, seqAddedAt)
+		chanOpts := options
+
+		// Check whether requires backfill based on addedChannels in this _changes feed
+		isNewChannel := false
+		if addedChannels != nil {
+			_, isNewChannel = addedChannels[name]
+		}
+
+		// Three possible scenarios for backfill handling, based on whether the incoming since value indicates a backfill in progress
+		// for this channel, and whether the channel requires a new backfill to be started
+		//   Case 1. No backfill in progress, no backfill required - use the incoming since to get changes
+		//   Case 2. No backfill in progress, backfill required for this channel.  Get changes since zero, backfilling to the incoming since
+		//   Case 3. Backfill in progress.  Get changes since zero, backfilling to incoming triggered by, filtered to later than incoming since.
+		backfillInProgress := false
+		if options.Since.TriggeredByClock != nil {
+			// There's a backfill in progress for SOME channel - check if it's this one
+			if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt {
+				backfillInProgress = true
+			}
+		}
+
+		sinceSeq := getChangesClock(options.Since).GetSequence(vbAddedAt)
+		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt
+
+		if isNewChannel || (backfillRequired && !backfillInProgress) {
+			// Case 2.  No backfill in progress, backfill required
+			base.LogTo("Changes+", "Starting backfill for channel... %s, %d", name, seqAddedAt)
+			chanOpts.Since = SequenceID{
+				Seq:              0,
+				vbNo:             0,
+				Clock:            base.NewSequenceClockImpl(),
+				TriggeredBy:      seqAddedAt,
+				TriggeredByVbNo:  vbAddedAt,
+				TriggeredByClock: getChangesClock(options.Since).Copy(),
+			}
+		} else if backfillInProgress {
+			// Case 3.  Backfill in progress.
+			chanOpts.Since = SequenceID{
+				Seq:              options.Since.Seq,
+				vbNo:             options.Since.vbNo,
+				Clock:            base.NewSequenceClockImpl(),
+				TriggeredBy:      seqAddedAt,
+				TriggeredByVbNo:  vbAddedAt,
+				TriggeredByClock: options.Since.TriggeredByClock,
+			}
+		} else {
+			// Case 1.  Leave chanOpts.Since set to options.Since.
+		}
+		feed, err := db.vectorChangesFeed(name, chanOpts)
+		if err != nil {
+			base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+			return feeds, err
+		}
+		feeds = append(feeds, feed)
+	}
+
+	// If the user object has changed, create a special pseudo-feed for it:
+	if db.user != nil {
+		feeds, _ = db.appendVectorUserFeed(feeds, []string{}, options, userVbNo)
+	}
+	return feeds, nil
 }
 
 // Creates a Go-channel of all the changes made on a channel.
