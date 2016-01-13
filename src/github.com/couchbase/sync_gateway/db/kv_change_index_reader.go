@@ -18,15 +18,16 @@ import (
 )
 
 type kvChangeIndexReader struct {
-	indexReadBucket         base.Bucket                // Index bucket
-	readerStableSequence    *base.ShardedClock         // Initialized on first polling, updated on subsequent polls
-	channelIndexReaders     map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
-	channelIndexReaderLock  sync.RWMutex               // Coordinates read access to channel index reader map
-	onChange                func(base.Set)             // Client callback that notifies of channel changes
-	terminator              chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions
-	pollingActive           chan struct{}              // Detects polling closed
-	maxVbNo                 uint16                     // Number of vbuckets
-	indexPartitionsCallback IndexPartitionsFunc        // callback to retrieve the index partition map
+	indexReadBucket          base.Bucket                // Index bucket
+	readerStableSequence     *base.ShardedClock         // Initialized on first polling, updated on subsequent polls
+	readerStableSequenceLock sync.RWMutex               // Coordinates read access to channel index reader map
+	channelIndexReaders      map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
+	channelIndexReaderLock   sync.RWMutex               // Coordinates read access to channel index reader map
+	onChange                 func(base.Set)             // Client callback that notifies of channel changes
+	terminator               chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions
+	pollingActive            chan struct{}              // Detects polling closed
+	maxVbNo                  uint16                     // Number of vbuckets
+	indexPartitionsCallback  IndexPartitionsFunc        // callback to retrieve the index partition map
 
 }
 
@@ -106,6 +107,8 @@ func (k *kvChangeIndexReader) Stop() {
 // need the absolute latest version for pruning.
 func (k *kvChangeIndexReader) GetStableSequence(docID string) (seq SequenceID) {
 
+	k.readerStableSequenceLock.Lock()
+	defer k.readerStableSequenceLock.Unlock()
 	// TODO: needs to be db bucket, since gocbbucket doesn't implement VBHash.  Currently not used.
 	vbNo := k.indexReadBucket.VBHash(docID)
 	if k.readerStableSequence == nil {
@@ -133,12 +136,16 @@ func (k *kvChangeIndexReader) loadStableSequence() (*base.ShardedClock, error) {
 
 func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 
+	k.readerStableSequenceLock.Lock()
+	defer k.readerStableSequenceLock.Unlock()
 	if k.readerStableSequence == nil {
 		var err error
 		k.readerStableSequence, err = k.loadStableSequence()
 		if err != nil {
-			base.Warn("Error initializing reader stable sequence")
+			base.Warn("Error initializing reader stable sequence:%v", err)
 			return false
+		} else {
+			base.Warn("Successfully loaded stable sequence")
 		}
 		return true
 	}
@@ -151,6 +158,16 @@ func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 	}
 
 	return isChanged
+}
+
+func (k *kvChangeIndexReader) getReaderStableSequence() base.SequenceClock {
+	k.readerStableSequenceLock.RLock()
+	defer k.readerStableSequenceLock.RUnlock()
+	if k.readerStableSequence != nil {
+		return k.readerStableSequence.AsClock()
+	} else {
+		return nil
+	}
 }
 
 func (k *kvChangeIndexReader) GetStableClock() (clock base.SequenceClock, err error) {
