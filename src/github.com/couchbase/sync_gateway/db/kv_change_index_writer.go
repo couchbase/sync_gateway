@@ -328,6 +328,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 		updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
 	}
 
+	entryWg.Wait()
 	// Wait group tracks when the current buffer has been completely processed
 	var channelWg sync.WaitGroup
 
@@ -345,7 +346,6 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 	}
 
 	// Wait for entry and channel processing to complete
-	entryWg.Wait()
 	channelWg.Wait()
 	if atomic.LoadUint32(&entryErrorCount) > 0 || atomic.LoadUint32(&channelErrorCount) > 0 {
 		return errors.New("Unrecoverable error indexing entry or channel")
