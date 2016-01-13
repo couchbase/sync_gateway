@@ -10,7 +10,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,8 +21,6 @@ import (
 // Simple Sync Gateway launcher tool.
 func main() {
 
-	log.Printf("TODO: customize this to function as the index_writer")
-
 	signalchannel := make(chan os.Signal, 1)
 	signal.Notify(signalchannel, syscall.SIGHUP)
 
@@ -34,5 +31,6 @@ func main() {
 		}
 	}()
 
-	rest.ServerMain()
+	rest.ServerMain(rest.SyncGatewayRunModeAccel)
+
 }

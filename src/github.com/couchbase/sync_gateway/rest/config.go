@@ -46,6 +46,13 @@ const (
 	DefaultMaxFileDescriptors uint64 = 5000
 )
 
+type SyncGatewayRunMode uint8
+
+const (
+	SyncGatewayRunModeNormal SyncGatewayRunMode = iota
+	SyncGatewayRunModeAccel
+)
+
 // JSON object that defines the server configuration.
 type ServerConfig struct {
 	Interface                      *string         // Interface to bind REST API to, default ":4984"
@@ -74,7 +81,8 @@ type ServerConfig struct {
 	CompressResponses              *bool           // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
 	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
-	ClusterConfig                  ClusterConfig   `json:"cluster_config"` // Bucket and other config related to CBGT
+	ClusterConfig                  ClusterConfig   `json:"cluster_config"`          // Bucket and other config related to CBGT
+	SkipRunmodeValidation          bool            `json:"skip_runmode_validation"` // If this is true, skips any config validation regarding accel vs normal mode
 }
 
 // Bucket configuration elements - used by db, shadow, index
@@ -429,6 +437,8 @@ func ParseCommandLine() {
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	logKeys := flag.String("log", "", "Log keywords, comma separated")
 	logFilePath := flag.String("logFilePath", "", "Path to log file")
+	skipRunModeValidation := flag.Bool("skipRunModeValidation", false, "Skip config validation for runmode (accel vs normal sg)")
+
 	flag.Parse()
 
 	if flag.NArg() > 0 {
@@ -482,6 +492,10 @@ func ParseCommandLine() {
 
 		if *logFilePath != "" {
 			config.LogFilePath = logFilePath
+		}
+
+		if skipRunModeValidation != nil {
+			config.SkipRunmodeValidation = *skipRunModeValidation
 		}
 
 	} else {
@@ -562,6 +576,36 @@ func (config *ServerConfig) serve(addr string, handler http.Handler) {
 	}
 }
 
+func (config *ServerConfig) HasAnyIndexReaderConfiguredDatabases() bool {
+	numIndexReaders := config.NumIndexReaders()
+	return numIndexReaders > 0
+}
+
+func (config *ServerConfig) HasAnyIndexWriterConfiguredDatabases() bool {
+	numIndexWriters := config.NumIndexWriters()
+	return numIndexWriters > 0
+}
+
+func (config *ServerConfig) NumIndexReaders() int {
+	n := 0
+	for _, dbConfig := range config.Databases {
+		if dbConfig.ChannelIndex == nil || dbConfig.ChannelIndex.IndexWriter == false {
+			n += 1
+		}
+	}
+	return n
+}
+
+func (config *ServerConfig) NumIndexWriters() int {
+	n := 0
+	for _, dbConfig := range config.Databases {
+		if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
+			n += 1
+		}
+	}
+	return n
+}
+
 // Starts and runs the server given its configuration. (This function never returns.)
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
@@ -613,10 +657,34 @@ func ReloadConf() {
 	}
 }
 
+func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
+
+	// if the user passes -skipRunModeValidation on the command line, then skip validation
+	if config.SkipRunmodeValidation == true {
+		base.Logf("Skipping runmode (accel vs normal) config validation")
+		return
+	}
+
+	switch runMode {
+	case SyncGatewayRunModeNormal:
+		// if index writer == true for any databases, panic
+		if config.HasAnyIndexWriterConfiguredDatabases() {
+			base.LogPanic("SG is running in normal mode but there are databases configured as index writers")
+		}
+	case SyncGatewayRunModeAccel:
+		// if index writer != true for any databases, panic
+		if config.HasAnyIndexReaderConfiguredDatabases() {
+			base.LogPanic("SG is running in sg-accelerator mode but there are databases configured as index readers")
+		}
+	}
+
+}
+
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
-func ServerMain() {
+func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine()
 	ReloadConf()
+	ValidateConfigOrPanic(runMode)
 	RunServer(config)
 }

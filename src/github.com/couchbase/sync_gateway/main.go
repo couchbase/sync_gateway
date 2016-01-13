@@ -10,11 +10,12 @@
 package main
 
 import (
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/rest"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/rest"
 )
 
 // Simple Sync Gateway launcher tool.
@@ -30,5 +31,5 @@ func main() {
 		}
 	}()
 
-	rest.ServerMain()
+	rest.ServerMain(rest.SyncGatewayRunModeNormal)
 }
