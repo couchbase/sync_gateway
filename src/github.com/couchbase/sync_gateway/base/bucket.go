@@ -155,13 +155,8 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 	// Uses tap by default, unless DCP is explicitly specified
 	switch bucket.spec.FeedType {
 	case DcpFeedType:
-		feed, err := bucket.StartDCPFeed(args)
-		if err != nil {
-			Warn("Unable to start DCP feed - reverting to using TAP feed: %s", err)
-			return bucket.StartCouchbaseTapFeed(args)
-		}
-		LogTo("Feed", "Using DCP feed for bucket: %q", bucket.GetName())
-		return feed, nil
+		Warn("DCP feed type disabled due to https://github.com/couchbase/sync_gateway/issues/1406.  Reverting to TAP mode")
+		return bucket.StartCouchbaseTapFeed(args)
 
 	case DcpShardFeedType:
 
