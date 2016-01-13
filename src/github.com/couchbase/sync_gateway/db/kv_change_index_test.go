@@ -132,7 +132,7 @@ func TestChangeIndexAddEntry(t *testing.T) {
 	assert.Equals(t, len(allEntries), 1)
 
 	// Verify stable sequence
-	stableClock, err := changeIndex.GetStableClock()
+	stableClock, err := changeIndex.GetStableClock(false)
 	assertNoError(t, err, "Get stable clock")
 	assert.Equals(t, stableClock.GetSequence(1), uint64(1))
 	assert.Equals(t, stableClock.GetSequence(2), uint64(0))
