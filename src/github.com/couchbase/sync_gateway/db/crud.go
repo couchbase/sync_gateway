@@ -463,6 +463,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
 	var unusedSequences []uint64
+	var oldBodyJSON string
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -520,12 +521,16 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
-		channels, access, roles, err := db.getChannelsAndAccess(doc, body, newRevID)
+		channelSet, access, roles, oldBody, err := db.getChannelsAndAccess(doc, body, newRevID)
+
+		//Assign old revision body to variable in method scope
+		oldBodyJSON = oldBody
 		if err != nil {
 			return
 		}
-		if len(channels) > 0 {
-			doc.History[newRevID].Channels = channels
+
+		if len(channelSet) > 0 {
+			doc.History[newRevID].Channels = channelSet
 		}
 
 		// Move the body of the replaced revision out of the document so it can be compacted later.
@@ -598,7 +603,10 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
 					base.LogTo("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
 						docid, newRevID, doc.CurrentRev)
-					channels, access, roles, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
+					channelSet, access, roles, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
+
+					//Assign old revision body to variable in method scope
+					oldBodyJSON = oldBody
 					if err != nil {
 						return
 					}
@@ -606,7 +614,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
 					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess " +
 					"on it (err=%v)", docid, doc.CurrentRev, err)
-					channels = nil
+					channelSet = nil
 					access = nil
 					roles = nil
 				}
@@ -614,7 +622,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 			// Update the document struct's channel assignment and user access.
 			// (This uses the new sequence # so has to be done after updating doc.Sequence)
-			changedChannels = doc.updateChannels(channels) //FIX: Incorrect if new rev is not current!
+			changedChannels = doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
@@ -678,7 +686,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 		// Raise event
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			db.EventMgr.RaiseDocumentChangeEvent(body, revChannels)
+			db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache
@@ -753,7 +761,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, err error) {
+func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, oldJson string, err error) {
 	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 
 	// Get the parent revision, to pass to the sync function:
@@ -761,7 +769,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 	if oldJsonBytes, err = db.getAncestorJSON(doc, revID); err != nil {
 		return
 	}
-	oldJson := string(oldJsonBytes)
+	oldJson = string(oldJsonBytes)
 
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:

@@ -116,13 +116,14 @@ func (em *EventManager) raiseEvent(event Event) error {
 
 // Raises a document change event based on the the document body and channel set.  If the
 // event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseDocumentChangeEvent(body Body, channels base.Set) error {
+func (em *EventManager) RaiseDocumentChangeEvent(body Body, oldBodyJSON string, channels base.Set) error {
 
 	if !em.activeEventTypes[DocumentChange] {
 		return nil
 	}
 	event := &DocumentChangeEvent{
 		Doc:      body,
+		OldDoc:   oldBodyJSON,
 		Channels: channels,
 	}
 

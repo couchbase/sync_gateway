@@ -108,7 +108,7 @@ func TestDocumentChangeEvent(t *testing.T) {
 	//Raise events
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	// wait for Event Manager queue worker to process
 	time.Sleep(10 * time.Millisecond)
@@ -189,7 +189,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 
 	for i := 0; i < 20; i++ {
 		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	// wait for Event Manager queue worker to process
 	time.Sleep(2 * time.Second)
@@ -231,7 +231,7 @@ func TestCustomHandler(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	// wait for Event Manager queue worker to process
 	time.Sleep(50 * time.Millisecond)
@@ -274,7 +274,7 @@ func TestUnhandledEvent(t *testing.T) {
 	// send DocumentChange events to handler
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	// Wait for Event Manager queue worker to process
 	time.Sleep(50 * time.Millisecond)
@@ -377,7 +377,7 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equals(t, *count, 10)
@@ -398,7 +398,7 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equals(t, *count, 4)
@@ -410,7 +410,7 @@ func TestWebhookBasic(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	body, channels := eventForTest(0)
-	em.RaiseDocumentChangeEvent(body, channels)
+	em.RaiseDocumentChangeEvent(body, "", channels)
 	time.Sleep(50 * time.Millisecond)
 	receivedPayload := string((*payloads)[0])
 	fmt.Println("payload:", receivedPayload)
@@ -426,7 +426,7 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	time.Sleep(500 * time.Millisecond)
 	assert.Equals(t, *count, 100)
@@ -441,7 +441,7 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, channels)
+		err := em.RaiseDocumentChangeEvent(body, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -462,10 +462,129 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	time.Sleep(5 * time.Second)
 	assert.Equals(t, *count, 100)
+
+}
+
+/*
+ * Test Webhook where there is an old doc revision and where the filter function
+ * is expecting an old doc revision
+ */
+func TestWebhookOldDoc(t *testing.T) {
+
+	if !testLiveHTTP {
+		return
+	}
+	count, sum, _ := InitWebhookTest()
+	ids := make([]string, 200)
+	for i := 0; i < 200; i++ {
+		ids[i] = fmt.Sprintf("%d", i)
+	}
+
+	time.Sleep(1 * time.Second)
+	eventForTest := func(i int) (Body, base.Set) {
+		testBody := Body{
+			"_id":   ids[i],
+			"value": i,
+		}
+		var channelSet base.Set
+		if i%2 == 0 {
+			channelSet = base.SetFromArray([]string{"Even"})
+		} else {
+			channelSet = base.SetFromArray([]string{"Odd"})
+		}
+		return testBody, channelSet
+	}
+
+	// Test basic webhook where an old doc is passed but not filtered
+	em := NewEventManager()
+	em.Start(0, -1)
+	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		oldBody, _ := eventForTest(-i)
+		oldBodyBytes, _ := json.Marshal(oldBody)
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 10)
+
+	// Test webhook where an old doc is passed and is not used by the filter
+	log.Println("Test filter function with old doc which is not referenced")
+	*count, *sum = 0, 0.0
+	em = NewEventManager()
+	em.Start(0, -1)
+	filterFunction := `function(doc) {
+							if (doc.value < 6) {
+								return false;
+							} else {
+								return true;
+							}
+							}`
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		oldBody, _ := eventForTest(-i)
+		oldBodyBytes, _ := json.Marshal(oldBody)
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 4)
+
+	// Test webhook where an old doc is passed and is validated by the filter
+	log.Println("Test filter function with old doc")
+	*count, *sum = 0, 0.0
+	em = NewEventManager()
+	em.Start(0, -1)
+	filterFunction = `function(doc, oldDoc) {
+							if (doc.value > 6 && doc.value = -oldDoc.value) {
+								return false;
+							} else {
+								return true;
+							}
+							}`
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		oldBody, _ := eventForTest(-i)
+		oldBodyBytes, _ := json.Marshal(oldBody)
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 4)
+
+	// Test webhook where an old doc is not passed but is referenced in the filter function args
+	log.Println("Test filter function with old doc")
+	*count, *sum = 0, 0.0
+	em = NewEventManager()
+	em.Start(0, -1)
+	filterFunction = `function(doc, oldDoc) {
+							if (oldDoc) {
+								return true;
+							} else {
+								return false;
+							}
+							}`
+	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 10; i++ {
+		body, channels := eventForTest(i)
+		em.RaiseDocumentChangeEvent(body, "", channels)
+	}
+	for i := 10; i < 20; i++ {
+		body, channels := eventForTest(i)
+		oldBody, _ := eventForTest(-i)
+		oldBodyBytes, _ := json.Marshal(oldBody)
+		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+	}
+	time.Sleep(50 * time.Millisecond)
+	assert.Equals(t, *count, 10)
 
 }
 
@@ -511,7 +630,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equals(t, *count, 10)
@@ -527,7 +646,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, channels)
+		err := em.RaiseDocumentChangeEvent(body, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -549,7 +668,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, channels)
+		err := em.RaiseDocumentChangeEvent(body, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -570,7 +689,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, channels)
+		err := em.RaiseDocumentChangeEvent(body, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -610,7 +729,7 @@ func TestUnavailableWebhook(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, channels)
+		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
 	time.Sleep(50 * time.Millisecond)
