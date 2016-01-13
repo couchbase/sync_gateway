@@ -966,6 +966,9 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+
+	//Create new versions of the doc1 without conflicts
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 }
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
@@ -979,6 +982,10 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"},"doc2" : []interface {}{"*"}}})
+
+	//Create new versions of the docs without conflicts
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 }
 
 func TestPurgeWithSomeInvalidDocs(t *testing.T) {
@@ -991,4 +998,10 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+
+	//Create new versions of the doc1 without conflicts
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+
+	//Create new versions of the doc2 fails because it already exists
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
