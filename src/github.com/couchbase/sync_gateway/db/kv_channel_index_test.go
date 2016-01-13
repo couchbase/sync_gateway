@@ -84,7 +84,7 @@ func TestIndexBlockCreation(t *testing.T) {
 	defer testStorage.bucket.Close()
 	entry := makeEntry(1, 1, false)
 	block := testStorage.getIndexBlockForEntry(entry)
-	assert.True(t, len(testStorage.indexBlockCache) == 1)
+	assert.Equals(t, testStorage.indexBlockCache.Count(), 1)
 	blockEntries := block.GetAllEntries()
 	assert.Equals(t, len(blockEntries), 0)
 

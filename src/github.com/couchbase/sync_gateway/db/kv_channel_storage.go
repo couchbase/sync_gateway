@@ -65,11 +65,10 @@ const (
 )
 
 type BitFlagStorage struct {
-	bucket              base.Bucket // Index bucket
-	channelName         string      // Channel name
-	partitions          *base.IndexPartitions
-	indexBlockCache     map[string]IndexBlock // Recently used index blocks, by key
-	indexBlockCacheLock sync.Mutex
+	bucket          base.Bucket // Index bucket
+	channelName     string      // Channel name
+	partitions      *base.IndexPartitions
+	indexBlockCache *base.LRUCache // Cache of recently used index blocks
 }
 
 func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) *BitFlagStorage {
@@ -79,11 +78,16 @@ func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions *base.
 		channelName: channelName,
 		partitions:  partitions,
 	}
-	// TODO: fixing block capacity at 256/vb for now
-	// max block size of 4096k - capacity per vb based on num partitions
-	//numVbPerPartition := uint64(1024 / len(partitions.PartitionDefs))
-	//byteIndexBlockCapacity = uint64(4096 / numVbPerPartition)
-	storage.indexBlockCache = make(map[string]IndexBlock)
+
+	// Maximum theoretical block cache capacity is 1024 - if this index writer were indexing every vbucket,
+	// and each vbucket sequence was in a different block.  More common case would be this index writer
+	// having at most 512 vbuckets, and most of those vbuckets working the same block index per partition (16 vbs per
+	// partition) == 32 blocks.  Setting default to 50 to handle any temporary spikes.
+	var err error
+	storage.indexBlockCache, err = base.NewLRUCache(50)
+	if err != nil {
+		base.LogFatal("Error creating LRU cache for index blocks: %v", err)
+	}
 	return storage
 }
 
@@ -469,16 +473,22 @@ func (b *BitFlagStorage) getIndexBlockForEntry(entry *LogEntry) IndexBlock {
 
 // Safely retrieves index block from the channel's block cache
 func (b *BitFlagStorage) getIndexBlockFromCache(key string) IndexBlock {
-	b.indexBlockCacheLock.Lock()
-	defer b.indexBlockCacheLock.Unlock()
-	return b.indexBlockCache[key]
+	cacheValue, ok := b.indexBlockCache.Get(key)
+	if !ok {
+		return nil
+	}
+
+	block, ok := cacheValue.(*BitFlagBlock)
+	if ok {
+		return block
+	} else {
+		return nil
+	}
 }
 
 // Safely inserts index block from the channel's block cache
 func (b *BitFlagStorage) putIndexBlockToCache(key string, block IndexBlock) {
-	b.indexBlockCacheLock.Lock()
-	defer b.indexBlockCacheLock.Unlock()
-	b.indexBlockCache[key] = block
+	b.indexBlockCache.Put(key, block)
 }
 
 // IndexBlock interface - defines interactions with a block
