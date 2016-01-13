@@ -920,24 +920,40 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 	var rt restTester
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
 	assertStatus(t, response, 200)
+
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
 	var rt restTester
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
 	assertStatus(t, response, 200)
+
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 	var rt restTester
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
 	assertStatus(t, response, 200)
+
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
 	var rt restTester
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
 	assertStatus(t, response, 200)
+
+	var body map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
