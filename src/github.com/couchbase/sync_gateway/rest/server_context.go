@@ -884,6 +884,9 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 }
 
 func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *ShadowConfig) error {
+
+	base.Warn("Bucket Shadowing feature comes with a number of limitations and caveats. See https://github.com/couchbase/sync_gateway/issues/1363 for more details.")
+
 	var pattern *regexp.Regexp
 	if shadow.Doc_id_regex != nil {
 		var err error
