@@ -34,17 +34,17 @@ EOF
 
     chown -R @@PRODUCT_BASE@@:@@PRODUCT_BASE@@ @@PREFIX@@
 
-    chmod 755 @@PREFIX@@/service/sync_gateway_service_install.sh
+    chmod 755 @@PREFIX@@/service/@@PRODUCT_EXEC@@_service_install.sh
 
     chmod 755 @@PREFIX@@/examples
 
-    if [ -z `id -u sync_gateway 2>/dev/null` ]; then
-      useradd -m sync_gateway
+    if [ -z `id -u @@PRODUCT_EXEC@@ 2>/dev/null` ]; then
+      useradd -m @@PRODUCT_EXEC@@
     fi
 
     cd @@PREFIX@@/service
-    ./sync_gateway_service_install.sh
-    SERVICE_CMD=`./sync_gateway_service_install.sh --servicecmd`
+    ./@@PRODUCT_EXEC@@_service_install.sh
+    SERVICE_CMD=`./@@PRODUCT_EXEC@@_service_install.sh --servicecmd`
 
     export UPGRADE_MARKER=/tmp/@@PRODUCT_BASE@@-`date +%Y%m%d`-upgrade-from
 
@@ -63,7 +63,7 @@ by opening your browser to http://localhost:4985/_admin/.
 The command-line options are:
 
   -adminInterface=":4985": Address to bind admin interface to
-  -bucket="sync_gateway": Name of bucket
+  -bucket="@@PRODUCT_EXEC@@": Name of bucket
   -dbname="": Name of CouchDB database (defaults to name of bucket)
   -interface=":4984": Address to bind to
   -log="": Log keywords, comma separated

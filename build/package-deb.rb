@@ -17,6 +17,7 @@ REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 ARCH            = ARGV[5] ||                           `uname -m`.chomp
 PRODUCT_KIND    = ARGV[6] || "sync-gateway"
+PRODUCT_EXEC    = ARGV[7] || "sync_gateway"
 
 PRODUCT         = "#{PRODUCT_BASE}-#{PRODUCT_KIND}"
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0
@@ -49,6 +50,7 @@ end
                  sed -e s,@@PREFIX@@,#{PREFIX},g                          |
                  sed -e s,@@REPO_SHA@@,#{REPO_SHA},g                      |
                  sed -e s,@@PRODUCT@@,#{PRODUCT},g                        |
+                 sed -e s,@@PRODUCT_EXEC@@,#{PRODUCT_EXEC},g              |
                  sed -e s,@@PRODUCT_BASE@@,#{PRODUCT_BASE},g              |
                  sed -e s,@@PRODUCT_BASE_CAP@@,#{product_base_cap},g      |
                  sed -e s,@@PRODUCT_KIND@@,#{PRODUCT_KIND},g > #{target}}
