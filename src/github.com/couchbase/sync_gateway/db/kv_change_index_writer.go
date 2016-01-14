@@ -280,6 +280,18 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 	entryErrorCount := uint32(0)
 	// Iterate over entries to write index entry docs, and group entries for subsequent channel index updates
 	for _, logEntry := range entries {
+
+		revID := logEntry.RevID
+		if revID == "" {
+			changeCacheExpvars.Add("indexCheck_revID_empty", 1)
+		} else {
+			if strings.HasPrefix(revID, "1-") {
+				changeCacheExpvars.Add("indexCheck_revID_1", 1)
+			} else {
+				changeCacheExpvars.Add("indexCheck_revID_2", 1)
+			}
+		}
+
 		// If principal, update the stable sequence and continue
 		if logEntry.IsPrincipal {
 			updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)

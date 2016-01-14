@@ -57,17 +57,26 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 		for event := range tapFeed.Events() {
 			if event.Opcode == sgbucket.TapMutation || event.Opcode == sgbucket.TapDeletion {
 				key := string(event.Key)
+				changeCacheExpvars.Add("indexCheck_DCPfeedrunner_mutation", 1)
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
+					changeCacheExpvars.Add("indexCheck_DCPfeedrunner_userDoc", 1)
 					if listener.OnDocChanged != nil {
+						changeCacheExpvars.Add("indexCheck_DCPfeedrunner_userDoc_changed", 1)
 						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
 					listener.Notify(base.SetOf(key))
 				} else if trackDocs && !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, kIndexPrefix) {
+
+					changeCacheExpvars.Add("indexCheck_DCPfeedrunner_normalDoc", 1)
 					if listener.OnDocChanged != nil {
+						changeCacheExpvars.Add("indexCheck_DCPfeedrunner_normalDoc_changed", 1)
 						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
 					listener.DocChannel <- event
+				} else {
+					changeCacheExpvars.Add("indexCheck_DCPfeedrunner_otherDoc", 1)
+					base.LogTo("Changes+", "Other doc seen on feed, key=%s", key)
 				}
 			}
 		}
