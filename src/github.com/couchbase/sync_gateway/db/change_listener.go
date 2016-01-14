@@ -76,7 +76,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 					listener.DocChannel <- event
 				} else {
 					changeCacheExpvars.Add("indexCheck_DCPfeedrunner_otherDoc", 1)
-					base.LogTo("Changes+", "Other doc seen on feed, key=%s", key)
+					//base.LogTo("Changes+", "Other doc seen on feed, key=%s", key)
 				}
 			}
 		}
