@@ -48,7 +48,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		defer func() {
 			base.LogTo("Changes+", "MultiChangesFeed done %s", to)
 			// Calculate hash for last entry sent, if not already present
-			if lastSent != nil && cumulativeClock != nil && lastSent.Seq.ClockHash == "" {
+			if lastSent != nil && cumulativeClock != nil && lastSent.Seq.Clock != nil {
 				clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 				if err != nil {
 					base.Warn("Error calculating hash for last sent sequence: %v", err)

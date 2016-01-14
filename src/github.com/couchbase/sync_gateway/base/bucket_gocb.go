@@ -268,12 +268,16 @@ func (bucket CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucket
 			entry.Error = item.Err
 			if item.Err != nil && isRecoverableGoCBError(item.Err) {
 				retryEntries = append(retryEntries, entry)
+			} else if item.Err != nil {
+				Warn("Non-recoverable error doing insert during bulk set: %v", item.Err)
 			}
 		case *gocb.ReplaceOp:
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
 			if item.Err != nil && isRecoverableGoCBError(item.Err) {
 				retryEntries = append(retryEntries, entry)
+			} else if item.Err != nil {
+				Warn("Non-recoverable error doing insert during bulk set: %v", item.Err)
 			}
 		}
 	}
