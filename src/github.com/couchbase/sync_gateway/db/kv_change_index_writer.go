@@ -145,6 +145,8 @@ func (k *kvChangeIndexWriter) addToCache(change *LogEntry) {
 // be getting called from a single process per change index (i.e. DCP feed processing.)
 func (k *kvChangeIndexWriter) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
 
+	changeCacheExpvars.Add("indexCheck_docChanged", 1)
+	base.LogTo("Changes+", "DocChanged - %s", docID)
 	// Incoming docs are assigned to the appropriate unmarshalWorker for the vbucket, in order
 	// to ensure docs are processed in sequence for a given vbucket.
 	unmarshalWorker := k.unmarshalWorkers[vbNo]
@@ -186,6 +188,7 @@ func (k *kvChangeIndexWriter) indexPending() error {
 	var sleeper base.RetrySleeper
 	for {
 		latestWriteBatch.Set(int64(len(entries)))
+		changeCacheExpvars.Add("indexCheck_indexPendingCount", int64(len(entries)))
 		err := k.indexEntries(entries, indexPartitions.VbMap, channelStorage)
 		if err != nil {
 			if indexRetryCount == 0 {
@@ -296,6 +299,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 					base.Warn("Error writing entry:%v", err)
 					atomic.AddUint32(&errorCount, 1)
 				}
+				changeCacheExpvars.Add("indexCheck_indexEntries_WriteLogEntry", 1)
 			}(logEntry, entryErrorCount)
 		}
 		// Collect entries by channel

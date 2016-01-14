@@ -3,6 +3,7 @@ package base
 import (
 	"encoding/json"
 	"errors"
+	"expvar"
 	"io"
 	"log"
 	"strconv"
@@ -22,6 +23,12 @@ type CbgtContext struct {
 
 type SyncGatewayIndexParams struct {
 	BucketName string `json:"bucket_name"`
+}
+
+var dcpExpvars *expvar.Map
+
+func init() {
+	dcpExpvars = expvar.NewMap("syncGateway_dcp")
 }
 
 const (
@@ -164,6 +171,7 @@ func (s *SyncGatewayPIndex) DataUpdate(partition string, key []byte, seq uint64,
 
 	LogTo("DCP", "DataUpdate for pindex %p called with vbucket: %v.  key: %v seq: %v", s, partition, string(key), seq)
 
+	dcpExpvars.Add("dataUpdate", 1)
 	vbucketNumber := partitionToVbucketId(partition)
 
 	s.updateSeq(partition, seq, true)
@@ -186,6 +194,7 @@ func (s *SyncGatewayPIndex) DataDelete(partition string, key []byte, seq uint64,
 
 	LogTo("DCP", "DataDelete called with vbucket: %v.  key: %v", partition, string(key))
 
+	dcpExpvars.Add("dataDelete", 1)
 	s.updateSeq(partition, seq, true)
 
 	event := sgbucket.TapEvent{
@@ -337,6 +346,7 @@ func (s *SyncGatewayPIndex) Rollback(partition string, rollbackSeq uint64) error
 
 	Warn("DCP Rollback request SyncGatewayPIndex - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
 
+	dcpExpvars.Add("rollback", 1)
 	s.rollbackSeq(partition, rollbackSeq)
 
 	return nil
