@@ -67,9 +67,9 @@ type DatabaseContext struct {
 	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
 	Options            DatabaseContextOptions
-	AccessLock         sync.RWMutex  // Allows DB offline to block until synchronous calls have completed
-	State              uint32        //The runtime state of the DB from a service perspective
-	ExitChanges        chan struct{} //active _changes feeds on the DB will close when this channel is closed
+	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State              uint32                  //The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
 
 }
 
@@ -78,6 +78,7 @@ type DatabaseContextOptions struct {
 	IndexOptions          *ChangeIndexOptions
 	SequenceHashOptions   *SequenceHashOptions
 	RevisionCacheCapacity uint32
+	AdminInterface        *string
 }
 
 const DefaultRevsLimit = 1000
@@ -163,7 +164,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	context.tapListener.OnDocChanged = context.changeCache.DocChanged
 
 	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
-		context.TakeDbOffline()
+		context.TakeDbOffline("Lost TAP Feed")
 	}); err != nil {
 		return nil, err
 	}
@@ -279,7 +280,7 @@ func (context *DatabaseContext) NotifyUser(username string) {
 	context.tapListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
 }
 
-func (dc *DatabaseContext) TakeDbOffline() error {
+func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
 	dbState := atomic.LoadUint32(&dc.State)
 	//If the DB is already trasitioning to: offline or is offline silently return
@@ -300,6 +301,10 @@ func (dc *DatabaseContext) TakeDbOffline() error {
 		base.LogTo("CRUD", "Database : %v, is offline", dc.Name)
 		//set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
+
+		if dc.EventMgr.HasHandlerForEvent(DBStateChange) {
+			dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
+		}
 
 		return nil
 	} else {
