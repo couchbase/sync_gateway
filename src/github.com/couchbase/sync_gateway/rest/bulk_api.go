@@ -297,7 +297,21 @@ func (h *handler) handleDumpChannel() error {
 func (h *handler) handleBulkGet() error {
 	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
-	canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip") && !strings.Contains(h.rq.Header.Get("Accept-Encoding"), "gzip")
+
+	// If a client passes the HTTP header "Accept-Encoding: gzip" then the header "X-Accept-Part-Encoding: gzip" will be
+	// ignored and the entire HTTP response will be gzip compressed.  (aside from exception mentioned below for issue 1419)
+	acceptGzipPartEncoding := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
+	acceptGzipEncoding := strings.Contains(h.rq.Header.Get("Accept-Encoding"), "gzip")
+	canCompressParts := acceptGzipPartEncoding && !acceptGzipEncoding
+
+	// Exception: if the user agent is empty or earlier than 1.2, and X-Accept-Part-Encoding=gzip, then we actually
+	// DO want to compress the parts since the full response will not be gzipped, since those clients can't handle it.
+	// See https://github.com/couchbase/sync_gateway/issues/1419 and encoded_response_writer.go
+	userAgentVersion := NewUserAgentVersion(h.rq.Header.Get("User-Agent"))
+	if userAgentVersion.MajorVersion() <= 1 && userAgentVersion.MinorVersion() < 2 {
+		canCompressParts = true
+	}
+
 	body, err := h.readJSON()
 	if err != nil {
 		return err
@@ -360,7 +374,7 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			h.db.WriteRevisionAsPart(body, err != nil, canCompress, writer)
+			h.db.WriteRevisionAsPart(body, err != nil, canCompressParts, writer)
 		}
 		return nil
 	})

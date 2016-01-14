@@ -253,7 +253,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 
 // Adds a new part to the given multipart writer, containing the given revision.
 // The revision will be written as a nested multipart body if it has attachments.
-func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress bool, writer *multipart.Writer) error {
+func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compressPart bool, writer *multipart.Writer) error {
 	partHeaders := textproto.MIMEHeader{}
 	docID, _ := revBody["_id"].(string)
 	revID, _ := revBody["_rev"].(string)
@@ -270,7 +270,7 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress boo
 		contentType := fmt.Sprintf("multipart/related; boundary=%q",
 			docWriter.Boundary())
 		partHeaders.Set("Content-Type", contentType)
-		db.WriteMultipartDocument(revBody, docWriter, compress)
+		db.WriteMultipartDocument(revBody, docWriter, compressPart)
 		docWriter.Close()
 		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
 
@@ -285,7 +285,7 @@ func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compress boo
 		if isError {
 			contentType += `; error="true"`
 		}
-		return writeJSONPart(writer, contentType, revBody, compress)
+		return writeJSONPart(writer, contentType, revBody, compressPart)
 	}
 }
 
