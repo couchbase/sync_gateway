@@ -685,6 +685,6 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine()
 	ReloadConf()
-	ValidateConfigOrPanic(runMode)
+	//ValidateConfigOrPanic(runMode)
 	RunServer(config)
 }
