@@ -85,3 +85,32 @@ func (uav UserAgentVersion) MajorVersion() int {
 func (uav UserAgentVersion) MinorVersion() int {
 	return uav.minorVersion
 }
+
+func (uav UserAgentVersion) IsEqualToOrAfter(otherMajorVersion, otherMinorVersion int) bool {
+
+	// if our major version is less than their major version, then there's no
+	// way we could be after their overall version, so return false
+	if uav.MajorVersion() < otherMajorVersion {
+		return false
+	}
+
+	// if our major version is greater than their major version, we're definitely
+	// after so return true
+	if uav.MajorVersion() > otherMajorVersion {
+		return true
+	}
+
+	// the major versions are equal, so it's down to minor versions.
+	// if we're strictly after their minor version, return true
+	if uav.MinorVersion() >= otherMinorVersion {
+		return true
+	}
+
+	// looks like we're less than their minor version, so return false
+	return false
+
+}
+
+func (uav UserAgentVersion) IsBefore(otherMajorVersion, otherMinorVersion int) bool {
+	return !uav.IsEqualToOrAfter(otherMajorVersion, otherMinorVersion)
+}
