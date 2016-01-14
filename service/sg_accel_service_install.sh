@@ -3,32 +3,32 @@
 # Set default values
 OS=""
 VER=""
-SERVICE_NAME="sg-accel"
+SERVICE_NAME="sg_accel"
 SRCCFGDIR=../examples
 SRCCFG=serviceconfig.json
-RUNAS_TEMPLATE_VAR=sg-accel
-RUNBASE_TEMPLATE_VAR=/home/sg-accel
+RUNAS_TEMPLATE_VAR=sg_accel
+RUNBASE_TEMPLATE_VAR=/home/sg_accel
 PIDFILE_TEMPLATE_VAR=/var/run/sg-accel.pid
 GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sg-accel
-GATEWAY_TEMPLATE_VAR=/opt/couchbase-sg-accel/bin/sg-accel
-CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg-accel.json
+GATEWAY_TEMPLATE_VAR=/opt/couchbase-sg-accel/bin/sg_accel
+CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg_accel.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
 
 
 usage()
 {
-    echo "This script creates an init service to run a sg-accel instance."
+    echo "This script creates an init service to run a sg_accel instance."
     echo "If you want to install more than one service instance"
     echo "create additional services with different names."
     echo ""
-    echo "sg-accel_service_install.sh"
+    echo "sg_accel_service_install.sh"
     echo "    -h --help"
-    echo "    --runas=<The user account to run sg-accel as; default (sg-accel)>"
-    echo "    --runbase=<The directory to run sg-accel from; defaut (/home/sg-accel)>"
-    echo "    --sgpath=<The path to the sg-accel executable; default (/opt/couchbase-sg-accel/bin/sg-accel)>"
-    echo "    --cfgpath=<The path to the sg-accel JSON config file; default (/home/sg-accel/sg-accel.json)>"
-    echo "    --logsdir=<The path to the log file direcotry; default (/home/sg-accel/logs)>"
+    echo "    --runas=<The user account to run sg_accel as; default (sg_accel)>"
+    echo "    --runbase=<The directory to run sg_accel from; defaut (/home/sg_accel)>"
+    echo "    --sgpath=<The path to the sg_accel executable; default (/opt/couchbase-sg-accel/bin/sg_accel)>"
+    echo "    --cfgpath=<The path to the sg_accel JSON config file; default (/home/sg_accel/sg_accel.json)>"
+    echo "    --logsdir=<The path to the log file direcotry; default (/home/sg_accel/logs)>"
     echo ""
 }
  
@@ -76,10 +76,10 @@ setup_output_dirs() {
 #Figure out the OS type of the current system
 ostype
 
-#If the OS is MAC OSX, set the default user account home path to /Users/sg-accel
+#If the OS is MAC OSX, set the default user account home path to /Users/sg_accel
 if [ "$OS" = "Darwin" ]; then
-    RUNBASE_TEMPLATE_VAR=/Users/sg-accel
-    CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg-accel.json
+    RUNBASE_TEMPLATE_VAR=/Users/sg_accel
+    CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg_accel.json
     LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 fi
 
@@ -105,7 +105,7 @@ while [ "$1" != "" ]; do
             else
                 RUNBASE_TEMPLATE_VAR=`eval "echo ~$VALUE"`
             fi
-            CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg-accel.json
+            CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg_accel.json
             LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
             ;;
         --runbase)
@@ -135,7 +135,7 @@ done
 if [ "$SERVICE_CMD_ONLY" = false ]; then
     # Check that runtime user account exists
     if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
-        echo "The sg-accel runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
+        echo "The sg_accel runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
         exit 1
     fi
 
@@ -145,21 +145,21 @@ if [ "$SERVICE_CMD_ONLY" = false ]; then
         exit 1
     fi
 
-    # Check that the sg-accel executable exists
+    # Check that the sg_accel executable exists
     if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
-        echo "The sg-accel executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
+        echo "The sg_accel executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
         exit 1
     fi
 
-    # Check that the sg-accel src JSON config directory exists
+    # Check that the sg_accel src JSON config directory exists
     if [ ! -d "$SRCCFGDIR" ]; then
-        echo "The sg-accel source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
+        echo "The sg_accel source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
         exit 1
     fi
 
-    # Check that the sg-accel src JSON config file exists
+    # Check that the sg_accel src JSON config file exists
     if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
-        echo "The sg-accel source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
+        echo "The sg_accel source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
         exit 1
     fi
 
@@ -238,7 +238,7 @@ case $OS in
         ;;
     Darwin)
         if [ "$SERVICE_CMD_ONLY" = true ]; then
-            echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sg-accel.plist"
+            echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sg_accel.plist"
         else
             setup_output_dirs
             render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.${SERVICE_NAME}.plist
