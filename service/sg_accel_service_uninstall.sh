@@ -3,21 +3,21 @@
 # Set default values
 OS=""
 VER=""
-SERVICE_NAME="sg-accel"
+SERVICE_NAME="sg_accel"
 SRCCFGDIR=../examples
 SRCCFG=serviceconfig.json
-RUNAS_TEMPLATE_VAR=sg-accel
-RUNBASE_TEMPLATE_VAR=/home/sg-accel
+RUNAS_TEMPLATE_VAR=sg_accel
+RUNBASE_TEMPLATE_VAR=/home/sg_accel
 PIDFILE_TEMPLATE_VAR=/var/run/sg-accel.pid
 GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sg-accel
-GATEWAY_TEMPLATE_VAR=/opt/couchbase-sg-accel/bin/sg-accel
-CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg-accel.json
+GATEWAY_TEMPLATE_VAR=/opt/couchbase-sg-accel/bin/sg_accel
+CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg_accel.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 
 
 usage()
 {
-    echo "This script upgrades an init service to run a sg-accel instance."
+    echo "This script removes an init service to run a sg_accel instance."
 }
  
 ostype() {
@@ -51,10 +51,10 @@ ostype() {
 #Figure out the OS type of the current system
 ostype
 
-#If the OS is MAC OSX, set the default user account home path to /Users/sg-accel
+#If the OS is MAC OSX, set the default user account home path to /Users/sg_accel
 if [ "$OS" = "Darwin" ]; then
-    RUNBASE_TEMPLATE_VAR=/Users/sg-accel
-    CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg-accel.json
+    RUNBASE_TEMPLATE_VAR=/Users/sg_accel
+    CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg_accel.json
     LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 fi
 
@@ -70,7 +70,9 @@ case $OS in
         case $OS_MAJOR_VERSION in
             12|14)
 				service ${SERVICE_NAME} stop
-                service ${SERVICE_NAME} start
+                if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
+                	rm /etc/init/${SERVICE_NAME}.conf
+                fi
                 ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
@@ -84,15 +86,26 @@ case $OS in
             5) 
                 PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
                 service ${SERVICE_NAME} stop
-                service ${SERVICE_NAME} start
+                chkconfig ${SERVICE_NAME} off
+                chkconfig --del ${SERVICE_NAME}
+                
+                if [ -f /etc/init.d/${SERVICE_NAME} ]; then
+                	rm /etc/init.d/${SERVICE_NAME}
+                fi
                 ;;
             6)
                 initctl stop ${SERVICE_NAME}
-                initctl start ${SERVICE_NAME}
+                if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
+                	rm /etc/init/${SERVICE_NAME}.conf
+                fi
                 ;;
             7)
                 systemctl stop ${SERVICE_NAME}
-                systemctl start ${SERVICE_NAME}
+                systemctl disable ${SERVICE_NAME}
+                
+                if [ -f /usr/lib/systemd/system/${SERVICE_NAME}.service ]; then
+                	rm /usr/lib/systemd/system/${SERVICE_NAME}.service
+                fi
                 ;;
             *)
                 echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
@@ -102,8 +115,10 @@ case $OS in
         esac
         ;;
     Darwin)
-        launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sg-accel.plist
-        launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sg-accel.plist
+        launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sg_accel.plist
+        if [ -f /Library/LaunchDaemons/com.couchbase.mobile.sg_accel.plist ]; then
+        	rm /Library/LaunchDaemons/com.couchbase.mobile.sg_accel.plist
+        fi
         ;;
     *)
         echo "ERROR: unknown OS \"$OS\""
