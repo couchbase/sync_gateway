@@ -81,7 +81,17 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
-			// Restrict to available channels, expand wild-card, and find since when these channels have been available to the user:
+			iterationStartTime := time.Now()
+
+			// Get the last polled stable sequence.  We don't return anything later than stable sequence in each iteration
+			stableClock, err := db.changeCache.GetStableClock(true)
+			if err != nil {
+				base.Warn("MultiChangesFeed got error reading stable sequence: %v", err)
+				return
+			}
+
+			// Restrict to available channels, expand wild-card, and find since when these channels
+			// have been available to the user:
 			var channelsSince channels.TimedSet
 			if db.user != nil {
 				channelsSince = db.user.FilterToAvailableChannels(chans)
@@ -144,6 +154,11 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 							}
 						}
 					}
+				}
+
+				// Don't send any entries later than the stable sequence
+				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
+					continue
 				}
 
 				// Add the doc body or the conflicting rev IDs, if those options are set:

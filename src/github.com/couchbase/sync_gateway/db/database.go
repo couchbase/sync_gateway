@@ -174,7 +174,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 }
 
 func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
-	return context.changeCache.GetStableClock()
+	staleOk := false
+	return context.changeCache.GetStableClock(staleOk)
 }
 
 func (context *DatabaseContext) writeSequences() bool {
@@ -329,7 +330,7 @@ func CreateDatabase(context *DatabaseContext) (*Database, error) {
 
 func (db *Database) SameAs(otherdb *Database) bool {
 	return db != nil && otherdb != nil &&
-	db.Bucket == otherdb.Bucket
+		db.Bucket == otherdb.Bucket
 }
 
 // Reloads the database's User object, in case its persistent properties have been changed.
@@ -445,7 +446,7 @@ func installViews(bucket base.Bucket) error {
 						}
 					}`
 	channels_map = fmt.Sprintf(channels_map, channels.Deleted, EnableStarChannelLog,
-		channels.Removed | channels.Deleted, channels.Removed)
+		channels.Removed|channels.Deleted, channels.Removed)
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
@@ -551,10 +552,10 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 	type viewRow struct {
 		Key   string
 		Value struct {
-				  RevID    string   `json:"r"`
-				  Sequence uint64   `json:"s"`
-				  Channels []string `json:"c"`
-			  }
+			RevID    string   `json:"r"`
+			Sequence uint64   `json:"s"`
+			Channels []string `json:"c"`
+		}
 	}
 	var vres struct {
 		Rows []viewRow
@@ -823,8 +824,8 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 
 				if rev.ID == doc.CurrentRev {
 					changed = len(doc.Access.updateAccess(doc, access)) +
-					len(doc.RoleAccess.updateAccess(doc, roles)) +
-					len(doc.updateChannels(channels))
+						len(doc.RoleAccess.updateAccess(doc, roles)) +
+						len(doc.updateChannels(channels))
 				}
 			})
 
