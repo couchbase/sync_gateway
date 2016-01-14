@@ -642,7 +642,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
 
 		if dc := sc.databases_[dbName]; dc != nil {
-			dc.TakeDbOffline()
+			dc.TakeDbOffline("Lost TAP feed")
 		}
 	})
 
@@ -713,6 +713,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		IndexOptions:          channelIndexOptions,
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
+		AdminInterface:        sc.config.AdminInterface,
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
