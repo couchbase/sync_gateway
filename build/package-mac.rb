@@ -24,6 +24,7 @@ REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || `uname -s`.chomp + "-" +  `uname -m`.chomp
 ARCH            = ARGV[5] ||                           `uname -m`.chomp
 PRODUCT_KIND    = ARGV[6] || "sync-gateway"
+PRODUCT_EXEC    = ARGV[7] || "sync_gateway"
 
 platform = PLATFORM.gsub("Darwin", "macosx")
 
@@ -62,6 +63,7 @@ FileUtils.mkdir_p "#{STAGE_DIR}"
                  sed -e s,@@REPO_SHA@@,#{REPO_SHA},g                      |
                  sed -e s,@@PREFIX@@,#{PREFIX},g                          |
                  sed -e s,@@PRODUCT@@,#{PRODUCT},g                        |
+                 sed -e s,@@PRODUCT_EXEC@@,#{PRODUCT_EXEC},g              |
                  sed -e s,@@PRODUCT_BASE@@,#{PRODUCT_BASE},g              |
                  sed -e s,@@PRODUCT_BASE_CAP@@,#{product_base_cap},g      |
                  sed -e s,@@PRODUCT_KIND@@,#{PRODUCT_KIND},g > #{target}}

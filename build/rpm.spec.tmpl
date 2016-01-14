@@ -9,7 +9,7 @@
 Name:           @@PRODUCT@@
 Version:        @@VERSION@@
 Release:        @@RELEASE@@
-Summary:        @@PRODUCT_BASE_CAP@@ Sync Gateway
+Summary:        @@PRODUCT_BASE_CAP@@ @@PRODUCT_EXEC@@
 Group:          Applications/Internet
 License:        Apache
 URL:            http://www.couchbase.com
@@ -27,7 +27,7 @@ Prefix:         @@PREFIX@@
 
 %description
 Gluing Couchbase Lite to Couchbsae Server
-The Couchbase Sync Gateway manages HTTP-based data access for mobile clients.
+The Couchbase @@PRODUCT_EXEC@@ manages HTTP-based data access for mobile clients.
 It handles access control and data routing, so that a single large Couchbase Server
 cluster can manage data for multiple users and complex applications
 
@@ -80,12 +80,12 @@ fi
 
 chmod a+x $RPM_INSTALL_PREFIX0/examples
 
-if [ -z `id -u sync_gateway 2>/dev/null` ]; then
-  useradd -m sync_gateway
+if [ -z `id -u @@PRODUCT_EXEC@@ 2>/dev/null` ]; then
+  useradd -m @@PRODUCT_EXEC@@
 fi
 
 cd @@PREFIX@@/service
-./sync_gateway_service_install.sh
+./@@PRODUCT_EXEC@@_service_install.sh
 
 if ! grep `uname -m` $RPM_INSTALL_PREFIX0/manifest.txt >/dev/null
 then
@@ -105,7 +105,7 @@ exit 0
 
 if [ "$1" = "0" ]; then
   cd @@PREFIX@@/service
-  ./sync_gateway_service_uninstall.sh
+  ./@@PRODUCT_EXEC@@_service_uninstall.sh
 fi
 
 if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
@@ -116,7 +116,7 @@ find $RPM_INSTALL_PREFIX0 -name '*.pyc' | xargs rm -f || true
 
 cat <<EOF
 
-You have successfully uninstalled Couchbase Sync Gateway.
+You have successfully uninstalled Couchbase @@PRODUCT_EXEC@@.
 
 EOF
 
@@ -126,18 +126,18 @@ exit 0
 
 if [ "$1" = "1" ]; then
   cd @@PREFIX@@/service
-  ./sync_gateway_service_upgrade.sh
+  ./@@PRODUCT_EXEC@@_service_upgrade.sh
 fi
 
 if [ "$1" = "0" ]; then
   #kill any sync_gateway processes started by third party, sync_gateway has been uninstalled
-  ps aux | grep -v grep | grep bin/sync_gateway | awk '{print $2}' |
+  ps aux | grep -v grep | grep bin/@@PRODUCT_EXEC@@ | awk '{print $2}' |
   while read line; do
     # kill process
     kill -9 $line
   done
 
-  echo "The sync_gateway user account is still active, remove it manually if it is no longer required"
+  echo "The @@PRODUCT_EXEC@@ user account is still active, remove it manually if it is no longer required"
 fi
 
 exit 0
@@ -149,18 +149,18 @@ if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
 fi
 
 cd @@PREFIX@@/service
-SERVICE_CMD=`./sync_gateway_service_install.sh --servicecmd`
+SERVICE_CMD=`./@@PRODUCT_EXEC@@_service_install.sh --servicecmd`
 
 cat <<EOF
 
-You have successfully installed @@PRODUCT_BASE_CAP@@ Sync Gateway.
+You have successfully installed @@PRODUCT_BASE_CAP@@ @@PRODUCT_EXEC@@.
 
-You can control the Couchbase Sync Gateway service by using the following command:
+You can control the Couchbase @@PRODUCT_EXEC@@ service by using the following command:
 
   ${SERVICE_CMD}
 
-That's it! Sync Gateway is now running on port 4984. We've setup a simple in-memory database
-which works great for exploring Sync Gateway's capabilities. A limited console is available
+That's it! @@PRODUCT_EXEC@@ is now running on port 4984. We've setup a simple in-memory database
+which works great for exploring @@PRODUCT_EXEC@@'s capabilities. A limited console is available
 by opening your browser to http://localhost:4985/_admin/.
 
 The command-line options are:
