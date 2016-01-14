@@ -46,13 +46,11 @@ type IndexPartitionsFunc func() (*base.IndexPartitions, error)
 
 var indexExpvars *expvar.Map
 
-var indexTimingExpvars *expvar.Map
 var latestWriteBatch expvar.Int
 
 func init() {
 	indexExpvars = expvar.NewMap("syncGateway_index")
 	indexExpvars.Set("latest_write_batch", &latestWriteBatch)
-	indexTimingExpvars = expvar.NewMap("syncGateway_indexTiming")
 }
 
 func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error) {
