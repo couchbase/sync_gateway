@@ -81,8 +81,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
-			iterationStartTime := time.Now()
-
 			// Get the last polled stable sequence.  We don't return anything later than stable sequence in each iteration
 			stableClock, err := db.changeCache.GetStableClock(true)
 			if err != nil {
@@ -158,6 +156,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
+					base.LogTo("Changes+", "Not sending doc this iteration %s - later than stable clock", minEntry.ID)
 					continue
 				}
 

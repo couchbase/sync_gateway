@@ -318,6 +318,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 		}
 	}
 
+	base.LogTo("Changes+", "BitFlagStorage.GetChanges has %d entryKeys", len(entryKeys))
 	// Bulk retrieval of individual entries.  Performs deduplication, and reordering into ascending vb and sequence order
 	results := b.bulkLoadEntries(entryKeys, entries)
 
@@ -440,6 +441,7 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 			results = append([]*LogEntry{entry}, results...)
 		}
 	}
+	base.LogTo("Changes+", "bulkLoadEntries returning %d entries", len(results))
 	return results
 }
 
