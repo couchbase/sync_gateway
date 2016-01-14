@@ -25,6 +25,18 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *E
 		rq.Method == "HEAD" || rq.Method == "PUT" || rq.Method == "DELETE" {
 		return nil
 	}
+
+	// Workaround for https://github.com/couchbase/sync_gateway/issues/1419
+	// if the user agent is empty or earlier than 1.2, then we never want to gzip
+	// the entire response for requests to the _bulk_get endpoint, since the clients
+	// are not equipped to handle that.
+	if strings.Contains(rq.URL.Path, "_bulk_get") {
+		userAgentVersion := NewUserAgentVersion(rq.Header.Get("User-Agent"))
+		if userAgentVersion.MajorVersion() <= 1 && userAgentVersion.MinorVersion() < 2 {
+			return nil
+		}
+	}
+
 	return &EncodedResponseWriter{ResponseWriter: response}
 }
 
