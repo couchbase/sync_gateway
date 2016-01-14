@@ -199,6 +199,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleResync)).Methods("POST")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
+	dbr.Handle("/_purge",
+		makeHandler(sc, adminPrivs, (*handler).handlePurge)).Methods("POST")
 	dbr.Handle("/_flush",
 		makeHandler(sc, adminPrivs, (*handler).handleFlush)).Methods("POST")
 	dbr.Handle("/_online",
