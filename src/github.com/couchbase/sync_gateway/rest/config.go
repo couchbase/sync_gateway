@@ -494,7 +494,7 @@ func ParseCommandLine() {
 			config.LogFilePath = logFilePath
 		}
 
-		if skipRunModeValidation != nil {
+		if *skipRunModeValidation == true {
 			config.SkipRunmodeValidation = *skipRunModeValidation
 		}
 
