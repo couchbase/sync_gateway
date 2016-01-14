@@ -41,3 +41,20 @@ func TestUserAgentVersion(t *testing.T) {
 	assert.Equals(t, userAgentVersion.MinorVersion(), 0)
 
 }
+
+func TestUserAgentVersionIsVersionAfter(t *testing.T) {
+
+	userAgentVersion := NewUserAgentVersion("CouchbaseLite/0.3 suff.goes/here)")
+	assert.True(t, userAgentVersion.IsBefore(1, 2))
+	assert.True(t, userAgentVersion.IsEqualToOrAfter(0, 2))
+
+	userAgentVersion = NewUserAgentVersion("CouchbaseLite/1.1.1 suff.goes/here)")
+	assert.True(t, userAgentVersion.IsBefore(1, 3))
+	assert.True(t, userAgentVersion.IsEqualToOrAfter(1, 0))
+
+	userAgentVersion = NewUserAgentVersion("CouchbaseLite/1.3 suff.goes/here)")
+	assert.True(t, userAgentVersion.IsEqualToOrAfter(1, 3))
+	assert.True(t, userAgentVersion.IsEqualToOrAfter(1, 2))
+	assert.True(t, userAgentVersion.IsBefore(1, 4))
+
+}

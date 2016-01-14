@@ -32,7 +32,7 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *E
 	// are not equipped to handle that.
 	if strings.Contains(rq.URL.Path, "_bulk_get") {
 		userAgentVersion := NewUserAgentVersion(rq.Header.Get("User-Agent"))
-		if userAgentVersion.MajorVersion() <= 1 && userAgentVersion.MinorVersion() < 2 {
+		if userAgentVersion.IsBefore(1, 2) {
 			return nil
 		}
 	}
