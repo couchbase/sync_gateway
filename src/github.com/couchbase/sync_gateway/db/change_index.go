@@ -45,6 +45,9 @@ type ChangeIndex interface {
 
 	// Retrieves stable sequence for index
 	GetStableSequence(docID string) SequenceID
+
+	// Retrieves stable sequence for index.  Stale=false forces a reload of the clock from the bucket,
+	// stable=true returns cached value (if available)
 	GetStableClock(stale bool) (clock base.SequenceClock, err error)
 
 	// Utility functions for unit testing
