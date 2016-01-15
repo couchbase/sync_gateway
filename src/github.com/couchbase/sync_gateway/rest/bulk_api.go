@@ -136,7 +136,7 @@ func (h *handler) handleAllDocs() error {
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
-			body, channelSet, access, roleAccess, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
+			body, channelSet, access, roleAccess, _, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
 			if err != nil {
 				row.Status, _ = base.ErrorAsHTTPStatus(err)
 				return row
