@@ -1,4 +1,11 @@
 package channels
+/*
+Tests that the validation is working but not the callback hook.
+
+Functional tests not in this repo
+
+ */
+
 
 import (
 	"github.com/couchbaselabs/go.assert"
