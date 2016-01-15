@@ -171,7 +171,6 @@ func TestIndexChangesAdminBackfill(t *testing.T) {
 
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
-	log.Println("Get Chnages")
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)

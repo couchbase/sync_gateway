@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -516,6 +517,65 @@ func TestDocDeduplication(t *testing.T) {
 		assert.Equals(t, ok, true)
 		assert.Equals(t, rev, expectedRev)
 	}
+
+}
+
+func TestIndexChangesMultipleRevisions(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	var writeResponse struct {
+		Id  string
+		Rev string
+	}
+
+	// Start 10 goroutines, creating 100 docs each, in channel ABC
+	var wg sync.WaitGroup
+	numWriters := 0
+	docsPerWriter := 100
+	for i := 0; i < numWriters; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			revIds := make([]string, docsPerWriter)
+			for j := 0; j < docsPerWriter; j++ {
+				docID := fmt.Sprintf("doc-%d", i*docsPerWriter+j)
+				url := fmt.Sprintf("/db/%s", docID)
+				response = it.sendAdminRequest("PUT", url, `{"channel":["ABC"]}`)
+				json.Unmarshal(response.Body.Bytes(), &writeResponse)
+				revIds[j] = writeResponse.Rev
+			}
+			// write revisions
+			for j := 0; j < docsPerWriter; j++ {
+				docID := fmt.Sprintf("doc-%d", i*docsPerWriter+j)
+				url := fmt.Sprintf("/db/%s?rev=%s", docID, revIds[j])
+				response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+			}
+
+		}(i)
+	}
+	wg.Wait()
+	// Wait for indexing
+	time.Sleep(1 * time.Second)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), numWriters*docsPerWriter)
 
 }
 

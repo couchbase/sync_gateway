@@ -293,6 +293,9 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 				defer entryWg.Done()
 				err := channelStorage.WriteLogEntry(logEntry)
 				if err != nil {
+					// Unrecoverable error writing entry.  Increments error count for handling in main
+					// indexEntries process, below.
+					base.Warn("Error writing entry - entry set will be retried: %v", err)
 					atomic.AddUint32(&errorCount, 1)
 				}
 			}(logEntry, entryErrorCount)
@@ -327,6 +330,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 		// Track vbucket sequences for clock update
 		updatedSequences.SetSequence(logEntry.VbNo, logEntry.Sequence)
 	}
+	entryWg.Wait()
 
 	// Wait group tracks when the current buffer has been completely processed
 	var channelWg sync.WaitGroup
@@ -340,14 +344,17 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 			err := k.addSetToChannelIndex(channelName, entrySet)
 			if err != nil {
 				atomic.AddUint32(&errorCount, 1)
+				// Unrecoverable error writing channel set.  Increments error count for handling in main
+				// indexEntries process, below.
+				base.Warn("Error writing channel set - entry set will be retried: %v", err)
 			}
 		}(channelName, entrySet, channelErrorCount)
 	}
 
 	// Wait for entry and channel processing to complete
-	entryWg.Wait()
 	channelWg.Wait()
 	if atomic.LoadUint32(&entryErrorCount) > 0 || atomic.LoadUint32(&channelErrorCount) > 0 {
+		// Returns error.  Triggers retry handling in the caller.
 		return errors.New("Unrecoverable error indexing entry or channel")
 	}
 

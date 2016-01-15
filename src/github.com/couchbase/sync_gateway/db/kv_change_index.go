@@ -105,8 +105,19 @@ func (k *kvChangeIndex) GetStableSequence(docID string) (seq SequenceID) {
 // check for existence of stable counter.  If present, but no partition map, there's a problem and return error.
 // If both partition map and counter are not present, can safely assume it's a
 // new index.  Return a zero clock and let cbgt initialize DCP feed from zero.
-func (k *kvChangeIndex) GetStableClock() (clock base.SequenceClock, err error) {
-	return k.reader.GetStableClock()
+// If stale=true, returns the latest polled reader clock.
+// If stale=false, forces load from bucket
+func (k *kvChangeIndex) GetStableClock(stale bool) (clock base.SequenceClock, err error) {
+	if stale {
+		result := k.reader.getReaderStableSequence()
+		if result == nil {
+			return k.reader.GetStableClock()
+		} else {
+			return result, nil
+		}
+	} else {
+		return k.reader.GetStableClock()
+	}
 }
 
 func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
