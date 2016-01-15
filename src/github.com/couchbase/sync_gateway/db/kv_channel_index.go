@@ -76,7 +76,8 @@ func (k *kvChannelIndex) AddSet(entries []*LogEntry) error {
 
 	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
 	if err != nil {
-		base.Warn("Error adding entry set:%v", err)
+		// Returns error, will be retried by the main indexing process.
+		base.Warn("Error adding entry set to channel %s: %v", k.channelName, err)
 		return err
 	}
 

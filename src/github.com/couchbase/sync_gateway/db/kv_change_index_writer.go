@@ -293,7 +293,9 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 				defer entryWg.Done()
 				err := channelStorage.WriteLogEntry(logEntry)
 				if err != nil {
-					base.Warn("Error writing entry:%v", err)
+					// Unrecoverable error writing entry.  Increments error count for handling in main
+					// indexEntries process, below.
+					base.Warn("Error writing entry - entry set will be retried: %v", err)
 					atomic.AddUint32(&errorCount, 1)
 				}
 			}(logEntry, entryErrorCount)
@@ -342,7 +344,9 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 			err := k.addSetToChannelIndex(channelName, entrySet)
 			if err != nil {
 				atomic.AddUint32(&errorCount, 1)
-				base.Warn("Error writing channel set:%v", err)
+				// Unrecoverable error writing channel set.  Increments error count for handling in main
+				// indexEntries process, below.
+				base.Warn("Error writing channel set - entry set will be retried: %v", err)
 			}
 		}(channelName, entrySet, channelErrorCount)
 	}
@@ -350,6 +354,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 	// Wait for entry and channel processing to complete
 	channelWg.Wait()
 	if atomic.LoadUint32(&entryErrorCount) > 0 || atomic.LoadUint32(&channelErrorCount) > 0 {
+		// Returns error.  Triggers retry handling in the caller.
 		return errors.New("Unrecoverable error indexing entry or channel")
 	}
 
