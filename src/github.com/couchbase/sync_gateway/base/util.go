@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"sort"
 )
 
 const kMaxDeltaTtl = 60 * 60 * 24 * 30 * time.Second
@@ -337,4 +338,16 @@ func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySl
 	}
 	return sleeper
 
+}
+
+// Uint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.
+type Uint64Slice []uint64
+
+func (s Uint64Slice) Len() int           { return len(s) }
+func (s Uint64Slice) Less(i, j int) bool { return s[i] < s[j] }
+func (s Uint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+// Sort is a convenience method.
+func (s Uint64Slice) Sort() {
+	sort.Sort(s)
 }

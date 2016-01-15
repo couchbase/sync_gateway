@@ -918,7 +918,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
 				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
-	feed, options, filter, channelsArray, _, err := h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, _, err := h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, feed, "longpoll")
 
@@ -935,27 +935,27 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 
 	// Attempt to set heartbeat, timeout to valid values
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
-	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(30000))
 	assert.Equals(t, options.TimeoutMs, uint64(60000))
 
 	// Attempt to set valid timeout, no heartbeat
 	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
-	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.TimeoutMs, uint64(2000))
 
 	// Disable heartbeat, timeout by explicitly setting to zero
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
-	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(0))
 	assert.Equals(t, options.TimeoutMs, uint64(0))
 
 	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
-	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
 	assert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
@@ -963,7 +963,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
 	h.server.config.MaxHeartbeat = 60
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
-	feed, options, filter, channelsArray, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
@@ -1397,6 +1397,106 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 50)
 	assert.Equals(t, changes.Results[49].ID, "doc99")
+
+}
+
+func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+
+	// Create user1
+	response := rt.sendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	assertStatus(t, response, 201)
+	// Create user2
+	response = rt.sendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["beta"]}`)
+	assertStatus(t, response, 201)
+	// Create user3
+	response = rt.sendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha","beta"]}`)
+	assertStatus(t, response, 201)
+
+	// Create user4
+	response = rt.sendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":[]}`)
+	assertStatus(t, response, 201)
+
+	//Create docs
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc3", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc4", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docA", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docB", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docC", `{"channels":["beta"]}`), 201)
+
+	// Create struct to hold changes response
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+
+	//User has access to single channel
+	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
+	request, _ := http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err := json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Results[1].ID, "doc4")
+
+	//User has access to different single channel
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "docB", "docD", "doc1"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user2", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 3)
+	assert.Equals(t, changes.Results[2].ID, "docC")
+
+	//User has access to multile channels
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[3].ID, "docC")
+
+	//User has no channel access
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user4", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 0)
+
+	//Use since value to restrict results
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":5}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 3)
+	assert.Equals(t, changes.Results[2].ID, "docC")
+
+	//Use since value and limit value to restrict results
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":5, "limit":1}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "doc4")
 
 }
 
