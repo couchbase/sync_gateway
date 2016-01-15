@@ -436,7 +436,11 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 		return base.CbgtContext{}, err
 	}
 
-	manager := cbgt.NewManager(
+	managerOptions := map[string]string{
+		"urlPrefix": "/_cbgt/ui",
+	}
+
+	manager := cbgt.NewManagerEx(
 		cbgt.VERSION,
 		cfgCb,
 		uuid,
@@ -448,6 +452,7 @@ func (sc *ServerContext) InitCBGTManager() (base.CbgtContext, error) {
 		sc.config.ClusterConfig.DataDir,
 		server,
 		managerEventHandlers,
+		managerOptions,
 	)
 
 	err = manager.Start(register)
