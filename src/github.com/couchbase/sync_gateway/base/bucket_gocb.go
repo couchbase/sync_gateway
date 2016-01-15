@@ -267,17 +267,19 @@ func (bucket CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucket
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
 			if item.Err != nil && isRecoverableGoCBError(item.Err) {
+				Warn("Recoverable error doing insert during bulk set for key %s - will retry: %v", item.Key, item.Err)
 				retryEntries = append(retryEntries, entry)
 			} else if item.Err != nil {
-				Warn("Non-recoverable error doing insert during bulk set: %v", item.Err)
+				Warn("Non-recoverable error doing insert during bulk set for key %s: %v", item.Key, item.Err)
 			}
 		case *gocb.ReplaceOp:
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
 			if item.Err != nil && isRecoverableGoCBError(item.Err) {
+				Warn("Recoverable error doing insert during bulk set for key %s - will retry: %v", item.Key, item.Err)
 				retryEntries = append(retryEntries, entry)
 			} else if item.Err != nil {
-				Warn("Non-recoverable error doing insert during bulk set: %v", item.Err)
+				Warn("Non-recoverable error doing insert during bulk set for key: %v", item.Key, item.Err)
 			}
 		}
 	}
@@ -400,12 +402,13 @@ func (bucket CouchbaseBucketGoCB) processGetBatch(keys []string, resultAccumulat
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
 			if isRecoverableGoCBError(getOp.Err) {
+				Warn("Recoverable error doing bulk get for key %s - will retry: %v", getOp.Key, getOp.Err)
 				retryKeys = append(retryKeys, getOp.Key)
+			} else if getOp.Err != nil {
+				Warn("Non-recoverable error during bulk get for key %s: %v", getOp.Key, getOp.Err)
 			}
 		}
-
 	}
-
 	return nil
 }
 

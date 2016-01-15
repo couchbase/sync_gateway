@@ -183,6 +183,7 @@ func (b *BitFlagStorage) writeBlockSetsWithCas(blockSets BlockSet) error {
 		})
 	}
 	if err := b.bucket.SetBulk(bulkSets); err != nil {
+		base.Warn("Error on SetBulk - returning: %v", err)
 		return err
 	}
 
@@ -199,13 +200,14 @@ func (b *BitFlagStorage) writeBlockSetsWithCas(blockSets BlockSet) error {
 			wg.Add(1)
 			go func(bulkSetEntryParam *sgbucket.BulkSetEntry) {
 				defer wg.Done()
+				base.Warn("CAS retry for key %s", bulkSetEntryParam.Key)
 				if err := b.writeBlockWithCas(
 					blockKeyToBlock[bulkSetEntryParam.Key],
 					blockSets[bulkSetEntryParam.Key],
 				); err != nil {
+					base.Warn("Error during CAS retry for key %s: %v", bulkSetEntryParam.Key, err)
 					errorChan <- err
 				}
-
 			}(bulkSet)
 
 		}
