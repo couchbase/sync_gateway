@@ -299,60 +299,19 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
  */
 func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []string, options db.ChangesOptions) (error, bool) {
 
-	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
-	var availableChannels channels.TimedSet
-	if h.user != nil {
-		availableChannels = h.user.InheritedChannels()
-		if availableChannels == nil {
-			panic("no channels for user?")
-		}
-		if availableChannels.Contains(channels.UserStarChannel) {
-			availableChannels = nil
-		}
-	}
-
-	filterChannelSet := func(channelMap channels.ChannelMap) []string {
-		var result []string
-		if availableChannels == nil {
-			result = []string{}
-		}
-		for ch, rm := range channelMap {
-			if availableChannels == nil || availableChannels.Contains(ch) {
-				//Do not include channels doc removed from in this rev
-				if rm == nil {
-					result = append(result, ch)
-				}
-			}
-		}
-		return result
-	}
-
-	type changesRowValue struct {
-		Rev      string              `json:"rev"`
-		Channels []string            `json:"channels,omitempty"`
-		Access   map[string]base.Set `json:"access,omitempty"` // for admins only
-	}
-	type changesRow struct {
-		UpdateSeq uint64           `json:"seq,omitempty"`
-		ID        string           `json:"id,omitempty"`
-		Doc       db.Body          `json:"doc,omitempty"`
-		Changes   []*changesRowValue `json:"changes,omitempty"`
-		Error     string           `json:"error,omitempty"`
-		Status    int              `json:"status,omitempty"`
-	}
-
 	// Subroutine that creates a response row for a document:
 	first := true
 	var lastSeq uint64 = 0
-	rowMap := make(map[uint64]*changesRow)
+	//rowMap := make(map[uint64]*changesRow)
+	rowMap := make(map[uint64]*db.ChangeEntry)
 
-	createRow := func(doc db.IDAndRev) *changesRow {
-		row := &changesRow{ID: doc.DocID}
-		value := changesRowValue{}
+	createRow := func(doc db.IDAndRev) *db.ChangeEntry {
+		row := &db.ChangeEntry{ID: doc.DocID}
 
 		// Fetch the document body and other metadata that lives with it:
-		body, channelSet, _, _, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, false)
+		body, _, _, _, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, false)
 		if err != nil {
+			base.LogTo("Changes", "Unable to get changes for docID %v",doc.DocID)
 			return nil
 		}
 
@@ -360,23 +319,17 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 			return nil
 		}
 
-		if body["_removed"] != nil {
-			row.Status = http.StatusForbidden
-			return row
+		if body == nil {
+			return nil
 		}
-		if channels := filterChannelSet(channelSet); channels == nil {
-			row.Status = http.StatusForbidden
-			return row
-		}
+
 		doc.RevID = body["_rev"].(string)
 		doc.Sequence = sequence
 
-		changes := make ([]*changesRowValue, 1)
-		changes[0] = &value
+		changes := make ([]db.ChangeRev, 1)
+		changes[0] = db.ChangeRev{"rev":doc.RevID}
 		row.Changes = changes
-		row.ID = doc.DocID
-		value.Rev = doc.RevID
-		row.UpdateSeq = doc.Sequence
+		row.Seq = db.SequenceID{ Seq: doc.Sequence }
 
 		if options.IncludeDocs {
 			row.Doc = body
@@ -389,22 +342,17 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.response.Write([]byte("{\"results\":[\r\n"))
 
+	var keys base.Uint64Slice
+
 	for _, docID := range explicitDocIds {
 		row := createRow(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0})
 		if row != nil {
-			if row.Status >= 300 {
-				row.Error = base.CouchHTTPErrorName(row.Status)
-			}
-			rowMap[row.UpdateSeq] = row
+			rowMap[row.Seq.Seq] = row
+			keys = append(keys, row.Seq.Seq)
 		}
 	}
 
 	//Write out rows sorted by sequenceID
-	var keys base.Uint64Slice
-	for k := range rowMap {
-		keys = append(keys, k)
-	}
-
 	keys.Sort()
 	for _, k := range keys {
 		if first {
