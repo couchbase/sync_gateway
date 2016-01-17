@@ -19,7 +19,7 @@ var maxVbNo = uint16(1024)
 
 func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPartitions {
 
-	partitionDefs := make([]PartitionStorage, numPartitions)
+	partitionDefs := make(PartitionStorageSet, numPartitions)
 	vbPerPartition := maxVbNo / numPartitions
 	for partition := uint16(0); partition < numPartitions; partition++ {
 		storage := PartitionStorage{

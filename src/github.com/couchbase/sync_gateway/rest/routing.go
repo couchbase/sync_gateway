@@ -213,6 +213,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
+	dbr.Handle("/_index",
+		makeHandler(sc, adminPrivs, (*handler).handleIndex)).Methods("GET")
 	dbr.Handle("/_index/channel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleIndexChannel)).Methods("GET")
 	dbr.Handle("/_index/channels",
