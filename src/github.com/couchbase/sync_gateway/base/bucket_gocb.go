@@ -507,6 +507,10 @@ func isRecoverableGoCBError(err error) bool {
 // GoCB error types - workaround until gocb has public error type lookup support
 func GoCBErrorType(err error) GoCBError {
 
+	if err == nil {
+		return GoCBErr_Unknown
+	}
+
 	// gocb internal errors
 	if strings.Contains(err.Error(), "timed out") {
 		return GoCBErr_Timeout
@@ -607,13 +611,31 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 }
 
 func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added bool, err error) {
-	LogPanic("Unimplemented method: Add()")
-	return false, nil
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+	gocbExpvars.Add("Add", 1)
+	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+
+	if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added bool, err error) {
-	LogPanic("Unimplemented method: AddRaw()")
-	return false, nil
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+	gocbExpvars.Add("AddRaw", 1)
+	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+
+	if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {

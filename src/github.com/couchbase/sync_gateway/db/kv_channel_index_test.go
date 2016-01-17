@@ -11,7 +11,7 @@ import (
 
 func testPartitionMap() *base.IndexPartitions {
 
-	partitions := make([]base.PartitionStorage, 64)
+	partitions := make(base.PartitionStorageSet, 64)
 
 	numPartitions := uint16(64)
 	vbPerPartition := 1024 / numPartitions

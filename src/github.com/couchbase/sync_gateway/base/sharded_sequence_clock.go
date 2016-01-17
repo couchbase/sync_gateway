@@ -5,6 +5,7 @@ import (
 	"expvar"
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 )
 
@@ -35,19 +36,40 @@ type PartitionStorage struct {
 	VbNos []uint16 `json:"vbNos"`
 }
 
+type PartitionStorageSet []PartitionStorage
+
+// Sorts the PartitionStorageSet by Uuid
+func (c PartitionStorageSet) Sort() {
+	sort.Sort(c)
+}
+
+// Implementation of sort.Interface
+func (c PartitionStorageSet) Len() int           { return len(c) }
+func (c PartitionStorageSet) Less(i, j int) bool { return c[i].Uuid < c[j].Uuid }
+func (c PartitionStorageSet) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
+
+func (c PartitionStorageSet) String() string {
+	result := ""
+	c.Sort()
+	for _, partition := range c {
+		result = fmt.Sprintf("%s[%d - %v]", result, partition.Index, partition.VbNos)
+	}
+	return result
+}
+
 type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
 type VbPositionMap map[uint16]uint64     // Map from vbucket to position within partition.  Stored as uint64 to avoid cast during arithmetic
 
 type IndexPartitions struct {
-	PartitionDefs  []PartitionStorage       // Partition definitions, as stored in bucket _idxPartitionMap
+	PartitionDefs  PartitionStorageSet      // Partition definitions, as stored in bucket _idxPartitionMap
 	VbMap          IndexPartitionMap        // Map from vbucket to partition
 	VbPositionMaps map[uint16]VbPositionMap // VBPositionMaps, keyed by partition
 }
 
-func NewIndexPartitions(partitions []PartitionStorage) *IndexPartitions {
+func NewIndexPartitions(partitions PartitionStorageSet) *IndexPartitions {
 
 	indexPartitions := &IndexPartitions{
-		PartitionDefs: make([]PartitionStorage, len(partitions)),
+		PartitionDefs: make(PartitionStorageSet, len(partitions)),
 	}
 	copy(indexPartitions.PartitionDefs, partitions)
 
@@ -543,7 +565,7 @@ func LoadClockCounter(baseKey string, bucket Bucket) (uint64, error) {
 // Index partitions for unit tests
 func SeedTestPartitionMap(bucket Bucket, numPartitions uint16) error {
 	maxVbNo := uint16(1024)
-	partitionDefs := make([]PartitionStorage, numPartitions)
+	partitionDefs := make(PartitionStorageSet, numPartitions)
 	vbPerPartition := maxVbNo / numPartitions
 	for partition := uint16(0); partition < numPartitions; partition++ {
 		storage := PartitionStorage{
