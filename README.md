@@ -16,7 +16,7 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 
 To build Sync Gateway from source, you must have the following installed:
 
-* Go 1.4 or later 
+* Go 1.5 or later 
 * GCC for CGO (required on Sync Gateway 1.2 or later)
 
 On Mac or Unix systems, you can build Sync Gateway from source as follows:
