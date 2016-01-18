@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"errors"
 	"expvar"
+	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,6 +122,10 @@ func (k *kvChangeIndex) GetStableClock(stale bool) (clock base.SequenceClock, er
 	}
 }
 
+// Retrieves the index partition information for the channel index.  Returns error if the partition map
+// is unavailable - this will happen when running as an index reader on a fresh channel index bucket, until
+// the first writer comes online and initializes the partition map.  Callers are expected to cancel their
+// index operation when an error is returned.
 func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 
 	var result *base.IndexPartitions
@@ -136,6 +142,9 @@ func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 	}
 }
 
+// initIndexPartitions first attempts to initialize the index partitions using the partition map document in
+// the index bucket.  If that hasn't been created yet, tries to generate the partition information from CBGT.
+// If unsuccessful on both of these, returns error and leaves k.indexPartitions as nil.
 func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 
 	k.indexPartitionsLock.Lock()
@@ -146,58 +155,36 @@ func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 		return k.indexPartitions, nil
 	}
 
-	var partitionDef []base.PartitionStorage
 	// First attempt to load from the bucket
-	value, _, err := k.reader.indexReadBucket.GetRaw(base.KIndexPartitionKey)
-	indexExpvars.Add("get_indexPartitionMap", 1)
-	if err == nil {
-		if err = json.Unmarshal(value, &partitionDef); err != nil {
-			return nil, err
-		}
+	partitionDef, err := k.loadIndexPartitionsFromBucket()
+	if err != nil {
+		return nil, err
 	}
 
+	indexExpvars.Add("get_indexPartitionMap", 1)
 	// If unable to load from index bucket - attempt to initialize based on cbgt partitions
 	if partitionDef == nil {
-		var manager *cbgt.Manager
-		if k.context != nil {
-			manager = k.context.BucketSpec.CbgtContext.Manager
-		} else {
-			return nil, errors.New("Unable to determine partition map for index - not found in index, and no database context")
+		partitionDef, err = k.retrieveCBGTPartitions()
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("Unable to determine partition map for index - not found in index, and not available from cbgt: %v", err))
 		}
-
-		if manager == nil {
-			return nil, errors.New("Unable to determine partition map for index - not found in index, and no CBGT manager")
-		}
-
-		_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
-		indexName := k.context.GetCBGTIndexNameForBucket(k.context.Bucket)
-		pindexes := planPIndexesByName[indexName]
-
-		for index, pIndex := range pindexes {
-			vbStrings := strings.Split(pIndex.SourcePartitions, ",")
-			// convert string vbNos to uint16
-			vbNos := make([]uint16, len(vbStrings))
-			for i := 0; i < len(vbStrings); i++ {
-				vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
-				if err != nil {
-					base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
-				}
-				vbNos[i] = uint16(vbNumber)
-			}
-			entry := base.PartitionStorage{
-				Index: uint16(index),
-				Uuid:  pIndex.UUID,
-				VbNos: vbNos,
-			}
-			partitionDef = append(partitionDef, entry)
-		}
-
-		// Persist to bucket
-		value, err = json.Marshal(partitionDef)
+		// Add to the bucket
+		value, err := json.Marshal(partitionDef)
 		if err != nil {
 			return nil, err
 		}
-		k.reader.indexReadBucket.SetRaw(base.KIndexPartitionKey, 0, value)
+		added, err := k.reader.indexReadBucket.AddRaw(base.KIndexPartitionKey, 0, value)
+		if err != nil {
+			return nil, err
+		}
+		// If add fails, it may have been written by another node since the last read attempt.  Make
+		// another attempt to use the version from the bucket, to ensure consistency.
+		if added == false {
+			partitionDef, err = k.loadIndexPartitionsFromBucket()
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Create k.indexPartitions based on partitionDef
@@ -205,6 +192,62 @@ func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 	return k.indexPartitions, nil
 }
 
+func (k *kvChangeIndex) loadIndexPartitionsFromBucket() (base.PartitionStorageSet, error) {
+	var partitionDef base.PartitionStorageSet
+	value, _, err := k.reader.indexReadBucket.GetRaw(base.KIndexPartitionKey)
+	if err == nil {
+		if err = json.Unmarshal(value, &partitionDef); err != nil {
+			return nil, err
+		}
+	}
+	return partitionDef, nil
+}
+
+func (k *kvChangeIndex) retrieveCBGTPartitions() (partitionDef base.PartitionStorageSet, err error) {
+
+	var manager *cbgt.Manager
+	if k.context != nil {
+		manager = k.context.BucketSpec.CbgtContext.Manager
+	} else {
+		return nil, errors.New("Unable to retrieve CBGT partitions - no database context")
+	}
+
+	if manager == nil {
+		return nil, errors.New("Unable to retrieve CBGT partitions - no CBGT manager")
+	}
+
+	_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
+	indexName := k.context.GetCBGTIndexNameForBucket(k.context.Bucket)
+	pindexes := planPIndexesByName[indexName]
+
+	for _, pIndex := range pindexes {
+		vbStrings := strings.Split(pIndex.SourcePartitions, ",")
+		// convert string vbNos to uint16
+		vbNos := make([]uint16, len(vbStrings))
+		for i := 0; i < len(vbStrings); i++ {
+			vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
+			if err != nil {
+				base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
+			}
+			vbNos[i] = uint16(vbNumber)
+		}
+		entry := base.PartitionStorage{
+			Index: uint16(0), // see below for index assignment
+			Uuid:  pIndex.UUID,
+			VbNos: vbNos,
+		}
+		partitionDef = append(partitionDef, entry)
+	}
+
+	// NOTE: the ordering of pindexes returned by manager.GetPlanPIndexes isn't fixed (it's doing a map iteration somewhere).
+	//    The mapping from UUID to VbNos will always be consistent.  Sorting by UUID to maintain a consistent index ordering,
+	// then assigning index values.
+	partitionDef.Sort()
+	for i := 0; i < len(partitionDef); i++ {
+		partitionDef[i].Index = uint16(i)
+	}
+	return partitionDef, nil
+}
 func (k *kvChangeIndex) getIndexPartitionMap() (base.IndexPartitionMap, error) {
 
 	partitions, err := k.getIndexPartitions()
@@ -312,6 +355,21 @@ func uint64ToByte(input uint64) []byte {
 type AllChannelStats struct {
 	Channels []ChannelStats `json:"channels"`
 }
+
+type IndexStats struct {
+	PartitionStats PartitionStats `json:"partitions"`
+}
+
+type PartitionStats struct {
+	PartitionMap    PartitionMapStats `json:"index_partitions"`
+	CBGTMap         PartitionMapStats `json:"cbgt_partitions"`
+	PartitionsMatch bool              `json:"matches"`
+}
+
+type PartitionMapStats struct {
+	Storage base.PartitionStorageSet `json:"partitions"`
+}
+
 type ChannelStats struct {
 	Name         string              `json:"channel_name"`
 	IndexStats   ChannelIndexStats   `json:"index,omitempty"`
@@ -325,6 +383,19 @@ type ChannelIndexStats struct {
 type ChannelPollingStats struct {
 	Clock     string `json:"poll_clock,omitempty"`
 	ClockHash uint64 `json:"poll_clock_hash,omitempty"`
+}
+
+func (db *DatabaseContext) IndexStats() (indexStats *IndexStats, err error) {
+
+	kvIndex, ok := db.changeCache.(*kvChangeIndex)
+	if !ok {
+		return nil, errors.New("No channel index in use")
+	}
+
+	indexStats = &IndexStats{}
+
+	indexStats.PartitionStats, err = kvIndex.generatePartitionStats()
+	return indexStats, err
 }
 
 func (db *DatabaseContext) IndexChannelStats(channelName string) (*ChannelStats, error) {
@@ -392,6 +463,36 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 		}
 	}
 	return channelStats, nil
+}
+
+func (k *kvChangeIndex) generatePartitionStats() (PartitionStats, error) {
+
+	partitionStats := PartitionStats{}
+	partitions, err := k.getIndexPartitions()
+	if err != nil {
+		return partitionStats, err
+	}
+
+	if partitions != nil {
+		partitions.PartitionDefs.Sort()
+		partitionStats.PartitionMap = PartitionMapStats{
+			Storage: partitions.PartitionDefs,
+		}
+	}
+
+	cbgtPartitions, err := k.retrieveCBGTPartitions()
+	if err != nil {
+		return partitionStats, err
+	}
+	if cbgtPartitions != nil {
+		cbgtPartitions.Sort()
+		partitionStats.CBGTMap = PartitionMapStats{
+			Storage: cbgtPartitions,
+		}
+	}
+
+	partitionStats.PartitionsMatch = reflect.DeepEqual(partitionStats.PartitionMap, partitionStats.CBGTMap)
+	return partitionStats, nil
 }
 
 func IsNotFoundError(err error) bool {

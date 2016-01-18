@@ -11,15 +11,15 @@ package rest
 
 import (
 	"encoding/json"
-	"net/http"
 	"fmt"
 	"github.com/gorilla/mux"
+	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"time"
 	"sync/atomic"
+	"time"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -48,12 +48,12 @@ func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
 	dbState := atomic.LoadUint32(&h.db.State)
 	//If the DB is already trasitioning to: online or is online silently return
-	if (dbState == db.DBOnline || dbState == db.DBStarting) {
+	if dbState == db.DBOnline || dbState == db.DBStarting {
 		return nil
 	}
 
 	//If the DB is currently re-syncing return an error asking the user to retry later
-	if (dbState == db.DBResyncing) {
+	if dbState == db.DBResyncing {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is in progress, this may take some time, try again later")
 	}
 
@@ -63,12 +63,12 @@ func (h *handler) handleDbOnline() error {
 	}
 
 	var input struct {
-		Delay int           `json:"delay"`
+		Delay int `json:"delay"`
 	}
 
-	input.Delay = kDefaultDBOnlineDelay;
+	input.Delay = kDefaultDBOnlineDelay
 
-	json.Unmarshal(body, &input);
+	json.Unmarshal(body, &input)
 
 	base.LogTo("CRUD", "Taking Database : %v, online in %v seconds", h.db.Name, input.Delay)
 
@@ -104,7 +104,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
 	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
-		base.LogTo("CRUD", "Unable to take Database : %v, offline",h.db.Name)
+		base.LogTo("CRUD", "Unable to take Database : %v, offline", h.db.Name)
 	}
 
 	return err
@@ -344,6 +344,20 @@ func (h *handler) getRoles() error {
 	return err
 }
 
+// HTTP handler for /index
+func (h *handler) handleIndex() error {
+	base.LogTo("HTTP", "Index")
+
+	indexStats, err := h.db.IndexStats()
+
+	if err != nil {
+		return err
+	}
+	bytes, err := json.Marshal(indexStats)
+	h.response.Write(bytes)
+	return err
+}
+
 // HTTP handler for /index/channel
 func (h *handler) handleIndexChannel() error {
 	channelName := h.PathVar("channel")
@@ -373,7 +387,6 @@ func (h *handler) handleIndexAllChannels() error {
 	return err
 }
 
-
 func (h *handler) handlePurge() error {
 	h.assertAdminOnly()
 
@@ -393,18 +406,18 @@ func (h *handler) handlePurge() error {
 
 	for key, value := range input {
 		//For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
-		base.LogTo("CRUD","purging document = %v",key)
+		base.LogTo("CRUD", "purging document = %v", key)
 
 		if revisionList, ok := value.([]interface{}); ok {
 
 			//There should only be a single revision entry of "*"
 			if len(revisionList) != 1 {
-				base.LogTo("CRUD","Revision list for doc ID %v, should contain exactly one entry",key)
+				base.LogTo("CRUD", "Revision list for doc ID %v, should contain exactly one entry", key)
 				continue //skip this entry its not valid
 			}
 
 			if revisionList[0] != "*" {
-				base.LogTo("CRUD","Revision entry for doc ID %v, should be the '*' revison", key)
+				base.LogTo("CRUD", "Revision entry for doc ID %v, should be the '*' revison", key)
 				continue //skip this entry its not valid
 			}
 
@@ -427,7 +440,7 @@ func (h *handler) handlePurge() error {
 			}
 
 		} else {
-			base.LogTo("CRUD","Revision list for doc ID %v, is not an array, ", key)
+			base.LogTo("CRUD", "Revision list for doc ID %v, is not an array, ", key)
 			continue //skip this entry its not valid
 		}
 	}

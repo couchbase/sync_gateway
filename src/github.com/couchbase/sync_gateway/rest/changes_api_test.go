@@ -769,7 +769,7 @@ func assertTrue(t *testing.T, success bool, message string) {
 // Index partitions for testing
 func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	maxVbNo := uint16(1024)
-	partitionDefs := make([]base.PartitionStorage, numPartitions)
+	partitionDefs := make(base.PartitionStorageSet, numPartitions)
 	vbPerPartition := maxVbNo / numPartitions
 	for partition := uint16(0); partition < numPartitions; partition++ {
 		storage := base.PartitionStorage{

@@ -570,7 +570,7 @@ func TestChangeIndexAddSet(t *testing.T) {
 func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
 	maxVbNo := uint16(1024)
 	//maxVbNo := uint16(64)
-	partitionDefs := make([]base.PartitionStorage, numPartitions)
+	partitionDefs := make(base.PartitionStorageSet, numPartitions)
 	vbPerPartition := maxVbNo / numPartitions
 	for partition := uint16(0); partition < numPartitions; partition++ {
 		storage := base.PartitionStorage{

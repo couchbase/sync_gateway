@@ -64,6 +64,43 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 
 }
 
+func CouchbaseTestAddRaw(t *testing.T) {
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestAddRaw"
+	val := []byte("bar")
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	added, err := bucket.AddRaw(key, 0, val)
+	if err != nil {
+		t.Errorf("Error calling AddRaw(): %v", err)
+	}
+	assertTrue(t, added, "AddRaw returned added=false, expected true")
+
+	rv, _, err := bucket.GetRaw(key)
+	if string(rv) != string(val) {
+		t.Errorf("%v != %v", string(rv), string(val))
+	}
+
+	// Calling AddRaw for existing value should return added=false, no error
+	added, err = bucket.AddRaw(key, 0, val)
+	if err != nil {
+		t.Errorf("Error calling AddRaw(): %v", err)
+	}
+	assertTrue(t, added == false, "AddRaw returned added=true for duplicate, expected false")
+
+	err = bucket.Delete(key)
+	if err != nil {
+		t.Errorf("Error removing key from bucket")
+	}
+
+}
+
 func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
