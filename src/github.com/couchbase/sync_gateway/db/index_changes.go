@@ -16,17 +16,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-// kContinuousHashFrequency defines, for a continuous feed, how frequently a hash value is calculated.
-// Set to 100 (hash is calculated once every 100 docs in the changes response).  Frequent hashing has
-// two main performance impacts.  The first is just the time spent storing the hash value in the DB.  The
-// second is that increased hashing results in increased hash collisions (which will further increase the
-// time spent storing the hash value in the DB).
-// Changes feeds that are interrupted will resume from the most recent hash - so the number needs to
-// be small enough to avoid unreasonably large re-processing of changes entries by clients.
-const (
-	kContinuousHashFrequency = 100
-)
-
 // Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	to := ""
@@ -40,22 +29,11 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
-		// lastSent is used to force clock hashing for the last sequence returned (for use as last_seq)
-		var lastSent *ChangeEntry
 		var cumulativeClock *base.SyncSequenceClock
-		var continuousLastHash string
+		var lastHashedValue string
 		hashedEntryCount := 0
 		defer func() {
 			base.LogTo("Changes+", "MultiChangesFeed done %s", to)
-			// Calculate hash for last entry sent, if not already present
-			if lastSent != nil && cumulativeClock != nil && lastSent.Seq.Clock != nil {
-				clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
-				if err != nil {
-					base.Warn("Error calculating hash for last sent sequence: %v", err)
-				} else {
-					lastSent.Seq.Clock.SetHashedValue(clockHash)
-				}
-			}
 			close(output)
 		}()
 
@@ -113,46 +91,17 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// and writes them to the output channel:
 			current := make([]*ChangeEntry, len(feeds))
 			var sentSomething bool
+			nextEntry := getNextSequenceFromFeeds(current, feeds)
 			for {
-				// Read more entries to fill up the current[] array:
-				for i, cur := range current {
-					if cur == nil && feeds[i] != nil {
-						var ok bool
-						current[i], ok = <-feeds[i]
-						if !ok {
-							feeds[i] = nil
-						}
-					}
-				}
-
-				// Find the current entry with the minimum sequence:
-				minSeq := MaxSequenceID
-				var minEntry *ChangeEntry
-				for _, cur := range current {
-					if cur != nil && cur.Seq.Before(minSeq) {
-						minSeq = cur.Seq
-						minEntry = cur
-					}
-				}
+				minEntry := nextEntry
 
 				if minEntry == nil {
 					break // Exit the loop when there are no more entries
 				}
 
-				// Clear the current entries for any duplicates of the sequence just sent:
-				for i, cur := range current {
-					if cur != nil && cur.Seq == minSeq {
-						current[i] = nil
-						// Also concatenate the matching entries' Removed arrays:
-						if cur != minEntry && cur.Removed != nil {
-							if minEntry.Removed == nil {
-								minEntry.Removed = cur.Removed
-							} else {
-								minEntry.Removed = minEntry.Removed.Union(cur.Removed)
-							}
-						}
-					}
-				}
+				// Calculate next entry here, to help identify whether minEntry is the last entry we're sending,
+				// to guarantee hashing
+				nextEntry = getNextSequenceFromFeeds(current, feeds)
 
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
@@ -168,13 +117,19 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				if minEntry.Seq.TriggeredBy == 0 {
 					// Update the cumulative clock, and stick it on the entry.
 					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
-					// TODO: Potential enhancement - for first iteration loop, always set hash on last entry.
-					continuousLastHash = db.calculateHashWhenNeeded(
+					// Force new hash generation for non-continuous changes feeds if this is the last entry to be sent - either
+					// because there are no more entries in the channel feeds, or we're going to hit the limit.
+					forceHash := false
+					if options.Continuous == false && (nextEntry == nil || options.Limit == 1) {
+						forceHash = true
+					}
+					lastHashedValue = db.calculateHashWhenNeeded(
 						options,
 						minEntry,
 						cumulativeClock,
 						&hashedEntryCount,
-						continuousLastHash,
+						lastHashedValue,
+						forceHash,
 					)
 
 				} else {
@@ -198,7 +153,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				case <-options.Terminator:
 					return
 				case output <- minEntry:
-					lastSent = minEntry
 				}
 				sentSomething = true
 
@@ -260,35 +214,72 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	return output, nil
 }
 
-// Determines whether the clock hash should be calculated for the entry. For non-continuous changes feeds, hash is only calculated for
-// the last entry sent (for use in last_seq), and is done in the defer for the main VectorMultiChangesFeed.
-// For continuous changes feeds, we want to calculate the hash for every nth entry, where n=kContinuousHashFrequency.  To ensure that
-// clients can restart a new changes feed based on any sequence in the continuous feed, we set the last hash calculated as the LowHash
-// value on the sequence.
-func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *ChangeEntry, cumulativeClock base.SequenceClock, hashedEntryCount *int, continuousLastHash string) string {
-
-	if options.Continuous != true {
-		// For non-continuous, only need to calculate hash for lastSent entry.  Initialize empty clock and return
-		entry.Seq.Clock = base.NewSyncSequenceClock()
-	} else {
-		// When hashedEntryCount == 0, recalculate hash
-		if *hashedEntryCount == 0 {
-			clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
-			if err != nil {
-				base.Warn("Error calculating hash for clock:%v", base.PrintClock(cumulativeClock))
-				return continuousLastHash
-			} else {
-				entry.Seq.Clock = base.NewSyncSequenceClock()
-				entry.Seq.Clock.SetHashedValue(clockHash)
-				continuousLastHash = clockHash
+// Gets the next sequence from the set of feeds, including handling for sequences appearing in multiple feeds.
+func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntry) (minEntry *ChangeEntry) {
+	// Read more entries to fill up the current[] array:
+	for i, cur := range current {
+		if cur == nil && feeds[i] != nil {
+			var ok bool
+			current[i], ok = <-feeds[i]
+			if !ok {
+				feeds[i] = nil
 			}
-			*hashedEntryCount = kContinuousHashFrequency
-		} else {
-			entry.Seq.LowHash = continuousLastHash
-			*hashedEntryCount--
 		}
 	}
-	return continuousLastHash
+	// Find the current entry with the minimum sequence:
+	minSeq := MaxSequenceID
+	for _, cur := range current {
+		if cur != nil && cur.Seq.Before(minSeq) {
+			minSeq = cur.Seq
+			minEntry = cur
+		}
+	}
+
+	if minEntry == nil {
+		return nil // No more entries
+	}
+
+	// Clear the current entries for any duplicates of the sequence just sent:
+	for i, cur := range current {
+		if cur != nil && cur.Seq == minSeq {
+			current[i] = nil
+			// Also concatenate the matching entries' Removed arrays:
+			if cur != minEntry && cur.Removed != nil {
+				if minEntry.Removed == nil {
+					minEntry.Removed = cur.Removed
+				} else {
+					minEntry.Removed = minEntry.Removed.Union(cur.Removed)
+				}
+			}
+		}
+	}
+	return minEntry
+}
+
+// Determines whether the clock hash should be calculated for the entry. For non-continuous changes feeds, hash is only calculated for
+// the last entry sent (for use in last_seq), and is done in the defer for the main VectorMultiChangesFeed.
+// For continuous changes feeds, we want to calculate the hash for every nth entry, where n=kChangesHashFrequency.  To ensure that
+// clients can restart a new changes feed based on any sequence in the continuous feed, we set the last hash calculated as the LowHash
+// value on the sequence.
+func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *ChangeEntry, cumulativeClock base.SequenceClock, hashedEntryCount *int, lastHashedValue string, forceHash bool) string {
+
+	// When hashedEntryCount == 0 or forceHash==true recalculate hash
+	if *hashedEntryCount == 0 || forceHash {
+		clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
+		if err != nil {
+			base.Warn("Error calculating hash for clock:%v", base.PrintClock(cumulativeClock))
+			return lastHashedValue
+		} else {
+			entry.Seq.Clock = base.NewSyncSequenceClock()
+			entry.Seq.Clock.SetHashedValue(clockHash)
+			lastHashedValue = clockHash
+		}
+		*hashedEntryCount = db.SequenceHasher.getHashFrequency()
+	} else {
+		entry.Seq.LowHash = lastHashedValue
+		*hashedEntryCount--
+	}
+	return lastHashedValue
 }
 
 // Creates a go-channel of ChangeEntry for each channel in channelsSince.  Each go-channel sends the ordered entries for that channel.
