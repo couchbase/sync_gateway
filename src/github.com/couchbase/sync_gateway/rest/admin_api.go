@@ -344,7 +344,7 @@ func (h *handler) getRoles() error {
 	return err
 }
 
-// HTTP handler for /index/channel
+// HTTP handler for /index
 func (h *handler) handleIndex() error {
 	base.LogTo("HTTP", "Index")
 

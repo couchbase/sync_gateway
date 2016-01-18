@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"expvar"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -121,6 +122,10 @@ func (k *kvChangeIndex) GetStableClock(stale bool) (clock base.SequenceClock, er
 	}
 }
 
+// Retrieves the index partition information for the channel index.  Returns error if the partition map
+// is unavailable - this will happen when running as an index reader on a fresh channel index bucket, until
+// the first writer comes online and initializes the partition map.  Callers are expected to cancel their
+// index operation when an error is returned.
 func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 
 	var result *base.IndexPartitions
@@ -137,6 +142,9 @@ func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 	}
 }
 
+// initIndexPartitions first attempts to initialize the index partitions using the partition map document in
+// the index bucket.  If that hasn't been created yet, tries to generate the partition information from CBGT.
+// If unsuccessful on both of these, returns error and leaves k.indexPartitions as nil.
 func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 
 	k.indexPartitionsLock.Lock()
@@ -158,7 +166,7 @@ func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 	if partitionDef == nil {
 		partitionDef, err = k.retrieveCBGTPartitions()
 		if err != nil {
-			return nil, err
+			return nil, errors.New(fmt.Sprintf("Unable to determine partition map for index - not found in index, and not available from cbgt: %v", err))
 		}
 		// Add to the bucket
 		value, err := json.Marshal(partitionDef)
@@ -201,11 +209,11 @@ func (k *kvChangeIndex) retrieveCBGTPartitions() (partitionDef base.PartitionSto
 	if k.context != nil {
 		manager = k.context.BucketSpec.CbgtContext.Manager
 	} else {
-		return nil, errors.New("Unable to determine partition map for index - not found in index, and no database context")
+		return nil, errors.New("Unable to retrieve CBGT partitions - no database context")
 	}
 
 	if manager == nil {
-		return nil, errors.New("Unable to determine partition map for index - not found in index, and no CBGT manager")
+		return nil, errors.New("Unable to retrieve CBGT partitions - no CBGT manager")
 	}
 
 	_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
