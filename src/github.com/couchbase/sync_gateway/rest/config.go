@@ -174,8 +174,15 @@ type CacheConfig struct {
 
 type ChannelIndexConfig struct {
 	BucketConfig
-	IndexWriter bool   `json:"writer,omitempty"` // TODO: Partition information
-	NumShards   uint16 `json:"num_shards,omitempty"`
+	IndexWriter        bool                `json:"writer,omitempty"`      // Whether SG node is a channel index writer
+	NumShards          uint16              `json:"num_shards,omitempty"`  // Number of partitions in the channel index
+	SequenceHashConfig *SequenceHashConfig `json:"seq_hashing,omitempty"` // Sequence hash configuration
+}
+
+type SequenceHashConfig struct {
+	BucketConfig         // Bucket used for Sequence hashing
+	Expiry       *uint32 `json:"expiry,omitempty"`         // Expiry set for hash values on latest use
+	Frequency    *int    `json:"hash_frequency,omitempty"` // Frequency of sequence hashing in changes feeds
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

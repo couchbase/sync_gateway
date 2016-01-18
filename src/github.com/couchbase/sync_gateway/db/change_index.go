@@ -72,18 +72,20 @@ const (
 )
 
 type ChangeIndexOptions struct {
-	Type      IndexType       // Index type
-	Spec      base.BucketSpec // Indexing bucket spec
-	Bucket    base.Bucket     // Indexing bucket
-	Writer    bool            // Cache Writer
-	Options   CacheOptions    // Caching options
-	NumShards uint16          // The number of CBGT shards to use
+	Type          IndexType       // Index type
+	Spec          base.BucketSpec // Indexing bucket spec
+	Bucket        base.Bucket     // Indexing bucket
+	Writer        bool            // Cache Writer
+	Options       CacheOptions    // Caching options
+	NumShards     uint16          // The number of CBGT shards to use]
+	HashFrequency uint16          // Hash frequency for changes feeds
 }
 
 type SequenceHashOptions struct {
-	Bucket base.Bucket // Hash lookup bucket
-	Size   uint8       // Hash keyset size log 2
-	Expiry *uint32     // Expiry for untouched hash bucket docs
+	Bucket        base.Bucket // Hash lookup bucket
+	Size          uint8       // Hash keyset size log 2
+	Expiry        *uint32     // Expiry for untouched hash bucket docs
+	HashFrequency *int        // Hash frequency for changes feed
 }
 
 // ChannelIndex defines the API used by the ChangeIndex to interact with the underlying index storage

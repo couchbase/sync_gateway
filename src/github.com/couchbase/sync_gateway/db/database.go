@@ -66,11 +66,10 @@ type DatabaseContext struct {
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
 	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
 	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
-	Options            DatabaseContextOptions
+	Options            DatabaseContextOptions  // Database Context Options
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              uint32                  //The runtime state of the DB from a service perspective
-	ExitChanges        chan struct{}           //active _changes feeds on the DB will close when this channel is closed
-
+	State              uint32                  // The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
 }
 
 type DatabaseContextOptions struct {

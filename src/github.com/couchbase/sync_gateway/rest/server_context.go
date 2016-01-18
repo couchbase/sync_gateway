@@ -688,15 +688,31 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		channelIndexOptions.Spec = indexSpec
 		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
 
-		// TODO: separate config of hash bucket
-		sequenceHashOptions.Bucket, err = base.GetBucket(indexSpec, nil)
+		// Hash bucket defaults to index bucket, but can be customized.
+		sequenceHashOptions.Size = 32
+		sequenceHashBucketSpec := indexSpec
+		hashConfig := config.ChannelIndex.SequenceHashConfig
+		if hashConfig != nil {
+			if hashConfig.Server != nil {
+				sequenceHashBucketSpec.Server = *hashConfig.Server
+			}
+			if hashConfig.Pool != nil {
+				sequenceHashBucketSpec.PoolName = *hashConfig.Pool
+			}
+			if hashConfig.Bucket != nil {
+				sequenceHashBucketSpec.BucketName = *hashConfig.Bucket
+			}
+			sequenceHashOptions.Expiry = hashConfig.Expiry
+			sequenceHashOptions.HashFrequency = hashConfig.Frequency
+		}
+
+		sequenceHashOptions.Bucket, err = base.GetBucket(sequenceHashBucketSpec, nil)
 		if err != nil {
 			base.Logf("Error opening sequence hash bucket %q, pool %q, server <%s>",
-				indexBucketName, indexPool, indexServer)
-			// TODO: revert to local index?
+				sequenceHashBucketSpec.BucketName, sequenceHashBucketSpec.PoolName, sequenceHashBucketSpec.Server)
 			return nil, err
 		}
-		sequenceHashOptions.Size = 32
+
 	} else {
 		channelIndexOptions = nil
 	}

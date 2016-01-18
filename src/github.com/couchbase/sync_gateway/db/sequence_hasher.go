@@ -26,6 +26,7 @@ const kHashPrefix = "_sequence:"
 const kDefaultHashExpiry = uint32(2592000)
 const kDefaultSize = uint8(32)
 const kDefaultHasherCacheCapacity = 500
+const kDefaultChangesHashFrequency = 100
 
 type sequenceHasher struct {
 	bucket        base.Bucket              // Bucket to store hashed instances
@@ -37,6 +38,7 @@ type sequenceHasher struct {
 	lruList       *list.List               // List ordered by most recent access (Front is newest)
 	cacheCapacity int                      // Max number of hashes to cache
 	cacheLock     sync.Mutex               // mutex for cache
+	hashFrequency int                      // Changes hash frequency.  See getHashFrequency() for description
 }
 
 type sequenceHash struct {
@@ -77,6 +79,11 @@ func NewSequenceHasher(options *SequenceHashOptions) (*sequenceHasher, error) {
 		expireTime = *options.Expiry
 	}
 
+	changesHashFrequency := kDefaultChangesHashFrequency
+	if options.HashFrequency != nil {
+		changesHashFrequency = *options.HashFrequency
+	}
+
 	return &sequenceHasher{
 		bucket:        options.Bucket,
 		exp:           size,
@@ -86,6 +93,7 @@ func NewSequenceHasher(options *SequenceHashOptions) (*sequenceHasher, error) {
 		cache:         map[uint64]*list.Element{},
 		lruList:       list.New(),
 		cacheCapacity: kDefaultHasherCacheCapacity,
+		hashFrequency: changesHashFrequency,
 	}, nil
 
 }
@@ -273,6 +281,16 @@ func (s *sequenceHasher) getCacheValue(hashValue uint64) (value *hashCacheValue)
 func (s *sequenceHasher) putCacheValue(hashValue uint64, clocks *storedClocks) {
 	value := s.getCacheValue(hashValue)
 	value.store(clocks)
+}
+
+// getHashFrequency returns how frequently a hash value is calculated for sequences in a changes response.  Defaults to kDefaultChangesHashFrequency.
+// Frequent hashing has two main performance impacts.  The first is the time spent storing the hash value in the DB.
+// The second is that increased hashing results in increased hash collisions (which will further increase the
+// time spent storing the hash value in the DB).
+// Changes feeds that are interrupted will resume from the most recent hash - so the number needs to
+// be small enough to avoid unreasonably large re-processing/revs_diff of changes entries by clients.
+func (s *sequenceHasher) getHashFrequency() int {
+	return s.hashFrequency
 }
 
 // Gets the stored clocks out of a hashCacheValue.  If nil, will attempt to load from the index bucket
