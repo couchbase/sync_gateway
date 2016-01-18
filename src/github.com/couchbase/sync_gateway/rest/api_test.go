@@ -1455,7 +1455,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 3)
 	assert.Equals(t, changes.Results[2].ID, "docC")
 
-	//User has access to multile channels
+	//User has access to multiple channels
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
 	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	request.SetBasicAuth("user3", "letmein")
@@ -1497,6 +1497,33 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].ID, "doc4")
+
+	//test parameter include_docs=true
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "include_docs":true }`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[3].ID, "docC")
+	assert.Equals(t, changes.Results[3].Doc["_id"], "docC")
+
+	//test parameter style=all_docs
+	//Create a conflict revision on docC
+	assertStatus(t, rt.sendRequest("POST", "/db/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC", "_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
+
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "style":"all_docs"}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[3].ID, "docC")
+	assert.Equals(t, len(changes.Results[3].Changes), 2)
 
 }
 

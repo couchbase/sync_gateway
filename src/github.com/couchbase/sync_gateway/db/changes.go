@@ -57,6 +57,9 @@ type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
+func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
+	db.addDocToChangeEntry(entry, options)
+}
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	includeConflicts := options.Conflicts && entry.branched
@@ -153,6 +156,10 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 		change.Removed = channels.SetOf(channelName)
 	}
 	return change
+}
+
+func (ce *ChangeEntry) SetBranched (isBranched bool) {
+	ce.branched = isBranched
 }
 
 func makeErrorEntry(message string) ChangeEntry {
