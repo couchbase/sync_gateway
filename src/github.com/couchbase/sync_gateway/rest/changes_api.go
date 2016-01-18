@@ -309,7 +309,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		row := &db.ChangeEntry{ID: doc.DocID}
 
 		// Fetch the document body and other metadata that lives with it:
-		body, _, _, _, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, false)
+		body, _, _, _, flags, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, false)
 		if err != nil {
 			base.LogTo("Changes", "Unable to get changes for docID %v",doc.DocID)
 			return nil
@@ -330,9 +330,10 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		changes[0] = db.ChangeRev{"rev":doc.RevID}
 		row.Changes = changes
 		row.Seq = db.SequenceID{ Seq: doc.Sequence }
+		row.SetBranched((flags & channels.Branched) != 0)
 
-		if options.IncludeDocs {
-			row.Doc = body
+		if options.IncludeDocs || options.Conflicts {
+			h.db.AddDocToChangeEntry(row, options)
 		}
 
 		return row
