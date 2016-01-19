@@ -1,4 +1,5 @@
 // +build windows
+
 package main
 
 import (
@@ -14,43 +15,45 @@ var logger service.Logger
 type program struct {
 	ExePath     string
 	ConfigPath  string
-	SyncGateway *exec.Cmd
+	SGAccel     *exec.Cmd
 }
 
 func (p *program) Start(s service.Service) error {
 	go p.run()
 	return nil
 }
+
 func (p *program) run() {
-	logger.Infof("Starting Sync Gateway service using command: `%s %s`", p.ExePath, p.ConfigPath)
+	logger.Infof("Starting the Sync Gateway Accelerator Accelerator service using command: `%s %s`", p.ExePath, p.ConfigPath)
 
 	if p.ConfigPath != "" {
-		p.SyncGateway = exec.Command(p.ExePath, p.ConfigPath)
+		p.SGAccel = exec.Command(p.ExePath, p.ConfigPath)
 	} else {
-		p.SyncGateway = exec.Command(p.ExePath)
+		p.SGAccel = exec.Command(p.ExePath)
 	}
-	err := p.SyncGateway.Start()
+	err := p.SGAccel.Start()
 	if err != nil {
-		logger.Errorf("Failed to start Sync Gateway due to error %v", err)
+		logger.Errorf("Failed to start Sync Gateway Accelerator due to error %v", err)
 		return
 	}
-	err = p.SyncGateway.Wait()
+	err = p.SGAccel.Wait()
 	if err != nil {
-		logger.Errorf("Sync Gateway exitting with status = %v", err)
+		logger.Errorf("Sync Gateway Accelerator exiting with %v", err)
+		panic("Failed to start Sync Gateway Accelerator service.")
 	}
 }
 
 func (p *program) Stop(s service.Service) error {
-	logger.Infof("Stopping Sync Gateway service...")
-	p.SyncGateway.Process.Kill()
+	logger.Infof("Stopping Sync Gateway Accelerator Accelerator service...")
+	p.SGAccel.Process.Kill()
 	return nil
 }
 
 func main() {
 	svcConfig := &service.Config{
-		Name:        "SyncGateway",
-		DisplayName: "Couchbase Sync Gateway",
-		Description: "Couchbase Sync Gateway mobile application REST gateway service.",
+		Name:        "SGAccel",
+		DisplayName: "Couchbase Sync Gateway Accelerator Accelerator",
+		Description: "Couchbase Sync Gateway Accelerator Accelerator performance and scalability service.",
 	}
 
 	var exePath string
@@ -58,10 +61,10 @@ func main() {
 
 	switch len(os.Args) {
 	case 2:
-		exePath = "C:\\Program Files (x86)\\Couchbase\\sync_gateway.exe" // Uses default binary image path
+		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe"     // Uses default binary image path
 		svcConfig.Arguments = []string{"start"}                          // Uses the default config
 	case 3:
-		exePath = "C:\\Program Files (x86)\\Couchbase\\sync_gateway.exe" // Uses default binary image path
+		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe"     // Uses default binary image path
 		configPath = os.Args[2]                                          // Uses custom config
 		svcConfig.Arguments = []string{"start", configPath}
 	case 4:
@@ -87,29 +90,29 @@ func main() {
 
 	switch {
 	case os.Args[1] == "install":
-		logger.Info("Installing Sync Gateway")
+		logger.Info("Installing Sync Gateway Accelerator")
 		err := s.Install()
 		if err != nil {
-			logger.Errorf("Failed to install Sync Gateway service: %s", err)
+			logger.Errorf("Failed to install Sync Gateway Accelerator service: %s", err)
 		}
 		return
 	case os.Args[1] == "uninstall":
-		logger.Info("Uninstalling Sync Gateway")
+		logger.Info("Uninstalling Sync Gateway Accelerator")
 		err := s.Uninstall()
 		if err != nil {
-			logger.Errorf("Failed to uninstall Sync Gateway service: %s", err)
+			logger.Errorf("Failed to uninstall Sync Gateway Accelerator service: %s", err)
 		}
 		return
 	case os.Args[1] == "stop":
 		err := s.Stop()
 		if err != nil {
-			logger.Errorf("Failed to stop Sync Gateway service: %s", err)
+			logger.Errorf("Failed to stop Sync Gateway Accelerator service: %s", err)
 		}
 		return
 	case os.Args[1] == "restart":
 		err := s.Restart()
 		if err != nil {
-			logger.Errorf("Failed to restart Sync Gateway service: %s", err)
+			logger.Errorf("Failed to restart Sync Gateway Accelerator service: %s", err)
 		}
 		return
 	}
@@ -118,6 +121,7 @@ func main() {
 
 	if err != nil {
 		logger.Error(err)
+		s.Stop()
 	}
-	logger.Infof("Exiting Sync Gateway service.")
+	logger.Infof("Exiting Sync Gateway Accelerator service.")
 }
