@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+
 )
 
 const funcWrapper = `
@@ -100,11 +101,13 @@ type SyncRunner struct {
 	channels          []string
 	access            map[string][]string // channels granted to users via access() callback
 	roles             map[string][]string // roles granted to users via role() callback
+	schemata          map[string]SchemaWrapper // a cache of schemata used by validate() callback
 }
 
 func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 	funcSource = fmt.Sprintf(funcWrapper, funcSource)
 	runner := &SyncRunner{}
+	runner.schemata = map[string]SchemaWrapper{}
 	err := runner.Init(funcSource)
 	if err != nil {
 		return nil, err
@@ -140,6 +143,15 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 				}
 				runner.output.Rejection = base.HTTPErrorf(int(status), message)
 			}
+		}
+		return otto.UndefinedValue()
+	})
+
+	// Implementation of the 'validateDoc()' callback:
+	runner.DefineNativeFunction("validate", func(call otto.FunctionCall) otto.Value {
+		valid, message := runner.validateDocument(call.Argument(0), call.Argument(1), runner.schemata)
+		if !valid{
+			runner.output.Rejection = base.HTTPErrorf(400, message)
 		}
 		return otto.UndefinedValue()
 	})

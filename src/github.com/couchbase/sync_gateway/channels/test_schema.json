@@ -1,0 +1,12 @@
+{
+    "id": "https://www.glowinthedark.co.uk/schemata/test_schema.json",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "title": "test schema",
+    "type": "object",
+    "properties": {
+        "hello":{
+            "type": "number"
+        }
+    },
+    "required": ["hello"]
+}
