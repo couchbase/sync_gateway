@@ -107,6 +107,15 @@ func (w *EncodedResponseWriter) Close() {
 	}
 }
 
+func (w *EncodedResponseWriter) CloseNotify() <-chan bool {
+	var closeNotify <-chan bool
+	cn, ok := w.ResponseWriter.(http.CloseNotifier)
+	if ok {
+		closeNotify = cn.CloseNotify()
+	}
+	return closeNotify
+}
+
 //////// GZIP WRITER CACHE:
 
 var zipperCache sync.Pool
