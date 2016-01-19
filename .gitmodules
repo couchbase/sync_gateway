@@ -70,3 +70,6 @@
 [submodule "src/github.com/couchbase/blance"]
 	path = src/github.com/couchbase/blance
 	url = https://github.com/couchbase/blance.git
+[submodule "src/github.com/kardianos/service"]
+	path = src/github.com/kardianos/service
+	url = https://github.com/kardianos/service
