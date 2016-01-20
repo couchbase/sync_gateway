@@ -243,7 +243,7 @@ func logWithCaller(color string, prefix string, format string, args ...interface
 		dim, " -- ", GetCallersName(2), reset)
 }
 
-// Simple wrapper that converts Print to Printf
+// Simple wrapper that converts Print to Printf.  Assumes caller is holding logLock read lock.
 func print(args ...interface{}) {
 	ok := logLevel <= 1
 
@@ -252,10 +252,8 @@ func print(args ...interface{}) {
 	}
 }
 
-// Logs a formatted message to the underlying logger
+// Logs a formatted message to the underlying logger.  Assumes caller is holding logLock read lock.
 func printf(format string, args ...interface{}) {
-	logLock.RLock()
-	defer logLock.RUnlock()
 	ok := logLevel <= 1
 
 	if ok {
