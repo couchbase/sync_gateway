@@ -122,6 +122,7 @@ type DbConfig struct {
 	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
 	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
 	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
+	Unsupported        *UnsupportedConfig             `json:"unsupported,omitempty"`          // Config for unsupported features
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -183,6 +184,14 @@ type SequenceHashConfig struct {
 	BucketConfig         // Bucket used for Sequence hashing
 	Expiry       *uint32 `json:"expiry,omitempty"`         // Expiry set for hash values on latest use
 	Frequency    *int    `json:"hash_frequency,omitempty"` // Frequency of sequence hashing in changes feeds
+}
+
+type UnsupportedConfig struct {
+	UserViews *UserViewsConfig `json:"user_views,omitempty"` // Config settings for user views
+}
+
+type UserViewsConfig struct {
+	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
 
 func (dbConfig *DbConfig) setup(name string) error {

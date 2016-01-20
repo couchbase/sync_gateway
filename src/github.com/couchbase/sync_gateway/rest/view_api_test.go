@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/channels"
@@ -100,22 +101,74 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface {}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface {}(nil)})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice" , Value: interface {}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob" , Value: interface {}(nil)})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven" , Value: interface {}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten" , Value: interface {}(nil)})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
+}
+
+func TestViewQueryUserAccess(t *testing.T) {
+	var rt restTester
+	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
+	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc1", `{"type":"type1", "state":"state1"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc2", `{"type":"type1", "state":"state2"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("PUT", "/db/doc3", `{"type":"type2", "state":"state2"}`)
+	assertStatus(t, response, 201)
+
+	time.Sleep(5 * time.Second)
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
+	assertStatus(t, response, 200)
+	var result sgbucket.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 2)
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
+
+	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 2)
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
+
+	// Create a user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	testUser, _ := a.NewUser("testUser", "123456", channels.SetOf("*"))
+	a.Save(testUser)
+
+	var userResult sgbucket.ViewResult
+	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
+	request.SetBasicAuth("testUser", "123456")
+	userResponse := rt.send(request)
+	assertStatus(t, userResponse, 200)
+	json.Unmarshal(userResponse.Body.Bytes(), &userResult)
+	assert.Equals(t, len(result.Rows), 2)
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
+
+	// Disable user view access, retry
+	rt.ServerContext().Database("db").SetUserViewsEnabled(false)
+	request, _ = http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
+	request.SetBasicAuth("testUser", "123456")
+	userResponse = rt.send(request)
+	assertStatus(t, userResponse, 403)
 }
 
 //Waiting for a fix for couchbaselabs/Walrus #13
@@ -135,27 +188,28 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface {}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface {}(nil)})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice" , Value: interface {}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob" , Value: interface {}(nil)})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
 	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven" , Value: interface {}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten" , Value: interface {}(nil)})
+	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
+	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
 }
 
 func TestUserViewQuery(t *testing.T) {
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	a := rt.ServerContext().Database("db").Authenticator()
+	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	// Create a view:
 	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
