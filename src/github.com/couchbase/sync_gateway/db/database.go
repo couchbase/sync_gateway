@@ -78,6 +78,11 @@ type DatabaseContextOptions struct {
 	SequenceHashOptions   *SequenceHashOptions
 	RevisionCacheCapacity uint32
 	AdminInterface        *string
+	UnsupportedOptions    *UnsupportedOptions
+}
+
+type UnsupportedOptions struct {
+	EnableUserViews bool
 }
 
 const DefaultRevsLimit = 1000
@@ -899,6 +904,17 @@ func (context *DatabaseContext) GetIndexBucket() base.Bucket {
 	} else {
 		return nil
 	}
+}
+
+func (context *DatabaseContext) GetUserViewsEnabled() bool {
+	if context.Options.UnsupportedOptions != nil {
+		return context.Options.UnsupportedOptions.EnableUserViews
+	}
+	return false
+}
+
+func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
+	context.Options.UnsupportedOptions.EnableUserViews = value
 }
 
 //////// SEQUENCE ALLOCATION:

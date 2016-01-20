@@ -54,7 +54,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 		}
 	}
 	if wrap {
-		wrapViews(&ddoc)
+		wrapViews(&ddoc, db.GetUserViewsEnabled())
 	}
 	if err = db.checkDDocAccess(ddocName); err == nil {
 		err = db.Bucket.PutDDoc(ddocName, ddoc)
@@ -62,38 +62,54 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 	return
 }
 
-func wrapViews(ddoc *DesignDoc) {
-	// Wrap the map functions to ignore special docs and strip _sync metadata:
-	for name, view := range ddoc.Views {
-		view.Map = `function(doc,meta) {
+func wrapViews(ddoc *DesignDoc, enableUserViews bool) {
+	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
+	// add channel filtering.
+	if enableUserViews {
+		for name, view := range ddoc.Views {
+			view.Map = `function(doc,meta) {
+		                    var sync = doc._sync;
+		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+		                      return;
+		                    if ((sync.flags & 1) || sync.deleted)
+		                      return;
+		                    var channels = [];
+		                    var channelMap = sync.channels;
+							if (channelMap) {
+								for (var name in channelMap) {
+									removed = channelMap[name];
+									if (!removed)
+										channels.push(name);
+								}
+							}
+		                    delete doc._sync;
+		                    meta.rev = sync.rev;
+		                    meta.channels = channels;
+
+		                    var _emit = emit;
+		                    (function(){
+			                    var emit = function(key,value) {
+			                    	_emit(key,[channels, value]);
+			                    };
+								(` + view.Map + `) (doc, meta);
+							}());
+							doc._sync = sync;
+						}`
+			ddoc.Views[name] = view // view is not a pointer, so have to copy it back
+		}
+	} else {
+		for name, view := range ddoc.Views {
+			view.Map = `function(doc,meta) {
 	                    var sync = doc._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                      return;
 	                    if ((sync.flags & 1) || sync.deleted)
 	                      return;
-	                    var channels = [];
-	                    var channelMap = sync.channels;
-						if (channelMap) {
-							for (var name in channelMap) {
-								removed = channelMap[name];
-								if (!removed)
-									channels.push(name);
-							}
-						}
 	                    delete doc._sync;
 	                    meta.rev = sync.rev;
-	                    meta.channels = channels;
-
-	                    var _emit = emit;
-	                    (function(){
-		                    var emit = function(key,value) {
-		                    	_emit(key,[channels, value]);
-		                    };
-							(` + view.Map + `) (doc, meta);
-						}());
-						doc._sync = sync;
-					}`
-		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
+						(` + view.Map + `) (doc, meta); }`
+			ddoc.Views[name] = view // view is not a pointer, so have to copy it back
+		}
 	}
 }
 
@@ -108,7 +124,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	// Query has slightly different access control than checkDDocAccess():
 	// * Admins can query any design doc including the internal ones
 	// * Regular users can query non-internal design docs
-	if db.user != nil && isInternalDDoc(ddocName) {
+	if db.user != nil && (isInternalDDoc(ddocName) || !db.GetUserViewsEnabled()) {
 		return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
 	}
 
@@ -123,45 +139,50 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			}
 		}
 	} else {
-		result = filterViewResult(result, db.user, options["reduce"] == true)
+		applyChannelFiltering := options["reduce"] != true && db.GetUserViewsEnabled()
+		result = filterViewResult(result, db.user, applyChannelFiltering)
 	}
 	return &result, nil
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
-func filterViewResult(input sgbucket.ViewResult, user auth.User, reduce bool) (result sgbucket.ViewResult) {
-	checkChannels := false
+func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFiltering bool) (result sgbucket.ViewResult) {
+	hasStarChannel := false
 	var visibleChannels ch.TimedSet
 	if user != nil {
 		visibleChannels = user.InheritedChannels()
-		checkChannels = !visibleChannels.Contains("*")
-		if reduce {
+		hasStarChannel = !visibleChannels.Contains("*")
+		if !applyChannelFiltering {
 			return // this is an error
 		}
 	}
 	result.TotalRows = input.TotalRows
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
-		if reduce {
+		if applyChannelFiltering {
+			value, ok := row.Value.([]interface{})
+			if ok {
+				// value[0] is the array of channels; value[1] is the actual value
+				if !hasStarChannel || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+					// Add this row:
+					stripSyncProperty(row)
+					result.Rows = append(result.Rows, &sgbucket.ViewRow{
+						Key:   row.Key,
+						Value: value[1],
+						ID:    row.ID,
+						Doc:   row.Doc,
+					})
+				}
+			}
+		} else {
 			// Add the raw row:
+			stripSyncProperty(row)
 			result.Rows = append(result.Rows, &sgbucket.ViewRow{
 				Key:   row.Key,
 				Value: row.Value,
 				ID:    row.ID,
+				Doc:   row.Doc,
 			})
-		} else {
-			value := row.Value.([]interface{})
-			// value[0] is the array of channels; value[1] is the actual value
-			if !checkChannels || channelsIntersect(visibleChannels, value[0].([]interface{})) {
-				// Add this row:
-				stripSyncProperty(row)
-				result.Rows = append(result.Rows, &sgbucket.ViewRow{
-					Key:   row.Key,
-					Value: value[1],
-					ID:    row.ID,
-					Doc:   row.Doc,
-				})
-			}
 		}
 
 	}
