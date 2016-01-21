@@ -284,6 +284,10 @@ func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
 	return config
 }
 
+func (sc *ServerContext) GetConfig() *ServerConfig {
+	return sc.config
+}
+
 func (sc *ServerContext) AllDatabaseNames() []string {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
