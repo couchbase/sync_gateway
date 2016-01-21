@@ -171,6 +171,8 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix,
 		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
+	r.Handle("/_config",
+		makeHandler(sc, adminPrivs, (*handler).handleGetConfig)).Methods("GET")
 
 	// Debugging handlers
 	r.Handle("/_debug/pprof/goroutine",
@@ -243,7 +245,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 func addCbgtRoutes(router *mux.Router, sc *ServerContext) error {
 
 	// only do this if CBGT is enabled
-	if !sc.config.ClusterConfig.CBGTEnabled() {
+	if sc.config.ClusterConfig == nil || !sc.config.ClusterConfig.CBGTEnabled() {
 		return nil
 	}
 
