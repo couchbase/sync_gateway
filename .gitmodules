@@ -70,6 +70,12 @@
 [submodule "src/github.com/couchbase/blance"]
 	path = src/github.com/couchbase/blance
 	url = https://github.com/couchbase/blance.git
-[submodule "src/github.com/kardianos/service"]
-	path = src/github.com/kardianos/service
+[submodule "service/sg-windows/src/golang.org/x/sys"]
+	path = service/sg-windows/src/golang.org/x/sys
+	url = https://go.googlesource.com/sys
+[submodule "service/sg-windows/src/github.com/kardianos/osext"]
+	path = service/sg-windows/src/github.com/kardianos/osext
+	url = https://github.com/kardianos/osext
+[submodule "service/sg-windows/src/github.com/kardianos/service"]
+	path = service/sg-windows/src/github.com/kardianos/service
 	url = https://github.com/kardianos/service
