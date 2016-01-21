@@ -116,6 +116,12 @@ func (h *handler) handleGetDbConfig() error {
 	return nil
 }
 
+// Get admin config info
+func (h *handler) handleGetConfig() error {
+	h.writeJSON(h.server.GetConfig())
+	return nil
+}
+
 // PUT a new database config
 func (h *handler) handlePutDbConfig() error {
 	h.assertAdminOnly()

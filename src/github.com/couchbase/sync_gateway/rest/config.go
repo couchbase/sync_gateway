@@ -55,49 +55,49 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface                      *string         // Interface to bind REST API to, default ":4984"
-	SSLCert                        *string         // Path to SSL cert file, or nil
-	SSLKey                         *string         // Path to SSL private key file, or nil
-	ServerReadTimeout              *int            // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout             *int            // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface                 *string         // Interface to bind admin API to, default ":4985"
-	AdminUI                        *string         // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface               *string         // Interface to bind Go profile API to (no default)
-	ConfigServer                   *string         // URL of config server (for dynamic db discovery)
-	Persona                        *PersonaConfig  // Configuration for Mozilla Persona validation
-	Facebook                       *FacebookConfig // Configuration for Facebook validation
-	CORS                           *CORSConfig     // Configuration for allowing CORS
-	Log                            []string        // Log keywords to enable
-	LogFilePath                    *string         // Path to log file, if missing write to stderr
-	Pretty                         bool            // Pretty-print JSON responses?
-	DeploymentID                   *string         // Optional customer/deployment ID for stats reporting
-	StatsReportInterval            *float64        // Optional stats report interval (0 to disable)
-	MaxCouchbaseConnections        *int            // Max # of sockets to open to a Couchbase Server node
-	MaxCouchbaseOverflow           *int            // Max # of overflow sockets to open
-	CouchbaseKeepaliveInterval     *int            // TCP keep-alive interval between SG and Couchbase server
-	SlowServerCallWarningThreshold *int            // Log warnings if database calls take this many ms
-	MaxIncomingConnections         *int            // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors             *uint64         // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses              *bool           // If false, disables compression of HTTP responses
-	Databases                      DbConfigMap     // Pre-configured databases, mapped by name
-	MaxHeartbeat                   uint64          // Max heartbeat value for _changes request (seconds)
-	ClusterConfig                  ClusterConfig   `json:"cluster_config"`          // Bucket and other config related to CBGT
-	SkipRunmodeValidation          bool            `json:"skip_runmode_validation"` // If this is true, skips any config validation regarding accel vs normal mode
+	Interface                      *string         `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
+	SSLCert                        *string         `json:",omitempty"`                        // Path to SSL cert file, or nil
+	SSLKey                         *string         `json:",omitempty"`                        // Path to SSL private key file, or nil
+	ServerReadTimeout              *int            `json:",omitempty"`                        // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout             *int            `json:",omitempty"`                        // maximum duration.Second before timing out write of the HTTP(S) response
+	AdminInterface                 *string         `json:",omitempty"`                        // Interface to bind admin API to, default ":4985"
+	AdminUI                        *string         `json:",omitempty"`                        // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface               *string         `json:",omitempty"`                        // Interface to bind Go profile API to (no default)
+	ConfigServer                   *string         `json:",omitempty"`                        // URL of config server (for dynamic db discovery)
+	Persona                        *PersonaConfig  `json:",omitempty"`                        // Configuration for Mozilla Persona validation
+	Facebook                       *FacebookConfig `json:",omitempty"`                        // Configuration for Facebook validation
+	CORS                           *CORSConfig     `json:",omitempty"`                        // Configuration for allowing CORS
+	Log                            []string        `json:",omitempty"`                        // Log keywords to enable
+	LogFilePath                    *string         `json:",omitempty"`                        // Path to log file, if missing write to stderr
+	Pretty                         bool            `json:",omitempty"`                        // Pretty-print JSON responses?
+	DeploymentID                   *string         `json:",omitempty"`                        // Optional customer/deployment ID for stats reporting
+	StatsReportInterval            *float64        `json:",omitempty"`                        // Optional stats report interval (0 to disable)
+	MaxCouchbaseConnections        *int            `json:",omitempty"`                        // Max # of sockets to open to a Couchbase Server node
+	MaxCouchbaseOverflow           *int            `json:",omitempty"`                        // Max # of overflow sockets to open
+	CouchbaseKeepaliveInterval     *int            `json:",omitempty"`                        // TCP keep-alive interval between SG and Couchbase server
+	SlowServerCallWarningThreshold *int            `json:",omitempty"`                        // Log warnings if database calls take this many ms
+	MaxIncomingConnections         *int            `json:",omitempty"`                        // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors             *uint64         `json:",omitempty"`                        // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses              *bool           `json:",omitempty"`                        // If false, disables compression of HTTP responses
+	Databases                      DbConfigMap     `json:",omitempty"`                        // Pre-configured databases, mapped by name
+	MaxHeartbeat                   uint64          `json:",omitempty"`                        // Max heartbeat value for _changes request (seconds)
+	ClusterConfig                  *ClusterConfig  `json:"cluster_config,omitempty"`          // Bucket and other config related to CBGT
+	SkipRunmodeValidation          bool            `json:"skip_runmode_validation,omitempty"` // If this is true, skips any config validation regarding accel vs normal mode
 }
 
 // Bucket configuration elements - used by db, shadow, index
 type BucketConfig struct {
-	Server   *string `json:"server"`             // Couchbase server URL
+	Server   *string `json:"server,omitempty"`   // Couchbase server URL
 	Pool     *string `json:"pool,omitempty"`     // Couchbase pool name, default "default"
-	Bucket   *string `json:"bucket"`             // Bucket name
+	Bucket   *string `json:"bucket,omitempty"`   // Bucket name
 	Username string  `json:"username,omitempty"` // Username for authenticating to server
 	Password string  `json:"password,omitempty"` // Password for authenticating to server
 }
 
 type ClusterConfig struct {
 	BucketConfig
-	DataDir                  string  `json:"data_dir"`
-	HeartbeatIntervalSeconds *uint16 `json:"heartbeat_interval_seconds"`
+	DataDir                  string  `json:"data_dir,omitempty"`
+	HeartbeatIntervalSeconds *uint16 `json:"heartbeat_interval_seconds,omitempty"`
 }
 
 func (c ClusterConfig) CBGTEnabled() bool {
@@ -108,8 +108,8 @@ func (c ClusterConfig) CBGTEnabled() bool {
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
 	BucketConfig
-	Name               string                         `json:"name"`                           // Database name in REST API (stored as key in JSON)
-	Sync               *string                        `json:"sync"`                           // Sync function defines which users can see which data
+	Name               string                         `json:"name,omitempty"`                 // Database name in REST API (stored as key in JSON)
+	Sync               *string                        `json:"sync,omitempty"`                 // Sync function defines which users can see which data
 	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
 	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
 	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
@@ -646,7 +646,7 @@ func RunServer(config *ServerConfig) {
 	}
 
 	// Initialize CBGT if needed
-	if config.ClusterConfig.CBGTEnabled() {
+	if config.ClusterConfig != nil && config.ClusterConfig.CBGTEnabled() {
 		if err := sc.InitCBGT(); err != nil {
 			log.Fatalf("Fatal Error initializing CBGT: %v", err)
 		}
