@@ -23,7 +23,8 @@ import (
 type ChangesOptions struct {
 	Since       SequenceID // sequence # to start _after_
 	Limit       int        // Max number of changes to return, if nonzero
-	Conflicts   bool       // Show all conflicting revision IDs, not just winning one?
+	Conflicts   bool       // Show all active conflicting revision IDs, not just winning one?
+	AllLeaves   bool       // Show all conflicting revision IDs, not just winning one?
 	IncludeDocs bool       // Include doc body of each change?
 	Wait        bool       // Wait for results, instead of immediately returning empty result?
 	Continuous  bool       // Run continuously until terminated?
@@ -60,9 +61,10 @@ type ViewDoc struct {
 func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	db.addDocToChangeEntry(entry, options)
 }
+
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
-	includeConflicts := options.Conflicts && entry.branched
+	includeConflicts := options.AllLeaves && entry.branched
 	if !options.IncludeDocs && !includeConflicts {
 		return
 	}
@@ -76,13 +78,17 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	if includeConflicts {
 		doc.History.forEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
-				entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
-				if !leaf.Deleted {
-					entry.Deleted = false
+				//conflict
+				if !options.Conflicts || (options.Conflicts && !leaf.Deleted) {
+					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
+					if !leaf.Deleted {
+						entry.Deleted = false
+					}
 				}
 			}
 		})
 	}
+
 	if options.IncludeDocs {
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
@@ -158,7 +164,7 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 	return change
 }
 
-func (ce *ChangeEntry) SetBranched (isBranched bool) {
+func (ce *ChangeEntry) SetBranched(isBranched bool) {
 	ce.branched = isBranched
 }
 
@@ -447,7 +453,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Add the doc body or the conflicting rev IDs, if those options are set:
-				if options.IncludeDocs || options.Conflicts {
+				if options.IncludeDocs || options.Conflicts || options.AllLeaves {
 					db.addDocToChangeEntry(minEntry, options)
 				}
 
