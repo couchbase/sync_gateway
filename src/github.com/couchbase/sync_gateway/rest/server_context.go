@@ -728,12 +728,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		revCacheSize = db.KDefaultRevisionCacheCapacity
 	}
 
+	unsupportedOptions := &db.UnsupportedOptions{}
+	if config.Unsupported != nil {
+		if config.Unsupported.UserViews != nil {
+			if config.Unsupported.UserViews.Enabled != nil {
+				unsupportedOptions.EnableUserViews = *config.Unsupported.UserViews.Enabled
+			}
+		}
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:          &cacheOptions,
 		IndexOptions:          channelIndexOptions,
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
 		AdminInterface:        sc.config.AdminInterface,
+		UnsupportedOptions:    unsupportedOptions,
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
