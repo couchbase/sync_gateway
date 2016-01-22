@@ -308,6 +308,9 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		}
 		shouldContinue, sleepMs := sleeper(numAttempts)
 		if !shouldContinue {
+			if err == nil {
+				err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			}
 			Warn("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
