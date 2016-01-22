@@ -89,6 +89,7 @@ func (h *handler) handleChanges() error {
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
 		options.Conflicts = (h.getQuery("style") == "all_docs")
+		options.ActiveOnly = h.getBoolQuery("active_only")
 		options.IncludeDocs = (h.getBoolQuery("include_docs"))
 		filter = h.getQuery("filter")
 		channelsParam := h.getQuery("channels")
@@ -113,7 +114,7 @@ func (h *handler) handleChanges() error {
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
-			h.server.config.MaxHeartbeat * 1000,
+			h.server.config.MaxHeartbeat*1000,
 			true,
 		)
 		options.TimeoutMs = getRestrictedIntQuery(
@@ -164,7 +165,6 @@ func (h *handler) handleChanges() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel or _doc_ids")
 		}
 	}
-
 
 	h.db.ChangesClientStats.Increment()
 	defer h.db.ChangesClientStats.Decrement()
@@ -311,7 +311,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		// Fetch the document body and other metadata that lives with it:
 		body, _, _, _, flags, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, false)
 		if err != nil {
-			base.LogTo("Changes", "Unable to get changes for docID %v",doc.DocID)
+			base.LogTo("Changes", "Unable to get changes for docID %v", doc.DocID)
 			return nil
 		}
 
@@ -326,10 +326,10 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		doc.RevID = body["_rev"].(string)
 		doc.Sequence = sequence
 
-		changes := make ([]db.ChangeRev, 1)
-		changes[0] = db.ChangeRev{"rev":doc.RevID}
+		changes := make([]db.ChangeRev, 1)
+		changes[0] = db.ChangeRev{"rev": doc.RevID}
 		row.Changes = changes
-		row.Seq = db.SequenceID{ Seq: doc.Sequence }
+		row.Seq = db.SequenceID{Seq: doc.Sequence}
 		row.SetBranched((flags & channels.Branched) != 0)
 
 		if options.IncludeDocs || options.Conflicts {
@@ -628,6 +628,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		HeartbeatMs    *uint64       `json:"heartbeat"`
 		TimeoutMs      *uint64       `json:"timeout"`
 		AcceptEncoding string        `json:"accept_encoding"`
+		ActiveOnly     bool          `json:"active_only"` // Return active revisions only
 	}
 	// Initialize since clock and hasher ahead of unmarshalling sequence
 	if h.db != nil && h.db.SequenceType == db.ClockSequenceType {
@@ -641,7 +642,10 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 	feed = input.Feed
 	options.Since = input.Since
 	options.Limit = input.Limit
-	options.Conflicts = (input.Style == "all_docs")
+
+	options.Conflicts = input.Style == "all_docs"
+	options.ActiveOnly = input.ActiveOnly
+
 	options.IncludeDocs = input.IncludeDocs
 	filter = input.Filter
 

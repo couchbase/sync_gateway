@@ -103,6 +103,12 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				// to guarantee hashing
 				nextEntry = getNextSequenceFromFeeds(current, feeds)
 
+				if options.ActiveOnly {
+					if minEntry.Deleted || minEntry.allRemoved {
+						continue
+					}
+				}
+
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
 					continue
@@ -239,10 +245,18 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 		return nil // No more entries
 	}
 
+	if minEntry.Removed != nil {
+		minEntry.allRemoved = true
+	}
+
 	// Clear the current entries for any duplicates of the sequence just sent:
 	for i, cur := range current {
 		if cur != nil && cur.Seq == minSeq {
 			current[i] = nil
+			// Track whether this is a removal from all user's channels
+			if cur.Removed == nil && minEntry.allRemoved == true {
+				minEntry.allRemoved = false
+			}
 			// Also concatenate the matching entries' Removed arrays:
 			if cur != minEntry && cur.Removed != nil {
 				if minEntry.Removed == nil {
