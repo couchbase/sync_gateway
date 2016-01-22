@@ -146,7 +146,14 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	description := fmt.Sprintf("Query View: %v", name)
 	err, result := RetryLoop(description, worker, sleeper)
 
-	vres := result.(sgbucket.ViewResult)
+	if err != nil {
+		return sgbucket.ViewResult{}, err
+	}
+
+	vres, ok := result.(sgbucket.ViewResult)
+	if !ok {
+		return vres, fmt.Errorf("Error converting view result %v to sgbucket.ViewResult", result)
+	}
 	return vres, err
 }
 
@@ -454,6 +461,8 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		return
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
+	spec.MaxNumRetries = 10
+	spec.InitialRetrySleepTimeMS = 5
 	if err == nil {
 		// Start bucket updater - see SG issue 1011
 		cbbucket.RunBucketUpdater(func(bucket string, err error) {
