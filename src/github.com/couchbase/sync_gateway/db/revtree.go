@@ -15,8 +15,8 @@ import (
 	"math"
 	"strconv"
 
+	"errors"
 	"github.com/couchbase/sync_gateway/base"
-"errors"
 )
 
 type RevKey string
@@ -137,8 +137,8 @@ func (tree RevTree) getInfo(revid string) (*RevInfo, error) {
 
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
 // Panics if the revid is not in the map at all.
-func (tree RevTree) getParent(revid string) (string) {
-	info,err := tree.getInfo(revid)
+func (tree RevTree) getParent(revid string) string {
+	info, err := tree.getInfo(revid)
 	if err != nil {
 		return ""
 	}

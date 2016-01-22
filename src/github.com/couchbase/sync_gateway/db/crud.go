@@ -614,8 +614,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 					}
 				} else {
 					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
-					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess " +
-					"on it (err=%v)", docid, doc.CurrentRev, err)
+					base.Warn("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+						"on it (err=%v)", docid, doc.CurrentRev, err)
 					channelSet = nil
 					access = nil
 					roles = nil
@@ -676,7 +676,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 	dbExpvars.Add("revs_added", 1)
 
-	if (doc.History[newRevID] != nil) {
+	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
 		history := doc.History.getHistory(newRevID)
 

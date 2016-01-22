@@ -16,7 +16,7 @@ import (
 func makeExternalBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:     "walrus:",
-		BucketName: "external_bucket"},nil)
+		BucketName: "external_bucket"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestShadowerPull(t *testing.T) {
 
 func TestShadowerPush(t *testing.T) {
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Shadow": true,
 	}
 
@@ -122,8 +122,8 @@ func TestShadowerPush(t *testing.T) {
 // shadower as a different revision.
 func TestShadowerPushEchoCancellation(t *testing.T) {
 
-	var logKeys = map[string]bool {
-		"Shadow": true,
+	var logKeys = map[string]bool{
+		"Shadow":  true,
 		"Shadow+": true,
 	}
 

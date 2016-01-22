@@ -60,6 +60,7 @@ type ViewDoc struct {
 func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	db.addDocToChangeEntry(entry, options)
 }
+
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	includeConflicts := options.Conflicts && entry.branched
@@ -158,7 +159,7 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 	return change
 }
 
-func (ce *ChangeEntry) SetBranched (isBranched bool) {
+func (ce *ChangeEntry) SetBranched(isBranched bool) {
 	ce.branched = isBranched
 }
 

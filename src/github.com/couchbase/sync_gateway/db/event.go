@@ -58,7 +58,7 @@ func (dce *DocumentChangeEvent) EventType() EventType {
 // The new state, the reason for the state change, the local system time of the change
 type DBStateChangeEvent struct {
 	AsyncEvent
-	Doc	Body
+	Doc Body
 }
 
 func (dsce *DBStateChangeEvent) String() string {

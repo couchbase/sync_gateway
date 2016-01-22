@@ -89,7 +89,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 func (em *EventManager) RegisterEventHandler(handler EventHandler, eventType EventType) {
 	em.eventHandlers[eventType] = append(em.eventHandlers[eventType], handler)
 	em.activeEventTypes[eventType] = true
-	base.LogTo("Events", "Registered event handler: %v, for event type %v", handler,eventType)
+	base.LogTo("Events", "Registered event handler: %v, for event type %v", handler, eventType)
 }
 
 // Checks whether a handler of the given type has been registered to the event manager.
@@ -147,9 +147,8 @@ func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, rea
 	body["localtime"] = time.Now().Format(base.ISO8601Format)
 
 	event := &DBStateChangeEvent{
-		Doc:      body,
+		Doc: body,
 	}
 
 	return em.raiseEvent(event)
 }
-

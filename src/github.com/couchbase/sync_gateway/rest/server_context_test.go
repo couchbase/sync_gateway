@@ -81,7 +81,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
       }
     `
 	//Create config with embedded sync function in back quotes
-	responseBody := fmt.Sprintf(fakeConfig,"`",fakeSyncFunction,"`")
+	responseBody := fmt.Sprintf(fakeConfig, "`", fakeSyncFunction, "`")
 
 	mockClient := NewMockClient()
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
