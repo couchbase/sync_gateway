@@ -751,6 +751,106 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 }
 
+func TestChangesActiveOnlyInteger(t *testing.T) {
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	changesActiveOnly(t, it)
+}
+
+func TestChangesActiveOnlyClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	changesActiveOnly(t, it)
+}
+
+// Test _changes with channel filter
+func changesActiveOnly(t *testing.T, it indexTester) {
+
+	response := it.sendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS", "ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents
+	var body db.Body
+	response = it.sendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	deletedRev := body["rev"].(string)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/removedDoc", `{"channel":["PBS"]}`)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	removedRev := body["rev"].(string)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/activeDoc", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/partialRemovalDoc", `{"channel":["PBS","ABC"]}`)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	partialRemovalRev := body["rev"].(string)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Pre-delete changes
+	changesJSON := `{"style":"all_docs"}`
+	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 4)
+
+	// Delete
+	response = it.sendAdminRequest("DELETE", fmt.Sprintf("/db/deletedDoc?rev=%s", deletedRev), "")
+	assertStatus(t, response, 200)
+
+	// Removed
+	response = it.sendAdminRequest("PUT", "/db/removedDoc", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, removedRev))
+	assertStatus(t, response, 201)
+
+	// Partially removed
+	response = it.sendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
+	assertStatus(t, response, 201)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Normal changes
+	changesJSON = `{"style":"all_docs"}`
+	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 4)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+	// Active only, POST
+	changesJSON = `{"style":"all_docs", "active_only":true}`
+	changes.Results = nil
+	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 2)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+	// Active only, GET
+	changes.Results = nil
+	changesResponse = it.send(requestByUser("GET", "/db/_changes?style=all_docs&active_only=true", "", "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 2)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+}
+
 //////// HELPERS:
 
 func assertNoError(t *testing.T, err error, message string) {
