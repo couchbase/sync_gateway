@@ -121,11 +121,18 @@ func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
 }
 
 func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
-	// Query has slightly different access control than checkDDocAccess():
-	// * Admins can query any design doc including the internal ones
-	// * Regular users can query non-internal design docs
-	if db.user != nil && (isInternalDDoc(ddocName) || !db.GetUserViewsEnabled()) {
-		return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
+
+	// Regular users have limitations on what they can query
+	if db.user != nil {
+		// * Regular users can only query when user views are enabled
+		if !db.GetUserViewsEnabled() {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
+		}
+		// * Admins can query any design doc including the internal ones
+		// * Regular users can query non-internal design docs
+		if isInternalDDoc(ddocName) {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
+		}
 	}
 
 	result, err := db.Bucket.View(ddocName, viewName, options)

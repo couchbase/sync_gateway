@@ -18,11 +18,11 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"sort"
 )
 
 const kMaxDeltaTtl = 60 * 60 * 24 * 30 * time.Second
@@ -306,13 +306,12 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 			}
 			return nil, value
 		}
-
 		shouldContinue, sleepMs := sleeper(numAttempts)
 		if !shouldContinue {
-			err := fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			Warn("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		Warn("RetryLoop retrying %v after %v ms.", description, sleepMs)
+		LogTo("Debug", "RetryLoop retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
