@@ -315,9 +315,12 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// attachments with the same contents! See #96)
 	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
 
-		base.LogTo("HTTP+", "findFollowingAttachment called, followingAttachments are: %+v", followingAttachments)
+		base.LogTo("HTTP+", "findFollowingAttachment called with %v followingAttachments", len(followingAttachments))
 
 		for name, meta := range followingAttachments {
+
+			base.LogTo("HTTP+", "content_type: %v digest: %v follows: %v length: %v revpos: %v", meta["content_type"], meta["digest"], meta["follows"], meta["length"], meta["revpos"])
+
 			if meta["follows"] == true {
 				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
 					return name, meta
