@@ -314,6 +314,9 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// map from digest->name, which was faster, but that broke down if there were multiple
 	// attachments with the same contents! See #96)
 	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
+
+		base.LogTo("HTTP+", "findFollowingAttachment called, followingAttachments are: %+v", followingAttachments)
+
 		for name, meta := range followingAttachments {
 			if meta["follows"] == true {
 				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
@@ -325,7 +328,12 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	}
 
 	// Read the parts one by one:
+	base.LogTo("HTTP+", "Reading %v followingAttachments", len(followingAttachments))
+
 	for i := 0; i < len(followingAttachments); i++ {
+
+		base.LogTo("HTTP+", "followingAttachments #%v", i)
+
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
@@ -342,10 +350,26 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 
 		// Look up the attachment by its digest:
+		base.LogTo("HTTP+", "getting sha1 digest for %v bytes of data", len(data))
+		lastIndex := len(data) - 1
+		base.LogTo("HTTP+", "data[0]: %X, data[-1]: %X", data[0], data[lastIndex])
+
 		digest := sha1DigestKey(data)
+		base.LogTo("HTTP+", "digest: %v", digest)
+
+		tmpFileName := fmt.Sprintf("/tmp/debug_attachment_%v.data", digest)
+		ioutil.WriteFile(tmpFileName, data, 0644)
+		base.LogTo("HTTP+", "wrote data to tmp file: %v", tmpFileName)
+
 		name, meta := findFollowingAttachment(digest)
+
+		base.LogTo("HTTP+", "findFollowingAttachment with digest: %v returned name: %v, meta: %v", digest, name, meta)
+
 		if meta == nil {
-			name, meta = findFollowingAttachment(md5DigestKey(data))
+			md5 := md5DigestKey(data)
+			base.LogTo("HTTP+", "calling findFollowingAttachment with md5 digest: %v", md5)
+			name, meta = findFollowingAttachment(md5)
+			base.LogTo("HTTP+", "findFollowingAttachment with digest: %v returned name: %v, meta: %v", md5, name, meta)
 			if meta == nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest,
 					"MIME part #%d doesn't match any attachment", i+2)
