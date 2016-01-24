@@ -197,7 +197,6 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
-
 	return method(h) // Call the actual handler code
 }
 
@@ -370,12 +369,24 @@ func (h *handler) readDocument() (db.Body, error) {
 	case "", "application/json":
 		return h.readJSON()
 	case "multipart/related":
+		base.LogTo("HTTP+", "multipart/related request")
 		if DebugMultipart {
 			raw, err := h.readBody()
 			if err != nil {
 				return nil, err
 			}
-			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
+
+			boundary := attrs["boundary"]
+
+			tmpFileName := fmt.Sprintf("/tmp/multipart.data")
+			ioutil.WriteFile(tmpFileName, raw, 0644)
+			base.LogTo("HTTP+", "wrote multipart body to %v", tmpFileName)
+
+			tmpFileName = fmt.Sprintf("/tmp/boundary.data")
+			ioutil.WriteFile(tmpFileName, []byte(boundary), 0644)
+			base.LogTo("HTTP+", "wrote boundary to %v.  boundary: %v", tmpFileName, boundary)
+
+			reader := multipart.NewReader(bytes.NewReader(raw), boundary)
 			body, err := db.ReadMultipartDocument(reader)
 			if err != nil {
 				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
