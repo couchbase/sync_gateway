@@ -186,9 +186,14 @@ func TestReadMultipartBody(t *testing.T) {
 
 }
 
-func TestReadMultipartBody2(t *testing.T) {
+func TestReadMultipartBody3(t *testing.T) {
 
-	// start a webserver listening on localhost:8080
+	// Repro attempt for https://github.com/golang/go/issues/14085
+
+	// 1. Run an http listener in the background which dumps the multipart parts
+	// 2. Create http client to send a multipart/related request with the same images reported in bug
+
+	// start an http listener on localhost:8080
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
 		log.Printf("Hello.........")
@@ -234,6 +239,9 @@ func TestReadMultipartBody2(t *testing.T) {
 			}
 
 		}
+		if numParts != 4 {
+			log.Panicf("Didn't get expected number of parts")
+		}
 
 	})
 
@@ -243,18 +251,55 @@ func TestReadMultipartBody2(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
+	writer.SetBoundary("-9PWGbT-1_r1QpgvW0I-4E3")
 
 	mimeHeader := textproto.MIMEHeader{}
 	mimeHeader.Set("Content-Type", "application/json")
+
+	jsonContentUrl := "https://gist.githubusercontent.com/tleyden/43dba257902022d7f93f/raw/a573b2ec7999459b54421299513b5b978ffefa72/gistfile1.txt"
+	jsonResp, err := http.Get(jsonContentUrl)
+	if err != nil {
+		t.Fatalf("err doing get: %v", err)
+	}
+	defer jsonResp.Body.Close()
+	jsonContent, err := ioutil.ReadAll(jsonResp.Body)
+	if err != nil {
+		t.Fatalf("err creating json content: %v", err)
+	}
 
 	part, err := writer.CreatePart(mimeHeader)
 	if err != nil {
 		t.Fatalf("err creating part: %v", err)
 	}
 
-	_, err = part.Write([]byte("{}"))
+	_, err = part.Write(jsonContent)
 	if err != nil {
 		t.Fatalf("err writing part: %v", err)
+	}
+
+	createPart := func(writer *multipart.Writer, filename, imageUrl string) error {
+
+		partHeaders := textproto.MIMEHeader{}
+
+		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%v\".", filename))
+
+		partAttach, err := writer.CreatePart(partHeaders)
+		if err != nil {
+			return fmt.Errorf("err creating part: %v", err)
+		}
+
+		resp, err := http.Get(imageUrl)
+		if err != nil {
+			return fmt.Errorf("err doing get: %v", err)
+		}
+		defer resp.Body.Close()
+
+		_, err = io.Copy(partAttach, resp.Body)
+		if err != nil {
+			return fmt.Errorf("err writing image multipart part: %v", err)
+		}
+		return nil
+
 	}
 
 	filename := "result_image"
@@ -283,8 +328,7 @@ func TestReadMultipartBody2(t *testing.T) {
 	// create a client
 	client := &http.Client{}
 
-	// create POST request
-	// apiUrl := "http://ec2-54-145-244-2.compute-1.amazonaws.com:4985/deepstyle-cc/test-doc"
+	// PUT request
 	apiUrl := "http://localhost:8080"
 	req, err := http.NewRequest("PUT", apiUrl, bytes.NewReader(body.Bytes()))
 	if err != nil {
@@ -296,37 +340,12 @@ func TestReadMultipartBody2(t *testing.T) {
 	req.Header.Set("Content-Type", contentType)
 	log.Printf("Writer using boundary: %v", writer.Boundary())
 
-	// send POST request
+	// send request
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("err sending request: %v", err)
 	}
 	defer resp.Body.Close()
 	log.Printf("response status code: %v", resp.StatusCode)
-
-}
-
-func createPart(writer *multipart.Writer, filename, imageUrl string) error {
-
-	partHeaders := textproto.MIMEHeader{}
-
-	partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%v\".", filename))
-
-	partAttach, err := writer.CreatePart(partHeaders)
-	if err != nil {
-		return fmt.Errorf("err creating part: %v", err)
-	}
-
-	resp, err := http.Get(imageUrl)
-	if err != nil {
-		return fmt.Errorf("err doing get: %v", err)
-	}
-	defer resp.Body.Close()
-
-	_, err = io.Copy(partAttach, resp.Body)
-	if err != nil {
-		return fmt.Errorf("err writing image multipart part: %v", err)
-	}
-	return nil
 
 }
