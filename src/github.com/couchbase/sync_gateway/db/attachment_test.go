@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"io"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -186,7 +185,7 @@ func TestReadMultipartBody(t *testing.T) {
 
 }
 
-func TestReadMultipartBody3(t *testing.T) {
+func TestReadMultipartBody4(t *testing.T) {
 
 	// Repro attempt for https://github.com/golang/go/issues/14085
 
@@ -196,7 +195,7 @@ func TestReadMultipartBody3(t *testing.T) {
 	// start an http listener on localhost:8080
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
-		log.Printf("Hello.........")
+
 		contentType, attrs, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if contentType != "multipart/related" {
 			log.Panicf("unexpected content type: %v", contentType)
@@ -256,28 +255,25 @@ func TestReadMultipartBody3(t *testing.T) {
 	mimeHeader := textproto.MIMEHeader{}
 	mimeHeader.Set("Content-Type", "application/json")
 
-	jsonContentUrl := "https://gist.githubusercontent.com/tleyden/43dba257902022d7f93f/raw/a573b2ec7999459b54421299513b5b978ffefa72/gistfile1.txt"
-	jsonResp, err := http.Get(jsonContentUrl)
-	if err != nil {
-		t.Fatalf("err doing get: %v", err)
-	}
-	defer jsonResp.Body.Close()
-	jsonContent, err := ioutil.ReadAll(jsonResp.Body)
-	if err != nil {
-		t.Fatalf("err creating json content: %v", err)
-	}
-
 	part, err := writer.CreatePart(mimeHeader)
 	if err != nil {
 		t.Fatalf("err creating part: %v", err)
 	}
 
-	_, err = part.Write(jsonContent)
+	_, err = part.Write([]byte("{}"))
 	if err != nil {
 		t.Fatalf("err writing part: %v", err)
 	}
 
-	createPart := func(writer *multipart.Writer, filename, imageUrl string) error {
+	zeros := func(numBytesToUse int) []byte {
+		result := make([]byte, numBytesToUse)
+		for i, _ := range result {
+			result[i] = 0
+		}
+		return result
+	}
+
+	createPart := func(writer *multipart.Writer, filename string) error {
 
 		partHeaders := textproto.MIMEHeader{}
 
@@ -288,35 +284,42 @@ func TestReadMultipartBody3(t *testing.T) {
 			return fmt.Errorf("err creating part: %v", err)
 		}
 
-		resp, err := http.Get(imageUrl)
-		if err != nil {
-			return fmt.Errorf("err doing get: %v", err)
-		}
-		defer resp.Body.Close()
+		numBytesToUse := 0
+		var bytes []byte
 
-		_, err = io.Copy(partAttach, resp.Body)
-		if err != nil {
-			return fmt.Errorf("err writing image multipart part: %v", err)
+		switch filename {
+		case "result_image":
+			numBytesToUse = 68881
+			bytes = zeros(numBytesToUse)
+		case "source_image":
+			numBytesToUse = 97655
+			bytes = zeros(numBytesToUse)
+		case "style_image":
+			numBytesToUse = 85053
+			bytes = zeros(numBytesToUse)
 		}
+
+		_, err = partAttach.Write(bytes)
+		if err != nil {
+			t.Fatalf("err writing part: %v", err)
+		}
+
 		return nil
 
 	}
 
 	filename := "result_image"
-	imageUrl := "http://couchbase-mobile.s3.amazonaws.com/misc/debug-push-attachment/result_image.png"
-	if err := createPart(writer, filename, imageUrl); err != nil {
+	if err := createPart(writer, filename); err != nil {
 		t.Fatalf("err creating part: %v", err)
 	}
 
 	filename = "source_image"
-	imageUrl = "http://couchbase-mobile.s3.amazonaws.com/misc/debug-push-attachment/source_image.jpg"
-	if err := createPart(writer, filename, imageUrl); err != nil {
+	if err := createPart(writer, filename); err != nil {
 		t.Fatalf("err creating part: %v", err)
 	}
 
 	filename = "style_image"
-	imageUrl = "http://couchbase-mobile.s3.amazonaws.com/misc/debug-push-attachment/style_image.jpg"
-	if err := createPart(writer, filename, imageUrl); err != nil {
+	if err := createPart(writer, filename); err != nil {
 		t.Fatalf("err creating part: %v", err)
 	}
 
