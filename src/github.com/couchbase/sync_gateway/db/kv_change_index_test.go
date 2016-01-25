@@ -227,7 +227,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	changeIndex.writer.addToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
 	changeIndex.writer.addToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
 	// wait for add
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	// Verify entries
 	entries, err = changeIndex.GetChanges("DUP", ChangesOptions{Since: simpleClockSequence(0)})
 	assert.Equals(t, len(entries), 1)
