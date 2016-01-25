@@ -30,19 +30,21 @@ type ChangesOptions struct {
 	Terminator  chan bool  // Caller can close this channel to terminate the feed
 	HeartbeatMs uint64     // How often to send a heartbeat to the client
 	TimeoutMs   uint64     // After this amount of time, close the longpoll connection
+	ActiveOnly  bool       // If true, only return information on non-deleted, non-removed revisions
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq      SequenceID  `json:"seq"`
-	ID       string      `json:"id"`
-	Deleted  bool        `json:"deleted,omitempty"`
-	Removed  base.Set    `json:"removed,omitempty"`
-	Doc      Body        `json:"doc,omitempty"`
-	Changes  []ChangeRev `json:"changes"`
-	Err      error       `json:"err,omitempty"` // Used to notify feed consumer of errors
-	branched bool
+	Seq        SequenceID  `json:"seq"`
+	ID         string      `json:"id"`
+	Deleted    bool        `json:"deleted,omitempty"`
+	Removed    base.Set    `json:"removed,omitempty"`
+	Doc        Body        `json:"doc,omitempty"`
+	Changes    []ChangeRev `json:"changes"`
+	Err        error       `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved bool        // Flag to track whether an entry is a removal in all channels visible to the user.
+	branched   bool
 }
 
 const (
@@ -60,6 +62,7 @@ type ViewDoc struct {
 func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	db.addDocToChangeEntry(entry, options)
 }
+
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	includeConflicts := options.Conflicts && entry.branched
@@ -76,9 +79,11 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	if includeConflicts {
 		doc.History.forEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
-				entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
 				if !leaf.Deleted {
 					entry.Deleted = false
+				}
+				if !options.ActiveOnly {
+					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
 				}
 			}
 		})
@@ -152,13 +157,14 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 		Changes:  []ChangeRev{{"rev": logEntry.RevID}},
 		branched: (logEntry.Flags & channels.Branched) != 0,
 	}
+
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = channels.SetOf(channelName)
 	}
 	return change
 }
 
-func (ce *ChangeEntry) SetBranched (isBranched bool) {
+func (ce *ChangeEntry) SetBranched(isBranched bool) {
 	ce.branched = isBranched
 }
 
@@ -425,9 +431,16 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Clear the current entries for the sequence just sent:
+				if minEntry.Removed != nil {
+					minEntry.allRemoved = true
+				}
 				for i, cur := range current {
 					if cur != nil && cur.Seq == minSeq {
 						current[i] = nil
+						// Track whether this is a removal from all user's channels
+						if cur.Removed == nil && minEntry.allRemoved == true {
+							minEntry.allRemoved = false
+						}
 						// Also concatenate the matching entries' Removed arrays:
 						if cur != minEntry && cur.Removed != nil {
 							if minEntry.Removed == nil {
@@ -436,6 +449,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 								minEntry.Removed = minEntry.Removed.Union(cur.Removed)
 							}
 						}
+					}
+				}
+
+				if options.ActiveOnly {
+					if minEntry.Deleted || minEntry.allRemoved {
+						continue
 					}
 				}
 
