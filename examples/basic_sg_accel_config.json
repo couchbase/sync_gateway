@@ -1,0 +1,24 @@
+{
+  "log": ["HTTP+"],
+  "adminInterface": "127.0.0.1:4985",
+  "interface": "0.0.0.0:4984",
+  "cluster_config":{
+    "server":"http://localhost:8091",
+    "bucket":"default",
+    "data_dir":"."
+  },
+  "databases": {
+    "default": {
+      "server": "http://localhost:8091",
+      "bucket": "default",
+      "users": {
+        "GUEST": { "disabled": false, "admin_channels": ["*"] }
+      },
+      "channel_index": {
+        "writer": true,
+        "server":"http://localhost:8091",
+        "bucket":"channel_index"
+      }
+    }
+  }
+}
