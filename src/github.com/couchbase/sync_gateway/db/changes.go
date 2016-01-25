@@ -82,7 +82,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 				if !leaf.Deleted {
 					entry.Deleted = false
 				}
-				if !options.ActiveOnly {
+				if ! (options.ActiveOnly && leaf.Deleted) {
 					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
 				}
 			}
