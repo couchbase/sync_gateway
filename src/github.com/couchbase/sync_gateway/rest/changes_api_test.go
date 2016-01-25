@@ -792,6 +792,19 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	partialRemovalRev := body["rev"].(string)
 	assertStatus(t, response, 201)
 
+	response = it.sendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Create a conflict, then tombstone it
+	response = it.sendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictTombstone"}], "new_edits":false}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("DELETE", "/db/conflictedDoc?rev=1-conflictTombstone", "")
+	assertStatus(t, response, 200)
+
+	// Create a conflict, and don't tombstone it
+	response = it.sendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
+	assertStatus(t, response, 201)
+
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
@@ -802,7 +815,7 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
-	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, len(changes.Results), 5)
 
 	// Delete
 	response = it.sendAdminRequest("DELETE", fmt.Sprintf("/db/deletedDoc?rev=%s", deletedRev), "")
@@ -823,9 +836,12 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
-	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, len(changes.Results), 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
+		if entry.ID == "conflictedDoc" {
+			assert.Equals(t, len(entry.Changes), 3)
+		}
 	}
 
 	// Active only, POST
@@ -834,19 +850,25 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
-	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, len(changes.Results), 3)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
+		// validate conflicted handling
+		if entry.ID == "conflictedDoc" {
+			assert.Equals(t, len(entry.Changes), 2)
+		}
 	}
-
 	// Active only, GET
 	changes.Results = nil
 	changesResponse = it.send(requestByUser("GET", "/db/_changes?style=all_docs&active_only=true", "", "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
-	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, len(changes.Results), 3)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
+		if entry.ID == "conflictedDoc" {
+			assert.Equals(t, len(entry.Changes), 2)
+		}
 	}
 
 }
