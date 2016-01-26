@@ -458,16 +458,18 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	var newRevID, parentRevID string
+	var newRevID string
+    //var parentRevID string
 	var doc *document
 	var body Body
-	var changedChannels base.Set
 	var changedPrincipals, changedRoleUsers []string
 	var docSequence uint64
 	var unusedSequences []uint64
 	var oldBodyJSON string
+    //var changedChannels base.Set
 
 	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+        
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
@@ -490,7 +492,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
 		newRevID = body["_rev"].(string)
-		parentRevID = doc.History[newRevID].Parent
+		//parentRevID = doc.History[newRevID].Parent
 		prevCurrentRev := doc.CurrentRev
 		var branched, inConflict bool
 		doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
@@ -624,7 +626,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 
 			// Update the document struct's channel assignment and user access.
 			// (This uses the new sequence # so has to be done after updating doc.Sequence)
-			changedChannels = doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
+			//changedChannels = doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 

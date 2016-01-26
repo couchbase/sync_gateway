@@ -1,0 +1,147 @@
+{
+    "consumes": [
+        "application/json"
+    ],
+    "produces": [
+        "application/json"
+    ],
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "The REST API for Couchbase Sync Gateway.",
+        "title": "Sync Gateway REST API",
+        "contact": {
+            "email": "mobile-couchbase@googlegroups.com"
+        },
+        "license": {
+            "name": "Apache 2.0"
+        },
+        "version": "1.2.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/": {
+            "get": {
+                "summary": "Returns Sync Gateway server-wide metadata.",
+                "operationId": "ServerInfo",
+                "responses": {
+                    "200": {
+                        "$ref": "#/responses/ServerInfoResponse"
+                    }
+                }
+            }
+        },
+        "/_all_dbs": {
+            "get": {
+                "summary": "Returns an array of all configured Sync Gateway database names.",
+                "operationId": "AllDbs",
+                "responses": {
+                    "200": {
+                        "$ref": "#/responses/AllDatabasesResponse"
+                    }
+                }
+            }
+        },
+        "/{db}/_compact": {
+            "post": {
+                "summary": "Runs compaction on the speficied database.",
+                "operationId": "CompactDatabase",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "x-go-name": "Name",
+                        "description": "The Name of the database",
+                        "name": "db",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "$ref": "#/responses/CompactDatabaseResponse"
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "CompactDatabaseResponse": {
+            "type": "object",
+            "title": "CompactDatabaseResponse returns a list of all revision ids compacted.",
+            "properties": {
+                "revs": {
+                    "description": "Count of revisions deleted.",
+                    "type": "integer",
+                    "format": "int64",
+                    "x-go-name": "Revisions"
+                }
+            },
+            "x-go-package": "github.com/couchbase/sync_gateway"
+        },
+        "ServerInfoResponse": {
+            "type": "object",
+            "title": "ServerInfoResponse represents Sync Gateway server-wide metadata.",
+            "properties": {
+                "ADMIN": {
+                    "type": "boolean",
+                    "x-go-name": "AdminPort"
+                },
+                "couchdb": {
+                    "type": "string",
+                    "x-go-name": "ServerMessage"
+                },
+                "vendor": {
+                    "x-go-name": "VendorData",
+                    "$ref": "#/definitions/VendorInfo"
+                },
+                "version": {
+                    "type": "string",
+                    "x-go-name": "LongVersion"
+                }
+            },
+            "x-go-package": "github.com/couchbase/sync_gateway"
+        },
+        "VendorInfo": {
+            "type": "object",
+            "title": "VendorInfo information for the server information response.",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-go-name": "Name"
+                },
+                "version": {
+                    "type": "number",
+                    "format": "double",
+                    "x-go-name": "Version"
+                }
+            },
+            "x-go-package": "github.com/couchbase/sync_gateway"
+        }
+    },
+    "responses": {
+        "AllDatabasesResponse": {
+            "description": "AllDatabasesResponse lists the names of all databases.",
+            "schema": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+            },
+        },
+        "CompactDatabaseResponse": {
+            "description": "CompactDatabaseResponse returns a list of all revision ids compacted.",
+            "schema": {
+                "$ref": "#/definitions/CompactDatabaseResponse"
+            }
+        },
+        "ServerInfoResponse": {
+            "description": "ServerInfoResponse represents Sync Gateway server-wide metadata.",
+            "schema": {
+                "$ref": "#/definitions/ServerInfoResponse"
+            }
+        }
+    }
+}

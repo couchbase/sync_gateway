@@ -231,6 +231,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 
 	r.Handle("/_all_dbs",
 		makeHandler(sc, adminPrivs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
+
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
 

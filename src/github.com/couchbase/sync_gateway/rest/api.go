@@ -60,7 +60,12 @@ func init() {
 	}
 }
 
-// HTTP handler for the root ("/")
+// swagger:route GET / ServerInfo
+//
+// Returns Sync Gateway server-wide metadata.
+//
+// Responses:
+//        200: ServerInfoResponse
 func (h *handler) handleRoot() error {
 	response := map[string]interface{}{
 		"couchdb": "Welcome",
@@ -74,11 +79,23 @@ func (h *handler) handleRoot() error {
 	return nil
 }
 
+// AllDatabaseNames swagger:route GET /_all_dbs AllDbs
+//
+// Returns an array of all configured Sync Gateway database names.
+//
+// Responses:
+//        200: AllDatabasesResponse
 func (h *handler) handleAllDbs() error {
 	h.writeJSON(h.server.AllDatabaseNames())
 	return nil
 }
 
+// Compact swagger:route POST /{db}/_compact CompactDatabase
+//
+// Runs compaction on the speficied database.
+//
+// Responses:
+//        200: CompactDatabaseResponse
 func (h *handler) handleCompact() error {
 	revsDeleted, err := h.db.Compact()
 	if err != nil {
