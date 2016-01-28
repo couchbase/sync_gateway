@@ -642,7 +642,9 @@ func TestDBOfflineWithActiveClients(t *testing.T) {
 
 	go func(rt restTester) {
 		log.Printf("Continuous changes 1: Starting")
-		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user1")), 200)
+		for i := 0; i <= 100000; i++ {
+			rt.send(requestByUser("GET", "/db/_changes?feed=longpoll&since=1000", "", "user1"))
+		}
 		log.Printf("Continuous changes 1: Stopped")
 	}(rt)
 
@@ -650,7 +652,9 @@ func TestDBOfflineWithActiveClients(t *testing.T) {
 
 	go func(rt restTester) {
 		log.Printf("Continuous changes 2: Starting")
-		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user2")), 200)
+		for i := 0; i <= 100000; i++ {
+			rt.send(requestByUser("GET", "/db/_changes?feed=longpoll&since=1000", "", "user2"))
+		}
 		log.Printf("Continuous changes 2: Stopped")
 	}(rt)
 
@@ -658,7 +662,9 @@ func TestDBOfflineWithActiveClients(t *testing.T) {
 
 	go func(rt restTester) {
 		log.Printf("Continuous changes 3: Starting")
-		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user3")), 200)
+		for i := 0; i <= 100000; i++ {
+			rt.send(requestByUser("GET", "/db/_changes?feed=longpoll&since=1000", "", "user3"))
+		}
 		log.Printf("Continuous changes 2: Stopped")
 	}(rt)
 
