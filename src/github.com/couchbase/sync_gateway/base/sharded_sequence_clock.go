@@ -20,6 +20,9 @@ const (
 	kIndexPrefix             = "_idx"
 	kCountKeyFormat          = "_idx_c:%s:count"    // key
 	kClockPartitionKeyFormat = "_idx_c:%s:clock-%d" // key, partition index
+	KPrincipalCountKeyFormat = "_idx_p_count:%s"    // key for principal count
+	KPrincipalCountKeyPrefix = "_idx_p_count:"      // key prefix for principal count
+	KTotalPrincipalCountKey  = "_idx_p_count_all"   // key for overall principal count
 )
 
 const (

@@ -53,7 +53,9 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	}
 
 	serverName := "walrus:"
+	//serverName := "http://localhost:8091"
 	bucketName := "sg_bucket"
+	indexBucketName := "sg_index_bucket"
 
 	feedType := "tap"
 	if useBucketIndex {
@@ -70,7 +72,6 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	}
 
 	if useBucketIndex {
-		indexBucketName := "sg_index_bucket"
 		channelIndexConfig := &ChannelIndexConfig{
 			BucketConfig: BucketConfig{
 				Server: &serverName,
@@ -871,6 +872,65 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 		}
 	}
 
+}
+
+func DisableTestChangesAccessNotifyInteger(t *testing.T) {
+
+	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
+	defer it.Close()
+	postChangesAccessNotify(t, it)
+}
+
+// Disabled until walrus supports vb info in view meta.  Currently requires real Couchbase connection to include vb info in the view response.
+func DisabledTestChangesAccessNotifyClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
+	defer it.Close()
+	postChangesAccessNotify(t, it)
+}
+
+func postChangesAccessNotify(t *testing.T, it indexTester) {
+
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents in channel PBS
+	response = it.sendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Start longpoll changes request
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var changes struct {
+			Results  []db.ChangeEntry
+			Last_Seq db.SequenceID
+		}
+		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+		changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.Equals(t, len(changes.Results), 3)
+	}()
+
+	// Wait for changes to start.  Unreliable as we don't know how long it will take the above goroutine to
+	// initialize the longpoll request when running under race - needs a better approach long-term
+	time.Sleep(1 * time.Second)
+
+	// Put document that triggers access grant for user, PBS
+	response = it.sendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	wg.Wait()
 }
 
 //////// HELPERS:

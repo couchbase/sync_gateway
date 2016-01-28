@@ -42,15 +42,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 
 		if options.Wait {
-			// Note (Adam): I don't think there's a reason to set this to false here.  We're outside the
-			// main iteration loop (so the if check above should only happen once), and I don't believe
-			// options.Wait is referenced elsewhere once MultiChangesFeed is called.  Leaving it as-is
-			// makes it possible for channels to identify whether a getChanges call has options.Wait set to true,
-			// which is useful to identify active change listeners.  However, it's possible there's a subtlety of
-			// longpoll or continuous processing I'm missing here - leaving this note instead of just deleting for now.
-			//options.Wait = false
 			changeWaiter = db.startChangeWaiter(chans)
 			userChangeCount = changeWaiter.CurrentUserCount()
+			db.initializePrincipalPolling(changeWaiter.GetUserKeys())
 		}
 
 		cumulativeClock = base.NewSyncSequenceClock()
@@ -483,6 +477,18 @@ func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []st
 		}
 	}
 	return feeds, names
+}
+
+// Adds the specified user keys to the set used during polling.
+func (db *Database) initializePrincipalPolling(userKeys []string) {
+	if len(userKeys) == 0 {
+		return
+	}
+	changeIndex, ok := db.changeCache.(*kvChangeIndex)
+	if !ok {
+		return
+	}
+	changeIndex.reader.addActivePrincipals(userKeys)
 }
 
 func getChangesClock(sequence SequenceID) base.SequenceClock {

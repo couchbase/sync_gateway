@@ -11,6 +11,8 @@ package db
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,16 +20,19 @@ import (
 )
 
 type kvChangeIndexReader struct {
-	indexReadBucket          base.Bucket                // Index bucket
-	readerStableSequence     *base.ShardedClock         // Initialized on first polling, updated on subsequent polls
-	readerStableSequenceLock sync.RWMutex               // Coordinates read access to channel index reader map
-	channelIndexReaders      map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
-	channelIndexReaderLock   sync.RWMutex               // Coordinates read access to channel index reader map
-	onChange                 func(base.Set)             // Client callback that notifies of channel changes
-	terminator               chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions
-	pollingActive            chan struct{}              // Detects polling closed
-	maxVbNo                  uint16                     // Number of vbuckets
-	indexPartitionsCallback  IndexPartitionsFunc        // callback to retrieve the index partition map
+	indexReadBucket           base.Bucket                // Index bucket
+	readerStableSequence      *base.ShardedClock         // Initialized on first polling, updated on subsequent polls
+	readerStableSequenceLock  sync.RWMutex               // Coordinates read access to channel index reader map
+	channelIndexReaders       map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
+	channelIndexReaderLock    sync.RWMutex               // Coordinates read access to channel index reader map
+	onChange                  func(base.Set)             // Client callback that notifies of channel changes
+	terminator                chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions
+	pollingActive             chan struct{}              // Detects polling closed
+	maxVbNo                   uint16                     // Number of vbuckets
+	indexPartitionsCallback   IndexPartitionsFunc        // callback to retrieve the index partition map
+	overallPrincipalCount     uint64                     // Counter for all principals
+	activePrincipalCounts     map[string]uint64          // Counters for principals with active changes feeds
+	activePrincipalCountsLock sync.RWMutex               // Coordinates access to active principals map
 
 }
 
@@ -35,6 +40,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 
 	k.channelIndexReaders = make(map[string]*kvChannelIndex)
 	k.indexPartitionsCallback = indexPartitionsCallback
+	k.activePrincipalCounts = make(map[string]uint64)
 
 	// Initialize notification Callback
 	k.onChange = onChange
@@ -77,7 +83,17 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 				//       active readers.
 				pollStart = time.Now()
 				if k.hasActiveReaders() && k.stableSequenceChanged() {
-					k.pollReaders()
+					var wg sync.WaitGroup
+					wg.Add(2)
+					go func() {
+						defer wg.Done()
+						k.pollReaders()
+					}()
+					go func() {
+						defer wg.Done()
+						k.pollPrincipals()
+					}()
+					wg.Wait()
 				}
 			}
 
@@ -144,8 +160,6 @@ func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 		if err != nil {
 			base.Warn("Error initializing reader stable sequence:%v", err)
 			return false
-		} else {
-			base.Warn("Successfully loaded stable sequence")
 		}
 		return true
 	}
@@ -380,4 +394,67 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 	}
 
 	return true
+}
+
+// PollPrincipals checks the principal counts, stored in the index, to determine whether there's been
+// a change to a user or role that should trigger a notification for that principal.
+func (k *kvChangeIndexReader) pollPrincipals() {
+
+	// Principal polling is strictly for notification handling, so skip if no notify function is defined
+	if k.onChange == nil {
+		return
+	}
+
+	k.activePrincipalCountsLock.Lock()
+	defer k.activePrincipalCountsLock.Unlock()
+
+	// Check whether ANY principals have been updated since last poll, before doing the work of retrieving individual keys
+	overallCount, err := k.indexReadBucket.Incr(base.KTotalPrincipalCountKey, 0, 0, 0)
+	if err != nil {
+		base.Warn("Principal polling encountered error getting overall count:%v", err)
+		return
+	}
+	if overallCount == k.overallPrincipalCount {
+		return
+	}
+	k.overallPrincipalCount = overallCount
+
+	// There's been a change - check whether any of our active principals have changed
+	var changedWaitKeys []string
+	for principalID, currentCount := range k.activePrincipalCounts {
+		key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
+		newCount, err := k.indexReadBucket.Incr(key, 0, 0, 0)
+		if err != nil {
+			base.Warn("Principal polling encountered error getting overall count for key %s:%v", key, err)
+			continue
+		}
+		if newCount != currentCount {
+			k.activePrincipalCounts[principalID] = newCount
+			waitKey := strings.TrimPrefix(key, base.KPrincipalCountKeyPrefix)
+			changedWaitKeys = append(changedWaitKeys, waitKey)
+		}
+	}
+	if len(changedWaitKeys) > 0 {
+		k.onChange(base.SetFromArray(changedWaitKeys))
+	}
+}
+
+// AddActivePrincipal - adds one or more principal keys to the set being polled.
+// Key format is the same used to store the principal in the data bucket.
+func (k *kvChangeIndexReader) addActivePrincipals(keys []string) {
+
+	k.activePrincipalCountsLock.Lock()
+	defer k.activePrincipalCountsLock.Unlock()
+	for _, key := range keys {
+		_, ok := k.activePrincipalCounts[key]
+		if !ok {
+			// Get the count
+			countKey := fmt.Sprintf(base.KPrincipalCountKeyFormat, key)
+			currentCount, err := k.indexReadBucket.Incr(countKey, 0, 0, 0)
+			if err != nil {
+				currentCount = 0
+			}
+			k.activePrincipalCounts[key] = currentCount
+		}
+	}
 }
