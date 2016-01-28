@@ -249,3 +249,13 @@ func (waiter *changeWaiter) UpdateChannels(chans channels.TimedSet) {
 	waiter.keys = updatedKeys
 
 }
+
+// Returns the set of user keys for this ChangeWaiter
+func (waiter *changeWaiter) GetUserKeys() (result []string) {
+	if len(waiter.userKeys) == 0 {
+		return result
+	}
+	result = make([]string, len(waiter.userKeys))
+	copy(result, waiter.userKeys)
+	return result
+}

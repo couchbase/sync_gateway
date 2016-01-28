@@ -446,6 +446,9 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 		return nil, errors.New(fmt.Sprintf("kvChangeIndex: Error updating principal doc %q: %v", docID, err))
 	}
 
+	// Increment the principal count, used for changes notification
+	k.updatePrincipalCount(docID)
+
 	// Add to cache so that the stable sequence gets updated
 	logEntry := &LogEntry{
 		Sequence:     sequence,
@@ -457,6 +460,21 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 
 	writeHistogram(changeCacheExpvars, entryTime, "lag-processPrincipalDoc")
 	return logEntry, nil
+}
+
+// updatePrincipalCount increments the counter for a principal, as well as the overall principal
+// counter.  Called when a principal doc is processed over the DCP feed.
+// Counters are used to trigger changes notifications on the reader side.
+func (k *kvChangeIndexWriter) updatePrincipalCount(docID string) error {
+	// Update principal count for this principal
+	principalCountKey := fmt.Sprintf(base.KPrincipalCountKeyFormat, docID)
+	_, err := k.indexWriteBucket.Incr(principalCountKey, 1, 1, 0)
+	if err != nil {
+		return err
+	}
+	// Update global principal change count
+	_, err = k.indexWriteBucket.Incr(base.KTotalPrincipalCountKey, 1, 1, 0)
+	return err
 }
 
 type unmarshalWorker struct {
