@@ -242,7 +242,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		}
 
 		encoder := json.NewEncoder(h.response)
-		forceClose := false
 	loop:
 		for {
 			select {
