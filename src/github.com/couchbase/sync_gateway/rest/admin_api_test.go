@@ -640,10 +640,9 @@ func TestDBOfflineWithActiveClients(t *testing.T) {
 	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user3", "password":"letmein"}`)
 	assertStatus(t, response, 201)
 
-
 	go func(rt restTester) {
 		log.Printf("Continuous changes 1: Starting")
-		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user1")),200)
+		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user1")), 200)
 		log.Printf("Continuous changes 1: Stopped")
 	}(rt)
 
@@ -651,7 +650,7 @@ func TestDBOfflineWithActiveClients(t *testing.T) {
 
 	go func(rt restTester) {
 		log.Printf("Continuous changes 2: Starting")
-		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user2")),200)
+		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user2")), 200)
 		log.Printf("Continuous changes 2: Stopped")
 	}(rt)
 
@@ -659,7 +658,7 @@ func TestDBOfflineWithActiveClients(t *testing.T) {
 
 	go func(rt restTester) {
 		log.Printf("Continuous changes 3: Starting")
-		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user3")),200)
+		assertStatus(t, rt.send(requestByUser("GET", "/db/_changes?feed=continuous", "", "user3")), 200)
 		log.Printf("Continuous changes 2: Stopped")
 	}(rt)
 
