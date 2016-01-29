@@ -137,6 +137,11 @@ type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
 }
 
+type GoogleConfig struct {
+	Register    bool     // If true, server will register new user accounts
+	AppClientID []string `json:"app_client_id"` // list of enabled client ids
+}
+
 type CORSConfig struct {
 	Origin      []string // List of allowed origins, use ["*"] to allow access from everywhere
 	LoginOrigin []string // List of allowed login origins
