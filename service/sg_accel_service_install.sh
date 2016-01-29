@@ -5,7 +5,7 @@ OS=""
 VER=""
 SERVICE_NAME="sg_accel"
 SRCCFGDIR=../examples
-SRCCFG=serviceconfig.json
+SRCCFG=basic_sg_accel_config.json
 RUNAS_TEMPLATE_VAR=sg_accel
 RUNBASE_TEMPLATE_VAR=/home/sg_accel
 PIDFILE_TEMPLATE_VAR=/var/run/sg-accel.pid
@@ -185,7 +185,9 @@ case $OS in
                 else
                     setup_output_dirs
                     render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                    service ${SERVICE_NAME} start
+                    #Do not autostart service as tempalte config is likely to cause SG to panic
+                    #User should edit the template config before starting the service
+                    #service ${SERVICE_NAME} start
                 fi
                 ;;
             *)
@@ -207,7 +209,9 @@ case $OS in
                     PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
                     chkconfig --add ${SERVICE_NAME}
                     chkconfig ${SERVICE_NAME} on
-                    service ${SERVICE_NAME} start
+                    #Do not autostart service as tempalte config is likely to cause SG to panic
+                    #User should edit the template config before starting the service
+                    #service ${SERVICE_NAME} start
                 fi
                 ;;
             6)
@@ -216,7 +220,9 @@ case $OS in
                 else
                     setup_output_dirs
                     render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
-                    initctl start ${SERVICE_NAME}
+                    #Do not autostart service as tempalte config is likely to cause SG to panic
+                    #User should edit the template config before starting the service
+                    #initctl start ${SERVICE_NAME}
                 fi
                 ;;
             7)
@@ -226,7 +232,9 @@ case $OS in
                     setup_output_dirs
                     render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
                     systemctl enable ${SERVICE_NAME}
-                    systemctl start ${SERVICE_NAME}
+                    #Do not autostart service as tempalte config is likely to cause SG to panic
+                    #User should edit the template config before starting the service
+                    #systemctl start ${SERVICE_NAME}
                 fi
                 ;;
             *)
@@ -242,7 +250,9 @@ case $OS in
         else
             setup_output_dirs
             render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.${SERVICE_NAME}.plist
-            launchctl load /Library/LaunchDaemons/com.couchbase.mobile.${SERVICE_NAME}.plist
+            #Do not autostart service as tempalte config is likely to cause SG to panic
+            #User should edit the template config before starting the service
+            #launchctl load /Library/LaunchDaemons/com.couchbase.mobile.${SERVICE_NAME}.plist
         fi
         ;;
     *)
