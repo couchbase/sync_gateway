@@ -252,6 +252,7 @@
 		<col key="yes" def="s72">Name</col>
 		<col def="V0">Data</col>
 		<col def="S255">ISBuildSourcePath</col>
+		<row><td>ISSELFREG.DLL</td><td/><td>&lt;ISRedistPlatformDependentFolder&gt;\isregsvr.dll</td></row>
 		<row><td>NewBinary1</td><td/><td>&lt;ISProductFolder&gt;\Support\Themes\InstallShield Blue Theme\banner.jpg</td></row>
 		<row><td>NewBinary10</td><td/><td>&lt;ISProductFolder&gt;\Redist\Language Independent\OS Independent\CompleteSetupIco.ibd</td></row>
 		<row><td>NewBinary11</td><td/><td>&lt;ISProductFolder&gt;\Redist\Language Independent\OS Independent\CustomSetupIco.ibd</td></row>
@@ -341,6 +342,7 @@
 		<row><td>AllOtherFiles</td><td>{313AA091-BBF1-45B2-BF63-4810EA8A2F03}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>sg_windows.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_windows.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sync_gateway.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sync_gateway.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
@@ -1021,7 +1023,13 @@
 		<col def="S255">ISComments</col>
 		<row><td>ISPreventDowngrade</td><td>19</td><td/><td>[IS_PREVENT_DOWNGRADE_EXIT]</td><td/><td>Exits install when a newer version of this product is found</td></row>
 		<row><td>ISPrint</td><td>1</td><td>SetAllUsers.dll</td><td>PrintScrollableText</td><td/><td>Prints the contents of a ScrollableText control on a dialog.</td></row>
+		<row><td>ISSelfRegisterCosting</td><td>1</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterCosting</td><td/><td/></row>
+		<row><td>ISSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFiles</td><td/><td/></row>
+		<row><td>ISSelfRegisterFinalize</td><td>1</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFinalize</td><td/><td/></row>
+		<row><td>ISUnSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISUnSelfRegisterFiles</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>18</td><td>sg_windows.exe</td><td>install "[INSTALLDIR]"\sync_gateway.exe "[INSTALLDIR]"\serviceconfig.json</td><td/><td/></row>
 		<row><td>IS_LAUNCH_MY_PROGRAM_PLEASE</td><td>210</td><td>sync_gateway.exe</td><td/><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>18</td><td>sg_windows.exe</td><td>uninstall</td><td/><td/></row>
 		<row><td>SetARPINSTALLLOCATION</td><td>51</td><td>ARPINSTALLLOCATION</td><td>[INSTALLDIR]</td><td/><td/></row>
 		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>ShowMsiLog</td><td>226</td><td>SystemFolder</td><td>[SystemFolder]notepad.exe "[MsiLogFileLocation]"</td><td/><td>Shows Property-driven MSI Log</td></row>
@@ -1836,6 +1844,8 @@
 		<col def="S72">ISComponentSubFolder_</col>
 		<row><td>license.txt</td><td>AllOtherFiles</td><td>LICENSE.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\LICENSE.txt</td><td>1</td><td/></row>
 		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\README.txt</td><td>1</td><td/></row>
+		<row><td>serviceconfig.json</td><td>sg_windows.exe</td><td>SERVIC~1.JSO|serviceconfig.json</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_EXAMPLES_FILES&gt;\serviceconfig.json</td><td>1</td><td/></row>
+		<row><td>sg_windows.exe</td><td>sg_windows.exe</td><td>SG-WIN~1.EXE|sg-windows.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG-WINDOWS_FILES&gt;\sg-windows.exe</td><td>1</td><td/></row>
 		<row><td>sync_gateway.exe</td><td>sync_gateway.exe</td><td>SYNC_G~1.EXE|sync_gateway.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\bin\sync_gateway.exe</td><td>1</td><td/></row>
 		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
 	</table>
@@ -1988,6 +1998,7 @@
 		<row><td>AllOtherFiles</td><td/><td/><td>_18BC31A1_BA70_4DC6_A80A_B57B53686816_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>AllOtherFiles1</td><td/><td/><td>_E0898BA1_B9A4_40FB_BE7A_DED099FFD6CA_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td/><td/><td>_293EBFE3_A3F9_4726_9D49_510ED0C578AB_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>sg_windows.exe</td><td/><td/><td>_E5BC4C67_528B_47DE_99C3_91D7DB1E6FE2_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sync_gateway.exe</td><td/><td/><td>_074FBDC3_5A35_4CDB_940C_23B4369E994A_FILTER</td><td/><td/><td/><td/></row>
 	</table>
 
@@ -2317,8 +2328,10 @@
 		<row><td>ISProductFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectDataFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
+		<row><td>PATH_TO_EXAMPLES_FILES</td><td>C:\Users\andy\Documents\installer-build\app-under-test\sync_gateway\examples</td><td/><td>2</td></row>
 		<row><td>PATH_TO_JENKINS_WORKSPACE</td><td>C:\jenkins\workspace\build_sync_gateway_master_win-2008-x86</td><td/><td>2</td></row>
 		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;</td><td/><td>2</td></row>
+		<row><td>PATH_TO_SG-WINDOWS_FILES</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\service\sg-windows</td><td/><td>2</td></row>
 		<row><td>PATH_TO_SYNC_GATEWAY_FILES</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway</td><td/><td>2</td></row>
 		<row><td>ProgramFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>SystemFolder</td><td/><td/><td>1</td></row>
@@ -3895,6 +3908,12 @@
 		<row><td>FileCost</td><td/><td>900</td><td>FileCost</td><td/></row>
 		<row><td>FindRelatedProducts</td><td>NOT ISSETUPDRIVEN</td><td>420</td><td>FindRelatedProducts</td><td/></row>
 		<row><td>ISPreventDowngrade</td><td>ISFOUNDNEWERPRODUCTVERSION</td><td>450</td><td>ISPreventDowngrade</td><td/></row>
+		<row><td>ISSelfRegisterCosting</td><td/><td>2201</td><td/><td/></row>
+		<row><td>ISSelfRegisterFiles</td><td/><td>5601</td><td/><td/></row>
+		<row><td>ISSelfRegisterFinalize</td><td/><td>6602</td><td/><td/></row>
+		<row><td>ISUnSelfRegisterFiles</td><td/><td>2202</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td/><td>6601</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td/><td>1005</td><td/><td/></row>
 		<row><td>InstallFiles</td><td/><td>4000</td><td>InstallFiles</td><td/></row>
 		<row><td>InstallFinalize</td><td/><td>6600</td><td>InstallFinalize</td><td/></row>
 		<row><td>InstallInitialize</td><td/><td>1501</td><td>InstallInitialize</td><td/></row>
@@ -4349,7 +4368,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>ProductID</td><td>none</td><td/></row>
 		<row><td>ProductLanguage</td><td>1033</td><td/></row>
 		<row><td>ProductName</td><td>Couchbase Sync Gateway</td><td/></row>
-		<row><td>ProductVersion</td><td>1.00.0000</td><td/></row>
+		<row><td>ProductVersion</td><td>1.2.0000</td><td/></row>
 		<row><td>ProgressType0</td><td>install</td><td/></row>
 		<row><td>ProgressType1</td><td>Installing</td><td/></row>
 		<row><td>ProgressType2</td><td>installed</td><td/></row>
