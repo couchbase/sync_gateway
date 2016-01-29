@@ -23,7 +23,7 @@ PRODUCT_VERSION = ARGV[2] || "0.0.0-1234"
 REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || 'windows-x64'
 ARCH            = ARGV[5] || 'x64'
-PRODUCT_KIND    = ARGV[6] || "sync-gateway"
+PRODUCT_KIND    = ARGV[6] || "sync_gateway"
 
 PRODUCT         = "#{PRODUCT_BASE}-#{PRODUCT_KIND}"
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0.0
@@ -69,7 +69,7 @@ end
 
 #  make installer
 
-INSTALL_PROJ  = "Sync_Gateway.ism"
+INSTALL_PROJ  = "#{PRODUCT_KIND}.ism"
 INSTALL_SRC   = "#{START_DIR}/windows/InstallShield_2014_Projects"
 INSTALL_OUT   = "#{INSTALL_SRC}/Sync_Gateway/SINGLE_EXE_IMAGE/Release/DiskImages/DISK1"
 
