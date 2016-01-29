@@ -21,12 +21,13 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 
+	"sync"
+	"sync/atomic"
+
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"sync"
-	"sync/atomic"
 )
 
 const (
@@ -113,7 +114,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 	bucket, err = base.GetBucket(spec, callback)
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
-			"Unable to connect to server: %s", err)
+			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
 	} else {
 		err = installViews(bucket)
 	}
