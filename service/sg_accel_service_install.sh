@@ -69,6 +69,52 @@ setup_output_dirs() {
     chown -R ${RUNAS_TEMPLATE_VAR} ${RUNBASE_TEMPLATE_VAR}/data
 }
 
+# Run pre installation actions
+pre_install_actions() {
+    # Check that runtime user account exists
+    if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+        echo "The sg_accel runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the runtime base directory exists
+    if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
+        echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the sg_accel executable exists
+    if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
+        echo "The sg_accel executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the sg_accel src JSON config directory exists
+    if [ ! -d "$SRCCFGDIR" ]; then
+        echo "The sg_accel source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the sg_accel src JSON config file exists
+    if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
+        echo "The sg_accel source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
+        exit 1
+    fi
+
+    # If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
+    if [ -S /tmp/log_upr_client.sock ]; then
+        rm -f /tmp/log_upr_client.sock
+    fi
+
+    # Copy a default config if defined config file does not exist
+    if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
+        mkdir -p `dirname ${CONFIG_TEMPLATE_VAR}`
+        cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+        chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
+    fi
+    setup_output_dirs
+}
+
 #
 #script starts here
 #
@@ -132,49 +178,6 @@ while [ "$1" != "" ]; do
     shift
 done
 
-if [ "$SERVICE_CMD_ONLY" = false ]; then
-    # Check that runtime user account exists
-    if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
-        echo "The sg_accel runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
-        exit 1
-    fi
-
-    # Check that the runtime base directory exists
-    if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
-        echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
-        exit 1
-    fi
-
-    # Check that the sg_accel executable exists
-    if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
-        echo "The sg_accel executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
-        exit 1
-    fi
-
-    # Check that the sg_accel src JSON config directory exists
-    if [ ! -d "$SRCCFGDIR" ]; then
-        echo "The sg_accel source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
-        exit 1
-    fi
-
-    # Check that the sg_accel src JSON config file exists
-    if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
-        echo "The sg_accel source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
-        exit 1
-    fi
-
-    # If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
-    if [ -S /tmp/log_upr_client.sock ]; then
-        rm -f /tmp/log_upr_client.sock
-    fi
-
-    # Copy a default config if defined config file does not exist
-    if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
-        cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
-        chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
-    fi
-fi
-
 #Install the service for the specific platform
 case $OS in
     Ubuntu)
@@ -183,7 +186,7 @@ case $OS in
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "service ${SERVICE_NAME} start"
                 else
-                    setup_output_dirs
+                    pre_install_actions
                     render_template script_templates/upstart_ubuntu_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                     #Do not autostart service as tempalte config is likely to cause SG to panic
                     #User should edit the template config before starting the service
@@ -203,7 +206,11 @@ case $OS in
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "service ${SERVICE_NAME} start"
                 else
-                    setup_output_dirs
+                    #override location for logs and sync gateway config
+                    LOGS_TEMPLATE_VAR=/var/log/${SERVICE_NAME}
+                    CONFIG_TEMPLATE_VAR=/opt/${SERVICE_NAME}/etc/sg_accel.json
+
+                    pre_install_actions
                     render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
                     chmod 755 /etc/init.d/${SERVICE_NAME}
                     PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
@@ -218,7 +225,7 @@ case $OS in
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "initctl start ${SERVICE_NAME}"
                 else
-                    setup_output_dirs
+                    pre_install_actions
                     render_template script_templates/upstart_redhat_sync_gateway.tpl > /etc/init/${SERVICE_NAME}.conf
                     #Do not autostart service as tempalte config is likely to cause SG to panic
                     #User should edit the template config before starting the service
@@ -229,7 +236,7 @@ case $OS in
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "systemctl start ${SERVICE_NAME}"
                 else
-                    setup_output_dirs
+                    pre_install_actions
                     render_template script_templates/systemd_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
                     systemctl enable ${SERVICE_NAME}
                     #Do not autostart service as tempalte config is likely to cause SG to panic
@@ -248,7 +255,7 @@ case $OS in
         if [ "$SERVICE_CMD_ONLY" = true ]; then
             echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sg_accel.plist"
         else
-            setup_output_dirs
+            pre_install_actions
             render_template script_templates/com.couchbase.mobile.sync_gateway.plist > /Library/LaunchDaemons/com.couchbase.mobile.${SERVICE_NAME}.plist
             #Do not autostart service as tempalte config is likely to cause SG to panic
             #User should edit the template config before starting the service
