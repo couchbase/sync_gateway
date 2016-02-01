@@ -71,50 +71,48 @@ setup_output_dirs() {
 
 # Run pre installation actions
 pre_install_actions() {
-    if [ "$SERVICE_CMD_ONLY" = false ]; then
-        # Check that runtime user account exists
-        if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
-            echo "The sg_accel runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
-            exit 1
-        fi
-
-        # Check that the runtime base directory exists
-        if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
-            echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
-            exit 1
-        fi
-
-        # Check that the sg_accel executable exists
-        if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
-            echo "The sg_accel executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
-            exit 1
-        fi
-
-        # Check that the sg_accel src JSON config directory exists
-        if [ ! -d "$SRCCFGDIR" ]; then
-            echo "The sg_accel source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
-            exit 1
-        fi
-
-        # Check that the sg_accel src JSON config file exists
-        if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
-            echo "The sg_accel source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
-            exit 1
-        fi
-
-        # If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
-        if [ -S /tmp/log_upr_client.sock ]; then
-            rm -f /tmp/log_upr_client.sock
-        fi
-
-        # Copy a default config if defined config file does not exist
-        if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
-            mkdir -p `dirname ${CONFIG_TEMPLATE_VAR}`
-            cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
-            chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
-        fi
-        setup_output_dirs
+    # Check that runtime user account exists
+    if [ "$OS" != "Darwin" ] && [ -z `id -u $RUNAS_TEMPLATE_VAR 2>/dev/null` ]; then
+        echo "The sg_accel runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
     fi
+
+    # Check that the runtime base directory exists
+    if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
+        echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the sg_accel executable exists
+    if [ ! -x "$GATEWAY_TEMPLATE_VAR" ]; then
+        echo "The sg_accel executable does not exist \"$GATEWAY_TEMPLATE_VAR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the sg_accel src JSON config directory exists
+    if [ ! -d "$SRCCFGDIR" ]; then
+        echo "The sg_accel source JSON config file directory does not exist \"$SRCCFGDIR\"." > /dev/stderr
+        exit 1
+    fi
+
+    # Check that the sg_accel src JSON config file exists
+    if [ ! -r "$SRCCFGDIR/$SRCCFG" ]; then
+        echo "The sg_accel source JSON config file does not exist\"$SRCCFGDIR/$SRCCFG\"." > /dev/stderr
+        exit 1
+    fi
+
+    # If a /tmp/log_upr_client.sock socket exists from a previous installation remove it
+    if [ -S /tmp/log_upr_client.sock ]; then
+        rm -f /tmp/log_upr_client.sock
+    fi
+
+    # Copy a default config if defined config file does not exist
+    if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
+        mkdir -p `dirname ${CONFIG_TEMPLATE_VAR}`
+        cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
+        chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
+    fi
+    setup_output_dirs
 }
 
 #
@@ -210,7 +208,7 @@ case $OS in
                 else
                     #override location for logs and sync gateway config
                     LOGS_TEMPLATE_VAR=/var/log/${SERVICE_NAME}
-                    CONFIG_TEMPLATE_VAR=/opt/${SERVICE_NAME}/etc/sync_gateway.json
+                    CONFIG_TEMPLATE_VAR=/opt/${SERVICE_NAME}/etc/sg_accel.json
 
                     pre_install_actions
                     render_template script_templates/sysv_sync_gateway.tpl > /etc/init.d/${SERVICE_NAME}
