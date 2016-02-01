@@ -1828,6 +1828,7 @@
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles1</td></row>
 		<row><td>Sync_Gateway_Files</td><td>IS_ININSTALL_SHORTCUT</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sg_accel.exe</td></row>
+		<row><td>Sync_Gateway_Files</td><td>sg_accel_service.exe</td></row>
 	</table>
 
 	<table name="File">
