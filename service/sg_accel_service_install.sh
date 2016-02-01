@@ -109,6 +109,7 @@ pre_install_actions() {
 
         # Copy a default config if defined config file does not exist
         if [ ! -e "$CONFIG_TEMPLATE_VAR" ]; then
+            mkdir -p `dirname ${CONFIG_TEMPLATE_VAR}`
             cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
             chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
         fi
