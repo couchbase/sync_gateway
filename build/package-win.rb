@@ -17,8 +17,8 @@ require 'rake'
 
 PRODUCT_BASE    = "couchbase"
 
-PREFIX          = ARGV[0] || "/opt/#{PRODUCT}"
-PREFIXD         = ARGV[1] || "./opt/#{PRODUCT}"
+PREFIX          = ARGV[0] || "/opt/couchbase-sync-gateway"
+PREFIXD         = ARGV[1] || "./opt/couchbase-sync-gateway"
 PRODUCT_VERSION = ARGV[2] || "0.0.0-1234"
 REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || 'windows-x64'
@@ -38,7 +38,7 @@ print "\nDEBUG:  2: PRODUCT_VERSION = ", PRODUCT_VERSION
 print "\nDEBUG:  3: REPO_SHA        = ", REPO_SHA
 print "\nDEBUG:  4: PLATFORM        = ", PLATFORM
 print "\nDEBUG:  5: ARCH            = ", ARCH
-print "\nDEBUG:  5: PRODUCT_KIND    = ", PRODUCT_KIND
+print "\nDEBUG:  6: PRODUCT_KIND    = ", PRODUCT_KIND
 print "\n"
 print "\nDEBUG:  RELEASE  = ", RELEASE
 print "\nDEBUG:  BLDNUM   = ", BLDNUM
