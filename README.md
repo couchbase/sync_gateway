@@ -50,9 +50,6 @@ Sync Gateway is a standalone, native executable located in the ./bin directory. 
 
 To update your build later, pull the latest updates from GitHub, update the submodules, and run ./build.sh again.
 
-
-<img src="http://jchris.ic.ht/files/slides/mobile-arch.png" width="600px"/>
-
 ### License
 
 Apache 2 license.
