@@ -107,7 +107,8 @@ func wrapViews(ddoc *DesignDoc, enableUserViews bool) {
 	                      return;
 	                    delete doc._sync;
 	                    meta.rev = sync.rev;
-						(` + view.Map + `) (doc, meta); }`
+						(` + view.Map + `) (doc, meta);
+						doc._sync = sync;}`
 			ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 		}
 	}
