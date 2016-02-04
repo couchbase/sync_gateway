@@ -3914,7 +3914,7 @@
 		<row><td>ISSelfRegisterFinalize</td><td/><td>6602</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td/><td>2202</td><td/><td/></row>
 		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td/><td>6601</td><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td/><td>1005</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>REMOVE="ALL"</td><td>1525</td><td/><td/></row>
 		<row><td>InstallFiles</td><td/><td>4000</td><td>InstallFiles</td><td/></row>
 		<row><td>InstallFinalize</td><td/><td>6600</td><td>InstallFinalize</td><td/></row>
 		<row><td>InstallInitialize</td><td/><td>1501</td><td>InstallInitialize</td><td/></row>
