@@ -188,14 +188,7 @@
           {
             "handler": "webhook",
             "url": "http://10.17.4.28:8080/webhook_receiver",
-            "timeout": 0,
-            "filter": `
-	      function(doc) {
-                  if (doc._id.indexOf('webhooktest') >= 0) {
-                    return true;
-                  }
-                  return false;
-              }`
+            "timeout": 0
           }
         ]
       },
