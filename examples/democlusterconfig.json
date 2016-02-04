@@ -187,7 +187,7 @@
         "document_changed": [
           {
             "handler": "webhook",
-            "url": "http://10.17.4.28:8080/webhook_receiver",
+            "url": "http://10.17.4.28:3000/webhook_receiver",
             "timeout": 0
           }
         ]
