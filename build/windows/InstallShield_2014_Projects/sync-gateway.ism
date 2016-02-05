@@ -1027,9 +1027,9 @@
 		<row><td>ISSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFiles</td><td/><td/></row>
 		<row><td>ISSelfRegisterFinalize</td><td>1</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFinalize</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISUnSelfRegisterFiles</td><td/><td/></row>
-		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>18</td><td>sg_windows.exe</td><td>install "[INSTALLDIR]"\sync_gateway.exe "[INSTALLDIR]"\serviceconfig.json</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>3090</td><td>sg_windows.exe</td><td>install "[INSTALLDIR]\sync_gateway.exe" "[INSTALLDIR]\serviceconfig.json"</td><td/><td/></row>
 		<row><td>IS_LAUNCH_MY_PROGRAM_PLEASE</td><td>210</td><td>sync_gateway.exe</td><td/><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>18</td><td>sg_windows.exe</td><td>uninstall</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>3090</td><td>sg_windows.exe</td><td>uninstall</td><td/><td/></row>
 		<row><td>SetARPINSTALLLOCATION</td><td>51</td><td>ARPINSTALLLOCATION</td><td>[INSTALLDIR]</td><td/><td/></row>
 		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>ShowMsiLog</td><td>226</td><td>SystemFolder</td><td>[SystemFolder]notepad.exe "[MsiLogFileLocation]"</td><td/><td>Shows Property-driven MSI Log</td></row>
@@ -2329,7 +2329,7 @@
 		<row><td>ISProductFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectDataFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
-		<row><td>PATH_TO_EXAMPLES_FILES</td><td>C:\Users\andy\Documents\installer-build\app-under-test\sync_gateway\examples</td><td/><td>2</td></row>
+		<row><td>PATH_TO_EXAMPLES_FILES</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\examples</td><td/><td>2</td></row>
 		<row><td>PATH_TO_JENKINS_WORKSPACE</td><td>C:\jenkins\workspace\build_sync_gateway_master_win-2008-x86</td><td/><td>2</td></row>
 		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;</td><td/><td>2</td></row>
 		<row><td>PATH_TO_SG-WINDOWS_FILES</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\service\sg-windows</td><td/><td>2</td></row>
@@ -2655,7 +2655,7 @@
 		<col def="I2">Encoded</col>
 		<col def="S0">Comment</col>
 		<col def="I4">TimeStamp</col>
-		<row><td>COMPANY_NAME</td><td>1033</td><td>Couchbase, Inc.</td><td>0</td><td/><td>-1700621678</td></row>
+		<row><td>COMPANY_NAME</td><td>1033</td><td>Couchbase, Inc.</td><td>0</td><td/><td>556026863</td></row>
 		<row><td>DN_AlwaysInstall</td><td>1033</td><td>Always Install</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDPROP_EXPRESS_LAUNCH_CONDITION_COLOR</td><td>1033</td><td>The color settings of your system are not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDPROP_EXPRESS_LAUNCH_CONDITION_OS</td><td>1033</td><td>The operating system is not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
@@ -3622,7 +3622,7 @@
 		<row><td>IDS__IsErrorDlg_Yes</td><td>1033</td><td>&amp;Yes</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_Finish</td><td>1033</td><td>&amp;Finish</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_InstallSuccess</td><td>1033</td><td>The InstallShield Wizard has successfully installed [ProductName]. Click Finish to exit the wizard.</td><td>0</td><td/><td>1789059243</td></row>
-		<row><td>IDS__IsExitDialog_LaunchProgram</td><td>1033</td><td>Launch [ProductName]</td><td>0</td><td/><td>-1700599086</td></row>
+		<row><td>IDS__IsExitDialog_LaunchProgram</td><td>1033</td><td>Launch [ProductName]</td><td>0</td><td/><td>556041167</td></row>
 		<row><td>IDS__IsExitDialog_ShowReadMe</td><td>1033</td><td>Show the readme file</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_UninstallSuccess</td><td>1033</td><td>The InstallShield Wizard has successfully uninstalled [ProductName]. Click Finish to exit the wizard.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_Update_InternetConnection</td><td>1033</td><td>Your Internet connection can be used to make sure that you have the latest updates.</td><td>0</td><td/><td>1789059243</td></row>
@@ -3757,7 +3757,7 @@
 		<row><td>IDS__TargetReq_DESC_PROCESSOR</td><td>1033</td><td>The processor is not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__TargetReq_DESC_RAM</td><td>1033</td><td>The amount of RAM is not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__TargetReq_DESC_RESOLUTION</td><td>1033</td><td>The screen resolution is not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
-		<row><td>ID_STRING1</td><td>1033</td><td>http://www.Couchbase.com</td><td>0</td><td/><td>-1700631822</td></row>
+		<row><td>ID_STRING1</td><td>1033</td><td>http://www.Couchbase.com</td><td>0</td><td/><td>690249384</td></row>
 		<row><td>IIDS_UITEXT_FeatureUninstalled</td><td>1033</td><td>This feature will remain uninstalled.</td><td>0</td><td/><td>1789059243</td></row>
 	</table>
 
@@ -3911,10 +3911,10 @@
 		<row><td>ISPreventDowngrade</td><td>ISFOUNDNEWERPRODUCTVERSION</td><td>450</td><td>ISPreventDowngrade</td><td/></row>
 		<row><td>ISSelfRegisterCosting</td><td/><td>2201</td><td/><td/></row>
 		<row><td>ISSelfRegisterFiles</td><td/><td>5601</td><td/><td/></row>
-		<row><td>ISSelfRegisterFinalize</td><td/><td>6602</td><td/><td/></row>
+		<row><td>ISSelfRegisterFinalize</td><td/><td>6603</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td/><td>2202</td><td/><td/></row>
-		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td/><td>6601</td><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>REMOVE="ALL"</td><td>1525</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>"Not Installed"</td><td>6505</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>Installed</td><td>1950</td><td/><td/></row>
 		<row><td>InstallFiles</td><td/><td>4000</td><td>InstallFiles</td><td/></row>
 		<row><td>InstallFinalize</td><td/><td>6600</td><td>InstallFinalize</td><td/></row>
 		<row><td>InstallInitialize</td><td/><td>1501</td><td>InstallInitialize</td><td/></row>
@@ -4377,7 +4377,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>RebootYesNo</td><td>Yes</td><td/></row>
 		<row><td>ReinstallModeText</td><td>omus</td><td/></row>
 		<row><td>RestartManagerOption</td><td>CloseRestart</td><td/></row>
-		<row><td>SHOWLAUNCHPROGRAM</td><td>-1</td><td/></row>
+		<row><td>SHOWLAUNCHPROGRAM</td><td>0</td><td/></row>
 		<row><td>SecureCustomProperties</td><td>ISFOUNDNEWERPRODUCTVERSION;USERNAME;COMPANYNAME;ISX_SERIALNUM;SUPPORTDIR;INSTALLDIR;LAUNCHPROGRAM</td><td/></row>
 		<row><td>SetupType</td><td>Typical</td><td/></row>
 		<row><td>UpgradeCode</td><td>{15AAD769-8363-41F3-A6C4-4072B8571067}</td><td/></row>
