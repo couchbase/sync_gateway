@@ -52,7 +52,7 @@
 	<summary>
 		<codepage>1252</codepage>
 		<title>Installation Database</title>
-		<subject>Sync Gateway</subject>
+		<subject>##ID_STRING2##</subject>
 		<author>##COMPANY_NAME##</author>
 		<keywords>Installer,MSI,Database</keywords>
 		<comments>Contact:  Your local administrator</comments>
@@ -1027,9 +1027,9 @@
 		<row><td>ISSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFiles</td><td/><td/></row>
 		<row><td>ISSelfRegisterFinalize</td><td>1</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFinalize</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISUnSelfRegisterFiles</td><td/><td/></row>
-		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>18</td><td>sg_accel_service.exe</td><td>install "[INSTALLDIR]"\sg_accel.exe "[INSTALLDIR]"\basic_sg_accel_config.json</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>3090</td><td>sg_accel_service.exe</td><td>install "[INSTALLDIR]\sg_accel.exe" "[INSTALLDIR]\basic_sg_accel_config.json"</td><td/><td/></row>
 		<row><td>IS_LAUNCH_MY_PROGRAM_PLEASE</td><td>210</td><td>sg_accel_service.exe</td><td/><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>18</td><td>sg_accel_service.exe</td><td>uninstall</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>3090</td><td>sg_accel_service.exe</td><td>uninstall</td><td/><td/></row>
 		<row><td>SetARPINSTALLLOCATION</td><td>51</td><td>ARPINSTALLLOCATION</td><td>[INSTALLDIR]</td><td/><td/></row>
 		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>ShowMsiLog</td><td>226</td><td>SystemFolder</td><td>[SystemFolder]notepad.exe "[MsiLogFileLocation]"</td><td/><td>Shows Property-driven MSI Log</td></row>
@@ -1843,12 +1843,12 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>basic_sg_accel_config.json</td><td>sg_accel_service.exe</td><td>BASIC_~1.JSO|basic_sg_accel_config.json</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ECCEL_FILES&gt;\examples\basic_sg_accel_config.json</td><td>1</td><td/></row>
-		<row><td>license.txt</td><td>AllOtherFiles</td><td>LICENSE.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\LICENSE.txt</td><td>1</td><td/></row>
-		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\README.txt</td><td>1</td><td/></row>
+		<row><td>basic_sg_accel_config.json</td><td>sg_accel_service.exe</td><td>BASIC_~1.JSO|basic_sg_accel_config.json</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\examples\basic_sg_accel_config.json</td><td>1</td><td/></row>
+		<row><td>license.txt</td><td>AllOtherFiles</td><td>LICENSE.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\LICENSE.txt</td><td>1</td><td/></row>
+		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\README.txt</td><td>1</td><td/></row>
 		<row><td>sg_accel.exe</td><td>sg_accel.exe</td><td>sg_accel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\bin\sg_accel.exe</td><td>1</td><td/></row>
 		<row><td>sg_accel_service.exe</td><td>sg_accel_service.exe</td><td>SG-ACC~1.EXE|sg-accel-service.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG-WINDOWS_FILES&gt;\sg-accel-service.exe</td><td>1</td><td/></row>
-		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
+		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
 	</table>
 
 	<table name="FileSFPCatalog">
@@ -2093,7 +2093,7 @@
 		<col def="S0">IncludeFiles</col>
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
-		<row><td>AllOtherFiles1</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\examples</td><td>4</td><td/><td/><td>10</td></row>
+		<row><td>AllOtherFiles1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\examples</td><td>4</td><td/><td/><td>10</td></row>
 	</table>
 
 	<table name="ISFeatureDIMReferences">
@@ -2329,11 +2329,11 @@
 		<row><td>ISProductFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectDataFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
+		<row><td>PATH_TO_EXAMPLES_FILES</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\examples</td><td/><td>2</td></row>
 		<row><td>PATH_TO_JENKINS_WORKSPACE</td><td>C:\jenkins\workspace\build_sync_gateway_master_win-2008-x86</td><td/><td>2</td></row>
-		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;</td><td/><td>2</td></row>
-		<row><td>PATH_TO_SG-WINDOWS_FILES</td><td>&lt;PATH_TO_SYNC_GATEWAY_FILES&gt;\service\sg-windows</td><td/><td>2</td></row>
+		<row><td>PATH_TO_LICENSE_FILE</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;</td><td/><td>2</td></row>
+		<row><td>PATH_TO_SG-WINDOWS_FILES</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\service\sg-windows</td><td/><td>2</td></row>
 		<row><td>PATH_TO_SG_ACCEL_FILES</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sg-accel</td><td/><td>2</td></row>
-		<row><td>PATH_TO_SYNC_GATEWAY_FILES</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway</td><td/><td>2</td></row>
 		<row><td>ProgramFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>SystemFolder</td><td/><td/><td>1</td></row>
 		<row><td>WindowsFolder</td><td/><td/><td>1</td></row>
@@ -3468,7 +3468,8 @@
 		<row><td>IDS_PROGMSG_XML_UPDATE_FILE</td><td>1033</td><td>Updating XML file %s...</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SETUPEXE_EXPIRE_MSG</td><td>1033</td><td>This setup works until %s. The setup will now exit.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SETUPEXE_LAUNCH_COND_E</td><td>1033</td><td>This setup was built with an evaluation version of InstallShield and can only be launched from setup.exe.</td><td>0</td><td/><td>1789059243</td></row>
-		<row><td>IDS_SHORTCUT_DISPLAY_NAME1</td><td>1033</td><td>Launch Couchbase Sync Gateway</td><td>0</td><td/><td>-1700644078</td></row>
+		<row><td>IDS_SHORTCUT_DISPLAY_NAME1</td><td>1033</td><td>Launch Couchbase SG Accel</td><td>0</td><td/><td>690273999</td></row>
+		<row><td>IDS_SHORTCUT_DISPLAY_NAME2</td><td>1033</td><td>Uninstall Couchbase SG Accel</td><td>0</td><td/><td>690286287</td></row>
 		<row><td>IDS_SQLBROWSE_INTRO</td><td>1033</td><td>From the list of servers below, select the database server you would like to target.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SQLBROWSE_INTRO_DB</td><td>1033</td><td>From the list of catalog names below, select the database catalog you would like to target.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS_SQLBROWSE_INTRO_TEMPLATE</td><td>1033</td><td>[IS_SQLBROWSE_INTRO]</td><td>0</td><td/><td>1789059243</td></row>
@@ -3622,7 +3623,7 @@
 		<row><td>IDS__IsErrorDlg_Yes</td><td>1033</td><td>&amp;Yes</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_Finish</td><td>1033</td><td>&amp;Finish</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_InstallSuccess</td><td>1033</td><td>The InstallShield Wizard has successfully installed [ProductName]. Click Finish to exit the wizard.</td><td>0</td><td/><td>1789059243</td></row>
-		<row><td>IDS__IsExitDialog_LaunchProgram</td><td>1033</td><td>Launch [ProductName]</td><td>0</td><td/><td>-1700599086</td></row>
+		<row><td>IDS__IsExitDialog_LaunchProgram</td><td>1033</td><td>Launch [ProductName]</td><td>0</td><td/><td>556021046</td></row>
 		<row><td>IDS__IsExitDialog_ShowReadMe</td><td>1033</td><td>Show the readme file</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_UninstallSuccess</td><td>1033</td><td>The InstallShield Wizard has successfully uninstalled [ProductName]. Click Finish to exit the wizard.</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__IsExitDialog_Update_InternetConnection</td><td>1033</td><td>Your Internet connection can be used to make sure that you have the latest updates.</td><td>0</td><td/><td>1789059243</td></row>
@@ -3758,6 +3759,7 @@
 		<row><td>IDS__TargetReq_DESC_RAM</td><td>1033</td><td>The amount of RAM is not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>IDS__TargetReq_DESC_RESOLUTION</td><td>1033</td><td>The screen resolution is not adequate for running [ProductName].</td><td>0</td><td/><td>1789059243</td></row>
 		<row><td>ID_STRING1</td><td>1033</td><td>http://www.Couchbase.com</td><td>0</td><td/><td>-1700631822</td></row>
+		<row><td>ID_STRING2</td><td>1033</td><td>SG Accel</td><td>0</td><td/><td>556032790</td></row>
 		<row><td>IIDS_UITEXT_FeatureUninstalled</td><td>1033</td><td>This feature will remain uninstalled.</td><td>0</td><td/><td>1789059243</td></row>
 	</table>
 
@@ -3867,7 +3869,7 @@
 		<col def="I2">ISIconIndex</col>
 		<row><td>ARPPRODUCTICON.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 		<row><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
-		<row><td>sync_gateway.exe_22519D418635416190856914B7FA803A.exe</td><td/><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\bin\sg_accel.exe</td><td>0</td></row>
+		<row><td>sync_gateway.exe_544F1BA173F24BD5B7689B3C75B0B1FD.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 	</table>
 
 	<table name="IniFile">
@@ -3913,8 +3915,8 @@
 		<row><td>ISSelfRegisterFiles</td><td/><td>5601</td><td/><td/></row>
 		<row><td>ISSelfRegisterFinalize</td><td/><td>6602</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td/><td>2202</td><td/><td/></row>
-		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td/><td>6601</td><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td/><td>1005</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>"Not Installed"</td><td>6505</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>Installed</td><td>1950</td><td/><td/></row>
 		<row><td>InstallFiles</td><td/><td>4000</td><td>InstallFiles</td><td/></row>
 		<row><td>InstallFinalize</td><td/><td>6600</td><td>InstallFinalize</td><td/></row>
 		<row><td>InstallInitialize</td><td/><td>1501</td><td>InstallInitialize</td><td/></row>
@@ -4368,7 +4370,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>ProductCode</td><td>{52DCD87A-762E-4D67-9265-C3F4AC37634B}</td><td/></row>
 		<row><td>ProductID</td><td>none</td><td/></row>
 		<row><td>ProductLanguage</td><td>1033</td><td/></row>
-		<row><td>ProductName</td><td>SG_Eccel</td><td/></row>
+		<row><td>ProductName</td><td>SG_Accel</td><td/></row>
 		<row><td>ProductVersion</td><td>1.2.0000</td><td/></row>
 		<row><td>ProgressType0</td><td>install</td><td/></row>
 		<row><td>ProgressType1</td><td>Installing</td><td/></row>
@@ -4377,7 +4379,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>RebootYesNo</td><td>Yes</td><td/></row>
 		<row><td>ReinstallModeText</td><td>omus</td><td/></row>
 		<row><td>RestartManagerOption</td><td>CloseRestart</td><td/></row>
-		<row><td>SHOWLAUNCHPROGRAM</td><td>-1</td><td/></row>
+		<row><td>SHOWLAUNCHPROGRAM</td><td>0</td><td/></row>
 		<row><td>SecureCustomProperties</td><td>ISFOUNDNEWERPRODUCTVERSION;USERNAME;COMPANYNAME;ISX_SERIALNUM;SUPPORTDIR;INSTALLDIR;LAUNCHPROGRAM</td><td/></row>
 		<row><td>SetupType</td><td>Typical</td><td/></row>
 		<row><td>UpgradeCode</td><td>{86D738C1-3527-4294-84B3-657E01137A44}</td><td/></row>
@@ -4530,8 +4532,8 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<col def="S255">ISComments</col>
 		<col def="S255">ISShortcutName</col>
 		<col def="I4">ISAttributes</col>
-		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>sync_gateway</td><td>UNINST|Uninstall Couchbase Sync Gateway</td><td>IS_ININSTALL_SHORTCUT</td><td>[SystemFolder]msiexec.exe</td><td>/x {354EC10C-E6CE-4A10-86C3-6D91B0A93119}</td><td/><td/><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td>0</td><td>1</td><td/><td/><td/><td/><td/><td/><td/><td/></row>
-		<row><td>sync_gateway.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sg_accel.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sync_gateway.exe_22519D418635416190856914B7FA803A.exe</td><td>1</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
+		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME2##</td><td>IS_ININSTALL_SHORTCUT</td><td>[SystemFolder]msiexec.exe</td><td>/x {354EC10C-E6CE-4A10-86C3-6D91B0A93119}</td><td/><td/><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td>0</td><td>1</td><td/><td/><td/><td/><td/><td/><td/><td/></row>
+		<row><td>sync_gateway.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sg_accel.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sync_gateway.exe_544F1BA173F24BD5B7689B3C75B0B1FD.exe</td><td>0</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="Signature">
