@@ -3867,7 +3867,7 @@
 		<col def="I2">ISIconIndex</col>
 		<row><td>ARPPRODUCTICON.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 		<row><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
-		<row><td>sync_gateway.exe_A642E39404584103A7318EFA7E2670FD.exe</td><td/><td>&lt;ISProductFolder&gt;\redist\Language Independent\OS Independent\GenericExe.ico</td><td>0</td></row>
+		<row><td>sync_gateway.exe_EEA1B988517D464997B49453A94D5F1D.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 	</table>
 
 	<table name="IniFile">
@@ -3913,8 +3913,8 @@
 		<row><td>ISSelfRegisterFiles</td><td/><td>5601</td><td/><td/></row>
 		<row><td>ISSelfRegisterFinalize</td><td/><td>6603</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td/><td>2202</td><td/><td/></row>
-		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>"Not Installed"</td><td>6505</td><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>Installed</td><td>1950</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>REMOVE&lt;&gt;"ALL"</td><td>6505</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>REMOVE="ALL"</td><td>1950</td><td/><td/></row>
 		<row><td>InstallFiles</td><td/><td>4000</td><td>InstallFiles</td><td/></row>
 		<row><td>InstallFinalize</td><td/><td>6600</td><td>InstallFinalize</td><td/></row>
 		<row><td>InstallInitialize</td><td/><td>1501</td><td>InstallInitialize</td><td/></row>
@@ -4531,7 +4531,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<col def="S255">ISShortcutName</col>
 		<col def="I4">ISAttributes</col>
 		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>sync_gateway</td><td>UNINST|Uninstall Couchbase Sync Gateway</td><td>IS_ININSTALL_SHORTCUT</td><td>[SystemFolder]msiexec.exe</td><td>/x {354EC10C-E6CE-4A10-86C3-6D91B0A93119}</td><td/><td/><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td>0</td><td>1</td><td/><td/><td/><td/><td/><td/><td/><td/></row>
-		<row><td>sync_gateway.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sync_gateway.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sync_gateway.exe_A642E39404584103A7318EFA7E2670FD.exe</td><td>0</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
+		<row><td>sync_gateway.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sync_gateway.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sync_gateway.exe_EEA1B988517D464997B49453A94D5F1D.exe</td><td>0</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="Signature">
