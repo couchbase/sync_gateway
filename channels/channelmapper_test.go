@@ -11,8 +11,9 @@ package channels
 
 import (
 	"encoding/json"
-	"github.com/couchbaselabs/go.assert"
 	"testing"
+
+	"github.com/couchbaselabs/go.assert"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/robertkrimen/otto"
@@ -273,7 +274,7 @@ func TestCheckRole(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc) {
 			requireRole(doc.role);
 		}`)
-	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl":1, "5yo":1}}
+	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, sally)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
@@ -293,12 +294,12 @@ func TestCheckRoleArray(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc) {
 			requireRole(doc.roles);
 		}`)
-	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl":1, "5yo":1}}
+	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"roles": ["kid","girl"]}`), `{}`, sally)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
 
-	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy":1, "musician":1}}
+	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy": 1, "musician": 1}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, linus)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing role"))
@@ -347,7 +348,6 @@ func TestCheckAccessArray(t *testing.T) {
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
 	assert.DeepEquals(t, res.Rejection, nil)
 }
-
 
 // Test changing the function
 func TestSetFunction(t *testing.T) {
