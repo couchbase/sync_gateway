@@ -498,6 +498,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
+
+			// ActiveOnly only applies to initial backfill, not new changes - see issue #1576
+			options.ActiveOnly = false
+
 			output <- nil
 		waitForChanges:
 			for {
