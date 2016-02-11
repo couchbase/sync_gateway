@@ -627,6 +627,117 @@ func TestDBOffline503Response(t *testing.T) {
 	assertStatus(t, rt.sendRequest("GET", "/db/doc1", ""), 503)
 }
 
+//Take DB offline while there are active _changes feeds
+// and other REST API calls are being made
+//ensure that DB offline completes
+func TestDBOfflineWithActiveClients(t *testing.T) {
+	var rt restTester
+
+	response := rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"letmein"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user2", "password":"letmein"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user3", "password":"letmein"}`)
+	assertStatus(t, response, 201)
+
+	go func(rt restTester) {
+		log.Printf("Continuous changes 1: Starting")
+		for i := 0; i <= 100000; i++ {
+			rt.send(requestByUser("GET", "/db/_changes?feed=longpoll&since=1000", "", "user1"))
+		}
+		log.Printf("Continuous changes 1: Stopped")
+	}(rt)
+
+	time.Sleep(10 * time.Millisecond)
+
+	go func(rt restTester) {
+		log.Printf("Continuous changes 2: Starting")
+		for i := 0; i <= 100000; i++ {
+			rt.send(requestByUser("GET", "/db/_changes?feed=longpoll&since=1000", "", "user2"))
+		}
+		log.Printf("Continuous changes 2: Stopped")
+	}(rt)
+
+	time.Sleep(10 * time.Millisecond)
+
+	go func(rt restTester) {
+		log.Printf("Continuous changes 3: Starting")
+		for i := 0; i <= 100000; i++ {
+			rt.send(requestByUser("GET", "/db/_changes?feed=longpoll&since=1000", "", "user3"))
+		}
+		log.Printf("Continuous changes 2: Stopped")
+	}(rt)
+
+	time.Sleep(20 * time.Millisecond)
+
+	go func(rt restTester) {
+		for i := 0; i <= 100000; i++ {
+			docId := fmt.Sprintf("/db/_local/loc%d", i)
+			rt.sendRequest("PUT", docId, `{"hi": "there"}`)
+			rt.sendRequest("PUT", docId, `{"hi": "again", "_rev": "0-1"}`)
+			rt.sendRequest("GET", docId, "")
+		}
+	}(rt)
+
+	time.Sleep(10 * time.Millisecond)
+
+	go func(rt restTester) {
+		for i := 0; i <= 100000; i++ {
+			assertStatus(t, rt.sendAdminRequest("GET", "/todolite-cc/", ""), 404)
+		}
+	}(rt)
+
+	time.Sleep(10 * time.Millisecond)
+
+	go func(rt restTester) {
+
+		//Create some docs
+		rt.send(request("PUT", "/db/beta", `{"owner":"boadecia"}`)) // seq=2
+		rt.send(request("PUT", "/db/delta", `{"owner":"alice"}`))   // seq=3
+		rt.send(request("PUT", "/db/gamma", `{"owner":"zegpold"}`)) // seq=4
+		rt.send(request("PUT", "/db/a1", `{"channel":"alpha"}`))    // seq=5
+		rt.send(request("PUT", "/db/b1", `{"channel":"beta"}`))     // seq=6
+		rt.send(request("PUT", "/db/d1", `{"channel":"delta"}`))    // seq=7
+		rt.send(request("PUT", "/db/g1", `{"channel":"gamma"}`))    // seq=8
+
+		// Create some bulk docs:
+		input := `{"new_edits":false, "docs": [
+                    {"_id": "rd1", "_rev": "12-abc", "n": 1,
+                     "_revisions": {"start": 12, "ids": ["abc", "eleven", "ten", "nine"]}},
+                    {"_id": "rd2", "_rev": "34-def", "n": 2,
+                     "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
+              ]}`
+		rt.sendRequest("POST", "/db/_bulk_docs", input)
+
+		// Now call _revs_diff:
+		input = `{"rd1": ["13-def", "12-abc", "11-eleven"],
+              "rd2": ["34-def", "31-one"],
+              "rd9": ["1-a", "2-b", "3-c"],
+              "_design/ddoc": ["1-woo"]
+             }`
+		for i := 0; i <= 100000; i++ {
+			rt.sendRequest("POST", "/db/_revs_diff", input)
+		}
+
+	}(rt)
+
+	time.Sleep(10 * time.Millisecond)
+
+	log.Printf("Taking DB offline")
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, 200)
+
+	response = rt.sendAdminRequest("GET", "/db/", "")
+	body = nil
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.True(t, body["state"].(string) == "Offline")
+}
+
 //Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
 	var rt restTester
@@ -909,7 +1020,6 @@ func (rt *restTester) createSession(t *testing.T, username string) string {
 	return sessionId
 }
 
-
 func TestPurgeWithBadJsonPayload(t *testing.T) {
 	var rt restTester
 	response := rt.sendAdminRequest("POST", "/db/_purge", "foo")
@@ -923,7 +1033,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
@@ -933,7 +1043,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
@@ -943,7 +1053,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
@@ -953,7 +1063,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
@@ -965,7 +1075,7 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -981,7 +1091,7 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"},"doc2" : []interface {}{"*"}}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}})
 
 	//Create new versions of the docs without conflicts
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -997,7 +1107,7 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
