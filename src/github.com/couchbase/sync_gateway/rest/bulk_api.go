@@ -195,8 +195,8 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	var options db.ForEachDocIDOptions
-	options.Startkey = h.getQuery("startkey")
-	options.Endkey = h.getQuery("endkey")
+	options.Startkey = h.getJSONStringQuery("startkey")
+	options.Endkey = h.getJSONStringQuery("endkey")
 	options.Limit = h.getIntQuery("limit", 0)
 
 	// Now it's time to actually write the response!

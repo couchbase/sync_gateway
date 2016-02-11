@@ -1073,8 +1073,34 @@ func testAccessControl(t *testing.T, rt indexTester) {
 	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
 	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
+	//Check all docs startkey option with double quote
+	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc4"&channels=true`, nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
 	//Check all docs endkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs endkey option
+	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.send(request)
 	assertStatus(t, response, 200)
