@@ -66,6 +66,7 @@ type ServerConfig struct {
 	ConfigServer                   *string         `json:",omitempty"`                        // URL of config server (for dynamic db discovery)
 	Persona                        *PersonaConfig  `json:",omitempty"`                        // Configuration for Mozilla Persona validation
 	Facebook                       *FacebookConfig `json:",omitempty"`                        // Configuration for Facebook validation
+	Google                         *GoogleConfig   `json:",omitempty"`                        // Configuration for Google validation
 	CORS                           *CORSConfig     `json:",omitempty"`                        // Configuration for allowing CORS
 	Log                            []string        `json:",omitempty"`                        // Log keywords to enable
 	LogFilePath                    *string         `json:",omitempty"`                        // Path to log file, if missing write to stderr
@@ -134,6 +135,11 @@ type PersonaConfig struct {
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
+}
+
+type GoogleConfig struct {
+	Register    bool     // If true, server will register new user accounts
+	AppClientID []string `json:"app_client_id"` // list of enabled client ids
 }
 
 type CORSConfig struct {

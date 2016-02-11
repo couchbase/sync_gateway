@@ -85,6 +85,10 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
 			(*handler).handleFacebookPOST)).Methods("POST")
 	}
+	if sc.config.Google != nil {
+		dbr.Handle("/_google", makeHandler(sc, publicPrivs,
+			(*handler).handleGooglePOST)).Methods("POST")
+	}
 
 	return r, dbr
 }
