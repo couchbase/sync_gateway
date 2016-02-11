@@ -175,6 +175,25 @@
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]}
       }
     },
+	      "deepstyle": {
+			"server": "http://172.23.121.38:8091",
+			"bucket": "deepstyle",
+			"users": {
+				"GUEST": {"disabled": false, "admin_channels": ["*"] }
+			},
+			"sync": `
+			function(doc, oldDoc) {
+				if (doc.type == "job") {
+					if (doc.owner) {
+					        // put this doc in the doc.owner channel
+      						channel(doc.owner);
+      						// give access of doc.owner to the doc.owner channel
+      						access(doc.owner, doc.owner);
+    					}
+				}
+			}
+			`
+	      },
     "todolite": {
       "server":"http://172.23.121.38:8091",
       "bucket":"todolite",
