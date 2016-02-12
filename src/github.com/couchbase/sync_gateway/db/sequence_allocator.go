@@ -78,9 +78,10 @@ func (s *sequenceAllocator) reserveSequences(numToReserve uint64) error {
 func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint64, error) {
 
 	var err error
+	var max uint64
 	retries := 0
 	for retries < kMaxIncrRetries {
-		max, err := s.bucket.Incr(key, numToReserve, numToReserve, 0)
+		max, err = s.bucket.Incr(key, numToReserve, numToReserve, 0)
 		if err != nil {
 			retries++
 			base.Warn("Error from Incr in sequence allocator (%d) - attempt (%d/%d): %v", numToReserve, retries, kMaxIncrRetries, err)
