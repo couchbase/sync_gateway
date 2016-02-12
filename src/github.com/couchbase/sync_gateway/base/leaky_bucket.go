@@ -8,10 +8,6 @@ import (
 	"github.com/couchbase/sg-bucket"
 )
 
-const (
-	maxIncrFailures = 2
-)
-
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
 	bucket    Bucket
@@ -23,7 +19,7 @@ type LeakyBucket struct {
 type LeakyBucketConfig struct {
 
 	// Incr() fails 3 times before finally succeeding
-	IncrTemporaryFail bool
+	IncrTemporaryFailCount uint16
 
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
@@ -90,10 +86,10 @@ func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
-	if b.config.IncrTemporaryFail {
-		if b.incrCount < maxIncrFailures {
+	if b.config.IncrTemporaryFailCount > 0 {
+		if b.incrCount < b.config.IncrTemporaryFailCount {
 			b.incrCount++
-			return 0, errors.New(fmt.Sprintf("Incr forced abort (%d/%d), try again maybe?", b.incrCount, maxIncrFailures))
+			return 0, errors.New(fmt.Sprintf("Incr forced abort (%d/%d), try again maybe?", b.incrCount, b.config.IncrTemporaryFailCount))
 		}
 		b.incrCount = 0
 
