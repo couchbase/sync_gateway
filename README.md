@@ -1,6 +1,6 @@
-# Couchbase Sync Gateway
+[![Build Status](https://travis-ci.org/couchbase/sync_gateway.svg?branch=master)](https://travis-ci.org/couchbase/sync_gateway) [![Join the chat at https://gitter.im/couchbase/sync_gateway](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/sync_gateway?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-[![Join the chat at https://gitter.im/couchbase/sync_gateway](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/sync_gateway?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+# Couchbase Sync Gateway
 
 Gluing [Couchbase Lite][COUCHBASE_LITE] to [Couchbase Server][COUCHBASE_SERVER]
 
