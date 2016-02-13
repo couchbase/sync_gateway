@@ -4,5 +4,11 @@ go:
  - 1.5.3
 
 script:
- - go get -u -v -t ./...
- - go test -v ./...
+ - curl https://storage.googleapis.com/git-repo-downloads/repo > repo
+ - chmod +x repo
+ - ./repo init -u "https://github.com/couchbaselabs/sync_gateway.git" -m manifest/default.xml
+ - ./repo sync
+ - export GOPATH=`pwd`/godeps
+ - cd $GOPATH/src/github.com/couchbase/sync_gateway
+ - go test ./... && go install ./...
+
