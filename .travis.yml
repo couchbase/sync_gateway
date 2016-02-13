@@ -2,7 +2,6 @@ language: go
 
 go: 
  - 1.5.3
- - tip
 
 script:
  - go get -u -v -t ./...
