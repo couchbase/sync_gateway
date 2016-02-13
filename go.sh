@@ -9,5 +9,4 @@ if [[ $(echo "$GO_MAJOR_MINOR_VERSION >= 1.3" | bc) -eq 0 ]]; then
   exit 1
 fi
 
-export GOPATH="`pwd`"
 go "$@"

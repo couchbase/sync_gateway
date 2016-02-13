@@ -1,9 +1,6 @@
 #!/bin/sh -e
 # This script runs unit tests in all the subpackages.
 
-export GOPATH="`pwd`"
-cd src/github.com/couchbase/sync_gateway
-
 # vet reports two errors which are actually OK here.  There are flags
 # to vet to tell it just what you want, but he invocation is a lot
 # more awkward, so I'm just going to grep away the things we don't care

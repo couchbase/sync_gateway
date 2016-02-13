@@ -12,43 +12,58 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 
 [**Downloads**](http://www.couchbase.com/download#cb-mobile)
 
-## Building From Source
+## Build pre-requisites
 
 To build Sync Gateway from source, you must have the following installed:
 
-* Go 1.5 or later 
+* Go 1.5 or later with your `$GOPATH` set to a valid directory
 * GCC for CGO (required on Sync Gateway 1.2 or later)
 
-On Mac or Unix systems, you can build Sync Gateway from source as follows:
+## Building From Source 
 
-Open a terminal window and change to the directory that you want to store Sync Gateway in.
-
-Clone the Sync Gateway GitHub repository:
+**Get repo tool**
 
 ```
-$ git clone https://github.com/couchbase/sync_gateway.git
+$ curl https://storage.googleapis.com/git-repo-downloads/repo > repo
+$ chmod +x repo
 ```
- 
-Change to the sync_gateway directory:
+
+**Init repo**
 
 ```
-$ cd sync_gateway
+$ ./repo init -u "https://github.com/couchbaselabs/sync_gateway.git" -m manifest/default.xml
 ```
- 
-Set up the submodules:
+
+**Repo sync**
 
 ```
-$ git submodule init
-$ git submodule update
+$ ./repo sync
 ```
-Build Sync Gateway:
+
+**Build, Test and Install**
 
 ```
-$ ./build.sh
+$ export GOPATH=`pwd`/godeps
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway
+$ go test ./... && go install ./...
 ```
-Sync Gateway is a standalone, native executable located in the ./bin directory. You can run the executable from the build location or move it anywhere you want.
 
-To update your build later, pull the latest updates from GitHub, update the submodules, and run ./build.sh again.
+## Building From source via `go get`
+
+Warning: there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach!
+
+```
+go get -u -t github.com/couchbase/sync_gateway/...
+```
+
+After this operation completes you should have a new `sync_gateway` binary in `$GOPATH/bin`
+
+**Running Unit Tests**
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ ./test.sh
+```
 
 ### License
 
