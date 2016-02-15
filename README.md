@@ -31,7 +31,7 @@ $ chmod +x repo
 **Init repo**
 
 ```
-$ ./repo init -u "https://github.com/couchbaselabs/sync_gateway.git" -m manifest/default.xml
+$ ./repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
 ```
 
 **Repo sync**
