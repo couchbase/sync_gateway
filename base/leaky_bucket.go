@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.

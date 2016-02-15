@@ -3,7 +3,7 @@ package base
 import (
 	"testing"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
 )
 

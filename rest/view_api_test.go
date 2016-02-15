@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbaselabs/go.assert"

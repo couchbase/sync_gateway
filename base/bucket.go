@@ -20,8 +20,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/gomemcached/client"
-	"github.com/couchbase/sg-bucket"
+	memcached "github.com/couchbase/gomemcached/client"
+	sgbucket "github.com/couchbase/sg-bucket"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbaselabs/walrus"

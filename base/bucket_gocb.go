@@ -16,7 +16,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocb/gocbcore"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 var gocbExpvars *expvar.Map
