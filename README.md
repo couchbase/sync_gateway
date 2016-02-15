@@ -23,6 +23,8 @@ To build Sync Gateway from source, you must have the following installed:
 
 **Get repo tool**
 
+Use this workflow when you want to make sure your local build is stable and you want to catch any regressions your changes might have introduced by running the full test suite.
+
 ```
 $ curl https://storage.googleapis.com/git-repo-downloads/repo > repo
 $ chmod +x repo
@@ -49,6 +51,8 @@ $ go test ./... && go install ./...
 ```
 
 ## Building From source via `go get`
+
+Use this workflow when you want to modify sync_gateway source using the standard go tooling and IDE's. 
 
 Warning: there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach!
 
