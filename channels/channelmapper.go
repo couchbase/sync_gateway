@@ -65,7 +65,7 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 			fn(name)
 		}
 	}
-	for name, _ := range b {
+	for name := range b {
 		if _, existed := a[name]; !existed {
 			fn(name)
 		}

@@ -81,7 +81,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
       }
     `
 	//Create config with embedded sync function in back quotes
-	responseBody := fmt.Sprintf(fakeConfig,"`",fakeSyncFunction,"`")
+	responseBody := fmt.Sprintf(fakeConfig, "`", fakeSyncFunction, "`")
 
 	mockClient := NewMockClient()
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
@@ -182,7 +182,7 @@ func TestCollectAccessWarningsGuestNoChans(t *testing.T) {
 		BucketConfig: BucketConfig{Server: &dbServer},
 		Name:         "db",
 		Users: map[string]*db.PrincipalConfig{
-			base.GuestUsername: &db.PrincipalConfig{
+			base.GuestUsername: {
 				Disabled: false,
 			},
 		},
@@ -207,7 +207,7 @@ func TestCollectAccessWarningsGuestWithChans(t *testing.T) {
 		BucketConfig: BucketConfig{Server: &dbServer},
 		Name:         "db",
 		Users: map[string]*db.PrincipalConfig{
-			base.GuestUsername: &db.PrincipalConfig{
+			base.GuestUsername: {
 				Disabled:         false,
 				ExplicitChannels: base.SetFromArray([]string{"*"}),
 			},
@@ -241,7 +241,7 @@ func TestCollectAccessWarningsUsersInDb(t *testing.T) {
 
 	// create user
 	spec := map[string]*db.PrincipalConfig{
-		"foo": &db.PrincipalConfig{
+		"foo": {
 			Disabled:         false,
 			ExplicitChannels: base.SetFromArray([]string{"*"}),
 		},

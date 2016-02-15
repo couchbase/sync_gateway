@@ -182,7 +182,7 @@ func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 // A nil Principal means access control is disabled, so the function will return nil.
 func authorizeAllChannels(princ Principal, channels base.Set) error {
 	var forbidden []string
-	for channel, _ := range channels {
+	for channel := range channels {
 		if !princ.CanSeeChannel(channel) {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))
@@ -200,7 +200,7 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 // A nil Role means access control is disabled, so the function will return nil.
 func authorizeAnyChannel(princ Principal, channels base.Set) error {
 	if len(channels) > 0 {
-		for channel, _ := range channels {
+		for channel := range channels {
 			if princ.CanSeeChannel(channel) {
 				return nil
 			}

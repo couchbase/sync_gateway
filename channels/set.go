@@ -67,7 +67,7 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 }
 
 func ValidateChannelSet(set base.Set) error {
-	for name, _ := range set {
+	for name := range set {
 		if !IsValidChannel(name) {
 			return illegalChannelError(name)
 		}

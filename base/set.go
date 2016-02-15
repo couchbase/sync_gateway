@@ -38,7 +38,7 @@ func SetOf(names ...string) Set {
 // Converts a Set to an array of strings (ordering is undefined).
 func (set Set) ToArray() []string {
 	result := make([]string, 0, len(set))
-	for name, _ := range set {
+	for name := range set {
 		result = append(result, name)
 	}
 	return result
@@ -52,7 +52,7 @@ func (set Set) String() string {
 
 func (set Set) copy() Set {
 	result := make(Set, len(set))
-	for name, _ := range set {
+	for name := range set {
 		result[name] = present{}
 	}
 	return result
@@ -68,7 +68,7 @@ func (set Set) Equals(other Set) bool {
 	if len(other) != len(set) {
 		return false
 	}
-	for name, _ := range set {
+	for name := range set {
 		if _, exists := other[name]; !exists {
 			return false
 		}
@@ -84,7 +84,7 @@ func (set Set) Union(other Set) Set {
 		return set
 	}
 	result := set.copy()
-	for ch, _ := range other {
+	for ch := range other {
 		result[ch] = present{}
 	}
 	return result

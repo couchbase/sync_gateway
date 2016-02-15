@@ -368,7 +368,7 @@ func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, chan
 func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	// Do bulk retrieval of blocks, and unmarshal into loadedBlocks
 	var keySet []string
-	for key, _ := range loadedBlocks {
+	for key := range loadedBlocks {
 		keySet = append(keySet, key)
 	}
 	blocks, err := b.bucket.GetBulkRaw(keySet)
@@ -805,7 +805,7 @@ func (b *BitFlagBufferBlock) AddEntry(entry *LogEntry) error {
 func (b *BitFlagBufferBlock) GetAllEntries() []*LogEntry {
 	results := make([]*LogEntry, 0)
 	// Iterate over all vbuckets, returning entries for each.
-	for vbNo, _ := range b.vbPositions {
+	for vbNo := range b.vbPositions {
 		sequences := b.getBytesForVb(vbNo)
 		for index, entry := range sequences {
 			if entry != byte(0) {

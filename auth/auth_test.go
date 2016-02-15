@@ -31,7 +31,7 @@ func init() {
 	var err error
 	gTestBucket, err = base.GetBucket(base.BucketSpec{
 		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"},nil)
+		BucketName: "sync_gateway_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -41,7 +41,7 @@ func init() {
 }
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
-	for channel, _ := range channels {
+	for channel := range channels {
 		if !princ.CanSeeChannel(channel) {
 			return false
 		}

@@ -500,7 +500,7 @@ func (p *ShardedClockPartition) getSequenceUint64(offset uint16) (seq uint64) {
 
 func (p *ShardedClockPartition) AddToClock(clock SequenceClock) error {
 
-	for vb, _ := range p.vbucketOffsets {
+	for vb := range p.vbucketOffsets {
 		clock.SetSequence(vb, p.GetSequence(vb))
 	}
 	return nil

@@ -909,7 +909,6 @@ func (rt *restTester) createSession(t *testing.T, username string) string {
 	return sessionId
 }
 
-
 func TestPurgeWithBadJsonPayload(t *testing.T) {
 	var rt restTester
 	response := rt.sendAdminRequest("POST", "/db/_purge", "foo")
@@ -923,7 +922,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
@@ -933,7 +932,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
@@ -943,7 +942,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
@@ -953,7 +952,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
@@ -965,7 +964,7 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -981,7 +980,7 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"},"doc2" : []interface {}{"*"}}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}})
 
 	//Create new versions of the docs without conflicts
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -997,7 +996,7 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged":map[string]interface{}{"doc1" : []interface {}{"*"}}})
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)

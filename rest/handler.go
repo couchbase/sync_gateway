@@ -197,7 +197,6 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
-
 	return method(h) // Call the actual handler code
 }
 

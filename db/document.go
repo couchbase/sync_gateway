@@ -177,7 +177,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 	}
 
 	// Mark every current channel as subscribed:
-	for channel, _ := range newChannels {
+	for channel := range newChannels {
 		if value, exists := oldChannels[channel]; value != nil || !exists {
 			oldChannels[channel] = nil
 			changed = append(changed, channel)

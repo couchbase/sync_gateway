@@ -152,7 +152,7 @@ func stripSpecialProperties(body Body) Body {
 }
 
 func containsUserSpecialProperties(body Body) bool {
-	for key, _ := range body {
+	for key := range body {
 		if key != "" && key[0] == '_' && key != "_id" && key != "_rev" && key != "_deleted" && key != "_attachments" && key != "_revisions" {
 			return true
 		}

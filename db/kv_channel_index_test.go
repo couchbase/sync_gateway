@@ -58,7 +58,7 @@ func testStableSequence() (uint64, error) {
 }
 
 func testOnChange(keys base.Set) {
-	for key, _ := range keys {
+	for key := range keys {
 		log.Println("on change:", key)
 	}
 }

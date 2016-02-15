@@ -293,7 +293,7 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	defer sc.lock.Unlock()
 
 	names := make([]string, 0, len(sc.databases_))
-	for name, _ := range sc.databases_ {
+	for name := range sc.databases_ {
 		names = append(names, name)
 	}
 	return names
@@ -374,7 +374,7 @@ func (sc *ServerContext) validateCBGTPartitionMap() error {
 
 	_, planPIndexesByName, _ := sc.CbgtContext.Manager.GetPlanPIndexes(true)
 
-	for cbgtIndexName, _ := range planPIndexesByName {
+	for cbgtIndexName := range planPIndexesByName {
 		_, ok := validCBGTIndexNames[cbgtIndexName]
 		if !ok {
 			base.Warn("Deleting CBGT index %v since it is invalid for the current Sync Gateway configuration.  Valid index names: %v", cbgtIndexName, validCBGTIndexNames)
@@ -841,7 +841,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 		}
 
 		// validate event-related keys
-		for k, _ := range eventHandlersMap {
+		for k := range eventHandlersMap {
 			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed" {
 				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
 			}
@@ -1057,7 +1057,7 @@ func (sc *ServerContext) startStatsReporter() {
 	}
 	sc.statsTicker = time.NewTicker(interval)
 	go func() {
-		for _ = range sc.statsTicker.C {
+		for range sc.statsTicker.C {
 			sc.reportStats()
 		}
 	}()

@@ -827,7 +827,7 @@ func makeUserCtx(user auth.User) map[string]interface{} {
 
 // Are the principal and role names in an AccessMap all valid?
 func validateAccessMap(access channels.AccessMap) bool {
-	for name, _ := range access {
+	for name := range access {
 		if strings.HasPrefix(name, "role:") {
 			name = name[5:] // Roles are identified in access view by a "role:" prefix
 		}
@@ -844,7 +844,7 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 		return false
 	}
 	for _, roles := range roleAccess {
-		for rolename, _ := range roles {
+		for rolename := range roles {
 			if !auth.IsValidPrincipalName(rolename) {
 				base.Warn("Invalid role name %q in role() call", rolename)
 				return false
@@ -978,7 +978,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	}
 	if missing != nil {
 		possible = make([]string, 0, 5)
-		for revid, _ := range revmap {
+		for revid := range revmap {
 			gen, _ := parseRevID(revid)
 			if !found[revid] && gen < maxMissingGen {
 				possible = append(possible, revid)

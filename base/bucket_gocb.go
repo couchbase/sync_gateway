@@ -41,10 +41,10 @@ const (
 )
 
 var recoverableGoCBErrors = map[GoCBError]struct{}{
-	GoCBErr_Timeout:           struct{}{},
-	GoCBErr_QueueOverflow:     struct{}{},
-	GoCBErr_MemdStatusBusy:    struct{}{},
-	GoCBErr_MemdStatusTmpFail: struct{}{},
+	GoCBErr_Timeout:           {},
+	GoCBErr_QueueOverflow:     {},
+	GoCBErr_MemdStatusBusy:    {},
+	GoCBErr_MemdStatusTmpFail: {},
 }
 
 func init() {
