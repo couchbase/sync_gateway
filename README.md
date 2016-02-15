@@ -45,9 +45,8 @@ $ ./repo sync
 **Build, Test and Install**
 
 ```
-$ export GOPATH=`pwd`/godeps
-$ cd $GOPATH/src/github.com/couchbase/sync_gateway
-$ go test ./... && go install ./...
+$ GOPATH=`pwd`/godeps go test github.com/couchbase/sync_gateway/...
+$ GOPATH=`pwd`/godeps go install github.com/couchbase/sync_gateway/...
 ```
 
 ## Building From source via `go get`
