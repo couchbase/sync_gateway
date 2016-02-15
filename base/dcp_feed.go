@@ -15,7 +15,7 @@ import (
 
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 type couchbaseDCPFeedImpl struct {

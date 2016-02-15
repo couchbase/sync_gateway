@@ -4,11 +4,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/couchbase/sg-bucket"
+	"math"
+
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"math"
 )
 
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for

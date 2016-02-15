@@ -10,7 +10,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase/cbdatasource"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // The two "handles" we have for CBGT are the manager and Cfg objects.

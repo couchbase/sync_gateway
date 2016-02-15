@@ -15,7 +15,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // Simple error implementation wrapping an HTTP response status.

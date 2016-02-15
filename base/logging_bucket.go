@@ -3,7 +3,7 @@ package base
 import (
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // A wrapper around a Bucket that transparently adds logging of all the API calls.

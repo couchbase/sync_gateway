@@ -9,7 +9,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
