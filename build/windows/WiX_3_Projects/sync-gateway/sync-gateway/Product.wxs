@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" RequiredVersion="3.10.2.2516">
+	<Product Id="D1AC3E57-6427-4847-8D70-A56B0370F3A8" Name="Sync Gateway" Language="1033" Version="1.3.0.0" Manufacturer="Couchbase Inc" UpgradeCode="15AAD769-8363-41F3-A6C4-4072B8571067">
+		<Package InstallerVersion="301" Compressed="yes" InstallScope="perMachine" Manufacturer="Couchbase Inc" Description="Installs Sync Gateway" Keywords="Couchbase, Sync Gateway" Comments="(c) 2016 Couchbase Inc" />
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+		<MediaTemplate EmbedCab="yes"/>
+
+		<Feature Id="ProductFeature" Title="Sync Gateway" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+		</Feature>
+	</Product>
+
+	<Fragment>
+		<Directory Id="TARGETDIR" Name="SourceDir">
+			<Directory Id="ProgramFilesFolder">
+				<Directory Id="ROOTFOLDER" Name="Couchbase">
+          <Directory Id="INSTALLFOLDER" Name="SyncGateway" />
+        </Directory>
+			</Directory>
+		</Directory>
+	</Fragment>
+
+	<Fragment>
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+			<!-- TODO: Remove the comments around this Component element and the ComponentRef below in order to add resources to this installer. -->
+			<!-- <Component Id="ProductComponent"> -->
+				<!-- TODO: Insert files, registry keys, and other resources here. -->
+			<!-- </Component> -->
+		</ComponentGroup>
+	</Fragment>
+</Wix>
