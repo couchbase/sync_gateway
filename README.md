@@ -1,3 +1,5 @@
+[![Build Status](http://drone.couchbasemobile.com/api/badges/couchbase/sync_gateway/status.svg)](http://drone.couchbasemobile.com/couchbase/sync_gateway)
+
 # Couchbase Sync Gateway
 
 [![Join the chat at https://gitter.im/couchbase/sync_gateway](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/sync_gateway?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
