@@ -23,39 +23,23 @@ To build Sync Gateway from source, you must have the following installed:
 
 ## Building From Source 
 
-**Get repo tool**
-
-Use this workflow when you want to make sure your local build is stable and you want to catch any regressions your changes might have introduced by running the full test suite.
+This will clone this repository and all of it's dependencies (pinned to specific versions), and then build sync gateway from source
 
 ```
-$ curl https://storage.googleapis.com/git-repo-downloads/repo > repo
-$ chmod +x repo
+ curl -L https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh | bash
 ```
 
-**Init repo**
+**Running Unit Tests**
 
 ```
-$ ./repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
-```
-
-**Repo sync**
-
-```
-$ ./repo sync
-```
-
-**Build, Test and Install**
-
-```
-$ GOPATH=`pwd`/godeps go test github.com/couchbase/sync_gateway/...
-$ GOPATH=`pwd`/godeps go install github.com/couchbase/sync_gateway/...
+GOPATH=`pwd`/godeps go test github.com/couchbase/sync_gateway/...
 ```
 
 ## Building From source via `go get`
 
-Use this workflow when you want to modify sync_gateway source using the standard go tooling and IDE's. 
+Use this [develoeper workflow](https://github.com/couchbase/sync_gateway/wiki/Development-workflow) when you want to modify sync_gateway source using the standard go tooling and IDE's. 
 
-Warning: there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach!
+Warning: there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach that cause certain tests to fail!
 
 ```
 go get -u -t github.com/couchbase/sync_gateway/...
@@ -66,8 +50,14 @@ After this operation completes you should have a new `sync_gateway` binary in `$
 **Running Unit Tests**
 
 ```
-$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
-$ ./test.sh
+$ go test github.com/couchbase/sync_gateway/...
+```
+
+**Running Benchmarks**
+
+```
+go test github.com/couchbase/sync_gateway/... -bench='LoggingPerformance' -benchtime 1m -run XXX
+go test github.com/couchbase/sync_gateway/... -bench='RestApiGetDocPerformance' -cpu 1,2,4 -benchtime 1m -run XXX
 ```
 
 ### License
