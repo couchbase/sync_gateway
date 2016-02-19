@@ -3,7 +3,9 @@ build:
   commands:
     - cd $GOPATH
     - rm -rf *
-    - wget https://raw.githubusercontent.com/couchbase/sync_gateway/$$COMMIT/build.sh
-    - cat build.sh
-    - chmod +x build.sh
-    - ./build.sh $$BRANCH $$COMMIT
+    - wget https://raw.githubusercontent.com/couchbase/sync_gateway/$$COMMIT/bootstrap.sh
+    - cat bootstrap.sh
+    - chmod +x bootstrap.sh
+    - ./bootstrap.sh $$BRANCH $$COMMIT
+    - ./build.sh -v
+    - ./test.sh 
