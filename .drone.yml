@@ -1,8 +1,9 @@
 build:
   image: golang
   commands:
-    - curl https://storage.googleapis.com/git-repo-downloads/repo > repo
-    - chmod +x repo
-    - ./repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
-    - ./repo sync
-    - GOPATH=/drone/src/github.com/couchbase/sync_gateway/godeps go test github.com/couchbase/sync_gateway/...
+    - cd $GOPATH
+    - rm -rf *
+    - wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh
+    - cat build.sh
+    - chmod +x build.sh
+    - ./build.sh

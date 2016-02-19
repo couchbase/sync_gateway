@@ -1,23 +1,41 @@
 #!/bin/sh -e
 
-# This script builds the sync gateway.
+# This script builds sync gateway using pinned dependencies.
 
-# Set the git commit info before the build
-BUILD_INFO="./rest/git_info.go"
+## This script is not intended to be run "in place" from a git clone.
+## The next check tries to ensure that's the case
+if [ -f "main.go" ]; then
+    echo "This script is meant to run outside the clone directory.  See README"
+    exit 1
+fi 
 
-#tell git to ignore any local changes to git_info.go, we don't want to commit them to the repo
-git update-index --assume-unchanged ${BUILD_INFO}
+## Make sure the repo tool is installed, otherwise throw an error
+if ! type "repo" > /dev/null; then
+    echo "Did not find repo tool, downloading to current directory"
+    curl https://storage.googleapis.com/git-repo-downloads/repo > repo
+    chmod +x repo
+    export PATH=$PATH:.
+fi
 
-# Escape forward slash's so sed command does not get confused
-# We use thses in feature branches e.g. feature/issue_nnn
-GIT_BRANCH=`git status -b -s | sed q | sed 's/## //' | sed 's/\.\.\..*$//' | sed 's/\\//\\\\\//g' | sed 's/[[:space:]]//g'`
-GIT_COMMIT=`git rev-parse HEAD`
-GIT_DIRTY=$(test -n "`git status --porcelain`" && echo "+CHANGES" || true)
+## If we don't already have a .repo directory, run "repo init"
+REPO_DIR=.repo
+if [ ! -d "$REPO_DIR" ]; then
+    echo "No .repo directory found, running 'repo init'"
+    repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
+fi
 
-sed -i.bak -e 's/GitCommit.*=.*/GitCommit = "'$GIT_COMMIT'"/' $BUILD_INFO
-sed -i.bak -e 's/GitBranch.*=.*/GitBranch = "'$GIT_BRANCH'"/' $BUILD_INFO
-sed -i.bak -e 's/GitDirty.*=.*/GitDirty = "'$GIT_DIRTY'"/' $BUILD_INFO
+## Repo Sync
+repo sync
 
-./go.sh install "$@" -v ./...
+## Update the version stamp in the code
+SG_DIR=`pwd`/godeps/src/github.com/couchbase/sync_gateway
+CURRENT_DIR=`pwd`
+cd $SG_DIR
+./set-version-stamp.sh
+cd $CURRENT_DIR
 
-echo "Success! Output is $GOPATH/bin/sync_gateway and $GOPATH/bin/sg_accel"
+## Go Install
+GOPATH=`pwd`/godeps go install "$@" github.com/couchbase/sync_gateway/...
+
+echo "Success! Output is godeps/bin/sync_gateway and godeps/bin/sg_accel "
+
