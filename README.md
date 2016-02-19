@@ -21,25 +21,9 @@ To build Sync Gateway from source, you must have the following installed:
 * Go 1.5 or later with your `$GOPATH` set to a valid directory
 * GCC for CGO (required on Sync Gateway 1.2 or later)
 
-## Building From Source 
+## Building From source (without dependency pinning)
 
-This will clone this repository and all of it's dependencies (pinned to specific versions), and then build sync gateway from source
-
-```
- curl -L https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh | bash
-```
-
-**Running Unit Tests**
-
-```
-GOPATH=`pwd`/godeps go test github.com/couchbase/sync_gateway/...
-```
-
-## Building From source via `go get`
-
-Use this [develoeper workflow](https://github.com/couchbase/sync_gateway/wiki/Development-workflow) when you want to modify sync_gateway source using the standard go tooling and IDE's. 
-
-Warning: there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach that cause certain tests to fail!
+Warning: while this is the easiest way to build sync gateway from source, there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach that cause certain tests to fail!  To be able to run the full unit test suite and have it pass, skip down to the approach to build from source with dependency pinning.
 
 ```
 go get -u -t github.com/couchbase/sync_gateway/...
@@ -59,6 +43,37 @@ $ go test github.com/couchbase/sync_gateway/...
 go test github.com/couchbase/sync_gateway/... -bench='LoggingPerformance' -benchtime 1m -run XXX
 go test github.com/couchbase/sync_gateway/... -bench='RestApiGetDocPerformance' -cpu 1,2,4 -benchtime 1m -run XXX
 ```
+
+## Building From Source (with dependency pinning)
+
+Running the script below will:
+
+* Clone this repository and all of it's dependencies (pinned to specific versions)
+* Run full unit test suite
+* Build sync gateway binaries and copy them to the `godeps/bin` directory
+
+```
+$ mkdir ~/sync_gateway
+$ cd ~/sync_gateway
+$ brew install repo
+$ wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh
+$ chmod +x build.sh
+$ ./build.sh
+```
+
+**Rebuilding**
+
+There are two ways to rebuild the code:
+
+1. `./build.sh` (downside: slower because it runs `repo sync` and `go test` each time)
+1. `GOPATH=`pwd`/godeps go install github.com/couchbase/sync_gateway/...` (downside: currently this won't bake in the sync gateway commit into the binary)
+
+**Running Unit Tests**
+
+```
+GOPATH=`pwd`/godeps go test github.com/couchbase/sync_gateway/...
+```
+
 
 ### License
 
