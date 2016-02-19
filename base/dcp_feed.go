@@ -11,6 +11,7 @@ package base
 
 import (
 	"encoding/json"
+	"log"
 	"sync"
 
 	"github.com/couchbase/go-couchbase/cbdatasource"
@@ -33,6 +34,23 @@ func (feed *couchbaseDCPFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
 
 func (feed *couchbaseDCPFeedImpl) Close() error {
 	return feed.bds.Close()
+}
+
+type SimpleFeed struct {
+	eventFeed chan sgbucket.TapEvent
+}
+
+func (s *SimpleFeed) Events() <-chan sgbucket.TapEvent {
+	return s.eventFeed
+}
+
+func (s *SimpleFeed) WriteEvents() chan<- sgbucket.TapEvent {
+	return s.eventFeed
+}
+
+func (s *SimpleFeed) Close() error { // TODO
+	log.Fatalf("SimpleFeed.Close() called but not implemented")
+	return nil
 }
 
 type Receiver interface {

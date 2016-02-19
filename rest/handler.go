@@ -296,7 +296,7 @@ func (h *handler) PathVar(name string) string {
 	v = strings.Replace(v, "+", "%2B", -1)
 
 	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
-	// (see function fixQuotedSlashes). So we have to unescape them now.
+	// (see function FixQuotedSlashes). So we have to unescape them now.
 	v, _ = url.QueryUnescape(v)
 	return v
 }

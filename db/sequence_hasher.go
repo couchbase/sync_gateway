@@ -139,14 +139,14 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 			hashValue:      hashValue,
 			collisionIndex: uint16(index),
 		}
-		indexExpvars.Add("seqHash_getHash_hits", 1)
+		IndexExpvars.Add("seqHash_getHash_hits", 1)
 		return seqHash.String(), nil
 	}
 
 	// Didn't find a match in cache - update the index and the cache.  Get a write lock on the index value
 	// first, to ensure only one goroutine on this SG attempts to write.  writeCas handling below handles
 	// the case where other SGs are updating the value concurrently
-	indexExpvars.Add("seqHash_getHash_misses", 1)
+	IndexExpvars.Add("seqHash_getHash_misses", 1)
 
 	// First copy the clock value, to ensure we store a non-mutable version in the cache
 	clockValue := make([]uint64, len(clock.Value()))
@@ -203,7 +203,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		return "", updateErr
 	}
 
-	indexExpvars.Add("writeCasRaw_hash", 1)
+	IndexExpvars.Add("writeCasRaw_hash", 1)
 
 	if err != nil && err.Error() != "Already Exists" {
 		return "", err
@@ -298,10 +298,10 @@ func (value *hashCacheValue) load(loaderFunc SeqHashCacheLoaderFunc) (*storedClo
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	if value.clocks == nil {
-		indexExpvars.Add("seqHashCache_misses", 1)
+		IndexExpvars.Add("seqHashCache_misses", 1)
 		value.clocks, value.err = loaderFunc(value.key)
 	} else {
-		indexExpvars.Add("seqHashCacheCache_hits", 1)
+		IndexExpvars.Add("seqHashCacheCache_hits", 1)
 	}
 
 	// return a copy to ensure cache values don't get mutated outside of a hashCacheValue.store
@@ -313,7 +313,7 @@ func (value *hashCacheValue) store(clocks *storedClocks) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	value.clocks = clocks.Copy()
-	indexExpvars.Add("seqHashCache_adds", 1)
+	IndexExpvars.Add("seqHashCache_adds", 1)
 }
 
 func (s *sequenceHasher) loadClocks(hashValue uint64) (*storedClocks, error) {
@@ -322,7 +322,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (*storedClocks, error) {
 	key := kHashPrefix + strconv.FormatUint(hashValue, 10)
 
 	bytes, cas, err := s.bucket.GetAndTouchRaw(key, int(s.hashExpiry))
-	indexExpvars.Add("get_hashLoadClocks", 1)
+	IndexExpvars.Add("get_hashLoadClocks", 1)
 
 	if err != nil {
 		// Assume no clocks stored for this string

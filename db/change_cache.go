@@ -322,8 +322,8 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		}
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
-		doc, err := unmarshalDocumentSyncData(docJSON, false)
-		if err != nil || !doc.hasValidSyncData(c.context.writeSequences()) {
+		doc, err := UnmarshalDocumentSyncData(docJSON, false)
+		if err != nil || !doc.HasValidSyncData(c.context.writeSequences()) {
 			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
 		}
@@ -716,21 +716,4 @@ func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
 // Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
 func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
-}
-
-func writeHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
-	writeHistogramForDuration(expvarMap, time.Since(since), prefix)
-}
-
-func writeHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
-
-	if base.LogEnabled("PerfStats") {
-		var durationMs int
-		if duration < 1*time.Second {
-			durationMs = int(duration/(100*time.Millisecond)) * 100
-		} else {
-			durationMs = int(duration/(1000*time.Millisecond)) * 1000
-		}
-		expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
-	}
 }

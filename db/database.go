@@ -166,7 +166,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {
 		context.tapListener.Notify(changedChannels)
 	}, options.CacheOptions, options.IndexOptions)
-	context.tapListener.OnDocChanged = context.changeCache.DocChanged
+	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
 	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
 		context.TakeDbOffline("Lost TAP Feed")
@@ -178,9 +178,18 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	return context, nil
 }
 
+func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
+	context.tapListener.OnDocChanged = callback
+}
+
 func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
 	staleOk := false
 	return context.changeCache.GetStableClock(staleOk)
+}
+
+// Utility function to support cache testing from outside db package
+func (context *DatabaseContext) GetChangeIndex() ChangeIndex {
+	return context.changeCache
 }
 
 func (context *DatabaseContext) writeSequences() bool {
@@ -189,67 +198,6 @@ func (context *DatabaseContext) writeSequences() bool {
 
 func (context *DatabaseContext) UseGlobalSequence() bool {
 	return context.SequenceType != ClockSequenceType
-}
-
-func (context *DatabaseContext) CreateCBGTIndex() error {
-
-	// Create the CBGT index.  This must be done _after_ the tapListener is started,
-	// as the tapFeed will be created at that point, and it must be already created
-	// at the point we try to create a CBGT index.
-	if context.BucketSpec.FeedType == strings.ToLower(base.DcpShardFeedType) {
-		// create the index]
-		alreadyExists, err := checkCBGTIndexExists(context.BucketSpec.CbgtContext, context.GetCBGTIndexNameForBucket(context.Bucket))
-		if err != nil {
-			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
-		}
-		if !alreadyExists {
-			numShards := context.Options.IndexOptions.NumShards
-			if err := createCBGTIndex(numShards, context.Bucket, context.BucketSpec); err != nil {
-				return fmt.Errorf("Unable to initialize CBGT index: %v", err)
-			}
-		}
-
-	}
-
-	return nil
-
-}
-
-func (context *DatabaseContext) GetCBGTIndexNameForBucket(bucket base.Bucket) (indexName string) {
-	// Real Couchbase buckets use an index name that includes UUID.
-	cbBucket, ok := bucket.(base.CouchbaseBucket)
-	if ok {
-		indexName = cbBucket.GetCBGTIndexName()
-	} else {
-		indexName = bucket.GetName()
-	}
-	return indexName
-
-}
-
-// Check if this CBGT index already exists
-func checkCBGTIndexExists(cbgtContext base.CbgtContext, indexName string) (bool, error) {
-
-	_, indexDefsMap, err := cbgtContext.Manager.GetIndexDefs(true)
-	if err != nil {
-		return false, err
-	}
-
-	return (indexDefsMap[indexName] != nil), nil
-
-}
-
-// Create an "index" in CBGT which will cause it to start streaming
-// DCP events to us for our shard of the full DCP stream.
-func createCBGTIndex(numShards uint16, baseBucket base.Bucket, spec base.BucketSpec) error {
-
-	bucket, ok := baseBucket.(base.CouchbaseBucket)
-	if !ok {
-		return fmt.Errorf("Type assertion failure from base.Bucket -> CouchbaseBucket")
-	}
-
-	return bucket.CreateCBGTIndex(numShards, spec)
-
 }
 
 func (context *DatabaseContext) TapListener() changeListener {
@@ -797,7 +745,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			}
 
 			imported := false
-			if !doc.hasValidSyncData(db.writeSequences()) {
+			if !doc.HasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore or import it:
 				if !doImportDocs {
 					return nil, couchbase.UpdateCancel

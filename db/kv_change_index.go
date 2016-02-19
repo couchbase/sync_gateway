@@ -17,20 +17,15 @@ import (
 	"expvar"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 )
 
 const (
-	kIndexPrefix          = "_idx"
-	maxCacheUpdate        = 2000
-	minCacheUpdate        = 1
-	kPollFrequency        = 500
-	maxUnmarshalProcesses = 16
+	kIndexPrefix   = "_idx"
+	kPollFrequency = 500
 )
 
 // kvChangeIndex is the index-based implementation of the change cache API.  Functionality is split
@@ -41,18 +36,14 @@ type kvChangeIndex struct {
 	indexPartitions     *base.IndexPartitions // Partitioning of vbuckets in the index
 	indexPartitionsLock sync.RWMutex          // Manages access to indexPartitions
 	reader              *kvChangeIndexReader  // Index reader
-	writer              *kvChangeIndexWriter  // Index writer
 }
 
 type IndexPartitionsFunc func() (*base.IndexPartitions, error)
 
-var indexExpvars *expvar.Map
-
-var latestWriteBatch expvar.Int
+var IndexExpvars *expvar.Map
 
 func init() {
-	indexExpvars = expvar.NewMap("syncGateway_index")
-	indexExpvars.Set("latest_write_batch", &latestWriteBatch)
+	IndexExpvars = expvar.NewMap("syncGateway_index")
 }
 
 func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error) {
@@ -64,13 +55,6 @@ func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, 
 		return err
 	}
 
-	if indexOptions.Writer {
-		k.writer = &kvChangeIndexWriter{}
-		err = k.writer.Init(context, options, indexOptions, k.getIndexPartitions)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -80,17 +64,11 @@ func (k *kvChangeIndex) Prune() {
 
 func (k *kvChangeIndex) Clear() {
 	k.reader.Clear()
-	if k.writer != nil {
-		k.writer.Clear()
-	}
 }
 
 func (k *kvChangeIndex) Stop() {
 
 	k.reader.Stop()
-	if k.writer != nil {
-		k.writer.Stop()
-	}
 }
 
 // Returns the stable sequence for a document's vbucket from the stable clock.
@@ -142,9 +120,7 @@ func (k *kvChangeIndex) getIndexPartitions() (*base.IndexPartitions, error) {
 	}
 }
 
-// initIndexPartitions first attempts to initialize the index partitions using the partition map document in
-// the index bucket.  If that hasn't been created yet, tries to generate the partition information from CBGT.
-// If unsuccessful on both of these, returns error and leaves k.indexPartitions as nil.
+// Reader-only version of initIndexPartitions.  Database only.
 func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 
 	k.indexPartitionsLock.Lock()
@@ -161,30 +137,11 @@ func (k *kvChangeIndex) initIndexPartitions() (*base.IndexPartitions, error) {
 		return nil, err
 	}
 
-	indexExpvars.Add("get_indexPartitionMap", 1)
-	// If unable to load from index bucket - attempt to initialize based on cbgt partitions
+	IndexExpvars.Add("get_indexPartitionMap", 1)
+
+	// If unable to load from index bucket - return error
 	if partitionDef == nil {
-		partitionDef, err = k.retrieveCBGTPartitions()
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Unable to determine partition map for index - not found in index, and not available from cbgt: %v", err))
-		}
-		// Add to the bucket
-		value, err := json.Marshal(partitionDef)
-		if err != nil {
-			return nil, err
-		}
-		added, err := k.reader.indexReadBucket.AddRaw(base.KIndexPartitionKey, 0, value)
-		if err != nil {
-			return nil, err
-		}
-		// If add fails, it may have been written by another node since the last read attempt.  Make
-		// another attempt to use the version from the bucket, to ensure consistency.
-		if added == false {
-			partitionDef, err = k.loadIndexPartitionsFromBucket()
-			if err != nil {
-				return nil, err
-			}
-		}
+		return nil, errors.New(fmt.Sprintf("Unable to determine partition map for index - not found in index."))
 	}
 
 	// Create k.indexPartitions based on partitionDef
@@ -203,51 +160,6 @@ func (k *kvChangeIndex) loadIndexPartitionsFromBucket() (base.PartitionStorageSe
 	return partitionDef, nil
 }
 
-func (k *kvChangeIndex) retrieveCBGTPartitions() (partitionDef base.PartitionStorageSet, err error) {
-
-	var manager *cbgt.Manager
-	if k.context != nil {
-		manager = k.context.BucketSpec.CbgtContext.Manager
-	} else {
-		return nil, errors.New("Unable to retrieve CBGT partitions - no database context")
-	}
-
-	if manager == nil {
-		return nil, errors.New("Unable to retrieve CBGT partitions - no CBGT manager")
-	}
-
-	_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
-	indexName := k.context.GetCBGTIndexNameForBucket(k.context.Bucket)
-	pindexes := planPIndexesByName[indexName]
-
-	for _, pIndex := range pindexes {
-		vbStrings := strings.Split(pIndex.SourcePartitions, ",")
-		// convert string vbNos to uint16
-		vbNos := make([]uint16, len(vbStrings))
-		for i := 0; i < len(vbStrings); i++ {
-			vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
-			if err != nil {
-				base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
-			}
-			vbNos[i] = uint16(vbNumber)
-		}
-		entry := base.PartitionStorage{
-			Index: uint16(0), // see below for index assignment
-			Uuid:  pIndex.UUID,
-			VbNos: vbNos,
-		}
-		partitionDef = append(partitionDef, entry)
-	}
-
-	// NOTE: the ordering of pindexes returned by manager.GetPlanPIndexes isn't fixed (it's doing a map iteration somewhere).
-	//    The mapping from UUID to VbNos will always be consistent.  Sorting by UUID to maintain a consistent index ordering,
-	// then assigning index values.
-	partitionDef.Sort()
-	for i := 0; i < len(partitionDef); i++ {
-		partitionDef[i].Index = uint16(i)
-	}
-	return partitionDef, nil
-}
 func (k *kvChangeIndex) getIndexPartitionMap() (base.IndexPartitionMap, error) {
 
 	partitions, err := k.getIndexPartitions()
@@ -265,7 +177,8 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 }
 
 func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
-	k.writer.DocChanged(docID, docJSON, seq, vbNo)
+	// no-op for reader
+	base.Warn("DocChanged called in index reader for doc %s, will be ignored.", docID)
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
@@ -290,9 +203,7 @@ func (k *kvChangeIndex) waitForSequenceWithMissing(sequence uint64) {
 
 // If set to false, DocChanged() becomes a no-op.
 func (k *kvChangeIndex) EnableChannelIndexing(enable bool) {
-	if k.writer != nil {
-		k.writer.EnableChannelIndexing(enable)
-	}
+	// no-op
 }
 
 // Sets the callback function for channel changes
@@ -480,16 +391,18 @@ func (k *kvChangeIndex) generatePartitionStats() (PartitionStats, error) {
 		}
 	}
 
-	cbgtPartitions, err := k.retrieveCBGTPartitions()
-	if err != nil {
-		return partitionStats, err
-	}
-	if cbgtPartitions != nil {
-		cbgtPartitions.Sort()
-		partitionStats.CBGTMap = PartitionMapStats{
-			Storage: cbgtPartitions,
+	/*
+		cbgtPartitions, err := k.retrieveCBGTPartitions()
+		if err != nil {
+			return partitionStats, err
 		}
-	}
+		if cbgtPartitions != nil {
+			cbgtPartitions.Sort()
+			partitionStats.CBGTMap = PartitionMapStats{
+				Storage: cbgtPartitions,
+			}
+		}
+	*/
 
 	partitionStats.PartitionsMatch = reflect.DeepEqual(partitionStats.PartitionMap, partitionStats.CBGTMap)
 	return partitionStats, nil

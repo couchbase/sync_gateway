@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"io"
 	"net/http"
@@ -352,4 +353,21 @@ func (s Uint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // Sort is a convenience method.
 func (s Uint64Slice) Sort() {
 	sort.Sort(s)
+}
+
+func WriteHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
+	WriteHistogramForDuration(expvarMap, time.Since(since), prefix)
+}
+
+func WriteHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
+
+	if LogEnabled("PerfStats") {
+		var durationMs int
+		if duration < 1*time.Second {
+			durationMs = int(duration/(100*time.Millisecond)) * 100
+		} else {
+			durationMs = int(duration/(1000*time.Millisecond)) * 1000
+		}
+		expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
+	}
 }

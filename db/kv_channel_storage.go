@@ -275,7 +275,7 @@ func (b *BitFlagStorage) marshalBlock(entries []*LogEntry) ([]byte, IndexBlock, 
 func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 
 	data, cas, err := b.bucket.GetRaw(block.Key())
-	indexExpvars.Add("get_loadBlock", 1)
+	IndexExpvars.Add("get_loadBlock", 1)
 	if err != nil {
 		return err
 	}
@@ -350,7 +350,7 @@ func (b *BitFlagStorage) calculateChangedBlocks(fromSeq base.SequenceClock, chan
 		blockSet := vbBlockSet{vbNo: uint16(vbNo)}
 		partition := b.partitions.VbMap[uint16(vbNo)]
 		for _, blockIndex := range generateBitFlagBlockIndexes(b.channelName, fromVbSeq, clockVbSeq, partition) {
-			blockKey := getIndexBlockKey(b.channelName, blockIndex, partition)
+			blockKey := GetIndexBlockKey(b.channelName, blockIndex, partition)
 			block, found := blocksByKey[blockKey]
 			if !found {
 				block = newBitFlagBufferBlockForKey(blockKey, b.channelName, blockIndex, partition, b.partitions.VbPositionMaps[partition])
@@ -378,8 +378,8 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 		base.Warn("Error doing bulk get:%v", err)
 	}
 
-	indexExpvars.Add("bulkGet_bulkLoadBlocks", 1)
-	indexExpvars.Add("bulkGet_bulkLoadBlocksCount", int64(len(keySet)))
+	IndexExpvars.Add("bulkGet_bulkLoadBlocks", 1)
+	IndexExpvars.Add("bulkGet_bulkLoadBlocksCount", int64(len(keySet)))
 
 	// Unmarshal concurrently
 	var wg sync.WaitGroup
@@ -407,8 +407,8 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 	if err != nil {
 		base.Warn("Error doing bulk get:%v", err)
 	}
-	indexExpvars.Add("bulkGet_bulkLoadEntries", 1)
-	indexExpvars.Add("bulkGet_bulkLoadEntriesCount", int64(len(keySet)))
+	IndexExpvars.Add("bulkGet_bulkLoadEntries", 1)
+	IndexExpvars.Add("bulkGet_bulkLoadEntriesCount", int64(len(keySet)))
 
 	results = make([]*LogEntry, 0, len(blockEntries))
 	// Unmarshal, deduplicate, and reorder to ascending by sequence within vbucket
@@ -518,7 +518,7 @@ func GenerateBlockKeys(channelName string, minSeq uint64, maxSeq uint64, partiti
 // Determine the cache block key for a sequence
 func generateBitFlagBlockKey(channelName string, minSequence uint64, partition uint16) string {
 	index := uint16(minSequence / byteIndexBlockCapacity)
-	return getIndexBlockKey(channelName, index, partition)
+	return GetIndexBlockKey(channelName, index, partition)
 }
 
 // Returns an ordered list of blocks needed to return the range minSequence to maxSequence
@@ -527,7 +527,7 @@ func generateBitFlagBlockKeys(channelName string, minSequence uint64, maxSequenc
 	firstIndex := GenerateBitFlagIndex(minSequence)
 	lastIndex := GenerateBitFlagIndex(maxSequence)
 	for index := firstIndex; index <= lastIndex; index++ {
-		keys = append(keys, getIndexBlockKey(channelName, index, partition))
+		keys = append(keys, GetIndexBlockKey(channelName, index, partition))
 	}
 	return keys
 }

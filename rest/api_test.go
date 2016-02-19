@@ -175,7 +175,7 @@ func (rt *restTester) sendAdminRequestWithHeaders(method, resource string, body 
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
-	fixQuotedSlashes(request)
+	FixQuotedSlashes(request)
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
@@ -193,14 +193,6 @@ func assertStatus(t *testing.T, response *testResponse, expectedStatus int) {
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
 			response.Code, expectedStatus, response.rq.Method, response.rq.URL, response.Body)
 	}
-}
-
-func (sc *ServerContext) Database(name string) *db.DatabaseContext {
-	db, err := sc.GetDatabase(name)
-	if err != nil {
-		panic(fmt.Sprintf("Unexpected error getting db %q: %v", name, err))
-	}
-	return db
 }
 
 //////// AND NOW THE TESTS:
