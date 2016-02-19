@@ -48,7 +48,7 @@ type TimedSet map[string]VbSequence
 // Creates a new TimedSet from a Set plus a sequence
 func AtSequence(set base.Set, sequence uint64) TimedSet {
 	result := make(TimedSet, len(set))
-	for name, _ := range set {
+	for name := range set {
 		result[name] = NewVbSimpleSequence(sequence)
 	}
 	return result
@@ -60,14 +60,14 @@ func (set TimedSet) AsSet() base.Set {
 		return nil
 	}
 	result := make([]string, 0, len(set))
-	for ch, _ := range set {
+	for ch := range set {
 		result = append(result, ch)
 	}
 	return base.SetFromArray(result)
 }
 
 func (set TimedSet) Validate() error {
-	for name, _ := range set {
+	for name := range set {
 		if !IsValidChannel(name) {
 			return illegalChannelError(name)
 		}
@@ -77,7 +77,7 @@ func (set TimedSet) Validate() error {
 
 func (set TimedSet) AllChannels() []string {
 	result := make([]string, 0, len(set))
-	for name, _ := range set {
+	for name := range set {
 		result = append(result, name)
 	}
 	return result
@@ -100,13 +100,13 @@ func (set TimedSet) Contains(ch string) bool {
 // Updates membership to match the given Set. Newly added members will have the given sequence.
 func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 	changed := false
-	for name, _ := range set {
+	for name := range set {
 		if !other.Contains(name) {
 			delete(set, name)
 			changed = true
 		}
 	}
-	for name, _ := range other {
+	for name := range other {
 		if !set.Contains(name) {
 			set[name] = NewVbSimpleSequence(sequence)
 			changed = true
@@ -118,12 +118,12 @@ func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 // Check for matching entry names, ignoring sequence
 func (set TimedSet) Equals(other base.Set) bool {
 
-	for name, _ := range set {
+	for name := range set {
 		if !other.Contains(name) {
 			return false
 		}
 	}
-	for name, _ := range other {
+	for name := range other {
 		if !set.Contains(name) {
 			return false
 		}
@@ -169,7 +169,7 @@ func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 // For any channel present in both the set and the other set, updates the sequence to the value
 // from the other set
 func (set TimedSet) UpdateIfPresent(other TimedSet) {
-	for ch, _ := range set {
+	for ch := range set {
 		if otherSeq, ok := other[ch]; ok {
 			set[ch] = otherSeq
 		}

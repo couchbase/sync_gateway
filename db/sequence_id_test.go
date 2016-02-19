@@ -109,13 +109,13 @@ func TestMarshalTriggeredSequenceID(t *testing.T) {
 
 func TestCompareSequenceIDs(t *testing.T) {
 	orderedSeqs := []SequenceID{
-		SequenceID{Seq: 1234},
-		SequenceID{Seq: 5677},
-		SequenceID{TriggeredBy: 5678, Seq: 1234},
-		SequenceID{TriggeredBy: 5678, Seq: 2222},
-		SequenceID{Seq: 5678}, // 5678 comes after the sequences it triggered
-		SequenceID{TriggeredBy: 6666, Seq: 5678},
-		SequenceID{Seq: 6666},
+		{Seq: 1234},
+		{Seq: 5677},
+		{TriggeredBy: 5678, Seq: 1234},
+		{TriggeredBy: 5678, Seq: 2222},
+		{Seq: 5678}, // 5678 comes after the sequences it triggered
+		{TriggeredBy: 6666, Seq: 5678},
+		{Seq: 6666},
 	}
 
 	for i := 0; i < len(orderedSeqs); i++ {

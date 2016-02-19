@@ -179,7 +179,7 @@ func (c *changeCache) CleanUp() bool {
 	}
 
 	// Remove old cache entries:
-	for channelName, _ := range c.channelCaches {
+	for channelName := range c.channelCaches {
 		c._getChannelCache(channelName).pruneCache()
 	}
 	return true
@@ -618,7 +618,7 @@ func (c *changeCache) LastSequence() uint64 {
 func (c *changeCache) _allChannels() base.Set {
 	array := make([]string, len(c.channelCaches))
 	i := 0
-	for name, _ := range c.channelCaches {
+	for name := range c.channelCaches {
 		array[i] = name
 		i++
 	}

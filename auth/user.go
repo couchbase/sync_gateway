@@ -123,7 +123,7 @@ func (user *userImpl) validate() error {
 	} else if user.OldPasswordHash_ != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Obsolete password hash present")
 	}
-	for roleName, _ := range user.ExplicitRoles_ {
+	for roleName := range user.ExplicitRoles_ {
 		if !IsValidPrincipalName(roleName) {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid role name %q", roleName)
 		}
@@ -220,7 +220,7 @@ func (user *userImpl) SetPassword(password string) {
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
 		roles := make([]Role, 0, len(user.RolesSince_))
-		for name, _ := range user.RolesSince_ {
+		for name := range user.RolesSince_ {
 			role, err := user.auth.GetRole(name)
 			//base.LogTo("Access", "User %s role %q = %v", user.Name_, name, role)
 			if err != nil {
@@ -283,7 +283,7 @@ func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
 
 func (user *userImpl) FilterToAvailableChannels(channels base.Set) ch.TimedSet {
 	output := ch.TimedSet{}
-	for channel, _ := range channels {
+	for channel := range channels {
 		if channel == ch.AllChannelWildcard {
 			return user.InheritedChannels().Copy()
 		}
@@ -294,7 +294,7 @@ func (user *userImpl) FilterToAvailableChannels(channels base.Set) ch.TimedSet {
 
 func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 	output := base.Set{}
-	for userChannel, _ := range user.InheritedChannels() {
+	for userChannel := range user.InheritedChannels() {
 		_, found := channels[userChannel]
 		if !found {
 			output[userChannel] = struct{}{}
@@ -322,7 +322,7 @@ func (user *userImpl) MarshalJSON() ([]byte, error) {
 	if len(userData) > 2 {
 		// Splice the two JSON bodies together if the user data is not just "{}"
 		data = data[0 : len(data)-1]
-		userData = userData[1:len(userData)]
+		userData = userData[1:]
 		data, err = bytes.Join([][]byte{data, userData}, []byte(",")), nil
 	}
 	return data, err

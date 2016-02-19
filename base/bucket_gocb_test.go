@@ -481,25 +481,25 @@ func CouchbaseTestGetAndTouchRaw(t *testing.T) {
 func TestCreateBatchesEntries(t *testing.T) {
 
 	entries := []*sgbucket.BulkSetEntry{
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "one",
 		},
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "two",
 		},
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "three",
 		},
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "four",
 		},
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "five",
 		},
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "six",
 		},
-		&sgbucket.BulkSetEntry{
+		{
 			Key: "seven",
 		},
 	}

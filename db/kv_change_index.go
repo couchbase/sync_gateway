@@ -421,7 +421,7 @@ func (db *DatabaseContext) IndexAllChannelStats() ([]*ChannelStats, error) {
 	}*/
 	results := make([]*ChannelStats, 0)
 
-	for channelName, _ := range kvIndex.reader.channelIndexReaders {
+	for channelName := range kvIndex.reader.channelIndexReaders {
 		channelStats, err := db.singleChannelStats(kvIndex, channelName)
 		if err == nil {
 			results = append(results, channelStats)

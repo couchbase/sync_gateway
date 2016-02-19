@@ -10,13 +10,13 @@ import (
 func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 
 	tapEvents := []sgbucket.TapEvent{
-		sgbucket.TapEvent{
+		{
 			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc1"),
 			Value:    []byte(`".."`),
 			Sequence: 1,
 		},
-		sgbucket.TapEvent{
+		{
 			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc1"),
 			Value:    []byte(`".."`),
@@ -38,13 +38,13 @@ func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 func TestDedupeNoDedupeDifferentDocs(t *testing.T) {
 
 	tapEvents := []sgbucket.TapEvent{
-		sgbucket.TapEvent{
+		{
 			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc1"),
 			Value:    []byte(`".."`),
 			Sequence: 1,
 		},
-		sgbucket.TapEvent{
+		{
 			Opcode:   sgbucket.TapMutation,
 			Key:      []byte("doc2"),
 			Value:    []byte(`".."`),

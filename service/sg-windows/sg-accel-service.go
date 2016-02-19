@@ -13,9 +13,9 @@ import (
 var logger service.Logger
 
 type program struct {
-	ExePath     string
-	ConfigPath  string
-	SGAccel     *exec.Cmd
+	ExePath    string
+	ConfigPath string
+	SGAccel    *exec.Cmd
 }
 
 func (p *program) Start(s service.Service) error {
@@ -61,11 +61,11 @@ func main() {
 
 	switch len(os.Args) {
 	case 2:
-		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe"     // Uses default binary image path
-		svcConfig.Arguments = []string{"start"}                          // Uses the default config
+		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe" // Uses default binary image path
+		svcConfig.Arguments = []string{"start"}                      // Uses the default config
 	case 3:
-		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe"     // Uses default binary image path
-		configPath = os.Args[2]                                          // Uses custom config
+		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe" // Uses default binary image path
+		configPath = os.Args[2]                                      // Uses custom config
 		svcConfig.Arguments = []string{"start", configPath}
 	case 4:
 		exePath = os.Args[2]    // Uses custom binary image path

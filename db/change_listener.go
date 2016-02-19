@@ -97,7 +97,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 	}
 	listener.tapNotifier.L.Lock()
 	listener.counter++
-	for key, _ := range keys {
+	for key := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
 	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
@@ -192,13 +192,13 @@ func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
 
 func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *changeWaiter {
 	waitKeys := make([]string, 0, 5)
-	for channel, _ := range chans {
+	for channel := range chans {
 		waitKeys = append(waitKeys, channel)
 	}
 	var userKeys []string
 	if user != nil {
 		userKeys = []string{auth.UserKeyPrefix + user.Name()}
-		for role, _ := range user.RoleNames() {
+		for role := range user.RoleNames() {
 			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
 		}
 		waitKeys = append(waitKeys, userKeys...)
@@ -241,7 +241,7 @@ func (waiter *changeWaiter) CurrentUserCount() uint64 {
 func (waiter *changeWaiter) UpdateChannels(chans channels.TimedSet) {
 	initialCapacity := len(chans) + len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
-	for channel, _ := range chans {
+	for channel := range chans {
 		updatedKeys = append(updatedKeys, channel)
 	}
 	if len(waiter.userKeys) > 0 {

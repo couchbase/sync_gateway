@@ -25,7 +25,7 @@ func main() {
 	signal.Notify(signalchannel, syscall.SIGHUP)
 
 	go func() {
-		for _ = range signalchannel {
+		for range signalchannel {
 			base.Logf("SIGHUP: Reloading Config....\n")
 			rest.ReloadConf()
 		}

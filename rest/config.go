@@ -549,7 +549,7 @@ func ParseCommandLine() {
 						Pool:   poolName,
 					},
 					Users: map[string]*db.PrincipalConfig{
-						base.GuestUsername: &db.PrincipalConfig{
+						base.GuestUsername: {
 							Disabled:         false,
 							ExplicitChannels: base.SetFromArray([]string{"*"}),
 						},

@@ -10,26 +10,26 @@
 package base
 
 import (
-    "errors"
-    "testing"
+	"errors"
+	"testing"
 )
 
 func Benchmark_LoggingPerformance(b *testing.B) {
 
-    var logKeys = map[string]bool {
-        "CRUD": true,
-    }
+	var logKeys = map[string]bool{
+		"CRUD": true,
+	}
 
-    UpdateLogKeys(logKeys, true)
+	UpdateLogKeys(logKeys, true)
 
-    b.ResetTimer()
+	b.ResetTimer()
 
-    for i := 0; i < b.N; i++ {
-        LogTo("CRUD", "some crud'y message")
-        Log("An unformatted log message")
-        Logf("%s", "A formatted log message")
-        LogError(errors.New("This is an error message"))
-        Warn("%s", "A WARNING message")
-        TEMP("%s", "A TEMP message")
-    }
+	for i := 0; i < b.N; i++ {
+		LogTo("CRUD", "some crud'y message")
+		Log("An unformatted log message")
+		Logf("%s", "A formatted log message")
+		LogError(errors.New("This is an error message"))
+		Warn("%s", "A WARNING message")
+		TEMP("%s", "A TEMP message")
+	}
 }

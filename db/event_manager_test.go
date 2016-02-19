@@ -7,11 +7,11 @@ import (
 	"github.com/couchbaselabs/go.assert"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
-	"net"
 )
 
 // Webhook tests use an HTTP listener.  Use of this listener is disabled by default, to avoid
@@ -24,11 +24,9 @@ type TestingHandler struct {
 	payload       Body
 	ResultChannel chan Body // channel for tracking async results
 	HandledEvent  EventType
-	handleDelay   int // long running handler execution
-	t *testing.T  //enclosing test instance
+	handleDelay   int        // long running handler execution
+	t             *testing.T //enclosing test instance
 }
-
-
 
 func (th *TestingHandler) HandleEvent(event Event) {
 
@@ -157,7 +155,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 	em := NewEventManager()
 	em.Start(0, -1)
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Events": true,
 	}
 
@@ -594,7 +592,7 @@ func TestWebhookTimeout(t *testing.T) {
 		return
 	}
 
-	var logKeys = map[string]bool {
+	var logKeys = map[string]bool{
 		"Events+": true,
 	}
 
