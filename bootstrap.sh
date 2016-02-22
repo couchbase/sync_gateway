@@ -68,7 +68,7 @@ if [ -f "main.go" ]; then
     exit 1
 fi 
 
-## Make sure the repo tool is installed, otherwise throw an error
+## If the repo tool is not installed, then download it into current directory
 if ! type "repo" > /dev/null; then
     echo "Did not find repo tool, downloading to current directory"
     curl https://storage.googleapis.com/git-repo-downloads/repo > repo
