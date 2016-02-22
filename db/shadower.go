@@ -123,7 +123,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		body["_rev"] = newRev
 		if doc.History[newRev] == nil {
 			// It's a new rev, so add it to the history:
-			doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
+			doc.History.addRevisionAllowConflicts(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
 			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
 		} else {
 			// We already have this rev; but don't cancel, because we do need to update the
