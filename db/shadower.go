@@ -123,6 +123,13 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		body["_rev"] = newRev
 		if doc.History[newRev] == nil {
 			// It's a new rev, so add it to the history:
+			if parentRev != "" && !doc.History.contains(parentRev) {
+				// parent rev does not exist in the doc history
+				// set parentRev to "", this will create a  new conflicting
+				//branch in the revtree
+				base.Warn("Shadow: Adding revision as conflict branch, parent id %q is missing", parentRev)
+				parentRev = ""
+			}
 			doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
 			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
 		} else {

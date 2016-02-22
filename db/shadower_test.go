@@ -11,6 +11,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"encoding/json"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -148,6 +149,69 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	// Make sure the echoed pull didn't create a new revision:
 	doc, _ := db.GetDoc("foo")
 	assert.Equals(t, len(doc.History), 1)
+}
+
+// Ensure that a new rev pushed from a shadow bucket update, wehre the UpstreamRev does not exist as a parent func init() {
+// the documents rev tree does not panic, it should generate a new conflicting branch instead.
+// see #1603
+func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
+
+	var logKeys = map[string]bool{
+		"Shadow":  true,
+		"Shadow+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	bucket := makeExternalBucket()
+	defer bucket.Close()
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	var err error
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
+	assertNoError(t, err, "NewShadower")
+
+	// Push an existing doc revision (the way a client's push replicator would)
+	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"})
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 1
+	})
+
+	//Directly edit the "upstream_rev" _sync property of the doc
+	//We don't want to trigger a push to the shadow bucket
+	raw, _, _ := db.Bucket.GetRaw("foo")
+
+	//Unmarshal to JSON
+	var docObj map[string]interface{}
+	json.Unmarshal(raw, &docObj)
+
+	docObj["upstream_rev"] = "1-notexist"
+
+	docBytes, _ := json.Marshal(docObj)
+
+	//Write raw doc bytes back to bucket
+	db.Bucket.SetRaw("foo", 0, docBytes)
+
+	//Now edit the raw file in the shadow bucket to
+	// trigger a shadow pull
+	bucket.SetRaw("foo", 0, []byte("{\"a\":\"c\"}"))
+
+	//validate that upstream_rev was changed in DB
+	raw, _, _ = db.Bucket.GetRaw("foo")
+	json.Unmarshal(raw, &docObj)
+	assert.Equals(t, docObj["upstream_rev"], "1-notexist")
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 2
+	})
+
+	//Assert that we can get the two conflicing revisions
+	gotBody, err := db.GetRev("foo", "1-madeup", false, nil)
+	assert.DeepEquals(t, gotBody, Body{"_id": "foo", "a": "b", "_rev": "1-madeup"})
+	gotBody, err = db.GetRev("foo", "2-edce85747420ad6781bdfccdebf82180", false, nil)
+	assert.DeepEquals(t, gotBody, Body{"_id": "foo", "a": "c", "_rev": "2-edce85747420ad6781bdfccdebf82180"})
 }
 
 func TestShadowerPattern(t *testing.T) {
