@@ -46,34 +46,28 @@ go test github.com/couchbase/sync_gateway/... -bench='RestApiGetDocPerformance' 
 
 ## Building From Source (with dependency pinning)
 
-Running the script below will:
-
-* Clone this repository and all of it's dependencies (pinned to specific versions)
-* Run full unit test suite
-* Build sync gateway binaries and copy them to the `godeps/bin` directory
+Running the scripts below will clone this repository and all of it's dependencies (pinned to specific versions as specified in the manifest)
 
 ```
 $ mkdir ~/sync_gateway
 $ cd ~/sync_gateway
 $ brew install repo
-$ wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh
-$ chmod +x build.sh
-$ ./build.sh
+$ wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
+$ chmod +x bootstrap.sh
+$ ./bootstrap.sh
 ```
 
-**Rebuilding**
+**Build**
 
-There are two ways to rebuild the code:
-
-1. `./build.sh` (downside: slower because it runs `repo sync` and `go test` each time)
-1. ``GOPATH=`pwd`/godeps go install github.com/couchbase/sync_gateway/...`` (downside: currently this won't bake in the sync gateway commit into the binary)
+```
+$ ./build.sh
+```
 
 **Running Unit Tests**
 
 ```
-GOPATH=`pwd`/godeps go test github.com/couchbase/sync_gateway/...
+$ ./test.sh
 ```
-
 
 ### License
 
