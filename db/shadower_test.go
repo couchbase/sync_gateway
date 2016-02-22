@@ -150,6 +150,38 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	assert.Equals(t, len(doc.History), 1)
 }
 
+// Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
+// shadower as a different revision.
+func TestShadowerPullRevisionWithMissingParent(t *testing.T) {
+
+	var logKeys = map[string]bool{
+		"Shadow":  true,
+		"Shadow+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	bucket := makeExternalBucket()
+	defer bucket.Close()
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	var err error
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
+	assertNoError(t, err, "NewShadower")
+
+	// Push an existing doc revision (the way a client's push replicator would)
+	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"})
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 1
+	})
+
+	//Directly edit the "upstream_rev" _sync property of the doc
+	//We don't want to trigger a push to the shadow bucket
+	
+}
+
 func TestShadowerPattern(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
