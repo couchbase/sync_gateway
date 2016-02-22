@@ -11,6 +11,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"encoding/json"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -150,9 +151,11 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	assert.Equals(t, len(doc.History), 1)
 }
 
-// Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
-// shadower as a different revision.
-func TestShadowerPullRevisionWithMissingParent(t *testing.T) {
+
+// Ensure that a new rev pushed from a shadow bucket update, wehre the UpstreamRev does not exist as a parent func init() {
+// the documents rev tree does not panic, it should generate a new conflicting branch instead.
+// see #1603
+func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	var logKeys = map[string]bool{
 		"Shadow":  true,
@@ -179,7 +182,36 @@ func TestShadowerPullRevisionWithMissingParent(t *testing.T) {
 
 	//Directly edit the "upstream_rev" _sync property of the doc
 	//We don't want to trigger a push to the shadow bucket
-	
+	raw, _, _ := db.Bucket.GetRaw("foo")
+
+	//Unmarshal to JSON
+	var docObj map[string]interface{}
+	json.Unmarshal(raw, &docObj)
+
+	docObj["upstream_rev"] = "1-notexist"
+
+	docBytes, _ := json.Marshal(docObj)
+
+	//Write raw doc bytes back to bucket
+	db.Bucket.SetRaw("foo", 0, docBytes)
+
+	//Now edit the raw file in the shadow bucket to
+	// trigger a shadow pull
+	bucket.SetRaw("foo", 0, []byte("{\"a\":\"c\"}"))
+
+	//validate that upstream_rev was changed
+
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 2
+	})
+
+	//Assert that the doc now has two conflicting revisions
+	// Verify we can still get the other two revisions:
+	gotBody, err := db.GetRev("foo", "1-madeup", false, nil)
+	assert.DeepEquals(t, gotBody, Body{"_id":"foo", "a":"b", "_rev":"1-madeup"})
+	gotBody, err = db.GetRev("foo", "2-edce85747420ad6781bdfccdebf82180", false, nil)
+	assert.DeepEquals(t, gotBody, Body{"_id":"foo", "a":"c", "_rev":"2-edce85747420ad6781bdfccdebf82180"})
 }
 
 func TestShadowerPattern(t *testing.T) {
