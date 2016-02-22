@@ -242,6 +242,11 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 
 // Records a revision in a RevTree.
 func (tree RevTree) addRevision(info RevInfo) {
+	tree.addRevisionAllowConflicts(info, false)
+}
+
+// Records a revision in a RevTree.
+func (tree RevTree) addRevisionAllowConflicts(info RevInfo, allowConflicts bool) {
 	revid := info.ID
 	if revid == "" {
 		panic("empty revid is illegal")
@@ -250,9 +255,19 @@ func (tree RevTree) addRevision(info RevInfo) {
 		panic(fmt.Sprintf("already contains rev %q", revid))
 	}
 	parent := info.Parent
+
 	if parent != "" && !tree.contains(parent) {
-		panic(fmt.Sprintf("parent id %q is missing", parent))
+		if allowConflicts {
+			// parent does not exist in the history
+			// set info.Parent to "", this will create a  new conflicting
+			//branch in the revtree
+			base.Warn("Adding revision as conflict branch, parent id %q is missing", parent)
+			info.Parent = ""
+		} else {
+			panic(fmt.Sprintf("parent id %q is missing", parent))
+		}
 	}
+
 	tree[revid] = &info
 }
 
