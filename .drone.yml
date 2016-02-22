@@ -1,8 +1,8 @@
 build:
   image: golang
   commands:
-    - go get -u -v -t github.com/couchbase/sync_gateway
-    - go test -v github.com/couchbase/sync_gateway
+    - go get -u -v -t 
+    - go test -v
     - cd $GOPATH
     - rm -rf *
     - wget https://raw.githubusercontent.com/couchbase/sync_gateway/$$COMMIT/build.sh
