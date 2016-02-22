@@ -66,7 +66,7 @@ $ ./build.sh
 There are two ways to rebuild the code:
 
 1. `./build.sh` (downside: slower because it runs `repo sync` and `go test` each time)
-1. `GOPATH=`pwd`/godeps go install github.com/couchbase/sync_gateway/...` (downside: currently this won't bake in the sync gateway commit into the binary)
+1. ``GOPATH=`pwd`/godeps go install github.com/couchbase/sync_gateway/...`` (downside: currently this won't bake in the sync gateway commit into the binary)
 
 **Running Unit Tests**
 
