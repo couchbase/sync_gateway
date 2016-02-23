@@ -555,19 +555,25 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:
+		var wsoptions db.ChangesOptions
 		var compress bool
 		if msg, err := readWebSocketMessage(conn); err != nil {
 			return
 		} else {
 			var channelNames []string
 			var err error
-			if _, options, _, channelNames, _, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
+			if _, wsoptions, _, channelNames, _, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
 				return
 			}
 			if channelNames != nil {
 				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
 			}
 		}
+
+		//Copy options.Terminator to new WebSocket options
+		//options.Terminator will be closed automatically when
+		//changes feed completes
+		wsoptions.Terminator = options.Terminator
 
 		// Set up GZip compression
 		var writer *bytes.Buffer
@@ -578,7 +584,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		}
 
 		caughtUp := false
-		_, forceClose = h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
+		_, forceClose = h.generateContinuousChanges(inChannels, wsoptions, func(changes []*db.ChangeEntry) error {
 			var data []byte
 			if changes != nil {
 				data, _ = json.Marshal(changes)
