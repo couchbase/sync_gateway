@@ -136,6 +136,8 @@ print('last_seq:   ' + last_seq)
 
 print('\r\nall_docs channel counts:')
 for key in sorted(all_channels.keys()):
+    if (key == "unassigned"):
+        print('')
     print(' ' + key + ': ' + str(all_channels[key]))
 
 delCount = len(deletes)
@@ -143,7 +145,7 @@ delCount = len(deletes)
 print('\r\nchanges channel counts:')
 for key in sorted(changes_channels.keys()):
     if (key == "unassigned"):
-        print(' ' + key + ': ' + str(changes_channels[key] - delCount)) #+ '(' + str() + ')')
+        print('\r\n ' + key + ': ' + str(changes_channels[key] - delCount)) #+ '(' + str() + ')')
     else:
         print(' ' + key + ': ' + str(changes_channels[key]))
 
