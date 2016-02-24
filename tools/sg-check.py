@@ -138,9 +138,14 @@ print('\r\nall_docs channel counts:')
 for key in sorted(all_channels.keys()):
     print(' ' + key + ': ' + str(all_channels[key]))
 
+delCount = len(deletes)
+
 print('\r\nchanges channel counts:')
 for key in sorted(changes_channels.keys()):
-    print(' ' + key + ': ' + str(changes_channels[key]))
+    if (key == "unassigned"):
+        print(' ' + key + ': ' + str(changes_channels[key] - delCount)) #+ '(' + str() + ')')
+    else:
+        print(' ' + key + ': ' + str(changes_channels[key]))
 
 print('\r\ntotal user doc sequences: ' + str(len(user_docs)))
-print('total tombstones:' + str(len(deletes)) + '\r\n')
+print('total tombstones: ' + str(delCount) + '\r\n')
