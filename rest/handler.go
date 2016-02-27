@@ -210,7 +210,11 @@ func (h *handler) logRequestLine() {
 	} else if h.user != nil && h.user.Name() != "" {
 		as = fmt.Sprintf("  (as %s)", h.user.Name())
 	}
-	base.LogTo("HTTP", " #%03d: %s %s%s", h.serialNumber, h.rq.Method, h.rq.URL, as)
+	proto := ""
+	if h.rq.ProtoMajor >= 2 {
+		proto = " HTTP/2"
+	}
+	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, h.rq.URL, proto, as)
 }
 
 func (h *handler) logDuration(realTime bool) {
