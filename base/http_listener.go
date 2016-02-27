@@ -25,7 +25,7 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 	if certFile != nil {
 		config = &tls.Config{}
 		config.MinVersion = tls.VersionTLS10 // Disable SSLv3 due to POODLE vulnerability
-		config.NextProtos = []string{"http/1.1"}
+		config.NextProtos = []string{"h2", "http/1.1"}
 		config.Certificates = make([]tls.Certificate, 1)
 		var err error
 		config.Certificates[0], err = tls.LoadX509KeyPair(*certFile, *keyFile)
