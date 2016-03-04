@@ -62,10 +62,10 @@ func TestIndexChangesAdminBackfill(t *testing.T) {
 	adminDB.Put("both_1", db.Body{"channels": []string{"ABC", "PBS"}})
 	adminDB.Put("doc0000609", db.Body{"channels": []string{"PBS"}})
 	adminDB.Put("doc0000799", db.Body{"channels": []string{"ABC"}})
-	time.Sleep(100 * time.Millisecond)
 
 	// Create a user with access to channel ABC
 	userDB := testUserDB(dbContext, "naomi", "letmein", []string{"ABC"})
+	time.Sleep(100 * time.Millisecond)
 
 	// Check the _changes feed:
 	changes, err := userDB.GetChanges(base.SetOf("*"), getZeroSequence(userDB))
