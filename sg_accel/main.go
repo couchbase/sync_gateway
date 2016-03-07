@@ -83,9 +83,10 @@ func RunServer(config *rest.ServerConfig) {
 	}
 
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
-	handler := rest.CreateAdminHandler(ac.serverContext)
-	// TODO: restore CBGT routes
-	//addCbgtRoutes(handler, ac)
+	router := rest.CreateAdminRouter(ac.serverContext)
+	addCbgtRoutes(router, ac)
+	handler := rest.CreateAdminHandlerForRouter(ac.serverContext, router)
+
 	go config.Serve(*config.AdminInterface, handler)
 }
 

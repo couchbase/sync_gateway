@@ -12,6 +12,8 @@ const (
 	maxUnmarshalProcesses = 16
 )
 
+// IndexWriter is the server-level manager for index writing.  Manages the collection of db-specific
+// kvChangeIndexWriters.
 type IndexWriter struct {
 	dbIndexWriters    map[string]*kvChangeIndexWriter // Map of index writers, indexed by db name
 	dbIndexWriterLock sync.RWMutex                    // Coordinates access to channel index writer map.

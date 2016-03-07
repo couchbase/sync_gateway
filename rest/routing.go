@@ -109,6 +109,16 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 
 // Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminHandler(sc *ServerContext) http.Handler {
+	router := CreateAdminRouter(sc)
+	return wrapRouter(sc, adminPrivs, router)
+}
+
+func CreateAdminHandlerForRouter(sc *ServerContext, r *mux.Router) http.Handler {
+	return wrapRouter(sc, adminPrivs, r)
+}
+
+// Creates the HTTP handler for the PRIVATE admin API of a gateway server.
+func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr := createHandler(sc, adminPrivs)
 
 	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +245,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
 
-	return wrapRouter(sc, adminPrivs, r)
+	return r
 }
 
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't

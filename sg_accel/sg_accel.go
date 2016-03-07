@@ -30,6 +30,10 @@ func NewSGAccelContext(config *rest.ServerConfig) *SGAccelContext {
 		serverContext: rest.NewServerContext(config),
 	}
 
+	if err := ac.registerCbgtPindexType(); err != nil {
+		log.Fatalf("Fatal error initializing CBGT Pindex type: %v", err)
+	}
+
 	// Initialize databases
 	var databases []*db.DatabaseContext
 	for _, dbConfig := range config.Databases {
@@ -57,10 +61,6 @@ func NewSGAccelContext(config *rest.ServerConfig) *SGAccelContext {
 	err = ac.InitCBGT(databases)
 	if err != nil {
 		base.LogFatal("Error initializing CBGT: %v", err)
-	}
-
-	if err := ac.registerCbgtPindexType(); err != nil {
-		log.Fatalf("Fatal error initializing CBGT: %v", err)
 	}
 
 	return ac
