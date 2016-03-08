@@ -18,7 +18,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const kDebugURLPathPrefix = "/_expvar"
+const (
+	kDebugURLPathPrefix    = "/_expvar"
+	kMaxGoroutineSnapshots = 100000
+)
 
 var (
 	poolhistos = map[string]metrics.Histogram{}
@@ -85,6 +88,12 @@ func (g *goroutineTracker) recordSnapshot() {
 
 	// append to history
 	g.Snapshots = append(g.Snapshots, numGoroutines)
+
+	// drop the oldest one if we've gone over the max
+	if len(g.Snapshots) > kMaxGoroutineSnapshots {
+		g.Snapshots = g.Snapshots[1:]
+	}
+
 }
 
 func connPoolHisto(name string) metrics.Histogram {
