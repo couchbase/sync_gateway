@@ -91,7 +91,12 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 }
 
 func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
-	return doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
+	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
+	// Additional diagnostics if sync metadata exists but isn't valid
+	if !valid && doc != nil {
+		base.LogTo("CRUD+", "Invalid sync metadata (may be expected):  Current rev: %s, Sequence: %v", doc.CurrentRev, doc.Sequence)
+	}
+	return valid
 }
 
 func (doc *document) hasFlag(flag uint8) bool {
