@@ -1,4 +1,4 @@
-package sg_accel
+package main
 
 import (
 	"encoding/json"
