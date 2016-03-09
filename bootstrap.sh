@@ -56,6 +56,13 @@ downloadHelperScripts () {
 	chmod +x test.sh
     fi
 
+    if [ ! -f bench.sh ]; then
+	echo "Downloading bench.sh"
+	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/bench.sh" > bench.sh
+	chmod +x bench.sh
+    fi
+
+    
 }
 
 
