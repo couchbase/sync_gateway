@@ -28,6 +28,7 @@ func NewSGAccelContext(config *rest.ServerConfig) *SGAccelContext {
 	// Initialize server context, which includes initial database configurations
 	ac := &SGAccelContext{
 		serverContext: rest.NewServerContext(config),
+		indexWriter:   indexwriter.NewIndexWriter(),
 	}
 
 	if err := ac.registerCbgtPindexType(); err != nil {

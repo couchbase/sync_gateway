@@ -70,7 +70,7 @@ func RunServer(config *rest.ServerConfig) {
 		}
 	}
 
-	base.SetMaxFileDescriptors(*config.MaxFileDescriptors)
+	rest.SetMaxFileDescriptors(config.MaxFileDescriptors)
 
 	ac := NewSGAccelContext(config)
 
@@ -87,7 +87,7 @@ func RunServer(config *rest.ServerConfig) {
 	addCbgtRoutes(router, ac)
 	handler := rest.CreateAdminHandlerForRouter(ac.serverContext, router)
 
-	go config.Serve(*config.AdminInterface, handler)
+	config.Serve(*config.AdminInterface, handler)
 }
 
 func addCbgtRoutes(router *mux.Router, ac *SGAccelContext) error {
