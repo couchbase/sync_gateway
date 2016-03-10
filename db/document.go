@@ -75,7 +75,7 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 
 // Unmarshals just a document's sync metadata from JSON data.
 // (This is somewhat faster, if all you need is the sync data without the doc body.)
-func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
+func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
 	var root documentRoot
 	if needHistory {
 		root.SyncData = &syncData{History: make(RevTree)}
@@ -90,7 +90,7 @@ func unmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 	return root.SyncData, nil
 }
 
-func (doc *syncData) hasValidSyncData(requireSequence bool) bool {
+func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
 	return doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
 }
 

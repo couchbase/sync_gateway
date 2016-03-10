@@ -49,7 +49,7 @@ func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
 	_, err := db.Bucket.Get(key, doc)
 	if err != nil {
 		return nil, err
-	} else if !doc.hasValidSyncData(db.writeSequences()) {
+	} else if !doc.HasValidSyncData(db.writeSequences()) {
 		return nil, base.HTTPErrorf(404, "Not imported")
 	}
 	return doc, nil
@@ -471,7 +471,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
-		} else if !allowImport && currentValue != nil && !doc.hasValidSyncData(db.writeSequences()) {
+		} else if !allowImport && currentValue != nil && !doc.HasValidSyncData(db.writeSequences()) {
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}

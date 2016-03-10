@@ -1,16 +1,20 @@
-package base
+package indexwriter
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 // The two "handles" we have for CBGT are the manager and Cfg objects.
@@ -30,34 +34,19 @@ const (
 	IndexCategorySyncGateway = "general"      // CBGT expects this index to fit into a category (general vs advanced)
 )
 
-type CBGTDCPFeed struct {
-	eventFeed chan sgbucket.TapEvent
-}
-
-func (c *CBGTDCPFeed) Events() <-chan sgbucket.TapEvent {
-	return c.eventFeed
-}
-
-func (c *CBGTDCPFeed) WriteEvents() chan<- sgbucket.TapEvent {
-	return c.eventFeed
-}
-
-func (c *CBGTDCPFeed) Close() error { // TODO
-	log.Fatalf("CBGTDCPFeed.Close() called but not implemented")
-	return nil
-}
-
 type SyncGatewayPIndex struct {
 	mutex        sync.Mutex               // mutex used to protect meta and seqs
 	seqs         map[uint16]uint64        // To track max seq #'s we received per partition (vbucketId).
 	meta         map[uint16][]byte        // To track metadata blob's per partition (vbucketId).
 	feedEvents   chan<- sgbucket.TapEvent // The channel to forward TapEvents
-	bucket       CouchbaseBucket          // the couchbase bucket
+	bucket       base.CouchbaseBucket     // the couchbase bucket
 	tapArguments sgbucket.TapArguments    // tap args
-	stableClock  SequenceClock            // The stable clock when this PIndex object was created
+	stableClock  base.SequenceClock       // The stable clock when this PIndex object was created
 }
 
-func NewSyncGatewayPIndex(feedEvents chan<- sgbucket.TapEvent, bucket CouchbaseBucket, args sgbucket.TapArguments, stableClock SequenceClock) *SyncGatewayPIndex {
+func NewSyncGatewayPIndex(feedEvents chan<- sgbucket.TapEvent, bucket base.CouchbaseBucket, args sgbucket.TapArguments, stableClock base.SequenceClock) *SyncGatewayPIndex {
+
+	base.LogTo("Refactor", "New CBGT PIndex")
 	pindex := &SyncGatewayPIndex{
 		feedEvents:   feedEvents,
 		bucket:       bucket,
@@ -96,7 +85,7 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 
 	if s.tapArguments.Backfill == sgbucket.TapNoBackfill {
 		// For non-backfill, use vbucket uuids, high sequence numbers
-		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
+		base.LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
 		vbuuids = statsUuids
 		startSeqnos = highSeqnos
 	}
@@ -119,7 +108,7 @@ func (s *SyncGatewayPIndex) SeedSeqnos() error {
 		highSeqnoFromBucket := highSeqnosFromBucket[vbucketId]
 
 		if highSeqnoFromStableClock > highSeqnoFromBucket {
-			Warn("issue_1259 highSeqnoFromStableClock (%d) > highSeqnoFromBucket (%d) for vb %d", highSeqnoFromStableClock, highSeqnoFromBucket, vbucketId)
+			base.Warn("issue_1259 highSeqnoFromStableClock (%d) > highSeqnoFromBucket (%d) for vb %d", highSeqnoFromStableClock, highSeqnoFromBucket, vbucketId)
 		}
 
 		metadata := &cbdatasource.VBucketMetaData{
@@ -162,7 +151,7 @@ func partitionToVbucketId(partition string) uint16 {
 func (s *SyncGatewayPIndex) DataUpdate(partition string, key []byte, seq uint64, val []byte,
 	cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
 
-	LogTo("DCP", "DataUpdate for pindex %p called with vbucket: %v.  key: %v seq: %v", s, partition, string(key), seq)
+	base.LogTo("DCP", "DataUpdate for pindex %p called with vbucket: %v.  key: %v seq: %v", s, partition, string(key), seq)
 
 	vbucketNumber := partitionToVbucketId(partition)
 
@@ -184,7 +173,7 @@ func (s *SyncGatewayPIndex) DataUpdate(partition string, key []byte, seq uint64,
 func (s *SyncGatewayPIndex) DataDelete(partition string, key []byte, seq uint64,
 	cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
 
-	LogTo("DCP", "DataDelete called with vbucket: %v.  key: %v", partition, string(key))
+	base.LogTo("DCP", "DataDelete called with vbucket: %v.  key: %v", partition, string(key))
 
 	s.updateSeq(partition, seq, true)
 
@@ -260,7 +249,7 @@ func (s *SyncGatewayPIndex) rollbackSeq(partition string, seq uint64) {
 	s.updateSeq(partition, seq, false)
 
 	if err := s.updateMeta(partition, seq); err != nil {
-		Warn("RollbackSeq() unable to update meta: %v", err)
+		base.Warn("RollbackSeq() unable to update meta: %v", err)
 	}
 
 }
@@ -308,11 +297,11 @@ func (s *SyncGatewayPIndex) updateMeta(partition string, seq uint64) error {
 }
 
 // This updates the value stored in s.seqs with the given seq number for the given partition
-// (which is a string value of vbucket id).  Setting warnOnLowerSeqNo to true will check
+// (which is a string value of vbucket id).  Setting base.WarnOnLowerSeqNo to true will check
 // if we are setting the seq number to a _lower_ value than we already have stored for that
-// vbucket and log a warning in that case.  The valid case for setting warnOnLowerSeqNo to
+// vbucket and log a base.Warning in that case.  The valid case for setting base.WarnOnLowerSeqNo to
 // false is when it's a rollback scenario.  See https://github.com/couchbase/sync_gateway/issues/1098 for dev notes.
-func (s *SyncGatewayPIndex) updateSeq(partition string, seq uint64, warnOnLowerSeqNo bool) {
+func (s *SyncGatewayPIndex) updateSeq(partition string, seq uint64, WarnOnLowerSeqNo bool) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -321,8 +310,8 @@ func (s *SyncGatewayPIndex) updateSeq(partition string, seq uint64, warnOnLowerS
 	if s.seqs == nil {
 		s.seqs = make(map[uint16]uint64)
 	}
-	if seq < s.seqs[vbucketNumber] && warnOnLowerSeqNo == true {
-		Warn("Setting to _lower_ sequence number than previous: %v -> %v", s.seqs[vbucketNumber], seq)
+	if seq < s.seqs[vbucketNumber] && WarnOnLowerSeqNo == true {
+		base.Warn("Setting to _lower_ sequence number than previous: %v -> %v", s.seqs[vbucketNumber], seq)
 	}
 
 	s.seqs[vbucketNumber] = seq // Remember the max seq for GetMetaData().
@@ -335,7 +324,7 @@ func (s *SyncGatewayPIndex) Rollback(partition string, rollbackSeq uint64) error
 	// As of the time of this writing, I believe this is also broken in the master branch
 	// of Sync Gateway.
 
-	Warn("DCP Rollback request SyncGatewayPIndex - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
+	base.Warn("DCP Rollback request SyncGatewayPIndex - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x", partition, rollbackSeq)
 
 	s.rollbackSeq(partition, rollbackSeq)
 
@@ -372,18 +361,18 @@ type HeartbeatStoppedHandler struct {
 
 func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
 
-	LogTo("DIndex+", "StaleHeartBeatDetected for node: %v", nodeUuid)
+	base.LogTo("DIndex+", "StaleHeartBeatDetected for node: %v", nodeUuid)
 
 	kinds := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
 	for _, kind := range kinds {
-		LogTo("DIndex+", "Telling CBGT to remove node: %v (kind: %v, cbgt version: %v)", nodeUuid, kind, h.CbgtVersion)
+		base.LogTo("DIndex+", "Telling CBGT to remove node: %v (kind: %v, cbgt version: %v)", nodeUuid, kind, h.CbgtVersion)
 		if err := cbgt.CfgRemoveNodeDef(
 			h.Cfg,
 			kind,
 			nodeUuid,
 			h.CbgtVersion,
 		); err != nil {
-			Warn("Warning: attempted to remove %v (%v) from CBGT but failed: %v", nodeUuid, kind, err)
+			base.Warn("base.Warning: attempted to remove %v (%v) from CBGT but failed: %v", nodeUuid, kind, err)
 		}
 
 	}
@@ -394,14 +383,14 @@ func CBGTPlanParams(numShards, numVbuckets uint16) cbgt.PlanParams {
 
 	// Make sure the number of vbuckets is a power of two, since it's possible
 	// (but not common) to configure the number of vbuckets as such.
-	if !IsPowerOfTwo(numVbuckets) {
-		LogPanic("The number of vbuckets is %v, but Sync Gateway expects this to be a power of two", numVbuckets)
+	if !base.IsPowerOfTwo(numVbuckets) {
+		base.LogPanic("The number of vbuckets is %v, but Sync Gateway expects this to be a power of two", numVbuckets)
 	}
 
 	// We can't allow more shards than vbuckets, that makes no sense because each
 	// shard would be responsible for less than one vbucket.
 	if numShards > numVbuckets {
-		LogPanic("The number of shards (%v) must be less than the number of vbuckets (%v)", numShards, numVbuckets)
+		base.LogPanic("The number of shards (%v) must be less than the number of vbuckets (%v)", numShards, numVbuckets)
 	}
 
 	// Calculate numVbucketsPerShard based on numVbuckets and num_shards.
@@ -414,4 +403,126 @@ func CBGTPlanParams(numShards, numVbuckets uint16) cbgt.PlanParams {
 		NumReplicas:            0, // no use case for Sync Gateway to have pindex replicas
 	}
 
+}
+
+func CreateCBGTIndexForDatabase(context *db.DatabaseContext, cbgtContext *CbgtContext) error {
+
+	// Create the CBGT index.  This must be done _after_ the tapListener is started,
+	// as the tapFeed will be created at that point, and it must be already created
+	// at the point we try to create a CBGT index.
+	if context.BucketSpec.FeedType == strings.ToLower(base.DcpShardFeedType) {
+		// create the index]
+		alreadyExists, err := checkCBGTIndexExists(cbgtContext, GetCBGTIndexNameForBucket(context.Bucket))
+		if err != nil {
+			return fmt.Errorf("Error checking if CBGT index exists: %v", err)
+		}
+		if !alreadyExists {
+			numShards := context.Options.IndexOptions.NumShards
+			if err := createCBGTIndex(numShards, context.Bucket, context.BucketSpec, cbgtContext); err != nil {
+				return fmt.Errorf("Unable to initialize CBGT index: %v", err)
+			}
+		}
+
+	}
+
+	return nil
+
+}
+
+func GetCBGTIndexNameForBucket(bucket base.Bucket) (indexName string) {
+	// Real Couchbase buckets use an index name that includes UUID.
+	cbBucket, ok := bucket.(base.CouchbaseBucket)
+	if ok {
+		indexName = GetCBGTIndexName(cbBucket)
+	} else {
+		indexName = bucket.GetName()
+	}
+	return indexName
+
+}
+
+// Check if this CBGT index already exists
+func checkCBGTIndexExists(cbgtContext *CbgtContext, indexName string) (bool, error) {
+
+	_, indexDefsMap, err := cbgtContext.Manager.GetIndexDefs(true)
+	if err != nil {
+		return false, err
+	}
+
+	return (indexDefsMap[indexName] != nil), nil
+
+}
+
+// Create an "index" in CBGT which will cause it to start streaming
+// DCP events to us for our shard of the full DCP stream.
+func createCBGTIndex(numShards uint16, baseBucket base.Bucket, spec base.BucketSpec, cbgtContext *CbgtContext) error {
+
+	bucket, ok := baseBucket.(base.CouchbaseBucket)
+	if !ok {
+		return fmt.Errorf("Type assertion failure from base.Bucket -> CouchbaseBucket")
+	}
+
+	return CreateCBGTIndexForBucket(bucket, numShards, spec, cbgtContext)
+
+}
+
+func CreateCBGTIndexForBucket(bucket base.CouchbaseBucket, numShards uint16, spec base.BucketSpec, cbgtContext *CbgtContext) error {
+
+	var user, pwd string
+	if spec.Auth != nil {
+		user, pwd, _ = spec.Auth.GetCredentials()
+	} else {
+		user, pwd, _ = base.TransformBucketCredentials(user, pwd, bucket.Name)
+	}
+
+	sourceParams := cbgt.NewDCPFeedParams()
+	sourceParams.AuthUser = user
+	sourceParams.AuthPassword = pwd
+
+	sourceParamsBytes, err := json.Marshal(sourceParams)
+	if err != nil {
+		return err
+	}
+
+	indexParams := SyncGatewayIndexParams{
+		BucketName: bucket.Name,
+	}
+	indexParamsBytes, err := json.Marshal(indexParams)
+	if err != nil {
+		return err
+	}
+
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	err = cbgtContext.Manager.CreateIndex(
+		SourceTypeCouchbase,                    // sourceType
+		bucket.Name,                            // sourceName
+		bucket.UUID,                            // sourceUUID
+		string(sourceParamsBytes),              // sourceParams
+		IndexTypeSyncGateway,                   // indexType
+		GetCBGTIndexName(bucket),               // indexName
+		string(indexParamsBytes),               // indexParams
+		CBGTPlanParams(numShards, numVbuckets), // planParams
+		"", // prevIndexUUID
+	)
+	if err != nil {
+		base.LogTo("DCP", "Error creating CBGT index: %v", err)
+	}
+
+	// if it's an "index exists" error, then ignore it.
+	// otherwise, propagate it.
+	if err != nil && strings.Contains(err.Error(), "exists") {
+		base.LogTo("DCP", "Unable to create CBGT index, already exists: %v", err)
+		return nil
+	}
+
+	return err
+
+}
+
+func GetCBGTIndexName(bucket base.CouchbaseBucket) string {
+	return bucket.Name + bucket.UUID
 }

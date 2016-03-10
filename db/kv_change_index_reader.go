@@ -23,7 +23,7 @@ type kvChangeIndexReader struct {
 	indexReadBucket           base.Bucket                // Index bucket
 	readerStableSequence      *base.ShardedClock         // Initialized on first polling, updated on subsequent polls
 	readerStableSequenceLock  sync.RWMutex               // Coordinates read access to channel index reader map
-	channelIndexReaders       map[string]*kvChannelIndex // Manages read access to channel.  Map indexed by channel name.
+	channelIndexReaders       map[string]*KvChannelIndex // Manages read access to channel.  Map indexed by channel name.
 	channelIndexReaderLock    sync.RWMutex               // Coordinates read access to channel index reader map
 	onChange                  func(base.Set)             // Client callback that notifies of channel changes
 	terminator                chan struct{}              // Ends polling	indexPartitions *base.IndexPartitions
@@ -38,7 +38,7 @@ type kvChangeIndexReader struct {
 
 func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc) (err error) {
 
-	k.channelIndexReaders = make(map[string]*kvChannelIndex)
+	k.channelIndexReaders = make(map[string]*KvChannelIndex)
 	k.indexPartitionsCallback = indexPartitionsCallback
 	k.activePrincipalCounts = make(map[string]uint64)
 
@@ -104,7 +104,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 }
 
 func (k *kvChangeIndexReader) Clear() {
-	k.channelIndexReaders = make(map[string]*kvChannelIndex)
+	k.channelIndexReaders = make(map[string]*KvChannelIndex)
 }
 
 func (k *kvChangeIndexReader) Stop() {
@@ -237,7 +237,7 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 	}
 	changes, err := reader.getChanges(sinceClock)
 	if err != nil {
-		base.LogTo("DIndex+", "No clock found for channel %d, assuming no entries in index", channelName)
+		base.LogTo("DIndex+", "No clock found for channel %s, assuming no entries in index", channelName)
 		return nil, nil
 	}
 
@@ -251,7 +251,7 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 	return changes, nil
 }
 
-func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options ChangesOptions) (*kvChannelIndex, error) {
+func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options ChangesOptions) (*KvChannelIndex, error) {
 
 	// For continuous or longpoll processing, use the shared reader from the channelindexReaders map to coordinate
 	// polling.
@@ -260,10 +260,10 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options Chan
 		index := k.getChannelReader(channelName)
 		if index == nil {
 			index, err = k.newChannelReader(channelName)
-			indexExpvars.Add("getOrCreateReader_create", 1)
+			IndexExpvars.Add("getOrCreateReader_create", 1)
 			base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 		} else {
-			indexExpvars.Add("getOrCreateReader_get", 1)
+			IndexExpvars.Add("getOrCreateReader_get", 1)
 			base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
 		}
 		return index, err
@@ -278,14 +278,14 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options Chan
 	}
 }
 
-func (k *kvChangeIndexReader) getChannelReader(channelName string) *kvChannelIndex {
+func (k *kvChangeIndexReader) getChannelReader(channelName string) *KvChannelIndex {
 
 	k.channelIndexReaderLock.RLock()
 	defer k.channelIndexReaderLock.RUnlock()
 	return k.channelIndexReaders[channelName]
 }
 
-func (k *kvChangeIndexReader) newChannelReader(channelName string) (*kvChannelIndex, error) {
+func (k *kvChangeIndexReader) newChannelReader(channelName string) (*KvChannelIndex, error) {
 
 	k.channelIndexReaderLock.Lock()
 	defer k.channelIndexReaderLock.Unlock()
@@ -298,8 +298,7 @@ func (k *kvChangeIndexReader) newChannelReader(channelName string) (*kvChannelIn
 		return nil, err
 	}
 	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.onChange)
-	k.channelIndexReaders[channelName].setType("reader")
-	indexExpvars.Add("pollingChannels_active", 1)
+	IndexExpvars.Add("pollingChannels_active", 1)
 	return k.channelIndexReaders[channelName], nil
 }
 
@@ -323,7 +322,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 	keySet := make([]string, len(k.channelIndexReaders))
 	index := 0
 	for _, reader := range k.channelIndexReaders {
-		keySet[index] = getChannelClockKey(reader.channelName)
+		keySet[index] = GetChannelClockKey(reader.channelName)
 		index++
 	}
 	bulkGetResults, err := k.indexReadBucket.GetBulkRaw(keySet)
@@ -331,8 +330,8 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 	if err != nil {
 		base.Warn("Error retrieving channel clocks: %v", err)
 	}
-	indexExpvars.Add("bulkGet_channelClocks", 1)
-	indexExpvars.Add("bulkGet_channelClocks_keyCount", int64(len(keySet)))
+	IndexExpvars.Add("bulkGet_channelClocks", 1)
+	IndexExpvars.Add("bulkGet_channelClocks_keyCount", int64(len(keySet)))
 	changedChannels := make(chan string, len(k.channelIndexReaders))
 	cancelledChannels := make(chan string, len(k.channelIndexReaders))
 
@@ -340,14 +339,14 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 	for _, reader := range k.channelIndexReaders {
 		// For each channel, unmarshal new channel clock, then check with reader whether this represents changes
 		wg.Add(1)
-		go func(reader *kvChannelIndex, wg *sync.WaitGroup) {
+		go func(reader *KvChannelIndex, wg *sync.WaitGroup) {
 			defer func() {
 				wg.Done()
 			}()
 			// Unmarshal channel clock.  If not present in the bulk get results, use empty clock to support
 			// channels that don't have any indexed data yet.  If clock was previously found successfully (i.e. empty clock is
 			// due to temporary error from server), empty clock treated safely as a non-update by pollForChanges.
-			clockKey := getChannelClockKey(reader.channelName)
+			clockKey := GetChannelClockKey(reader.channelName)
 			var newChannelClock *base.SequenceClockImpl
 			clockBytes, found := bulkGetResults[clockKey]
 			if !found {
@@ -389,7 +388,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 
 	// Remove cancelled channels from channel readers
 	for channelName := range cancelledChannels {
-		indexExpvars.Add("pollingChannels_active", -1)
+		IndexExpvars.Add("pollingChannels_active", -1)
 		delete(k.channelIndexReaders, channelName)
 	}
 

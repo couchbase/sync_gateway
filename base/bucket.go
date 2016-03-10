@@ -10,7 +10,6 @@
 package base
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -22,8 +21,6 @@ import (
 	"github.com/couchbase/gomemcached"
 	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
-
-	"github.com/couchbase/cbgt"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -54,7 +51,6 @@ type CouchbaseDriver int
 type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
-	CbgtContext                            CbgtContext
 	CouchbaseDriver                        CouchbaseDriver
 	MaxNumRetries                          int // max number of retries before giving up
 	InitialRetrySleepTimeMS                int // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
@@ -168,12 +164,13 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 	case DcpShardFeedType:
 
 		// CBGT initialization
+		LogTo("Feed", "Starting CBGT feed?%v", bucket.GetName())
 
 		// Create the TapEvent feed channel that will be passed back to the caller
 		eventFeed := make(chan sgbucket.TapEvent, 10)
 
-		//  - create a new CBGTDCPFeed and pass in the eventFeed channel
-		feed := &CBGTDCPFeed{
+		//  - create a new SimpleFeed and pass in the eventFeed channel
+		feed := &SimpleFeed{
 			eventFeed: eventFeed,
 		}
 		return feed, nil
@@ -184,67 +181,6 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 	}
 
-}
-
-func (bucket CouchbaseBucket) CreateCBGTIndex(numShards uint16, spec BucketSpec) error {
-
-	var user, pwd string
-	if bucket.spec.Auth != nil {
-		user, pwd, _ = bucket.spec.Auth.GetCredentials()
-	} else {
-		user, pwd, _ = TransformBucketCredentials(user, pwd, bucket.Name)
-	}
-
-	sourceParams := cbgt.NewDCPFeedParams()
-	sourceParams.AuthUser = user
-	sourceParams.AuthPassword = pwd
-
-	sourceParamsBytes, err := json.Marshal(sourceParams)
-	if err != nil {
-		return err
-	}
-
-	indexParams := SyncGatewayIndexParams{
-		BucketName: bucket.Name,
-	}
-	indexParamsBytes, err := json.Marshal(indexParams)
-	if err != nil {
-		return err
-	}
-
-	numVbuckets, err := bucket.GetMaxVbno()
-	if err != nil {
-		return err
-	}
-
-	err = spec.CbgtContext.Manager.CreateIndex(
-		SourceTypeCouchbase,                    // sourceType
-		bucket.Name,                            // sourceName
-		bucket.UUID,                            // sourceUUID
-		string(sourceParamsBytes),              // sourceParams
-		IndexTypeSyncGateway,                   // indexType
-		bucket.GetCBGTIndexName(),              // indexName
-		string(indexParamsBytes),               // indexParams
-		CBGTPlanParams(numShards, numVbuckets), // planParams
-		"", // prevIndexUUID
-	)
-	if err != nil {
-		LogTo("DCP", "Error creating CBGT index: %v", err)
-	}
-
-	// if it's an "index exists" error, then ignore it.
-	// otherwise, propagate it.
-	if err != nil && strings.Contains(err.Error(), "exists") {
-		LogTo("DCP", "Unable to create CBGT index, already exists: %v", err)
-		return nil
-	}
-
-	return err
-
-}
-
-func (bucket CouchbaseBucket) GetCBGTIndexName() string {
-	return bucket.Name + bucket.UUID
 }
 
 func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {

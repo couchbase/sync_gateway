@@ -23,8 +23,10 @@ type changeListener struct {
 	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	DocChannel            chan sgbucket.TapEvent // Passthru channel for doc mutations
-	OnDocChanged          func(docID string, jsonData []byte, seq uint64, vbNo uint16)
+	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
 }
+
+type DocChangedFunc func(docID string, jsonData []byte, seq uint64, vbNo uint16)
 
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify sgbucket.BucketNotifyFn) error {

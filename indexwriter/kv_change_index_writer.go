@@ -7,41 +7,58 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package db
+package indexwriter
 
 import (
+	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 )
 
+var indexWriterExpvars *expvar.Map
+
+var latestWriteBatch expvar.Int
+
 type kvChangeIndexWriter struct {
-	context                 *DatabaseContext           // Database context
-	indexWriteBucket        base.Bucket                // Index bucket
-	channelIndexWriters     map[string]*kvChannelIndex // Manages writes to channel. Map indexed by channel name.
-	channelIndexWriterLock  sync.RWMutex               // Coordinates access to channel index writer map.
-	pending                 chan *LogEntry             // Incoming changes, pending indexing
-	unmarshalWorkers        []*unmarshalWorker         // Workers to unmarshal documents in parallel, while preserving vbucket ordering
-	unmarshalWorkQueue      chan *unmarshalEntry       // Queue for concurrent processing of incoming docs
-	writerStableSequence    *base.ShardedClock         // Stable sequence used during index writes.  Initialized on first write
-	logsDisabled            bool                       // If true, ignore incoming tap changes
-	indexPartitionsCallback IndexPartitionsFunc        // callback to retrieve the index partition map
-	terminator              chan struct{}              // Terminates unmarshal processes
+	context                *db.DatabaseContext           // Database context
+	indexWriteBucket       base.Bucket                   // Index bucket
+	channelIndexWriters    map[string]*db.KvChannelIndex // Manages writes to channel. Map indexed by channel name.
+	channelIndexWriterLock sync.RWMutex                  // Coordinates access to channel index writer map.
+	pending                chan *db.LogEntry             // Incoming changes, pending indexing
+	unmarshalWorkers       []*unmarshalWorker            // Workers to unmarshal documents in parallel, while preserving vbucket ordering
+	unmarshalWorkQueue     chan *unmarshalEntry          // Queue for concurrent processing of incoming docs
+	writerStableSequence   *base.ShardedClock            // Stable sequence used during index writes.  Initialized on first write
+	logsDisabled           bool                          // If true, ignore incoming tap changes
+	terminator             chan struct{}                 // Terminates unmarshal processes
+	indexPartitions        *base.IndexPartitions         // Partitioning of vbuckets in the index
+	indexPartitionsLock    sync.RWMutex                  // Manages access to indexPartitions
+	cbgtContext            *CbgtContext                  // CBGT Context
 }
 
-func (k *kvChangeIndexWriter) Init(context *DatabaseContext, options *CacheOptions, indexOptions *ChangeIndexOptions, indexPartitionsCallback IndexPartitionsFunc) (err error) {
+func init() {
+	indexWriterExpvars = expvar.NewMap("sgAccel_indexwriter")
+	indexWriterExpvars.Set("latest_write_batch", &latestWriteBatch)
+}
+
+func (k *kvChangeIndexWriter) Init(context *db.DatabaseContext, cbgtContext *CbgtContext) (err error) {
+
+	indexOptions := context.Options.IndexOptions
 
 	k.context = context
-	k.pending = make(chan *LogEntry, maxCacheUpdate)
-
-	k.indexPartitionsCallback = indexPartitionsCallback
+	k.cbgtContext = cbgtContext
+	k.pending = make(chan *db.LogEntry, maxCacheUpdate)
 
 	// start process to work pending sequences
 	go func() {
@@ -52,7 +69,7 @@ func (k *kvChangeIndexWriter) Init(context *DatabaseContext, options *CacheOptio
 
 	}()
 
-	k.channelIndexWriters = make(map[string]*kvChannelIndex)
+	k.channelIndexWriters = make(map[string]*db.KvChannelIndex)
 	k.indexWriteBucket, err = base.GetBucket(indexOptions.Spec, nil)
 	if err != nil {
 		base.Logf("Error opening index bucket %q, pool %q, server <%s>",
@@ -89,11 +106,14 @@ func (k *kvChangeIndexWriter) Init(context *DatabaseContext, options *CacheOptio
 	// Initialize unmarshalWorkers
 	k.unmarshalWorkers = make([]*unmarshalWorker, maxVbNo)
 
+	// Start listening for changes
+	context.SetOnChangeCallback(k.DocChanged)
+
 	return nil
 }
 
 func (k *kvChangeIndexWriter) Clear() {
-	k.channelIndexWriters = make(map[string]*kvChannelIndex)
+	k.channelIndexWriters = make(map[string]*db.KvChannelIndex)
 }
 
 func (k *kvChangeIndexWriter) Stop() {
@@ -110,7 +130,7 @@ func (k *kvChangeIndexWriter) EnableChannelIndexing(enable bool) {
 // Initializes an empty stable sequence, with no partitions defined, for use by index writer.
 // The current value for each partition is loaded lazily on partition usage/initialization.
 func (k *kvChangeIndexWriter) initWriterStableSequence() (*base.ShardedClock, error) {
-	partitions, err := k.indexPartitionsCallback()
+	partitions, err := k.getIndexPartitions()
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +153,7 @@ func (k *kvChangeIndexWriter) getWriterStableSequence() *base.ShardedClock {
 
 }
 
-func (k *kvChangeIndexWriter) addToCache(change *LogEntry) {
+func (k *kvChangeIndexWriter) addToCache(change *db.LogEntry) {
 	// queue for cache addition
 	k.pending <- change
 	return
@@ -171,13 +191,13 @@ func (k *kvChangeIndexWriter) indexPending() error {
 	entries := k.readFromPending()
 
 	// Initialize partition map (lazy init)
-	indexPartitions, err := k.indexPartitionsCallback()
+	indexPartitions, err := k.getIndexPartitions()
 	if err != nil {
 		base.LogFatal("Unable to load index partition map - cannot write incoming entry to index")
 	}
 
 	// Generic channelStorage for log entry storage (if needed)
-	channelStorage := NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
+	channelStorage := db.NewChannelStorage(k.indexWriteBucket, "", indexPartitions)
 
 	indexRetryCount := 0
 	maxRetries := 15
@@ -205,9 +225,9 @@ func (k *kvChangeIndexWriter) indexPending() error {
 	}
 }
 
-func (k *kvChangeIndexWriter) readFromPending() []*LogEntry {
+func (k *kvChangeIndexWriter) readFromPending() []*db.LogEntry {
 
-	entries := make([]*LogEntry, 0, maxCacheUpdate)
+	entries := make([]*db.LogEntry, 0, maxCacheUpdate)
 
 	// TODO - needs cancellation handling?
 	// Blocks until reading at least one from pending
@@ -232,7 +252,7 @@ func (k *kvChangeIndexWriter) readFromPending() []*LogEntry {
 	}
 }
 
-func (k *kvChangeIndexWriter) getOrCreateWriter(channelName string) (*kvChannelIndex, error) {
+func (k *kvChangeIndexWriter) getOrCreateWriter(channelName string) (*db.KvChannelIndex, error) {
 	var err error
 	index := k.getChannelWriter(channelName)
 	if index == nil {
@@ -241,14 +261,14 @@ func (k *kvChangeIndexWriter) getOrCreateWriter(channelName string) (*kvChannelI
 	return index, err
 }
 
-func (k *kvChangeIndexWriter) getChannelWriter(channelName string) *kvChannelIndex {
+func (k *kvChangeIndexWriter) getChannelWriter(channelName string) *db.KvChannelIndex {
 
 	k.channelIndexWriterLock.RLock()
 	defer k.channelIndexWriterLock.RUnlock()
 	return k.channelIndexWriters[channelName]
 }
 
-func (k *kvChangeIndexWriter) newChannelWriter(channelName string) (*kvChannelIndex, error) {
+func (k *kvChangeIndexWriter) newChannelWriter(channelName string) (*db.KvChannelIndex, error) {
 
 	k.channelIndexWriterLock.Lock()
 	defer k.channelIndexWriterLock.Unlock()
@@ -256,20 +276,19 @@ func (k *kvChangeIndexWriter) newChannelWriter(channelName string) (*kvChannelIn
 	if _, ok := k.channelIndexWriters[channelName]; ok {
 		return k.channelIndexWriters[channelName], nil
 	}
-	indexPartitions, err := k.indexPartitionsCallback()
+	indexPartitions, err := k.getIndexPartitions()
 	if err != nil {
 		return nil, err
 	}
-	k.channelIndexWriters[channelName] = NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, nil)
-	k.channelIndexWriters[channelName].setType("writer")
+	k.channelIndexWriters[channelName] = db.NewKvChannelIndex(channelName, k.indexWriteBucket, indexPartitions, nil)
 	return k.channelIndexWriters[channelName], nil
 }
 
 // Index a group of entries.  Iterates over the entry set to build updates per channel, then
 // updates using channel index.
-func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions base.IndexPartitionMap, channelStorage ChannelStorage) error {
+func (k *kvChangeIndexWriter) indexEntries(entries []*db.LogEntry, indexPartitions base.IndexPartitionMap, channelStorage db.ChannelStorage) error {
 
-	channelSets := make(map[string][]*LogEntry)
+	channelSets := make(map[string][]*db.LogEntry)
 	updatedSequences := base.NewSequenceClockImpl()
 
 	// Wait group tracks when the current buffer has been completely processed
@@ -289,7 +308,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 		// Add index log entry if needed
 		if channelStorage.StoresLogEntries() {
 			entryWg.Add(1)
-			go func(logEntry *LogEntry, errorCount uint32) {
+			go func(logEntry *db.LogEntry, errorCount uint32) {
 				defer entryWg.Done()
 				err := channelStorage.WriteLogEntry(logEntry)
 				if err != nil {
@@ -307,7 +326,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 				_, found := channelSets[channelName]
 				if !found {
 					// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-					channelSets[channelName] = make([]*LogEntry, 0, maxCacheUpdate)
+					channelSets[channelName] = make([]*db.LogEntry, 0, maxCacheUpdate)
 				}
 				if removal != nil {
 					removalEntry := *logEntry
@@ -318,11 +337,11 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 				}
 			}
 		}
-		if EnableStarChannelLog {
+		if db.EnableStarChannelLog {
 			_, found := channelSets[channels.UserStarChannel]
 			if !found {
 				// TODO: maxCacheUpdate may be unnecessarily large memory allocation here
-				channelSets[channels.UserStarChannel] = make([]*LogEntry, 0, maxCacheUpdate)
+				channelSets[channels.UserStarChannel] = make([]*db.LogEntry, 0, maxCacheUpdate)
 			}
 			channelSets[channels.UserStarChannel] = append(channelSets[channels.UserStarChannel], logEntry)
 		}
@@ -339,7 +358,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 	// Iterate over channel sets to update channel index
 	for channelName, entrySet := range channelSets {
 		channelWg.Add(1)
-		go func(channelName string, entrySet []*LogEntry, errorCount uint32) {
+		go func(channelName string, entrySet []*db.LogEntry, errorCount uint32) {
 			defer channelWg.Done()
 			err := k.addSetToChannelIndex(channelName, entrySet)
 			if err != nil {
@@ -363,7 +382,7 @@ func (k *kvChangeIndexWriter) indexEntries(entries []*LogEntry, indexPartitions 
 	return err
 }
 
-func (k *kvChangeIndexWriter) addSetToChannelIndex(channelName string, entries []*LogEntry) error {
+func (k *kvChangeIndexWriter) addSetToChannelIndex(channelName string, entries []*db.LogEntry) error {
 	writer, err := k.getOrCreateWriter(channelName)
 	if err != nil {
 		base.Warn("Unable to obtain channel writer - partition map not defined?")
@@ -383,29 +402,29 @@ type PrincipalIndex struct {
 	ExplicitRoles    channels.TimedSet `json:"admin_roles"`    // Timed Set of role names to vbucket seq no of first user version that granted access
 }
 
-type processDocFunc func(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error)
+type processDocFunc func(docID string, docJSON []byte, vbNo uint16, seq uint64) (*db.LogEntry, error)
 
-func (k *kvChangeIndexWriter) processDoc(docID string, docJSON []byte, vbNo uint16, seq uint64) (*LogEntry, error) {
+func (k *kvChangeIndexWriter) processDoc(docID string, docJSON []byte, vbNo uint16, seq uint64) (*db.LogEntry, error) {
 
 	entryTime := time.Now()
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, err := unmarshalDocumentSyncData(docJSON, false)
+	doc, err := db.UnmarshalDocumentSyncData(docJSON, false)
 
 	// Record histogram of time spent unmarshalling sync metadata
-	writeHistogram(changeCacheExpvars, entryTime, "lag-unmarshal")
+	base.WriteHistogram(indexWriterExpvars, entryTime, "lag-unmarshal")
 
-	if err != nil || !doc.hasValidSyncData(false) {
+	if err != nil || !doc.HasValidSyncData(false) {
 		base.Warn("ChangeCache: Error unmarshaling doc %q: %v", docID, err)
 		return nil, err
 	}
 
 	// Record a histogram of the  feed's lag:
 	feedLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
-	writeHistogramForDuration(changeCacheExpvars, feedLag, "lag-feed")
+	base.WriteHistogramForDuration(indexWriterExpvars, feedLag, "lag-feed")
 
 	// Now add the entry for the new doc revision:
-	logEntry := &LogEntry{
+	logEntry := &db.LogEntry{
 		Sequence:     seq,
 		DocID:        docID,
 		RevID:        doc.CurrentRev,
@@ -419,16 +438,16 @@ func (k *kvChangeIndexWriter) processDoc(docID string, docJSON []byte, vbNo uint
 
 	if logEntry.DocID == "" {
 		base.Warn("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo)
-		changeCacheExpvars.Add("changes_without_id", 1)
+		indexWriterExpvars.Add("changes_without_id", 1)
 		return nil, errors.New(fmt.Sprintf("Unexpected change with empty DocID for sequence %d, vbno:%d", doc.Sequence, vbNo))
 	}
 
-	writeHistogram(changeCacheExpvars, entryTime, "lag-processDoc")
+	base.WriteHistogram(indexWriterExpvars, entryTime, "lag-processDoc")
 
 	return logEntry, nil
 }
 
-func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, vbNo uint16, sequence uint64) (*LogEntry, error) {
+func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, vbNo uint16, sequence uint64) (*db.LogEntry, error) {
 
 	entryTime := time.Now()
 
@@ -450,7 +469,7 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 	k.updatePrincipalCount(docID)
 
 	// Add to cache so that the stable sequence gets updated
-	logEntry := &LogEntry{
+	logEntry := &db.LogEntry{
 		Sequence:     sequence,
 		DocID:        docID,
 		TimeReceived: time.Now(),
@@ -458,7 +477,7 @@ func (k *kvChangeIndexWriter) processPrincipalDoc(docID string, docJSON []byte, 
 		IsPrincipal:  true,
 	}
 
-	writeHistogram(changeCacheExpvars, entryTime, "lag-processPrincipalDoc")
+	base.WriteHistogram(indexWriterExpvars, entryTime, "lag-processPrincipalDoc")
 	return logEntry, nil
 }
 
@@ -477,15 +496,143 @@ func (k *kvChangeIndexWriter) updatePrincipalCount(docID string) error {
 	return err
 }
 
+// Retrieves the index partition information for the channel index.  Returns error if the partition map
+// is unavailable - this will happen when running as an index reader on a fresh channel index bucket, until
+// the first writer comes online and initializes the partition map.  Callers are expected to cancel their
+// index operation when an error is returned.
+func (k *kvChangeIndexWriter) getIndexPartitions() (*base.IndexPartitions, error) {
+
+	var result *base.IndexPartitions
+	func() {
+		k.indexPartitionsLock.RLock()
+		defer k.indexPartitionsLock.RUnlock()
+		result = k.indexPartitions
+	}()
+
+	if result != nil {
+		return result, nil
+	} else {
+		return k.initIndexPartitions()
+	}
+}
+
+// Version of initIndexPartitions that attempts CBGT lookup as well.
+// initIndexPartitions first attempts to initialize the index partitions using the partition map document in
+// the index bucket.  If that hasn't been created yet, tries to generate the partition information from CBGT.
+// If unsuccessful on both of these, returns error and leaves k.indexPartitions as nil.
+func (k *kvChangeIndexWriter) initIndexPartitions() (*base.IndexPartitions, error) {
+
+	k.indexPartitionsLock.Lock()
+	defer k.indexPartitionsLock.Unlock()
+
+	// Check if it's been initialized while we waited for the lock
+	if k.indexPartitions != nil {
+		return k.indexPartitions, nil
+	}
+
+	// First attempt to load from the bucket
+	partitionDef, err := k.loadIndexPartitionsFromBucket()
+	if err != nil {
+		return nil, err
+	}
+
+	indexWriterExpvars.Add("get_indexPartitionMap", 1)
+	// If unable to load from index bucket - attempt to initialize based on cbgt partitions
+	if partitionDef == nil {
+		partitionDef, err = k.retrieveCBGTPartitions()
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("Unable to determine partition map for index - not found in index, and not available from cbgt: %v", err))
+		}
+		// Add to the bucket
+		value, err := json.Marshal(partitionDef)
+		if err != nil {
+			return nil, err
+		}
+		added, err := k.indexWriteBucket.AddRaw(base.KIndexPartitionKey, 0, value)
+		if err != nil {
+			return nil, err
+		}
+		// If add fails, it may have been written by another node since the last read attempt.  Make
+		// another attempt to use the version from the bucket, to ensure consistency.
+		if added == false {
+			partitionDef, err = k.loadIndexPartitionsFromBucket()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Create k.indexPartitions based on partitionDef
+	k.indexPartitions = base.NewIndexPartitions(partitionDef)
+	return k.indexPartitions, nil
+}
+
+func (k *kvChangeIndexWriter) retrieveCBGTPartitions() (partitionDef base.PartitionStorageSet, err error) {
+
+	var manager *cbgt.Manager
+	if k.context != nil {
+		manager = k.cbgtContext.Manager
+	} else {
+		return nil, errors.New("Unable to retrieve CBGT partitions - no database context")
+	}
+
+	if manager == nil {
+		return nil, errors.New("Unable to retrieve CBGT partitions - no CBGT manager")
+	}
+
+	_, planPIndexesByName, _ := manager.GetPlanPIndexes(true)
+	indexName := GetCBGTIndexNameForBucket(k.context.Bucket)
+	pindexes := planPIndexesByName[indexName]
+
+	for _, pIndex := range pindexes {
+		vbStrings := strings.Split(pIndex.SourcePartitions, ",")
+		// convert string vbNos to uint16
+		vbNos := make([]uint16, len(vbStrings))
+		for i := 0; i < len(vbStrings); i++ {
+			vbNumber, err := strconv.ParseUint(vbStrings[i], 10, 16)
+			if err != nil {
+				base.LogFatal("Error creating index partition definition - unable to parse vbucket number %s as integer:%v", vbStrings[i], err)
+			}
+			vbNos[i] = uint16(vbNumber)
+		}
+		entry := base.PartitionStorage{
+			Index: uint16(0), // see below for index assignment
+			Uuid:  pIndex.UUID,
+			VbNos: vbNos,
+		}
+		partitionDef = append(partitionDef, entry)
+	}
+
+	// NOTE: the ordering of pindexes returned by manager.GetPlanPIndexes isn't fixed (it's doing a map iteration somewhere).
+	//    The mapping from UUID to VbNos will always be consistent.  Sorting by UUID to maintain a consistent index ordering,
+	// then assigning index values.
+	partitionDef.Sort()
+	for i := 0; i < len(partitionDef); i++ {
+		partitionDef[i].Index = uint16(i)
+	}
+	return partitionDef, nil
+}
+
+func (k *kvChangeIndexWriter) loadIndexPartitionsFromBucket() (base.PartitionStorageSet, error) {
+	var partitionDef base.PartitionStorageSet
+	value, _, err := k.indexWriteBucket.GetRaw(base.KIndexPartitionKey)
+	if err == nil {
+		if err = json.Unmarshal(value, &partitionDef); err != nil {
+			return nil, err
+		}
+	}
+	return partitionDef, nil
+}
+
 type unmarshalWorker struct {
-	output             chan<- *LogEntry
+	output             chan<- *db.LogEntry
 	processing         chan *unmarshalEntry
 	unmarshalWorkQueue chan<- *unmarshalEntry
 }
 
 // UnmarshalWorker is used to unmarshal incoming entries from the DCP feed in parallel, while maintaining ordering of
 // sequences per vbucket.  The main DocChanged loop creates one UnmarshalWorker per vbucket.
-func NewUnmarshalWorker(output chan<- *LogEntry, unmarshalWorkQueue chan<- *unmarshalEntry, terminator chan struct{}) *unmarshalWorker {
+func NewUnmarshalWorker(output chan<- *db.LogEntry, unmarshalWorkQueue chan<- *unmarshalEntry, terminator chan struct{}) *unmarshalWorker {
 
 	// goroutine to work the processing channel and return completed entries
 	// to the output channel
@@ -509,7 +656,7 @@ func NewUnmarshalWorker(output chan<- *LogEntry, unmarshalWorkQueue chan<- *unma
 					if ok {
 						output <- unmarshalEntry.logEntry
 					} else {
-						changeCacheExpvars.Add("unmarshalEntry_success_false", 1)
+						indexWriterExpvars.Add("unmarshalEntry_success_false", 1)
 						// error already logged - just ignore the entry
 					}
 				case <-terminator:
@@ -542,7 +689,7 @@ func (uw *unmarshalWorker) add(docID string, docJSON []byte, vbNo uint16, seq ui
 // An incoming document being unmarshalled by unmarshalWorker
 type unmarshalEntry struct {
 	entryTime time.Time
-	logEntry  *LogEntry
+	logEntry  *db.LogEntry
 	docID     string
 	docJSON   []byte
 	vbNo      uint16

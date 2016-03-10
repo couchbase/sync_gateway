@@ -15,9 +15,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/couchbase/cbgt"
-	"github.com/couchbase/cbgt/rest"
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )
@@ -112,6 +109,16 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 
 // Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminHandler(sc *ServerContext) http.Handler {
+	router := CreateAdminRouter(sc)
+	return wrapRouter(sc, adminPrivs, router)
+}
+
+func CreateAdminHandlerForRouter(sc *ServerContext, r *mux.Router) http.Handler {
+	return wrapRouter(sc, adminPrivs, r)
+}
+
+// Creates the HTTP handler for the PRIVATE admin API of a gateway server.
+func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr := createHandler(sc, adminPrivs)
 
 	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -238,50 +245,7 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
 
-	// Add CBGT REST api if it's enabled
-	if err := addCbgtRoutes(r, sc); err != nil {
-		base.Warn("CBGT routes will not be available due to error: %v", err)
-	}
-
-	return wrapRouter(sc, adminPrivs, r)
-}
-
-func addCbgtRoutes(router *mux.Router, sc *ServerContext) error {
-
-	// only do this if CBGT is enabled
-	if sc.config.ClusterConfig == nil || !sc.config.ClusterConfig.CBGTEnabled() {
-		return nil
-	}
-
-	// likewise, if there are no index writers and CBGT is not initialized, skip this
-	if !sc.HasIndexWriters() {
-		return nil
-	}
-
-	subrouter := router.PathPrefix("/_cbgt").Subrouter()
-
-	versionString := "0.0.0"
-	staticDir := ""
-	staticETag := ""
-	var messageRing *cbgt.MsgRing
-	assetDir := rest.AssetDir
-	asset := rest.Asset
-
-	cbgtManager := sc.CbgtContext.Manager
-	_, _, err := rest.InitRESTRouter(
-		subrouter,
-		versionString,
-		cbgtManager,
-		staticDir,
-		staticETag,
-		messageRing,
-		assetDir,
-		asset,
-	)
-	if err != nil {
-		return err
-	}
-	return nil
+	return r
 }
 
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't
@@ -289,7 +253,7 @@ func addCbgtRoutes(router *mux.Router, sc *ServerContext) error {
 // for URLs that don't match a route.
 func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
-		fixQuotedSlashes(rq)
+		FixQuotedSlashes(rq)
 		var match mux.RouteMatch
 
 		// Inject CORS if enabled and requested and not admin port
@@ -350,7 +314,7 @@ func matchedOrigin(allowOrigins []string, rqOrigins []string) string {
 	return ""
 }
 
-func fixQuotedSlashes(rq *http.Request) {
+func FixQuotedSlashes(rq *http.Request) {
 	uri := rq.RequestURI
 	if docWithSlashPathRegex.MatchString(uri) {
 		if stop := strings.IndexAny(uri, "?#"); stop >= 0 {

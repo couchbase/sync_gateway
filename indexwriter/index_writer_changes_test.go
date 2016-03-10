@@ -1,18 +1,13 @@
-//  Copyright (c) 2012 Couchbase, Inc.
-//  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
-//  except in compliance with the License. You may obtain a copy of the License at
-//    http://www.apache.org/licenses/LICENSE-2.0
-//  Unless required by applicable law or agreed to in writing, software distributed under the
-//  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
-//  either express or implied. See the License for the specific language governing permissions
-//  and limitations under the License.
-
-package rest
+package indexwriter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -22,11 +17,13 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 )
 
 type indexTester struct {
 	restTester
 	_indexBucket base.Bucket
+	_indexWriter *kvChangeIndexWriter
 }
 
 func initRestTester(sequenceType db.SequenceType, syncFn string) indexTester {
@@ -42,9 +39,9 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	it := indexTester{}
 	it.syncFn = syncFn
 
-	it._sc = NewServerContext(&ServerConfig{
-		Facebook: &FacebookConfig{},
-		Persona:  &PersonaConfig{},
+	it._sc = rest.NewServerContext(&rest.ServerConfig{
+		Facebook: &rest.FacebookConfig{},
+		Persona:  &rest.PersonaConfig{},
 	})
 
 	var syncFnPtr *string
@@ -62,8 +59,8 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		feedType = "dcp"
 	}
 
-	dbConfig := &DbConfig{
-		BucketConfig: BucketConfig{
+	dbConfig := &rest.DbConfig{
+		BucketConfig: rest.BucketConfig{
 			Server: &serverName,
 			Bucket: &bucketName},
 		Name:     "db",
@@ -72,8 +69,8 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	}
 
 	if useBucketIndex {
-		channelIndexConfig := &ChannelIndexConfig{
-			BucketConfig: BucketConfig{
+		channelIndexConfig := &rest.ChannelIndexConfig{
+			BucketConfig: rest.BucketConfig{
 				Server: &serverName,
 				Bucket: &indexBucketName,
 			},
@@ -95,20 +92,25 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
 
-	it._bucket = it._sc.Database("db").Bucket
+	database, _ := it._sc.GetDatabase("db")
+	it._bucket = database.Bucket
+
+	it._indexWriter = &kvChangeIndexWriter{}
+	it._indexWriter.Init(database, nil)
 
 	if useBucketIndex {
-		it._indexBucket = it._sc.Database("db").GetIndexBucket()
+		it._indexBucket = database.GetIndexBucket()
 	}
 
 	return it
 }
 
 func (it *indexTester) Close() {
+	it._indexWriter.Stop()
 	it._sc.Close()
 }
 
-func (it *indexTester) ServerContext() *ServerContext {
+func (it *indexTester) ServerContext() *rest.ServerContext {
 	return it._sc
 }
 
@@ -180,9 +182,8 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assert.Equals(t, response.Code, 200)
 }
 
-func TestPostChangesInteger(t *testing.T) {
-
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+func TestPostChangesClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChanges(t, it)
 }
@@ -221,8 +222,42 @@ func postChanges(t *testing.T, it indexTester) {
 
 }
 
-func TestPostChangesSinceInteger(t *testing.T) {
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+func TestPostChangesSameVbucket(t *testing.T) {
+
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents with ids that hash to the same vbucket
+	response = it.sendAdminRequest("PUT", "/db/pbs0000609", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs0000799", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs0003428", `{"value":3, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 3)
+
+}
+
+func TestPostChangesSinceClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesSince(t, it)
 }
@@ -281,8 +316,8 @@ func postChangesSince(t *testing.T, it indexTester) {
 
 }
 
-func TestPostChangesChannelFilterInteger(t *testing.T) {
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+func TestPostChangesChannelFilterClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesChannelFilter(t, it)
 }
@@ -343,10 +378,196 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 
 }
 
-func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+func TestMultiChannelUserAndDocs(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "Debug":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC", "NBC", "CBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put documents in ABC
+	for a := 0; a < 30; a++ {
+		// Put a doc with id "ABC_[a]"
+		url := fmt.Sprintf("/db/ABC_%d", a)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["ABC"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	// Put documents in NBC, CBS
+	for nc := 0; nc < 40; nc++ {
+		url := fmt.Sprintf("/db/NBC_CBS_%d", nc)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["NBC","CBS"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	// Put documents in ABC, NBC, CBS
+	for anc := 0; anc < 60; anc++ {
+		url := fmt.Sprintf("/db/ABC_NBC_CBS_%d", anc)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["ABC","NBC","CBS"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	type simpleChangeResult struct {
+		Seq string
+		ID  string
+	}
+
+	var changes struct {
+		Results  []simpleChangeResult
+		Last_Seq interface{}
+	}
+	//changesJSON := `{"filter":"sync_gateway/bychannel", "channels":"PBS"}`
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 130)
+	/*
+		for _, result := range changes.Results {
+			log.Printf("result: {%+v, %+v}", result.ID, result.Seq)
+		}
+		log.Printf("last_seq:%v", changes.Last_Seq)
+	*/
+}
+
+func TestDocDeduplication(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	var writeResponse struct {
+		Id  string
+		Rev string
+	}
+	revIds := make([]string, 10)
+	// Put documents in ABC
+	for a := 0; a < 10; a++ {
+		// Put a doc with id "ABC_[a]"
+		url := fmt.Sprintf("/db/ABC_%d", a)
+		response = it.sendAdminRequest("PUT", url, `{"channel":["ABC"]}`)
+		json.Unmarshal(response.Body.Bytes(), &writeResponse)
+		revIds[a] = writeResponse.Rev
+		assertStatus(t, response, 201)
+	}
+
+	// Update some docs.  Based on body, new rev should be 2-2962c4281696f5b17dfdccd02d858114
+
+	url := fmt.Sprintf("/db/ABC_3?rev=%s", revIds[3])
+	response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+	url = fmt.Sprintf("/db/ABC_6?rev=%s", revIds[6])
+	response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+	url = fmt.Sprintf("/db/ABC_7?rev=%s", revIds[7])
+	response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	time.Sleep(1 * time.Second)
+
+	//changesJSON := `{"filter":"sync_gateway/bychannel", "channels":"PBS"}`
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 10)
+
+	// Verify that we're getting the correct revision for modified docs
+	for _, change := range changes.Results {
+		log.Printf("change: %+v", change)
+		var expectedRev string
+		if change.ID == "ABC_3" || change.ID == "ABC_6" || change.ID == "ABC_7" {
+			expectedRev = "2-2962c4281696f5b17dfdccd02d858114"
+		} else {
+			expectedRev = revIds[0]
+		}
+		rev, ok := change.Changes[0]["rev"]
+		assert.Equals(t, ok, true)
+		assert.Equals(t, rev, expectedRev)
+	}
+
+}
+
+func TestIndexChangesMultipleRevisions(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := it.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	var writeResponse struct {
+		Id  string
+		Rev string
+	}
+
+	// Start 10 goroutines, creating 100 docs each, in channel ABC
+	var wg sync.WaitGroup
+	numWriters := 0
+	docsPerWriter := 100
+	for i := 0; i < numWriters; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			revIds := make([]string, docsPerWriter)
+			for j := 0; j < docsPerWriter; j++ {
+				docID := fmt.Sprintf("doc-%d", i*docsPerWriter+j)
+				url := fmt.Sprintf("/db/%s", docID)
+				response = it.sendAdminRequest("PUT", url, `{"channel":["ABC"]}`)
+				json.Unmarshal(response.Body.Bytes(), &writeResponse)
+				revIds[j] = writeResponse.Rev
+			}
+			// write revisions
+			for j := 0; j < docsPerWriter; j++ {
+				docID := fmt.Sprintf("doc-%d", i*docsPerWriter+j)
+				url := fmt.Sprintf("/db/%s?rev=%s", docID, revIds[j])
+				response = it.sendAdminRequest("PUT", url, `{"modified":true, "channel":["ABC"]}`)
+
+			}
+
+		}(i)
+	}
+	wg.Wait()
+	// Wait for indexing
+	time.Sleep(1 * time.Second)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesResponse := it.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), numWriters*docsPerWriter)
+
+}
+
+func TempTestPostChangesAdminChannelGrantClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesAdminChannelGrant(t, it)
+	it._bucket.Dump()
 }
 
 // _changes with admin-based channel grant
@@ -438,7 +659,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
 
-	shortWaitCache := &CacheConfig{
+	shortWaitCache := &rest.CacheConfig{
 		CachePendingSeqMaxWait: &pendingMaxWait,
 		CachePendingSeqMaxNum:  &maxNum,
 		CacheSkippedSeqMaxWait: &skippedMaxWait,
@@ -508,8 +729,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 }
 
-func TestChangesActiveOnlyInteger(t *testing.T) {
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+func TestChangesActiveOnlyClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	changesActiveOnly(t, it)
 }
@@ -624,9 +845,9 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 
 }
 
-func DisableTestChangesAccessNotifyInteger(t *testing.T) {
-
-	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
+// Disabled until walrus supports vb info in view meta.  Currently requires real Couchbase connection to include vb info in the view response.
+func DisabledTestChangesAccessNotifyClock(t *testing.T) {
+	it := initIndexTester(true, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
 	defer it.Close()
 	postChangesAccessNotify(t, it)
 }
@@ -677,19 +898,6 @@ func postChangesAccessNotify(t *testing.T, it indexTester) {
 }
 
 //////// HELPERS:
-
-func assertNoError(t *testing.T, err error, message string) {
-	if err != nil {
-		t.Fatalf("%s: %v", message, err)
-	}
-}
-
-func assertTrue(t *testing.T, success bool, message string) {
-	if !success {
-		t.Fatalf("%s", message)
-	}
-}
-
 /*
 // Index partitions for testing
 func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
@@ -744,4 +952,154 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 	//syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
 	testDb.Bucket.Add(key, 0, db.Body{"_sync": syncData, "key": key})
+}
+
+//////// REST TESTER HELPER CLASS:
+
+var gBucketCounter = 0
+
+type restTester struct {
+	_bucket          base.Bucket
+	_sc              *rest.ServerContext
+	noAdminParty     bool              // Unless this is true, Admin Party is in full effect
+	distributedIndex bool              // Test with walrus-based index bucket
+	syncFn           string            // put the sync() function source in here (optional)
+	cacheConfig      *rest.CacheConfig // Cache options (optional)
+}
+
+func (rt *restTester) bucket() base.Bucket {
+	if rt._bucket == nil {
+		server := "walrus:"
+		bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
+		gBucketCounter++
+
+		var syncFnPtr *string
+		if len(rt.syncFn) > 0 {
+			syncFnPtr = &rt.syncFn
+		}
+
+		corsConfig := &rest.CORSConfig{
+			Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+			LoginOrigin: []string{"http://example.com"},
+			Headers:     []string{},
+			MaxAge:      1728000,
+		}
+
+		rt._sc = rest.NewServerContext(&rest.ServerConfig{
+			CORS:     corsConfig,
+			Facebook: &rest.FacebookConfig{},
+			Persona:  &rest.PersonaConfig{},
+		})
+
+		_, err := rt._sc.AddDatabaseFromConfig(&rest.DbConfig{
+			BucketConfig: rest.BucketConfig{
+				Server: &server,
+				Bucket: &bucketName},
+			Name:        "db",
+			Sync:        syncFnPtr,
+			CacheConfig: rt.cacheConfig,
+		})
+		if err != nil {
+			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+		}
+		rt._bucket = rt._sc.Database("db").Bucket
+
+		if !rt.noAdminParty {
+			rt.setAdminParty(true)
+		}
+
+		runtime.SetFinalizer(rt, func(rt *restTester) {
+			log.Printf("Finalizing bucket %s", rt._bucket.GetName())
+			rt._sc.Close()
+		})
+	}
+	return rt._bucket
+}
+
+func (rt *restTester) ServerContext() *rest.ServerContext {
+	rt.bucket()
+	return rt._sc
+}
+
+func (rt *restTester) setAdminParty(partyTime bool) {
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, _ := a.GetUser("")
+	guest.SetDisabled(!partyTime)
+	var chans channels.TimedSet
+	if partyTime {
+		chans = channels.AtSequence(base.SetOf("*"), 1)
+	}
+	guest.SetExplicitChannels(chans)
+	a.Save(guest)
+}
+
+type testResponse struct {
+	*httptest.ResponseRecorder
+	rq *http.Request
+}
+
+func (rt *restTester) sendRequest(method, resource string, body string) *testResponse {
+	return rt.send(request(method, resource, body))
+}
+
+func (rt *restTester) sendRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+	req := request(method, resource, body)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return rt.send(req)
+}
+
+func (rt *restTester) sendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *testResponse {
+	req := request(method, resource, body)
+	req.SetBasicAuth(username, password)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return rt.send(req)
+}
+func (rt *restTester) send(request *http.Request) *testResponse {
+	response := &testResponse{httptest.NewRecorder(), request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+	rest.CreatePublicHandler(rt.ServerContext()).ServeHTTP(response, request)
+	return response
+}
+
+func (rt *restTester) sendAdminRequest(method, resource string, body string) *testResponse {
+	input := bytes.NewBufferString(body)
+	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	response := &testResponse{httptest.NewRecorder(), request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+
+	rest.CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
+	return response
+}
+
+func (rt *restTester) sendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+	input := bytes.NewBufferString(body)
+	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	response := &testResponse{httptest.NewRecorder(), request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+
+	rest.CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
+	return response
+}
+
+func request(method, resource, body string) *http.Request {
+	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
+	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	rest.FixQuotedSlashes(request)
+	if err != nil {
+		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
+	}
+	return request
+}
+
+func requestByUser(method, resource, body, username string) *http.Request {
+	r := request(method, resource, body)
+	r.SetBasicAuth(username, "letmein")
+	return r
 }

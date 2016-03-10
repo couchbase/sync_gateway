@@ -14,7 +14,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -575,7 +574,7 @@ func ParseCommandLine() {
 	//return config
 }
 
-func setMaxFileDescriptors(maxP *uint64) {
+func SetMaxFileDescriptors(maxP *uint64) {
 	maxFDs := DefaultMaxFileDescriptors
 	if maxP != nil {
 		maxFDs = *maxP
@@ -586,7 +585,7 @@ func setMaxFileDescriptors(maxP *uint64) {
 	}
 }
 
-func (config *ServerConfig) serve(addr string, handler http.Handler) {
+func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 	maxConns := DefaultMaxIncomingConnections
 	if config.MaxIncomingConnections != nil {
 		maxConns = *config.MaxIncomingConnections
@@ -642,19 +641,12 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	setMaxFileDescriptors(config.MaxFileDescriptors)
+	SetMaxFileDescriptors(config.MaxFileDescriptors)
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
 			base.LogFatal("Error opening database: %v", err)
-		}
-	}
-
-	// Initialize CBGT if needed
-	if config.ClusterConfig != nil && config.ClusterConfig.CBGTEnabled() {
-		if err := sc.InitCBGT(); err != nil {
-			log.Fatalf("Fatal Error initializing CBGT: %v", err)
 		}
 	}
 
@@ -667,9 +659,9 @@ func RunServer(config *ServerConfig) {
 	}
 
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
-	go config.serve(*config.AdminInterface, CreateAdminHandler(sc))
+	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 	base.Logf("Starting server on %s ...", *config.Interface)
-	config.serve(*config.Interface, CreatePublicHandler(sc))
+	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
 // for now  just cycle the logger to allow for log file rotation
@@ -677,6 +669,10 @@ func ReloadConf() {
 	if config.LogFilePath != nil {
 		base.UpdateLogger(*config.LogFilePath)
 	}
+}
+
+func GetConfig() *ServerConfig {
+	return config
 }
 
 func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
