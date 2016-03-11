@@ -78,7 +78,7 @@ func (s *Shadower) readTapFeed() {
 			}
 			err := s.pullDocument(key, event.Value, isDeletion, event.Sequence, event.Flags)
 			if err != nil {
-				base.Warn("Error applying change from external bucket: %v", err)
+				base.Warn("Error applying change %q from external bucket: %v", key, err)
 			}
 			atomic.AddUint64(&s.pullCount, 1)
 		case sgbucket.TapEndBackfill:
