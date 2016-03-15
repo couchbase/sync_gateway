@@ -29,6 +29,13 @@ from tasks import read_guts
 from tasks import AllOsTask
 from tasks import make_product_task
 
+# Collects the following info from Sync Gateway
+#
+# - System Stats (top, netstat, etc)
+# - Sync Gateway logs
+# - Expvar Json
+# - pprof files (profiling / memory)
+
 
 USAGE = """usage: %prog [options] output_file.zip
 
@@ -36,17 +43,9 @@ USAGE = """usage: %prog [options] output_file.zip
     %prog output_file.zip
     %prog -v output_file.zip"""
 
+mydir = os.path.dirname(sys.argv[0])
 
-def main():
-    # ask all tools to use C locale (MB-12050)
-    os.environ['LANG'] = 'C'
-    os.environ['LC_ALL'] = 'C'
-
-    mydir = os.path.dirname(sys.argv[0])
-    #(MB-8239)erl script fails in OSX as it is unable to find COUCHBASE_TOP -ravi
-    if platform.system() == 'Darwin':
-        os.environ["COUCHBASE_TOP"] = os.path.abspath(os.path.join(mydir, ".."))
-
+def create_option_parser():
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option("-r", dest="root",
                       help="root directory - defaults to %s" % (mydir + "/.."),
@@ -75,124 +74,123 @@ def main():
     parser.add_option("--bypass-sensitive-data", dest="bypass_sensitive_data",
                       action="store_true", default=False,
                       help="do not collect sensitive data")
+
+    return parser
+
+def main():
+
+    # ask all tools to use C locale (MB-12050)
+    os.environ['LANG'] = 'C'
+    os.environ['LC_ALL'] = 'C'
+
+    # Workaround MB-8239: erl script fails in OSX as it is unable to find COUCHBASE_TOP
+    if platform.system() == 'Darwin':
+        os.environ["COUCHBASE_TOP"] = os.path.abspath(os.path.join(mydir, ".."))
+
+    # Parse command line options 
+    parser = create_option_parser()
     options, args = parser.parse_args()
 
+    # Validate args
     if len(args) != 1:
         parser.error("incorrect number of arguments. Expecting filename to collect diagnostics into")
 
+    # Setup stdin watcher if this option was passed
     if options.watch_stdin:
         setup_stdin_watcher()
 
+    # Build path to zip directory, make sure it exists
     zip_filename = args[0]
     if zip_filename[-4:] != '.zip':
         zip_filename = zip_filename + '.zip'
-
     zip_dir = os.path.dirname(os.path.abspath(zip_filename))
-
     if not os.access(zip_dir, os.W_OK | os.X_OK):
         print("do not have write access to the directory %s" % (zip_dir))
         sys.exit(1)
 
+    # Generate the s3 URL where zip files will be updated
     upload_url = generate_upload_url(parser, options, zip_filename)
 
-    erldir = os.path.join(mydir, 'erlang', 'bin')
+    # Linux
     if os.name == 'posix':
-        path = [mydir,
-                '/opt/couchbase/bin',
-                erldir,
-                os.environ['PATH'],
-                '/bin',
-                '/sbin',
-                '/usr/bin',
-                '/usr/sbin']
+
+        path = [
+            mydir,
+            '/opt/couchbase/bin',
+            os.environ['PATH'],
+            '/bin',
+            '/sbin',
+            '/usr/bin',
+            '/usr/sbin'
+        ]
         os.environ['PATH'] = ':'.join(path)
 
-        library_path = [os.path.join(options.root, 'lib')]
+        library_path = [
+            os.path.join(options.root, 'lib')
+        ]
 
         current_library_path = os.environ.get('LD_LIBRARY_PATH')
         if current_library_path is not None:
             library_path.append(current_library_path)
 
         os.environ['LD_LIBRARY_PATH'] = ':'.join(library_path)
-    elif os.name == 'nt':
-      path = [mydir, erldir, os.environ['PATH']]
-      os.environ['PATH'] = ';'.join(path)
 
+    # Windows 
+    elif os.name == 'nt':
+
+        path = [
+            mydir,
+            os.environ['PATH']
+        ]
+        os.environ['PATH'] = ';'.join(path)
+
+    # If user asked to just upload, then upload and exit
     if options.just_upload_into != None:
         do_upload_and_exit(args[0], options.just_upload_into)
 
+    # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
+    # The output of the tasks will go directly into couchbase.log
     runner = TaskRunner(verbosity=options.verbosity)
-
     if not options.product_only:
         for task in make_os_tasks():
             runner.run(task)
 
-    initargs_variants = [os.path.abspath(os.path.join(options.root, "var", "lib", "couchbase", "initargs")),
-                         "/opt/couchbase/var/lib/couchbase/initargs",
-                         os.path.expanduser("~/Library/Application Support/Couchbase/var/lib/couchbase/initargs")]
 
-    if options.initargs != None:
-        initargs_variants = [options.initargs]
+    log("Couldn't read server guts. Using some default values.")
 
-    guts = None
-    guts_initargs_path = None
-
-    for initargs_path in initargs_variants:
-        d = get_server_guts(initargs_path)
-        # print("for initargs: %s got:\n%s" % (initargs_path, d))
-        if len(d) > 0:
-            guts = d
-            guts_initargs_path = initargs_path
-            break
-
-    if guts is None:
-        log("Couldn't read server guts. Using some default values.")
-
-        prefix = None
-        if platform.system() == 'Windows':
-            prefix = 'c:/Program Files/Couchbase/Server'
-        elif platform.system() == 'Darwin':
-            prefix = '~/Library/Application Support/Couchbase'
-        else:
-            prefix = '/opt/couchbase'
-
-        guts = {"db_dir" : os.path.join(prefix, "var/lib/couchbase/data"),
-                "idx_dir" : os.path.join(prefix, "var/lib/couchbase/data"),
-                "ns_log_path" : os.path.join(prefix, "var/lib/couchbase/ns_log"),
-                "log_path" : os.path.join(prefix, "var/lib/couchbase/logs"),
-                "memcached_logs_path" : os.path.join(prefix, "var/lib/couchbase/logs")}
-
-        guts_initargs_path = prefix
-
-    zip_node = read_guts(guts, "node")
-    runner.run(
-        AllOsTask("product diag header",
-                  "",
-                  literal = "Found server initargs at %s (%d)" % (guts_initargs_path, len(guts))))
-
-    for task in make_product_task(guts, guts_initargs_path, options):
-        runner.run(task)
-
-    # Collect breakpad crash dumps.
-    if options.bypass_sensitive_data:
-        log("Bypassing Sensitive Data: Breakpad crash dumps")
+    # Create some default "guts", not entirely sure what that is ..
+    prefix = None
+    if platform.system() == 'Windows':
+        prefix = 'c:/Program Files/Couchbase/Server'
+    elif platform.system() == 'Darwin':
+        prefix = '~/Library/Application Support/Couchbase'
     else:
-        for dump in glob.glob(os.path.join(read_guts(guts,
-                                                     "memcached_breakpad_minidump_dir"),
-                                           "*.dmp")):
-            runner.collect_file(dump)
+        prefix = '/opt/couchbase'
+    guts = {"db_dir" : os.path.join(prefix, "var/lib/couchbase/data"),
+            "idx_dir" : os.path.join(prefix, "var/lib/couchbase/data"),
+            "ns_log_path" : os.path.join(prefix, "var/lib/couchbase/ns_log"),
+            "log_path" : os.path.join(prefix, "var/lib/couchbase/logs"),
+            "memcached_logs_path" : os.path.join(prefix, "var/lib/couchbase/logs")}
 
+    # Get the "zip node", whatever that is 
+    zip_node = read_guts(guts, "node")
+    print "zip_node: {}".format(zip_node)
+    
+    # ??
     if zip_node.split("@")[-1] == "127.0.0.1":
         zip_node = '@'.join(zip_node.split("@")[:-1] + [find_primary_addr("127.0.0.1")])
 
     if options.verbosity:
         log("Python version: %s" % sys.version)
 
+    # Build the actual zip file
     runner.zip(zip_filename, zip_node)
-
+    
     if upload_url:
         do_upload_and_exit(zip_filename, upload_url)
 
+
+    print "Zipfile built: {}".format(zip_filename)
 
 if __name__ == '__main__':
     main()
