@@ -75,7 +75,7 @@ gpg: Signature made Wed  2 Mar 20:59:22 2016 GMT using DSA key ID 920F5C65
 gpg: Can't check signature: public key not found
 error: could not verify the tag 'v1.12.33'
 ```
-Then [See this ticket](https://github.com/couchbase/sync_gateway/issues/1585) 
+Then [See this ticket](https://github.com/couchbase/sync_gateway/issues/1654) 
 
 ### License
 
