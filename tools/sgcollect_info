@@ -36,7 +36,6 @@ from tasks import make_product_task
 # - Expvar Json
 # - pprof files (profiling / memory)
 
-
 USAGE = """usage: %prog [options] output_file.zip
 
 - Linux/Windows/OSX:
@@ -155,40 +154,16 @@ def main():
         for task in make_os_tasks():
             runner.run(task)
 
-
-    log("Couldn't read server guts. Using some default values.")
-
-    # Create some default "guts", not entirely sure what that is ..
-    prefix = None
-    if platform.system() == 'Windows':
-        prefix = 'c:/Program Files/Couchbase/Server'
-    elif platform.system() == 'Darwin':
-        prefix = '~/Library/Application Support/Couchbase'
-    else:
-        prefix = '/opt/couchbase'
-    guts = {"db_dir" : os.path.join(prefix, "var/lib/couchbase/data"),
-            "idx_dir" : os.path.join(prefix, "var/lib/couchbase/data"),
-            "ns_log_path" : os.path.join(prefix, "var/lib/couchbase/ns_log"),
-            "log_path" : os.path.join(prefix, "var/lib/couchbase/logs"),
-            "memcached_logs_path" : os.path.join(prefix, "var/lib/couchbase/logs")}
-
-    # Get the "zip node", whatever that is 
-    zip_node = read_guts(guts, "node")
-    print "zip_node: {}".format(zip_node)
-    
-    # ??
-    if zip_node.split("@")[-1] == "127.0.0.1":
-        zip_node = '@'.join(zip_node.split("@")[:-1] + [find_primary_addr("127.0.0.1")])
-
+    # Output the Python version if verbosity was enabled
     if options.verbosity:
         log("Python version: %s" % sys.version)
 
     # Build the actual zip file
-    runner.zip(zip_filename, zip_node)
-    
+    runner.zip(zip_filename, None)
+
+    # Upload the zip to the URL to S3 if required
     if upload_url:
         do_upload_and_exit(zip_filename, upload_url)
-
 
     print "Zipfile built: {}".format(zip_filename)
 
