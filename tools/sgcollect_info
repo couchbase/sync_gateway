@@ -76,6 +76,28 @@ def create_option_parser():
 
     return parser
 
+def make_sg_tasks(zip_dir):
+
+    sg_log_files = [
+        "/home/sync_gateway/logs/sync_gateway_access.log",
+        "/home/sync_gateway/logs/sync_gateway_error.log",
+        "/home/sg_accel/logs/sg_accel_access.log",
+        "/home/sg_accel/logs/sg_accel_error.log",
+    ]
+    sg_tasks = []
+
+    for sg_log_file in sg_log_files:
+        task = AllOsTask(
+            "sg logs (%s)" % sg_log_file,
+            "cp {} {}".format(sg_log_file, zip_dir),
+            log_file=os.path.basename(sg_log_file),
+            
+        )
+        sg_tasks.append(task)
+
+    return sg_tasks
+
+
 def main():
 
     # ask all tools to use C locale (MB-12050)
@@ -158,6 +180,11 @@ def main():
     if options.verbosity:
         log("Python version: %s" % sys.version)
 
+    # Run SG specific tasks
+    print "zip_dir: {}".format(zip_dir)
+    for task in make_sg_tasks(zip_dir):
+        runner.run(task)
+        
     # Build the actual zip file
     runner.zip(zip_filename, None)
 
