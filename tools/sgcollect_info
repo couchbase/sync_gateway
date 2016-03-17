@@ -28,6 +28,7 @@ from tasks import log
 from tasks import read_guts
 from tasks import AllOsTask
 from tasks import make_curl_task
+from tasks import flatten
 
 # Collects the following info from Sync Gateway
 #
@@ -35,6 +36,8 @@ from tasks import make_curl_task
 # - Sync Gateway logs
 # - Expvar Json
 # - pprof files (profiling / memory)
+#
+# See https://github.com/couchbase/sync_gateway/issues/1640
 
 USAGE = """usage: %prog [options] output_file.zip
 
@@ -45,6 +48,7 @@ USAGE = """usage: %prog [options] output_file.zip
 mydir = os.path.dirname(sys.argv[0])
 
 def create_option_parser():
+    
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option("-r", dest="root",
                       help="root directory - defaults to %s" % (mydir + "/.."),
@@ -76,7 +80,62 @@ def create_option_parser():
 
     return parser
 
-def make_sg_tasks(zip_dir):
+
+def make_collect_pprof_tasks(zip_dir):
+
+    pprof_tasks = []
+    
+    sg_binary_paths = [
+        "/opt/couchbase-sync-gateway/bin/sync_gateway",
+        "/opt/couchbase-sg-accel/bin/sg_accel",
+        "/Users/tleyden/Development/gocode/bin/sync_gateway"
+    ]
+    sg_binary_paths = [ x for x in sg_binary_paths if os.path.exists(x)]
+    if len(sg_binary_paths) == 0:
+        print "Could not find a valid sync gateway binary in {}, skipping pprof collection".format(sg_binary_paths)
+        return
+    sg_binary_path = sg_binary_paths[0]
+    
+    profile_types = [
+        "profile",
+        "heap",
+        "goroutine",
+    ]
+
+    format_types = [
+        "pdf",
+        "text",
+    ]
+
+    sg_pprof_url = "http://localhost:4985/_debug/pprof"
+
+    # make sure raw profile gz files end up in results dir
+    os.environ["PPROF_TMPDIR"] = zip_dir
+
+    for profile_type in profile_types:
+        for format_type in format_types:
+            out_filename = "{0}.{1}".format(profile_type, format_type)
+            dest_path = os.path.join(zip_dir, out_filename)
+            cmd = "go tool pprof -{0} -seconds=5 -output={1} {2} {3}/{4}".format(
+                format_type,
+                dest_path,
+                sg_binary_path,
+                sg_pprof_url,
+                profile_type,
+            )
+            print "Command to collect pprof: {}".format(cmd)
+            description = "Collecting sg pprof profile -- which can take several seconds: {} format: {}".format(profile_type, format_type)
+            
+            task = AllOsTask(
+                description,
+                cmd,
+                log_file=dest_path,
+            )
+            pprof_tasks.append(task)
+
+    return pprof_tasks
+
+def make_collect_logs_tasks(zip_dir):
 
     sg_log_files = [
         "/home/sync_gateway/logs/sync_gateway_access.log",
@@ -95,16 +154,27 @@ def make_sg_tasks(zip_dir):
         )
         sg_tasks.append(task)
 
+    return sg_tasks
+
+
+def make_sg_tasks(zip_dir):
+
+    # Collect logs
+    collect_logs_tasks = make_collect_logs_tasks(zip_dir)
+    
     # Add a task to collect expvars from port 4985
-    task = make_curl_task(name="Collect Expvars",
+    expvar_task = make_curl_task(name="Collect Expvars",
                           user="",
                           password="",
                           url='http://127.0.0.1:4985/_expvar',
                           log_file="expvars_json.log")
-    sg_tasks.append(task)
     
     # Add a task to collect pprofs
+    pprof_tasks = make_collect_pprof_tasks(zip_dir)
 
+    # Compbine all tasks into flattened list
+    sg_tasks = flatten([collect_logs_tasks, expvar_task, pprof_tasks])
+    
     return sg_tasks
 
 
