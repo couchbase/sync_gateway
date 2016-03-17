@@ -27,7 +27,7 @@ from tasks import get_server_guts
 from tasks import log
 from tasks import read_guts
 from tasks import AllOsTask
-from tasks import make_product_task
+from tasks import make_curl_task
 
 # Collects the following info from Sync Gateway
 #
@@ -94,6 +94,16 @@ def make_sg_tasks(zip_dir):
             
         )
         sg_tasks.append(task)
+
+    # Add a task to collect expvars from port 4985
+    task = make_curl_task(name="Collect Expvars",
+                          user="",
+                          password="",
+                          url='http://127.0.0.1:4985/_expvar',
+                          log_file="expvars_json.log")
+    sg_tasks.append(task)
+    
+    # Add a task to collect pprofs
 
     return sg_tasks
 
