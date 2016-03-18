@@ -17,6 +17,7 @@ import signal
 import urllib
 import shutil
 import urlparse
+import xml.etree.ElementTree as ET
 
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
@@ -45,7 +46,10 @@ USAGE = """usage: %prog [options] output_file.zip
     %prog output_file.zip
     %prog -v output_file.zip"""
 
+SG_HOSTNAME_PORT = "http://localhost:4985"
+
 mydir = os.path.dirname(sys.argv[0])
+
 
 def create_option_parser():
     
@@ -88,7 +92,7 @@ def make_collect_pprof_tasks(zip_dir):
     sg_binary_paths = [
         "/opt/couchbase-sync-gateway/bin/sync_gateway",
         "/opt/couchbase-sg-accel/bin/sg_accel",
-        "/Users/tleyden/Development/gocode/bin/sync_gateway"
+        "/Users/tleyden/Development/gocode/bin/sync_gateway"  # TEMP TESTING!!
     ]
     sg_binary_paths = [ x for x in sg_binary_paths if os.path.exists(x)]
     if len(sg_binary_paths) == 0:
@@ -107,7 +111,7 @@ def make_collect_pprof_tasks(zip_dir):
         "text",
     ]
 
-    sg_pprof_url = "http://localhost:4985/_debug/pprof"
+    sg_pprof_url = "http://{}/_debug/pprof".format(SG_HOSTNAME_PORT)
 
     # make sure raw profile gz files end up in results dir
     os.environ["PPROF_TMPDIR"] = zip_dir
@@ -157,6 +161,79 @@ def make_collect_logs_tasks(zip_dir):
     return sg_tasks
 
 
+def get_db_list():
+
+    # build url to _all_dbs
+    all_dbs_url = "{}/_all_dbs".format(SG_HOSTNAME_PORT)
+
+    # get content and parse into json
+    tree = ET.ElementTree(file=urllib2.urlopen(all_dbs_url))
+
+    # modify xml according to parameters
+    root = tree.getroot()
+    for element in root:
+        if element.get("name") == project_name:
+            element.set("revision", set_revision)
+    
+
+
+    # return list of dbs
+
+    pass
+    
+
+# Startup config
+#   Commandline args (covered in expvars, IIRC)
+#   json file.
+# Running config
+#   Server config
+#   Each DB config
+def make_server_config_task(zip_dir):
+
+    collect_config_tasks = []
+    
+    sg_config_files = [
+        "/home/sg_accel/sg_accel.json",
+        "/home/sync_gateway/sync_gateway.json",
+        "/tmp/config.json",  ## TEMP TESTING!!!  REMOVE
+    ]
+    sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
+
+    # Get list of dbs from _all_dbs
+    # For each db, get db config
+    dbs = get_db_list()
+    for db in dbs:
+        db_config_url = "{}/{}/_config".format(SG_HOSTNAME_PORT, db)
+        config_task = make_curl_task(name="Collect db config for db: {}".format(db),
+                                     user="",
+                                     password="",
+                                     url=db_config_url,
+                                     log_file="running_db_{}_config.log".format(db))
+        collect_config_tasks.append(config_task)
+        
+    
+    # Get server config
+    server_config_url = "{}/_config".format(SG_HOSTNAME_PORT)
+    config_task = make_curl_task(name="Collect server config",
+                                 user="",
+                                 password="",
+                                 url=server_config_url,
+                                 log_file="running_server_config.log")
+    collect_config_tasks.append(config_task)
+
+    # Get json server config
+    for sg_config_file in sg_config_files:
+        task = AllOsTask(
+            "sg config (%s)" % sg_config_file,
+            "cp {} {}".format(sg_config_file, zip_dir),
+            log_file=os.path.basename(sg_config_file),
+        )
+        collect_config_tasks.append(task)
+
+    return collect_config_tasks
+
+
+
 def make_sg_tasks(zip_dir):
 
     # Collect logs
@@ -166,11 +243,14 @@ def make_sg_tasks(zip_dir):
     expvar_task = make_curl_task(name="Collect Expvars",
                           user="",
                           password="",
-                          url='http://127.0.0.1:4985/_expvar',
+                          url='http://{}/_expvar'.format(SG_HOSTNAME_PORT),
                           log_file="expvars_json.log")
     
     # Add a task to collect pprofs
     pprof_tasks = make_collect_pprof_tasks(zip_dir)
+
+    # Add a task to collect Sync Gateway config
+    server_config_task = make_server_config_task(zip_dir)
 
     # Compbine all tasks into flattened list
     sg_tasks = flatten([collect_logs_tasks, expvar_task, pprof_tasks])
