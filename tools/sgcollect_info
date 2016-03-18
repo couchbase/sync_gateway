@@ -38,6 +38,7 @@ from tasks import flatten
 # - Sync Gateway logs
 # - Expvar Json
 # - pprof files (profiling / memory)
+# - Startup and running SG config
 #
 # See https://github.com/couchbase/sync_gateway/issues/1640
 
@@ -174,7 +175,6 @@ def get_db_list():
     # return list of dbs
     return data
 
-    
 
 # Startup config
 #   Commandline args (covered in expvars, IIRC)
