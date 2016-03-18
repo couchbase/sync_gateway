@@ -15,9 +15,10 @@ import optparse
 import atexit
 import signal
 import urllib
+import urllib2 
 import shutil
 import urlparse
-import xml.etree.ElementTree as ET
+import json
 
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
@@ -146,15 +147,15 @@ def make_collect_logs_tasks(zip_dir):
         "/home/sync_gateway/logs/sync_gateway_error.log",
         "/home/sg_accel/logs/sg_accel_access.log",
         "/home/sg_accel/logs/sg_accel_error.log",
+        "/tmp/logs/error.log",  # TEMP TESTING!
     ]
     sg_tasks = []
 
     for sg_log_file in sg_log_files:
         task = AllOsTask(
             "sg logs (%s)" % sg_log_file,
-            "cp {} {}".format(sg_log_file, zip_dir),
+            "cat {}".format(sg_log_file),
             log_file=os.path.basename(sg_log_file),
-            
         )
         sg_tasks.append(task)
 
@@ -165,21 +166,14 @@ def get_db_list():
 
     # build url to _all_dbs
     all_dbs_url = "{}/_all_dbs".format(SG_HOSTNAME_PORT)
-
-    # get content and parse into json
-    tree = ET.ElementTree(file=urllib2.urlopen(all_dbs_url))
-
-    # modify xml according to parameters
-    root = tree.getroot()
-    for element in root:
-        if element.get("name") == project_name:
-            element.set("revision", set_revision)
     
-
+    # get content and parse into json
+    response = urllib2.urlopen(all_dbs_url)
+    data = json.load(response)
 
     # return list of dbs
+    return data
 
-    pass
     
 
 # Startup config
@@ -188,14 +182,14 @@ def get_db_list():
 # Running config
 #   Server config
 #   Each DB config
-def make_server_config_task(zip_dir):
+def make_config_tasks(zip_dir):
 
     collect_config_tasks = []
     
     sg_config_files = [
         "/home/sg_accel/sg_accel.json",
         "/home/sync_gateway/sync_gateway.json",
-        "/tmp/config.json",  ## TEMP TESTING!!!  REMOVE
+        "/tmp/config/config.json",  ## TEMP TESTING!!!  REMOVE
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
 
@@ -225,7 +219,7 @@ def make_server_config_task(zip_dir):
     for sg_config_file in sg_config_files:
         task = AllOsTask(
             "sg config (%s)" % sg_config_file,
-            "cp {} {}".format(sg_config_file, zip_dir),
+            "cat {}".format(sg_config_file),
             log_file=os.path.basename(sg_config_file),
         )
         collect_config_tasks.append(task)
@@ -250,10 +244,17 @@ def make_sg_tasks(zip_dir):
     pprof_tasks = make_collect_pprof_tasks(zip_dir)
 
     # Add a task to collect Sync Gateway config
-    server_config_task = make_server_config_task(zip_dir)
+    config_tasks = make_config_tasks(zip_dir)
 
     # Compbine all tasks into flattened list
-    sg_tasks = flatten([collect_logs_tasks, expvar_task, pprof_tasks])
+    sg_tasks = flatten(
+        [
+            collect_logs_tasks,
+            expvar_task,
+            pprof_tasks,
+            config_tasks,
+        ]
+    )
     
     return sg_tasks
 
