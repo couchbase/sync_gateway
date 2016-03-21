@@ -49,6 +49,7 @@ USAGE = """usage: %prog [options] output_file.zip
     %prog -v output_file.zip"""
 
 SG_HOSTNAME_PORT = "localhost:4985"
+EXPVAR_URL = 'http://{}/_expvar'.format(SG_HOSTNAME_PORT)
 
 mydir = os.path.dirname(sys.argv[0])
 
@@ -87,20 +88,9 @@ def create_option_parser():
     return parser
 
 
-def make_collect_pprof_tasks(zip_dir):
+def make_collect_pprof_tasks(zip_dir, sg_binary_path):
 
     pprof_tasks = []
-    
-    sg_binary_paths = [
-        "/opt/couchbase-sync-gateway/bin/sync_gateway",
-        "/opt/couchbase-sg-accel/bin/sg_accel",
-        "/Users/tleyden/Development/gocode/bin/sync_gateway"  # TEMP TESTING!!
-    ]
-    sg_binary_paths = [ x for x in sg_binary_paths if os.path.exists(x)]
-    if len(sg_binary_paths) == 0:
-        print "Could not find a valid sync gateway binary in {}, skipping pprof collection".format(sg_binary_paths)
-        return
-    sg_binary_path = sg_binary_paths[0]
     
     profile_types = [
         "profile",
@@ -182,7 +172,7 @@ def get_db_list():
 # Running config
 #   Server config
 #   Each DB config
-def make_config_tasks(zip_dir):
+def make_config_tasks(zip_dir, expvars_sg_config_path):
 
     collect_config_tasks = []
     
@@ -192,6 +182,8 @@ def make_config_tasks(zip_dir):
         "/tmp/config/config.json",  ## TEMP TESTING!!!  REMOVE
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
+    if expvars_sg_config_path is not None:
+        sg_config_files.append(expvars_sg_config_path)
 
     # Get list of dbs from _all_dbs
     # For each db, get db config
@@ -227,9 +219,42 @@ def make_config_tasks(zip_dir):
     return collect_config_tasks
 
 
+def get_config_path_from_cmdline(cmdline_args):
+
+    for cmdline_arg in cmdline_args:
+        # if it has .json in the path, assume it's a config file.
+        # ignore any config files that are URL's for now, since
+        # they won't be handled correctly.
+        if ".json" in cmdline_arg and "http" not in cmdline_arg:
+            return cmdline_arg
+    return None
+    
+
+def get_paths_from_expvars():
+
+    sg_binary_path = None
+    sg_config_path = None
+    
+    # get content and parse into json
+    response = urllib2.urlopen(EXPVAR_URL)
+    data = json.load(response)
+    if data is not None and data.has_key("cmdline"):
+        cmdline_args = data["cmdline"]
+        if len(cmdline_args) == 0:
+            return (sg_binary_path, sg_config_path)
+        sg_binary_path = cmdline_args[0]
+        if len(cmdline_args) > 1:
+            sg_config_path = get_config_path_from_cmdline(cmdline_args[1:])
+
+    return (sg_binary_path, sg_config_path)
+    
 
 def make_sg_tasks(zip_dir):
 
+    # Get path to sg binary (reliable) and config (not reliable)
+    sg_binary_path, sg_config_path = get_paths_from_expvars()
+    print "sg_binary_path: {} sg_config_path: {}".format(sg_binary_path, sg_config_path) 
+    
     # Collect logs
     collect_logs_tasks = make_collect_logs_tasks(zip_dir)
     
@@ -237,15 +262,19 @@ def make_sg_tasks(zip_dir):
     expvar_task = make_curl_task(name="Collect Expvars",
                           user="",
                           password="",
-                          url='http://{}/_expvar'.format(SG_HOSTNAME_PORT),
+                          url=EXPVAR_URL,
                           log_file="expvars_json.log")
     
     # Add a task to collect pprofs
-    pprof_tasks = make_collect_pprof_tasks(zip_dir)
+    pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path)
 
     # Add a task to collect Sync Gateway config
-    config_tasks = make_config_tasks(zip_dir)
+    config_tasks = make_config_tasks(zip_dir, sg_config_path)
 
+    # TODO: add a task to collect the SG binary
+
+    # TODO: Curl the / endpoint and /db endpoints and save output  (add to make_config_tasks)
+    
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
         [
