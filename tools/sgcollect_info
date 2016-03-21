@@ -48,7 +48,7 @@ USAGE = """usage: %prog [options] output_file.zip
     %prog output_file.zip
     %prog -v output_file.zip"""
 
-SG_HOSTNAME_PORT = "http://localhost:4985"
+SG_HOSTNAME_PORT = "localhost:4985"
 
 mydir = os.path.dirname(sys.argv[0])
 
@@ -166,7 +166,7 @@ def make_collect_logs_tasks(zip_dir):
 def get_db_list():
 
     # build url to _all_dbs
-    all_dbs_url = "{}/_all_dbs".format(SG_HOSTNAME_PORT)
+    all_dbs_url = "http://{}/_all_dbs".format(SG_HOSTNAME_PORT)
     
     # get content and parse into json
     response = urllib2.urlopen(all_dbs_url)
@@ -197,7 +197,7 @@ def make_config_tasks(zip_dir):
     # For each db, get db config
     dbs = get_db_list()
     for db in dbs:
-        db_config_url = "{}/{}/_config".format(SG_HOSTNAME_PORT, db)
+        db_config_url = "http://{}/{}/_config".format(SG_HOSTNAME_PORT, db)
         config_task = make_curl_task(name="Collect db config for db: {}".format(db),
                                      user="",
                                      password="",
@@ -207,7 +207,7 @@ def make_config_tasks(zip_dir):
         
     
     # Get server config
-    server_config_url = "{}/_config".format(SG_HOSTNAME_PORT)
+    server_config_url = "http://{}/_config".format(SG_HOSTNAME_PORT)
     config_task = make_curl_task(name="Collect server config",
                                  user="",
                                  password="",
