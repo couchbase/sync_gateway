@@ -9,14 +9,12 @@
 package rest
 
 import (
-	"fmt"
-	"github.com/couchbaselabs/go.assert"
-	"github.com/tleyden/fakehttp"
 	"log"
 	"net/http"
 	"testing"
 )
 
+/* Commented due to https://github.com/couchbase/sync_gateway/issues/1659
 func TestVerifyFacebook(t *testing.T) {
 
 	testServer := fakehttp.NewHTTPServer()
@@ -40,6 +38,7 @@ func TestVerifyFacebook(t *testing.T) {
 	assert.Equals(t, facebookResponse.Email, "alice@dot.com")
 
 }
+*/
 
 // This test exists because there have been problems with builds of Go being unable to make HTTPS
 // connections due to the TLS package missing the Cgo bits needed to load system root certs.
