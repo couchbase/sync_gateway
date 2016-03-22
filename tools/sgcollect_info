@@ -48,8 +48,6 @@ USAGE = """usage: %prog [options] output_file.zip
     %prog output_file.zip
     %prog -v output_file.zip"""
 
-SG_HOSTNAME_PORT = "http://localhost:4985"
-
 mydir = os.path.dirname(sys.argv[0])
 
 def create_option_parser():
@@ -88,11 +86,11 @@ def create_option_parser():
     
     return parser
 
-def expvar_url():
+def expvar_url(sg_url):
 
-    return '{}/_expvar'.format(SG_HOSTNAME_PORT)
+    return '{}/_expvar'.format(sg_url)
 
-def make_collect_pprof_tasks(zip_dir, sg_binary_path):
+def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     pprof_tasks = []
     
@@ -107,7 +105,7 @@ def make_collect_pprof_tasks(zip_dir, sg_binary_path):
         "text",
     ]
 
-    sg_pprof_url = "{}/_debug/pprof".format(SG_HOSTNAME_PORT)
+    sg_pprof_url = "{}/_debug/pprof".format(sg_url)
 
     # make sure raw profile gz files end up in results dir
     os.environ["PPROF_TMPDIR"] = zip_dir
@@ -157,10 +155,10 @@ def make_collect_logs_tasks(zip_dir):
     return sg_tasks
 
 
-def get_db_list():
+def get_db_list(sg_url):
 
     # build url to _all_dbs
-    all_dbs_url = "{}/_all_dbs".format(SG_HOSTNAME_PORT)
+    all_dbs_url = "{}/_all_dbs".format(sg_url)
     
     # get content and parse into json
     response = urllib2.urlopen(all_dbs_url)
@@ -176,7 +174,7 @@ def get_db_list():
 # Running config
 #   Server config
 #   Each DB config
-def make_config_tasks(zip_dir, expvars_sg_config_path):
+def make_config_tasks(zip_dir, expvars_sg_config_path, sg_url):
 
     collect_config_tasks = []
     
@@ -191,9 +189,9 @@ def make_config_tasks(zip_dir, expvars_sg_config_path):
 
     # Get list of dbs from _all_dbs
     # For each db, get db config
-    dbs = get_db_list()
+    dbs = get_db_list(sg_url)
     for db in dbs:
-        db_config_url = "{}/{}/_config".format(SG_HOSTNAME_PORT, db)
+        db_config_url = "{}/{}/_config".format(sg_url, db)
         config_task = make_curl_task(name="Collect db config for db: {}".format(db),
                                      user="",
                                      password="",
@@ -203,7 +201,7 @@ def make_config_tasks(zip_dir, expvars_sg_config_path):
         
     
     # Get server config
-    server_config_url = "{}/_config".format(SG_HOSTNAME_PORT)
+    server_config_url = "{}/_config".format(sg_url)
     config_task = make_curl_task(name="Collect server config",
                                  user="",
                                  password="",
@@ -234,13 +232,13 @@ def get_config_path_from_cmdline(cmdline_args):
     return None
     
 
-def get_paths_from_expvars():
+def get_paths_from_expvars(sg_url):
 
     sg_binary_path = None
     sg_config_path = None
     
     # get content and parse into json
-    response = urllib2.urlopen(expvar_url())
+    response = urllib2.urlopen(expvar_url(sg_url))
     data = json.load(response)
     if data is not None and data.has_key("cmdline"):
         cmdline_args = data["cmdline"]
@@ -253,10 +251,10 @@ def get_paths_from_expvars():
     return (sg_binary_path, sg_config_path)
     
 
-def make_sg_tasks(zip_dir):
+def make_sg_tasks(zip_dir, sg_url):
 
     # Get path to sg binary (reliable) and config (not reliable)
-    sg_binary_path, sg_config_path = get_paths_from_expvars()
+    sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
     print "sg_binary_path: {} sg_config_path: {}".format(sg_binary_path, sg_config_path) 
     
     # Collect logs
@@ -266,14 +264,14 @@ def make_sg_tasks(zip_dir):
     expvar_task = make_curl_task(name="Collect Expvars",
                           user="",
                           password="",
-                          url=expvar_url(),
+                          url=expvar_url(sg_url),
                           log_file="expvars_json.log")
     
     # Add a task to collect pprofs
-    pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path)
+    pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url)
 
     # Add a task to collect Sync Gateway config
-    config_tasks = make_config_tasks(zip_dir, sg_config_path)
+    config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url)
     
     # TODO: Curl the / endpoint and /db endpoints and save output  (add to make_config_tasks)
     
@@ -313,9 +311,9 @@ def main():
     if options.watch_stdin:
         setup_stdin_watcher()
 
-    if len(options.sync_gateway_url) > 0:
-        SG_HOSTNAME_PORT = options.sync_gateway_url
-    print "Using Sync Gateway URL: {}".format(SG_HOSTNAME_PORT)
+    # Get the sg url the user passed in, or use the default
+    sg_url = options.sync_gateway_url
+    print "Using Sync Gateway URL: {}".format(sg_url)
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
@@ -370,7 +368,6 @@ def main():
     # The output of the tasks will go directly into couchbase.log
     runner = TaskRunner(verbosity=options.verbosity)
 
-
     if not options.product_only:
         for task in make_os_tasks():
             runner.run(task)
@@ -381,11 +378,11 @@ def main():
 
     # Run SG specific tasks
     print "zip_dir: {}".format(zip_dir)
-    for task in make_sg_tasks(zip_dir):
+    for task in make_sg_tasks(zip_dir, sg_url):
         runner.run(task)
 
     # Collect the SG binary
-    sg_binary_path, _ = get_paths_from_expvars()
+    sg_binary_path, _ = get_paths_from_expvars(sg_url)
     runner.collect_file(sg_binary_path)
         
     # Build the actual zip file
