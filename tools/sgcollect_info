@@ -270,10 +270,9 @@ def make_sg_tasks(zip_dir):
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path)
-
-    # TODO: add a task to collect the SG binary
-
+    
     # TODO: Curl the / endpoint and /db endpoints and save output  (add to make_config_tasks)
+    
     
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
@@ -362,6 +361,8 @@ def main():
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
     runner = TaskRunner(verbosity=options.verbosity)
+
+
     if not options.product_only:
         for task in make_os_tasks():
             runner.run(task)
@@ -374,6 +375,10 @@ def main():
     print "zip_dir: {}".format(zip_dir)
     for task in make_sg_tasks(zip_dir):
         runner.run(task)
+
+    # Collect the SG binary
+    sg_binary_path, _ = get_paths_from_expvars()
+    runner.collect_file(sg_binary_path)
         
     # Build the actual zip file
     runner.zip(zip_filename, None)
