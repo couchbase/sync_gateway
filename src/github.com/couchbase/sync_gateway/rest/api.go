@@ -146,10 +146,7 @@ func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
-	lastSeq, err := h.db.LastSequence()
-	if err != nil {
-		return err
-	}
+	lastSeq, _ := h.db.LastSequence()
 
 	response := db.Body{
 		"db_name":              h.db.Name,
