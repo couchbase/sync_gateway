@@ -168,6 +168,35 @@ def get_db_list(sg_url):
     return data
 
 
+# Get the "status" for the server overall that's available
+# at the server root URL, as well as the status of each database
+def make_status_tasks(sg_url):
+
+    tasks = []
+
+    # Get server config
+    task = make_curl_task(name="Collect server status",
+                          user="",
+                          password="",
+                          url=sg_url,
+                          log_file="server_status.log")
+    tasks.append(task)
+        
+    # Get list of dbs from _all_dbs
+    # For each db, get db config
+    dbs = get_db_list(sg_url)
+    for db in dbs:
+        db_status_url = "{}/{}".format(sg_url, db)
+        task = make_curl_task(name="Collect db status for db: {}".format(db),
+                              user="",
+                              password="",
+                              url=db_status_url,
+                              log_file="db_{}_status.log".format(db))
+        tasks.append(task)
+
+    return tasks
+    
+
 # Startup config
 #   Commandline args (covered in expvars, IIRC)
 #   json file.
@@ -177,16 +206,38 @@ def get_db_list(sg_url):
 def make_config_tasks(zip_dir, expvars_sg_config_path, sg_url):
 
     collect_config_tasks = []
-    
+
+    # Here are the "usual suspects" to probe for finding the static config
     sg_config_files = [
         "/home/sg_accel/sg_accel.json",
         "/home/sync_gateway/sync_gateway.json",
         "/tmp/config/config.json",  ## TEMP TESTING!!!  REMOVE
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
+
+    # If a config path was discovered from the expvars, add that in the
+    # list of files to probe
     if expvars_sg_config_path is not None:
         sg_config_files.append(expvars_sg_config_path)
 
+    # Get static server config
+    for sg_config_file in sg_config_files:
+        task = AllOsTask(
+            "sg config (%s)" % sg_config_file,
+            "cat {}".format(sg_config_file),
+            log_file=os.path.basename(sg_config_file),
+        )
+        collect_config_tasks.append(task)
+
+    # Get server config
+    server_config_url = "{}/_config".format(sg_url)
+    config_task = make_curl_task(name="Collect server config",
+                                 user="",
+                                 password="",
+                                 url=server_config_url,
+                                 log_file="running_server_config.log")
+    collect_config_tasks.append(config_task)
+        
     # Get list of dbs from _all_dbs
     # For each db, get db config
     dbs = get_db_list(sg_url)
@@ -198,25 +249,6 @@ def make_config_tasks(zip_dir, expvars_sg_config_path, sg_url):
                                      url=db_config_url,
                                      log_file="running_db_{}_config.log".format(db))
         collect_config_tasks.append(config_task)
-        
-    
-    # Get server config
-    server_config_url = "{}/_config".format(sg_url)
-    config_task = make_curl_task(name="Collect server config",
-                                 user="",
-                                 password="",
-                                 url=server_config_url,
-                                 log_file="running_server_config.log")
-    collect_config_tasks.append(config_task)
-
-    # Get json server config
-    for sg_config_file in sg_config_files:
-        task = AllOsTask(
-            "sg config (%s)" % sg_config_file,
-            "cat {}".format(sg_config_file),
-            log_file=os.path.basename(sg_config_file),
-        )
-        collect_config_tasks.append(task)
 
     return collect_config_tasks
 
@@ -273,8 +305,8 @@ def make_sg_tasks(zip_dir, sg_url):
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url)
     
-    # TODO: Curl the / endpoint and /db endpoints and save output  (add to make_config_tasks)
-    
+    # Curl the / endpoint and /db endpoints and save output 
+    status_tasks = make_status_tasks(sg_url)
     
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
@@ -283,6 +315,7 @@ def make_sg_tasks(zip_dir, sg_url):
             expvar_task,
             pprof_tasks,
             config_tasks,
+            status_tasks,
         ]
     )
     
@@ -383,7 +416,10 @@ def main():
 
     # Collect the SG binary
     sg_binary_path, _ = get_paths_from_expvars(sg_url)
-    runner.collect_file(sg_binary_path)
+    if os.path.exists(sg_binary_path):
+        runner.collect_file(sg_binary_path)
+    else:
+        print "WARNING: unable to find Sync Gateway executable, omitting from result"
         
     # Build the actual zip file
     runner.zip(zip_filename, None)
