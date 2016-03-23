@@ -82,7 +82,8 @@ def create_option_parser():
                       help="do not collect sensitive data")
     parser.add_option("--sync-gateway-url", dest="sync_gateway_url",
                       help="Sync Gateway admin port URL, eg, http://localhost:4985")
-
+    parser.add_option("--sync-gateway-config", dest="sync_gateway_config",
+                      help="Path to Sync Gateway config.  By default will try to discover via expvars")
     
     return parser
 
@@ -204,7 +205,7 @@ def make_status_tasks(sg_url):
 # Running config
 #   Server config
 #   Each DB config
-def make_config_tasks(zip_dir, expvars_sg_config_path, sg_url):
+def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     collect_config_tasks = []
 
@@ -212,14 +213,13 @@ def make_config_tasks(zip_dir, expvars_sg_config_path, sg_url):
     sg_config_files = [
         "/home/sg_accel/sg_accel.json",
         "/home/sync_gateway/sync_gateway.json",
-        "/tmp/config/config.json",  ## TEMP TESTING!!!  REMOVE
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
 
     # If a config path was discovered from the expvars, add that in the
     # list of files to probe
-    if expvars_sg_config_path is not None:
-        sg_config_files.append(expvars_sg_config_path)
+    if sg_config_path is not None:
+        sg_config_files.append(sg_config_path)
 
     # Get static server config
     for sg_config_file in sg_config_files:
@@ -284,7 +284,7 @@ def get_paths_from_expvars(sg_url):
     return (sg_binary_path, sg_config_path)
     
 
-def make_sg_tasks(zip_dir, sg_url):
+def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option):
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
@@ -300,14 +300,9 @@ def make_sg_tasks(zip_dir, sg_url):
                           url=expvar_url(sg_url),
                           log_file="expvars_json.log")
 
-    # Pretty print expvars
-    #pretty_print_expvars = AllOsTask(
-    #    "Pretty preint expvars",
-    #    "python mjson.tool ".format(sg_config_file),
-    #    log_file=os.path.basename(sg_config_file),
-    #)
-    
-    
+    # If the user passed in a valid config path, then use that rather than what's in the expvars
+    if sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0 and os.path.exists(sync_gateway_config_path_option):
+        sg_config_path = sync_gateway_config_path_option
     
     # Add a task to collect pprofs
     pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url)
@@ -359,7 +354,7 @@ def main():
     if sg_url is None:
         sg_url = "http://127.0.0.1:4985"
     print "Using Sync Gateway URL: {}".format(sg_url)
-
+    
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
     if zip_filename[-4:] != '.zip':
@@ -423,7 +418,7 @@ def main():
 
     # Run SG specific tasks
     print "zip_dir: {}".format(zip_dir)
-    for task in make_sg_tasks(zip_dir, sg_url):
+    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config):
         runner.run(task)
 
     # Collect the SG binary
