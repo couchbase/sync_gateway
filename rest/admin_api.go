@@ -150,6 +150,15 @@ func (h *handler) handleDeleteDB() error {
 	return nil
 }
 
+/////// Replication and Task monitoring
+func (h *handler) handleReplicate() error {
+	return base.HTTPErrorf(http.StatusNotImplemented, "_replicate is not implemented.")
+}
+
+func (h *handler) handleActiveTasks() error {
+	return base.HTTPErrorf(http.StatusNotImplemented, "_active_tasks is not implemented.")
+}
+
 // raw document access for admin api
 
 func (h *handler) handleGetRawDoc() error {
@@ -456,3 +465,5 @@ func (h *handler) handlePurge() error {
 
 	return nil
 }
+
+
