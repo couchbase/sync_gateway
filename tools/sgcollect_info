@@ -103,6 +103,7 @@ def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
     format_types = [
         "pdf",
         "text",
+        "raw",
     ]
 
     sg_pprof_url = "{}/_debug/pprof".format(sg_url)
