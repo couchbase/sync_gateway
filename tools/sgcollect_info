@@ -298,6 +298,15 @@ def make_sg_tasks(zip_dir, sg_url):
                           password="",
                           url=expvar_url(sg_url),
                           log_file="expvars_json.log")
+
+    # Pretty print expvars
+    #pretty_print_expvars = AllOsTask(
+    #    "Pretty preint expvars",
+    #    "python mjson.tool ".format(sg_config_file),
+    #    log_file=os.path.basename(sg_config_file),
+    #)
+    
+    
     
     # Add a task to collect pprofs
     pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url)
@@ -346,6 +355,8 @@ def main():
 
     # Get the sg url the user passed in, or use the default
     sg_url = options.sync_gateway_url
+    if sg_url is None:
+        sg_url = "http://127.0.0.1:4985"
     print "Using Sync Gateway URL: {}".format(sg_url)
 
     # Build path to zip directory, make sure it exists
