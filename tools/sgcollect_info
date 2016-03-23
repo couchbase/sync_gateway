@@ -427,6 +427,15 @@ def main():
         runner.collect_file(sg_binary_path)
     else:
         print "WARNING: unable to find Sync Gateway executable, omitting from result"
+
+    # Echo the command line args used to run sgcollect_info
+    cmd_line_args_task = AllOsTask(
+        "Echo sgcollect_info cmd line args",
+        "echo options: {} args: ".format(options, args),
+        log_file="sgcollect_info_options.log",
+    )
+    runner.run(cmd_line_args_task)
+
         
     # Build the actual zip file
     runner.zip(zip_filename, None)
