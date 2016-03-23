@@ -371,3 +371,28 @@ func WriteHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, pr
 		expvarMap.Add(fmt.Sprintf("%s-%06dms", prefix, durationMs), 1)
 	}
 }
+
+/*
+ * Returns a URL formatted string which excludes the path, query and fragment
+ * This is used by _replicate to split the single URL passed in a CouchDB style
+ * request into a source URL and a database name as used in sg_replicate
+ */
+func SyncSourceFromURL(u *url.URL) string {
+	var buf bytes.Buffer
+	if u.Scheme != "" {
+		buf.WriteString(u.Scheme)
+		buf.WriteByte(':')
+	}
+	if u.Scheme != "" || u.Host != "" || u.User != nil {
+		buf.WriteString("//")
+		if ui := u.User; ui != nil {
+			buf.WriteString(ui.String())
+			buf.WriteByte('@')
+		}
+		if h := u.Host; h != "" {
+			buf.WriteString(h)
+		}
+	}
+
+	return buf.String()
+}

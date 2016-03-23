@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/couchbase/clog"
 )
 
 // 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
@@ -90,10 +91,14 @@ func ParseLogFlags(flags []string) {
 			LogKeys[key] = true
 			if key == "*" {
 				logStar = true
+				EnableSgReplicateLogging()
 			}
 			// gocb requires a call into the gocb library to enable logging
 			if key == "gocb" {
 				EnableGoCBLogging()
+			}
+			if key == "Replicate" {
+				EnableSgReplicateLogging()
 			}
 			for strings.HasSuffix(key, "+") {
 				key = key[0 : len(key)-1]
@@ -103,6 +108,10 @@ func ParseLogFlags(flags []string) {
 	}
 	logLock.Unlock()
 	Logf("Enabling logging: %s", flags)
+}
+
+func EnableSgReplicateLogging() {
+	clog.EnableKey("Replicate")
 }
 
 func GetLogKeys() map[string]bool {

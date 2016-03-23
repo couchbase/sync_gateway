@@ -10,7 +10,8 @@
   <remote fetch="git://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
-
+  <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
+  
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
@@ -72,6 +73,12 @@
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
 
+  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="af45bc0617ac12f2207deb2228a89797683983f1"/>
+
+  <project name="logg" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="eebc98233c3e032eb6b9036575d51324ab5932e6"/>
+
+  <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
+  
   
 </manifest>
 

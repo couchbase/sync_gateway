@@ -44,6 +44,7 @@ type ServerContext struct {
 	lock        sync.RWMutex
 	statsTicker *time.Ticker
 	HTTPClient  *http.Client
+	replicator  *base.Replicator
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
@@ -51,6 +52,7 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		config:     config,
 		databases_: map[string]*db.DatabaseContext{},
 		HTTPClient: http.DefaultClient,
+		replicator: base.NewReplicator(),
 	}
 	if config.Databases == nil {
 		config.Databases = DbConfigMap{}
