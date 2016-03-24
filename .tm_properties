@@ -1,6 +1,0 @@
-[ source.go ]
-softTabs = false
-tabSize = 4
-
-[ attr.untitled ]
-fileType         = 'source.go'
