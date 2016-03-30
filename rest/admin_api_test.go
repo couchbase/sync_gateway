@@ -1044,17 +1044,8 @@ func TestReplicateErrorConditions(t *testing.T) {
 	//Send JSON Object containing no source and target as local DB
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"target":"mylocaltargetdb"}`), 400)
 
-	//Send JSON Object containing source and target as absolute URL
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb"}`), 200)
-
-	//Send JSON Object containing source as absolute URL and target as local DB
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"mylocaltargetdb"}`), 200)
-
-	//Send JSON Object containing source as local DB and target as absolute URL
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"http://myhost:4985/mytargetdb"}`), 200)
-
-	//Send JSON Object containing source as local DB and target as local DB
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"mylocaltargetdb"}`), 200)
+	//Send JSON Object containing source and target as absolute URL and a replication_id
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb", "replication_id":"myreplicationid"}`), 400)
 }
 
 func TestReplicate(t *testing.T) {
@@ -1071,4 +1062,11 @@ func TestReplicate(t *testing.T) {
 
 	//Send JSON Object containing source as local DB and target as local DB
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"mylocaltargetdb"}`), 200)
+
+	//Send JSON Object containing replication_id but no cancel property
+	//Will be treated as NOOP
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"replication_id":"myreplicationid"}`), 200)
+
+	//Send JSON Object containing replication_id and a cancel true
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"replication_id":"myreplicationid", "cancel":true}`), 200)
 }

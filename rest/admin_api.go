@@ -231,9 +231,26 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 		return
 	}
 
+	if in.ReplicationId != "" && (in.Source != "" || in.Target != "") {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate replication_id can not be used with source or target values.")
+		return
+	}
+
+	//A replication_id with cancel set to false is a NOOP just return
+	if in.ReplicationId != "" && !in.Cancel {
+		return
+	}
+
+	//A replication_id with cancel set to true, add properties and return
+	if in.ReplicationId != "" && in.Cancel {
+		params.Disabled = in.Cancel
+		//TODO: params.ReplicationID = in.ReplicationID
+		return
+	}
+
 	sourceUrl, err := url.Parse(in.Source)
 	if err != nil || in.Source == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.",in.Source)
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.", in.Source)
 		return
 	}
 	syncSource := base.SyncSourceFromURL(sourceUrl)
@@ -242,14 +259,12 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 
 	targetUrl, err := url.Parse(in.Target)
 	if err != nil || in.Target == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate target URL [%s] is invalid.",in.Target)
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate target URL [%s] is invalid.", in.Target)
 		return
 	}
 	syncTarget := base.SyncSourceFromURL(targetUrl)
 	params.Target, _ = url.Parse(syncTarget)
 	params.TargetDb = targetUrl.Path
-
-	params.Disabled = in.Cancel
 
 	if in.Continuous {
 		params.Lifecycle = CONTINUOUS
