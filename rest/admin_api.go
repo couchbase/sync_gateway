@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"net/url"
 	"sync/atomic"
 	"time"
 )
@@ -151,8 +152,112 @@ func (h *handler) handleDeleteDB() error {
 }
 
 /////// Replication and Task monitoring
+
+/*
+ * TODO: The following types should be declared in the replicate package
+ */
+
+type ReplicationLifecycle int
+
+const (
+	ONE_SHOT = ReplicationLifecycle(iota)
+	CONTINUOUS
+)
+
+type ReplicationParameters struct {
+	Name             string
+	Source           *url.URL
+	SourceDb         string
+	Target           *url.URL
+	TargetDb         string
+	ChangesFeedLimit int
+	Lifecycle        ReplicationLifecycle
+	Disabled         bool
+}
+
 func (h *handler) handleReplicate() error {
-	return base.HTTPErrorf(http.StatusNotImplemented, "_replicate is not implemented.")
+
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	//params, err := h.readReplicationParametersFromJSON(body)
+	_, err = h.readReplicationParametersFromJSON(body)
+
+	if err != nil {
+		return err
+	}
+
+	return nil // db.replicate(params)
+}
+
+func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params ReplicationParameters, err error) {
+	var in struct {
+		Source           string   `json:"source"`
+		Target           string   `json:"target"`
+		Continuous       bool     `json:"continuous"`
+		CreateTarget     bool     `json:"create_target"`
+		DocIds           []string `json:"doc_ids"`
+		Filter           string   `json:"filter"`
+		Proxy            string   `json:"proxy"`
+		QueryParams      string   `json:"query_params"`
+		Cancel           bool     `json:"cancel"`
+		ChangesFeedLimit int      `json:"changes_feed_limit"`
+		ReplicationId    string   `json:"replication_id"`
+	}
+
+	if err = json.Unmarshal(jsonData, &in); err != nil {
+		return
+	}
+
+	if in.CreateTarget {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
+		return
+	}
+
+	if len(in.DocIds) > 0 {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate doc_ids option is not currently supported.")
+		return
+	}
+
+	if in.Filter != "" || in.QueryParams != "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate filters are not currently supported.")
+		return
+	}
+
+	if in.Proxy != "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate proxy option is not currently supported.")
+		return
+	}
+
+	sourceUrl, err := url.Parse(in.Source)
+	if err != nil || in.Source == "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.",in.Source)
+		return
+	}
+	syncSource := base.SyncSourceFromURL(sourceUrl)
+	params.Source, _ = url.Parse(syncSource)
+	params.SourceDb = sourceUrl.Path
+
+	targetUrl, err := url.Parse(in.Target)
+	if err != nil || in.Target == "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate target URL [%s] is invalid.",in.Target)
+		return
+	}
+	syncTarget := base.SyncSourceFromURL(targetUrl)
+	params.Target, _ = url.Parse(syncTarget)
+	params.TargetDb = targetUrl.Path
+
+	params.Disabled = in.Cancel
+
+	if in.Continuous {
+		params.Lifecycle = CONTINUOUS
+	}
+
+	params.ChangesFeedLimit = in.ChangesFeedLimit
+
+	return
 }
 
 func (h *handler) handleActiveTasks() error {
@@ -465,5 +570,3 @@ func (h *handler) handlePurge() error {
 
 	return nil
 }
-
-

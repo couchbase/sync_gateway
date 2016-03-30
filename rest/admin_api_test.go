@@ -1004,3 +1004,71 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	//Create new versions of the doc2 fails because it already exists
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
+
+func TestReplicateErrorConditions(t *testing.T) {
+	var rt restTester
+
+	//Send empty JSON
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", ""), 400)
+
+	//Send empty JSON Object
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{}`), 400)
+
+	//Send JSON Object with random properties
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"foo":"bar"}`), 400)
+
+	//Send JSON Object containing create_target property
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"create_target":true}`), 400)
+
+	//Send JSON Object containing doc_ids property
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"doc_ids":["foo","bar","moo","car"]}`), 400)
+
+	//Send JSON Object containing filter property
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"filter":"somefilter"}`), 400)
+
+	//Send JSON Object containing query_params property
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"query_params":{"someproperty":"somevalue"}}`), 400)
+
+	//Send JSON Object containing proxy property
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"proxy":"http://myproxy/}`), 400)
+
+	//Send JSON Object containing source as absolute URL but no target
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb"}`), 400)
+
+	//Send JSON Object containing no source and target as absolute URL
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"target":"http://myhost:4985/mytargetdb"}`), 400)
+
+	//Send JSON Object containing source as local DB but no target
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb"}`), 400)
+
+	//Send JSON Object containing no source and target as local DB
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"target":"mylocaltargetdb"}`), 400)
+
+	//Send JSON Object containing source and target as absolute URL
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb"}`), 200)
+
+	//Send JSON Object containing source as absolute URL and target as local DB
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"mylocaltargetdb"}`), 200)
+
+	//Send JSON Object containing source as local DB and target as absolute URL
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"http://myhost:4985/mytargetdb"}`), 200)
+
+	//Send JSON Object containing source as local DB and target as local DB
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"mylocaltargetdb"}`), 200)
+}
+
+func TestReplicate(t *testing.T) {
+	var rt restTester
+
+	//Send JSON Object containing source and target as absolute URL
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb"}`), 200)
+
+	//Send JSON Object containing source as absolute URL and target as local DB
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"mylocaltargetdb"}`), 200)
+
+	//Send JSON Object containing source as local DB and target as absolute URL
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"http://myhost:4985/mytargetdb"}`), 200)
+
+	//Send JSON Object containing source as local DB and target as local DB
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb", "target":"mylocaltargetdb"}`), 200)
+}

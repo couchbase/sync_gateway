@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
+	"net/url"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -131,4 +132,21 @@ func TestRetryLoop(t *testing.T) {
 	assert.Equals(t, result, "result")
 	assert.True(t, numTimesInvoked == 4)
 
+}
+
+func TestSyncSourceFromURL(t *testing.T) {
+	u, err := url.Parse("http://www.test.com:4985/mydb")
+	assert.True(t, err == nil)
+	result := SyncSourceFromURL(u)
+	assert.Equals(t, result, "http://www.test.com:4985")
+
+	u, err = url.Parse("http://www.test.com:4984/mydb/some otherinvalidpath?query=yes#fragment")
+	assert.True(t, err == nil)
+	result = SyncSourceFromURL(u)
+	assert.Equals(t, result, "http://www.test.com:4984")
+
+	u, err = url.Parse("MyDB")
+	assert.True(t, err == nil)
+	result = SyncSourceFromURL(u)
+	assert.Equals(t, result, "")
 }
