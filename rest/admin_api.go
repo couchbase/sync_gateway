@@ -172,7 +172,9 @@ type ReplicationParameters struct {
 	TargetDb         string
 	ChangesFeedLimit int
 	Lifecycle        ReplicationLifecycle
+	ReplicationId    string
 	Disabled         bool
+	Async            bool
 }
 
 func (h *handler) handleReplicate() error {
@@ -203,6 +205,7 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 		Proxy            string   `json:"proxy"`
 		QueryParams      string   `json:"query_params"`
 		Cancel           bool     `json:"cancel"`
+		Async            bool     `json:"async"`
 		ChangesFeedLimit int      `json:"changes_feed_limit"`
 		ReplicationId    string   `json:"replication_id"`
 	}
@@ -244,7 +247,7 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 	//A replication_id with cancel set to true, add properties and return
 	if in.ReplicationId != "" && in.Cancel {
 		params.Disabled = in.Cancel
-		//TODO: params.ReplicationID = in.ReplicationID
+		params.ReplicationId = in.ReplicationId
 		return
 	}
 
@@ -270,6 +273,7 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 		params.Lifecycle = CONTINUOUS
 	}
 
+	params.Async = in.Async
 	params.ChangesFeedLimit = in.ChangesFeedLimit
 
 	return
