@@ -10,7 +10,8 @@
   <remote fetch="git://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
-
+  <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
+  
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
@@ -74,6 +75,10 @@
 
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="aaa721aaa27aab85d8b777ab626fcc22ecf87977"/>
 
+  <project name="logg" path="godeps/src/github.com/couchbaselabs/logg" remote="couchbaselabs" revision="e6f120c4776c895f569890df47552d93ab679f3b"/>
+
+  <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
+  
   
 </manifest>
 
