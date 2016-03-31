@@ -12,15 +12,17 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"net/url"
-	"sync/atomic"
-	"time"
+	"github.com/couchbaselabs/sg-replicate"
+	"github.com/gorilla/mux"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -157,44 +159,25 @@ func (h *handler) handleDeleteDB() error {
  * TODO: The following types should be declared in the replicate package
  */
 
-type ReplicationLifecycle int
-
-const (
-	ONE_SHOT = ReplicationLifecycle(iota)
-	CONTINUOUS
-)
-
-type ReplicationParameters struct {
-	Name             string
-	Source           *url.URL
-	SourceDb         string
-	Target           *url.URL
-	TargetDb         string
-	ChangesFeedLimit int
-	Lifecycle        ReplicationLifecycle
-	ReplicationId    string
-	Disabled         bool
-	Async            bool
-}
-
 func (h *handler) handleReplicate() error {
 
+	h.assertAdminOnly()
 	body, err := h.readBody()
 	if err != nil {
 		return err
 	}
 
-	//params, err := h.readReplicationParametersFromJSON(body)
-	_, err = h.readReplicationParametersFromJSON(body)
+	params, cancel, err := readReplicationParametersFromJSON(body)
 
 	if err != nil {
 		return err
 	}
 
-	return nil // db.replicate(params)
+	h.server.replicator.Replicate(params, cancel)
+	return nil
 }
 
-func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params ReplicationParameters, err error) {
+func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, err error) {
 	var in struct {
 		Source           string   `json:"source"`
 		Target           string   `json:"target"`
@@ -258,7 +241,8 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 	}
 	syncSource := base.SyncSourceFromURL(sourceUrl)
 	params.Source, _ = url.Parse(syncSource)
-	params.SourceDb = sourceUrl.Path
+	// Strip leading / from path to get db name
+	params.SourceDb = strings.TrimLeft(sourceUrl.Path, "/")
 
 	targetUrl, err := url.Parse(in.Target)
 	if err != nil || in.Target == "" {
@@ -267,16 +251,16 @@ func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params Rep
 	}
 	syncTarget := base.SyncSourceFromURL(targetUrl)
 	params.Target, _ = url.Parse(syncTarget)
-	params.TargetDb = targetUrl.Path
+	params.TargetDb = strings.TrimLeft(targetUrl.Path, "/")
 
 	if in.Continuous {
-		params.Lifecycle = CONTINUOUS
+		params.Lifecycle = sgreplicate.CONTINUOUS
 	}
 
 	params.Async = in.Async
 	params.ChangesFeedLimit = in.ChangesFeedLimit
 
-	return
+	return params, in.Cancel, nil
 }
 
 func (h *handler) handleActiveTasks() error {
