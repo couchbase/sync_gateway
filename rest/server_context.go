@@ -52,6 +52,7 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		config:     config,
 		databases_: map[string]*db.DatabaseContext{},
 		HTTPClient: http.DefaultClient,
+		replicator: base.NewReplicator(),
 	}
 	if config.Databases == nil {
 		config.Databases = DbConfigMap{}

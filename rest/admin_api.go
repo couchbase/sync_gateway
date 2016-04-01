@@ -173,8 +173,7 @@ func (h *handler) handleReplicate() error {
 		return err
 	}
 
-	h.server.replicator.Replicate(params, cancel)
-	return nil
+	return h.server.replicator.Replicate(params, cancel)
 }
 
 func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, err error) {
