@@ -263,7 +263,8 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 }
 
 func (h *handler) handleActiveTasks() error {
-	return base.HTTPErrorf(http.StatusNotImplemented, "_active_tasks is not implemented.")
+	h.writeJSON(h.server.replicator.ActiveTasks())
+	return nil
 }
 
 // raw document access for admin api

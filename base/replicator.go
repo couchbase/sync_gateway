@@ -18,6 +18,14 @@ type Replicator struct {
 	lock         sync.RWMutex
 }
 
+type ActiveTask struct {
+	TaskType      string `json:"type"`
+	ReplicationID string `json:"replication_id"`
+	Continuous    bool   `json:"continuous"`
+	Source        string `json:"source"`
+	Target        string `json:"target"`
+}
+
 func NewReplicator() *Replicator {
 	return &Replicator{
 		replications: make(map[string]sgreplicate.SGReplication),
@@ -32,6 +40,26 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 		_, err := r.startReplication(params)
 		return err
 	}
+
+}
+
+func (r *Replicator) ActiveTasks() (tasks []ActiveTask) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	for _, replication := range r.replications {
+		params := replication.GetParameters()
+
+		task := ActiveTask{
+			TaskType:      "replication",
+			ReplicationID: params.ReplicationId,
+			Source:        params.GetSourceDbUrl(),
+			Target:        params.GetTargetDbUrl(),
+			Continuous:    params.Lifecycle == sgreplicate.CONTINUOUS,
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks
 
 }
 
