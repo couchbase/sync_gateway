@@ -2,7 +2,7 @@ package base
 
 import (
 	"errors"
-	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -35,8 +35,23 @@ func NewReplicator() *Replicator {
 func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCancel bool) error {
 
 	if isCancel {
-		return r.stopReplication(params.ReplicationId)
+		replicationId := params.ReplicationId
+		// If replicationId isn't defined in the cancel request, attempt to look up the replication based on source, target
+		if replicationId == "" {
+			var found bool
+			replicationId, found = r.getReplicationForParams(params)
+			if !found {
+				return HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
+			}
+		}
+		return r.stopReplication(replicationId)
+
 	} else {
+		// Check whether specified replication is already active
+		_, found := r.getReplicationForParams(params)
+		if found {
+			return HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
+		}
 		_, err := r.startReplication(params)
 		return err
 	}
@@ -47,6 +62,7 @@ func (r *Replicator) ActiveTasks() (tasks []ActiveTask) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
+	tasks = make([]ActiveTask, 0)
 	for _, replication := range r.replications {
 		params := replication.GetParameters()
 
@@ -79,6 +95,19 @@ func (r *Replicator) getReplication(repId string) sgreplicate.SGReplication {
 	}
 }
 
+func (r *Replicator) getReplicationForParams(params sgreplicate.ReplicationParameters) (replicationId string, found bool) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	// Iterate over the known replications looking for a match
+	for _, replication := range r.replications {
+		repParams := replication.GetParameters()
+		if repParams.Equals(params) {
+			return repParams.ReplicationId, true
+		}
+	}
+	return "", false
+}
+
 func (r *Replicator) removeReplication(repId string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -108,7 +137,7 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 func (r *Replicator) stopReplication(repId string) error {
 	replication := r.getReplication(repId)
 	if replication == nil {
-		return fmt.Errorf("No active replication with id %s", repId)
+		return HTTPErrorf(http.StatusNotFound, "No replication found matching specified replication ID")
 	}
 	err := replication.Stop()
 	if err != nil {
