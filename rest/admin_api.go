@@ -206,11 +206,6 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 		return
 	}
 
-	if in.Filter != "" || in.QueryParams != "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate filters are not currently supported.")
-		return
-	}
-
 	if in.Proxy != "" {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate proxy option is not currently supported.")
 		return
@@ -258,6 +253,25 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 
 	params.Async = in.Async
 	params.ChangesFeedLimit = in.ChangesFeedLimit
+
+	if in.Filter != "" {
+		if in.Filter == "sync_gateway/bychannel" {
+			if in.QueryParams == "" {
+				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Missing query_params")
+				return
+			}
+			var channels []string
+			err := json.Unmarshal([]byte(in.QueryParams), &channels)
+			if err != nil {
+				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channels array")
+			}
+			if len(channels) > 0 {
+				params.Channels = channels
+			}
+		}
+	} else {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate Unknown filter; try sync_gateway/bychannel")
+	}
 
 	return params, in.Cancel, nil
 }
