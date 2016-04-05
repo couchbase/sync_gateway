@@ -173,6 +173,16 @@ func (h *handler) handleReplicate() error {
 		return err
 	}
 
+	//If source and/or target are local DB names add local AdminInterface URL
+	localDbUrl := "http://" + *h.server.config.AdminInterface
+	if params.Source == nil {
+		params.Source, _ = url.Parse(localDbUrl)
+	}
+
+	if params.Target == nil {
+		params.Target, _ = url.Parse(localDbUrl)
+	}
+
 	return h.server.replicator.Replicate(params, cancel)
 }
 
@@ -234,7 +244,9 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 		return
 	}
 	syncSource := base.SyncSourceFromURL(sourceUrl)
-	params.Source, _ = url.Parse(syncSource)
+	if syncSource != "" {
+		params.Source, _ = url.Parse(syncSource)
+	}
 	// Strip leading / from path to get db name
 	params.SourceDb = strings.TrimLeft(sourceUrl.Path, "/")
 
@@ -244,7 +256,9 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 		return
 	}
 	syncTarget := base.SyncSourceFromURL(targetUrl)
-	params.Target, _ = url.Parse(syncTarget)
+	if syncTarget != "" {
+		params.Target, _ = url.Parse(syncTarget)
+	}
 	params.TargetDb = strings.TrimLeft(targetUrl.Path, "/")
 
 	if in.Continuous {
