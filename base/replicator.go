@@ -19,11 +19,16 @@ type Replicator struct {
 }
 
 type ActiveTask struct {
-	TaskType      string `json:"type"`
-	ReplicationID string `json:"replication_id"`
-	Continuous    bool   `json:"continuous"`
-	Source        string `json:"source"`
-	Target        string `json:"target"`
+	TaskType         string      `json:"type"`
+	ReplicationID    string      `json:"replication_id"`
+	Continuous       bool        `json:"continuous"`
+	Source           string      `json:"source"`
+	Target           string      `json:"target"`
+	DocsRead         uint32      `json:"docs_read"`
+	DocsWritten      uint32      `json:"docs_written"`
+	DocWriteFailures uint32      `json:"doc_write_failures"`
+	StartLastSeq     uint32      `json:"start_last_seq"`
+	EndLastSeq       interface{} `json:"end_last_seq"`
 }
 
 func NewReplicator() *Replicator {
@@ -65,13 +70,19 @@ func (r *Replicator) ActiveTasks() (tasks []ActiveTask) {
 	tasks = make([]ActiveTask, 0)
 	for _, replication := range r.replications {
 		params := replication.GetParameters()
+		stats := replication.GetStats()
 
 		task := ActiveTask{
-			TaskType:      "replication",
-			ReplicationID: params.ReplicationId,
-			Source:        params.GetSourceDbUrl(),
-			Target:        params.GetTargetDbUrl(),
-			Continuous:    params.Lifecycle == sgreplicate.CONTINUOUS,
+			TaskType:         "replication",
+			ReplicationID:    params.ReplicationId,
+			Source:           params.GetSourceDbUrl(),
+			Target:           params.GetTargetDbUrl(),
+			Continuous:       params.Lifecycle == sgreplicate.CONTINUOUS,
+			DocsRead:         stats.DocsRead,
+			DocsWritten:      stats.DocsWritten,
+			DocWriteFailures: stats.DocWriteFailures,
+			StartLastSeq:     stats.StartLastSeq,
+			EndLastSeq:       stats.EndLastSeq,
 		}
 		tasks = append(tasks, task)
 	}

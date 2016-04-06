@@ -1026,8 +1026,11 @@ func TestReplicateErrorConditions(t *testing.T) {
 	//Send JSON Object containing filter property other than 'sync_gateway/bychannel'
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"filter":"somefilter"}`), 400)
 
-	//Send JSON Object containing filter 'sync_gateway/bychannel' with non string array query_params property
+	//Send JSON Object containing filter 'sync_gateway/bychannel' with non array query_params property
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"filter":"sync_gateway/bychannel", "query_params":{"someproperty":"somevalue"}}`), 400)
+
+	//Send JSON Object containing filter 'sync_gateway/bychannel' with non string array query_params property
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"filter":"sync_gateway/bychannel", "query_params":["someproperty",false]}`), 400)
 
 	//Send JSON Object containing proxy property
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"proxy":"http://myproxy/}`), 400)
