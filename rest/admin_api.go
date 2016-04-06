@@ -261,21 +261,32 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 				return
 			}
 
-			//The Channels must be passed as an array of strings
-			if chanarray, ok := in.QueryParams.([]interface{}); ok {
-				if len(chanarray) > 0 {
-					channels := make([]string, len(chanarray))
-					for i := range chanarray {
-						if channels[i], ok = chanarray[i].(string); !ok {
-							err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channel name")
-							return
-						}
-					}
-					params.Channels = channels
+			//The Channels may be passed as a JSON array of strings directly
+			//or embedded in a JSON object with the "channels" property and array value
+			var chanarray []interface{}
+
+			if paramsmap, ok := in.QueryParams.(map[string]interface{}); ok {
+				if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
+					err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; query_param missing channels property")
+					return
 				}
+			} else if chanarray, ok = in.QueryParams.([]interface{}); ok {
+
 			} else {
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channels array")
 				return
+			}
+			if len(chanarray) > 0 {
+				channels := make([]string, len(chanarray))
+				for i := range chanarray {
+					if channel, ok := chanarray[i].(string); ok {
+						channels[i] = channel
+					} else {
+						err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channel name")
+						return
+					}
+				}
+				params.Channels = channels
 			}
 		}
 	} else {
