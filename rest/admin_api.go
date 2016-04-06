@@ -302,10 +302,10 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 				}
 				params.Channels = channels
 			}
+		} else {
+			err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate Unknown filter; try sync_gateway/bychannel")
+			return
 		}
-	} else {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate Unknown filter; try sync_gateway/bychannel")
-		return
 	}
 
 	return params, in.Cancel, nil
