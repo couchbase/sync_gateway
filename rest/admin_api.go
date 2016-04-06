@@ -271,7 +271,7 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 					return
 				}
 			} else if chanarray, ok = in.QueryParams.([]interface{}); ok {
-
+				// query params is an array and chanarray has been set, now drop out of if-then-else for processing
 			} else {
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channels array")
 				return
