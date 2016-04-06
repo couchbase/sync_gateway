@@ -20,7 +20,7 @@ To build Sync Gateway from source, you must have the following installed:
 
 * Go 1.5 or later with your `$GOPATH` set to a valid directory
 * GCC for CGO (required on Sync Gateway 1.2 or later)
-
+.
 ## Building From source (without dependency pinning)
 
 Warning: while this is the easiest way to build sync gateway from source, there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach that cause certain tests to fail!  To be able to run the full unit test suite and have it pass, skip down to the approach to build from source with dependency pinning.
