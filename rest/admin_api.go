@@ -178,18 +178,18 @@ func (h *handler) handleReplicate() error {
 
 func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, err error) {
 	var in struct {
-		Source           string   `json:"source"`
-		Target           string   `json:"target"`
-		Continuous       bool     `json:"continuous"`
-		CreateTarget     bool     `json:"create_target"`
-		DocIds           []string `json:"doc_ids"`
-		Filter           string   `json:"filter"`
-		Proxy            string   `json:"proxy"`
-		QueryParams      string   `json:"query_params"`
-		Cancel           bool     `json:"cancel"`
-		Async            bool     `json:"async"`
-		ChangesFeedLimit int      `json:"changes_feed_limit"`
-		ReplicationId    string   `json:"replication_id"`
+		Source           string      `json:"source"`
+		Target           string      `json:"target"`
+		Continuous       bool        `json:"continuous"`
+		CreateTarget     bool        `json:"create_target"`
+		DocIds           []string    `json:"doc_ids"`
+		Filter           string      `json:"filter"`
+		Proxy            string      `json:"proxy"`
+		QueryParams      interface{} `json:"query_params"`
+		Cancel           bool        `json:"cancel"`
+		Async            bool        `json:"async"`
+		ChangesFeedLimit int         `json:"changes_feed_limit"`
+		ReplicationId    string      `json:"replication_id"`
 	}
 
 	if err = json.Unmarshal(jsonData, &in); err != nil {
@@ -260,17 +260,27 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Missing query_params")
 				return
 			}
-			var channels []string
-			err := json.Unmarshal([]byte(in.QueryParams), &channels)
-			if err != nil {
+
+			//The Channels must be passed as an array of strings
+			if chanarray, ok := in.QueryParams.([]interface{}); ok {
+				if len(chanarray) > 0 {
+					channels := make([]string, len(chanarray))
+					for i := range chanarray {
+						if channels[i], ok = chanarray[i].(string); !ok {
+							err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channel name")
+							return
+						}
+					}
+					params.Channels = channels
+				}
+			} else {
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channels array")
-			}
-			if len(channels) > 0 {
-				params.Channels = channels
+				return
 			}
 		}
 	} else {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate Unknown filter; try sync_gateway/bychannel")
+		return
 	}
 
 	return params, in.Cancel, nil
