@@ -1050,3 +1050,41 @@ func TestReplicateErrorConditions(t *testing.T) {
 	//Send JSON Object containing source and target as absolute URL and a replication_id
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb", "replication_id":"myreplicationid"}`), 400)
 }
+
+//These tests validate request parameters not actual replication
+func TestReplicate(t *testing.T) {
+	var rt restTester
+
+	//Initiate synchronous one shot replication
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
+
+	//Initiate asyncronous one shot replication
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db", "async":true}`), 200)
+
+	//Initiate continuous replication
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db", "continuous":true}`), 200)
+
+	//Initiate synchronous one shot replication with channel filter and JSON array of channel names
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db2", "target":"http://localhost:4985/db2", "filter":"sync_gateway/bychannel", "query_params":["A"]}`), 500)
+
+	//Initiate synchronous one shot replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db3", "target":"http://localhost:4985/db3", "filter":"sync_gateway/bychannel", "query_params":{"channels":["A"]}}`), 500)
+
+	//Initiate synchronous one shot replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names and custom changes_feed_limit
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db4", "target":"http://localhost:4985/db4", "filter":"sync_gateway/bychannel", "query_params":{"channels":["B"]}, "changes_feed_limit":10}`), 500)
+
+	//Initiate continuous replication with channel filter and JSON array of channel names
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db2", "target":"http://localhost:4985/db2", "filter":"sync_gateway/bychannel", "query_params":["A"], "continuous":true}`), 200)
+
+	//Initiate continuous replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db3", "target":"http://localhost:4985/db3", "filter":"sync_gateway/bychannel", "query_params":{"channels":["A"]}, "continuous":true}`), 200)
+
+	//Initiate continuous replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names and custom changes_feed_limit
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db4", "target":"http://localhost:4985/db4", "filter":"sync_gateway/bychannel", "query_params":{"channels":["B"]}, "changes_feed_limit":10, "continuous":true}`), 200)
+
+	//Cancel a replication
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 500)
+
+
+
+}

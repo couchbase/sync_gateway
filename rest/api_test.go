@@ -73,6 +73,7 @@ func (rt *restTester) bucket() base.Bucket {
 			CORS:     corsConfig,
 			Facebook: &FacebookConfig{},
 			Persona:  &PersonaConfig{},
+			AdminInterface: &DefaultAdminInterface,
 		})
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
