@@ -164,13 +164,20 @@ func (r *Replicator) startOneShotReplication(parameters sgreplicate.ReplicationP
 	r.addReplication(replication)
 
 	if parameters.Async {
+		go r.runOneShotReplication(replication)
 		return replication, nil
-	}
+	} else {
+		err := r.runOneShotReplication(replication)
+		return nil, err
 
-	// If synchronous, blocks until complete
-	defer r.removeReplication(parameters.ReplicationId)
+	}
+}
+
+// Calls WaitUntilDone to work the notification channel for the one-shot replication.  Used for both synchronous and async one-shot replications.
+func (r *Replicator) runOneShotReplication(replication *sgreplicate.Replication) error {
+	defer r.removeReplication(replication.GetParameters().ReplicationId)
 	_, err := replication.WaitUntilDone()
-	return nil, err
+	return err
 }
 
 func (r *Replicator) startContinuousReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
