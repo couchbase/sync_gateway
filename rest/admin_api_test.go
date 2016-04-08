@@ -764,7 +764,11 @@ func TestDBOnlineConcurrent(t *testing.T) {
 		assertStatus(t, goroutineresponse2, 200)
 	}(rt)
 
+	//This only waits until both _online requests have been posted
+	//They may not have been processed at this point
 	wg.Wait()
+
+	time.Sleep(1500 * time.Millisecond)
 
 	response = rt.sendAdminRequest("GET", "/db/", "")
 	body = nil
