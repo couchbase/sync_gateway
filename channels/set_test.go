@@ -16,13 +16,13 @@ import (
 )
 
 func TestIsValidChannel(t *testing.T) {
-	valid := []string{"*", "a", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_", "!"}
+	valid := []string{"*", "**", "a", "a ", "a b", "a*b", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_", "!",  "Z∫•", "*!"}
 	for _, ch := range valid {
 		if !IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be true", ch)
 		}
 	}
-	invalid := []string{"", "**", "a*", "a ", "b?", ",", "Z∫•", "*!"}
+	invalid := []string{"", "*,*", "a,*", "a, ", "b,?", ",", "Z,∫•", "*,!"}
 	for _, ch := range invalid {
 		if IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be false", ch)
@@ -67,6 +67,6 @@ func TestSetFromArrayWithStar(t *testing.T) {
 func TestSetFromArrayError(t *testing.T) {
 	_, err := SetFromArray([]string{""}, RemoveStar)
 	assertTrue(t, err != nil, "SetFromArray didn't return an error")
-	_, err = SetFromArray([]string{"chan1", "chan2", "bogus name", "chan3"}, RemoveStar)
+	_, err = SetFromArray([]string{"chan1", "chan2", "bogus,name", "chan3"}, RemoveStar)
 	assertTrue(t, err != nil, "SetFromArray didn't return an error")
 }

@@ -65,22 +65,22 @@ func TestAccessFunction(t *testing.T) {
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
 func TestSyncFunctionTakesArray(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc) {channel(["foo", "bar","baz"])}`)
+	mapper := NewChannelMapper(`function(doc) {channel(["foo", "bar ok","baz"])}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": []}`), `{}`, noUser)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
-	assert.DeepEquals(t, res.Channels, SetOf("foo", "bar", "baz"))
+	assert.DeepEquals(t, res.Channels, SetOf("foo", "bar ok", "baz"))
 }
 
 // Calling channel() with an invalid channel name should return an error.
 func TestSyncFunctionRejectsInvalidChannels(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc) {channel(["foo", "bad name","baz"])}`)
+	mapper := NewChannelMapper(`function(doc) {channel(["foo", "bad,name","baz"])}`)
 	_, err := mapper.MapToChannelsAndAccess(parse(`{"channels": []}`), `{}`, noUser)
 	assert.True(t, err != nil)
 }
 
 // Calling access() with an invalid channel name should return an error.
 func TestAccessFunctionRejectsInvalidChannels(t *testing.T) {
-	mapper := NewChannelMapper(`function(doc) {access("foo", "bad name");}`)
+	mapper := NewChannelMapper(`function(doc) {access("foo", "bad,name");}`)
 	_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.True(t, err != nil)
 }
