@@ -77,6 +77,12 @@ error: could not verify the tag 'v1.12.33'
 ```
 Then [See this ticket](https://github.com/couchbase/sync_gateway/issues/1654) 
 
+**Switching to a different branch**
+
+```
+$ ./bootstrap.sh <commit-sha>
+```
+
 ### License
 
 Apache 2 license.
