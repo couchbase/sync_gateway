@@ -61,8 +61,15 @@ type CouchbaseBucketGoCB struct {
 
 type GoCBLogger struct{}
 
-func (l GoCBLogger) Output(s string) error {
-	LogTo("gocb", s)
+func (l GoCBLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
+	switch level {
+	case gocbcore.LogError:
+		LogError(fmt.Errorf(format, v))
+	case gocbcore.LogWarn:
+		Warn(format, v)
+	default:
+		LogTo("gocb", format, v)
+	}
 	return nil
 }
 
