@@ -235,7 +235,7 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 	if in.ReplicationId != "" && in.Cancel {
 		params.Disabled = in.Cancel
 		params.ReplicationId = in.ReplicationId
-		return
+		return params, in.Cancel, nil
 	}
 
 	sourceUrl, err := url.Parse(in.Source)

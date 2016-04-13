@@ -38,7 +38,6 @@ func NewReplicator() *Replicator {
 }
 
 func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCancel bool) error {
-
 	if isCancel {
 		replicationId := params.ReplicationId
 		// If replicationId isn't defined in the cancel request, attempt to look up the replication based on source, target
@@ -49,7 +48,16 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 				return HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
 			}
 		}
-		return r.stopReplication(replicationId)
+
+		err := r.stopReplication(replicationId)
+		if err != nil {
+			if _, ok := err.(*HTTPError); ok {
+				return err
+			}
+			return HTTPErrorf(http.StatusInternalServerError, "Error stopping replication: %v", err.Error())
+		}
+
+		return nil
 
 	} else {
 		// Check whether specified replication is already active
@@ -58,9 +66,16 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 			return HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
 		_, err := r.startReplication(params)
-		return err
-	}
 
+		if err != nil {
+			if _, ok := err.(*HTTPError); ok {
+				return err
+			}
+			return HTTPErrorf(http.StatusInternalServerError, "Replication error: %v", err.Error())
+		}
+
+		return nil
+	}
 }
 
 func (r *Replicator) ActiveTasks() (tasks []ActiveTask) {
