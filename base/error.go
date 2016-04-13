@@ -60,7 +60,6 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case *json.SyntaxError, *json.UnmarshalTypeError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", err)
 	}
-	Warn("Couldn't interpret error type %T, value %v", err, err)
 	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 

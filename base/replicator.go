@@ -49,15 +49,7 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 			}
 		}
 
-		err := r.stopReplication(replicationId)
-		if err != nil {
-			if _, ok := err.(*HTTPError); ok {
-				return err
-			}
-			return HTTPErrorf(http.StatusInternalServerError, "Error stopping replication: %v", err.Error())
-		}
-
-		return nil
+		return r.stopReplication(replicationId)
 
 	} else {
 		// Check whether specified replication is already active
@@ -66,15 +58,7 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 			return HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
 		_, err := r.startReplication(params)
-
-		if err != nil {
-			if _, ok := err.(*HTTPError); ok {
-				return err
-			}
-			return HTTPErrorf(http.StatusInternalServerError, "Replication error: %v", err.Error())
-		}
-
-		return nil
+		return err
 	}
 }
 
