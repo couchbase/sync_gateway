@@ -1083,7 +1083,7 @@ func TestReplicate(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db4", "target":"http://localhost:4985/db4", "filter":"sync_gateway/bychannel", "query_params":{"channels":["B"]}, "changes_feed_limit":10, "continuous":true}`), 200)
 
 	//Cancel a replication
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 500)
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
 
 
 
