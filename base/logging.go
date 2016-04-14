@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/couchbaselabs/logg"
+	"github.com/couchbase/clog"
 )
 
 // 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
@@ -111,7 +111,7 @@ func ParseLogFlags(flags []string) {
 }
 
 func EnableSgReplicateLogging() {
-	logg.LogKeys["Replicate"] = true
+	clog.EnableKey("Replicate")
 }
 
 func GetLogKeys() map[string]bool {

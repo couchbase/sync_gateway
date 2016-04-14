@@ -73,9 +73,9 @@
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
 
-  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="6aac61e6623bfd5c9be179473db6328b376ec82d"/>
+  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="291b5d708ccd47622acdb67c983a417e76526a0c"/>
 
-  <project name="logg" path="godeps/src/github.com/couchbaselabs/logg" remote="couchbaselabs" revision="e6f120c4776c895f569890df47552d93ab679f3b"/>
+  <project name="clog" path="godeps/src/github.com/couchbaselabs/clog" remote="couchbase" revision="eebc98233c3e032eb6b9036575d51324ab5932e6"/>
 
   <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
   
