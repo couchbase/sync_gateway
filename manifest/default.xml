@@ -41,8 +41,6 @@
 
   <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="06193ca74e834ca91bc28c7555205aedd8e7fa80"/>
 
-  <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="e0f356188f6f2f3098eb7dbc9082801dffc3f1a8"/>
-
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="ac7dc184fbbd3b89205ba9152ad59ae2996d36c9"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="67fb8fa4c62451372108f31c93034c07d9d9f4ab"/>
@@ -75,7 +73,7 @@
 
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="af45bc0617ac12f2207deb2228a89797683983f1"/>
 
-  <project name="logg" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="eebc98233c3e032eb6b9036575d51324ab5932e6"/>
+  <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="eebc98233c3e032eb6b9036575d51324ab5932e6"/>
 
   <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
   
