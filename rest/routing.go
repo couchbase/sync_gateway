@@ -184,6 +184,10 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, (*handler).handleGetConfig)).Methods("GET")
+	r.Handle("/_replicate",
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleReplicate)).Methods("POST")
+	r.Handle("/_active_tasks",
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleActiveTasks)).Methods("GET")
 
 	// Debugging handlers
 	r.Handle("/_debug/pprof/goroutine",
