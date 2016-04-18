@@ -80,6 +80,7 @@ type ServerConfig struct {
 	MaxFileDescriptors             *uint64         `json:",omitempty"`                        // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses              *bool           `json:",omitempty"`                        // If false, disables compression of HTTP responses
 	Databases                      DbConfigMap     `json:",omitempty"`                        // Pre-configured databases, mapped by name
+	Replications                   *ReplConfigMap  `json:",omitempty"`                        // Configuration for replications to run on startup
 	MaxHeartbeat                   uint64          `json:",omitempty"`                        // Max heartbeat value for _changes request (seconds)
 	ClusterConfig                  *ClusterConfig  `json:"cluster_config,omitempty"`          // Bucket and other config related to CBGT
 	SkipRunmodeValidation          bool            `json:"skip_runmode_validation,omitempty"` // If this is true, skips any config validation regarding accel vs normal mode
@@ -126,6 +127,8 @@ type DbConfig struct {
 }
 
 type DbConfigMap map[string]*DbConfig
+
+type ReplConfigMap map[string]*ReplicationConfig
 
 type PersonaConfig struct {
 	Origin   string // Canonical server URL for Persona authentication

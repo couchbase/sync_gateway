@@ -33,6 +33,7 @@ import (
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
+const kServerStartupWait = 10 * time.Second
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -80,6 +81,27 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
+	}
+
+	if config.Replications != nil {
+		go func() {
+			time.Sleep(kServerStartupWait)
+			for _, replicationConfig := range *config.Replications {
+
+				params, _, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
+
+				if err != nil {
+					base.LogError(err)
+				}
+
+				//Force one-shot replications to run Async
+				//to avoid blocking server startup
+				params.Async = true
+
+				//Run single replication, cancel parameter will always be false
+				sc.replicator.Replicate(params, false)
+			}
+		}()
 	}
 
 	return sc

@@ -37,7 +37,7 @@ func NewReplicator() *Replicator {
 	}
 }
 
-func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCancel bool) error {
+func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCancel bool) (task *ActiveTask, err error) {
 	if isCancel {
 		replicationId := params.ReplicationId
 		// If replicationId isn't defined in the cancel request, attempt to look up the replication based on source, target
@@ -45,20 +45,20 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 			var found bool
 			replicationId, found = r.getReplicationForParams(params)
 			if !found {
-				return HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
+				return nil, HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
 			}
 		}
 
-		return r.stopReplication(replicationId)
+		return nil, r.stopReplication(replicationId)
 
 	} else {
 		// Check whether specified replication is already active
 		_, found := r.getReplicationForParams(params)
 		if found {
-			return HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
+			return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
-		_, err := r.startReplication(params)
-		return err
+		replication, err := r.startReplication(params)
+		return populateActiveTaskFromReplication(replication), err
 	}
 }
 
@@ -68,22 +68,8 @@ func (r *Replicator) ActiveTasks() (tasks []ActiveTask) {
 
 	tasks = make([]ActiveTask, 0)
 	for _, replication := range r.replications {
-		params := replication.GetParameters()
-		stats := replication.GetStats()
-
-		task := ActiveTask{
-			TaskType:         "replication",
-			ReplicationID:    params.ReplicationId,
-			Source:           params.GetSourceDbUrl(),
-			Target:           params.GetTargetDbUrl(),
-			Continuous:       params.Lifecycle == sgreplicate.CONTINUOUS,
-			DocsRead:         stats.DocsRead,
-			DocsWritten:      stats.DocsWritten,
-			DocWriteFailures: stats.DocWriteFailures,
-			StartLastSeq:     stats.StartLastSeq,
-			EndLastSeq:       stats.EndLastSeq,
-		}
-		tasks = append(tasks, task)
+		task := populateActiveTaskFromReplication(replication)
+		tasks = append(tasks, *task)
 	}
 	return tasks
 
@@ -167,7 +153,7 @@ func (r *Replicator) startOneShotReplication(parameters sgreplicate.ReplicationP
 		return replication, nil
 	} else {
 		err := r.runOneShotReplication(replication)
-		return nil, err
+		return replication, err
 
 	}
 }
@@ -209,4 +195,23 @@ func (r *Replicator) startContinuousReplication(parameters sgreplicate.Replicati
 	}(replication, notificationChan)
 
 	return replication, nil
+}
+
+func populateActiveTaskFromReplication (replication sgreplicate.SGReplication) (task *ActiveTask) {
+	params := replication.GetParameters()
+	stats := replication.GetStats()
+	task = &ActiveTask{
+		TaskType:         "replication",
+		ReplicationID:    params.ReplicationId,
+		Source:           params.GetSourceDbUrl(),
+		Target:           params.GetTargetDbUrl(),
+		Continuous:       params.Lifecycle == sgreplicate.CONTINUOUS,
+		DocsRead:         stats.DocsRead,
+		DocsWritten:      stats.DocsWritten,
+		DocWriteFailures: stats.DocWriteFailures,
+		StartLastSeq:     stats.StartLastSeq,
+		EndLastSeq:       stats.EndLastSeq,
+	}
+
+	return
 }
