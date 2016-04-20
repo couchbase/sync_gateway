@@ -194,6 +194,7 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 		}
 
 	}
+	result.TotalRows = len(result.Rows)
 	return
 }
 
