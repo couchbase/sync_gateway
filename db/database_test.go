@@ -54,6 +54,17 @@ func setupTestDB(t *testing.T) *Database {
 	return setupTestDBWithCacheOptions(t, CacheOptions{})
 }
 
+func setupTestDBForShadowing(t *testing.T) *Database {
+	dbcOptions := DatabaseContextOptions{
+		TrackDocs: true,
+	}
+	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
 func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
 
 	dbcOptions := DatabaseContextOptions{

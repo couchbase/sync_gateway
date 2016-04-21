@@ -9,9 +9,9 @@ import (
 
 	"github.com/couchbaselabs/go.assert"
 
+	"encoding/json"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"encoding/json"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -44,7 +44,7 @@ func TestShadowerPull(t *testing.T) {
 	bucket.Set("key2", 0, Body{"bar": -1})
 	bucket.SetRaw("key3", 0, []byte("qwertyuiop")) //will be ignored
 
-	db := setupTestDB(t)
+	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
 
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
@@ -87,7 +87,7 @@ func TestShadowerPush(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 
-	db := setupTestDB(t)
+	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
 
 	var err error
@@ -133,7 +133,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 
-	db := setupTestDB(t)
+	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
 
 	var err error
@@ -166,7 +166,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 	bucket := makeExternalBucket()
 	defer bucket.Close()
 
-	db := setupTestDB(t)
+	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
 
 	var err error
@@ -221,7 +221,7 @@ func TestShadowerPattern(t *testing.T) {
 	bucket.Set("ignorekey", 0, Body{"bar": -1})
 	bucket.Set("key2", 0, Body{"bar": -1})
 
-	db := setupTestDB(t)
+	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
 
 	pattern, _ := regexp.Compile(`key\d+`)
