@@ -230,6 +230,7 @@ func TestUserViewQuery(t *testing.T) {
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
+	assert.Equals(t, result.TotalRows, 1)
 	row := result.Rows[0]
 	assert.Equals(t, row.Key, float64(7))
 	assert.Equals(t, row.Value, "seven")
