@@ -80,6 +80,7 @@ type DatabaseContextOptions struct {
 	RevisionCacheCapacity uint32
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
+	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
 }
 
 type UnsupportedOptions struct {
@@ -168,7 +169,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}, options.CacheOptions, options.IndexOptions)
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
-	if err = context.tapListener.Start(bucket, true, func(bucket string, err error) {
+	if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
 		context.TakeDbOffline("Lost TAP Feed")
 	}); err != nil {
 		return nil, err
@@ -224,7 +225,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.tapListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	if err := context.tapListener.Start(context.Bucket, true, nil); err != nil {
+	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, nil); err != nil {
 		return err
 	}
 	return nil
