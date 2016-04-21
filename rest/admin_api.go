@@ -163,7 +163,7 @@ func (h *handler) handleReplicate() error {
 		return err
 	}
 
-	params, cancel, err := h.readReplicationParametersFromJSON(body)
+	params, cancel, _, err := h.readReplicationParametersFromJSON(body)
 
 	if err != nil {
 		return err
@@ -194,17 +194,17 @@ type ReplicationConfig struct {
 	ReplicationId    string      `json:"replication_id"`
 }
 
-func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, err error) {
+func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 
 	var in ReplicationConfig
 	if err = json.Unmarshal(jsonData, &in); err != nil {
-		return params, false, err
+		return params, false, localdb, err
 	}
 
 	return validateReplicationParameters(in, false, *h.server.config.AdminInterface)
 }
 
-func validateReplicationParameters(requestParams ReplicationConfig, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, err error) {
+func validateReplicationParameters(requestParams ReplicationConfig, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 	if requestParams.CreateTarget {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
 		return
@@ -235,7 +235,7 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 		//A replication_id with cancel set to true, add properties and return
 		if requestParams.ReplicationId != "" && requestParams.Cancel {
 			params.ReplicationId = requestParams.ReplicationId
-			return params, requestParams.Cancel, nil
+			return params, requestParams.Cancel, false, nil
 		}
 	}
 
@@ -313,14 +313,16 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	//If source and/or target are local DB names add local AdminInterface URL
 	localDbUrl := "http://" + adminInterface
 	if params.Source == nil {
+		localdb = true
 		params.Source, _ = url.Parse(localDbUrl)
 	}
 
 	if params.Target == nil {
+		localdb = true
 		params.Target, _ = url.Parse(localDbUrl)
 	}
 
-	return params, requestParams.Cancel, nil
+	return params, requestParams.Cancel, localdb, nil
 }
 
 func (h *handler) handleActiveTasks() error {
