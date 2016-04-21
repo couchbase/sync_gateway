@@ -27,12 +27,14 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/sg-replicate"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
+const kOneShotLocalDbReplicateWait = 10 * time.Second
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -80,6 +82,35 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 	if config.DeploymentID != nil {
 		sc.startStatsReporter()
+	}
+
+	if config.Replications != nil {
+
+		for _, replicationConfig := range *config.Replications {
+
+			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
+
+			if err != nil {
+				base.LogError(err)
+				continue
+			}
+
+			//Force one-shot replications to run Async
+			//to avoid blocking server startup
+			params.Async = true
+
+			//Run single replication, cancel parameter will always be false
+			go func() {
+				//Delay the start of the replication if its a oneshot that
+				//uses a localdb reference to allow the REST API's to come up
+				if params.Lifecycle == sgreplicate.ONE_SHOT && localdb {
+					base.Warn("Delaying start of local database one-shot replication, source %v, target %v for %v seconds", params.SourceDb, params.TargetDb, kOneShotLocalDbReplicateWait)
+					time.Sleep(kOneShotLocalDbReplicateWait)
+				}
+				sc.replicator.Replicate(params, false)
+			}()
+		}
+
 	}
 
 	return sc

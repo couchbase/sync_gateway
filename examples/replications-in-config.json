@@ -1,0 +1,23 @@
+{
+    "log": ["*"],
+    "adminInterface":"0.0.0.0:4985",
+    "replications": {
+        "one-shot": {"source":"source", "target":"target"},
+        "one-shot-async": {"source":"source", "target":"target", "async":true},
+        "continuous": {"source":"source", "target":"target", "continuous":true}
+    },
+    "databases": {
+	    "source": {
+	        "server": "walrus:",
+	        "users": {
+		        "GUEST": {"disabled": false, "admin_channels": []}
+	        }
+	    },
+	    "target": {
+	        "server": "walrus",
+	        "users": {
+		        "GUEST": {"disabled": false, "admin_channels": []}
+	        }
+        }
+    }
+}

@@ -155,10 +155,6 @@ func (h *handler) handleDeleteDB() error {
 
 /////// Replication and Task monitoring
 
-/*
- * TODO: The following types should be declared in the replicate package
- */
-
 func (h *handler) handleReplicate() error {
 
 	h.assertAdminOnly()
@@ -167,79 +163,85 @@ func (h *handler) handleReplicate() error {
 		return err
 	}
 
-	params, cancel, err := readReplicationParametersFromJSON(body)
+	params, cancel, _, err := h.readReplicationParametersFromJSON(body)
 
 	if err != nil {
 		return err
 	}
 
-	//If source and/or target are local DB names add local AdminInterface URL
-	localDbUrl := "http://" + *h.server.config.AdminInterface
-	if params.Source == nil {
-		params.Source, _ = url.Parse(localDbUrl)
+	replication, err := h.server.replicator.Replicate(params, cancel)
+
+	if err == nil {
+		h.writeJSON(replication)
 	}
 
-	if params.Target == nil {
-		params.Target, _ = url.Parse(localDbUrl)
-	}
+	return err
 
-	return h.server.replicator.Replicate(params, cancel)
 }
 
-func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, err error) {
-	var in struct {
-		Source           string      `json:"source"`
-		Target           string      `json:"target"`
-		Continuous       bool        `json:"continuous"`
-		CreateTarget     bool        `json:"create_target"`
-		DocIds           []string    `json:"doc_ids"`
-		Filter           string      `json:"filter"`
-		Proxy            string      `json:"proxy"`
-		QueryParams      interface{} `json:"query_params"`
-		Cancel           bool        `json:"cancel"`
-		Async            bool        `json:"async"`
-		ChangesFeedLimit int         `json:"changes_feed_limit"`
-		ReplicationId    string      `json:"replication_id"`
-	}
+type ReplicationConfig struct {
+	Source           string      `json:"source"`
+	Target           string      `json:"target"`
+	Continuous       bool        `json:"continuous"`
+	CreateTarget     bool        `json:"create_target"`
+	DocIds           []string    `json:"doc_ids"`
+	Filter           string      `json:"filter"`
+	Proxy            string      `json:"proxy"`
+	QueryParams      interface{} `json:"query_params"`
+	Cancel           bool        `json:"cancel"`
+	Async            bool        `json:"async"`
+	ChangesFeedLimit int         `json:"changes_feed_limit"`
+	ReplicationId    string      `json:"replication_id"`
+}
 
+func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
+
+	var in ReplicationConfig
 	if err = json.Unmarshal(jsonData, &in); err != nil {
-		return
+		return params, false, localdb, err
 	}
 
-	if in.CreateTarget {
+	return validateReplicationParameters(in, false, *h.server.config.AdminInterface)
+}
+
+func validateReplicationParameters(requestParams ReplicationConfig, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
+	if requestParams.CreateTarget {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
 		return
 	}
 
-	if len(in.DocIds) > 0 {
+	if len(requestParams.DocIds) > 0 {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate doc_ids option is not currently supported.")
 		return
 	}
 
-	if in.Proxy != "" {
+	if requestParams.Proxy != "" {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate proxy option is not currently supported.")
 		return
 	}
 
-	if in.ReplicationId != "" && (in.Source != "" || in.Target != "") {
+	if requestParams.ReplicationId != "" && (requestParams.Source != "" || requestParams.Target != "") {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate replication_id can not be used with source or target values.")
 		return
 	}
 
-	//A replication_id with cancel set to false is a NOOP just return
-	if in.ReplicationId != "" && !in.Cancel {
-		return
+	//cancel parameter is only supported via the REST API
+	if !paramsFromConfig {
+		//A replication_id with cancel set to false is a NOOP just return
+		if requestParams.ReplicationId != "" && !requestParams.Cancel {
+			return
+		}
+
+		//A replication_id with cancel set to true, add properties and return
+		if requestParams.ReplicationId != "" && requestParams.Cancel {
+			params.ReplicationId = requestParams.ReplicationId
+			return params, requestParams.Cancel, false, nil
+		}
 	}
 
-	//A replication_id with cancel set to true, add properties and return
-	if in.ReplicationId != "" && in.Cancel {
-		params.ReplicationId = in.ReplicationId
-		return params, in.Cancel, nil
-	}
-
-	sourceUrl, err := url.Parse(in.Source)
-	if err != nil || in.Source == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.", in.Source)
+	sourceUrl, err := url.Parse(requestParams.Source)
+	if err != nil || requestParams.Source == "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.", requestParams.Source)
 		return
 	}
 	syncSource := base.SyncSourceFromURL(sourceUrl)
@@ -249,9 +251,9 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 	// Strip leading / from path to get db name
 	params.SourceDb = strings.TrimLeft(sourceUrl.Path, "/")
 
-	targetUrl, err := url.Parse(in.Target)
-	if err != nil || in.Target == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate target URL [%s] is invalid.", in.Target)
+	targetUrl, err := url.Parse(requestParams.Target)
+	if err != nil || requestParams.Target == "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate target URL [%s] is invalid.", requestParams.Target)
 		return
 	}
 	syncTarget := base.SyncSourceFromURL(targetUrl)
@@ -260,16 +262,16 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 	}
 	params.TargetDb = strings.TrimLeft(targetUrl.Path, "/")
 
-	if in.Continuous {
+	if requestParams.Continuous {
 		params.Lifecycle = sgreplicate.CONTINUOUS
 	}
 
-	params.Async = in.Async
-	params.ChangesFeedLimit = in.ChangesFeedLimit
+	params.Async = requestParams.Async
+	params.ChangesFeedLimit = requestParams.ChangesFeedLimit
 
-	if in.Filter != "" {
-		if in.Filter == "sync_gateway/bychannel" {
-			if in.QueryParams == "" {
+	if requestParams.Filter != "" {
+		if requestParams.Filter == "sync_gateway/bychannel" {
+			if requestParams.QueryParams == "" {
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Missing query_params")
 				return
 			}
@@ -278,12 +280,12 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 			//or embedded in a JSON object with the "channels" property and array value
 			var chanarray []interface{}
 
-			if paramsmap, ok := in.QueryParams.(map[string]interface{}); ok {
+			if paramsmap, ok := requestParams.QueryParams.(map[string]interface{}); ok {
 				if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
 					err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; query_param missing channels property")
 					return
 				}
-			} else if chanarray, ok = in.QueryParams.([]interface{}); ok {
+			} else if chanarray, ok = requestParams.QueryParams.([]interface{}); ok {
 				// query params is an array and chanarray has been set, now drop out of if-then-else for processing
 			} else {
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channels array")
@@ -307,7 +309,20 @@ func readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.Repl
 		}
 	}
 
-	return params, in.Cancel, nil
+
+	//If source and/or target are local DB names add local AdminInterface URL
+	localDbUrl := "http://" + adminInterface
+	if params.Source == nil {
+		localdb = true
+		params.Source, _ = url.Parse(localDbUrl)
+	}
+
+	if params.Target == nil {
+		localdb = true
+		params.Target, _ = url.Parse(localDbUrl)
+	}
+
+	return params, requestParams.Cancel, localdb, nil
 }
 
 func (h *handler) handleActiveTasks() error {
