@@ -75,6 +75,13 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		return
 	}
 
+	db.AddDocInstanceToChangeEntry(entry, doc, options)
+}
+
+// Adds a document body and/or its conflicts to a ChangeEntry
+func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *document, options ChangesOptions) {
+	includeConflicts := options.Conflicts && entry.branched
+
 	revID := entry.Changes[0]["rev"]
 	if includeConflicts {
 		doc.History.forEachLeaf(func(leaf *RevInfo) {

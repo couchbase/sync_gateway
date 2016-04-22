@@ -155,6 +155,9 @@ func (h *handler) handleChanges() error {
 				return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 			}
 		} else if filter == "_doc_ids" {
+			if feed != "normal" && feed != "" {
+				return base.HTTPErrorf(http.StatusBadRequest, "Filter '_doc_ids' is only valid for feed=normal replications")
+			}
 			if docIdsArray == nil {
 				return base.HTTPErrorf(http.StatusBadRequest, "Missing 'doc_ids' filter parameter")
 			}
@@ -308,13 +311,13 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		row := &db.ChangeEntry{ID: doc.DocID}
 
 		// Fetch the document body and other metadata that lives with it:
-		body, _, _, _, flags, sequence, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, false)
+		populatedDoc, body, err := h.db.GetDocAndActiveRev(doc.DocID, false)
 		if err != nil {
-			base.LogTo("Changes", "Unable to get changes for docID %v", doc.DocID)
+			base.LogTo("Changes", "Unable to get changes for docID %v, caused by %v", doc.DocID, err)
 			return nil
 		}
 
-		if sequence <= options.Since.Seq {
+		if populatedDoc.Sequence <= options.Since.Seq {
 			return nil
 		}
 
@@ -323,16 +326,35 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		}
 
 		doc.RevID = body["_rev"].(string)
-		doc.Sequence = sequence
+		doc.Sequence = populatedDoc.Sequence
 
 		changes := make([]db.ChangeRev, 1)
 		changes[0] = db.ChangeRev{"rev": doc.RevID}
 		row.Changes = changes
 		row.Seq = db.SequenceID{Seq: doc.Sequence}
-		row.SetBranched((flags & channels.Branched) != 0)
+		row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
+		var removedChannels []string
+		//Do special _removed/_deleted processing
+		for channel, removal := range populatedDoc.Channels {
+			//Doc is tagged with channel or was removed at a sequence later that since sequence
+			if removal == nil || removal.Seq > options.Since.Seq {
+				//if the current user has access to this channel
+				if h.user.CanSeeChannel(channel) {
+					//If the doc has been removed
+					if removal != nil {
+						removedChannels = append(removedChannels,channel)
+						if removal.Deleted {
+							row.Deleted = true
+						}
+					}
+				}
+			}
+		}
+
+		row.Removed = base.SetFromArray(removedChannels)
 		if options.IncludeDocs || options.Conflicts {
-			h.db.AddDocToChangeEntry(row, options)
+			h.db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
 		}
 
 		return row
