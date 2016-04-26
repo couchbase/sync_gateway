@@ -40,7 +40,7 @@ type AttachmentKey string
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
-func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string) error {
+func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string, docHistory []string) error {
 	var parentAttachments map[string]interface{}
 	atts := BodyAttachments(body)
 	if atts == nil && body["_attachments"] != nil {
@@ -90,12 +90,11 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
 				return base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
 			}
-			// Try to look up the attachment in the parent revision:
+			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
-				if parent, _ := db.getAvailableRev(doc, parentRev); parent != nil {
-					parentAttachments, _ = parent["_attachments"].(map[string]interface{})
-				}
+				parentAttachments = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
 			}
+
 			if parentAttachments != nil {
 				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
 					atts[name] = parentAttachment
@@ -106,6 +105,36 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 		}
 	}
 	return nil
+}
+
+// Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
+// If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
+// If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
+func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) map[string]interface{} {
+
+	var parentAttachments map[string]interface{}
+	// Attempt to find a non-pruned parent or ancestor
+	parent, _ := db.getAvailableRev(doc, parentRev)
+	if parent != nil {
+		parentAttachments, _ = parent["_attachments"].(map[string]interface{})
+	} else {
+		// No non-pruned ancestor is available
+		commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory)
+		if commonAncestor != "" {
+			parentAttachments = make(map[string]interface{})
+			commonAncestorGen, _ := base.ToInt64(genOfRevID(commonAncestor))
+			for name, activeAttachment := range BodyAttachments(doc.body) {
+				attachmentMeta, ok := activeAttachment.(map[string]interface{})
+				if ok {
+					activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
+					if ok && activeRevpos <= commonAncestorGen {
+						parentAttachments[name] = activeAttachment
+					}
+				}
+			}
+		}
+	}
+	return parentAttachments
 }
 
 // Goes through a revisions '_attachments' map, loads attachments (by their 'digest' properties)

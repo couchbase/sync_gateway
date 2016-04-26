@@ -392,7 +392,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
-		if err := db.storeAttachments(doc, body, generation, matchRev); err != nil {
+		if err := db.storeAttachments(doc, body, generation, matchRev, nil); err != nil {
 			return nil, err
 		}
 
@@ -441,7 +441,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
-		if err := db.storeAttachments(doc, body, generation, parentRevID); err != nil {
+		if err := db.storeAttachments(doc, body, generation, parentRevID, docHistory); err != nil {
 			return nil, err
 		}
 		body["_rev"] = newRev
