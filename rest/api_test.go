@@ -385,6 +385,113 @@ func TestFunkyDocIDs(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
+func TestFunkyDocAndAttachmentIDs(t *testing.T) {
+	var rt restTester
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	//Create document with simple name
+	doc1revId := rt.createDoc(t, "doc1")
+
+	// add attachment with single embedded '/' (%2F HEX)
+	response := rt.sendRequestWithHeaders("PUT", "/db/doc1/attachpath%2Fattachment.txt?rev="+doc1revId, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment := body["rev"].(string)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attachpath%2Fattachment.txt", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	// add attachment with two embedded '/' (%2F HEX)
+	response = rt.sendRequestWithHeaders("PUT", "/db/doc1/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/doc1/attachpath%2Fattachpath2%2Fattachment.txt", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+	//Create Doc with embedded '/' (%2F HEX) in name
+	doc1revId = rt.createDoc(t, "AC%2FDC")
+
+	response = rt.sendRequest("GET", "/db/AC%2FDC", "")
+	assertStatus(t, response, 200)
+
+	// add attachment with single embedded '/' (%2F HEX)
+	response = rt.sendRequestWithHeaders("PUT", "/db/AC%2FDC/attachpath%2Fattachment.txt?rev="+doc1revId, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment = body["rev"].(string)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/AC%2FDC/attachpath%2Fattachment.txt", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+
+	// add attachment with two embedded '/' (%2F HEX)
+	response = rt.sendRequestWithHeaders("PUT", "/db/AC%2FDC/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/AC%2FDC/attachpath%2Fattachpath2%2Fattachment.txt", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+
+	//Create Doc with embedded '+' (%2B HEX) in name
+	doc1revId = rt.createDoc(t, "AC%2BDC%2BGC2")
+
+	response = rt.sendRequest("GET", "/db/AC%2BDC%2BGC2", "")
+	assertStatus(t, response, 200)
+
+	// add attachment with single embedded '/' (%2F HEX)
+	response = rt.sendRequestWithHeaders("PUT", "/db/AC%2BDC%2BGC2/attachpath%2Fattachment.txt?rev="+doc1revId, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revIdAfterAttachment = body["rev"].(string)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/AC%2BDC%2BGC2/attachpath%2Fattachment.txt", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+
+
+	// add attachment with two embedded '/' (%2F HEX)
+	response = rt.sendRequestWithHeaders("PUT", "/db/AC%2BDC%2BGC2/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.sendRequest("GET", "/db/AC%2BDC%2BGC2/attachpath%2Fattachpath2%2Fattachment.txt", "")
+	assertStatus(t, response, 200)
+	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+}
+
 func TestCORSOrigin(t *testing.T) {
 	var rt restTester
 	reqHeaders := map[string]string{
