@@ -26,23 +26,34 @@ type PrincipalConfig struct {
 // Check if the password in this PrincipalConfig is valid.  Only allow
 // empty passwords if allowEmptyPass is true.
 func (p PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
-
 	// if it's an anon user, they should not have a password
-	if p.Name == nil && p.Password != nil {
-		return false, "Anonymous users should not have a password"
+	if p.Name == nil {
+		if p.Password != nil {
+			return false, "Anonymous users should not have a password"
+		} else {
+			return true, ""
+		}
 	}
 
-	if allowEmptyPass {
-		// allow any password, skip validation
-		return true, ""
-	}
+	/*
+		if allowEmptyPass && ( p.Password == nil || len(*p.Password) == 0) {
+			return true, ""
+		}
 
-	if p.Password != nil && len(*p.Password) < 3 {
+		if p.Password == nil || (p.Password != nil && len(*p.Password) < 3) {
+			return false, "Passwords must be at least three 3 characters"
+		}
+	*/
+
+	if p.Password == nil || len(*p.Password) == 0 {
+		if !allowEmptyPass {
+			return false, "Empty passwords are not allowed "
+		}
+	} else if len(*p.Password) < 3 {
 		return false, "Passwords must be at least three 3 characters"
 	}
 
 	return true, ""
-
 }
 
 func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *PrincipalConfig, err error) {
@@ -77,11 +88,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	var user auth.User
 	authenticator := dbc.Authenticator()
 	if isUser {
-		isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
-		if !isValid {
-			err = base.HTTPErrorf(http.StatusBadRequest, reason)
-			return
-		}
 		user, err = authenticator.GetUser(*newInfo.Name)
 		princ = user
 	} else {
@@ -96,6 +102,11 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	if !replaced {
 		// If user/role didn't exist already, instantiate a new one:
 		if isUser {
+			isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+			if !isValid {
+				err = base.HTTPErrorf(http.StatusBadRequest, reason)
+				return
+			}
 			user, err = authenticator.NewUser(*newInfo.Name, "", nil)
 			princ = user
 		} else {
@@ -108,6 +119,12 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	} else if !allowReplace {
 		err = base.HTTPErrorf(http.StatusConflict, "Already exists")
 		return
+	} else if isUser && newInfo.Password != nil {
+		isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+		if !isValid {
+			err = base.HTTPErrorf(http.StatusBadRequest, reason)
+			return
+		}
 	}
 
 	updatedChannels := princ.ExplicitChannels()

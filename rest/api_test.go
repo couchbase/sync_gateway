@@ -70,9 +70,9 @@ func (rt *restTester) bucket() base.Bucket {
 		}
 
 		rt._sc = NewServerContext(&ServerConfig{
-			CORS:     corsConfig,
-			Facebook: &FacebookConfig{},
-			Persona:  &PersonaConfig{},
+			CORS:           corsConfig,
+			Facebook:       &FacebookConfig{},
+			Persona:        &PersonaConfig{},
 			AdminInterface: &DefaultAdminInterface,
 		})
 
@@ -98,6 +98,37 @@ func (rt *restTester) bucket() base.Bucket {
 			rt._sc.Close()
 		})
 	}
+	return rt._bucket
+}
+
+func (rt *restTester) bucketAllowEmptyPassword() base.Bucket {
+
+	//Create test DB with "AllowEmptyPassword" true
+	server := "walrus:"
+	bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
+	gBucketCounter++
+
+	rt._sc = NewServerContext(&ServerConfig{
+		CORS:           &CORSConfig{},
+		Facebook:       &FacebookConfig{},
+		Persona:        &PersonaConfig{},
+		AdminInterface: &DefaultAdminInterface,
+	})
+
+	_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
+		BucketConfig: BucketConfig{
+			Server: &server,
+			Bucket: &bucketName},
+		Name:               "db",
+		AllowEmptyPassword: true,
+		CacheConfig:        rt.cacheConfig,
+	})
+
+	if err != nil {
+		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+	}
+	rt._bucket = rt._sc.Database("db").Bucket
+
 	return rt._bucket
 }
 
