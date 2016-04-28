@@ -30,6 +30,7 @@ import (
 func TestUserAPI(t *testing.T) {
 	// PUT a user
 	var rt restTester
+
 	assertStatus(t, rt.sendAdminRequest("GET", "/db/_user/snej", ""), 404)
 	response := rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
@@ -98,6 +99,104 @@ func TestUserAPI(t *testing.T) {
 
 	// DELETE the user
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
+
+}
+func TestUserPasswordValidation (t *testing.T) {
+	// PUT a user
+	var rt restTester
+
+	response := rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// PUT a user without a password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// POST a user without a password, should fail
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// PUT a user with a two character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// POST a user with a two character password, should fail
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// PUT a user with a zero character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// POST a user with a zero character password, should fail
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// PUT update a user with a two character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":"an"}`)
+	assertStatus(t, response, 400)
+
+	// PUT update a user with a one character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":"a"}`)
+	assertStatus(t, response, 400)
+
+	// PUT update a user with a zero character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":""}`)
+	assertStatus(t, response, 400)
+
+	// PUT update a user with a three character password, should succeed
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":"abc"}`)
+	assertStatus(t, response, 200)
+}
+
+func TestUserAllowEmptyPassword (t *testing.T) {
+	// PUT a user
+	var rt restTester
+
+	rt.bucketAllowEmptyPassword()
+
+	response := rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// PUT a user without a password, should succeed
+	response = rt.sendAdminRequest("PUT", "/db/_user/nopassword1", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// POST a user without a password, should succeed
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"nopassword2", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// PUT a user with a two character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/nopassword3", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// POST a user with a two character password, should fail
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"nopassword4", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 400)
+
+	// PUT a user with a zero character password, should succeed
+	response = rt.sendAdminRequest("PUT", "/db/_user/nopassword5", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// POST a user with a zero character password, should succeed
+	response = rt.sendAdminRequest("POST", "/db/_user/", `{"name":"nopassword6", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// PUT update a user with a two character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":"an"}`)
+	assertStatus(t, response, 400)
+
+	// PUT update a user with a one character password, should fail
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":"a"}`)
+	assertStatus(t, response, 400)
+
+	// PUT update a user with a zero character password, should succeed
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":""}`)
+	assertStatus(t, response, 200)
+
+	// PUT update a user with a three character password, should succeed
+	response = rt.sendAdminRequest("PUT", "/db/_user/snej", `{"password":"abc"}`)
+	assertStatus(t, response, 200)
 }
 
 // Test user access grant while that user has an active changes feed.  (see issue #880)
@@ -1037,7 +1136,7 @@ func TestReplicateErrorConditions(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"filter":"sync_gateway/bychannel", "query_params":["someproperty",false]}`), 400)
 
 	//Send JSON Object containing proxy property
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"proxy":"http://myproxy/}`), 400)
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"proxy":"http://myproxy/"}`), 400)
 
 	//Send JSON Object containing source as absolute URL but no target
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb"}`), 400)
@@ -1058,6 +1157,8 @@ func TestReplicateErrorConditions(t *testing.T) {
 //These tests validate request parameters not actual replication
 func TestReplicate(t *testing.T) {
 	var rt restTester
+
+	time.Sleep(10*time.Second)
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
@@ -1088,7 +1189,5 @@ func TestReplicate(t *testing.T) {
 
 	//Cancel a replication
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
-
-
 
 }
