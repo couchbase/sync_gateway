@@ -86,7 +86,7 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 	if config.Replications != nil {
 
-		for _, replicationConfig := range *config.Replications {
+		for _,replicationConfig := range config.Replications {
 
 			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
 

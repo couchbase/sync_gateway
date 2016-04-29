@@ -220,11 +220,6 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 		return
 	}
 
-	if requestParams.ReplicationId != "" && (requestParams.Source != "" || requestParams.Target != "") {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate replication_id can not be used with source or target values.")
-		return
-	}
-
 	//cancel parameter is only supported via the REST API
 	if !paramsFromConfig {
 		//A replication_id with cancel set to false is a NOOP just return

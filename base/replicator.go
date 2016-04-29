@@ -52,7 +52,16 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 		return nil, r.stopReplication(replicationId)
 
 	} else {
-		// Check whether specified replication is already active
+		replicationId := params.ReplicationId
+		// If replicationId is defined, check that a replication with the same ID is not already running
+		if replicationId != "" {
+			sgreplication := r.getReplication(replicationId)
+			if  sgreplication != nil {
+				return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified replication_id [%v]",replicationId)
+			}
+		}
+
+		// Check whether specified replication is already active for the given params
 		_, found := r.getReplicationForParams(params)
 		if found {
 			return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
