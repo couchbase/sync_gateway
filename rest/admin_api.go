@@ -220,16 +220,11 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 		return
 	}
 
+	params.ReplicationId = requestParams.ReplicationId
+
 	//cancel parameter is only supported via the REST API
 	if !paramsFromConfig {
-		//A replication_id with cancel set to false is a NOOP just return
-		if requestParams.ReplicationId != "" && !requestParams.Cancel {
-			return
-		}
-
-		//A replication_id with cancel set to true, add properties and return
-		if requestParams.ReplicationId != "" && requestParams.Cancel {
-			params.ReplicationId = requestParams.ReplicationId
+		if requestParams.Cancel {
 			return params, requestParams.Cancel, false, nil
 		}
 	}
