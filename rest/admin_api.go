@@ -223,11 +223,18 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	params.ReplicationId = requestParams.ReplicationId
 
 	//cancel parameter is only supported via the REST API
-	if !paramsFromConfig {
-		if requestParams.Cancel {
-			return params, requestParams.Cancel, false, nil
+	if requestParams.Cancel {
+		if paramsFromConfig {
+			err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate cancel is invalid in Sync Gateway configuration", requestParams.Source)
+			return
+		} else {
+			cancel = true
+			if params.ReplicationId != "" {
+				return params, cancel, localdb, nil
+			}
 		}
 	}
+
 
 	sourceUrl, err := url.Parse(requestParams.Source)
 	if err != nil || requestParams.Source == "" {

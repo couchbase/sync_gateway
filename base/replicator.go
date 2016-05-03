@@ -38,31 +38,18 @@ func NewReplicator() *Replicator {
 }
 
 func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCancel bool) (task *ActiveTask, err error) {
+
+	replicationId, found := r.getReplicationForParams(params)
+
 	if isCancel {
-		replicationId := params.ReplicationId
 		// If replicationId isn't defined in the cancel request, attempt to look up the replication based on source, target
 		if replicationId == "" {
-			var found bool
-			replicationId, found = r.getReplicationForParams(params)
 			if !found {
 				return nil, HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
 			}
 		}
-
 		return nil, r.stopReplication(replicationId)
-
 	} else {
-		replicationId := params.ReplicationId
-		// If replicationId is defined, check that a replication with the same ID is not already running
-		if replicationId != "" {
-			sgreplication := r.getReplication(replicationId)
-			if  sgreplication != nil {
-				return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified replication_id [%v]",replicationId)
-			}
-		}
-
-		// Check whether specified replication is already active for the given params
-		_, found := r.getReplicationForParams(params)
 		if found {
 			return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
@@ -100,13 +87,19 @@ func (r *Replicator) getReplication(repId string) sgreplicate.SGReplication {
 	}
 }
 
-func (r *Replicator) getReplicationForParams(params sgreplicate.ReplicationParameters) (replicationId string, found bool) {
+func (r *Replicator) getReplicationForParams(queryParams sgreplicate.ReplicationParameters) (replicationId string, found bool) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
+
 	// Iterate over the known replications looking for a match
 	for _, replication := range r.replications {
 		repParams := replication.GetParameters()
-		if repParams.Equals(params) {
+
+		if queryParams.ReplicationId != "" && queryParams.ReplicationId == repParams.ReplicationId {
+			return repParams.ReplicationId, true
+		}
+
+		if repParams.Equals(queryParams) {
 			return repParams.ReplicationId, true
 		}
 	}
