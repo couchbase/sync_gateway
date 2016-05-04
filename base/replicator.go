@@ -38,22 +38,15 @@ func NewReplicator() *Replicator {
 }
 
 func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCancel bool) (task *ActiveTask, err error) {
+
+	replicationId, found := r.getReplicationForParams(params)
+
 	if isCancel {
-		replicationId := params.ReplicationId
-		// If replicationId isn't defined in the cancel request, attempt to look up the replication based on source, target
-		if replicationId == "" {
-			var found bool
-			replicationId, found = r.getReplicationForParams(params)
-			if !found {
-				return nil, HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
-			}
+		if !found {
+			return nil, HTTPErrorf(http.StatusNotFound, "No replication found matching specified parameters")
 		}
-
-		return nil, r.stopReplication(replicationId)
-
+		return r.stopReplication(replicationId)
 	} else {
-		// Check whether specified replication is already active
-		_, found := r.getReplicationForParams(params)
 		if found {
 			return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
@@ -91,13 +84,19 @@ func (r *Replicator) getReplication(repId string) sgreplicate.SGReplication {
 	}
 }
 
-func (r *Replicator) getReplicationForParams(params sgreplicate.ReplicationParameters) (replicationId string, found bool) {
+func (r *Replicator) getReplicationForParams(queryParams sgreplicate.ReplicationParameters) (replicationId string, found bool) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
+
 	// Iterate over the known replications looking for a match
 	for _, replication := range r.replications {
 		repParams := replication.GetParameters()
-		if repParams.Equals(params) {
+
+		if queryParams.ReplicationId != "" && queryParams.ReplicationId == repParams.ReplicationId {
+			return repParams.ReplicationId, true
+		}
+
+		if repParams.Equals(queryParams) {
 			return repParams.ReplicationId, true
 		}
 	}
@@ -130,17 +129,20 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 	}
 }
 
-func (r *Replicator) stopReplication(repId string) error {
+func (r *Replicator) stopReplication(repId string) (task *ActiveTask, err error) {
 	replication := r.getReplication(repId)
 	if replication == nil {
-		return HTTPErrorf(http.StatusNotFound, "No replication found matching specified replication ID")
+		return nil, HTTPErrorf(http.StatusNotFound, "No replication found matching specified replication ID")
 	}
-	err := replication.Stop()
+	err = replication.Stop()
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	taskState := populateActiveTaskFromReplication(replication)
+
 	r.removeReplication(repId)
-	return nil
+	return taskState, nil
 }
 
 func (r *Replicator) startOneShotReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
@@ -197,7 +199,7 @@ func (r *Replicator) startContinuousReplication(parameters sgreplicate.Replicati
 	return replication, nil
 }
 
-func populateActiveTaskFromReplication (replication sgreplicate.SGReplication) (task *ActiveTask) {
+func populateActiveTaskFromReplication(replication sgreplicate.SGReplication) (task *ActiveTask) {
 	params := replication.GetParameters()
 	stats := replication.GetStats()
 	task = &ActiveTask{

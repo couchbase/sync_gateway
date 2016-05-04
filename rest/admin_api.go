@@ -220,24 +220,21 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 		return
 	}
 
-	if requestParams.ReplicationId != "" && (requestParams.Source != "" || requestParams.Target != "") {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate replication_id can not be used with source or target values.")
-		return
-	}
+	params.ReplicationId = requestParams.ReplicationId
 
 	//cancel parameter is only supported via the REST API
-	if !paramsFromConfig {
-		//A replication_id with cancel set to false is a NOOP just return
-		if requestParams.ReplicationId != "" && !requestParams.Cancel {
+	if requestParams.Cancel {
+		if paramsFromConfig {
+			err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate cancel is invalid in Sync Gateway configuration", requestParams.Source)
 			return
-		}
-
-		//A replication_id with cancel set to true, add properties and return
-		if requestParams.ReplicationId != "" && requestParams.Cancel {
-			params.ReplicationId = requestParams.ReplicationId
-			return params, requestParams.Cancel, false, nil
+		} else {
+			cancel = true
+			if params.ReplicationId != "" {
+				return params, cancel, localdb, nil
+			}
 		}
 	}
+
 
 	sourceUrl, err := url.Parse(requestParams.Source)
 	if err != nil || requestParams.Source == "" {
