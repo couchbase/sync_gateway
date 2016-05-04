@@ -1060,7 +1060,7 @@ func TestReplicate(t *testing.T) {
 	var rt restTester
 
 	//Initiate synchronous one shot replication
-	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 200)
+	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
 
 	//Initiate asyncronous one shot replication
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db", "async":true}`), 200)

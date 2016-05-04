@@ -173,12 +173,12 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 
 // Returns the body of the active revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) GetDocAndActiveRev(docid string, listRevisions bool) (populatedDoc *document, body Body, err error) {
+func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *document, body Body, err error) {
 	populatedDoc, err = db.GetDoc(docid)
 	if populatedDoc == nil {
 		return
 	}
-	body, err = db.getRevFromDoc(populatedDoc, populatedDoc.CurrentRev, listRevisions)
+	body, err = db.getRevFromDoc(populatedDoc, populatedDoc.CurrentRev, false)
 	if err != nil {
 		return
 	}
