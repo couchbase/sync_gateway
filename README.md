@@ -1,4 +1,4 @@
-[![Build Status](http://drone.couchbasemobile.com/api/badges/couchbase/sync_gateway/status.svg)](http://drone.couchbasemobile.com/couchbase/sync_gateway)
+[![Build Status](http://drone.couchbase.io/api/badges/couchbase/sync_gateway/status.svg)](http://drone.couchbase.io/couchbase/sync_gateway)
 
 # Couchbase Sync Gateway
 
