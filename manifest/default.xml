@@ -11,6 +11,7 @@
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
   <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
+  <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
   
   <default remote="couchbase" revision="master"/>
 
@@ -24,6 +25,9 @@
   <!-- Sync Gateway -->
   <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase"/> 
   
+  <!-- Sync Gateway Accel-->
+  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private"/> 
+
   <!-- Dependencies -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
 
