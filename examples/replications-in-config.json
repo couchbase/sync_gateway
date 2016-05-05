@@ -24,22 +24,10 @@
   ],
   "databases": {
     "source": {
-      "server": "walrus:",
-      "users": {
-        "GUEST": {
-          "disabled": false,
-          "admin_channels": []
-        }
-      }
-    },
+      "server": "walrus:"
+      },
     "target": {
-      "server": "walrus",
-      "users": {
-        "GUEST": {
-          "disabled": false,
-          "admin_channels": []
-        }
-      }
+      "server": "walrus:"
     }
   }
 }
