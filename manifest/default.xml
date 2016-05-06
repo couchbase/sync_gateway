@@ -9,6 +9,7 @@
   <remote fetch="git://github.com/natefinch/" name="natefinch"/>
   <remote fetch="git://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="git://github.com/samuel/" name="samuel"/>
+  <remote fetch="git://github.com/snej/" name="snej"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
   <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
@@ -81,7 +82,8 @@
 
   <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
   
-  
+  <project name="go-blip" path="godeps/src/github.com/snej/go-blip" remote="snej" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
+    
 </manifest>
 
 
