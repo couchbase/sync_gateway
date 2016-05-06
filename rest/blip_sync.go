@@ -51,6 +51,10 @@ var kHandlersByProfile = map[string]func(*blipHandler, *blip.Message) error{
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
+	if u := h.server.GetDatabaseConfig(h.db.Name).Unsupported; u == nil || !u.Replicator2 {
+		return base.HTTPErrorf(http.StatusNotFound, "feature not enabled")
+	}
+
 	ctx := blipSyncContext{
 		blipContext: blip.NewContext(),
 		dbc:         h.db.DatabaseContext,

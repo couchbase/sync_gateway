@@ -199,7 +199,8 @@ type UnsupportedConfig struct {
 }
 
 type UnsupportedServerConfig struct {
-	Http2Config *Http2Config `json:"http2,omitempty"` // Config settings for HTTP2
+	Http2Config *Http2Config `json:"http2,omitempty"`        // Config settings for HTTP2
+	Replicator2 bool         `json:"replicator_2,omitempty"` // Enable new replicator (_blipsync)
 }
 
 type UserViewsConfig struct {
