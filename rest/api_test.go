@@ -1598,7 +1598,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, len(changes.Results), 3)
 	assert.Equals(t, changes.Results[1].ID, "doc4")
 
 	//User has access to different single channel
@@ -1609,8 +1609,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 3)
-	assert.Equals(t, changes.Results[2].ID, "docC")
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[2].ID, "docD")
 
 	//User has access to multiple channels
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
@@ -1631,7 +1631,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 0)
+	assert.Equals(t, len(changes.Results), 4)
 
 	//Use since value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":5}`

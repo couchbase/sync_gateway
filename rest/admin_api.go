@@ -279,7 +279,7 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 
 			if paramsmap, ok := requestParams.QueryParams.(map[string]interface{}); ok {
 				if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
-					err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; query_param missing channels property")
+					err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; query_params missing channels property")
 					return
 				}
 			} else if chanarray, ok = requestParams.QueryParams.([]interface{}); ok {
