@@ -9,6 +9,7 @@
   <remote fetch="https://github.com/natefinch/" name="natefinch"/>
   <remote fetch="https://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="https://github.com/samuel/" name="samuel"/>
+  <remote fetch="https://github.com/snej/" name="snej"/>
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
   <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
   <remote fetch="https://github.com/kardianos/" name="kardianos"/>
@@ -107,6 +108,8 @@
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
 
+  <project name="go-blip" path="godeps/src/github.com/snej/go-blip" remote="snej" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
+  
 </manifest>
 
 
