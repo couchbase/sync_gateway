@@ -78,12 +78,12 @@ case \"\$1\" in
         fi
         ;;
     restart)
-        \$name stop
+        service \$name stop
         if is_running; then
             echo "Unable to stop, will not attempt to start"
             exit 1
         fi
-        \$name start
+        service \$name start
         ;;
     status)
         if is_running; then
