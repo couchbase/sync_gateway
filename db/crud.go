@@ -496,6 +496,13 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 			return
 		}
 
+		//Reject a body that contains the "_removed" property, this means that the user
+		//is trying to update a document they do not have read access to.
+		if body["_removed"] != nil {
+			err = base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
+			return
+		}
+
 		//Reject bodies containing user special properties for compatibility with CouchDB
 		if containsUserSpecialProperties(body) {
 			err = base.HTTPErrorf(400, "user defined top level properties beginning with '_' are not allowed in document body")
