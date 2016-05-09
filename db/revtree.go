@@ -309,10 +309,10 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	}
 
 	// Find the minimum generation that has a non-deleted leaf:
-	minLeafGen := math.MaxUint32
-	maxDeletedLeafGen := 0
+	minLeafGen := uint32(math.MaxUint32)
+	maxDeletedLeafGen := uint32(0)
 	for _, revid := range tree.GetLeaves() {
-		gen := genOfRevID(revid)
+		gen := uint32(genOfRevID(revid))
 		if tree[revid].Deleted {
 			if gen > maxDeletedLeafGen {
 				maxDeletedLeafGen = gen
@@ -322,7 +322,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
-	if minLeafGen == math.MaxUint32 {
+	if minLeafGen == uint32(math.MaxUint32) {
 		// If there are no non-deleted leaves, use the deepest leaf's generation
 		minLeafGen = maxDeletedLeafGen
 	}
