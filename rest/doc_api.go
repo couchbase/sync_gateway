@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -24,26 +25,42 @@ import (
 func (h *handler) handleGetDoc() error {
 	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
-	includeRevs := h.getBoolQuery("revs")
 	openRevs := h.getQuery("open_revs")
 
-	// What attachment bodies should be included?
-	var attachmentsSince []string = nil
-	if h.getBoolQuery("attachments") {
-		atts := h.getQuery("atts_since")
-		if atts != "" {
-			err := json.Unmarshal([]byte(atts), &attachmentsSince)
-			if err != nil {
-				return base.HTTPErrorf(http.StatusBadRequest, "bad atts_since")
+	// Check whether the caller wants a revision history, or attachment bodies, or both:
+	var revsLimit = 0
+	var revsFrom, attachmentsSince []string
+	{
+		var err error
+		var attsSinceParam, revsFromParam []string
+		if revsFromParam, err = h.getJSONStringArrayQuery("revs_from"); err != nil {
+			return err
+		}
+		if attsSinceParam, err = h.getJSONStringArrayQuery("atts_since"); err != nil {
+			return err
+		}
+
+		if h.getBoolQuery("revs") {
+			revsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
+			if revsFromParam != nil {
+				revsFrom = revsFromParam
+			} else {
+				revsFrom = attsSinceParam // revs_from defaults to same value as atts_since
 			}
-		} else {
-			attachmentsSince = []string{}
+		}
+
+		if h.getBoolQuery("attachments") {
+			if attsSinceParam != nil {
+				attachmentsSince = attsSinceParam
+			} else {
+				attachmentsSince = []string{}
+			}
 		}
 	}
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+		value, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince)
 		if err != nil {
 			return err
 		}
@@ -87,7 +104,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+					revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince)
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
@@ -102,7 +119,7 @@ func (h *handler) handleGetDoc() error {
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.GetRev(docid, revid, includeRevs, attachmentsSince)
+				revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				} else {

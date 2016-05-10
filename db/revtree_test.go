@@ -220,6 +220,34 @@ func TestParseRevisions(t *testing.T) {
 	}
 }
 
+func TestEncodeRevisions(t *testing.T) {
+	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie"})
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
+}
+
+func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
+	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
+
+	assert.True(t, trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "17-gretchen", "1-fooey"}, 1000))
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey", "louie", "screwy"}})
+
+	assert.True(t, trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "3-louie", "1-fooey"}, 2))
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
+
+	assert.True(t, trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "3-louie", "1-fooey"}, 3))
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
+
+	assert.True(t, trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "3-louie", "5-huey"}, 3))
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey"}})
+
+	// Check maxLength with no ancestors:
+	encoded = encodeRevisions([]string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
+	assert.True(t, trimEncodedRevisionsToAncestor(encoded, nil, 6))
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey", "louie", "screwy"}})
+	assert.True(t, trimEncodedRevisionsToAncestor(encoded, nil, 2))
+	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey"}})
+}
+
 //////// HELPERS:
 
 func assertFailed(t *testing.T, message string) {

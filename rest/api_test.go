@@ -514,7 +514,6 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	assert.True(t, response.Header().Get("Content-Disposition") == "")
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
-
 	// add attachment with two embedded '/' (%2F HEX)
 	response = rt.sendRequestWithHeaders("PUT", "/db/AC%2FDC/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
 	assertStatus(t, response, 201)
@@ -525,7 +524,6 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
 	assert.True(t, response.Header().Get("Content-Disposition") == "")
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
-
 
 	//Create Doc with embedded '+' (%2B HEX) in name
 	doc1revId = rt.createDoc(t, "AC%2BDC%2BGC2")
@@ -547,7 +545,6 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
 	assert.True(t, response.Header().Get("Content-Disposition") == "")
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
-
 
 	// add attachment with two embedded '/' (%2F HEX)
 	response = rt.sendRequestWithHeaders("PUT", "/db/AC%2BDC%2BGC2/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
@@ -947,8 +944,8 @@ func TestRevsDiff(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Now call _revs_diff:
-	input = `{"rd1": ["13-def", "12-abc", "11-eleven"],
-              "rd2": ["34-def", "31-one"],
+	input = `{"rd1": ["13-def", "12-xyz"],
+              "rd2": ["34-def"],
               "rd9": ["1-a", "2-b", "3-c"],
               "_design/ddoc": ["1-woo"]
              }`
@@ -958,8 +955,8 @@ func TestRevsDiff(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &diffResponse)
 	sort.Strings(diffResponse["rd1"]["possible_ancestors"])
 	assert.DeepEquals(t, diffResponse, RevsDiffResponse{
-		"rd1": RevDiffResponse{"missing": []string{"13-def"},
-			"possible_ancestors": []string{"10-ten", "9-nine"}},
+		"rd1": RevDiffResponse{"missing": []string{"13-def", "12-xyz"},
+			"possible_ancestors": []string{"11-eleven", "12-abc"}},
 		"rd9": RevDiffResponse{"missing": []string{"1-a", "2-b", "3-c"}}})
 }
 

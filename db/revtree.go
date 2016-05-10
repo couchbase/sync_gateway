@@ -347,7 +347,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	return
 }
 
-//////// HELPERS:
+//////// ENCODED REVISION LISTS (_revisions):
 
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
@@ -365,12 +365,8 @@ func ParseRevisions(body Body) []string {
 		oneRev = append(oneRev, revid)
 		return oneRev
 	}
-	var start int
-	if startf, ok := revisions["start"].(float64); ok {
-		start = int(startf)
-	}
-	ids, ok := revisions["ids"].([]interface{})
-	if !ok || len(ids) == 0 || start < len(ids) {
+	start, ids := splitRevisionList(revisions)
+	if ids == nil {
 		return nil
 	}
 	result := make([]string, 0, len(ids))
@@ -381,6 +377,19 @@ func ParseRevisions(body Body) []string {
 	return result
 }
 
+// Splits out the "start" and "ids" properties from encoded revision list
+func splitRevisionList(revisions Body) (int, []string) {
+	start, ok := base.ToInt64(revisions["start"])
+	digests, _ := GetStringArrayProperty(revisions, "ids")
+	if ok && len(digests) > 0 && int(start) >= len(digests) {
+		return int(start), digests
+	} else {
+		return 0, nil
+	}
+}
+
+// Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
+// the "ids" property, and the first (largest) generation number in the "start" property.
 func encodeRevisions(revs []string) Body {
 	ids := make([]string, len(revs))
 	var start int
@@ -394,4 +403,26 @@ func encodeRevisions(revs []string) Body {
 		}
 	}
 	return Body{"start": start, "ids": ids}
+}
+
+// Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
+// trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
+// length maxUnmatchedLen.
+func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) bool {
+	start, digests := splitRevisionList(revs)
+	if digests == nil {
+		return false
+	}
+	matchIndex := len(digests)
+	for _, revID := range ancestors {
+		gen, digest := parseRevID(revID)
+		if index := start - gen; index >= 0 && index < matchIndex && digest == digests[index] {
+			matchIndex = index
+			maxUnmatchedLen = matchIndex + 1
+		}
+	}
+	if maxUnmatchedLen < len(digests) {
+		revs["ids"] = digests[0:maxUnmatchedLen]
+	}
+	return true
 }
