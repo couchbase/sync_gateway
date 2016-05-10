@@ -377,6 +377,44 @@ func TestDocAttachment(t *testing.T) {
 	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 }
 
+// Add an attachment to a document that has been removed from the users channels
+func TestDocAttachmentOnRemovedRev(t *testing.T) {
+	var rt restTester
+
+	a := rt.ServerContext().Database("db").Authenticator()
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	//Create a test user
+	user, err = a.NewUser("user1", "letmein", channels.SetOf("foo"))
+	a.Save(user)
+
+	response := rt.send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid := body["rev"].(string)
+
+	//Put new revision removing document from users channel set
+	response = rt.send(requestByUser("PUT", "/db/doc?rev="+revid, `{"prop":true}`, "user1"))
+	assertStatus(t, response, 201)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid = body["rev"].(string)
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should fail)
+	response = rt.sendUserRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders,"user1", "letmein")
+	assertStatus(t, response, 404)
+}
+
 func TestFunkyDocIDs(t *testing.T) {
 	var rt restTester
 	rt.createDoc(t, "AC%2FDC")
