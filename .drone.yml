@@ -8,4 +8,4 @@ build:
     - chmod +x bootstrap.sh
     - ./bootstrap.sh $$COMMIT
     - ./build.sh -v
-    - ./test.sh 
+    - ./test.sh -race -cpu 4
