@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -124,6 +125,7 @@ type DbConfig struct {
 	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
 	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
 	Unsupported        *UnsupportedConfig             `json:"unsupported,omitempty"`          // Config for unsupported features
+	JWTAuth            *auth.JWTOptions               `json:"jwt_auth,omitempty"`             // Config properties for JWT authentication
 }
 
 type DbConfigMap map[string]*DbConfig

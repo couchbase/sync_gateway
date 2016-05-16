@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/auth0/go-jwt-middleware"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -49,28 +50,29 @@ var RunStateString = []string{
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name               string                  // Database name
-	Bucket             base.Bucket             // Storage
-	BucketSpec         base.BucketSpec         // The BucketSpec
-	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
-	tapListener        changeListener          // Listens on server Tap feed
-	sequences          *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime          time.Time               // Timestamp when context was instantiated
-	ChangesClientStats Statistics              // Tracks stats of # of changes connections
-	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
-	autoImport         bool                    // Add sync data to new untracked docs?
-	Shadower           *Shadower               // Tracks an external Couchbase bucket
-	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
-	changeCache        ChangeIndex             //
-	EventMgr           *EventManager           // Manages notification events
-	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
-	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
-	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
-	Options            DatabaseContextOptions  // Database Context Options
-	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              uint32                  // The runtime state of the DB from a service perspective
-	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
+	Name               string                       // Database name
+	Bucket             base.Bucket                  // Storage
+	BucketSpec         base.BucketSpec              // The BucketSpec
+	BucketLock         sync.RWMutex                 // Control Access to the underlying bucket object
+	tapListener        changeListener               // Listens on server Tap feed
+	sequences          *sequenceAllocator           // Source of new sequence numbers
+	ChannelMapper      *channels.ChannelMapper      // Runs JS 'sync' function
+	StartTime          time.Time                    // Timestamp when context was instantiated
+	ChangesClientStats Statistics                   // Tracks stats of # of changes connections
+	RevsLimit          uint32                       // Max depth a document's revision tree can grow to
+	autoImport         bool                         // Add sync data to new untracked docs?
+	Shadower           *Shadower                    // Tracks an external Couchbase bucket
+	revisionCache      *RevisionCache               // Cache of recently-accessed doc revisions
+	changeCache        ChangeIndex                  //
+	EventMgr           *EventManager                // Manages notification events
+	AllowEmptyPassword bool                         // Allow empty passwords?  Defaults to false
+	SequenceHasher     *sequenceHasher              // Used to generate and resolve hash values for vector clock sequences
+	SequenceType       SequenceType                 // Type of sequences used for this DB (integer or vector clock)
+	Options            DatabaseContextOptions       // Database Context Options
+	AccessLock         sync.RWMutex                 // Allows DB offline to block until synchronous calls have completed
+	State              uint32                       // The runtime state of the DB from a service perspective
+	ExitChanges        chan struct{}                // Active _changes feeds on the DB will close when this channel is closed
+	JWTAuth            *jwtmiddleware.JWTMiddleware // DB-scoped JWT authenticator
 }
 
 type DatabaseContextOptions struct {
@@ -81,6 +83,7 @@ type DatabaseContextOptions struct {
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	JWTAuthOptions        *auth.JWTOptions
 }
 
 type UnsupportedOptions struct {
