@@ -396,3 +396,23 @@ func SyncSourceFromURL(u *url.URL) string {
 
 	return buf.String()
 }
+
+//Convert string or array into a string array, otherwise return nil
+func ValueToStringArray(value interface{}) []string {
+	switch valueType := value.(type) {
+	case string:
+		return []string{valueType}
+	case []string:
+		return valueType
+	case []interface{}:
+		result := make([]string, 0, len(valueType))
+		for _, item := range valueType {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}

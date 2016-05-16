@@ -207,23 +207,12 @@ func compileAccessMap(input map[string][]string, prefix string) (AccessMap, erro
 // Converts a JS string or array into a Go string array.
 func ottoValueToStringArray(value otto.Value) []string {
 	nativeValue, _ := value.Export()
-	switch nativeValue := nativeValue.(type) {
-	case string:
-		return []string{nativeValue}
-	case []string:
-		return nativeValue
-	case []interface{}:
-		result := make([]string, 0, len(nativeValue))
-		for _, item := range nativeValue {
-			if str, ok := item.(string); ok {
-				result = append(result, str)
-			}
-		}
-		return result
-	default:
-		if !value.IsNull() && !value.IsUndefined() {
-			base.Warn("SyncRunner: Non-string, non-array passed to JS callback: %s", value)
-		}
-		return nil
+
+	result := base.ValueToStringArray(nativeValue)
+
+	if result == nil && !value.IsNull() && !value.IsUndefined() {
+		base.Warn("SyncRunner: Non-string, non-array passed to JS callback: %s", value)
 	}
+
+	return result
 }
