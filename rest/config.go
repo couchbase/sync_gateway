@@ -196,6 +196,11 @@ type SequenceHashConfig struct {
 
 type UnsupportedConfig struct {
 	UserViews *UserViewsConfig `json:"user_views,omitempty"` // Config settings for user views
+	OidcTestProvider *OidcTestProviderConfig `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+}
+
+type OidcTestProviderConfig struct {
+	Enabled *bool `json:"enabled,omitempty"` // Whether the oidc_test_provider endpoints should be exposed on the public API
 }
 
 type UserViewsConfig struct {

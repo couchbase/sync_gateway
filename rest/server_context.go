@@ -441,6 +441,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				unsupportedOptions.EnableUserViews = *config.Unsupported.UserViews.Enabled
 			}
 		}
+		if config.Unsupported.OidcTestProvider != nil {
+			if config.Unsupported.OidcTestProvider.Enabled != nil {
+				unsupportedOptions.EnableOidcTestProvider = *config.Unsupported.OidcTestProvider.Enabled
+			}
+		}
 	}
 
 	// Enable doc tracking if needed for autoImport or shadowing

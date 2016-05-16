@@ -85,6 +85,7 @@ type DatabaseContextOptions struct {
 
 type UnsupportedOptions struct {
 	EnableUserViews bool
+	EnableOidcTestProvider bool
 }
 
 const DefaultRevsLimit = 1000
