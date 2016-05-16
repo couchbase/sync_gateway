@@ -87,12 +87,32 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 			(*handler).handleGooglePOST)).Methods("POST")
 	}
 
+	//These three handlers are stubs to test out the testing provider
+	//They will be replaced by actual impl in final release
+	dbr.Handle("/_oidc", makeHandler(sc, privs, (*handler).handleOidc)).Methods("GET")
+
+	dbr.Handle("/_oidc_callback", makeHandler(sc, privs, (*handler).handleOidcCallback)).Methods("GET")
+
+	dbr.Handle("/_oidc_refresh", makeHandler(sc, privs, (*handler).handleOidcRefresh)).Methods("GET")
+
+	oidcr := dbr.PathPrefix("/_oidc_testing").Subrouter()
+
+	oidcr.Handle("/authorize", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderAuthorize)).Methods("GET","POST")
+
+	oidcr.Handle("/token", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderToken)).Methods("POST")
+
+	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderAuthenticate)).Methods("GET","POST")
+
 	return r, dbr
 }
 
 // Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, regularPrivs)
+
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
 	dbr.Handle("/_session", makeHandler(sc, regularPrivs,
