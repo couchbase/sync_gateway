@@ -53,15 +53,10 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 		if found {
 			return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
-		clog.Printf("r.startReplication for params: %+v", params)
 
 		replication, err := r.startReplication(params)
 
-		clog.Printf("started replication: %+v", replication)
-
 		task = r.populateActiveTaskFromReplication(replication, params)
-
-		clog.Printf("replication task: %+v", task)
 
 		return task, err
 	}
