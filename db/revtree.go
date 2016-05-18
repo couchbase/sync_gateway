@@ -365,12 +365,9 @@ func ParseRevisions(body Body) []string {
 		oneRev = append(oneRev, revid)
 		return oneRev
 	}
-	var start int
-	if startf, ok := revisions["start"].(float64); ok {
-		start = int(startf)
-	}
+	start, _ := base.ToInt64(revisions["start"])
 	ids, ok := revisions["ids"].([]interface{})
-	if !ok || len(ids) == 0 || start < len(ids) {
+	if !ok || len(ids) == 0 || start < int64(len(ids)) {
 		return nil
 	}
 	result := make([]string, 0, len(ids))
@@ -381,8 +378,8 @@ func ParseRevisions(body Body) []string {
 	return result
 }
 
-func encodeRevisions(revs []string) Body {
-	ids := make([]string, len(revs))
+func encodeRevisions(revs []string) map[string]interface{} {
+	ids := make([]interface{}, len(revs))
 	var start int
 	for i, revid := range revs {
 		gen, id := parseRevID(revid)
@@ -393,5 +390,5 @@ func encodeRevisions(revs []string) Body {
 			base.Warn("encodeRevisions found weird history %v", revs)
 		}
 	}
-	return Body{"start": start, "ids": ids}
+	return map[string]interface{}{"start": start, "ids": ids}
 }
