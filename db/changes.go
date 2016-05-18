@@ -509,6 +509,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		waitForChanges:
 			for {
 				waitResponse := changeWaiter.Wait()
+				base.LogTo("Changes+", "waitResponse: %v", waitResponse)
 				if waitResponse == WaiterClosed {
 					break outer
 				} else if waitResponse == WaiterHasChanges {
