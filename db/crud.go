@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -76,12 +77,27 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRev(docid, "", false, nil)
+	return db.GetRevWithHistory(docid, "", 0, nil, nil)
+}
+
+// Shortcut for GetRevWithHistory
+func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (Body, error) {
+	maxHistory := 0
+	if history {
+		maxHistory = math.MaxInt32
+	}
+	return db.GetRevWithHistory(docid, revid, maxHistory, nil, attachmentsSince)
 }
 
 // Returns the body of a revision of a document. Uses the revision cache.
-// revid may be "", meaning the current revision.
-func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsSince []string) (Body, error) {
+// * revid may be "", meaning the current revision.
+// * maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
+// * historyFrom is an optional list of revIDs the client already has. If any of these are found
+//   in the revision's history, it will be trimmed after that revID.
+// * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
+//   revisions for which the client already has attachments and doesn't need bodies. Any attachment
+//   that hasn't changed since one of those revisions will be returned as a stub.
+func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string) (Body, error) {
 	var doc *document
 	var body Body
 	var revisions Body
@@ -98,6 +114,9 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 			}
 			return nil, err
 		}
+		if maxHistory == 0 {
+			revisions = nil
+		}
 	} else {
 		// No rev ID given, so load doc and get its current revision:
 		if doc, err = db.GetDoc(docid); doc == nil {
@@ -110,8 +129,14 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 		if doc.hasFlag(channels.Deleted) {
 			body["_deleted"] = true
 		}
-		revisions = encodeRevisions(doc.History.getHistory(revid))
+		if maxHistory != 0 {
+			revisions = encodeRevisions(doc.History.getHistory(revid))
+		}
 		inChannels = doc.History[revid].Channels
+	}
+
+	if revisions != nil {
+		trimEncodedRevisionsToAncestor(revisions, historyFrom, maxHistory)
 	}
 
 	// Authorize the access:
@@ -130,7 +155,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 			} else {
 				redactedBody["_removed"] = true
 			}
-			if listRevisions {
+			if revisions != nil {
 				redactedBody["_revisions"] = revisions
 			}
 			return redactedBody, nil
@@ -144,7 +169,7 @@ func (db *Database) GetRev(docid, revid string, listRevisions bool, attachmentsS
 	}
 
 	// Add revision metadata:
-	if listRevisions {
+	if revisions != nil {
 		body["_revisions"] = revisions
 	}
 
@@ -958,7 +983,8 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.Ti
 
 //////// REVS_DIFF:
 
-// Given a document ID and a set of revision IDs, looks up which ones are not known.
+// Given a document ID and a set of revision IDs, looks up which ones are not known. Returns an
+// array of the unknown revisions, and an array of known revisions that might be recent ancestors.
 func (db *Database) RevDiff(docid string, revids []string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
@@ -972,35 +998,34 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 		missing = revids
 		return
 	}
-	revmap := doc.History
-	found := make(map[string]bool)
-	maxMissingGen := 0
+	// Check each revid to see if it's in the doc's rev tree:
+	revtree := doc.History
+	revidsSet := base.SetFromArray(revids)
+	possibleSet := make(map[string]bool)
 	for _, revid := range revids {
-		if revmap.contains(revid) {
-			found[revid] = true
-		} else {
-			if missing == nil {
-				missing = make([]string, 0, 5)
-			}
-			gen, _ := parseRevID(revid)
-			if gen > 0 {
-				missing = append(missing, revid)
-				if gen > maxMissingGen {
-					maxMissingGen = gen
-				}
+		if !revtree.contains(revid) {
+			missing = append(missing, revid)
+			// Look at the doc's leaves for a known possible ancestor:
+			if gen, _ := parseRevID(revid); gen > 1 {
+				revtree.forEachLeaf(func(possible *RevInfo) {
+					if !revidsSet.Contains(possible.ID) {
+						possibleGen, _ := parseRevID(possible.ID)
+						if possibleGen < gen && possibleGen >= gen-100 {
+							possibleSet[possible.ID] = true
+						} else if possibleGen == gen && possible.Parent != "" {
+							possibleSet[possible.Parent] = true // since parent is < gen
+						}
+					}
+				})
 			}
 		}
 	}
-	if missing != nil {
-		possible = make([]string, 0, 5)
-		for revid := range revmap {
-			gen, _ := parseRevID(revid)
-			if !found[revid] && gen < maxMissingGen {
-				possible = append(possible, revid)
-			}
-		}
-		if len(possible) == 0 {
-			possible = nil
+
+	// Convert possibleSet to an array (possible)
+	if len(possibleSet) > 0 {
+		possible = make([]string, 0, len(possibleSet))
+		for revid, _ := range possibleSet {
+			possible = append(possible, revid)
 		}
 	}
 	return

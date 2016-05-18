@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -36,28 +37,17 @@ func (h *handler) handleAllDocs() error {
 	if h.rq.Method == "POST" {
 		input, err := h.readJSON()
 		if err == nil {
-			keys, ok := input["keys"].([]interface{})
-			explicitDocIDs = make([]string, len(keys))
-			for i := 0; i < len(keys); i++ {
-				if explicitDocIDs[i], ok = keys[i].(string); !ok {
-					break
-				}
-			}
-			if !ok {
+			if explicitDocIDs, _ = db.GetStringArrayProperty(input, "keys"); explicitDocIDs == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
+		if err != nil {
+			return err
+		}
 	} else if h.rq.Method == "GET" {
-		keys := h.getQuery("keys")
-		if len(keys) > 0 {
-			var queryKeys []string
-			err := json.Unmarshal([]byte(keys), &queryKeys)
-			if err != nil {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Bad keys")
-			}
-			if len(queryKeys) > 0 {
-				explicitDocIDs = queryKeys
-			}
+		var err error
+		if explicitDocIDs, err = h.getJSONStringArrayQuery("keys"); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Bad keys")
 		}
 	}
 
@@ -295,8 +285,11 @@ func (h *handler) handleDumpChannel() error {
 // 	 ]
 // }
 func (h *handler) handleBulkGet() error {
-	includeRevs := h.getBoolQuery("revs")
 	includeAttachments := h.getBoolQuery("attachments")
+	revsLimit := 0
+	if h.getBoolQuery("revs") {
+		revsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
+	}
 
 	// If a client passes the HTTP header "Accept-Encoding: gzip" then the header "X-Accept-Part-Encoding: gzip" will be
 	// ignored and the entire HTTP response will be gzip compressed.  (aside from exception mentioned below for issue 1419)
@@ -326,7 +319,7 @@ func (h *handler) handleBulkGet() error {
 	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range docs {
 			var body db.Body
-			var attsSince []string
+			var revsFrom, attsSince []string
 			var err error
 
 			doc := item.(map[string]interface{})
@@ -339,29 +332,22 @@ func (h *handler) handleBulkGet() error {
 			if docid == "" || !revok {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
 			} else {
-				if includeAttachments {
-					if doc["atts_since"] != nil {
-						raw, ok := doc["atts_since"].([]interface{})
-						if ok {
-							attsSince = make([]string, len(raw))
-							for i := 0; i < len(raw); i++ {
-								attsSince[i], ok = raw[i].(string)
-								if !ok {
-									break
-								}
-							}
-						}
-						if !ok {
-							err = base.HTTPErrorf(http.StatusBadRequest, "Invalid atts_since")
-						}
-					} else {
-						attsSince = []string{}
+				attsSince, err = db.GetStringArrayProperty(doc, "atts_since")
+				if revsLimit > 0 {
+					revsFrom, err = db.GetStringArrayProperty(doc, "revs_from")
+					if revsFrom == nil {
+						revsFrom = attsSince // revs_from defaults to same value as atts_since
 					}
+				}
+				if !includeAttachments {
+					attsSince = nil
+				} else if attsSince == nil {
+					attsSince = []string{}
 				}
 			}
 
 			if err == nil {
-				body, err = h.db.GetRev(docid, revid, includeRevs, attsSince)
+				body, err = h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attsSince)
 			}
 
 			if err != nil {

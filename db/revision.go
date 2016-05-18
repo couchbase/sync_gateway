@@ -13,6 +13,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -166,4 +167,23 @@ func canonicalEncoding(body Body) []byte {
 		panic(fmt.Sprintf("Couldn't encode body %v", body))
 	}
 	return encoded
+}
+
+func GetStringArrayProperty(body Body, property string) ([]string, error) {
+	if raw, exists := body[property]; !exists {
+		return nil, nil
+	} else if strings, ok := raw.([]string); ok {
+		return strings, nil
+	} else if items, ok := raw.([]interface{}); ok {
+		strings := make([]string, len(items))
+		for i := 0; i < len(items); i++ {
+			strings[i], ok = items[i].(string)
+			if !ok {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, property+" must be a string array")
+			}
+		}
+		return strings, nil
+	} else {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, property+" must be a string array")
+	}
 }

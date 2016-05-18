@@ -345,6 +345,17 @@ func (h *handler) getJSONQuery(query string) (value interface{}, err error) {
 	return
 }
 
+func (h *handler) getJSONStringArrayQuery(param string) ([]string, error) {
+	var strings []string
+	value := h.getQuery(param)
+	if value != "" {
+		if err := json.Unmarshal([]byte(value), &strings); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "%s URL param is not a JSON string array", param)
+		}
+	}
+	return strings, nil
+}
+
 func (h *handler) userAgentIs(agent string) bool {
 	userAgent := h.rq.Header.Get("User-Agent")
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
