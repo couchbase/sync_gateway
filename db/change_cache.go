@@ -429,7 +429,10 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
 
-	c.processEntry(change)
+	changedChannels := c.processEntry(change)
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
+	}
 }
 
 // Handles a newly-arrived LogEntry.
