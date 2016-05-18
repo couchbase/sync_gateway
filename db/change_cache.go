@@ -382,6 +382,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
 		changedChannels := c.processEntry(change)
+		base.LogTo("Cache", "calling changedChannels/Notify with %+v", changedChannels)
 		if c.onChange != nil && len(changedChannels) > 0 {
 			c.onChange(changedChannels)
 		}
@@ -519,12 +520,15 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		}
 
 		if EnableStarChannelLog {
+			base.LogTo("Changes", "EnableStarChannelLog is true")
 			channelCache := c._getChannelCache(channels.UserStarChannel)
 			channelCache.addToCache(change, false)
 			addedTo = append(addedTo, channels.UserStarChannel)
 			if change.Skipped {
 				channelCache.AddLateSequence(change)
 			}
+		} else {
+			base.LogTo("Changes", "EnableStarChannelLog is false")
 		}
 	}()
 

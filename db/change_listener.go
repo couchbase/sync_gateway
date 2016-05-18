@@ -103,6 +103,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	for key := range keys {
+		base.LogTo("Changes+", "setting value for key %v to %d", key, listener.counter)
 		listener.keyCounts[key] = listener.counter
 	}
 	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
@@ -171,6 +172,7 @@ func (listener *changeListener) CurrentCount(keys []string) uint64 {
 
 func (listener *changeListener) _currentCount(keys []string) uint64 {
 	var max uint64 = 0
+	base.LogTo("Changes+", "checking currentCount for keys: %v", keys)
 	for _, key := range keys {
 		base.LogTo("Changes+", "_currentCounter key: %s count: %d", key, listener.keyCounts[key])
 		if count := listener.keyCounts[key]; count > max {
