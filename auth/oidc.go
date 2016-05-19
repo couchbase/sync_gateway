@@ -9,8 +9,12 @@
 
 package auth
 
-// Config options for Json Web Token validation
-type JWTOptions struct {
-	ValidationKey *string `json:"validation_key"`           // Key used to validate signed tokens
-	SigningMethod *string `json:"signing_method,omitempty"` // Algorithm used for signing.  Can be specified for additional security to handle scenario described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
+// Options for OpenID Connect
+type OIDCOptions struct {
+	JWTOptions
+	DiscoveryURL *string `json:"discovery_url,omitempty"` // OIDC OP discovery endpoint.  If present, SG will try to retrieve token and authorize endpoints from here.
+	AuthorizeURL *string `json:"authorize_url,omitempty"` // OIDC OP authorize endpoint.
+	TokenURL     *string `json:"token_url,omitempty"`     // OIDC OP token endpoint.
+	ClientID     *string `json:"client_id",omitempty"`    // Client ID
+	Register     bool    `json:"register"`                // If true, server will register new user accounts
 }

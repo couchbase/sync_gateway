@@ -83,11 +83,11 @@ type DatabaseContextOptions struct {
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
-	JWTAuthOptions        *auth.JWTOptions
+	OIDCOptions           *auth.OIDCOptions
 }
 
 type UnsupportedOptions struct {
-	EnableUserViews bool
+	EnableUserViews        bool
 	EnableOidcTestProvider bool
 }
 

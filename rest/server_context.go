@@ -86,7 +86,7 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 	if config.Replications != nil {
 
-		for _,replicationConfig := range config.Replications {
+		for _, replicationConfig := range config.Replications {
 
 			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
 
@@ -435,7 +435,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// JWT Options
-	if config.JWTAuth != nil {
+	if config.OIDCConfig != nil {
 
 	}
 
@@ -464,6 +464,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    unsupportedOptions,
 		TrackDocs:             trackDocs,
+		OIDCOptions:           config.OIDCConfig,
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
