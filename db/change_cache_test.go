@@ -204,6 +204,11 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 	WriteDirectWithKey(db, docId, channelArray, sequence)
 }
 
+func WriteUserDirect(db *Database, username string, sequence uint64) {
+	docId := fmt.Sprintf("_sync:user:%v", username)
+	db.Bucket.Add(docId, 0, Body{"sequence": sequence, "name": username})
+}
+
 func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
 
 	rev := "1-a"
@@ -246,6 +251,42 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 		Access:     accessMap,
 	}
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
+}
+
+// Test notification when buffered entries are processed after a user doc arrives.
+func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
+
+	base.EnableLogKey("Cache")
+	base.EnableLogKey("Cache+")
+	base.EnableLogKey("Changes")
+	base.EnableLogKey("Changes+")
+	db := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer tearDownTestDB(t, db)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Simulate seq 1 (user doc) being delayed - write 2 first
+	WriteDirect(db, []string{"ABC"}, 2)
+
+	// Start wait for doc in ABC
+	waiter := db.tapListener.NewWaiterWithChannels(channels.SetOf("ABC"), nil)
+
+	successChan := make(chan bool)
+	go func() {
+		waiter.Wait()
+		close(successChan)
+	}()
+
+	// Simulate a user doc update
+	WriteUserDirect(db, "bernard", 1)
+
+	// Wait 3 seconds for notification, else fail the test.
+	select {
+	case <-successChan:
+		log.Println("notification successful")
+	case <-time.After(time.Second * 3):
+		assertFailed(t, "No notification after 3 seconds")
+	}
+
 }
 
 // Test backfill of late arriving sequences to the channel caches
