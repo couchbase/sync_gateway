@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbaselabs/sg-replicate"
+	sgreplicate "github.com/couchbaselabs/sg-replicate"
 )
 
 const (
@@ -14,8 +14,9 @@ const (
 )
 
 type Replicator struct {
-	replications map[string]sgreplicate.SGReplication
-	lock         sync.RWMutex
+	replications      map[string]sgreplicate.SGReplication
+	replicationParams map[string]sgreplicate.ReplicationParameters
+	lock              sync.RWMutex
 }
 
 type ActiveTask struct {
@@ -33,7 +34,8 @@ type ActiveTask struct {
 
 func NewReplicator() *Replicator {
 	return &Replicator{
-		replications: make(map[string]sgreplicate.SGReplication),
+		replications:      make(map[string]sgreplicate.SGReplication),
+		replicationParams: make(map[string]sgreplicate.ReplicationParameters),
 	}
 }
 
@@ -50,8 +52,12 @@ func (r *Replicator) Replicate(params sgreplicate.ReplicationParameters, isCance
 		if found {
 			return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
 		}
+
 		replication, err := r.startReplication(params)
-		return populateActiveTaskFromReplication(replication), err
+
+		task = r.populateActiveTaskFromReplication(replication, params)
+
+		return task, err
 	}
 }
 
@@ -60,18 +66,20 @@ func (r *Replicator) ActiveTasks() (tasks []ActiveTask) {
 	defer r.lock.RUnlock()
 
 	tasks = make([]ActiveTask, 0)
-	for _, replication := range r.replications {
-		task := populateActiveTaskFromReplication(replication)
+	for replicationId, replication := range r.replications {
+		params := r.replicationParams[replicationId]
+		task := r.populateActiveTaskFromReplication(replication, params)
 		tasks = append(tasks, *task)
 	}
 	return tasks
 
 }
 
-func (r *Replicator) addReplication(rep sgreplicate.SGReplication) {
+func (r *Replicator) addReplication(rep sgreplicate.SGReplication, parameters sgreplicate.ReplicationParameters) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	r.replications[rep.GetParameters().ReplicationId] = rep
+	r.replications[parameters.ReplicationId] = rep
+	r.replicationParams[parameters.ReplicationId] = parameters
 }
 
 func (r *Replicator) getReplication(repId string) sgreplicate.SGReplication {
@@ -84,13 +92,24 @@ func (r *Replicator) getReplication(repId string) sgreplicate.SGReplication {
 	}
 }
 
+func (r *Replicator) getReplicationParams(repId string) sgreplicate.ReplicationParameters {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	if params, ok := r.replicationParams[repId]; ok {
+		return params
+	} else {
+		return sgreplicate.ReplicationParameters{}
+	}
+}
+
 func (r *Replicator) getReplicationForParams(queryParams sgreplicate.ReplicationParameters) (replicationId string, found bool) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
 	// Iterate over the known replications looking for a match
-	for _, replication := range r.replications {
-		repParams := replication.GetParameters()
+	for knownReplicationId, _ := range r.replications {
+
+		repParams := r.replicationParams[knownReplicationId]
 
 		if queryParams.ReplicationId != "" && queryParams.ReplicationId == repParams.ReplicationId {
 			return repParams.ReplicationId, true
@@ -99,14 +118,17 @@ func (r *Replicator) getReplicationForParams(queryParams sgreplicate.Replication
 		if repParams.Equals(queryParams) {
 			return repParams.ReplicationId, true
 		}
+
 	}
 	return "", false
+
 }
 
 func (r *Replicator) removeReplication(repId string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.replications, repId)
+	delete(r.replicationParams, repId)
 }
 
 // Starts a replication based on the provided replication config.
@@ -131,6 +153,8 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 
 func (r *Replicator) stopReplication(repId string) (task *ActiveTask, err error) {
 	replication := r.getReplication(repId)
+	params := r.getReplicationParams(repId)
+
 	if replication == nil {
 		return nil, HTTPErrorf(http.StatusNotFound, "No replication found matching specified replication ID")
 	}
@@ -139,7 +163,7 @@ func (r *Replicator) stopReplication(repId string) (task *ActiveTask, err error)
 		return nil, err
 	}
 
-	taskState := populateActiveTaskFromReplication(replication)
+	taskState := r.populateActiveTaskFromReplication(replication, params)
 
 	r.removeReplication(repId)
 	return taskState, nil
@@ -148,21 +172,21 @@ func (r *Replicator) stopReplication(repId string) (task *ActiveTask, err error)
 func (r *Replicator) startOneShotReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
 
 	replication := sgreplicate.StartOneShotReplication(parameters)
-	r.addReplication(replication)
+	r.addReplication(replication, parameters)
 
 	if parameters.Async {
-		go r.runOneShotReplication(replication)
+		go r.runOneShotReplication(replication, parameters)
 		return replication, nil
 	} else {
-		err := r.runOneShotReplication(replication)
+		err := r.runOneShotReplication(replication, parameters)
 		return replication, err
 
 	}
 }
 
 // Calls WaitUntilDone to work the notification channel for the one-shot replication.  Used for both synchronous and async one-shot replications.
-func (r *Replicator) runOneShotReplication(replication *sgreplicate.Replication) error {
-	defer r.removeReplication(replication.GetParameters().ReplicationId)
+func (r *Replicator) runOneShotReplication(replication *sgreplicate.Replication, parameters sgreplicate.ReplicationParameters) error {
+	defer r.removeReplication(parameters.ReplicationId)
 	_, err := replication.WaitUntilDone()
 	return err
 }
@@ -178,17 +202,17 @@ func (r *Replicator) startContinuousReplication(parameters sgreplicate.Replicati
 
 	retryTime := time.Millisecond * time.Duration(DefaultContinuousRetryTimeMs)
 	replication := sgreplicate.NewContinuousReplication(parameters, factory, notificationChan, retryTime)
-	r.addReplication(replication)
+	r.addReplication(replication, parameters)
 	LogTo("Replicate", "Started continuous replication: %v", replication)
 
 	// Start goroutine to monitor notification channel, to remove the replication if it's terminated internally by sg-replicate
 	go func(rep sgreplicate.SGReplication, notificationChan chan sgreplicate.ContinuousReplicationNotification) {
-		defer r.removeReplication(rep.GetParameters().ReplicationId)
+		defer r.removeReplication(parameters.ReplicationId)
 		for {
 			select {
 			case notification, ok := <-notificationChan:
 				if !ok {
-					LogTo("Replicate", "Replication %s was terminated.", rep.GetParameters().ReplicationId)
+					LogTo("Replicate", "Replication %s was terminated.", parameters.ReplicationId)
 					return
 				}
 				LogTo("Replicate+", "Got notification %v", notification)
@@ -199,20 +223,21 @@ func (r *Replicator) startContinuousReplication(parameters sgreplicate.Replicati
 	return replication, nil
 }
 
-func populateActiveTaskFromReplication(replication sgreplicate.SGReplication) (task *ActiveTask) {
-	params := replication.GetParameters()
+func (r *Replicator) populateActiveTaskFromReplication(replication sgreplicate.SGReplication, params sgreplicate.ReplicationParameters) (task *ActiveTask) {
+
 	stats := replication.GetStats()
+
 	task = &ActiveTask{
 		TaskType:         "replication",
 		ReplicationID:    params.ReplicationId,
 		Source:           params.GetSourceDbUrl(),
 		Target:           params.GetTargetDbUrl(),
 		Continuous:       params.Lifecycle == sgreplicate.CONTINUOUS,
-		DocsRead:         stats.DocsRead,
-		DocsWritten:      stats.DocsWritten,
-		DocWriteFailures: stats.DocWriteFailures,
-		StartLastSeq:     stats.StartLastSeq,
-		EndLastSeq:       stats.EndLastSeq,
+		DocsRead:         stats.GetDocsRead(),
+		DocsWritten:      stats.GetDocsWritten(),
+		DocWriteFailures: stats.GetDocWriteFailures(),
+		StartLastSeq:     stats.GetStartLastSeq(),
+		EndLastSeq:       stats.GetEndLastSeq(),
 	}
 
 	return
