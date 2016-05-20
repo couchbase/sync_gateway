@@ -13,7 +13,7 @@
   <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
   <remote fetch="git://github.com/kardianos/" name="kardianos"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
-
+  <remote fetch="git://github.com/coreos/" name="coreos"/>
   
   <default remote="couchbase" revision="master"/>
 
@@ -60,6 +60,8 @@
   <project name="context" path="godeps/src/github.com/gorilla/context" remote="gorilla" revision="708054d61e5a2918b9f4e9700000ee611dcf03f5"/>
 
   <project name="mux" path="godeps/src/github.com/gorilla/mux" remote="gorilla" revision="9b36453141c35697401168b07f2c09fcff7721ce"/>
+
+  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="coreos" revision="e6174c764e906bd60c76fdfc33faf5e0bdc875d6"/>
 
   <project name="npipe" path="godeps/src/github.com/natefinch/npipe" remote="natefinch" revision="0938d701e50e580f5925c773055eb6d6b32a0cbc"/>
 
