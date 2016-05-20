@@ -12,7 +12,7 @@ const login_html = `
 <form action="authenticate?{{.Query}}" method="POST" enctype="multipart/form-data">
     <div>Username:<input type="text" name="username" cols="80"></div>
     <div>   Login:<input type="text" name="password" cols="80"></div>
-    <div><input type="submit" value="Save"></div>
+	    <div><input type="submit" value="Save"></div>
 </form>
 `
 
@@ -143,13 +143,28 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	requestParams := h.rq.URL.Query()
 
-	base.LogTo("Oidc","raw authenticate request query params = %v",requestParams)
+	username := h.rq.FormValue("username")
+	password := h.rq.FormValue("password")
 
-	//Build call back URL
-	base.LogTo("Oidc","raw authenticate  redirect_uri = %v",requestParams.Get("redirect_uri"))
+	if(username != "" && password != "") {
+		if user := handler.db.Authenticator().AuthenticateUser(username, password); user == nil {
+			//Build call back URL
+			base.LogTo("Oidc","authenticate  redirect_uri = %v",requestParams.Get("redirect_uri"))
 
-	h.setHeader("Location", requestParams.Get("redirect_uri"))
-	h.response.WriteHeader(http.StatusFound)
+			fragmentQuery := "#access_token=SlAV32hkKG&token_type=bearer&id_token=eyNiJ9.eyJ1cI6IjIifX0.DeWt4QZXso&expires_in=3600&state=af0ifjsldkj"
+			h.setHeader("Location", requestParams.Get("redirect_uri")+fragmentQuery)
+			h.response.WriteHeader(http.StatusFound)
+
+			return nil
+		} else {
+			base.LogTo("Oidc+","user was not authenticated")
+		}
+	} else {
+		base.LogTo("Oidc+","user did not enter valid credentials")
+	}
+
+	//Build an error response
+
 	return nil
 }
 
