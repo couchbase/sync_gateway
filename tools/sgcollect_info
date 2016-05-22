@@ -417,7 +417,7 @@ def main():
     runner = TaskRunner(verbosity=options.verbosity)
 
     if not options.product_only:
-        for task in make_os_tasks():
+        for task in make_os_tasks(["sync_gateway"]):
             runner.run(task)
 
     # Output the Python version if verbosity was enabled
