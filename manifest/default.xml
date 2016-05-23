@@ -11,7 +11,7 @@
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
   <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
-  <remote fetch="ssh://github.com/kardianos/" name="kardianos"/>
+  <remote fetch="git://github.com/kardianos/" name="kardianos"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
 
   
