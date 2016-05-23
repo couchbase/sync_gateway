@@ -75,7 +75,7 @@
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="7006f7a1abbda37f3276216302f9eb7425e1dfa5"/>
 
-  <project name="sys" path="godeps/src/golang.org/x/sys" remote="sys" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
+  <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
 
