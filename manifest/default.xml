@@ -11,7 +11,9 @@
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
   <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
+  <remote fetch="ssh://github.com/kardianos/" name="kardianos"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
+
   
   <default remote="couchbase" revision="master"/>
 
@@ -73,6 +75,8 @@
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="7006f7a1abbda37f3276216302f9eb7425e1dfa5"/>
 
+  <project name="sys" path="godeps/src/golang.org/x/sys" remote="sys" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
+
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
 
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="b1c02f8ff4aca1d827c88a90b9dec8f177e57d03"/>
@@ -80,8 +84,12 @@
   <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="eebc98233c3e032eb6b9036575d51324ab5932e6"/>
 
   <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
-  
-  
+
+  <project name="service" path="godeps/src/github.com/kardianos/service" remote="kardianos" revision="2954cfdd7b0c8ab45ef2aa22a44b5f086201836f"/>
+
+  <project name="osext" path="godeps/src/github.com/kardianos/osext" remote="kardianos" revision="29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"/>
+
+
 </manifest>
 
 
