@@ -11,6 +11,8 @@
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
   <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
+  <remote fetch="git://github.com/coreos/" name="coreos"/>
+  <remote fetch="git://github.com/jonboulle/" name="jonboulle"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
   <remote fetch="git://github.com/coreos/" name="coreos"/>
   
@@ -60,8 +62,6 @@
 
   <project name="mux" path="godeps/src/github.com/gorilla/mux" remote="gorilla" revision="9b36453141c35697401168b07f2c09fcff7721ce"/>
 
-  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="coreos" revision="e6174c764e906bd60c76fdfc33faf5e0bdc875d6"/>
-
   <project name="npipe" path="godeps/src/github.com/natefinch/npipe" remote="natefinch" revision="0938d701e50e580f5925c773055eb6d6b32a0cbc"/>
 
   <project name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="rcrowley" revision="7aeccdae5c4ea7140b90c8af1dcf9563065cc6dd"/>
@@ -83,7 +83,14 @@
   <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="eebc98233c3e032eb6b9036575d51324ab5932e6"/>
 
   <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
-  
+
+  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="coreos" revision="e6174c764e906bd60c76fdfc33faf5e0bdc875d6"/>
+
+  <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="coreos" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>
+
+  <project name="pkg" path="godeps/src/github.com/coreos/pkg" remote="coreos" revision="160ae6282d8c48a33d8c150e4e4817fdef8a5cde"/>
+
+  <project name="clockwork" path="godeps/src/github.com/jonboulle/clockwork" remote="jonboulle" revision="ed104f61ea4877bea08af6f759805674861e968d"/>
   
 </manifest>
 

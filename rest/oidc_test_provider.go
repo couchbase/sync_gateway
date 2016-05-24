@@ -2,8 +2,8 @@ package rest
 
 import (
 	"github.com/couchbase/sync_gateway/base"
-	"text/template"
 	"net/http"
+	"text/template"
 )
 
 const login_html = `
@@ -83,7 +83,7 @@ OPTIONAL. Hint to the Authorization Server about the login identifier the End-Us
 acr_values
 OPTIONAL. Requested Authentication Context Class Reference values. Space-separated string that specifies the acr values that the Authorization Server is being requested to use for processing this Authentication Request, with the values appearing in order of preference. The Authentication Context Class satisfied by the authentication performed is returned as the acr Claim Value, as specified in Section 2. The acr Claim is requested as a Voluntary Claim by this parameter.
 
- */
+*/
 
 /*
  * From OAuth 2.0 spec
@@ -99,7 +99,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	requestParams := h.rq.URL.RawQuery
 
-	base.LogTo("Oidc","raw authorize request raw query params = %v",requestParams)
+	base.LogTo("Oidc", "raw authorize request raw query params = %v", requestParams)
 
 	p := &Page{Title: "Oidc Testing Login", Query: requestParams}
 	t := template.New("Test Login")
@@ -146,10 +146,10 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	username := h.rq.FormValue("username")
 	password := h.rq.FormValue("password")
 
-	if(username != "" && password != "") {
-		if user := handler.db.Authenticator().AuthenticateUser(username, password); user == nil {
+	if username != "" && password != "" {
+		if user := h.db.Authenticator().AuthenticateUser(username, password); user == nil {
 			//Build call back URL
-			base.LogTo("Oidc","authenticate  redirect_uri = %v",requestParams.Get("redirect_uri"))
+			base.LogTo("Oidc", "authenticate  redirect_uri = %v", requestParams.Get("redirect_uri"))
 
 			fragmentQuery := "#access_token=SlAV32hkKG&token_type=bearer&id_token=eyNiJ9.eyJ1cI6IjIifX0.DeWt4QZXso&expires_in=3600&state=af0ifjsldkj"
 			h.setHeader("Location", requestParams.Get("redirect_uri")+fragmentQuery)
@@ -157,31 +157,13 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 			return nil
 		} else {
-			base.LogTo("Oidc+","user was not authenticated")
+			base.LogTo("Oidc+", "user was not authenticated")
 		}
 	} else {
-		base.LogTo("Oidc+","user did not enter valid credentials")
+		base.LogTo("Oidc+", "user did not enter valid credentials")
 	}
 
 	//Build an error response
 
-	return nil
-}
-
-/* Stub methods for testing, remove for final release and replace with actual impls */
-
-func (h *handler) handleOidc() error {
-
-	base.LogTo("Oidc", "handleOidc() called")
-	return nil
-}
-
-func (h *handler) handleOidcCallback() error {
-	base.LogTo("Oidc", "handleOidcCallback() called")
-	return nil
-}
-
-func (h *handler) handleOidcRefresh() error {
-	base.LogTo("Oidc", "handleOidcRefresh() called")
 	return nil
 }

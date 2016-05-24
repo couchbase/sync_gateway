@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/coreos/go-oidc/oidc"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -71,6 +72,7 @@ type DatabaseContext struct {
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
+	OIDCClient         *oidc.Client            // OIDC client
 }
 
 type DatabaseContextOptions struct {
@@ -81,10 +83,11 @@ type DatabaseContextOptions struct {
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	OIDCOptions           *auth.OIDCOptions
 }
 
 type UnsupportedOptions struct {
-	EnableUserViews bool
+	EnableUserViews        bool
 	EnableOidcTestProvider bool
 }
 
@@ -174,6 +177,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		context.TakeDbOffline("Lost TAP Feed")
 	}); err != nil {
 		return nil, err
+	}
+
+	if options.OIDCOptions != nil {
+		context.OIDCClient, err = auth.CreateOIDCClient(options.OIDCOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	go context.watchDocChanges()
