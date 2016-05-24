@@ -147,7 +147,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	password := h.rq.FormValue("password")
 
 	if username != "" && password != "" {
-		if user := handler.db.Authenticator().AuthenticateUser(username, password); user == nil {
+		if user := h.db.Authenticator().AuthenticateUser(username, password); user == nil {
 			//Build call back URL
 			base.LogTo("Oidc", "authenticate  redirect_uri = %v", requestParams.Get("redirect_uri"))
 
