@@ -10,56 +10,103 @@
 package rest
 
 import (
-	"errors"
-	"strings"
+	"fmt"
+	"net/http"
+	"net/url"
 
+	"github.com/coreos/go-oidc/oauth2"
+	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 )
 
 const (
-	OIDC_AUTH_RESPONSE_TYPE    = "response_type"
-	OIDC_AUTH_CLIENT_ID        = "client_id"
-	OIDC_AUTH_SCOPE            = "scope"
-	OIDC_AUTH_REDIRECT_URI     = "redirect_uri"
-	OIDC_AUTH_STATE            = "state"
-
+	OIDC_AUTH_RESPONSE_TYPE = "response_type"
+	OIDC_AUTH_CLIENT_ID     = "client_id"
+	OIDC_AUTH_SCOPE         = "scope"
+	OIDC_AUTH_REDIRECT_URI  = "redirect_uri"
+	OIDC_AUTH_STATE         = "state"
 
 	OIDC_RESPONSE_TYPE_CODE     = "code"
 	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
 )
 
+type OIDCCallbackResponse struct {
+	IDToken      string `json:"id_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+}
+
 func (h *handler) handleOIDC() error {
 
-	scope := h.getQuery("scope")
-
-	// Validate scope is openid
-	if scope == nil {
-		return errors.New("Scope must be defined in oidc request")
-	}
-	if !strings.HasPrefix(scope, "openid") {
-		return errors.New("Invalid scope - only openid scopes are supported")
+	client, err := h.getOIDCClient()
+	if err != nil {
+		return err
 	}
 
-	authParams := make(map[string]string)
-
-	// If scope requests offline access, handle as implicit flow.
-	if strings.Contains(scope, "offline_access") {
-		authParams["response_type"] = OIDC_RESPONSE_TYPE_IMPLICIT
-	} else {
-		authParams["response_type"] = OIDC_RESPONSE_TYPE_CODE
+	oac, err := client.OAuthClient()
+	if err != nil {
+		return err
 	}
 
-	authParams[]
+	state := "1234"
+	accessType := ""
+	prompt := ""
+
+	// TODO: Should we support direct pass-through of access_type and prompt from the caller?
+	offline := h.getBoolQuery("offline")
+	if offline {
+		accessType = "offline"
+		prompt = "consent"
+	}
+
+	redirectURL, err := url.Parse(oac.AuthCodeURL(state, accessType, prompt))
+	if err != nil {
+		return err
+	}
+
+	http.Redirect(h.response, h.rq, redirectURL.String(), http.StatusFound)
 
 	return nil
 }
 
 func (h *handler) handleOIDCCallback() error {
-	base.LogTo("Oidc", "handleOidcCallback() called")
+	code := h.getQuery("code")
+	if code == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Code must be present on oidc callback")
+	}
+
+	client, err := h.getOIDCClient()
+	if err != nil {
+		return err
+	}
+
+	oac, err := client.OAuthClient()
+	if err != nil {
+		return err
+	}
+
+	tokenResponse, err := oac.RequestToken(oauth2.GrantTypeAuthCode, code)
+	if err != nil {
+		return err
+	}
+
+	callbackResponse := &OIDCCallbackResponse{
+		IDToken:      tokenResponse.IDToken,
+		RefreshToken: tokenResponse.RefreshToken,
+	}
+
+	h.writeJSON(callbackResponse)
 	return nil
 }
 
 func (h *handler) handleOIDCRefresh() error {
 	base.LogTo("Oidc", "handleOidcRefresh() called")
 	return nil
+}
+
+func (h *handler) getOIDCClient() (*oidc.Client, error) {
+	client := h.db.OIDCClient
+	if client == nil {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
+	}
+	return client, nil
 }

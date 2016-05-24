@@ -434,11 +434,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		revCacheSize = db.KDefaultRevisionCacheCapacity
 	}
 
-	// JWT Options
-	if config.OIDCConfig != nil {
-
-	}
-
 	unsupportedOptions := &db.UnsupportedOptions{}
 	if config.Unsupported != nil {
 		if config.Unsupported.UserViews != nil {
