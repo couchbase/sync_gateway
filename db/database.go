@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 
 	"github.com/auth0/go-jwt-middleware"
+	"github.com/coreos/go-oidc/oidc"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -73,6 +74,7 @@ type DatabaseContext struct {
 	State              uint32                       // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}                // Active _changes feeds on the DB will close when this channel is closed
 	JWTAuth            *jwtmiddleware.JWTMiddleware // DB-scoped JWT authenticator
+	OIDCClient         *oidc.Client                 // OIDC client
 }
 
 type DatabaseContextOptions struct {
@@ -177,6 +179,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		context.TakeDbOffline("Lost TAP Feed")
 	}); err != nil {
 		return nil, err
+	}
+
+	if options.OIDCOptions != nil {
+		context.OIDCClient, err = auth.CreateOIDCClient(options.OIDCOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	go context.watchDocChanges()
