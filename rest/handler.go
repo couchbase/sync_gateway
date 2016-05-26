@@ -251,6 +251,18 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return nil
 	}
 
+	var err error
+	// If oidc client available, check for bearer ID token
+	if context.OIDCClient != nil {
+		if token := h.getBearerToken(); token != "" {
+			h.user, _, err = context.Authenticator().AuthenticateJWT(token, context.OIDCClient, context.Options.OIDCOptions.Register)
+			if h.user == nil || err != nil {
+				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			}
+			return nil
+		}
+	}
+
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
@@ -263,7 +275,6 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 
 	// Check cookie
-	var err error
 	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
 	if err != nil {
 		return err
@@ -422,6 +433,15 @@ func (h *handler) getBasicAuth() (username string, password string) {
 		}
 	}
 	return
+}
+
+func (h *handler) getBearerToken() string {
+	auth := h.rq.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := auth[7:]
+		return token
+	}
+	return ""
 }
 
 func (h *handler) currentEffectiveUserName() string {

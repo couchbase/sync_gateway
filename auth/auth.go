@@ -12,8 +12,9 @@ package auth
 import (
 	"encoding/json"
 
+	"github.com/coreos/go-oidc/jose"
+	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/go-couchbase"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -277,6 +278,50 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 		return nil
 	}
 	return user
+}
+
+// Authenticates a user based on a JWT token string.
+// If the token is validated but the user for the username defined in the subject claim doesn't exist,
+// creates the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateJWT(token string, client *oidc.Client, autoRegister bool) (User, jose.JWT, error) {
+
+	jwt := jose.JWT{}
+	var err error
+	jwt, err = ValidateJWT(token, client)
+	if err != nil {
+		return nil, jwt, err
+	}
+
+	identity, identityErr := GetJWTIdentity(jwt)
+	if identityErr != nil {
+		return nil, jwt, identityErr
+	}
+
+	user, userErr := auth.GetUser(identity.ID)
+	if userErr != nil {
+		return nil, jwt, userErr
+	}
+
+	// If user found, check whether the email needs to be updated (e.g. user has changed email in
+	// external auth system)
+	if user != nil && identity.Email != "" {
+		if identity.Email != user.Email() {
+			if err := user.SetEmail(identity.Email); err == nil {
+				auth.Save(user)
+			}
+		}
+	}
+
+	// Auto-registration.  This will normally be done when token is originally returned
+	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
+	if user == nil && autoRegister {
+		user, err = auth.RegisterNewUser(identity.ID, identity.Email)
+		if err != nil {
+			return nil, jwt, err
+		}
+	}
+
+	return user, jwt, nil
 }
 
 // Registers a new user account based on the given verified email address.
