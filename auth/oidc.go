@@ -21,13 +21,14 @@ import (
 // Options for OpenID Connect
 type OIDCOptions struct {
 	JWTOptions
-	Issuer        *string `json:"issuer,omitempty"`         // OIDC Issuer
-	AuthorizeURL  *string `json:"authorize_url,omitempty"`  // OIDC OP authorize endpoint.
-	TokenURL      *string `json:"token_url,omitempty"`      // OIDC OP token endpoint.
-	Register      bool    `json:"register"`                 // If true, server will register new user accounts
-	ClientID      *string `json:"client_id",omitempty"`     // Client ID
-	ValidationKey *string `json:"validation_key,omitempty"` // Client secret
-	CallbackURL   *string `json:"callback_url,omitempty"`   // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
+	Issuer         *string `json:"issuer,omitempty"`          // OIDC Issuer
+	AuthorizeURL   *string `json:"authorize_url,omitempty"`   // OIDC OP authorize endpoint.
+	TokenURL       *string `json:"token_url,omitempty"`       // OIDC OP token endpoint.
+	Register       bool    `json:"register"`                  // If true, server will register new user accounts
+	ClientID       *string `json:"client_id,omitempty"`       // Client ID
+	ValidationKey  *string `json:"validation_key,omitempty"`  // Client secret
+	CallbackURL    *string `json:"callback_url,omitempty"`    // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
+	DisableSession bool    `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
 }
 
 func CreateOIDCClient(options *OIDCOptions) (*oidc.Client, error) {

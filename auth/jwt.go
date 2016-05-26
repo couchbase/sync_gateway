@@ -9,8 +9,59 @@
 
 package auth
 
+import (
+	"time"
+
+	"github.com/coreos/go-oidc/jose"
+	"github.com/coreos/go-oidc/oidc"
+)
+
 // Config options for Json Web Token validation
 type JWTOptions struct {
 	ValidationKey *string `json:"validation_key"`           // Key used to validate signed tokens
 	SigningMethod *string `json:"signing_method,omitempty"` // Algorithm used for signing.  Can be specified for additional security to handle scenario described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
+}
+
+// Parses and validates a JWT token, based on the client definition provided.
+func ValidateJWT(idToken string, client *oidc.Client) (jose.JWT, error) {
+
+	jwt, err := jose.ParseJWT(idToken)
+	if err != nil {
+		return jose.JWT{}, err
+	}
+
+	return jwt, client.VerifyJWT(jwt)
+}
+
+// Extracts the JWT Identity Claims (includes ID, Email, Expiry) from a JWT.
+func GetJWTIdentity(jwt jose.JWT) (identity *oidc.Identity, err error) {
+
+	claims, err := jwt.Claims()
+	if err != nil {
+		return identity, err
+	}
+
+	return oidc.IdentityFromClaims(claims)
+}
+
+// Returns the "sub" claim (Identity.ID) for the JWT.
+func GetJWTSubject(jwt jose.JWT) (subject string, err error) {
+
+	identity, err := GetJWTIdentity(jwt)
+	if err != nil {
+		return "", err
+	}
+
+	return identity.ID, nil
+}
+
+// Returns the "exp" claim (Identity.ExpiresAt) for the JWT, as a time.Time.
+func GetJWTExpiry(jwt jose.JWT) (expiresAt time.Time, err error) {
+
+	identity, err := GetJWTIdentity(jwt)
+	if err != nil {
+		return expiresAt, err
+	}
+
+	return identity.ExpiresAt, nil
 }
