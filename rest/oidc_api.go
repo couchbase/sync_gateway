@@ -13,9 +13,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/coreos/go-oidc/oauth2"
 	"github.com/coreos/go-oidc/oidc"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -92,6 +94,23 @@ func (h *handler) handleOIDCCallback() error {
 	callbackResponse := &OIDCCallbackResponse{
 		IDToken:      tokenResponse.IDToken,
 		RefreshToken: tokenResponse.RefreshToken,
+	}
+
+	// Create a Sync Gateway session
+	if !h.db.Options.OIDCOptions.DisableSession {
+		user, jwt, err := h.db.Authenticator().AuthenticateJWT(tokenResponse.IDToken, h.db.OIDCClient, h.db.Options.OIDCOptions.Register)
+		if err != nil {
+			return err
+		}
+		tokenExpiryTime, err := auth.GetJWTExpiry(jwt)
+		if err != nil {
+			return err
+		}
+		sessionTTL := tokenExpiryTime.Sub(time.Now())
+		err = h.makeSessionWithTTL(user, sessionTTL)
+		if err != nil {
+			return err
+		}
 	}
 
 	h.writeJSON(callbackResponse)
