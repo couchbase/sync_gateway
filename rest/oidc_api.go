@@ -98,7 +98,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	// Create a Sync Gateway session
 	if !h.db.Options.OIDCOptions.DisableSession {
-		user, jwt, err := h.db.Authenticator().AuthenticateJWT(tokenResponse.IDToken, h.db.OIDCClient, h.db.Options.OIDCOptions.Register)
+		user, jwt, err := h.db.Authenticator().AuthenticateJWT(tokenResponse.IDToken, client, h.db.Options.OIDCOptions.Register)
 		if err != nil {
 			return err
 		}
@@ -123,7 +123,7 @@ func (h *handler) handleOIDCRefresh() error {
 }
 
 func (h *handler) getOIDCClient() (*oidc.Client, error) {
-	client := h.db.OIDCClient
+	client := h.db.GetOIDCClient()
 	if client == nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
 	}

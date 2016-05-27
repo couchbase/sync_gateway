@@ -40,9 +40,11 @@ func CreateOIDCClient(options *OIDCOptions) (*oidc.Client, error) {
 	}
 	base.LogTo("OIDC", "Attempting to fetch provider config from discovery endpoint for issuer %s...", *options.Issuer)
 	retryCount := 5
+	var providerLoaded bool
 	for i := 1; i <= 5; i++ {
 		config, err = oidc.FetchProviderConfig(http.DefaultClient, *options.Issuer)
 		if err == nil {
+			providerLoaded = true
 			break
 		}
 		base.LogTo("OIDC", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
@@ -50,17 +52,9 @@ func CreateOIDCClient(options *OIDCOptions) (*oidc.Client, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	// TODO: If discovery endpoint not present, attempt to build from lower level components?
-	/*
-		if config == nil {
-			if options.Issuer == nil || options.AuthorizeURL == nil || options.TokenURL == nil {
-				return nil, errors.New("Issuer, authorize_url and token_url must be present if discovery endpoint is unavailable")
-			}
-			config := &oidc.ProviderConfig{
-
-
-		}
-	*/
+	if !providerLoaded {
+		return nil, errors.New("Unable to fetch provider - OIDC unavailable")
+	}
 
 	clientCredentials := oidc.ClientCredentials{
 		ID:     *options.ClientID,

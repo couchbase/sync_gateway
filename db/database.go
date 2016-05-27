@@ -73,6 +73,7 @@ type DatabaseContext struct {
 	State              uint32                  // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
 	OIDCClient         *oidc.Client            // OIDC client
+	OIDCClientOnce     sync.Once               // Manages lazy loading of OIDC client
 }
 
 type DatabaseContextOptions struct {
@@ -179,15 +180,22 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	if options.OIDCOptions != nil {
-		context.OIDCClient, err = auth.CreateOIDCClient(options.OIDCOptions)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	go context.watchDocChanges()
 	return context, nil
+}
+
+func (context *DatabaseContext) GetOIDCClient() *oidc.Client {
+	// Initialize the client on first request
+	context.OIDCClientOnce.Do(func() {
+		if context.Options.OIDCOptions != nil {
+			var err error
+			context.OIDCClient, err = auth.CreateOIDCClient(context.Options.OIDCOptions)
+			if err != nil {
+				base.Warn("Unable to initialize OIDC client: %v", err)
+			}
+		}
+	})
+	return context.OIDCClient
 }
 
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
