@@ -330,11 +330,8 @@ def make_event_log_task():
                        "/FORMAT:list" % locals())
 
 
-def make_os_tasks():
-    programs = " ".join(["moxi", "memcached", "beam.smp",
-                         "couch_compact", "godu", "sigar_port",
-                         "cbq-engine", "indexer", "projector", "goxdcr",
-                         "cbft"])
+def make_os_tasks(processes):
+    programs = " ".join(processes)
 
     _tasks = [
         UnixTask("uname", "uname -a"),

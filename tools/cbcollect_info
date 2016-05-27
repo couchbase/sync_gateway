@@ -128,7 +128,10 @@ def main():
     runner = TaskRunner(verbosity=options.verbosity)
 
     if not options.product_only:
-        for task in make_os_tasks():
+        for task in make_os_tasks(["moxi", "memcached", "beam.smp",
+                         "couch_compact", "godu", "sigar_port",
+                         "cbq-engine", "indexer", "projector", "goxdcr",
+                         "cbft"]):
             runner.run(task)
 
     initargs_variants = [os.path.abspath(os.path.join(options.root, "var", "lib", "couchbase", "initargs")),
