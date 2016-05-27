@@ -32,7 +32,7 @@ const (
 	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
 )
 
-type OIDCCallbackResponse struct {
+type OIDCTokenResponse struct {
 	IDToken      string `json:"id_token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
@@ -91,14 +91,60 @@ func (h *handler) handleOIDCCallback() error {
 		return err
 	}
 
-	callbackResponse := &OIDCCallbackResponse{
+	callbackResponse := &OIDCTokenResponse{
 		IDToken:      tokenResponse.IDToken,
 		RefreshToken: tokenResponse.RefreshToken,
 	}
 
 	// Create a Sync Gateway session
+	if err = h.createSessionForIdToken(tokenResponse.IDToken, client); err != nil {
+		return err
+	}
+
+	h.writeJSON(callbackResponse)
+	return nil
+}
+
+func (h *handler) handleOIDCRefresh() error {
+
+	refreshToken := h.getQuery("refresh_token")
+	if refreshToken == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Refresh token must be present for oidc refresh")
+	}
+
+	client, err := h.getOIDCClient()
+	if err != nil {
+		return err
+	}
+
+	oac, err := client.OAuthClient()
+	if err != nil {
+		return err
+	}
+
+	tokenResponse, err := oac.RequestToken(oauth2.GrantTypeRefreshToken, refreshToken)
+	if err != nil {
+		base.LogTo("OIDC", "Unsuccessful token refresh: %v", err)
+		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
+		return err
+	}
+
+	if err = h.createSessionForIdToken(tokenResponse.IDToken, client); err != nil {
+		return err
+	}
+
+	refreshResponse := &OIDCTokenResponse{
+		IDToken: tokenResponse.IDToken,
+	}
+
+	h.writeJSON(refreshResponse)
+
+	return nil
+}
+
+func (h *handler) createSessionForIdToken(idToken string, client *oidc.Client) error {
 	if !h.db.Options.OIDCOptions.DisableSession {
-		user, jwt, err := h.db.Authenticator().AuthenticateJWT(tokenResponse.IDToken, client, h.db.Options.OIDCOptions.Register)
+		user, jwt, err := h.db.Authenticator().AuthenticateJWT(idToken, client, h.db.Options.OIDCOptions.Register)
 		if err != nil {
 			return err
 		}
@@ -112,13 +158,6 @@ func (h *handler) handleOIDCCallback() error {
 			return err
 		}
 	}
-
-	h.writeJSON(callbackResponse)
-	return nil
-}
-
-func (h *handler) handleOIDCRefresh() error {
-	base.LogTo("Oidc", "handleOidcRefresh() called")
 	return nil
 }
 
