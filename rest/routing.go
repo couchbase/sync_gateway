@@ -95,6 +95,9 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 
 	oidcr := dbr.PathPrefix("/_oidc_testing").Subrouter()
 
+	//Client discovery endpoint
+	oidcr.Handle("/.well-known/openid-configuration", makeHandler(sc, publicPrivs, (*handler).handleOidcProviderConfiguration)).Methods("GET")
+
 	oidcr.Handle("/authorize", makeHandler(sc, publicPrivs,
 		(*handler).handleOidcTestProviderAuthorize)).Methods("GET", "POST")
 
