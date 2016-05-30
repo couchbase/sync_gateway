@@ -91,6 +91,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	dbr.Handle("/_oidc", makeHandler(sc, publicPrivs, (*handler).handleOIDC)).Methods("GET")
 	dbr.Handle("/_oidc_callback", makeHandler(sc, publicPrivs, (*handler).handleOIDCCallback)).Methods("GET")
 	dbr.Handle("/_oidc_refresh", makeHandler(sc, publicPrivs, (*handler).handleOIDCRefresh)).Methods("GET")
+	dbr.Handle("/_oidc_challenge", makeHandler(sc, publicPrivs, (*handler).handleOIDCChallenge)).Methods("GET")
 
 	oidcr := dbr.PathPrefix("/_oidc_testing").Subrouter()
 

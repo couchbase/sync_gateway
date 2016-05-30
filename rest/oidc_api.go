@@ -39,21 +39,45 @@ type OIDCTokenResponse struct {
 
 func (h *handler) handleOIDC() error {
 
-	client, err := h.getOIDCClient()
+	redirectURL, err := h.handleOIDCCommon()
 	if err != nil {
 		return err
+	}
+	http.Redirect(h.response, h.rq, redirectURL, http.StatusFound)
+	return nil
+}
+
+func (h *handler) handleOIDCChallenge() error {
+	redirectURL, err := h.handleOIDCCommon()
+	if err != nil {
+		return err
+	}
+
+	authHeader := fmt.Sprintf("OIDC login=%q", redirectURL)
+	h.setHeader("WWW-Authenticate", authHeader)
+
+	return base.HTTPErrorf(http.StatusUnauthorized, "Login Required")
+}
+
+func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
+
+	redirectURLString = ""
+	client, err := h.getOIDCClient()
+	if err != nil {
+		return redirectURLString, err
 	}
 
 	oac, err := client.OAuthClient()
 	if err != nil {
-		return err
+		return redirectURLString, err
 	}
 
-	state := "1234"
+	// TODO: Add support for state generation and retrieval
+	state := ""
 	accessType := ""
 	prompt := ""
 
-	// TODO: Should we support direct pass-through of access_type and prompt from the caller?
+	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
 	offline := h.getBoolQuery("offline")
 	if offline {
 		accessType = "offline"
@@ -62,12 +86,10 @@ func (h *handler) handleOIDC() error {
 
 	redirectURL, err := url.Parse(oac.AuthCodeURL(state, accessType, prompt))
 	if err != nil {
-		return err
+		return redirectURLString, err
 	}
 
-	http.Redirect(h.response, h.rq, redirectURL.String(), http.StatusFound)
-
-	return nil
+	return redirectURL.String(), nil
 }
 
 func (h *handler) handleOIDCCallback() error {
