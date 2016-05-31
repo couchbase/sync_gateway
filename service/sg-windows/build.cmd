@@ -2,7 +2,7 @@
 
 SETLOCAL
 
-SET GOPATH=%cd%;..\..\..\..\..\..
+SET GOPATH=%cd%;%GOPATH%
 
 REM Build the Sync Gateway service wrapper
 go build -o sg-windows.exe sg-service.go
