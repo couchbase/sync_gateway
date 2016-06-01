@@ -1,0 +1,164 @@
+#!/usr/bin/env python
+
+import optparse
+import xml.etree.ElementTree as ET
+import urllib2
+import sys
+import os
+import subprocess
+
+# Ignore the projects with a "name" attribute that is any of the following
+ignored_repos = [
+    "build",
+    "sync_gateway",
+    "sync-gateway-accel"
+]
+
+def parse_args():
+    """
+    Parse command line args and return a tuple
+    """
+    parser = optparse.OptionParser()
+    parser.add_option(
+        '-u',
+        '--update-to-manifest-commit',
+        default=False,
+        action="store_true",
+        help='Update any repos in the GOPATH to a DETACHED HEAD that matches the commit specified in the manifest for that repo'
+    )
+    parser.add_option(
+        '-r',
+        '--update-to-master-commit',
+        default=False,
+        action="store_true",
+        help='For all repos in the manifest that are also in the GOPATH, run git checkout master.  May be needed if you want to run go get.'
+    )
+    parser.add_option(
+        '-d',
+        '--display-deltas',
+        default=False,
+        action="store_true",
+        help='For all repos in the manifest that are also in the GOPATH, display the delta between what commit it is on versus what is in the manifest'
+    )
+    (opts, args) = parser.parse_args()
+    return (parser, opts.update_to_manifest_commit, opts.display_deltas, opts.update_to_master_commit)
+
+def display_commit_delta(path, manifest_revision, gopath_revision):
+    status = "UP-TO-DATE"
+    if manifest_revision != gopath_revision:
+        status = "DELTA"
+        
+    print("{} {}: manifest: {} gopath repo: {}".format(
+        status,
+        path,
+        manifest_revision,
+        gopath_revision,
+    ))
+
+def git_checkout_manifest_commit(path, manifest_revision, gopath_revision):
+    
+    # first run a git diff to make sure there are no local changes
+    output = subprocess.check_output(
+        ["git", "diff"],
+        cwd=path
+    )
+    if len(output) > 0:
+        print("Git diff output: {}".format(output))
+        raise Exception("It appears you have local changes in {}.  You should stash or reset to HEAD".format(path))
+    
+    print("git checkout {} in {}".format(manifest_revision, path))
+    output = subprocess.check_output(
+        ["git", "checkout", manifest_revision],
+        cwd=path
+    )
+    print("git checkout {} output: {}".format(manifest_revision, output))
+
+def git_checkout_master(path, manifest_revision, gopath_revision):
+
+    print("git checkout master in {}".format(path))
+    output = subprocess.check_output(
+        ["git", "checkout", "master"],
+        cwd=path
+    )
+    print("git checkout master output: {}".format(output))
+
+    
+def process_commit_deltas(tree, callback):
+   root = tree.getroot()
+   for element in root:
+       if element.tag != "project":
+           continue
+       project_name = element.get("name")
+       if project_name in ignored_repos:
+           print("Skipping: {}".format(project_name))
+           continue
+       manifest_revision = element.get("revision")
+       path = element.get("path")
+       path = remove_godeps_prefix(path)
+       path = os.path.join(
+           os.environ["GOPATH"],
+           path
+       )
+       
+       gopath_revision = get_gopath_revision(path)
+       if gopath_revision is None:
+           continue
+       callback(
+           path,
+           manifest_revision,
+           gopath_revision
+       )
+
+       
+def get_gopath_revision(path):
+
+    """
+    Given a path like "godeps/src/github.com/couchbase/cb-heartbeat",
+    run 'git rev-parse HEAD' in the corresponding GOPATH directory
+    and return the current commit
+    """
+
+    if not os.path.exists(path):
+        print("WARN: Directory does not exist, skipping: {}".format(path))
+        return None
+    
+    latest_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path
+    )
+    return latest_commit.strip()
+
+
+def remove_godeps_prefix(path):
+
+    """
+    Strip the leading "godeps" off the path.
+
+    Given "godeps/src/github.com/couchbase/cb-heartbeat"
+    Return "src/github.com/couchbase/cb-heartbeat"
+    """
+    return os.path.relpath(path, 'godeps')
+
+           
+if __name__=="__main__":
+
+    if not "GOPATH" in os.environ:
+        raise Exception("You must define a GOPATH environment variable")
+    
+    # get arguments
+    (parser, update_to_manifest_commit, display_deltas, update_to_master_commit) = parse_args()
+   
+    # fetch manifest content and parse xml 
+    tree = ET.ElementTree(file=open("../manifest/default.xml"))
+
+    if display_deltas:
+        callback_func=display_commit_delta
+        process_commit_deltas(tree, callback_func)
+
+    if update_to_manifest_commit:
+        callback_func=git_checkout_manifest_commit
+        process_commit_deltas(tree, callback_func)
+
+    if update_to_master_commit:
+        callback_func=git_checkout_master
+        process_commit_deltas(tree, callback_func)
