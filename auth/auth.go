@@ -11,9 +11,9 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/coreos/go-oidc/jose"
-	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -283,20 +283,36 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // Authenticates a user based on a JWT token string.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateJWT(token string, client *oidc.Client, autoRegister bool) (User, jose.JWT, error) {
+func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap) (User, jose.JWT, error) {
 
-	jwt := jose.JWT{}
-	var err error
-	jwt, err = ValidateJWT(token, client)
+	// Parse JWT (needed to determine issuer/provider)
+	jwt, err := jose.ParseJWT(token)
+	if err != nil {
+		return nil, jose.JWT{}, err
+	}
+
+	// Get client for issuer
+	issuer, err := GetJWTIssuer(jwt)
+	if err != nil {
+		return nil, jose.JWT{}, err
+	}
+	provider, ok := providers[issuer]
+	if !ok {
+		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
+	}
+
+	// Verify JWT
+	client := provider.OIDCClient
+	err = client.VerifyJWT(jwt)
 	if err != nil {
 		return nil, jwt, err
 	}
 
+	// Extract identity from token
 	identity, identityErr := GetJWTIdentity(jwt)
 	if identityErr != nil {
 		return nil, jwt, identityErr
 	}
-
 	user, userErr := auth.GetUser(identity.ID)
 	if userErr != nil {
 		return nil, jwt, userErr
@@ -314,7 +330,7 @@ func (auth *Authenticator) AuthenticateJWT(token string, client *oidc.Client, au
 
 	// Auto-registration.  This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
-	if user == nil && autoRegister {
+	if user == nil && provider.Register {
 		user, err = auth.RegisterNewUser(identity.ID, identity.Email)
 		if err != nil {
 			return nil, jwt, err

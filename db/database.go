@@ -72,8 +72,7 @@ type DatabaseContext struct {
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
-	OIDCClient         *oidc.Client            // OIDC client
-	OIDCClientOnce     sync.Once               // Manages lazy loading of OIDC client
+	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
 }
 
 type DatabaseContextOptions struct {
@@ -180,22 +179,38 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	// Load providers into provider map
+	if options.OIDCOptions != nil {
+		context.OIDCProviders = make(map[string]*auth.OIDCProvider, len(options.OIDCOptions.Providers))
+		for _, provider := range options.OIDCOptions.Providers {
+			if provider.Issuer == "" {
+				base.Warn("No issuer defined for OIDC Provider - skipping.  %v", provider)
+			}
+			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
+				base.Warn("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+			}
+			context.OIDCProviders[provider.Issuer] = provider
+		}
+	}
+
 	go context.watchDocChanges()
 	return context, nil
 }
 
-func (context *DatabaseContext) GetOIDCClient() *oidc.Client {
-	// Initialize the client on first request
-	context.OIDCClientOnce.Do(func() {
-		if context.Options.OIDCOptions != nil {
-			var err error
-			context.OIDCClient, err = auth.CreateOIDCClient(context.Options.OIDCOptions)
-			if err != nil {
-				base.Warn("Unable to initialize OIDC client: %v", err)
-			}
-		}
-	})
-	return context.OIDCClient
+func (context *DatabaseContext) GetOIDCClient(issuerName string) (*oidc.Client, error) {
+
+	provider, ok := context.OIDCProviders[issuerName]
+	if !ok {
+		return nil, fmt.Errorf("No issuer defined for name %v", issuerName)
+	}
+
+	if client := provider.GetClient(); client == nil {
+		return nil, fmt.Errorf("Error initializing client for issuer %s", issuerName)
+	} else {
+		return client, nil
+	}
+
 }
 
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {

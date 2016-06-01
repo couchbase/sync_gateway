@@ -62,6 +62,10 @@ func (h *handler) handleOIDCChallenge() error {
 func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 	redirectURLString = ""
+
+	issuer := h.getQuery("iss")
+
+	provider, err := h.getOIDCProvider(issuer)
 	client, err := h.getOIDCClient()
 	if err != nil {
 		return redirectURLString, err
@@ -164,9 +168,9 @@ func (h *handler) handleOIDCRefresh() error {
 	return nil
 }
 
-func (h *handler) createSessionForIdToken(idToken string, client *oidc.Client) error {
+func (h *handler) createSessionForIdToken(idToken string, provider auth.OIDCProvider) error {
 	if !h.db.Options.OIDCOptions.DisableSession {
-		user, jwt, err := h.db.Authenticator().AuthenticateJWT(idToken, client, h.db.Options.OIDCOptions.Register)
+		user, jwt, err := h.db.Authenticator().AuthenticateJWT(idToken, provider)
 		if err != nil {
 			return err
 		}
@@ -183,8 +187,16 @@ func (h *handler) createSessionForIdToken(idToken string, client *oidc.Client) e
 	return nil
 }
 
-func (h *handler) getOIDCClient() (*oidc.Client, error) {
-	client := h.db.GetOIDCClient()
+func (h *handler) getOIDCClient(issuer string) (*oidc.Client, error) {
+	client := h.db.GetOIDCClient(issuer)
+	if client == nil {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
+	}
+	return client, nil
+}
+
+func (h *handler) getOIDCProvider(issuer string) (*oidc.Provider, error) {
+	client := h.db.GetOIDCProvider(issuer)
 	if client == nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
 	}

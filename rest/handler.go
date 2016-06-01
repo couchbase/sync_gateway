@@ -255,7 +255,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
-			h.user, _, err = context.Authenticator().AuthenticateJWT(token, context.GetOIDCClient(), context.Options.OIDCOptions.Register)
+			h.user, _, err = context.Authenticator().AuthenticateJWT(token, context.OIDCProviders)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}

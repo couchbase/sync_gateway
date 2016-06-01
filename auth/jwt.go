@@ -10,6 +10,8 @@
 package auth
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/coreos/go-oidc/jose"
@@ -44,6 +46,34 @@ func GetJWTIdentity(jwt jose.JWT) (identity *oidc.Identity, err error) {
 	return oidc.IdentityFromClaims(claims)
 }
 
+// Returns the Sync Gateway username for a JWT.  Username is of the form [iss]/[sub]
+func GetJWTUsername(jwt jose.JWT) (subject string, err error) {
+
+	var sub, iss string
+	var ok bool
+
+	claims, err := jwt.Claims()
+	if err != nil {
+		return "", err
+	}
+
+	if sub, ok, err = claims.StringClaim("sub"); err != nil {
+		return "", err
+	} else if !ok {
+		return "", errors.New("missing required claim: sub")
+	}
+
+	if iss, ok, err = claims.StringClaim("iss"); err != nil {
+		return "", err
+	} else if !ok {
+		return "", errors.New("missing required claim: iss")
+	}
+
+	// TODO: consider encoding the issuer or otherwise strip out protocol, etc?
+
+	return fmt.Sprintf("%s/%s", iss, sub), nil
+}
+
 // Returns the "sub" claim (Identity.ID) for the JWT.
 func GetJWTSubject(jwt jose.JWT) (subject string, err error) {
 
@@ -64,4 +94,21 @@ func GetJWTExpiry(jwt jose.JWT) (expiresAt time.Time, err error) {
 	}
 
 	return identity.ExpiresAt, nil
+}
+
+func GetJWTIssuer(jwt jose.JWT) (issuer string, err error) {
+
+	claims, err := jwt.Claims()
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JWT claims: %v", err)
+	}
+
+	iss, ok, err := claims.StringClaim("iss")
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse 'iss' claim: %v", err)
+	} else if !ok {
+		return "", errors.New("Missing required 'iss' claim")
+	}
+
+	return iss, nil
 }
