@@ -21,17 +21,51 @@ To build Sync Gateway from source, you must have the following installed:
 * Go 1.5 or later with your `$GOPATH` set to a valid directory
 * GCC for CGO (required on Sync Gateway 1.2 or later)
 
-## Building From source (without dependency pinning)
-
-Warning: while this is the easiest way to build sync gateway from source, there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach that cause certain tests to fail!  To be able to run the full unit test suite and have it pass, skip down to the approach to build from source with dependency pinning.
+## Building From source (via go get)
 
 ```
-go get -u -t github.com/couchbase/sync_gateway/...
+$ go get -u -t github.com/couchbase/sync_gateway/...
+```
+
+At this point, you will have Sync Gateway and all of it's dependencies at the master branch for each dependency.  To anchor the dependencies to the revisions specified in the manifest XML, do the following:
+
+```
+$ cd $GOPATH
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -d
 ```
 
 After this operation completes you should have a new `sync_gateway` binary in `$GOPATH/bin`
 
 **Running Unit Tests**
+
+```
+$ go test github.com/couchbase/sync_gateway/...
+```
+
+**Switching branches**
+
+First, checkout the branch you want for Sync Gateway:
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ git checkout -t remotes/origin/feature/issue_1688
+
+```
+
+Run `go get` again to get any missing dependencies (for example, new dependencies that have been added for this branch)
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ go get -u 
+```
+
+Anchor all dependencies to the revisions specified in the manifest:
+
+```
+$ ./tools/manifest-helper
+```
+
+Run tests:
 
 ```
 $ go test github.com/couchbase/sync_gateway/...
@@ -44,7 +78,7 @@ go test github.com/couchbase/sync_gateway/... -bench='LoggingPerformance' -bench
 go test github.com/couchbase/sync_gateway/... -bench='RestApiGetDocPerformance' -cpu 1,2,4 -benchtime 1m -run XXX
 ```
 
-## Building From Source (with dependency pinning)
+## Building From Source (via repo)
 
 Running the scripts below will clone this repository and all of it's dependencies (pinned to specific versions as specified in the manifest)
 
