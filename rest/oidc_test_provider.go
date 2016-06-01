@@ -1,11 +1,11 @@
 package rest
 
 import (
-	"github.com/couchbase/sync_gateway/base"
 	"encoding/json"
-	"text/template"
-	"net/http"
 	"fmt"
+	"github.com/couchbase/sync_gateway/base"
+	"net/http"
+	"text/template"
 )
 
 const login_html = `
@@ -23,13 +23,14 @@ type Page struct {
 	Query string
 }
 
-
 type OidcProviderConfiguration struct {
 	Issuer                 string   `json:"issuer"`
 	AuthEndpoint           string   `json:"authorization_endpoint"`
 	TokenEndpoint          string   `json:"token_endpoint"`
+	JwksUri                string   `json:"jwks_uri"`
 	ResponseTypesSupported []string `json:"response_types_supported"`
 	SubjectTypesSupported  []string `json:"subject_types_supported"`
+	ItsaValuesSupported    []string `json:"id_token_signing_alg_values_supported"`
 	ScopesSupported        []string `json:"scopes_supported"`
 	CalimsSupported        []string `json:"claims_supported"`
 }
@@ -43,16 +44,23 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	}
 	base.LogTo("Oidc+", "handleOidcProviderConfiguration() called")
 
-	issuerUrl := fmt.Sprintf("%s://%s/%s/%s", h.rq.URL.Scheme, h.rq.Host, h.db.Name,"_oidc_testing")
+	scheme := "http"
 
-	base.LogTo("Oidc+", "issuerURL = %s",issuerUrl)
+	if h.rq.TLS != nil {
+		scheme = "https"
+	}
+	issuerUrl := fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, h.db.Name, "_oidc_testing")
+
+	base.LogTo("Oidc+", "issuerURL = %s", issuerUrl)
 
 	config := &OidcProviderConfiguration{
 		Issuer:                 issuerUrl,
-		AuthEndpoint:           fmt.Sprintf("%s/%s",issuerUrl,"authorize"),
-		TokenEndpoint:          fmt.Sprintf("%s/%s",issuerUrl,"token"),
+		AuthEndpoint:           fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
+		TokenEndpoint:          fmt.Sprintf("%s/%s", issuerUrl, "token"),
+		JwksUri:                fmt.Sprintf("%s/%s", issuerUrl, "certs"),
 		ResponseTypesSupported: []string{"code"},
 		SubjectTypesSupported:  []string{"public"},
+		ItsaValuesSupported:    []string{"RS256"},
 		ScopesSupported:        []string{"openid"},
 		CalimsSupported:        []string{"email"},
 	}
@@ -63,7 +71,6 @@ func (h *handler) handleOidcProviderConfiguration() error {
 
 	return nil
 }
-
 
 type AuthorizeParameters struct {
 	UserID           string `json:"sub"`
@@ -86,7 +93,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	requestParams := h.rq.URL.RawQuery
 
-	base.LogTo("Oidc","raw authorize request raw query params = %v",requestParams)
+	base.LogTo("Oidc", "raw authorize request raw query params = %v", requestParams)
 
 	p := &Page{Title: "Oidc Testing Login", Query: requestParams}
 	t := template.New("Test Login")
@@ -97,6 +104,14 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 	}
 
 	return nil
+}
+
+type OidcTokenResponse struct {
+	AccessToken  string   `json:"access_token"`
+	TokenType    string   `json:"token_type"`
+	RefreshToken string   `json:"refresh_token"`
+	ExpiresIn    int     `json:"expires_in"`
+	IdToken      string `json:"id_token"`
 }
 
 /*
@@ -110,6 +125,21 @@ func (h *handler) handleOidcTestProviderToken() error {
 	}
 
 	base.LogTo("Oidc", "handleOidcTestProviderToken() called")
+
+	h.setHeader("Cache-Control", "no-store")
+	h.setHeader("Pragma", "no-cache")
+
+	tokenResponse := &OidcTokenResponse{
+		AccessToken:  "SlAV32hkKG",
+		TokenType:    "Bearer",
+		RefreshToken: "8xLOxBtZp8",
+		ExpiresIn:    3600,
+		IdToken:      "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFlOWdkazcifQ.ewogImlzcyI6ICJodHRwOi8vc2VydmVyLmV4YW1wbGUuY29tIiwKICJzdWIiOiAiMjQ4Mjg5NzYxMDAxIiwKICJhdWQiOiAiczZCaGRSa3F0MyIsCiAibm9uY2UiOiAibi0wUzZfV3pBMk1qIiwKICJleHAiOiAxMzExMjgxOTcwLAogImlhdCI6IDEzMTEyODA5NzAKfQ.ggW8hZ1EuVLuxNuuIJKX_V8a_OMXzR0EHR9R6jgdqrOOF4daGU96Sr_P6qJp6IcmD3HP99Obi1PRs-cwh3LO-p146waJ8IhehcwL7F09JdijmBqkvPeB2T9CJNqeGpe-gccMg4vfKjkM8FcGvnzZUN4_KSP0aAp1tOJ1zZwgjxqGByKHiOtX7TpdQyHE5lcMiKPXfEIQILVq0pc_E2DzL7emopWoaoZTF_m0_N0YzFC6g6EJbOEoRoSK5hoDalrcvRYLSrQAZZKflyuVCyixEoV9GfNQC3_osjzw2PAithfubEEBLuVVk4XUVrWOLrLl0nx7RkKU8NXNHq-rvKMzqg",
+	}
+
+	if bytes, err := json.Marshal(tokenResponse); err == nil {
+		h.response.Write(bytes)
+	}
 
 	return nil
 }
@@ -133,21 +163,22 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	username := h.rq.FormValue("username")
 	password := h.rq.FormValue("password")
 
-	if(username != "" && password != "") {
+	if username != "" && password != "" {
 		if user := h.db.Authenticator().AuthenticateUser(username, password); user == nil {
 			//Build call back URL
-			base.LogTo("Oidc","authenticate  redirect_uri = %v",requestParams.Get("redirect_uri"))
+			base.LogTo("Oidc", "authenticate  redirect_uri = %v", requestParams.Get("redirect_uri"))
 
-			fragmentQuery := "#access_token=SlAV32hkKG&token_type=bearer&id_token=eyNiJ9.eyJ1cI6IjIifX0.DeWt4QZXso&expires_in=3600&state=af0ifjsldkj"
-			h.setHeader("Location", requestParams.Get("redirect_uri")+fragmentQuery)
+			//fragmentQuery := "#access_token=SlAV32hkKG&token_type=bearer&id_token=eyNiJ9.eyJ1cI6IjIifX0.DeWt4QZXso&expires_in=3600&state=af0ifjsldkj"
+			query := "?code=SplxlOBeZQQYbYS6WxSbIA&state=af0ifjsldkj"
+			h.setHeader("Location", requestParams.Get("redirect_uri")+query)
 			h.response.WriteHeader(http.StatusFound)
 
 			return nil
 		} else {
-			base.LogTo("Oidc+","user was not authenticated")
+			base.LogTo("Oidc+", "user was not authenticated")
 		}
 	} else {
-		base.LogTo("Oidc+","user did not enter valid credentials")
+		base.LogTo("Oidc+", "user did not enter valid credentials")
 	}
 
 	//Build an error response
