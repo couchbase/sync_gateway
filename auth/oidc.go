@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/coreos/go-oidc/oauth2"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -78,4 +79,27 @@ func CreateOIDCClient(options *OIDCOptions) (*oidc.Client, error) {
 	client.SyncProviderConfig(*options.Issuer)
 
 	return client, nil
+}
+
+// Converts an OpenID Connect / OAuth2 error to an HTTP error
+func OIDCToHTTPError(err error) error {
+	if oauthErr, ok := err.(*oauth2.Error); ok {
+		status := 400
+		switch oauthErr.Type {
+		case oauth2.ErrorAccessDenied,
+			oauth2.ErrorUnauthorizedClient,
+			oauth2.ErrorInvalidClient,
+			oauth2.ErrorInvalidGrant,
+			oauth2.ErrorInvalidRequest:
+			status = 401
+		case oauth2.ErrorServerError:
+			status = 502
+		case oauth2.ErrorUnsupportedGrantType,
+			oauth2.ErrorUnsupportedResponseType:
+			status = 400
+		}
+		err = base.HTTPErrorf(status, "OpenID Connect error: %s (%s)",
+			oauthErr.Description, oauthErr.Type)
+	}
+	return err
 }
