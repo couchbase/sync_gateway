@@ -10,6 +10,7 @@
 package db
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -91,5 +92,9 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 		}
 	}
 	base.Warn("Too many failed Incr in sequence allocator - failing (%d): %v", numToReserve, err)
-	return 0, err
+	// Note: err should be non-nil here (from Incr response above) but as described on issue #1810, there are cases where the value
+	//       is nil by the time we log the warning above.  This seems most likely to be a race/scope issue with the callback processing
+	//       in the go-couchbase Incr/Do, and the sleep after the last attempt above.  Forcing the error to non-nil here to ensure we don't
+	//       proceed without an error in this case.
+	return 0, fmt.Errorf("Unable to increment sequence: %v", err)
 }
