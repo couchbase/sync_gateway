@@ -19,14 +19,26 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 To build Sync Gateway from source, you must have the following installed:
 
 * Go 1.5 or later with your `$GOPATH` set to a valid directory
-* GCC for CGO (required on Sync Gateway 1.2 or later)
 
-## Building From source (without dependency pinning)
+## Install GCC
 
-Warning: while this is the easiest way to build sync gateway from source, there are [known issues](https://github.com/couchbase/sync_gateway/issues/1585) with this approach that cause certain tests to fail!  To be able to run the full unit test suite and have it pass, skip down to the approach to build from source with dependency pinning.
+This is required on Sync Gateway 1.2 or later.  Yum is used here, but if you are on Ubuntu/Debian you will want to use `apt-get` instead.
 
 ```
-go get -u -t github.com/couchbase/sync_gateway/...
+$ yum install gcc
+```
+
+## Building From source (via go get)
+
+```
+$ go get -u -t github.com/couchbase/sync_gateway/...
+```
+
+At this point, you will have Sync Gateway and all of it's dependencies at the master branch for each dependency.  To anchor the dependencies to the revisions specified in the manifest XML, do the following:
+
+```
+$ cd $GOPATH
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -u
 ```
 
 After this operation completes you should have a new `sync_gateway` binary in `$GOPATH/bin`
@@ -37,6 +49,60 @@ After this operation completes you should have a new `sync_gateway` binary in `$
 $ go test github.com/couchbase/sync_gateway/...
 ```
 
+**Switching to a feature branch**
+
+First, checkout the branch you want for Sync Gateway:
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ git checkout -t remotes/origin/feature/issue_1688
+
+```
+
+Run `go get` again to get any missing dependencies (for example, new dependencies that have been added for this branch)
+
+NOTE: you will get a lot of warnings from running this command.
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ go get -u 
+```
+
+Anchor all dependencies to the revisions specified in the manifest:
+
+```
+$ cd $GOPATH
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -u
+```
+
+Run tests:
+
+```
+$ go test github.com/couchbase/sync_gateway/...
+```
+
+**Switching to the master branch**
+
+First, checkout the master branch in the Sync Gateway repo
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ git checkout master
+```
+
+Update all dependencies to checkout their master branch
+
+```
+$ cd $GOPATH
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -r
+```
+
+Now refresh Sync Gateway and all dependencies to latest versions
+
+```
+$ go get -u -t github.com/couchbase/sync_gateway/...
+```
+
 **Running Benchmarks**
 
 ```
@@ -44,7 +110,7 @@ go test github.com/couchbase/sync_gateway/... -bench='LoggingPerformance' -bench
 go test github.com/couchbase/sync_gateway/... -bench='RestApiGetDocPerformance' -cpu 1,2,4 -benchtime 1m -run XXX
 ```
 
-## Building From Source (with dependency pinning)
+## Building From Source (via repo)
 
 Running the scripts below will clone this repository and all of it's dependencies (pinned to specific versions as specified in the manifest)
 
