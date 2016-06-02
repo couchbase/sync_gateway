@@ -81,7 +81,7 @@ Run tests:
 $ go test github.com/couchbase/sync_gateway/...
 ```
 
-**Switching to the master branch**
+**Switching back to the master branch**
 
 First, checkout the master branch in the Sync Gateway repo
 
@@ -97,10 +97,16 @@ $ cd $GOPATH
 $ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -r
 ```
 
-Now refresh Sync Gateway and all dependencies to latest versions
+Update Sync Gateway and all dependencies to latest versions on github
 
 ```
 $ go get -u -t github.com/couchbase/sync_gateway/...
+```
+
+Run tests:
+
+```
+$ go test github.com/couchbase/sync_gateway/...
 ```
 
 **Running Benchmarks**
