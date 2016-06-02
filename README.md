@@ -19,7 +19,14 @@ The Sync Gateway manages HTTP-based data access for mobile clients. It handles a
 To build Sync Gateway from source, you must have the following installed:
 
 * Go 1.5 or later with your `$GOPATH` set to a valid directory
-* GCC for CGO (required on Sync Gateway 1.2 or later)
+
+## Install GCC
+
+This is required on Sync Gateway 1.2 or later.  Yum is used here, but if you are on Ubuntu/Debian you will want to use `apt-get` instead.
+
+```
+$ yum install gcc
+```
 
 ## Building From source (via go get)
 
@@ -31,7 +38,7 @@ At this point, you will have Sync Gateway and all of it's dependencies at the ma
 
 ```
 $ cd $GOPATH
-$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -d
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -u
 ```
 
 After this operation completes you should have a new `sync_gateway` binary in `$GOPATH/bin`
@@ -42,7 +49,7 @@ After this operation completes you should have a new `sync_gateway` binary in `$
 $ go test github.com/couchbase/sync_gateway/...
 ```
 
-**Switching branches**
+**Switching to a feature branch**
 
 First, checkout the branch you want for Sync Gateway:
 
@@ -54,6 +61,8 @@ $ git checkout -t remotes/origin/feature/issue_1688
 
 Run `go get` again to get any missing dependencies (for example, new dependencies that have been added for this branch)
 
+NOTE: you will get a lot of warnings from running this command.
+
 ```
 $ cd $GOPATH/src/github.com/couchbase/sync_gateway/
 $ go get -u 
@@ -62,13 +71,36 @@ $ go get -u
 Anchor all dependencies to the revisions specified in the manifest:
 
 ```
-$ ./tools/manifest-helper
+$ cd $GOPATH
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -u
 ```
 
 Run tests:
 
 ```
 $ go test github.com/couchbase/sync_gateway/...
+```
+
+**Switching to the master branch**
+
+First, checkout the master branch in the Sync Gateway repo
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ git checkout master
+```
+
+Update all dependencies to checkout their master branch
+
+```
+$ cd $GOPATH
+$ ./src/github.com/couchbase/sync_gateway/tools/manifest-helper -r
+```
+
+Now refresh Sync Gateway and all dependencies to latest versions
+
+```
+$ go get -u -t github.com/couchbase/sync_gateway/...
 ```
 
 **Running Benchmarks**
