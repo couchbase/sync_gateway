@@ -93,6 +93,12 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 }
 
 func (h *handler) handleOIDCCallback() error {
+	callbackError := h.getQuery("error")
+	if callbackError != "" {
+		errorDescription := h.getQuery("error_description")
+		return base.HTTPErrorf(http.StatusBadRequest, "oidc_callback received an error: %v",errorDescription)
+	}
+
 	code := h.getQuery("code")
 	if code == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Code must be present on oidc callback")

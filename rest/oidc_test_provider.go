@@ -1,20 +1,44 @@
 package rest
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/coreos/go-oidc/jose"
 	"github.com/couchbase/sync_gateway/base"
 	"net/http"
 	"text/template"
+"crypto/rand"
+	"crypto/rsa"
 )
 
 const login_html = `
 <h1>{{.Title}}</h1>
-
+<div>This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
+This provider is enabled per database by adding the following database proeprties to the Sync Gateway config
+<pre>
+"oidc": {
+    "issuer":"http://localhost:4984/db/_oidc_testing",
+    "client_id":"sync_gateway",
+    "validation_key":"R75hfd9lasdwertwerutecw8",
+    "callback_url":"http://localhost:4984/db/_oidc_callback"
+},
+"unsupported": {
+    "oidc_test_provider": {
+        "enabled":true
+    }
+},
+</pre>
+</div>
+<div>
+To simulate a successful user authentication, enter a username and click "Return a valid authorization code for this user".<br>
+To simulate a failed user authentication, enter a username and click "Return an authorization error for this user".<br><br><br><br>
+</div>
 <form action="authenticate?{{.Query}}" method="POST" enctype="multipart/form-data">
     <div>Username:<input type="text" name="username" cols="80"></div>
-    <div>   Login:<input type="text" name="password" cols="80"></div>
-	    <div><input type="submit" value="Save"></div>
+    <div><input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access<div>
+    <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
+    <div><input type="submit" name="notauthenticated" value="Return an authorization error for this user"></div>
 </form>
 `
 
@@ -34,6 +58,14 @@ type OidcProviderConfiguration struct {
 	ScopesSupported        []string `json:"scopes_supported"`
 	CalimsSupported        []string `json:"claims_supported"`
 }
+
+type AuthState struct {
+	Username     string
+	CallbackURL  string
+	IDToken      string
+}
+
+var authCodeTokenMap map[string]AuthState = make(map[string]AuthState)
 
 /*
  * Returns the OpenID provider configuration info
@@ -95,7 +127,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	base.LogTo("Oidc", "raw authorize request raw query params = %v", requestParams)
 
-	p := &Page{Title: "Oidc Testing Login", Query: requestParams}
+	p := &Page{Title: "Oidc Test Provider", Query: requestParams}
 	t := template.New("Test Login")
 	if t, err := t.Parse(login_html); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
@@ -107,10 +139,10 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 }
 
 type OidcTokenResponse struct {
-	AccessToken  string   `json:"access_token"`
-	TokenType    string   `json:"token_type"`
-	RefreshToken string   `json:"refresh_token"`
-	ExpiresIn    int     `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
 	IdToken      string `json:"id_token"`
 }
 
@@ -126,16 +158,32 @@ func (h *handler) handleOidcTestProviderToken() error {
 
 	base.LogTo("Oidc", "handleOidcTestProviderToken() called")
 
+	//Validate the token request
+	code := h.getQuery("code")
+
+	//Check for code in map of generated codes
+	if _, ok := authCodeTokenMap[code]; !ok {
+		//return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v",code)
+	}
+
+	accessToken := base64.StdEncoding.EncodeToString([]byte(code))
+	refreshToken := base64.StdEncoding.EncodeToString([]byte(accessToken))
+
+	idToken := createJWTToken()
+
 	h.setHeader("Cache-Control", "no-store")
 	h.setHeader("Pragma", "no-cache")
 
 	tokenResponse := &OidcTokenResponse{
-		AccessToken:  "SlAV32hkKG",
+		AccessToken:  accessToken,
 		TokenType:    "Bearer",
-		RefreshToken: "8xLOxBtZp8",
+		RefreshToken: refreshToken,
 		ExpiresIn:    3600,
-		IdToken:      "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFlOWdkazcifQ.ewogImlzcyI6ICJodHRwOi8vc2VydmVyLmV4YW1wbGUuY29tIiwKICJzdWIiOiAiMjQ4Mjg5NzYxMDAxIiwKICJhdWQiOiAiczZCaGRSa3F0MyIsCiAibm9uY2UiOiAibi0wUzZfV3pBMk1qIiwKICJleHAiOiAxMzExMjgxOTcwLAogImlhdCI6IDEzMTEyODA5NzAKfQ.ggW8hZ1EuVLuxNuuIJKX_V8a_OMXzR0EHR9R6jgdqrOOF4daGU96Sr_P6qJp6IcmD3HP99Obi1PRs-cwh3LO-p146waJ8IhehcwL7F09JdijmBqkvPeB2T9CJNqeGpe-gccMg4vfKjkM8FcGvnzZUN4_KSP0aAp1tOJ1zZwgjxqGByKHiOtX7TpdQyHE5lcMiKPXfEIQILVq0pc_E2DzL7emopWoaoZTF_m0_N0YzFC6g6EJbOEoRoSK5hoDalrcvRYLSrQAZZKflyuVCyixEoV9GfNQC3_osjzw2PAithfubEEBLuVVk4XUVrWOLrLl0nx7RkKU8NXNHq-rvKMzqg",
+		IdToken: idToken.Encode(),
 	}
+
+	//IdToken:      "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFlOWdkazcifQ.ewogImlzcyI6ICJodHRwOi8vc2VydmVyLmV4YW1wbGUuY29tIiwKICJzdWIiOiAiMjQ4Mjg5NzYxMDAxIiwKICJhdWQiOiAiczZCaGRSa3F0MyIsCiAibm9uY2UiOiAibi0wUzZfV3pBMk1qIiwKICJleHAiOiAxMzExMjgxOTcwLAogImlhdCI6IDEzMTEyODA5NzAKfQ.ggW8hZ1EuVLuxNuuIJKX_V8a_OMXzR0EHR9R6jgdqrOOF4daGU96Sr_P6qJp6IcmD3HP99Obi1PRs-cwh3LO-p146waJ8IhehcwL7F09JdijmBqkvPeB2T9CJNqeGpe-gccMg4vfKjkM8FcGvnzZUN4_KSP0aAp1tOJ1zZwgjxqGByKHiOtX7TpdQyHE5lcMiKPXfEIQILVq0pc_E2DzL7emopWoaoZTF_m0_N0YzFC6g6EJbOEoRoSK5hoDalrcvRYLSrQAZZKflyuVCyixEoV9GfNQC3_osjzw2PAithfubEEBLuVVk4XUVrWOLrLl0nx7RkKU8NXNHq-rvKMzqg",
+
 
 	if bytes, err := json.Marshal(tokenResponse); err == nil {
 		h.response.Write(bytes)
@@ -159,29 +207,59 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	base.LogTo("Oidc+", "handleOidcTestProviderAuthenticate() called")
 
 	requestParams := h.rq.URL.Query()
-
 	username := h.rq.FormValue("username")
-	password := h.rq.FormValue("password")
+	authenticated := h.rq.FormValue("authenticated")
+	location := requestParams.Get("redirect_uri")
 
-	if username != "" && password != "" {
-		if user := h.db.Authenticator().AuthenticateUser(username, password); user == nil {
-			//Build call back URL
-			base.LogTo("Oidc", "authenticate  redirect_uri = %v", requestParams.Get("redirect_uri"))
+	if username != "" {
+		if authenticated != "" {
+			//Generate the return code by base64 encoding the username
+			code := base64.StdEncoding.EncodeToString([]byte(username))
 
-			//fragmentQuery := "#access_token=SlAV32hkKG&token_type=bearer&id_token=eyNiJ9.eyJ1cI6IjIifX0.DeWt4QZXso&expires_in=3600&state=af0ifjsldkj"
-			query := "?code=SplxlOBeZQQYbYS6WxSbIA&state=af0ifjsldkj"
-			h.setHeader("Location", requestParams.Get("redirect_uri")+query)
+			authCodeTokenMap[code] = AuthState{Username: username, CallbackURL: location}
+
+			query := "?code=" + code + "&state=af0ifjsldkj"
+			h.setHeader("Location", location+query)
 			h.response.WriteHeader(http.StatusFound)
 
 			return nil
 		} else {
 			base.LogTo("Oidc+", "user was not authenticated")
+			error := "?error=invalid_request&error_description=User failed authentication"
+			h.setHeader("Location", location+error)
+			h.response.WriteHeader(http.StatusFound)
 		}
+
 	} else {
 		base.LogTo("Oidc+", "user did not enter valid credentials")
+		error := "?error=invalid_request&error_description=User failed authentication"
+		h.setHeader("Location", requestParams.Get("redirect_uri")+error)
+		h.response.WriteHeader(http.StatusFound)
 	}
 
-	//Build an error response
+	return nil
+}
+
+func createJWTToken() *jose.JWT {
+
+	size := 1024
+	priv, err := rsa.GenerateKey(rand.Reader, size)
+
+	cl := jose.Claims{"foo":"bar",}
+
+	jwk := jose.JWK{
+		ID:     "sync_gateway",
+		Alg:    "RS256",
+		Secret: []byte("R75hfd9lasdwertwerutecw8"),
+	}
+
+	signer := jose.NewSignerRSA(jwk.ID, *priv)
+
+	jwt, err := jose.NewSignedJWT(cl, signer)
+
+	if err == nil {
+		return jwt
+	}
 
 	return nil
 }
