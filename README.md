@@ -56,7 +56,6 @@ First, checkout the branch you want for Sync Gateway:
 ```
 $ cd $GOPATH/src/github.com/couchbase/sync_gateway/
 $ git checkout -t remotes/origin/feature/issue_1688
-
 ```
 
 Run `go get` again to get any missing dependencies (for example, new dependencies that have been added for this branch)
@@ -66,6 +65,13 @@ NOTE: you will get a lot of warnings from running this command.
 ```
 $ cd $GOPATH/src/github.com/couchbase/sync_gateway/
 $ go get -u 
+```
+
+Running `go get` here will put your Sync Gateway back on the master branch, so you'll need to go *back* to the feature branch again:
+
+```
+$ cd $GOPATH/src/github.com/couchbase/sync_gateway/
+$ git checkout -t remotes/origin/feature/issue_1688
 ```
 
 Anchor all dependencies to the revisions specified in the manifest:
