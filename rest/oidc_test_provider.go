@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -11,7 +12,7 @@ import (
 	"net/http"
 	"text/template"
 	"time"
-	"crypto/rsa"
+"strings"
 )
 
 //This is the private RSA Key that will be used to sign all tokens
@@ -163,41 +164,15 @@ func (h *handler) handleOidcTestProviderToken() error {
 
 	base.LogTo("OIDC", "handleOidcTestProviderToken() called")
 
-	//Validate the token request
-	code := h.rq.FormValue("code")
+	//determine the grant_type being requested
+	grantType := h.rq.FormValue("grant_type")
 
-	//Check for code in map of generated codes
-	if _, ok := authCodeTokenMap[code]; !ok {
-		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
+	if grantType == "authorization_code" {
+		return handleAuthCodeRequest(h)
+	} else if grantType == "refresh_token" {
+		return handleRefreshTokenRequest(h)
 	}
-
-	subject := authCodeTokenMap[code].Username
-
-	accessToken := base64.StdEncoding.EncodeToString([]byte(code))
-	refreshToken := base64.StdEncoding.EncodeToString([]byte(accessToken))
-
-	idToken, err := createJWTToken(subject, issuerUrl(h))
-	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
-	}
-
-	h.setHeader("Cache-Control", "no-store")
-	h.setHeader("Pragma", "no-cache")
-	h.setHeader("Content-Type", "application/json")
-
-	tokenResponse := &OidcTokenResponse{
-		AccessToken:  accessToken,
-		TokenType:    "Bearer",
-		RefreshToken: refreshToken,
-		ExpiresIn:    3600,
-		IdToken:      idToken.Encode(),
-	}
-
-	if bytes, err := json.Marshal(tokenResponse); err == nil {
-		h.response.Write(bytes)
-	}
-
-	return nil
+	return base.HTTPErrorf(http.StatusBadRequest, "grant_type must be \"authorization_code\" or \"refresh_token\"")
 }
 
 /*
@@ -340,4 +315,78 @@ func privateKey() (key *rsa.PrivateKey, err error) {
 	}
 
 	return
+}
+
+func handleAuthCodeRequest(h *handler) error {
+
+	//Validate the token request
+	code := h.rq.FormValue("code")
+
+	//Check for code in map of generated codes
+	if _, ok := authCodeTokenMap[code]; !ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
+	}
+
+	subject := authCodeTokenMap[code].Username
+	return writeTokenResponse(h, subject, issuerUrl(h))
+}
+
+func handleRefreshTokenRequest(h *handler) error {
+	//Validate the refresh request
+	refreshToken := h.rq.FormValue("refresh_token")
+
+	//extract the subject from the refresh token
+	subject, err := extractSubjectFromRefreshToken(refreshToken)
+
+	if err != nil {
+		return err
+	}
+	return writeTokenResponse(h, subject, issuerUrl(h))
+}
+
+func writeTokenResponse(h *handler, subject string, issuerUrl string) error {
+
+	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
+	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject+":::"+accessToken))
+
+	idToken, err := createJWTToken(subject, issuerUrl)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
+	}
+	h.setHeader("Cache-Control", "no-store")
+	h.setHeader("Pragma", "no-cache")
+	h.setHeader("Content-Type", "application/json")
+
+	tokenResponse := &OidcTokenResponse{
+		AccessToken:  accessToken,
+		TokenType:    "Bearer",
+		RefreshToken: refreshToken,
+		ExpiresIn:    3600,
+		IdToken:      idToken.Encode(),
+	}
+
+	if bytes, err := json.Marshal(tokenResponse); err == nil {
+		h.response.Write(bytes)
+	}
+
+	return nil
+}
+
+func extractSubjectFromRefreshToken ( refreshToken string) (string, error) {
+	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
+	if err != nil {
+		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
+	}
+
+	components := strings.Split(string(decodedToken), ":::")
+
+	subject := components[0]
+
+	base.LogTo("OIDC+", "subject extracted from refresh token = %v",subject)
+
+	if len(components) != 2 || subject == "" {
+		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")
+	}
+
+	return subject, nil
 }
