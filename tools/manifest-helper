@@ -82,6 +82,13 @@ def git_checkout_manifest_commit(path, manifest_revision, gopath_revision):
     if len(output) > 0:
         print("Git diff output: {}".format(output))
         raise Exception("It appears you have local changes in {}.  You should stash or reset to HEAD".format(path))
+
+    # run git fetch to avoid "fatal: reference is not a tree" errors
+    print("git fetch in {}".format(path))
+    output = subprocess.check_output(
+        ["git", "fetch"],
+        cwd=path
+    )
     
     print("git checkout {} in {}".format(manifest_revision, path))
     output = subprocess.check_output(
