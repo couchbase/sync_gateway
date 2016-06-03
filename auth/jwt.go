@@ -46,45 +46,6 @@ func GetJWTIdentity(jwt jose.JWT) (identity *oidc.Identity, err error) {
 	return oidc.IdentityFromClaims(claims)
 }
 
-// Returns the Sync Gateway username for a JWT.  Username is of the form [iss]/[sub]
-func GetJWTUsername(jwt jose.JWT) (subject string, err error) {
-
-	var sub, iss string
-	var ok bool
-
-	claims, err := jwt.Claims()
-	if err != nil {
-		return "", err
-	}
-
-	if sub, ok, err = claims.StringClaim("sub"); err != nil {
-		return "", err
-	} else if !ok {
-		return "", errors.New("missing required claim: sub")
-	}
-
-	if iss, ok, err = claims.StringClaim("iss"); err != nil {
-		return "", err
-	} else if !ok {
-		return "", errors.New("missing required claim: iss")
-	}
-
-	// TODO: consider encoding the issuer or otherwise strip out protocol, etc?
-
-	return fmt.Sprintf("%s/%s", iss, sub), nil
-}
-
-// Returns the "sub" claim (Identity.ID) for the JWT.
-func GetJWTSubject(jwt jose.JWT) (subject string, err error) {
-
-	identity, err := GetJWTIdentity(jwt)
-	if err != nil {
-		return "", err
-	}
-
-	return identity.ID, nil
-}
-
 // Returns the "exp" claim (Identity.ExpiresAt) for the JWT, as a time.Time.
 func GetJWTExpiry(jwt jose.JWT) (expiresAt time.Time, err error) {
 

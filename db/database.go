@@ -188,6 +188,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if provider.Issuer == "" {
 				base.Warn("No issuer defined for OIDC Provider - skipping.  %v", provider)
 			}
+			if strings.Contains(name, "_") {
+				return nil, fmt.Errorf("OpenID Connect provider names cannot contain underscore:%s", name)
+			}
+			provider.Name = name
 			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
 				base.Warn("Multiple OIDC providers defined for issuer %v", provider.Issuer)
 				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
@@ -209,7 +213,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				provider.CallbackURL = &updatedCallback
 			}
 
-			provider.Name = name
 			context.OIDCProviders[name] = provider
 		}
 

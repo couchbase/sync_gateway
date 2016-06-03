@@ -338,7 +338,10 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	if identityErr != nil {
 		return nil, jwt, identityErr
 	}
-	user, userErr := auth.GetUser(identity.ID)
+
+	username := auth.getOIDCUsername(provider, identity.ID)
+
+	user, userErr := auth.GetUser(username)
 	if userErr != nil {
 		return nil, jwt, userErr
 	}
@@ -356,13 +359,17 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	// Auto-registration.  This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
-		user, err = auth.RegisterNewUser(identity.ID, identity.Email)
+		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil {
 			return nil, jwt, err
 		}
 	}
 
 	return user, jwt, nil
+}
+
+func (auth *Authenticator) getOIDCUsername(provider *OIDCProvider, subject string) string {
+	return fmt.Sprintf("%s_%s", provider.Name, subject)
 }
 
 // Registers a new user account based on the given verified email address.
