@@ -104,6 +104,9 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	oidcr.Handle("/token", makeHandler(sc, publicPrivs,
 		(*handler).handleOidcTestProviderToken)).Methods("POST")
 
+	oidcr.Handle("/certs", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderCerts)).Methods("GET")
+
 	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs,
 		(*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
 

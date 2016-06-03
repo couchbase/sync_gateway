@@ -1,16 +1,19 @@
 package rest
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/coreos/go-oidc/jose"
+	"github.com/coreos/go-oidc/key"
 	"github.com/couchbase/sync_gateway/base"
 	"net/http"
 	"text/template"
+	"time"
 )
+
+const base64EncodedPrivateKey = "MIICXQIBAAKBgQC5HMLzcjKXQhU39ItitqV9EcSgq7SVmt9LRwF+sNgbJOjciJhIJNVYZJZ4tY8aN9lbaMxObuH5gu6B7qlvz5ghy8LD9HRqClu/GSJVW4pQTYffKNAVpuoJIVnjk1DScvSpnL5AM9Qq0MOAM/H9urTIUwMk5JJhD8RXJIvENbJAIQIDAQABAoGAW4PsnY6HlGAHPXKYtmS1y+9M1mINFSlL21tvUcL8E+9bcCvXnVMYZmrUOTkJVlzmCFr3Jo+LCF/CqlnjSnPHMZal1/uObbuH9prumBMK48R6V/0JWxRrtjgw0r/LVwI4BBMhO0BnMCncmuOCbV1xGe8WqwAwiHrSG4zuixJwDkECQQDQO2Yzubfzd3SGdcQVydyUD1cSGd0RvCyUwAJQJyif6MkFrSE2DOduNW1gaknOLIGESBjoGnF+nSF3XcFRloWvAkEA45Ojx0CgkJbHc+m7Gr7hlpgJvLC4iX6vo64lpos0pw9eCW9RCmasjtPR2HtOiU4QssmBYD+8qBPxizgwJD3bLwJAeZO0wE6W0FfWeQsZSX9qgifStobTRB+SB+dzckjqtzK6682BroUqOnaHPdvQ68egdxOBN0L5MOudNoxO6svvkQJBAI+YMNcgqC+Tc/ZnnG+b0au78yjkOQxIq3qT/52+aFKhF6zMWE4/ytG0RcxawYtRfqfRDZk1nkxPiTFXGslDXnECQQCdqQV9HRBPoUXI2sX1zPpaMxLQUS1QqpSAN4fQwybXnxbPsHiPFmkkxLjl6qZaPE+m5HVo2QKAC2EBv5JVw26g"
 
 const login_html = `
 <h1>{{.Title}}</h1>
@@ -56,6 +59,7 @@ type OidcProviderConfiguration struct {
 	SubjectTypesSupported  []string `json:"subject_types_supported"`
 	ItsaValuesSupported    []string `json:"id_token_signing_alg_values_supported"`
 	ScopesSupported        []string `json:"scopes_supported"`
+	AuthMethodsSupported   []string `json:"token_endpoint_auth_methods_supported"`
 	CalimsSupported        []string `json:"claims_supported"`
 }
 
@@ -76,13 +80,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	}
 	base.LogTo("OIDC+", "handleOidcProviderConfiguration() called")
 
-	scheme := "http"
-
-	if h.rq.TLS != nil {
-		scheme = "https"
-	}
-	issuerUrl := fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, h.db.Name, "_oidc_testing")
-
+	issuerUrl := issuerUrl(h)
 	base.LogTo("OIDC+", "issuerURL = %s", issuerUrl)
 
 	config := &OidcProviderConfiguration{
@@ -94,7 +92,8 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		SubjectTypesSupported:  []string{"public"},
 		ItsaValuesSupported:    []string{"RS256"},
 		ScopesSupported:        []string{"openid"},
-		CalimsSupported:        []string{"email"},
+		AuthMethodsSupported:   []string{"client_secret_basic"},
+		CalimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud"},
 	}
 
 	if bytes, err := json.Marshal(config); err == nil {
@@ -148,8 +147,7 @@ type OidcTokenResponse struct {
 
 /*
  * From OAuth 2.0 spec
- * Handle the login form submission and authenticate the user credentials
- * then callback Depending party with login tokens or error message
+ * Return tokens for Auth code flow
  */
 func (h *handler) handleOidcTestProviderToken() error {
 	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
@@ -159,20 +157,23 @@ func (h *handler) handleOidcTestProviderToken() error {
 	base.LogTo("OIDC", "handleOidcTestProviderToken() called")
 
 	//Validate the token request
-	code := h.getQuery("code")
+	code := h.rq.FormValue("code")
 
 	//Check for code in map of generated codes
 	if _, ok := authCodeTokenMap[code]; !ok {
-		//return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v",code)
+		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
+
+	subject := authCodeTokenMap[code].Username
 
 	accessToken := base64.StdEncoding.EncodeToString([]byte(code))
 	refreshToken := base64.StdEncoding.EncodeToString([]byte(accessToken))
 
-	idToken := createJWTToken()
+	idToken := createJWTToken(subject, issuerUrl(h))
 
 	h.setHeader("Cache-Control", "no-store")
 	h.setHeader("Pragma", "no-cache")
+	h.setHeader("Content-Type", "application/json")
 
 	tokenResponse := &OidcTokenResponse{
 		AccessToken:  accessToken,
@@ -182,12 +183,47 @@ func (h *handler) handleOidcTestProviderToken() error {
 		IdToken:      idToken.Encode(),
 	}
 
-	//IdToken:      "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFlOWdkazcifQ.ewogImlzcyI6ICJodHRwOi8vc2VydmVyLmV4YW1wbGUuY29tIiwKICJzdWIiOiAiMjQ4Mjg5NzYxMDAxIiwKICJhdWQiOiAiczZCaGRSa3F0MyIsCiAibm9uY2UiOiAibi0wUzZfV3pBMk1qIiwKICJleHAiOiAxMzExMjgxOTcwLAogImlhdCI6IDEzMTEyODA5NzAKfQ.ggW8hZ1EuVLuxNuuIJKX_V8a_OMXzR0EHR9R6jgdqrOOF4daGU96Sr_P6qJp6IcmD3HP99Obi1PRs-cwh3LO-p146waJ8IhehcwL7F09JdijmBqkvPeB2T9CJNqeGpe-gccMg4vfKjkM8FcGvnzZUN4_KSP0aAp1tOJ1zZwgjxqGByKHiOtX7TpdQyHE5lcMiKPXfEIQILVq0pc_E2DzL7emopWoaoZTF_m0_N0YzFC6g6EJbOEoRoSK5hoDalrcvRYLSrQAZZKflyuVCyixEoV9GfNQC3_osjzw2PAithfubEEBLuVVk4XUVrWOLrLl0nx7RkKU8NXNHq-rvKMzqg",
-
 	if bytes, err := json.Marshal(tokenResponse); err == nil {
 		h.response.Write(bytes)
-		base.LogTo("OIDC", "Returned ID token: %s", bytes)
 	}
+
+	return nil
+}
+
+/*
+ * From OAuth 2.0 spec
+ * Return public certificates for signing keys
+ */
+func (h *handler) handleOidcTestProviderCerts() error {
+	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
+		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
+	}
+
+	base.LogTo("OIDC", "handleOidcTestProviderCerts() called")
+
+	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
+	if err != nil {
+
+	}
+	privateKey, err := x509.ParsePKCS1PrivateKey(decodedPrivateKey)
+	if err != nil {
+
+	}
+
+	oidcPrivateKey := key.PrivateKey{
+		KeyID:      "sync_gateway_oidc_test_provider",
+		PrivateKey: privateKey,
+	}
+
+	jwk := oidcPrivateKey.JWK()
+
+	h.response.Write([]byte("{\r\n\"keys\":[\r\n"))
+
+	if bytes, err := jwk.MarshalJSON(); err == nil {
+		h.response.Write(bytes)
+	}
+
+	h.response.Write([]byte("\r\n]\r\n}"))
 
 	return nil
 }
@@ -240,20 +276,33 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	return nil
 }
 
-func createJWTToken() *jose.JWT {
+func createJWTToken(subject string, issuerUrl string) *jose.JWT {
 
-	size := 1024
-	priv, err := rsa.GenerateKey(rand.Reader, size)
+	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
+	if err != nil {
 
-	cl := jose.Claims{"foo": "bar"}
+	}
+	privateKey, err := x509.ParsePKCS1PrivateKey(decodedPrivateKey)
+	if err != nil {
 
-	jwk := jose.JWK{
-		ID:     "sync_gateway",
-		Alg:    "RS256",
-		Secret: []byte("R75hfd9lasdwertwerutecw8"),
 	}
 
-	signer := jose.NewSignerRSA(jwk.ID, *priv)
+	now := time.Now()
+
+	expiresIn := time.Second * 3600
+
+	expiryTime := now.Add(expiresIn)
+
+	cl := jose.Claims{
+		"sub":   subject,
+		"email": subject + "@syncgatewayoidctesting.com",
+		"iat":   now.Unix(),
+		"exp":   expiryTime.Unix(),
+		"iss":   issuerUrl,
+		"aud":   "sync_gateway",
+	}
+
+	signer := jose.NewSignerRSA("sync_gateway_oidc_test_provider", *privateKey)
 
 	jwt, err := jose.NewSignedJWT(cl, signer)
 
@@ -262,4 +311,13 @@ func createJWTToken() *jose.JWT {
 	}
 
 	return nil
+}
+
+func issuerUrl(h *handler) string {
+	scheme := "http"
+
+	if h.rq.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, h.db.Name, "_oidc_testing")
 }
