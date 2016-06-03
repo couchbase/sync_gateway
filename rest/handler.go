@@ -265,8 +265,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		/*
 		* If unsupported/oidc testing is enabled
 		* and this is a call on the token endpoint
-		* and the username and password match those in the oidc config
-		* then auth
+		* and the username and password match those in the oidc default provider config
+		* then authorize this request
 		 */
 		if unsupportedOptions := context.Options.UnsupportedOptions; unsupportedOptions != nil {
 			if unsupportedOptions.EnableOidcTestProvider && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
@@ -278,10 +278,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 						}
 					}
 				}
-
 			}
 		}
-
 	}
 
 	// Check basic auth first

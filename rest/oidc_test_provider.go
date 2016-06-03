@@ -11,10 +11,16 @@ import (
 	"net/http"
 	"text/template"
 	"time"
+	"crypto/rsa"
 )
 
+//This is the private RSA Key that will be used to sign all tokens
 const base64EncodedPrivateKey = "MIICXQIBAAKBgQC5HMLzcjKXQhU39ItitqV9EcSgq7SVmt9LRwF+sNgbJOjciJhIJNVYZJZ4tY8aN9lbaMxObuH5gu6B7qlvz5ghy8LD9HRqClu/GSJVW4pQTYffKNAVpuoJIVnjk1DScvSpnL5AM9Qq0MOAM/H9urTIUwMk5JJhD8RXJIvENbJAIQIDAQABAoGAW4PsnY6HlGAHPXKYtmS1y+9M1mINFSlL21tvUcL8E+9bcCvXnVMYZmrUOTkJVlzmCFr3Jo+LCF/CqlnjSnPHMZal1/uObbuH9prumBMK48R6V/0JWxRrtjgw0r/LVwI4BBMhO0BnMCncmuOCbV1xGe8WqwAwiHrSG4zuixJwDkECQQDQO2Yzubfzd3SGdcQVydyUD1cSGd0RvCyUwAJQJyif6MkFrSE2DOduNW1gaknOLIGESBjoGnF+nSF3XcFRloWvAkEA45Ojx0CgkJbHc+m7Gr7hlpgJvLC4iX6vo64lpos0pw9eCW9RCmasjtPR2HtOiU4QssmBYD+8qBPxizgwJD3bLwJAeZO0wE6W0FfWeQsZSX9qgifStobTRB+SB+dzckjqtzK6682BroUqOnaHPdvQ68egdxOBN0L5MOudNoxO6svvkQJBAI+YMNcgqC+Tc/ZnnG+b0au78yjkOQxIq3qT/52+aFKhF6zMWE4/ytG0RcxawYtRfqfRDZk1nkxPiTFXGslDXnECQQCdqQV9HRBPoUXI2sX1zPpaMxLQUS1QqpSAN4fQwybXnxbPsHiPFmkkxLjl6qZaPE+m5HVo2QKAC2EBv5JVw26g"
 
+//Identifier for test provider private keys
+const test_provider_key_identifier = "sync_gateway_oidc_test_provider"
+
+//This is the HTML template used to display the testing OP internal authentication form
 const login_html = `
 <h1>{{.Title}}</h1>
 <div>This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
@@ -112,8 +118,9 @@ type AuthorizeParameters struct {
 
 /*
  * From OAuth 2.0 spec
- * Handle OAuth 2.0 Authoriaze request
- * Display a login page with a form to collect user credentials
+ * Handle OAuth 2.0 Authorize request
+ * This might display a login page with a form to collect user credentials
+ * which is part of an internal authentication flow
  */
 func (h *handler) handleOidcTestProviderAuthorize() error {
 	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
@@ -201,17 +208,13 @@ func (h *handler) handleOidcTestProviderCerts() error {
 
 	base.LogTo("OIDC", "handleOidcTestProviderCerts() called")
 
-	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
+	privateKey, err := privateKey()
 	if err != nil {
-
-	}
-	privateKey, err := x509.ParsePKCS1PrivateKey(decodedPrivateKey)
-	if err != nil {
-
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key")
 	}
 
 	oidcPrivateKey := key.PrivateKey{
-		KeyID:      "sync_gateway_oidc_test_provider",
+		KeyID:      test_provider_key_identifier,
 		PrivateKey: privateKey,
 	}
 
@@ -276,21 +279,16 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	return nil
 }
 
-func createJWTToken(subject string, issuerUrl string) *jose.JWT {
+//Creates a signed JWT token for the requesting subject and issuer URL
+func createJWTToken(subject string, issuerUrl string) (jwt *jose.JWT, err error) {
 
-	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
+	privateKey, err := privateKey()
 	if err != nil {
-
-	}
-	privateKey, err := x509.ParsePKCS1PrivateKey(decodedPrivateKey)
-	if err != nil {
-
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key")
 	}
 
 	now := time.Now()
-
 	expiresIn := time.Second * 3600
-
 	expiryTime := now.Add(expiresIn)
 
 	cl := jose.Claims{
@@ -302,17 +300,20 @@ func createJWTToken(subject string, issuerUrl string) *jose.JWT {
 		"aud":   "sync_gateway",
 	}
 
-	signer := jose.NewSignerRSA("sync_gateway_oidc_test_provider", *privateKey)
+	signer := jose.NewSignerRSA(test_provider_key_identifier, *privateKey)
 
-	jwt, err := jose.NewSignedJWT(cl, signer)
+	jwt, err = jose.NewSignedJWT(cl, signer)
 
-	if err == nil {
-		return jwt
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	return
 }
 
+//Generates the issuer URL based on the scheme and host in the client request
+//this should ensure that the testing provider works for local clients and
+//clients in front of a load balancer
 func issuerUrl(h *handler) string {
 	scheme := "http"
 
@@ -320,4 +321,20 @@ func issuerUrl(h *handler) string {
 		scheme = "https"
 	}
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, h.db.Name, "_oidc_testing")
+}
+
+//Return the internal test RSA private key, this is decoded from a base64 encoded string
+//stored as a constant above
+func privateKey() (key *rsa.PrivateKey, err error) {
+
+	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
+	if err != nil {
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error decoding private RSA Key")
+	}
+	key, err = x509.ParsePKCS1PrivateKey(decodedPrivateKey)
+	if err != nil {
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error parsing private RSA Key")
+	}
+
+	return
 }
