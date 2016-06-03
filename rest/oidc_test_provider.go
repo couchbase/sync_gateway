@@ -176,7 +176,10 @@ func (h *handler) handleOidcTestProviderToken() error {
 	accessToken := base64.StdEncoding.EncodeToString([]byte(code))
 	refreshToken := base64.StdEncoding.EncodeToString([]byte(accessToken))
 
-	idToken := createJWTToken(subject, issuerUrl(h))
+	idToken, err := createJWTToken(subject, issuerUrl(h))
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
+	}
 
 	h.setHeader("Cache-Control", "no-store")
 	h.setHeader("Pragma", "no-cache")
@@ -210,7 +213,7 @@ func (h *handler) handleOidcTestProviderCerts() error {
 
 	privateKey, err := privateKey()
 	if err != nil {
-		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key")
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key")
 	}
 
 	oidcPrivateKey := key.PrivateKey{
