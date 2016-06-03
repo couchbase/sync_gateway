@@ -21,23 +21,34 @@ import (
 
 // Options for OpenID Connect
 type OIDCOptions struct {
-	JWTOptions
-	Providers      []*OIDCProvider `json:"issuers,omitempty"`         // List of OIDC issuers
-	DisableSession bool            `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
-	DefaultIssuer  *string         `json:"default_issuer,omitempty"`  // Issuer used when not specified by client
+	Providers       OIDCProviderMap `json:"providers,omitempty"`        // List of OIDC issuers
+	DefaultProvider *string         `json:"default_provider,omitempty"` // Issuer used when not specified by client
 }
 
 type OIDCProvider struct {
-	Issuer         string  `json:"issuer"`                   // OIDC Issuer
-	Register       bool    `json:"register"`                 // If true, server will register new user accounts
-	ClientID       *string `json:"client_id,omitempty"`      // Client ID
-	ValidationKey  *string `json:"validation_key,omitempty"` // Client secret
-	CallbackURL    *string `json:"callback_url,omitempty"`   // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
+	JWTOptions
+	Issuer         string  `json:"issuer"`                    // OIDC Issuer
+	Register       bool    `json:"register"`                  // If true, server will register new user accounts
+	ClientID       *string `json:"client_id,omitempty"`       // Client ID
+	ValidationKey  *string `json:"validation_key,omitempty"`  // Client secret
+	CallbackURL    *string `json:"callback_url,omitempty"`    // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
+	DisableSession bool    `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
 	OIDCClient     *oidc.Client
 	OIDCClientOnce sync.Once
+	IsDefault      bool
+	Name           string
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
+
+func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
+	for _, provider := range opm {
+		if provider.IsDefault {
+			return provider
+		}
+	}
+	return nil
+}
 
 func (op *OIDCProvider) GetClient() *oidc.Client {
 	// Initialize the client on first request
@@ -88,13 +99,13 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	clientConfig.Scope = []string{"openid", "email"}
 
-	client, err := oidc.NewClient(clientConfig)
+	op.OIDCClient, err = oidc.NewClient(clientConfig)
 	if err != nil {
 		return err
 	}
 
 	// Start process for ongoing sync of the provider config
-	client.SyncProviderConfig(op.Issuer)
+	op.OIDCClient.SyncProviderConfig(op.Issuer)
 
 	return nil
 }

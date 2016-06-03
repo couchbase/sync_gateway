@@ -280,7 +280,8 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 	return user
 }
 
-// Authenticates a user based on a JWT token string.
+// Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
+// issuer in the token with a provider.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap) (User, jose.JWT, error) {
@@ -296,14 +297,38 @@ func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderM
 	if err != nil {
 		return nil, jose.JWT{}, err
 	}
-	provider, ok := providers[issuer]
-	if !ok {
+	var provider *OIDCProvider
+	for _, prov := range providers {
+		if prov.Issuer == issuer {
+			provider = prov
+			break
+		}
+	}
+	if provider == nil {
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
 	}
 
+	return auth.authenticateJWT(jwt, provider)
+}
+
+// Authenticates a user based on a JWT token string and a provider.
+// If the token is validated but the user for the username defined in the subject claim doesn't exist,
+// creates the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OIDCProvider) (User, jose.JWT, error) {
+
+	// Parse JWT
+	jwt, err := jose.ParseJWT(token)
+	if err != nil {
+		return nil, jose.JWT{}, err
+	}
+
+	return auth.authenticateJWT(jwt, provider)
+}
+
+func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider) (User, jose.JWT, error) {
 	// Verify JWT
-	client := provider.OIDCClient
-	err = client.VerifyJWT(jwt)
+	client := provider.GetClient()
+	err := client.VerifyJWT(jwt)
 	if err != nil {
 		return nil, jwt, err
 	}
