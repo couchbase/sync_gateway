@@ -10,8 +10,9 @@
 package auth
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/oauth2"
@@ -21,64 +22,93 @@ import (
 
 // Options for OpenID Connect
 type OIDCOptions struct {
+	Providers       OIDCProviderMap `json:"providers,omitempty"`        // List of OIDC issuers
+	DefaultProvider *string         `json:"default_provider,omitempty"` // Issuer used when not specified by client
+}
+
+type OIDCProvider struct {
 	JWTOptions
-	Issuer         *string `json:"issuer,omitempty"`          // OIDC Issuer
-	AuthorizeURL   *string `json:"authorize_url,omitempty"`   // OIDC OP authorize endpoint.
-	TokenURL       *string `json:"token_url,omitempty"`       // OIDC OP token endpoint.
+	Issuer         string  `json:"issuer"`                    // OIDC Issuer
 	Register       bool    `json:"register"`                  // If true, server will register new user accounts
 	ClientID       *string `json:"client_id,omitempty"`       // Client ID
 	ValidationKey  *string `json:"validation_key,omitempty"`  // Client secret
 	CallbackURL    *string `json:"callback_url,omitempty"`    // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
 	DisableSession bool    `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
+	OIDCClient     *oidc.Client
+	OIDCClientOnce sync.Once
+	IsDefault      bool
+	Name           string
 }
 
-func CreateOIDCClient(options *OIDCOptions) (*oidc.Client, error) {
+type OIDCProviderMap map[string]*OIDCProvider
+
+func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
+	for _, provider := range opm {
+		if provider.IsDefault {
+			return provider
+		}
+	}
+	return nil
+}
+
+func (op *OIDCProvider) GetClient() *oidc.Client {
+	// Initialize the client on first request
+	op.OIDCClientOnce.Do(func() {
+		var err error
+		if err = op.InitOIDCClient(); err != nil {
+			base.Warn("Unable to initialize OIDC client: %v", err)
+		}
+	})
+	return op.OIDCClient
+}
+
+func (op *OIDCProvider) InitOIDCClient() error {
 
 	var config oidc.ProviderConfig
 	var err error
-	if options.Issuer == nil {
-		return nil, errors.New("Issuer must be defined for OpenID Connect")
+	if op.Issuer == "" {
+		return fmt.Errorf("Issuer not defined for OpenID Connect provider %+v", op)
 	}
-	base.LogTo("OIDC", "Attempting to fetch provider config from discovery endpoint for issuer %s...", *options.Issuer)
+	base.LogTo("OIDC", "Attempting to fetch provider config from discovery endpoint for issuer %s...", op.Issuer)
 	retryCount := 5
 	var providerLoaded bool
 	for i := 1; i <= 5; i++ {
-		config, err = oidc.FetchProviderConfig(http.DefaultClient, *options.Issuer)
+		config, err = oidc.FetchProviderConfig(http.DefaultClient, op.Issuer)
 		if err == nil {
 			providerLoaded = true
 			break
 		}
 		base.LogTo("OIDC", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
-			options.Issuer, i, retryCount, err)
+			op.Issuer, i, retryCount, err)
 		time.Sleep(1 * time.Second)
 	}
 
 	if !providerLoaded {
-		return nil, errors.New("Unable to fetch provider - OIDC unavailable")
+		return fmt.Errorf("Unable to fetch provider - OIDC unavailable")
 	}
 
 	clientCredentials := oidc.ClientCredentials{
-		ID:     *options.ClientID,
-		Secret: *options.ValidationKey,
+		ID:     *op.ClientID,
+		Secret: *op.ValidationKey,
 	}
 
 	clientConfig := oidc.ClientConfig{
 		ProviderConfig: config,
 		Credentials:    clientCredentials,
-		RedirectURL:    *options.CallbackURL,
+		RedirectURL:    *op.CallbackURL,
 	}
 
 	clientConfig.Scope = []string{"openid", "email"}
 
-	client, err := oidc.NewClient(clientConfig)
+	op.OIDCClient, err = oidc.NewClient(clientConfig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Start process for ongoing sync of the provider config
-	client.SyncProviderConfig(*options.Issuer)
+	op.OIDCClient.SyncProviderConfig(op.Issuer)
 
-	return client, nil
+	return nil
 }
 
 // Converts an OpenID Connect / OAuth2 error to an HTTP error

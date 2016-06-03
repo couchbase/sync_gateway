@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/oauth2"
-	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -62,17 +61,23 @@ func (h *handler) handleOIDCChallenge() error {
 func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 	redirectURLString = ""
-	client, err := h.getOIDCClient()
-	if err != nil {
+
+	providerName := h.getQuery("provider")
+	base.LogTo("OIDC", "Getting provider for name %v", providerName)
+	provider, err := h.getOIDCProvider(providerName)
+	if err != nil || provider == nil {
 		return redirectURLString, err
 	}
 
+	client := provider.GetClient()
+	if client == nil {
+		return redirectURLString, base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider:%s", providerName))
+	}
 	oac, err := client.OAuthClient()
 	if err != nil {
 		return redirectURLString, err
 	}
 
-	// TODO: Add support for state generation and retrieval
 	state := ""
 	accessType := ""
 	prompt := ""
@@ -104,12 +109,13 @@ func (h *handler) handleOIDCCallback() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Code must be present on oidc callback")
 	}
 
-	client, err := h.getOIDCClient()
-	if err != nil {
-		return err
+	providerName := h.getQuery("provider")
+	provider, err := h.getOIDCProvider(providerName)
+	if err != nil || provider == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	oac, err := client.OAuthClient()
+	oac, err := provider.GetClient().OAuthClient()
 	if err != nil {
 		return err
 	}
@@ -125,7 +131,7 @@ func (h *handler) handleOIDCCallback() error {
 	}
 
 	// Create a Sync Gateway session
-	if err = h.createSessionForIdToken(tokenResponse.IDToken, client); err != nil {
+	if err = h.createSessionForIdToken(tokenResponse.IDToken, provider); err != nil {
 		return err
 	}
 
@@ -140,12 +146,13 @@ func (h *handler) handleOIDCRefresh() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Refresh token must be present for oidc refresh")
 	}
 
-	client, err := h.getOIDCClient()
-	if err != nil {
-		return err
+	providerName := h.getQuery("provider")
+	provider, err := h.getOIDCProvider(providerName)
+	if err != nil || provider == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	oac, err := client.OAuthClient()
+	oac, err := provider.GetClient().OAuthClient()
 	if err != nil {
 		return err
 	}
@@ -157,7 +164,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	if err = h.createSessionForIdToken(tokenResponse.IDToken, client); err != nil {
+	if err = h.createSessionForIdToken(tokenResponse.IDToken, provider); err != nil {
 		return err
 	}
 
@@ -170,9 +177,9 @@ func (h *handler) handleOIDCRefresh() error {
 	return nil
 }
 
-func (h *handler) createSessionForIdToken(idToken string, client *oidc.Client) error {
-	if !h.db.Options.OIDCOptions.DisableSession {
-		user, jwt, err := h.db.Authenticator().AuthenticateJWT(idToken, client, h.db.Options.OIDCOptions.Register)
+func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) error {
+	if !provider.DisableSession {
+		user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider)
 		if err != nil {
 			return err
 		}
@@ -189,10 +196,10 @@ func (h *handler) createSessionForIdToken(idToken string, client *oidc.Client) e
 	return nil
 }
 
-func (h *handler) getOIDCClient() (*oidc.Client, error) {
-	client := h.db.GetOIDCClient()
-	if client == nil {
+func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
+	provider, err := h.db.GetOIDCProvider(providerName)
+	if provider == nil || err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
 	}
-	return client, nil
+	return provider, nil
 }

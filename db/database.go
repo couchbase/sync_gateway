@@ -72,8 +72,7 @@ type DatabaseContext struct {
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
-	OIDCClient         *oidc.Client            // OIDC client
-	OIDCClientOnce     sync.Once               // Manages lazy loading of OIDC client
+	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
 }
 
 type DatabaseContextOptions struct {
@@ -180,22 +179,80 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	base.Warn("OIDC Options:%v", options.OIDCOptions)
+	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
+	if options.OIDCOptions != nil {
+		context.OIDCProviders = make(auth.OIDCProviderMap)
+
+		for name, provider := range options.OIDCOptions.Providers {
+			if provider.Issuer == "" {
+				base.Warn("No issuer defined for OIDC Provider - skipping.  %v", provider)
+			}
+			if strings.Contains(name, "_") {
+				return nil, fmt.Errorf("OpenID Connect provider names cannot contain underscore:%s", name)
+			}
+			provider.Name = name
+			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
+				base.Warn("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+			}
+
+			// If this is the default provider, or there's only one provider defined, set IsDefault
+			if (options.OIDCOptions.DefaultProvider != nil && name == *options.OIDCOptions.DefaultProvider) || len(options.OIDCOptions.Providers) == 1 {
+				provider.IsDefault = true
+			}
+
+			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
+			if !provider.IsDefault && provider.CallbackURL != nil {
+				var updatedCallback string
+				if strings.Contains(*provider.CallbackURL, "?") {
+					updatedCallback = fmt.Sprintf("%s&provider=%s", *provider.CallbackURL, name)
+				} else {
+					updatedCallback = fmt.Sprintf("%s?provider=%s", *provider.CallbackURL, name)
+				}
+				provider.CallbackURL = &updatedCallback
+			}
+
+			context.OIDCProviders[name] = provider
+		}
+
+	}
+
 	go context.watchDocChanges()
 	return context, nil
 }
 
-func (context *DatabaseContext) GetOIDCClient() *oidc.Client {
-	// Initialize the client on first request
-	context.OIDCClientOnce.Do(func() {
-		if context.Options.OIDCOptions != nil {
-			var err error
-			context.OIDCClient, err = auth.CreateOIDCClient(context.Options.OIDCOptions)
-			if err != nil {
-				base.Warn("Unable to initialize OIDC client: %v", err)
-			}
+func (context *DatabaseContext) GetOIDCClient(issuerName string) (*oidc.Client, error) {
+
+	provider, ok := context.OIDCProviders[issuerName]
+	if !ok {
+		return nil, fmt.Errorf("No issuer defined for name %v", issuerName)
+	}
+
+	if client := provider.GetClient(); client == nil {
+		return nil, fmt.Errorf("Error initializing client for issuer %s", issuerName)
+	} else {
+		return client, nil
+	}
+
+}
+
+func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
+
+	// If providerName isn't specified, check whether there's a default provider
+	if providerName == "" {
+		provider := context.OIDCProviders.GetDefaultProvider()
+		if provider == nil {
+			return nil, errors.New("No default provider available.")
 		}
-	})
-	return context.OIDCClient
+		return provider, nil
+	}
+
+	if provider, ok := context.OIDCProviders[providerName]; ok {
+		return provider, nil
+	} else {
+		return nil, fmt.Errorf("No provider found for provider name %q", providerName)
+	}
 }
 
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
