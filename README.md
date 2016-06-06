@@ -4,7 +4,7 @@
 
 [![Join the chat at https://gitter.im/couchbase/sync_gateway](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/sync_gateway?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-Sync Gateway sits in front of [Couchbase Server][COUCHBASE_SERVER] to provide a REST API, which is used by [Couchbase Lite][COUCHBASE_LITE] to Sync data between devices.
+Connecting [Couchbase Lite][COUCHBASE_LITE] to [Couchbase Server][COUCHBASE_SERVER]
 
 The Sync Gateway manages HTTP-based data access for mobile clients. It handles access control and data routing, so that a single large Couchbase Server cluster can manage data for multiple users and complex applications.
 
