@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -124,6 +125,7 @@ type DbConfig struct {
 	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
 	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
 	Unsupported        *UnsupportedConfig             `json:"unsupported,omitempty"`          // Config for unsupported features
+	OIDCConfig         *auth.OIDCOptions              `json:"oidc,omitempty"`                 // Config properties for OpenID Connect authentication
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -195,7 +197,12 @@ type SequenceHashConfig struct {
 }
 
 type UnsupportedConfig struct {
-	UserViews *UserViewsConfig `json:"user_views,omitempty"` // Config settings for user views
+	UserViews        *UserViewsConfig        `json:"user_views,omitempty"`         // Config settings for user views
+	OidcTestProvider *OidcTestProviderConfig `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+}
+
+type OidcTestProviderConfig struct {
+	Enabled *bool `json:"enabled,omitempty"` // Whether the oidc_test_provider endpoints should be exposed on the public API
 }
 
 type UserViewsConfig struct {

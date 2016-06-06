@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/coreos/go-oidc/oidc"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -71,6 +72,7 @@ type DatabaseContext struct {
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
 }
 
 type DatabaseContextOptions struct {
@@ -81,10 +83,12 @@ type DatabaseContextOptions struct {
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	OIDCOptions           *auth.OIDCOptions
 }
 
 type UnsupportedOptions struct {
-	EnableUserViews bool
+	EnableUserViews        bool
+	EnableOidcTestProvider bool
 }
 
 const DefaultRevsLimit = 1000
@@ -175,8 +179,80 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	base.Warn("OIDC Options:%v", options.OIDCOptions)
+	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
+	if options.OIDCOptions != nil {
+		context.OIDCProviders = make(auth.OIDCProviderMap)
+
+		for name, provider := range options.OIDCOptions.Providers {
+			if provider.Issuer == "" {
+				base.Warn("No issuer defined for OIDC Provider - skipping.  %v", provider)
+			}
+			if strings.Contains(name, "_") {
+				return nil, fmt.Errorf("OpenID Connect provider names cannot contain underscore:%s", name)
+			}
+			provider.Name = name
+			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
+				base.Warn("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+			}
+
+			// If this is the default provider, or there's only one provider defined, set IsDefault
+			if (options.OIDCOptions.DefaultProvider != nil && name == *options.OIDCOptions.DefaultProvider) || len(options.OIDCOptions.Providers) == 1 {
+				provider.IsDefault = true
+			}
+
+			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
+			if !provider.IsDefault && provider.CallbackURL != nil {
+				var updatedCallback string
+				if strings.Contains(*provider.CallbackURL, "?") {
+					updatedCallback = fmt.Sprintf("%s&provider=%s", *provider.CallbackURL, name)
+				} else {
+					updatedCallback = fmt.Sprintf("%s?provider=%s", *provider.CallbackURL, name)
+				}
+				provider.CallbackURL = &updatedCallback
+			}
+
+			context.OIDCProviders[name] = provider
+		}
+
+	}
+
 	go context.watchDocChanges()
 	return context, nil
+}
+
+func (context *DatabaseContext) GetOIDCClient(issuerName string) (*oidc.Client, error) {
+
+	provider, ok := context.OIDCProviders[issuerName]
+	if !ok {
+		return nil, fmt.Errorf("No issuer defined for name %v", issuerName)
+	}
+
+	if client := provider.GetClient(); client == nil {
+		return nil, fmt.Errorf("Error initializing client for issuer %s", issuerName)
+	} else {
+		return client, nil
+	}
+
+}
+
+func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
+
+	// If providerName isn't specified, check whether there's a default provider
+	if providerName == "" {
+		provider := context.OIDCProviders.GetDefaultProvider()
+		if provider == nil {
+			return nil, errors.New("No default provider available.")
+		}
+		return provider, nil
+	}
+
+	if provider, ok := context.OIDCProviders[providerName]; ok {
+		return provider, nil
+	} else {
+		return nil, fmt.Errorf("No provider found for provider name %q", providerName)
+	}
 }
 
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {

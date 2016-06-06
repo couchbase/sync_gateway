@@ -87,12 +87,36 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 			(*handler).handleGooglePOST)).Methods("POST")
 	}
 
+	// OpenID Connect endpoints
+	dbr.Handle("/_oidc", makeHandler(sc, publicPrivs, (*handler).handleOIDC)).Methods("GET")
+	dbr.Handle("/_oidc_callback", makeHandler(sc, publicPrivs, (*handler).handleOIDCCallback)).Methods("GET")
+	dbr.Handle("/_oidc_refresh", makeHandler(sc, publicPrivs, (*handler).handleOIDCRefresh)).Methods("GET")
+	dbr.Handle("/_oidc_challenge", makeHandler(sc, publicPrivs, (*handler).handleOIDCChallenge)).Methods("GET")
+
+	oidcr := dbr.PathPrefix("/_oidc_testing").Subrouter()
+
+	//Client discovery endpoint
+	oidcr.Handle("/.well-known/openid-configuration", makeHandler(sc, publicPrivs, (*handler).handleOidcProviderConfiguration)).Methods("GET")
+
+	oidcr.Handle("/authorize", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderAuthorize)).Methods("GET", "POST")
+
+	oidcr.Handle("/token", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderToken)).Methods("POST")
+
+	oidcr.Handle("/certs", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderCerts)).Methods("GET")
+
+	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs,
+		(*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
+
 	return r, dbr
 }
 
 // Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createHandler(sc, regularPrivs)
+
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
 	dbr.Handle("/_session", makeHandler(sc, regularPrivs,
