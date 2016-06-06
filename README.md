@@ -4,7 +4,7 @@
 
 [![Join the chat at https://gitter.im/couchbase/sync_gateway](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/sync_gateway?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-Gluing [Couchbase Lite][COUCHBASE_LITE] to [Couchbase Server][COUCHBASE_SERVER]
+Sync Gateway sits in front of [Couchbase Server][COUCHBASE_SERVER] to provide a REST API, which is used by [Couchbase Lite][COUCHBASE_LITE] to Sync data between devices.
 
 The Sync Gateway manages HTTP-based data access for mobile clients. It handles access control and data routing, so that a single large Couchbase Server cluster can manage data for multiple users and complex applications.
 
@@ -147,7 +147,7 @@ $ ./build.sh
 $ ./test.sh
 ```
 
-Warning: If you see the following error message and no `godeps` directory is created when running `bootstrap.sh` 
+Warning: If you see the following error message and no `godeps` directory is created when running `bootstrap.sh`, [see this ticket](https://github.com/couchbase/sync_gateway/issues/1654) 
 
 ```
 gpg: keyring `/Users/youruser/.repoconfig/gnupg/pubring.gpg' created
@@ -155,8 +155,6 @@ gpg: Signature made Wed  2 Mar 20:59:22 2016 GMT using DSA key ID 920F5C65
 gpg: Can't check signature: public key not found
 error: could not verify the tag 'v1.12.33'
 ```
-
-Then [See this ticket](https://github.com/couchbase/sync_gateway/issues/1654) 
 
 **Switching to a different branch**
 
