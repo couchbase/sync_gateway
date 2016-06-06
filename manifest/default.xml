@@ -6,7 +6,6 @@
   <remote fetch="git://github.com/couchbasedeps/" name="couchbasedeps"/>
   <remote fetch="git://github.com/elazarl/" name="elazarl"/>
   <remote fetch="git://github.com/gorilla/" name="gorilla"/>
-  <remote fetch="git://github.com/natefinch/" name="natefinch"/>
   <remote fetch="git://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="git://github.com/samuel/" name="samuel"/>
   <remote fetch="git://github.com/tleyden/" name="tleyden"/>
@@ -32,8 +31,6 @@
 
   <!-- Dependencies -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
-
-  <project name="retriever" path="godeps/src/github.com/couchbase/retriever" remote="couchbase" revision="19c5a5d92a2f34fb96ae91d26901e4a7076b8020"/>
 
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="4195073f3c64830ca5bad14016dc5de732211c32" remote="couchbaselabs"/>
 
@@ -61,8 +58,6 @@
 
   <project name="mux" path="godeps/src/github.com/gorilla/mux" remote="gorilla" revision="9b36453141c35697401168b07f2c09fcff7721ce"/>
 
-  <project name="npipe" path="godeps/src/github.com/natefinch/npipe" remote="natefinch" revision="0938d701e50e580f5925c773055eb6d6b32a0cbc"/>
-
   <project name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="rcrowley" revision="7aeccdae5c4ea7140b90c8af1dcf9563065cc6dd"/>
 
   <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="5282a5a45ba989692b3ae22f730fa6b9dd67662f"/>
@@ -74,8 +69,6 @@
   <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="c980adc4a823548817b9c47d38c6ca6b7d7d8b6a"/>
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="7006f7a1abbda37f3276216302f9eb7425e1dfa5"/>
-
-  <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
 
