@@ -179,7 +179,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	base.Warn("OIDC Options:%v", options.OIDCOptions)
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
 	if options.OIDCOptions != nil {
 		context.OIDCProviders = make(auth.OIDCProviderMap)
