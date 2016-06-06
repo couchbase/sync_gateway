@@ -293,12 +293,16 @@ func createJWTToken(subject string, issuerUrl string) (jwt *jose.JWT, err error)
 //this should ensure that the testing provider works for local clients and
 //clients in front of a load balancer
 func issuerUrl(h *handler) string {
+	return issuerUrlForDB(h, h.db.Name)
+}
+
+func issuerUrlForDB(h *handler, dbname string) string {
 	scheme := "http"
 
 	if h.rq.TLS != nil {
 		scheme = "https"
 	}
-	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, h.db.Name, "_oidc_testing")
+	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbname, "_oidc_testing")
 }
 
 //Return the internal test RSA private key, this is decoded from a base64 encoded string

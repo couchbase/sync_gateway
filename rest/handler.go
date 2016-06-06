@@ -270,10 +270,10 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		 */
 		if unsupportedOptions := context.Options.UnsupportedOptions; unsupportedOptions != nil {
 			if unsupportedOptions.EnableOidcTestProvider && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
-				if userName, password := h.getBasicAuth(); userName != "" && password != "" {
-					defaultProvider := context.Options.OIDCOptions.Providers.GetDefaultProvider()
-					if defaultProvider != nil && defaultProvider.ClientID != nil && defaultProvider.ValidationKey != nil {
-						if *defaultProvider.ClientID == userName && *defaultProvider.ValidationKey == password {
+				if username, password := h.getBasicAuth(); username != "" && password != "" {
+					provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name))
+					if provider != nil && provider.ClientID != nil && provider.ValidationKey != nil {
+						if *provider.ClientID == username && *provider.ValidationKey == password {
 							return nil
 						}
 					}
