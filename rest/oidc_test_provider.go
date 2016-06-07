@@ -29,10 +29,14 @@ const login_html = `
 This provider is enabled per database by adding the following database proeprties to the Sync Gateway config
 <pre>
 "oidc": {
-    "issuer":"http://localhost:4984/db/_oidc_testing",
-    "client_id":"sync_gateway",
-    "validation_key":"R75hfd9lasdwertwerutecw8",
-    "callback_url":"http://localhost:4984/db/_oidc_callback"
+  "default_provider":"sync_gateway",
+  "providers": {
+    "sync_gateway": {
+    	"issuer":"http://localhost:4984/db/_oidc_testing",
+    	"client_id":"sync_gateway",
+    	"validation_key":"R75hfd9lasdwertwerutecw8",
+    	"callback_url":"http://localhost:4984/db/_oidc_callback"
+    }
 },
 "unsupported": {
     "oidc_test_provider": {
@@ -68,7 +72,7 @@ type OidcProviderConfiguration struct {
 	ItsaValuesSupported    []string `json:"id_token_signing_alg_values_supported"`
 	ScopesSupported        []string `json:"scopes_supported"`
 	AuthMethodsSupported   []string `json:"token_endpoint_auth_methods_supported"`
-	CalimsSupported        []string `json:"claims_supported"`
+	ClaimsSupported        []string `json:"claims_supported"`
 }
 
 type AuthState struct {
@@ -101,7 +105,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		ItsaValuesSupported:    []string{"RS256"},
 		ScopesSupported:        []string{"openid"},
 		AuthMethodsSupported:   []string{"client_secret_basic"},
-		CalimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud"},
+		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud"},
 	}
 
 	if bytes, err := json.Marshal(config); err == nil {
