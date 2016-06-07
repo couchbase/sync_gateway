@@ -195,7 +195,7 @@ def main():
     if options.verbosity:
         log("Python version: %s" % sys.version)
 
-    runner.zip(zip_filename, zip_node)
+    runner.zip(zip_filename, 'cbcollect_info', zip_node)
 
     if upload_url:
         do_upload_and_exit(zip_filename, upload_url)

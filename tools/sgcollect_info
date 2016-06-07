@@ -436,10 +436,9 @@ def main():
         log_file="sgcollect_info_options.log",
     )
     runner.run(cmd_line_args_task)
-
         
     # Build the actual zip file
-    runner.zip(zip_filename, None)
+    runner.zip(zip_filename, 'sgcollect_info', platform.node())
 
     # Upload the zip to the URL to S3 if required
     if upload_url:

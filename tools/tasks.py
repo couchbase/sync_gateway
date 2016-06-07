@@ -221,11 +221,11 @@ class TaskRunner(object):
         elif self.verbosity >= 2:
             log('Skipping "%s" (%s): not for platform %s' % (task.description, command_to_print, sys.platform))
 
-    def zip(self, filename, node):
+    def zip(self, filename, log_type, node):
         """Write all our logs to a zipfile"""
         exe = exec_name("gozip")
 
-        prefix = "cbcollect_info_%s_%s" % (node, self.start_time)
+        prefix = "%s_%s_%s" % (log_type, node, self.start_time)
 
         files = []
         for name, fp in self.files.iteritems():
