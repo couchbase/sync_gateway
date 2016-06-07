@@ -32,9 +32,10 @@ const (
 )
 
 type OIDCTokenResponse struct {
-	IDToken      string `json:"id_token"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	SessionID    string `json:"session_id,omitempty"`
+	IDToken      string `json:"id_token"`                // ID token, from OP
+	RefreshToken string `json:"refresh_token,omitempty"` // Refresh token, from OP
+	SessionID    string `json:"session_id,omitempty"`    // Sync Gateway session ID
+	Username     string `json:"name,omitempty"`          // Sync Gateway user name
 }
 
 func (h *handler) handleOIDC() error {
@@ -127,7 +128,7 @@ func (h *handler) handleOIDCCallback() error {
 	}
 
 	// Create a Sync Gateway session
-	sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
+	username, sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
 	if err != nil {
 		return err
 	}
@@ -136,6 +137,7 @@ func (h *handler) handleOIDCCallback() error {
 		IDToken:      tokenResponse.IDToken,
 		RefreshToken: tokenResponse.RefreshToken,
 		SessionID:    sessionID,
+		Username:     username,
 	}
 
 	h.writeJSON(callbackResponse)
@@ -167,7 +169,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
+	username, sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
 	if err != nil {
 		return err
 	}
@@ -175,6 +177,7 @@ func (h *handler) handleOIDCRefresh() error {
 	refreshResponse := &OIDCTokenResponse{
 		IDToken:   tokenResponse.IDToken,
 		SessionID: sessionID,
+		Username:  username,
 	}
 
 	h.writeJSON(refreshResponse)
@@ -182,20 +185,23 @@ func (h *handler) handleOIDCRefresh() error {
 	return nil
 }
 
-func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) (sessionID string, err error) {
+func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
+
+	user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider)
+	if err != nil {
+		return "", "", err
+	}
+
 	if !provider.DisableSession {
-		user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider)
-		if err != nil {
-			return "", err
-		}
 		tokenExpiryTime, err := auth.GetJWTExpiry(jwt)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
-		return h.makeSessionWithTTL(user, sessionTTL)
+		sessionID, err := h.makeSessionWithTTL(user, sessionTTL)
+		return user.Name(), sessionID, err
 	}
-	return "", nil
+	return user.Name(), "", nil
 }
 
 func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
