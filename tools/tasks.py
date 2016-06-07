@@ -133,15 +133,14 @@ class Task(object):
 
 
 class TaskRunner(object):
-    default_name = "couchbase.log"
 
-    def __init__(self, verbosity=0):
+    def __init__(self, verbosity=0, default_name="couchbase.log"):
         self.files = {}
         self.tasks = {}
         self.verbosity = verbosity
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         self.tmpdir = tempfile.mkdtemp()
-
+        self.default_name = default_name
         AltExit.register(self.finalize)
 
     def finalize(self):
@@ -156,7 +155,6 @@ class TaskRunner(object):
     def collect_file(self, filename):
         """Add a file to the list of files collected. Used to capture the exact
         file (including timestamps) from the Couchbase instance.
-
         filename - Absolute path to file to collect.
         """
         if not filename in self.files:
