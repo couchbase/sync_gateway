@@ -51,9 +51,9 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	return nil
 }
 
-func (opm OIDCProviderMap) GetProviderForIssuer(issuer string) (*OIDCProvider)  {
+func (opm OIDCProviderMap) GetProviderForIssuer(issuer string) *OIDCProvider {
 	for _, provider := range opm {
-		if provider.Issuer == issuer{
+		if provider.Issuer == issuer {
 			return provider
 		}
 	}

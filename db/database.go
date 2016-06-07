@@ -184,9 +184,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		context.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
-			if provider.Issuer == "" {
-				base.Warn("No issuer defined for OIDC Provider - skipping.  %v", provider)
+			if provider.Issuer == "" || provider.ClientID == nil || provider.ValidationKey == nil {
+				base.Warn("Issuer, ClientID and ValidationKey required for OIDC Provider - skipping provider %q", name)
+				continue
 			}
+
 			if strings.Contains(name, "_") {
 				return nil, fmt.Errorf("OpenID Connect provider names cannot contain underscore:%s", name)
 			}
@@ -213,6 +215,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			}
 
 			context.OIDCProviders[name] = provider
+		}
+		if len(context.OIDCProviders) == 0 {
+			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified.")
 		}
 
 	}
