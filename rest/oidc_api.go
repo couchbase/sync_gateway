@@ -34,6 +34,7 @@ const (
 type OIDCTokenResponse struct {
 	IDToken      string `json:"id_token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
+	SessionID    string `json:"session_id,omitempty"`
 }
 
 func (h *handler) handleOIDC() error {
@@ -101,7 +102,7 @@ func (h *handler) handleOIDCCallback() error {
 	callbackError := h.getQuery("error")
 	if callbackError != "" {
 		errorDescription := h.getQuery("error_description")
-		return base.HTTPErrorf(http.StatusBadRequest, "oidc_callback received an error: %v",errorDescription)
+		return base.HTTPErrorf(http.StatusBadRequest, "oidc_callback received an error: %v", errorDescription)
 	}
 
 	code := h.getQuery("code")
@@ -125,14 +126,16 @@ func (h *handler) handleOIDCCallback() error {
 		return err
 	}
 
+	// Create a Sync Gateway session
+	sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
+	if err != nil {
+		return err
+	}
+
 	callbackResponse := &OIDCTokenResponse{
 		IDToken:      tokenResponse.IDToken,
 		RefreshToken: tokenResponse.RefreshToken,
-	}
-
-	// Create a Sync Gateway session
-	if err = h.createSessionForIdToken(tokenResponse.IDToken, provider); err != nil {
-		return err
+		SessionID:    sessionID,
 	}
 
 	h.writeJSON(callbackResponse)
@@ -164,12 +167,14 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	if err = h.createSessionForIdToken(tokenResponse.IDToken, provider); err != nil {
+	sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
+	if err != nil {
 		return err
 	}
 
 	refreshResponse := &OIDCTokenResponse{
-		IDToken: tokenResponse.IDToken,
+		IDToken:   tokenResponse.IDToken,
+		SessionID: sessionID,
 	}
 
 	h.writeJSON(refreshResponse)
@@ -177,23 +182,20 @@ func (h *handler) handleOIDCRefresh() error {
 	return nil
 }
 
-func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) error {
+func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) (sessionID string, err error) {
 	if !provider.DisableSession {
 		user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider)
 		if err != nil {
-			return err
+			return "", err
 		}
 		tokenExpiryTime, err := auth.GetJWTExpiry(jwt)
 		if err != nil {
-			return err
+			return "", err
 		}
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
-		err = h.makeSessionWithTTL(user, sessionTTL)
-		if err != nil {
-			return err
-		}
+		return h.makeSessionWithTTL(user, sessionTTL)
 	}
-	return nil
+	return "", nil
 }
 
 func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
