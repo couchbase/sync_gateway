@@ -6,13 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
+	"text/template"
+	"time"
+
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/key"
 	"github.com/couchbase/sync_gateway/base"
-	"net/http"
-	"text/template"
-	"time"
-"strings"
 )
 
 //This is the private RSA Key that will be used to sign all tokens
@@ -221,40 +222,33 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	base.LogTo("OIDC+", "handleOidcTestProviderAuthenticate() called")
-
 	requestParams := h.rq.URL.Query()
 	username := h.rq.FormValue("username")
 	authenticated := h.rq.FormValue("authenticated")
 	location := requestParams.Get("redirect_uri")
 
-	if username != "" {
-		if authenticated != "" {
-			//Generate the return code by base64 encoding the username
-			code := base64.StdEncoding.EncodeToString([]byte(username))
+	base.LogTo("OIDC+", "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
 
-			authCodeTokenMap[code] = AuthState{Username: username, CallbackURL: location}
-
-			query := "?code=" + code + "&state=af0ifjsldkj"
-			h.setHeader("Location", location+query)
-			h.response.WriteHeader(http.StatusFound)
-
-			return nil
-		} else {
-			base.LogTo("OIDC+", "user was not authenticated")
-			error := "?error=invalid_request&error_description=User failed authentication"
-			h.setHeader("Location", location+error)
-			h.response.WriteHeader(http.StatusFound)
-		}
-
-	} else {
-		base.LogTo("OIDC+", "user did not enter valid credentials")
+	if username == "" || authenticated == "" {
+		base.LogTo("OIDC+", "user did not enter valid credentials -- username or authenticated is empty")
 		error := "?error=invalid_request&error_description=User failed authentication"
 		h.setHeader("Location", requestParams.Get("redirect_uri")+error)
 		h.response.WriteHeader(http.StatusFound)
+		return nil
+
 	}
 
+	//Generate the return code by base64 encoding the username
+	code := base64.StdEncoding.EncodeToString([]byte(username))
+
+	authCodeTokenMap[code] = AuthState{Username: username, CallbackURL: location}
+
+	query := "?code=" + code + "&state=af0ifjsldkj"
+	h.setHeader("Location", location+query)
+	h.response.WriteHeader(http.StatusFound)
+
 	return nil
+
 }
 
 //Creates a signed JWT token for the requesting subject and issuer URL
@@ -351,7 +345,7 @@ func handleRefreshTokenRequest(h *handler) error {
 func writeTokenResponse(h *handler, subject string, issuerUrl string) error {
 
 	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
-	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject+":::"+accessToken))
+	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 
 	idToken, err := createJWTToken(subject, issuerUrl)
 	if err != nil {
@@ -376,7 +370,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string) error {
 	return nil
 }
 
-func extractSubjectFromRefreshToken ( refreshToken string) (string, error) {
+func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
@@ -386,7 +380,7 @@ func extractSubjectFromRefreshToken ( refreshToken string) (string, error) {
 
 	subject := components[0]
 
-	base.LogTo("OIDC+", "subject extracted from refresh token = %v",subject)
+	base.LogTo("OIDC+", "subject extracted from refresh token = %v", subject)
 
 	if len(components) != 2 || subject == "" {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")
