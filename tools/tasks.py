@@ -839,7 +839,7 @@ def generate_upload_url(parser, options, zip_filename):
         scheme, netloc, path = parse_host(options.upload_host)
 
         customer = urllib.quote(options.upload_customer)
-        fname = urllib.quote(zip_filename)
+        fname = urllib.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
             full_path = '%s/%s/%d/%s' % (path, customer, options.upload_ticket, fname)
         else:
