@@ -85,7 +85,7 @@ func (h *handler) handleSessionDELETE() error {
 
 func (h *handler) makeSession(user auth.User) error {
 
-	err := h.makeSessionWithTTL(user, kDefaultSessionTTL)
+	_, err := h.makeSessionWithTTL(user, kDefaultSessionTTL)
 	if err != nil {
 		return err
 	}
@@ -93,20 +93,20 @@ func (h *handler) makeSession(user auth.User) error {
 }
 
 // Creates a session with TTL and adds to the response.  Does NOT return the session info response.
-func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) error {
+func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sessionID string, err error) {
 	if user == nil {
-		return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+		return "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 	}
 	h.user = user
 	auth := h.db.Authenticator()
 	session, err := auth.CreateSession(user.Name(), expiry)
 	if err != nil {
-		return err
+		return "", err
 	}
 	cookie := auth.MakeSessionCookie(session)
 	base.AddDbPathToCookie(h.rq, cookie)
 	http.SetCookie(h.response, cookie)
-	return nil
+	return session.ID, nil
 }
 
 func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) error {
