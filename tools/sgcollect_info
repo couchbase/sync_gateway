@@ -407,7 +407,7 @@ def main():
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
-    runner = TaskRunner(verbosity=options.verbosity)
+    runner = TaskRunner(verbosity=options.verbosity, default_name="sync_gateway.log")
 
     if not options.product_only:
         for task in make_os_tasks(["sync_gateway"]):
