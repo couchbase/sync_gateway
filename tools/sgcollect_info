@@ -140,7 +140,7 @@ def extract_element_from_config(element, config):
     """
 
     sync_regex = r'"Sync":(`.*`)'
-    config = re.sub(sync_regex, '""', config)
+    config = re.sub(sync_regex, '"Sync":""', config)
     try:
         return json.loads(config)[element]
     except ValueError, KeyError:
