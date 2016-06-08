@@ -19,6 +19,7 @@ import urllib2
 import shutil
 import urlparse
 import json
+import tempfile
 
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
@@ -90,7 +91,7 @@ def expvar_url(sg_url):
 def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     pprof_tasks = []
-    
+
     profile_types = [
         "profile",
         "heap",
@@ -106,7 +107,7 @@ def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
     sg_pprof_url = "{}/_debug/pprof".format(sg_url)
 
     # make sure raw profile gz files end up in results dir
-    os.environ["PPROF_TMPDIR"] = zip_dir
+    os.environ["PPROF_TMPDIR"] = tempfile.mkdtemp()
 
     for profile_type in profile_types:
         for format_type in format_types:
@@ -121,11 +122,11 @@ def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
             )
             print "Command to collect pprof: {}".format(cmd)
             description = "Collecting sg pprof profile -- which can take several seconds: {} format: {}".format(profile_type, format_type)
-            
+
             task = AllOsTask(
                 description,
                 cmd,
-                log_file=dest_path,
+                log_file=out_filename,
             )
             pprof_tasks.append(task)
 
@@ -466,7 +467,10 @@ def main():
         log_file="sgcollect_info_options.log",
     )
     runner.run(cmd_line_args_task)
-        
+
+    # Clean up intermediate pprof files
+    shutil.rmtree(os.environ["PPROF_TMPDIR"], ignore_errors=True)
+
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
 
