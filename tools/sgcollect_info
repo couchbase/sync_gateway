@@ -131,22 +131,51 @@ def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     return pprof_tasks
 
-def make_collect_logs_tasks(zip_dir):
+def extract_element_from_config(element, config):
+    """ The config returned from /_config may not be fully formed json
+        due to the fact that the sync function is inside backticks (`)
+        Therefore this method grabs an element from the config after
+        removing the sync function
+    """
 
-    sg_log_files = [
-        "/home/sync_gateway/logs/sync_gateway_access.log",
-        "/home/sync_gateway/logs/sync_gateway_error.log",
-        "/home/sg_accel/logs/sg_accel_access.log",
-        "/home/sg_accel/logs/sg_accel_error.log",
-        "/tmp/logs/error.log",  # TEMP TESTING!
-    ]
+    sync_regex = r'"Sync":(`.*`)'
+    config = re.sub(sync_regex, '""', config)
+    try:
+        return json.loads(config)[element]
+    except ValueError, KeyError:
+        # If we can't deserialise the json or find the key then return nothing
+        return
+
+def make_collect_logs_tasks(zip_dir, sg_url):
+    sg_log_files = {
+        "sync_gateway_access.log": "/home/sync_gateway/logs/sync_gateway_access.log",
+        "sg_accel_access.log": "/home/sg_accel/logs/sg_accel_access.log",
+        "sg_accel_error.log": "/home/sg_accel/logs/sg_accel_error.log",
+        "error.log": "/tmp/logs/error.log",  # TEMP TESTING!
+    }
+
+    # Try to find user-specified log path
+    config_url = "{}/_config".format(sg_url)
+    try:
+        response = urllib2.urlopen(config_url)
+    except urllib2.URLError:
+        config_str = ""
+    else:
+        config_str = str(response.read())
+
+    guessed_log_path = extract_element_from_config('LogFilePath', config_str)
+    if guessed_log_path:
+        sg_log_files["sync_gateway_error.log"] = guessed_log_path
+    else:
+        sg_log_files["sync_gateway_error.log"] = "/home/sync_gateway/logs/sync_gateway_error.log"
+
     sg_tasks = []
 
-    for sg_log_file in sg_log_files:
+    for sg_log_file, path in sg_log_files.iteritems():
         task = AllOsTask(
             "sg logs (%s)" % sg_log_file,
-            "cat {}".format(sg_log_file),
-            log_file=os.path.basename(sg_log_file),
+            "cat {}".format(path),
+            log_file=sg_log_file,
         )
         sg_tasks.append(task)
 
@@ -293,7 +322,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         sg_binary_path = sync_gateway_executable_path
     
     # Collect logs
-    collect_logs_tasks = make_collect_logs_tasks(zip_dir)
+    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
     
     # Add a task to collect expvars from port 4985
     expvar_task = make_curl_task(name="Collect Expvars",
