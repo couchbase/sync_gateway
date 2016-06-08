@@ -454,6 +454,11 @@ def main():
 
     # Collect the SG binary
     sg_binary_path, _ = get_paths_from_expvars(sg_url)
+    if options.sync_gateway_executable_path is not None and len(options.sync_gateway_executable_path) > 0:
+        if not os.path.exists(sync_gateway_executable_path):
+            raise Exception("Path to sync gateway executable passed in does not exist: {}".format(sync_gateway_executable_path))
+        sg_binary_path = sync_gateway_executable_path
+
     if os.path.exists(sg_binary_path):
         runner.collect_file(sg_binary_path)
     else:
