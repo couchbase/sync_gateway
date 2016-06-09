@@ -28,16 +28,18 @@ type OIDCOptions struct {
 
 type OIDCProvider struct {
 	JWTOptions
-	Issuer         string  `json:"issuer"`                    // OIDC Issuer
-	Register       bool    `json:"register"`                  // If true, server will register new user accounts
-	ClientID       *string `json:"client_id,omitempty"`       // Client ID
-	ValidationKey  *string `json:"validation_key,omitempty"`  // Client secret
-	CallbackURL    *string `json:"callback_url,omitempty"`    // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
-	DisableSession bool    `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
-	OIDCClient     *oidc.Client
-	OIDCClientOnce sync.Once
-	IsDefault      bool
-	Name           string
+	Issuer             string   `json:"issuer"`                    // OIDC Issuer
+	Register           bool     `json:"register"`                  // If true, server will register new user accounts
+	ClientID           *string  `json:"client_id,omitempty"`       // Client ID
+	ValidationKey      *string  `json:"validation_key,omitempty"`  // Client secret
+	CallbackURL        *string  `json:"callback_url,omitempty"`    // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
+	DisableSession     bool     `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
+	Scope              []string `json:"scope,omitempty"`           // Scope sent for openid request
+	IncludeAccessToken bool     `json:"include_access,omitempty"`  // Whether the _oidc_callback response should include OP access token and associated fields (token_type, expires_in)
+	OIDCClient         *oidc.Client
+	OIDCClientOnce     sync.Once
+	IsDefault          bool
+	Name               string
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
@@ -107,7 +109,11 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		RedirectURL:    *op.CallbackURL,
 	}
 
-	clientConfig.Scope = []string{"openid", "email"}
+	if op.Scope != nil || len(op.Scope) > 0 {
+		clientConfig.Scope = op.Scope
+	} else {
+		clientConfig.Scope = []string{"openid", "email"}
+	}
 
 	op.OIDCClient, err = oidc.NewClient(clientConfig)
 	if err != nil {

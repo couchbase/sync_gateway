@@ -36,6 +36,9 @@ type OIDCTokenResponse struct {
 	RefreshToken string `json:"refresh_token,omitempty"` // Refresh token, from OP
 	SessionID    string `json:"session_id,omitempty"`    // Sync Gateway session ID
 	Username     string `json:"name,omitempty"`          // Sync Gateway user name
+	AccessToken  string `json:"access_token,omitempty"`  // Access token, from OP
+	TokenType    string `json:"token_type,omitempty"`    // Access token type, from OP
+	Expires      int    `json:"expires_in,omitempty"`    // Access token expiry, from OP
 }
 
 func (h *handler) handleOIDC() error {
@@ -140,6 +143,12 @@ func (h *handler) handleOIDCCallback() error {
 		Username:     username,
 	}
 
+	if provider.IncludeAccessToken {
+		callbackResponse.AccessToken = tokenResponse.AccessToken
+		callbackResponse.Expires = tokenResponse.Expires
+		callbackResponse.TokenType = tokenResponse.TokenType
+	}
+
 	h.writeJSON(callbackResponse)
 	return nil
 }
@@ -178,6 +187,12 @@ func (h *handler) handleOIDCRefresh() error {
 		IDToken:   tokenResponse.IDToken,
 		SessionID: sessionID,
 		Username:  username,
+	}
+
+	if provider.IncludeAccessToken {
+		refreshResponse.AccessToken = tokenResponse.AccessToken
+		refreshResponse.Expires = tokenResponse.Expires
+		refreshResponse.TokenType = tokenResponse.TokenType
 	}
 
 	h.writeJSON(refreshResponse)
