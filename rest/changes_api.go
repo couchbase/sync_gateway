@@ -66,6 +66,92 @@ func (h *handler) handleRevsDiff() error {
 	return nil
 }
 
+// UpdateChangesOptionsFromQuery handles any changes POST requests that send parameters in the POST body AND in the query string.  If any parameters
+// are present in the query string, they override the values sent in the body.
+
+func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.ChangesOptions, filter *string, channelsArray []string, docIdsArray []string) (newChannelsArray []string, newDocIdsArray []string, err error) {
+
+	if h.rq.URL.RawQuery == "" {
+		return channelsArray, docIdsArray, nil
+	}
+
+	values := h.rq.URL.Query()
+
+	if _, ok := values["feed"]; ok {
+		*feed = h.getQuery("feed")
+	}
+
+	if _, ok := values["since"]; ok {
+		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if _, ok := values["limit"]; ok {
+		options.Limit = int(h.getIntQuery("limit", 0))
+	}
+
+	if _, ok := values["style"]; ok {
+		options.Conflicts = (h.getQuery("style") == "all_docs")
+	}
+
+	if _, ok := values["active_only"]; ok {
+		options.ActiveOnly = h.getBoolQuery("active_only")
+	}
+
+	if _, ok := values["include_docs"]; ok {
+		options.IncludeDocs = (h.getBoolQuery("include_docs"))
+	}
+
+	if _, ok := values["filter"]; ok {
+		*filter = h.getQuery("filter")
+	}
+
+	if _, ok := values["channels"]; ok {
+		channelsParam := h.getQuery("channels")
+		if channelsParam != "" {
+			channelsArray = strings.Split(channelsParam, ",")
+		}
+	}
+
+	if _, ok := values["doc_ids"]; ok {
+		docidsParam := h.getQuery("doc_ids")
+		if docidsParam != "" {
+			var querydocidKeys []string
+			err := json.Unmarshal([]byte(docidsParam), &querydocidKeys)
+			if err != nil {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad doc id's")
+			}
+			if len(querydocidKeys) > 0 {
+				docIdsArray = querydocidKeys
+			}
+		}
+	}
+
+	if _, ok := values["heartbeat"]; ok {
+		options.HeartbeatMs = getRestrictedIntQuery(
+			h.rq.URL.Query(),
+			"heartbeat",
+			kDefaultHeartbeatMS,
+			kMinHeartbeatMS,
+			h.server.config.MaxHeartbeat*1000,
+			true,
+		)
+	}
+
+	if _, ok := values["timeout"]; ok {
+		options.TimeoutMs = getRestrictedIntQuery(
+			h.rq.URL.Query(),
+			"timeout",
+			kDefaultTimeoutMS,
+			0,
+			kMaxTimeoutMS,
+			true,
+		)
+	}
+	return channelsArray, docIdsArray, nil
+}
+
 // Top-level handler for _changes feed requests. Accepts GET or POST requests.
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
@@ -136,6 +222,11 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
+		channelsArray, docIdsArray, err = h.updateChangesOptionsFromQuery(&feed, &options, &filter, channelsArray, docIdsArray)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
@@ -340,7 +431,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 				if h.user.CanSeeChannel(channel) {
 					//If the doc has been removed
 					if removal != nil {
-						removedChannels = append(removedChannels,channel)
+						removedChannels = append(removedChannels, channel)
 						if removal.Deleted {
 							row.Deleted = true
 						}
