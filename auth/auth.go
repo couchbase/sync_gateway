@@ -11,9 +11,10 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 
+	"github.com/coreos/go-oidc/jose"
 	"github.com/couchbase/go-couchbase"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -277,6 +278,93 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 		return nil
 	}
 	return user
+}
+
+// Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
+// issuer in the token with a provider.
+// If the token is validated but the user for the username defined in the subject claim doesn't exist,
+// creates the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap) (User, jose.JWT, error) {
+
+	// Parse JWT (needed to determine issuer/provider)
+	jwt, err := jose.ParseJWT(token)
+	if err != nil {
+		return nil, jose.JWT{}, err
+	}
+
+	// Get client for issuer
+	issuer, err := GetJWTIssuer(jwt)
+	if err != nil {
+		return nil, jose.JWT{}, err
+	}
+
+	provider := providers.GetProviderForIssuer(issuer)
+	if provider == nil {
+		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
+	}
+
+	return auth.authenticateJWT(jwt, provider)
+}
+
+// Authenticates a user based on a JWT token string and a provider.
+// If the token is validated but the user for the username defined in the subject claim doesn't exist,
+// creates the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OIDCProvider) (User, jose.JWT, error) {
+
+	// Parse JWT
+	jwt, err := jose.ParseJWT(token)
+	if err != nil {
+		return nil, jose.JWT{}, err
+	}
+
+	return auth.authenticateJWT(jwt, provider)
+}
+
+func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider) (User, jose.JWT, error) {
+	// Verify JWT
+	client := provider.GetClient()
+	err := client.VerifyJWT(jwt)
+	if err != nil {
+		return nil, jwt, err
+	}
+
+	// Extract identity from token
+	identity, identityErr := GetJWTIdentity(jwt)
+	if identityErr != nil {
+		return nil, jwt, identityErr
+	}
+
+	username := auth.getOIDCUsername(provider, identity.ID)
+
+	user, userErr := auth.GetUser(username)
+	if userErr != nil {
+		return nil, jwt, userErr
+	}
+
+	// If user found, check whether the email needs to be updated (e.g. user has changed email in
+	// external auth system)
+	if user != nil && identity.Email != "" {
+		if identity.Email != user.Email() {
+			if err := user.SetEmail(identity.Email); err == nil {
+				auth.Save(user)
+			}
+		}
+	}
+
+	// Auto-registration.  This will normally be done when token is originally returned
+	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
+	if user == nil && provider.Register {
+		user, err = auth.RegisterNewUser(username, identity.Email)
+		if err != nil {
+			return nil, jwt, err
+		}
+	}
+
+	return user, jwt, nil
+}
+
+func (auth *Authenticator) getOIDCUsername(provider *OIDCProvider, subject string) string {
+	return fmt.Sprintf("%s_%s", provider.Name, subject)
 }
 
 // Registers a new user account based on the given verified email address.

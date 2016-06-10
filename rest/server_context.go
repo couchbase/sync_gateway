@@ -86,7 +86,7 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 	if config.Replications != nil {
 
-		for _,replicationConfig := range config.Replications {
+		for _, replicationConfig := range config.Replications {
 
 			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
 
@@ -441,6 +441,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				unsupportedOptions.EnableUserViews = *config.Unsupported.UserViews.Enabled
 			}
 		}
+		if config.Unsupported.OidcTestProvider != nil {
+			if config.Unsupported.OidcTestProvider.Enabled != nil {
+				unsupportedOptions.EnableOidcTestProvider = *config.Unsupported.OidcTestProvider.Enabled
+			}
+		}
 	}
 
 	// Enable doc tracking if needed for autoImport or shadowing
@@ -454,6 +459,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    unsupportedOptions,
 		TrackDocs:             trackDocs,
+		OIDCOptions:           config.OIDCConfig,
 	}
 
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)

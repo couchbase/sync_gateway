@@ -251,6 +251,37 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return nil
 	}
 
+	var err error
+	// If oidc enabled, check for bearer ID token
+	if context.Options.OIDCOptions != nil {
+		if token := h.getBearerToken(); token != "" {
+			h.user, _, err = context.Authenticator().AuthenticateJWT(token, context.OIDCProviders)
+			if h.user == nil || err != nil {
+				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			}
+			return nil
+		}
+
+		/*
+		* If unsupported/oidc testing is enabled
+		* and this is a call on the token endpoint
+		* and the username and password match those in the oidc default provider config
+		* then authorize this request
+		 */
+		if unsupportedOptions := context.Options.UnsupportedOptions; unsupportedOptions != nil {
+			if unsupportedOptions.EnableOidcTestProvider && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
+				if username, password := h.getBasicAuth(); username != "" && password != "" {
+					provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name))
+					if provider != nil && provider.ClientID != nil && provider.ValidationKey != nil {
+						if *provider.ClientID == username && *provider.ValidationKey == password {
+							return nil
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
@@ -263,7 +294,6 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 
 	// Check cookie
-	var err error
 	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
 	if err != nil {
 		return err
@@ -424,6 +454,15 @@ func (h *handler) getBasicAuth() (username string, password string) {
 	return
 }
 
+func (h *handler) getBearerToken() string {
+	auth := h.rq.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := auth[7:]
+		return token
+	}
+	return ""
+}
+
 func (h *handler) currentEffectiveUserName() string {
 	var effectiveName string
 
@@ -548,6 +587,7 @@ func (h *handler) flush() {
 // writes a CouchDB-style JSON description to the body.
 func (h *handler) writeError(err error) {
 	if err != nil {
+		err = auth.OIDCToHTTPError(err) // Map OIDC/OAuth2 errors to HTTP form
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
 	}
