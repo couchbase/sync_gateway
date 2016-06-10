@@ -197,6 +197,7 @@ exit 0
 %dir %attr (0755, @@PRODUCT_BASE@@, @@PRODUCT_BASE@@) @@PREFIX@@
 
 %dir %attr (0755, bin, bin) @@PREFIX@@/bin
+%dir %attr (0755, bin, bin) @@PREFIX@@/tools
 %dir %attr (0644, bin, bin) @@PREFIX@@/examples
 %dir %attr (0755, bin, bin) @@PREFIX@@/service
 
@@ -204,6 +205,7 @@ exit 0
 #
 
 %attr (0755, bin, bin) @@PREFIX@@/bin/*
+%attr (0755, bin, bin) @@PREFIX@@/tools/*
 %attr (0644, bin, bin) @@PREFIX@@/examples/*
 %attr (0755, bin, bin) @@PREFIX@@/service/*
 %attr (0644, bin, bin) @@PREFIX@@/LICENSE.txt
