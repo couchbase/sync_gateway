@@ -297,13 +297,8 @@ func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderM
 	if err != nil {
 		return nil, jose.JWT{}, err
 	}
-	var provider *OIDCProvider
-	for _, prov := range providers {
-		if prov.Issuer == issuer {
-			provider = prov
-			break
-		}
-	}
+
+	provider := providers.GetProviderForIssuer(issuer)
 	if provider == nil {
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
 	}
