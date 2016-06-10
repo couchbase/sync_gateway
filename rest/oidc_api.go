@@ -224,5 +224,12 @@ func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, erro
 	if provider == nil || err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
 	}
+
+	// If the redirect URL is not defined for the provider generate it from the
+	// handler request and set it on the provider
+	if provider.CallbackURL == nil || *provider.CallbackURL == "" {
+		callbackURL := callbackUrlForDB(h, h.db.Name)
+		provider.CallbackURL = &callbackURL
+	}
 	return provider, nil
 }

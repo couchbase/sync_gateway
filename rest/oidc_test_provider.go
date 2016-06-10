@@ -312,6 +312,15 @@ func issuerUrlForDB(h *handler, dbname string) string {
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbname, "_oidc_testing")
 }
 
+func callbackUrlForDB(h *handler, dbname string) string {
+	scheme := "http"
+
+	if h.rq.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbname, "_oidc_callback")
+}
+
 //Return the internal test RSA private key, this is decoded from a base64 encoded string
 //stored as a constant above
 func privateKey() (key *rsa.PrivateKey, err error) {
