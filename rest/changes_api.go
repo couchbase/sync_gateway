@@ -332,17 +332,24 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
 		var removedChannels []string
-		//Do special _removed/_deleted processing
-		for channel, removal := range populatedDoc.Channels {
-			//Doc is tagged with channel or was removed at a sequence later that since sequence
-			if removal == nil || removal.Seq > options.Since.Seq {
-				//if the current user has access to this channel
-				if h.user.CanSeeChannel(channel) {
-					//If the doc has been removed
-					if removal != nil {
-						removedChannels = append(removedChannels,channel)
-						if removal.Deleted {
-							row.Deleted = true
+
+		if len(populatedDoc.Channels) == 0 {
+			if deleted, _ := body["_deleted"].(bool); deleted {
+				row.Deleted = true
+			}
+		} else {
+			//Do special _removed/_deleted processing
+			for channel, removal := range populatedDoc.Channels {
+				//Doc is tagged with channel or was removed at a sequence later that since sequence
+				if removal == nil || removal.Seq > options.Since.Seq {
+					//if the current user has access to this channel
+					if h.user.CanSeeChannel(channel) {
+						//If the doc has been removed
+						if removal != nil {
+							removedChannels = append(removedChannels, channel)
+							if removal.Deleted {
+								row.Deleted = true
+							}
 						}
 					}
 				}
