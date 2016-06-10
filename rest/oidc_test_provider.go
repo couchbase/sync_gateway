@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"text/template"
 	"time"
@@ -229,7 +230,8 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	requestParams := h.rq.URL.Query()
 	username := h.rq.FormValue("username")
 	authenticated := h.rq.FormValue("authenticated")
-	location := requestParams.Get("redirect_uri")
+
+	redirect_uri := requestParams.Get("redirect_uri")
 
 	base.LogTo("OIDC+", "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
 
@@ -245,10 +247,17 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	//Generate the return code by base64 encoding the username
 	code := base64.StdEncoding.EncodeToString([]byte(username))
 
-	authCodeTokenMap[code] = AuthState{Username: username, CallbackURL: location}
+	authCodeTokenMap[code] = AuthState{Username: username, CallbackURL: redirect_uri}
 
-	query := "?code=" + code + "&state=af0ifjsldkj"
-	h.setHeader("Location", location+query)
+	location_url, err := url.Parse(redirect_uri)
+	if err != nil {
+		return err
+	}
+	query := location_url.Query()
+	query.Set("code", code)
+	query.Set("state", "af0ifjsldkj")
+	location_url.RawQuery = query.Encode()
+	h.setHeader("Location", location_url.String())
 	h.response.WriteHeader(http.StatusFound)
 
 	return nil
