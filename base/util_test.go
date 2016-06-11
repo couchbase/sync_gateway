@@ -56,6 +56,10 @@ func TestBackQuotedStrings(t *testing.T) {
 	input = "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}"
 	output = ConvertBackQuotedStrings([]byte(input))
 	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
+
+	input = "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}"
+	output = ConvertBackQuotedStrings([]byte(input))
+	assert.Equals(t, string(output), `{"foo": "bar\\baz", "something": "else\\is\\here"}`)
 }
 
 func TestCouchbaseUrlWithAuth(t *testing.T) {

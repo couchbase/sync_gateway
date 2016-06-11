@@ -81,7 +81,7 @@ func FixJSONNumbers(value interface{}) interface{} {
 var kBackquoteStringRegexp *regexp.Regexp
 
 // Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,
-// and escapes any newlines or double-quotes within them with backslashes.
+// and escapes any literal backslashes, newlines or double-quotes within them with backslashes.
 func ConvertBackQuotedStrings(data []byte) []byte {
 	if kBackquoteStringRegexp == nil {
 		kBackquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
@@ -89,7 +89,8 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 	// Find backquote-delimited strings and replace them:
 	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(bytes []byte) []byte {
 		str := string(bytes)
-		// Remove \r  and Escape newlines and double-quotes:
+		// Remove \r  and Escape literal backslashes, newlines and double-quotes:
+		str = strings.Replace(str, `\`, `\\`, -1)
 		str = strings.Replace(str, "\r", "", -1)
 		str = strings.Replace(str, "\n", `\n`, -1)
 		str = strings.Replace(str, "\t", `\t`, -1)
