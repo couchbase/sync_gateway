@@ -305,9 +305,20 @@ def get_paths_from_expvars(sg_url):
             return (sg_binary_path, sg_config_path)
         sg_binary_path = cmdline_args[0]
         if len(cmdline_args) > 1:
-            sg_config_path = get_config_path_from_cmdline(cmdline_args[1:])
+            sg_config_path = get_absolute_path(get_config_path_from_cmdline(cmdline_args[1:]))
 
     return (sg_binary_path, sg_config_path)
+
+
+def get_absolute_path(relative_path):
+
+    try:
+        sync_gateway_pid = subprocess.check_output(['pgrep', 'sync_gateway']).split()[0]
+        sync_gateway_cwd = subprocess.check_output(['readlink', '-e', '/proc/{}/cwd'.format(sync_gateway_pid)]).strip('\n')
+    except subprocess.CalledProcessError:
+        sync_gateway_cwd = ''
+
+    return os.path.join(sync_gateway_cwd, relative_path)
     
 
 def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path):
