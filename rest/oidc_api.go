@@ -106,18 +106,18 @@ func (h *handler) handleOIDCCallback() error {
 	callbackError := h.getQuery("error")
 	if callbackError != "" {
 		errorDescription := h.getQuery("error_description")
-		return base.HTTPErrorf(http.StatusBadRequest, "oidc_callback received an error: %v", errorDescription)
+		return base.HTTPErrorf(http.StatusUnauthorized, "oidc_callback received an error: %v", errorDescription)
 	}
 
 	code := h.getQuery("code")
 	if code == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Code must be present on oidc callback")
+		return base.HTTPErrorf(http.StatusUnauthorized, "Code must be present on oidc callback")
 	}
 
 	providerName := h.getQuery("provider")
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
+		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to identify provider for callback request")
 	}
 
 	oac, err := provider.GetClient().OAuthClient()
