@@ -24,6 +24,7 @@ import (
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/key"
 	"github.com/couchbase/sync_gateway/base"
+	"strconv"
 )
 
 //This is the private RSA Key that will be used to sign all tokens
@@ -31,6 +32,8 @@ const base64EncodedPrivateKey = "MIICXQIBAAKBgQC5HMLzcjKXQhU39ItitqV9EcSgq7SVmt9
 
 //Identifier for test provider private keys
 const test_provider_key_identifier = "sync_gateway_oidc_test_provider"
+
+const default_id_token_ttl = 3600
 
 //This is the HTML template used to display the testing OP internal authentication form
 const login_html = `
@@ -61,6 +64,7 @@ To simulate a failed user authentication, enter a username and click "Return an 
 </div>
 <form action="authenticate?{{.Query}}" method="POST" enctype="multipart/form-data">
     <div>Username:<input type="text" name="username" cols="80"></div>
+    <div>ID Token TTL (seconds):<input type="text" name="tokenttl" cols="30" value="3600"></div>
     <div><input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access<div>
     <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
     <div><input type="submit" name="notauthenticated" value="Return an authorization error for this user"></div>
@@ -86,9 +90,8 @@ type OidcProviderConfiguration struct {
 }
 
 type AuthState struct {
-	Username    string
 	CallbackURL string
-	IDToken     string
+	TokenTTL    time.Duration
 }
 
 var authCodeTokenMap map[string]AuthState = make(map[string]AuthState)
@@ -238,6 +241,13 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	requestParams := h.rq.URL.Query()
 	username := h.rq.FormValue("username")
+	tokenttl, err := strconv.Atoi(h.rq.FormValue("tokenttl"))
+	if err != nil {
+		tokenttl = default_id_token_ttl
+	}
+
+	tokenDuration := time.Duration(tokenttl) * time.Second
+
 	authenticated := h.rq.FormValue("authenticated")
 
 	redirect_uri := requestParams.Get("redirect_uri")
@@ -256,7 +266,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	//Generate the return code by base64 encoding the username
 	code := base64.StdEncoding.EncodeToString([]byte(username))
 
-	authCodeTokenMap[code] = AuthState{Username: username, CallbackURL: redirect_uri}
+	authCodeTokenMap[username] = AuthState{CallbackURL: redirect_uri, TokenTTL: tokenDuration}
 
 	location_url, err := url.Parse(redirect_uri)
 	if err != nil {
@@ -274,7 +284,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 }
 
 //Creates a signed JWT token for the requesting subject and issuer URL
-func createJWTToken(subject string, issuerUrl string) (jwt *jose.JWT, err error) {
+func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration) (jwt *jose.JWT, err error) {
 
 	privateKey, err := privateKey()
 	if err != nil {
@@ -282,7 +292,7 @@ func createJWTToken(subject string, issuerUrl string) (jwt *jose.JWT, err error)
 	}
 
 	now := time.Now()
-	expiresIn := time.Second * 3600
+	expiresIn := tokenttl
 	expiryTime := now.Add(expiresIn)
 
 	cl := jose.Claims{
@@ -351,13 +361,18 @@ func handleAuthCodeRequest(h *handler) error {
 	//Validate the token request
 	code := h.rq.FormValue("code")
 
-	//Check for code in map of generated codes
-	if _, ok := authCodeTokenMap[code]; !ok {
+	subject, err := base64.StdEncoding.DecodeString(code)
+	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
 
-	subject := authCodeTokenMap[code].Username
-	return writeTokenResponse(h, subject, issuerUrl(h))
+	//Check for subject in map of known authenticated users
+	authState, ok := authCodeTokenMap[string(subject)]
+	if !ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
+	}
+
+	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL)
 }
 
 func handleRefreshTokenRequest(h *handler) error {
@@ -367,18 +382,24 @@ func handleRefreshTokenRequest(h *handler) error {
 	//extract the subject from the refresh token
 	subject, err := extractSubjectFromRefreshToken(refreshToken)
 
+	//Check for subject in map of known authenticated users
+	authState, ok := authCodeTokenMap[subject]
+	if !ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Refresh Token: %v", refreshToken)
+	}
+
 	if err != nil {
 		return err
 	}
-	return writeTokenResponse(h, subject, issuerUrl(h))
+	return writeTokenResponse(h, subject, issuerUrl(h), authState.TokenTTL)
 }
 
-func writeTokenResponse(h *handler, subject string, issuerUrl string) error {
+func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl time.Duration) error {
 
 	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
 	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 
-	idToken, err := createJWTToken(subject, issuerUrl)
+	idToken, err := createJWTToken(subject, issuerUrl, tokenttl)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
 	}
@@ -390,7 +411,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string) error {
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
 		RefreshToken: refreshToken,
-		ExpiresIn:    3600,
+		ExpiresIn:    int(tokenttl.Seconds()),
 		IdToken:      idToken.Encode(),
 	}
 
