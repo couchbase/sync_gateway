@@ -106,7 +106,7 @@ func (h *handler) handleOIDCCallback() error {
 	callbackError := h.getQuery("error")
 	if callbackError != "" {
 		errorDescription := h.getQuery("error_description")
-		return base.HTTPErrorf(http.StatusBadRequest, "oidc_callback received an error: %v", errorDescription)
+		return base.HTTPErrorf(http.StatusUnauthorized, "oidc_callback received an error: %v", errorDescription)
 	}
 
 	code := h.getQuery("code")
