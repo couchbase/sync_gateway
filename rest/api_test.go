@@ -1598,6 +1598,12 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
+	var logKeys = map[string]bool{
+		"TEST":   true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
 
 	// Create user1
@@ -1614,6 +1620,10 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	response = rt.sendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":[]}`)
 	assertStatus(t, response, 201)
 
+	// Create user5
+	response = rt.sendAdminRequest("PUT", "/db/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", "admin_channels":["*"]}`)
+	assertStatus(t, response, 201)
+
 	//Create docs
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"channels":["alpha"]}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"channels":["alpha"]}`), 201)
@@ -1621,8 +1631,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc4", `{"channels":["alpha"]}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/docA", `{"channels":["beta"]}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/docB", `{"channels":["beta"]}`), 201)
-	assertStatus(t, rt.sendRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/docC", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
 
 	// Create struct to hold changes response
 	var changes struct {
@@ -1637,7 +1647,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 3)
+	assert.Equals(t, len(changes.Results), 2)
 	assert.Equals(t, changes.Results[1].ID, "doc4")
 
 	//User has access to different single channel
@@ -1648,7 +1658,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, len(changes.Results), 3)
 	assert.Equals(t, changes.Results[2].ID, "docD")
 
 	//User has access to multiple channels
@@ -1660,7 +1670,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 4)
-	assert.Equals(t, changes.Results[3].ID, "docC")
+	assert.Equals(t, changes.Results[3].ID, "docD")
 
 	//User has no channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
@@ -1670,10 +1680,20 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, len(changes.Results), 0)
+
+	//User has "*" channel access
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user5", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 5)
 
 	//Use since value to restrict results
-	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":5}`
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6}`
 	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.send(request)
@@ -1681,10 +1701,10 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 3)
-	assert.Equals(t, changes.Results[2].ID, "docC")
+	assert.Equals(t, changes.Results[2].ID, "docD")
 
 	//Use since value and limit value to restrict results
-	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":5, "limit":1}`
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6, "limit":1}`
 	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.send(request)
@@ -1703,8 +1723,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 4)
-	assert.Equals(t, changes.Results[3].ID, "docC")
-	assert.Equals(t, changes.Results[3].Doc["_id"], "docC")
+	assert.Equals(t, changes.Results[3].ID, "docD")
+	assert.Equals(t, changes.Results[3].Doc["_id"], "docD")
 
 	//test parameter style=all_docs
 	//Create a conflict revision on docC

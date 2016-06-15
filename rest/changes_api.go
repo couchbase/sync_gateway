@@ -22,7 +22,7 @@ import (
 	"golang.org/x/net/websocket"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
+	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 )
 
@@ -140,14 +140,14 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	userChannels := channels.SetOf(channels.AllChannelWildcard)
+	userChannels := ch.SetOf(ch.AllChannelWildcard)
 	if filter != "" {
 		if filter == "sync_gateway/bychannel" {
 			if channelsArray == nil {
 				return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
 			}
 			var err error
-			userChannels, err = channels.SetFromArray(channelsArray, channels.ExpandStar)
+			userChannels, err = ch.SetFromArray(channelsArray, ch.ExpandStar)
 			if err != nil {
 				return err
 			}
@@ -329,21 +329,24 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 		changes[0] = db.ChangeRev{"rev": body["_rev"].(string)}
 		row.Changes = changes
 		row.Seq = db.SequenceID{Seq: populatedDoc.Sequence}
-		row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
+		row.SetBranched((populatedDoc.Flags & ch.Branched) != 0)
 
 		var removedChannels []string
 
-		if len(populatedDoc.Channels) == 0 {
-			if deleted, _ := body["_deleted"].(bool); deleted {
-				row.Deleted = true
-			}
-		} else {
+		if deleted, _ := body["_deleted"].(bool); deleted {
+			row.Deleted = true
+		}
+
+		userCanSeeDocChannel := false
+
+		if len(populatedDoc.Channels) > 0 {
 			//Do special _removed/_deleted processing
 			for channel, removal := range populatedDoc.Channels {
 				//Doc is tagged with channel or was removed at a sequence later that since sequence
 				if removal == nil || removal.Seq > options.Since.Seq {
 					//if the current user has access to this channel
 					if h.user.CanSeeChannel(channel) {
+						userCanSeeDocChannel = true
 						//If the doc has been removed
 						if removal != nil {
 							removedChannels = append(removedChannels, channel)
@@ -354,6 +357,25 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 					}
 				}
 			}
+		} else if h.user.Channels().Contains(ch.UserStarChannel) {
+			userCanSeeDocChannel = true
+		}
+
+		/*
+		if len(channels) > 0 {
+		for channel := range channels {
+			if princ.CanSeeChannel(channel) {
+				return nil
+			}
+		}
+	} else if princ.Channels().Contains(ch.UserStarChannel) {
+		return nil
+	}
+	return princ.UnauthError("You are not allowed to see this")
+		 */
+
+		if !userCanSeeDocChannel {
+			return nil
 		}
 
 		row.Removed = base.SetFromArray(removedChannels)
@@ -592,7 +614,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				return
 			}
 			if channelNames != nil {
-				inChannels, _ = channels.SetFromArray(channelNames, channels.ExpandStar)
+				inChannels, _ = ch.SetFromArray(channelNames, ch.ExpandStar)
 			}
 		}
 
