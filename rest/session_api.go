@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -55,7 +56,12 @@ func (h *handler) handleSessionPOST() error {
 	}
 	err := h.readJSONInto(&params)
 	if err != nil {
-		return err
+		log.Printf("Error reading JSON into, but user is:%v", h.user)
+		if h.user != nil {
+			return h.makeSession(h.user)
+		} else {
+			return err
+		}
 	}
 	var user auth.User
 	user, err = h.db.Authenticator().GetUser(params.Name)
@@ -67,6 +73,8 @@ func (h *handler) handleSessionPOST() error {
 		user = nil
 	}
 	return h.makeSession(user)
+
+	return nil
 }
 
 // DELETE /_session logs out the current session
