@@ -209,10 +209,12 @@ func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCPro
 
 	if !provider.DisableSession {
 		tokenExpiryTime, err := auth.GetJWTExpiry(jwt)
+		base.LogTo("OIDC+","IDToken Expiry time = %v",tokenExpiryTime)
 		if err != nil {
 			return "", "", err
 		}
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
+		base.LogTo("OIDC+","Calculated Session TTL = %v",sessionTTL)
 		sessionID, err := h.makeSessionWithTTL(user, sessionTTL)
 		return user.Name(), sessionID, err
 	}
