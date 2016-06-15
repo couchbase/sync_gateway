@@ -34,7 +34,7 @@ func (c *DatabaseContext) watchDocChanges() {
 func (c *DatabaseContext) assimilate(docid string) {
 	base.LogTo("CRUD", "Importing new doc %q", docid)
 	db := Database{DatabaseContext: c, user: nil}
-	_, err := db.updateDoc(docid, true, func(doc *document) (Body, error) {
+	_, err := db.updateDoc(docid, true, 0, func(doc *document) (Body, error) {
 		if doc.HasValidSyncData(c.writeSequences()) {
 			return nil, couchbase.UpdateCancel // someone beat me to it
 		}

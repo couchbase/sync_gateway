@@ -411,7 +411,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	generation++
 	deleted, _ := body["_deleted"].(bool)
 
-	return db.updateDoc(docid, false, func(doc *document) (Body, error) {
+	return db.updateDoc(docid, false, body.extractExpiry(), func(doc *document) (Body, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
@@ -452,7 +452,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	deleted, _ := body["_deleted"].(bool)
-	_, err := db.updateDoc(docid, false, func(doc *document) (Body, error) {
+	_, err := db.updateDoc(docid, false, body.extractExpiry(), func(doc *document) (Body, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -491,7 +491,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, allowImport bool, callback func(*document) (Body, error)) (string, error) {
+func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, error)) (string, error) {
 	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -506,7 +506,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, callback func(*doc
 	var unusedSequences []uint64
 	var oldBodyJSON string
 
-	err := db.Bucket.WriteUpdate(key, 0, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+	err := db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return

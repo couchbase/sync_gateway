@@ -53,6 +53,21 @@ func (body Body) ImmutableAttachmentsCopy() Body {
 	return copied
 }
 
+func (body Body) extractExpiry() uint32 {
+	// TODO: enhance to handle other expiry formats
+	expiry, ok := body["_exp"].(uint32)
+	if ok {
+		delete(body, "_exp")
+	}
+	return expiry
+}
+
+func (body Body) getExpiry() uint32 {
+	// TODO: enhance to handle other expiry formats
+	expiry, _ := body["_exp"].(uint32)
+	return expiry
+}
+
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
