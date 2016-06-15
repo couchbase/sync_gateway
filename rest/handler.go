@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/coreos/go-oidc/jose"
 )
 
 // If set to true, JSON output will be pretty-printed.
@@ -255,10 +256,15 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
-			h.user, _, err = context.Authenticator().AuthenticateJWT(token, context.OIDCProviders)
+			var jwt jose.JWT
+			h.user, jwt, err = context.Authenticator().AuthenticateJWT(token, context.OIDCProviders)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
+			expiresAt, _ := auth.GetJWTExpiry(jwt)
+			base.LogTo("OIDC+","IDToken expires at = %v",expiresAt)
+			ttl := expiresAt.Sub(time.Now())
+			base.LogTo("OIDC+","Calculated TTL = %v",ttl)
 			return nil
 		}
 
