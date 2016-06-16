@@ -119,7 +119,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		ItsaValuesSupported:    []string{"RS256"},
 		ScopesSupported:        []string{"openid", "email", "profile"},
 		AuthMethodsSupported:   []string{"client_secret_basic"},
-		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud"},
+		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud","nickname"},
 	}
 
 	if bytes, err := json.Marshal(config); err == nil {
