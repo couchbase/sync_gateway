@@ -51,8 +51,8 @@ func (h *handler) handleSessionPOST() error {
 
 	user, err := h.getUserFromSessionRequestBody()
 
-	// If we fail to get a user from the body and we've got an authenticated user, create the session based on that user
-	if user == nil && h.user.Name() != "" {
+	// If we fail to get a user from the body and we've got a non-GUEST authenticated user, create the session based on that user
+	if user == nil && h.user != nil && h.user.Name() != "" {
 		return h.makeSession(h.user)
 	} else {
 		if err != nil {
