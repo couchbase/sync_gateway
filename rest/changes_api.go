@@ -339,7 +339,9 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 
 		userCanSeeDocChannel := false
 
-		if len(populatedDoc.Channels) > 0 {
+		if h.user.Channels().Contains(ch.UserStarChannel) {
+			userCanSeeDocChannel = true
+		} else if len(populatedDoc.Channels) > 0 {
 			//Do special _removed/_deleted processing
 			for channel, removal := range populatedDoc.Channels {
 				//Doc is tagged with channel or was removed at a sequence later that since sequence
@@ -357,22 +359,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 					}
 				}
 			}
-		} else if h.user.Channels().Contains(ch.UserStarChannel) {
-			userCanSeeDocChannel = true
 		}
-
-		/*
-		if len(channels) > 0 {
-		for channel := range channels {
-			if princ.CanSeeChannel(channel) {
-				return nil
-			}
-		}
-	} else if princ.Channels().Contains(ch.UserStarChannel) {
-		return nil
-	}
-	return princ.UnauthError("You are not allowed to see this")
-		 */
 
 		if !userCanSeeDocChannel {
 			return nil
