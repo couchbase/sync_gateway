@@ -49,24 +49,41 @@ func (h *handler) handleSessionPOST() error {
 		}
 	}
 
+	user, err := h.getUserFromSessionRequestBody()
+
+	// If we fail to get a user from the body and we've got a non-GUEST authenticated user, create the session based on that user
+	if user == nil && h.user != nil && h.user.Name() != "" {
+		return h.makeSession(h.user)
+	} else {
+		if err != nil {
+			return err
+		}
+		return h.makeSession(user)
+	}
+
+}
+
+func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
+
 	var params struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
 	}
 	err := h.readJSONInto(&params)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
 	var user auth.User
 	user, err = h.db.Authenticator().GetUser(params.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if user != nil && !user.Authenticate(params.Password) {
 		user = nil
 	}
-	return h.makeSession(user)
+	return user, err
 }
 
 // DELETE /_session logs out the current session
