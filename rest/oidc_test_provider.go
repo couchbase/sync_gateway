@@ -92,6 +92,7 @@ type OidcProviderConfiguration struct {
 type AuthState struct {
 	CallbackURL string
 	TokenTTL    time.Duration
+	Scopes      map[string]struct{}
 }
 
 var authCodeTokenMap map[string]AuthState = make(map[string]AuthState)
@@ -116,7 +117,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		ResponseTypesSupported: []string{"code"},
 		SubjectTypesSupported:  []string{"public"},
 		ItsaValuesSupported:    []string{"RS256"},
-		ScopesSupported:        []string{"openid"},
+		ScopesSupported:        []string{"openid", "email", "profile"},
 		AuthMethodsSupported:   []string{"client_secret_basic"},
 		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud"},
 	}
@@ -152,12 +153,39 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	base.LogTo("OIDC", "raw authorize request raw query params = %v", requestParams)
 
+	scope := h.rq.URL.Query().Get("scope")
+	if scope == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "missing scope parameter")
+	}
+
+	err := validateAuthRequestScope(scope)
+	if err != nil {
+		return err
+	}
+
 	p := &Page{Title: "Oidc Test Provider", Query: requestParams}
 	t := template.New("Test Login")
 	if t, err := t.Parse(login_html); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
 	} else {
 		t.Execute(h.response, p)
+	}
+
+	return nil
+}
+
+func validateAuthRequestScope(scope string) error {
+	requestedScopes := strings.Split(scope, " ")
+
+	openidScope := false
+	for _, sc := range requestedScopes {
+		if sc == "openid" {
+			openidScope = true
+		}
+	}
+
+	if !openidScope {
+		return base.HTTPErrorf(http.StatusBadRequest, "scope parameter must contain 'openid'")
 	}
 
 	return nil
@@ -263,10 +291,13 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	}
 
+	scope := requestParams.Get("scope")
+	scopeMap := scopeStringToMap(scope)
+
 	//Generate the return code by base64 encoding the username
 	code := base64.StdEncoding.EncodeToString([]byte(username))
 
-	authCodeTokenMap[username] = AuthState{CallbackURL: redirect_uri, TokenTTL: tokenDuration}
+	authCodeTokenMap[username] = AuthState{CallbackURL: redirect_uri, TokenTTL: tokenDuration, Scopes: scopeMap}
 
 	location_url, err := url.Parse(redirect_uri)
 	if err != nil {
@@ -283,8 +314,17 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 }
 
+func scopeStringToMap(scope string) map[string]struct{} {
+	scopes := strings.Split(scope, " ")
+	scopesMap := make(map[string]struct{})
+	for _, sc := range scopes {
+		scopesMap[sc] = struct{}{}
+	}
+	return scopesMap
+}
+
 //Creates a signed JWT token for the requesting subject and issuer URL
-func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration) (jwt *jose.JWT, err error) {
+func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}) (jwt *jose.JWT, err error) {
 
 	privateKey, err := privateKey()
 	if err != nil {
@@ -297,12 +337,20 @@ func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration) (j
 
 	cl := jose.Claims{
 		"sub":   subject,
-		"email": subject + "@syncgatewayoidctesting.com",
 		"iat":   now.Unix(),
 		"exp":   expiryTime.Unix(),
 		"iss":   issuerUrl,
 		"aud":   "sync_gateway",
 	}
+
+	if _, ok := scopesMap["email"]; ok {
+		cl["email"] = subject + "@syncgatewayoidctesting.com"
+	}
+
+	if _, ok := scopesMap["profile"]; ok {
+		cl["nickname"] = "slim jim"
+	}
+
 
 	signer := jose.NewSignerRSA(test_provider_key_identifier, *privateKey)
 
@@ -372,7 +420,7 @@ func handleAuthCodeRequest(h *handler) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
 
-	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL)
+	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL, authState.Scopes)
 }
 
 func handleRefreshTokenRequest(h *handler) error {
@@ -391,15 +439,15 @@ func handleRefreshTokenRequest(h *handler) error {
 	if err != nil {
 		return err
 	}
-	return writeTokenResponse(h, subject, issuerUrl(h), authState.TokenTTL)
+	return writeTokenResponse(h, subject, issuerUrl(h), authState.TokenTTL, authState.Scopes)
 }
 
-func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl time.Duration) error {
+func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}) error {
 
 	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
 	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 
-	idToken, err := createJWTToken(subject, issuerUrl, tokenttl)
+	idToken, err := createJWTToken(subject, issuerUrl, tokenttl, scopesMap)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
 	}
