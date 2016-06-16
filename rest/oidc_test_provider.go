@@ -119,7 +119,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		ItsaValuesSupported:    []string{"RS256"},
 		ScopesSupported:        []string{"openid", "email", "profile"},
 		AuthMethodsSupported:   []string{"client_secret_basic"},
-		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud","nickname"},
+		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
 	}
 
 	if bytes, err := json.Marshal(config); err == nil {
@@ -336,11 +336,11 @@ func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, sc
 	expiryTime := now.Add(expiresIn)
 
 	cl := jose.Claims{
-		"sub":   subject,
-		"iat":   now.Unix(),
-		"exp":   expiryTime.Unix(),
-		"iss":   issuerUrl,
-		"aud":   "sync_gateway",
+		"sub": subject,
+		"iat": now.Unix(),
+		"exp": expiryTime.Unix(),
+		"iss": issuerUrl,
+		"aud": "sync_gateway",
 	}
 
 	if _, ok := scopesMap["email"]; ok {
@@ -350,7 +350,6 @@ func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, sc
 	if _, ok := scopesMap["profile"]; ok {
 		cl["nickname"] = "slim jim"
 	}
-
 
 	signer := jose.NewSignerRSA(test_provider_key_identifier, *privateKey)
 
