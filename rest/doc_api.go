@@ -26,6 +26,7 @@ func (h *handler) handleGetDoc() error {
 	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
 	openRevs := h.getQuery("open_revs")
+	showExp := h.getBoolQuery("show_exp")
 
 	// Check whether the caller wants a revision history, or attachment bodies, or both:
 	var revsLimit = 0
@@ -60,7 +61,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince)
+		value, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			return err
 		}
@@ -104,7 +105,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince)
+					revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
@@ -119,7 +120,7 @@ func (h *handler) handleGetDoc() error {
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince)
+				revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				} else {

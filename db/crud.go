@@ -77,7 +77,7 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRevWithHistory(docid, "", 0, nil, nil)
+	return db.GetRevWithHistory(docid, "", 0, nil, nil, false)
 }
 
 // Shortcut for GetRevWithHistory
@@ -86,7 +86,7 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 	if history {
 		maxHistory = math.MaxInt32
 	}
-	return db.GetRevWithHistory(docid, revid, maxHistory, nil, attachmentsSince)
+	return db.GetRevWithHistory(docid, revid, maxHistory, nil, attachmentsSince, false)
 }
 
 // Returns the body of a revision of a document. Uses the revision cache.
@@ -97,7 +97,7 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string) (Body, error) {
+func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
 	var doc *document
 	var body Body
 	var revisions Body
@@ -171,6 +171,18 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 	// Add revision metadata:
 	if revisions != nil {
 		body["_revisions"] = revisions
+	}
+
+	if showExp {
+		// If doc is nil (we got the rev from the rev cache), look up the doc to find the exp on the doc
+		if doc == nil {
+			if doc, err = db.GetDoc(docid); doc == nil {
+				return nil, err
+			}
+		}
+		if doc.Expiry != nil && !doc.Expiry.IsZero() {
+			body["_exp"] = doc.Expiry.Format(base.ISO8601Format)
+		}
 	}
 
 	// Add attachment bodies:
@@ -411,7 +423,9 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	generation++
 	deleted, _ := body["_deleted"].(bool)
 
-	return db.updateDoc(docid, false, body.extractExpiry(), func(doc *document) (Body, error) {
+	expiry := body.extractExpiry()
+
+	return db.updateDoc(docid, false, expiry, func(doc *document) (Body, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
@@ -703,6 +717,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		}
 
 		doc.TimeSaved = time.Now()
+		doc.UpdateExpiry(expiry)
 
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)

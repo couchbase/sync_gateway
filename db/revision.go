@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -53,19 +55,45 @@ func (body Body) ImmutableAttachmentsCopy() Body {
 	return copied
 }
 
+// Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
 func (body Body) extractExpiry() uint32 {
-	// TODO: enhance to handle other expiry formats
-	expiry, ok := body["_exp"].(uint32)
-	if ok {
-		delete(body, "_exp")
-	}
-	return expiry
+
+	exp := body.getExpiry()
+	delete(body, "_exp")
+
+	return exp
 }
 
-func (body Body) getExpiry() uint32 {
-	// TODO: enhance to handle other expiry formats
-	expiry, _ := body["_exp"].(uint32)
-	return expiry
+// Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:
+//   1. Numeric JSON values are converted to uint32 and returned as-is
+//   2. String JSON values that are numbers are converted to int32 and returned as-is
+//   3. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
+//   4. Null JSON values return 0
+func (body Body) getExpiry() (exp uint32) {
+	rawExpiry, ok := body["_exp"]
+	if !ok {
+		return
+	}
+	switch expiry := rawExpiry.(type) {
+	case float64:
+		return uint32(expiry)
+	case string:
+		// First check if it's a numeric string
+		expInt, err := strconv.ParseInt(expiry, 10, 32)
+		if err == nil {
+			return uint32(expInt)
+		}
+		// Check if it's an ISO-8601 date
+		expISO8601, err := time.Parse(base.ISO8601Format, expiry)
+		if err == nil {
+			return uint32(expISO8601.Unix())
+		}
+	case nil:
+		// Leave as zero/empty expiry
+		return
+	}
+
+	return
 }
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
