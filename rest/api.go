@@ -29,7 +29,7 @@ import (
 )
 
 const ServerName = "Couchbase Sync Gateway"          // DO NOT CHANGE; clients check this
-const VersionNumber float64 = 1.2                    // API/feature level
+const VersionNumber float64 = 1.3                    // API/feature level
 const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
 const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
 
