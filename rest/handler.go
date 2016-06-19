@@ -271,7 +271,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		if unsupportedOptions := context.Options.UnsupportedOptions; unsupportedOptions != nil {
 			if unsupportedOptions.EnableOidcTestProvider && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
 				if username, password := h.getBasicAuth(); username != "" && password != "" {
-					provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name))
+					provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name), testProviderAud)
 					if provider != nil && provider.ClientID != nil && provider.ValidationKey != nil {
 						if *provider.ClientID == username && *provider.ValidationKey == password {
 							return nil

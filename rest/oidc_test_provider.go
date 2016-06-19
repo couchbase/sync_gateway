@@ -30,10 +30,11 @@ import (
 //This is the private RSA Key that will be used to sign all tokens
 const base64EncodedPrivateKey = "MIICXQIBAAKBgQC5HMLzcjKXQhU39ItitqV9EcSgq7SVmt9LRwF+sNgbJOjciJhIJNVYZJZ4tY8aN9lbaMxObuH5gu6B7qlvz5ghy8LD9HRqClu/GSJVW4pQTYffKNAVpuoJIVnjk1DScvSpnL5AM9Qq0MOAM/H9urTIUwMk5JJhD8RXJIvENbJAIQIDAQABAoGAW4PsnY6HlGAHPXKYtmS1y+9M1mINFSlL21tvUcL8E+9bcCvXnVMYZmrUOTkJVlzmCFr3Jo+LCF/CqlnjSnPHMZal1/uObbuH9prumBMK48R6V/0JWxRrtjgw0r/LVwI4BBMhO0BnMCncmuOCbV1xGe8WqwAwiHrSG4zuixJwDkECQQDQO2Yzubfzd3SGdcQVydyUD1cSGd0RvCyUwAJQJyif6MkFrSE2DOduNW1gaknOLIGESBjoGnF+nSF3XcFRloWvAkEA45Ojx0CgkJbHc+m7Gr7hlpgJvLC4iX6vo64lpos0pw9eCW9RCmasjtPR2HtOiU4QssmBYD+8qBPxizgwJD3bLwJAeZO0wE6W0FfWeQsZSX9qgifStobTRB+SB+dzckjqtzK6682BroUqOnaHPdvQ68egdxOBN0L5MOudNoxO6svvkQJBAI+YMNcgqC+Tc/ZnnG+b0au78yjkOQxIq3qT/52+aFKhF6zMWE4/ytG0RcxawYtRfqfRDZk1nkxPiTFXGslDXnECQQCdqQV9HRBPoUXI2sX1zPpaMxLQUS1QqpSAN4fQwybXnxbPsHiPFmkkxLjl6qZaPE+m5HVo2QKAC2EBv5JVw26g"
 
-//Identifier for test provider private keys
-const test_provider_key_identifier = "sync_gateway_oidc_test_provider"
-
-const default_id_token_ttl = 3600
+const (
+	testProviderKeyIdentifier = "sync_gateway_oidc_test_provider" // Identifier for test provider private keys
+	testProviderAud           = "sync_gateway"                    // Audience for test provider
+	defaultIdTokenTTL         = 3600                              // Default ID token expiry
+)
 
 //This is the HTML template used to display the testing OP internal authentication form
 const login_html = `
@@ -238,7 +239,7 @@ func (h *handler) handleOidcTestProviderCerts() error {
 	}
 
 	oidcPrivateKey := key.PrivateKey{
-		KeyID:      test_provider_key_identifier,
+		KeyID:      testProviderKeyIdentifier,
 		PrivateKey: privateKey,
 	}
 
@@ -271,7 +272,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	username := h.rq.FormValue("username")
 	tokenttl, err := strconv.Atoi(h.rq.FormValue("tokenttl"))
 	if err != nil {
-		tokenttl = default_id_token_ttl
+		tokenttl = defaultIdTokenTTL
 	}
 
 	tokenDuration := time.Duration(tokenttl) * time.Second
@@ -340,7 +341,7 @@ func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, sc
 		"iat": now.Unix(),
 		"exp": expiryTime.Unix(),
 		"iss": issuerUrl,
-		"aud": "sync_gateway",
+		"aud": testProviderAud,
 	}
 
 	if _, ok := scopesMap["email"]; ok {
@@ -351,7 +352,7 @@ func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, sc
 		cl["nickname"] = "slim jim"
 	}
 
-	signer := jose.NewSignerRSA(test_provider_key_identifier, *privateKey)
+	signer := jose.NewSignerRSA(testProviderKeyIdentifier, *privateKey)
 
 	jwt, err = jose.NewSignedJWT(cl, signer)
 

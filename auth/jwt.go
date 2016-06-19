@@ -57,19 +57,26 @@ func GetJWTExpiry(jwt jose.JWT) (expiresAt time.Time, err error) {
 	return identity.ExpiresAt, nil
 }
 
-func GetJWTIssuer(jwt jose.JWT) (issuer string, err error) {
+func GetJWTIssuer(jwt jose.JWT) (issuer string, audience string, err error) {
 
 	claims, err := jwt.Claims()
 	if err != nil {
-		return "", fmt.Errorf("failed to parse JWT claims: %v", err)
+		return "", "", fmt.Errorf("failed to parse JWT claims: %v", err)
 	}
 
 	iss, ok, err := claims.StringClaim("iss")
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse 'iss' claim: %v", err)
+		return "", "", fmt.Errorf("Failed to parse 'iss' claim: %v", err)
 	} else if !ok {
-		return "", errors.New("Missing required 'iss' claim")
+		return "", "", errors.New("Missing required 'iss' claim")
 	}
 
-	return iss, nil
+	aud, ok, err := claims.StringClaim("aud")
+	if err != nil {
+		return "", "", fmt.Errorf("Failed to parse 'aud' claim: %v", err)
+	} else if !ok {
+		return "", "", errors.New("Missing required 'aud' claim")
+	}
+
+	return iss, aud, nil
 }
