@@ -364,7 +364,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 }
 
 func (auth *Authenticator) getOIDCUsername(provider *OIDCProvider, subject string) string {
-	return fmt.Sprintf("%s_%s", provider.Name, subject)
+	return fmt.Sprintf("%s_%s", provider.UserPrefix, subject)
 }
 
 // Registers a new user account based on the given verified email address.
