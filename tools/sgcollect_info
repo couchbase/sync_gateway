@@ -143,7 +143,7 @@ def extract_element_from_config(element, config):
     config = re.sub(sync_regex, '"Sync":""', config)
     try:
         return json.loads(config)[element]
-    except ValueError, KeyError:
+    except (ValueError, KeyError):
         # If we can't deserialise the json or find the key then return nothing
         return
 
