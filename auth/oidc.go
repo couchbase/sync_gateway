@@ -10,8 +10,11 @@
 package auth
 
 import (
+	"crypto/md5"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +39,7 @@ type OIDCProvider struct {
 	DisableSession     bool     `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
 	Scope              []string `json:"scope,omitempty"`           // Scope sent for openid request
 	IncludeAccessToken bool     `json:"include_access,omitempty"`  // Whether the _oidc_callback response should include OP access token and associated fields (token_type, expires_in)
+	UserPrefix         string   `json:"user_prefix,omitempty"`     // Username prefix for users created for this provider
 	OIDCClient         *oidc.Client
 	OIDCClientOnce     sync.Once
 	IsDefault          bool
@@ -71,6 +75,32 @@ func (op *OIDCProvider) GetClient() *oidc.Client {
 		}
 	})
 	return op.OIDCClient
+}
+
+// To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
+// a provider is based on the issuer
+func (op *OIDCProvider) InitUserPrefix() error {
+
+	// If the user prefix has been explicitly defined, skip calculation
+	if op.UserPrefix != "" {
+		return nil
+	}
+
+	issuerURL, err := url.ParseRequestURI(op.Issuer)
+	if err != nil {
+		base.Warn("Unable to parse issuer URI when initializing user prefix - using provider name")
+		op.UserPrefix = op.Name
+		return nil
+	}
+	op.UserPrefix = issuerURL.Host + issuerURL.Path
+
+	// If the prefix contains forward slash or underscore, it's not valid as-is for a username: forward slash
+	// breaks the REST API, underscore breaks uniqueness of "[prefix]_[sub]".  MD5 hash the prefix in this
+	// scenario.
+	if strings.ContainsAny(op.UserPrefix, "/_") {
+		op.UserPrefix = fmt.Sprintf("%x", md5.Sum([]byte(op.UserPrefix)))
+	}
+	return nil
 }
 
 func (op *OIDCProvider) InitOIDCClient() error {
@@ -122,6 +152,11 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	// Start process for ongoing sync of the provider config
 	op.OIDCClient.SyncProviderConfig(op.Issuer)
+
+	// Initialize the prefix for users created for this provider
+	if err = op.InitUserPrefix(); err != nil {
+		return err
+	}
 
 	return nil
 }
