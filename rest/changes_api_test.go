@@ -227,6 +227,46 @@ func TestPostChangesSinceInteger(t *testing.T) {
 	postChangesSince(t, it)
 }
 
+func TestPostChangesWithQueryString(t *testing.T) {
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	defer it.Close()
+
+	// Put several documents
+	response := it.sendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/abc1", `{"value":1, "channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = it.sendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+
+	// Test basic properties
+	changesJSON := `{"heartbeat":50, "feed":"normal", "limit":1, "since":"3"}`
+	changesResponse := it.sendAdminRequest("POST", "/db/_changes?feed=longpoll&limit=10&since=0&heartbeat=50000", changesJSON)
+
+	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 4)
+
+	// Test channel filter
+	var filteredChanges struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+	changesJSON = `{"feed":"longpoll"}`
+	changesResponse = it.sendAdminRequest("POST", "/db/_changes?feed=longpoll&filter=sync_gateway/bychannel&channels=ABC", changesJSON)
+
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &filteredChanges)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(filteredChanges.Results), 1)
+}
+
 // Basic _changes test with since value
 func postChangesSince(t *testing.T, it indexTester) {
 	response := it.sendAdminRequest("PUT", "/_logging", `{"*":true}`)
