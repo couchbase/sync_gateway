@@ -286,6 +286,7 @@ func (h *handler) handleDumpChannel() error {
 // }
 func (h *handler) handleBulkGet() error {
 	includeAttachments := h.getBoolQuery("attachments")
+	showExp := h.getBoolQuery("show_exp")
 	revsLimit := 0
 	if h.getBoolQuery("revs") {
 		revsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
@@ -347,7 +348,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attsSince)
+				body, err = h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {

@@ -32,6 +32,7 @@ type syncData struct {
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
 	Access          UserAccessMap       `json:"access,omitempty"`
 	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
+	Expiry          *time.Time          `json:"exp,omitempty"` // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
 
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
@@ -154,6 +155,17 @@ func (doc *document) setRevision(revid string, body Body) {
 			asJson, _ = json.Marshal(stripSpecialProperties(body))
 		}
 		doc.History.setRevisionBody(revid, asJson)
+	}
+}
+
+// Updates the expiry for a document
+func (doc *document) UpdateExpiry(expiry uint32) {
+
+	if expiry == 0 {
+		doc.Expiry = nil
+	} else {
+		expireTime := base.CbsExpiryToTime(expiry)
+		doc.Expiry = &expireTime
 	}
 }
 

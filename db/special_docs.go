@@ -38,7 +38,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	var revid string
-	err := db.Bucket.Update(key, 0, func(value []byte) ([]byte, error) {
+	err := db.Bucket.Update(key, int(body.getExpiry()), func(value []byte) ([]byte, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")

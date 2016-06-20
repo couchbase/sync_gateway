@@ -16,6 +16,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -26,7 +27,10 @@ import (
 	"time"
 )
 
-const kMaxDeltaTtl = 60 * 60 * 24 * 30 * time.Second
+const (
+	kMaxDeltaTtl         = 60 * 60 * 24 * 30
+	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
+)
 
 func GenerateRandomSecret() string {
 	randomBytes := make([]byte, 20)
@@ -263,10 +267,20 @@ func (v *IntMax) SetIfMax(value int64) {
 //This function takes a ttl as a Duration and returns an int
 //formatted as required by CBS expiry processing
 func DurationToCbsExpiry(ttl time.Duration) int {
-	if ttl <= kMaxDeltaTtl {
+	if ttl <= kMaxDeltaTtlDuration {
 		return int(ttl.Seconds())
 	} else {
 		return int(time.Now().Add(ttl).Unix())
+	}
+}
+
+//This function takes a CBS expiry and returns as a time
+func CbsExpiryToTime(expiry uint32) time.Time {
+	if expiry <= kMaxDeltaTtl {
+		return time.Now().Add(time.Duration(expiry) * time.Second)
+	} else {
+		log.Printf("expiry for %v becomes %v", expiry, time.Unix(int64(expiry), 0))
+		return time.Unix(int64(expiry), 0)
 	}
 }
 

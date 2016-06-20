@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -411,7 +412,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	}
 
 	// attach to existing document with correct rev (should fail)
-	response = rt.sendUserRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders,"user1", "letmein")
+	response = rt.sendUserRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders, "user1", "letmein")
 	assertStatus(t, response, 404)
 }
 
@@ -2401,6 +2402,88 @@ func TestEventConfigValidationFailure(t *testing.T) {
 	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
 
 	sc.Close()
+}
+
+// TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
+// in walrus).
+func TestDocExpiry(t *testing.T) {
+	var rt restTester
+	var body db.Body
+	response := rt.sendRequest("PUT", "/db/expNumericTTL", `{"_exp":100}`)
+	assertStatus(t, response, 201)
+
+	// Validate that exp isn't returned on the standard GET, bulk get
+	response = rt.sendRequest("GET", "/db/expNumericTTL", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	_, ok := body["_exp"]
+	assert.Equals(t, ok, false)
+
+	bulkGetDocs := `{"docs": [{"id": "expNumericTTL", "rev": "1-ca9ad22802b66f662ff171f226211d5c"}]}`
+	response = rt.sendRequest("POST", "/db/_bulk_get", bulkGetDocs)
+	assertStatus(t, response, 200)
+	responseString := string(response.Body.Bytes())
+	assertTrue(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
+
+	response = rt.sendRequest("POST", "/db/_bulk_get?show_exp=true", bulkGetDocs)
+	assertStatus(t, response, 200)
+	responseString = string(response.Body.Bytes())
+	assertTrue(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
+
+	body = nil
+	response = rt.sendRequest("GET", "/db/expNumericTTL?show_exp=true", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	_, ok = body["_exp"]
+	assert.Equals(t, ok, true)
+
+	// Validate other exp formats
+	body = nil
+	response = rt.sendRequest("PUT", "/db/expNumericUnix", `{"val":1, "_exp":4260211200}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/expNumericUnix?show_exp=true", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	log.Printf("numeric unix response: %s", response.Body.Bytes())
+	_, ok = body["_exp"]
+	assert.Equals(t, ok, true)
+
+	body = nil
+	response = rt.sendRequest("PUT", "/db/expNumericString", `{"val":1, "_exp":"100"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/expNumericString?show_exp=true", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	_, ok = body["_exp"]
+	assert.Equals(t, ok, true)
+
+	body = nil
+	response = rt.sendRequest("PUT", "/db/expBadString", `{"_exp":"abc"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/expBadString?show_exp=true", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	_, ok = body["_exp"]
+	assert.Equals(t, ok, false)
+
+	body = nil
+	response = rt.sendRequest("PUT", "/db/expDateString", `{"_exp":"2105-01-01T00:00:00.000+00:00"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/expDateString?show_exp=true", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	_, ok = body["_exp"]
+	assert.Equals(t, ok, true)
+
+	body = nil
+	response = rt.sendRequest("PUT", "/db/expBadDateString", `{"_exp":"2105-0321-01T00:00:00.000+00:00"}`)
+	assertStatus(t, response, 201)
+	response = rt.sendRequest("GET", "/db/expBadDateString?show_exp=true", "")
+	assertStatus(t, response, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	_, ok = body["_exp"]
+	assert.Equals(t, ok, false)
+
 }
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
