@@ -27,7 +27,10 @@ import (
 	"time"
 )
 
-const kMaxDeltaTtl = 60 * 60 * 24 * 30
+const (
+	kMaxDeltaTtl         = 60 * 60 * 24 * 30
+	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
+)
 
 func GenerateRandomSecret() string {
 	randomBytes := make([]byte, 20)
@@ -264,7 +267,7 @@ func (v *IntMax) SetIfMax(value int64) {
 //This function takes a ttl as a Duration and returns an int
 //formatted as required by CBS expiry processing
 func DurationToCbsExpiry(ttl time.Duration) int {
-	if ttl <= time.Duration(kMaxDeltaTtl)*time.Second {
+	if ttl <= kMaxDeltaTtlDuration {
 		return int(ttl.Seconds())
 	} else {
 		return int(time.Now().Add(ttl).Unix())
