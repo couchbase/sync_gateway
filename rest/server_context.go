@@ -358,9 +358,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				//start a retry loop to pick up tap feed again backing off double the delay each time
 				worker := func() (shouldRetry bool, err error, value interface{}) {
 					err = dc.Bucket.Refresh()
-					//if err != nil {
-					//	base.LogTo("CRUD", "Failed to re-connect to bucket : %v", err)
-					//}
 					return err != nil, err, nil
 				}
 
