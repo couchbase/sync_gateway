@@ -124,6 +124,14 @@ func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	defer func() { LogTo("Bucket", "SetBulk(%q, ...) --> %v [%v]", entries, err, time.Since(start)) }()
 	return b.bucket.SetBulk(entries)
 }
+
+
+func (b *LoggingBucket)  Refresh() error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "Refresh() [%v]", time.Since(start)) }()
+	return b.bucket.Refresh();
+}
+
 func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "StartTapFeed(...) [%v]", time.Since(start)) }()

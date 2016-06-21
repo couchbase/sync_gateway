@@ -79,24 +79,7 @@ func (h *handler) handleDbOnline() error {
 	go func() {
 		<-timer.C
 
-		//Take a write lock on the Database context, so that we can cycle the underlying Database
-		// without any other call running concurrently
-		h.db.AccessLock.Lock()
-		defer h.db.AccessLock.Unlock()
-
-		//We can only transition to Online from Offline state
-		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
-
-			if _, err := h.server.ReloadDatabaseFromConfig(h.db.Name, true); err != nil {
-				base.LogError(err)
-				return
-			}
-
-			//Set DB state to DBOnline, this wil cause new API requests to be be accepted
-			atomic.StoreUint32(&h.server.databases_[h.db.Name].State, db.DBOnline)
-		} else {
-			base.LogTo("CRUD", "Unable to take Database : %v, online after %v seconds, database must be in Offline state", h.db.Name, input.Delay)
-		}
+		h.server.TakeDbOnline(h.db.DatabaseContext)
 	}()
 
 	return nil
