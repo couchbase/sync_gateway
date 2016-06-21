@@ -284,7 +284,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // issuer in the token with a provider.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap) (User, jose.JWT, error) {
+func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 
 	// Parse JWT (needed to determine issuer/provider)
 	jwt, err := jose.ParseJWT(token)
@@ -303,13 +303,13 @@ func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderM
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
 	}
 
-	return auth.authenticateJWT(jwt, provider)
+	return auth.authenticateJWT(jwt, provider, callbackURLFunc)
 }
 
 // Authenticates a user based on a JWT token string and a provider.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OIDCProvider) (User, jose.JWT, error) {
+func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 
 	// Parse JWT
 	jwt, err := jose.ParseJWT(token)
@@ -317,12 +317,12 @@ func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OI
 		return nil, jose.JWT{}, err
 	}
 
-	return auth.authenticateJWT(jwt, provider)
+	return auth.authenticateJWT(jwt, provider, callbackURLFunc)
 }
 
-func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider) (User, jose.JWT, error) {
+func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 	// Verify JWT
-	client := provider.GetClient()
+	client := provider.GetClient(callbackURLFunc)
 	err := client.VerifyJWT(jwt)
 	if err != nil {
 		return nil, jwt, err

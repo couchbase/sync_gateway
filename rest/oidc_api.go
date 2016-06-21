@@ -74,7 +74,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 		return redirectURLString, err
 	}
 
-	client := provider.GetClient()
+	client := provider.GetClient(h.getOIDCCallbackURL)
 	if client == nil {
 		return redirectURLString, base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider:%s", providerName))
 	}
@@ -120,7 +120,7 @@ func (h *handler) handleOIDCCallback() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	oac, err := provider.GetClient().OAuthClient()
+	oac, err := provider.GetClient(h.getOIDCCallbackURL).OAuthClient()
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	oac, err := provider.GetClient().OAuthClient()
+	oac, err := provider.GetClient(h.getOIDCCallbackURL).OAuthClient()
 	if err != nil {
 		return err
 	}
@@ -202,7 +202,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
 
-	user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider)
+	user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -224,12 +224,20 @@ func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, erro
 	if provider == nil || err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
 	}
-
-	// If the redirect URL is not defined for the provider generate it from the
-	// handler request and set it on the provider
-	if provider.CallbackURL == nil || *provider.CallbackURL == "" {
-		callbackURL := callbackUrlForDB(h, h.db.Name)
-		provider.CallbackURL = &callbackURL
-	}
 	return provider, nil
+}
+
+// Builds the OIDC callback based on the current request and database. Used during OIDC Client lazy initialization.  Needs to pass
+// in dbName, as it's not necessarily initialized on the request yet.
+func (h *handler) getOIDCCallbackURL() string {
+	scheme := "http"
+	if h.rq.TLS != nil {
+		scheme = "https"
+	}
+	if dbName := h.PathVar("db"); dbName == "" {
+		base.Warn("Can't calculate OIDC callback URL without DB in path.")
+		return ""
+	} else {
+		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, "_oidc_callback")
+	}
 }

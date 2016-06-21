@@ -24,7 +24,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/coreos/go-oidc/oidc"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -184,9 +183,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		context.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
-			if provider.Issuer == "" || provider.ClientID == nil || provider.ValidationKey == nil {
-				base.Warn("Issuer, ClientID and ValidationKey required for OIDC Provider - skipping provider %q", name)
+			if provider.Issuer == "" || provider.ClientID == nil {
+				base.Warn("Issuer and ClientID required for OIDC Provider - skipping provider %q", name)
 				continue
+			}
+
+			if provider.ValidationKey == nil {
+				base.Warn("Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", name)
 			}
 
 			if strings.Contains(name, "_") {
@@ -224,21 +227,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	go context.watchDocChanges()
 	return context, nil
-}
-
-func (context *DatabaseContext) GetOIDCClient(issuerName string) (*oidc.Client, error) {
-
-	provider, ok := context.OIDCProviders[issuerName]
-	if !ok {
-		return nil, fmt.Errorf("No issuer defined for name %v", issuerName)
-	}
-
-	if client := provider.GetClient(); client == nil {
-		return nil, fmt.Errorf("Error initializing client for issuer %s", issuerName)
-	} else {
-		return client, nil
-	}
-
 }
 
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {

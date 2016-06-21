@@ -48,6 +48,8 @@ type OIDCProvider struct {
 
 type OIDCProviderMap map[string]*OIDCProvider
 
+type OIDCCallbackURLFunc func() string
+
 func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	for _, provider := range opm {
 		if provider.IsDefault {
@@ -66,14 +68,24 @@ func (opm OIDCProviderMap) GetProviderForIssuer(issuer, audience string) *OIDCPr
 	return nil
 }
 
-func (op *OIDCProvider) GetClient() *oidc.Client {
-	// Initialize the client on first request
+func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *oidc.Client {
+	// Initialize the client on first request.  If the callback URL isn't defined for the provider,
+	// uses buildCallbackURLFunc to construct (based on current request)
 	op.OIDCClientOnce.Do(func() {
 		var err error
+		// If the redirect URL is not defined for the provider generate it from the
+		// handler request and set it on the provider
+		if op.CallbackURL == nil || *op.CallbackURL == "" {
+			callbackURL := buildCallbackURLFunc()
+			if callbackURL != "" {
+				op.CallbackURL = &callbackURL
+			}
+		}
 		if err = op.InitOIDCClient(); err != nil {
 			base.Warn("Unable to initialize OIDC client: %v", err)
 		}
 	})
+
 	return op.OIDCClient
 }
 
@@ -129,8 +141,10 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	}
 
 	clientCredentials := oidc.ClientCredentials{
-		ID:     *op.ClientID,
-		Secret: *op.ValidationKey,
+		ID: *op.ClientID,
+	}
+	if op.ValidationKey != nil {
+		clientCredentials.Secret = *op.ValidationKey
 	}
 
 	clientConfig := oidc.ClientConfig{
