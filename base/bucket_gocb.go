@@ -895,6 +895,12 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	return nil
 }
 
+
+func (bucket CouchbaseBucketGoCB)  Refresh() error {
+	LogPanic("Unimplemented method: Refresh()")
+	return nil;
+}
+
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	LogPanic("Unimplemented method: StartTapFeed()")
 	return nil, nil

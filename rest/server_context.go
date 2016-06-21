@@ -352,7 +352,30 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
 
 		if dc := sc.databases_[dbName]; dc != nil {
-			dc.TakeDbOffline("Lost TAP feed")
+			err := dc.TakeDbOffline("Lost TAP feed")
+			if err == nil {
+
+				//start a retry loop to pick up tap feed again backing off double the delay each time
+				worker := func() (shouldRetry bool, err error, value interface{}) {
+					err = dc.Bucket.Refresh()
+					return err != nil, err, nil
+				}
+
+				sleeper := base.CreateDoublingSleeperFunc(
+					20, //MaxNumRetries
+					5,   //InitialRetrySleepTimeMS
+				)
+
+				description := fmt.Sprintf("Attempt reconnect to lost TAP Feed for : %v", dc.Name)
+				err, _ := base.RetryLoop(description, worker, sleeper)
+
+				if err == nil {
+					base.LogTo("CRUD", "Connection to TAP feed for %v re-established, bringing DB back online", dc.Name)
+					timer := time.NewTimer(time.Duration(10) * time.Second)
+					<-timer.C
+					sc.TakeDbOnline(dc)
+				}
+			}
 		}
 	})
 
@@ -536,6 +559,30 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	return dbcontext, nil
+}
+
+func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
+
+	//Take a write lock on the Database context, so that we can cycle the underlying Database
+	// without any other call running concurrently
+	database.AccessLock.Lock()
+	defer database.AccessLock.Unlock()
+
+	//We can only transition to Online from Offline state
+	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
+
+		if _, err := sc.ReloadDatabaseFromConfig(database.Name, true); err != nil {
+			base.LogError(err)
+			return
+		}
+
+		//Set DB state to DBOnline, this wil cause new API requests to be be accepted
+		atomic.StoreUint32(&sc.databases_[database.Name].State, db.DBOnline)
+
+	} else {
+		base.LogTo("CRUD", "Unable to take Database : %v online , database must be in Offline state", database.Name)
+	}
+
 }
 
 // Initialize event handlers, if present

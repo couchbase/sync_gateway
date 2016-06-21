@@ -113,6 +113,10 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
+func (b *LeakyBucket)  Refresh() error {
+	return b.bucket.Refresh()
+}
+
 func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
 	if b.config.TapFeedDeDuplication {
