@@ -375,10 +375,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				if err == nil {
 					base.LogTo("CRUD", "Connection to TAP feed for %v re-established, bringing DB back online", dc.Name)
 					timer := time.NewTimer(time.Duration(10) * time.Second)
-					//go func() {
-						<-timer.C
-						sc.TakeDbOnline(dc)
-					//}
+					<-timer.C
+					sc.TakeDbOnline(dc)
 				}
 			}
 		}
