@@ -36,32 +36,32 @@ const kMinCompressedJSONSize = 300
 
 // Key for retrieving an attachment from Couchbase.
 type AttachmentKey string
+type AttachmentData map[AttachmentKey][]byte
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
-func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string, docHistory []string) error {
+func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
 	var parentAttachments map[string]interface{}
+	newAttachmentData := make(AttachmentData, 0)
 	atts := BodyAttachments(body)
 	if atts == nil && body["_attachments"] != nil {
-		return base.HTTPErrorf(400, "Invalid _attachments")
+		return nil, base.HTTPErrorf(400, "Invalid _attachments")
 	}
 	for name, value := range atts {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
-			return base.HTTPErrorf(400, "Invalid _attachments")
+			return nil, base.HTTPErrorf(400, "Invalid _attachments")
 		}
 		data, exists := meta["data"]
 		if exists {
 			// Attachment contains data, so store it in the db:
 			attachment, err := decodeAttachment(data)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			key, err := db.setAttachment(attachment)
-			if err != nil {
-				return err
-			}
+			key := AttachmentKey(sha1DigestKey(attachment))
+			newAttachmentData[key] = attachment
 
 			newMeta := map[string]interface{}{
 				"stub":   true,
@@ -85,10 +85,10 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 		} else {
 			// Attachment must be a stub that repeats a parent attachment
 			if meta["stub"] != true {
-				return base.HTTPErrorf(400, "Missing data of attachment %q", name)
+				return nil, base.HTTPErrorf(400, "Missing data of attachment %q", name)
 			}
 			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
-				return base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
+				return nil, base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
 			}
 			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
@@ -100,11 +100,11 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 					atts[name] = parentAttachment
 				}
 			} else if meta["digest"] == nil {
-				return base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
+				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
 			}
 		}
 	}
-	return nil
+	return newAttachmentData, nil
 }
 
 // Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
@@ -175,6 +175,18 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 		base.LogTo("Attach", "\tAdded attachment %q", key)
 	}
 	return key, err
+}
+
+func (db *Database) setAttachments(attachments AttachmentData) error {
+	for key, data := range attachments {
+		_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, data)
+		if err == nil {
+			base.LogTo("Attach", "\tAdded attachment %q", key)
+		} else {
+			return err
+		}
+	}
+	return nil
 }
 
 //////// MIME MULTIPART:

@@ -103,10 +103,10 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 	}
 
 	db, _ := CreateDatabase(s.context)
-	_, err := db.updateDoc(key, false, body.extractExpiry(), func(doc *document) (Body, error) {
+	_, err := db.updateDoc(key, false, body.extractExpiry(), func(doc *document) (Body, AttachmentData, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
-			return nil, couchbase.UpdateCancel // we already have this doc revision
+			return nil, nil, couchbase.UpdateCancel // we already have this doc revision
 		}
 		base.LogTo("Shadow+", "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", key, cas, doc.UpstreamRev, doc.UpstreamCAS)
 
@@ -137,7 +137,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 			// doc's UpstreamRev/UpstreamCAS fields.
 			base.LogTo("Shadow+", "Not pulling %q, CAS=%x (echo of rev %q)", key, cas, newRev)
 		}
-		return body, nil
+		return body, nil, nil
 	})
 	if err == couchbase.UpdateCancel {
 		err = nil
