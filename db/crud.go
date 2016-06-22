@@ -425,7 +425,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 
 	expiry := body.extractExpiry()
 
-	return db.updateDoc(docid, false, expiry, func(doc *document) (Body, error) {
+	return db.updateDoc(docid, false, expiry, func(doc *document) (Body, AttachmentData, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
@@ -434,26 +434,27 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
 				if !doc.History[matchRev].Deleted {
-					return nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
+					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
 				generation, _ = parseRevID(matchRev)
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) {
-			return nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
-		if err := db.storeAttachments(doc, body, generation, matchRev, nil); err != nil {
-			return nil, err
+		newAttachments, err := db.storeAttachments(doc, body, generation, matchRev, nil)
+		if err != nil {
+			return nil, nil, err
 		}
 
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
 		doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
-		return body, nil
+		return body, newAttachments, nil
 	})
 }
 
@@ -466,7 +467,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	deleted, _ := body["_deleted"].(bool)
-	_, err := db.updateDoc(docid, false, body.extractExpiry(), func(doc *document) (Body, error) {
+	_, err := db.updateDoc(docid, false, body.extractExpiry(), func(doc *document) (Body, AttachmentData, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -480,7 +481,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		if currentRevIndex == 0 {
 			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
-			return nil, couchbase.UpdateCancel // No new revisions to add
+			return nil, nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -494,18 +495,19 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
-		if err := db.storeAttachments(doc, body, generation, parentRevID, docHistory); err != nil {
-			return nil, err
+		newAttachments, err := db.storeAttachments(doc, body, generation, parentRevID, docHistory)
+		if err != nil {
+			return nil, nil, err
 		}
 		body["_rev"] = newRev
-		return body, nil
+		return body, newAttachments, nil
 	})
 	return err
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, error)) (string, error) {
+func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (string, error) {
 	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -519,6 +521,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 	var docSequence uint64
 	var unusedSequences []uint64
 	var oldBodyJSON string
+	var newAttachments AttachmentData
 
 	err := db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -530,7 +533,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, err = callback(doc)
+		body, newAttachments, err = callback(doc)
 		if err != nil {
 			return
 		}
@@ -718,6 +721,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 		doc.TimeSaved = time.Now()
 		doc.UpdateExpiry(expiry)
+
+		// Now that the document has been successfully validated, we can store any new attachments
+		db.setAttachments(newAttachments)
 
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)

@@ -15,6 +15,7 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -100,4 +101,29 @@ func TestAttachments(t *testing.T) {
 	assertNoError(t, err, "bad JSON")
 	err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id})
 	assertNoError(t, err, "Couldn't update document")
+}
+
+func TestAttachmentForRejectedDocument(t *testing.T) {
+	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+		throw({forbidden: "None shall pass!"});
+	}`)
+
+	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	var body Body
+	json.Unmarshal([]byte(docBody), &body)
+	_, err = db.Put("doc1", unjson(docBody))
+	log.Printf("Got error on put doc:%v", err)
+	db.Bucket.Dump()
+
+	// Attempt to retrieve the attachment doc
+	_, _, err = db.Bucket.GetRaw("_sync:att:sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+
+	assertTrue(t, err != nil, "Expect error when attempting to retrieve attachment document after doc is rejected.")
+
 }
