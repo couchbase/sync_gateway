@@ -1600,7 +1600,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	var logKeys = map[string]bool{
-		"TEST":   true,
+		"TEST": true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
@@ -2459,9 +2459,9 @@ func TestDocExpiry(t *testing.T) {
 
 	body = nil
 	response = rt.sendRequest("PUT", "/db/expBadString", `{"_exp":"abc"}`)
-	assertStatus(t, response, 201)
+	assertStatus(t, response, 400)
 	response = rt.sendRequest("GET", "/db/expBadString?show_exp=true", "")
-	assertStatus(t, response, 200)
+	assertStatus(t, response, 404)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
 	assert.Equals(t, ok, false)
@@ -2477,9 +2477,9 @@ func TestDocExpiry(t *testing.T) {
 
 	body = nil
 	response = rt.sendRequest("PUT", "/db/expBadDateString", `{"_exp":"2105-0321-01T00:00:00.000+00:00"}`)
-	assertStatus(t, response, 201)
+	assertStatus(t, response, 400)
 	response = rt.sendRequest("GET", "/db/expBadDateString?show_exp=true", "")
-	assertStatus(t, response, 200)
+	assertStatus(t, response, 404)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
 	assert.Equals(t, ok, false)

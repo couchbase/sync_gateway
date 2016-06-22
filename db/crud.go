@@ -181,7 +181,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			}
 		}
 		if doc.Expiry != nil && !doc.Expiry.IsZero() {
-			body["_exp"] = doc.Expiry.Format(base.ISO8601Format)
+			body["_exp"] = doc.Expiry.Format(time.RFC3339)
 		}
 	}
 
@@ -423,7 +423,10 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 	generation++
 	deleted, _ := body["_deleted"].(bool)
 
-	expiry := body.extractExpiry()
+	expiry, err := body.extractExpiry()
+	if err != nil {
+		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+	}
 
 	return db.updateDoc(docid, false, expiry, func(doc *document) (Body, AttachmentData, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
@@ -467,7 +470,13 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	deleted, _ := body["_deleted"].(bool)
-	_, err := db.updateDoc(docid, false, body.extractExpiry(), func(doc *document) (Body, AttachmentData, error) {
+
+	expiry, err := body.extractExpiry()
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+	}
+
+	_, err = db.updateDoc(docid, false, expiry, func(doc *document) (Body, AttachmentData, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)

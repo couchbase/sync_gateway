@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"regexp"
 	"strings"
@@ -103,7 +104,11 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 	}
 
 	db, _ := CreateDatabase(s.context)
-	_, err := db.updateDoc(key, false, body.extractExpiry(), func(doc *document) (Body, AttachmentData, error) {
+	expiry, err := body.getExpiry()
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+	}
+	_, err = db.updateDoc(key, false, expiry, func(doc *document) (Body, AttachmentData, error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
 			return nil, nil, couchbase.UpdateCancel // we already have this doc revision
