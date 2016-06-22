@@ -21,10 +21,11 @@ import (
 	"text/template"
 	"time"
 
+	"strconv"
+
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/key"
 	"github.com/couchbase/sync_gateway/base"
-	"strconv"
 )
 
 //This is the private RSA Key that will be used to sign all tokens
@@ -107,10 +108,9 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
-	base.LogTo("OIDC+", "handleOidcProviderConfiguration() called")
 
 	issuerUrl := issuerUrl(h)
-	base.LogTo("OIDC+", "issuerURL = %s", issuerUrl)
+	base.LogTo("OIDC+", "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
 	config := &OidcProviderConfiguration{
 		Issuer:                 issuerUrl,
@@ -150,11 +150,9 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	base.LogTo("OIDC+", "handleOidcTestProviderAuthorize() called")
-
 	requestParams := h.rq.URL.RawQuery
 
-	base.LogTo("OIDC", "raw authorize request raw query params = %v", requestParams)
+	base.LogTo("OIDC", "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
 
 	scope := h.rq.URL.Query().Get("scope")
 	if scope == "" {
