@@ -56,12 +56,15 @@ func (body Body) ImmutableAttachmentsCopy() Body {
 }
 
 // Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
-func (body Body) extractExpiry() uint32 {
+func (body Body) extractExpiry() (uint32, error) {
 
-	exp := body.getExpiry()
+	exp, err := body.getExpiry()
+	if err != nil {
+		return exp, err
+	}
 	delete(body, "_exp")
 
-	return exp
+	return exp, nil
 }
 
 // Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:
@@ -69,31 +72,33 @@ func (body Body) extractExpiry() uint32 {
 //   2. String JSON values that are numbers are converted to int32 and returned as-is
 //   3. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
 //   4. Null JSON values return 0
-func (body Body) getExpiry() (exp uint32) {
+func (body Body) getExpiry() (uint32, error) {
 	rawExpiry, ok := body["_exp"]
 	if !ok {
-		return
+		return 0, nil
 	}
 	switch expiry := rawExpiry.(type) {
 	case float64:
-		return uint32(expiry)
+		return uint32(expiry), nil
 	case string:
 		// First check if it's a numeric string
 		expInt, err := strconv.ParseInt(expiry, 10, 32)
 		if err == nil {
-			return uint32(expInt)
+			return uint32(expInt), nil
 		}
 		// Check if it's an ISO-8601 date
-		expISO8601, err := time.Parse(base.ISO8601Format, expiry)
+		expRFC3339, err := time.Parse(time.RFC3339, expiry)
 		if err == nil {
-			return uint32(expISO8601.Unix())
+			return uint32(expRFC3339.Unix()), nil
+		} else {
+			return 0, fmt.Errorf("Unable to parse expiry %s as either numeric or date expiry:%v", err)
 		}
 	case nil:
 		// Leave as zero/empty expiry
-		return
+		return 0, nil
 	}
 
-	return
+	return 0, nil
 }
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
