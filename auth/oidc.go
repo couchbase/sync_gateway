@@ -59,10 +59,15 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	return nil
 }
 
-func (opm OIDCProviderMap) GetProviderForIssuer(issuer, audience string) *OIDCProvider {
+func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []string) *OIDCProvider {
 	for _, provider := range opm {
-		if provider.Issuer == issuer && *provider.ClientID == audience {
-			return provider
+		if provider.Issuer == issuer && provider.ClientID != nil {
+			// Iterate over the audiences looking for a match
+			for _, aud := range audiences {
+				if *provider.ClientID == aud {
+					return provider
+				}
+			}
 		}
 	}
 	return nil

@@ -293,12 +293,12 @@ func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderM
 	}
 
 	// Get client for issuer
-	issuer, audience, err := GetJWTIssuer(jwt)
+	issuer, audiences, err := GetJWTIssuer(jwt)
 	if err != nil {
 		return nil, jose.JWT{}, err
 	}
 
-	provider := providers.GetProviderForIssuer(issuer, audience)
+	provider := providers.GetProviderForIssuer(issuer, audiences)
 	if provider == nil {
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
 	}
