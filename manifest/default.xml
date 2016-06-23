@@ -48,11 +48,11 @@
 
   <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="06193ca74e834ca91bc28c7555205aedd8e7fa80"/>
 
-  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="ac7dc184fbbd3b89205ba9152ad59ae2996d36c9"/>
+  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="e7e0e4cc00545f11130a22025222a48c0bfd4821"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="67fb8fa4c62451372108f31c93034c07d9d9f4ab"/>
 
-  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="43416aaf844678e55421b5f6451cca50fec02993"/>
+  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="6172a8c61c821c420071fe9e20e74d8e24c8cbd5"/>
 
   <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="392e93091880de7d5ad8b83b99f90902cd98ce6e"/>
 
@@ -97,6 +97,8 @@
   <project name="pkg" path="godeps/src/github.com/coreos/pkg" remote="coreos" revision="160ae6282d8c48a33d8c150e4e4817fdef8a5cde"/>
 
   <project name="clockwork" path="godeps/src/github.com/jonboulle/clockwork" remote="jonboulle" revision="ed104f61ea4877bea08af6f759805674861e968d"/>
+
+  <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
   
 </manifest>
 
