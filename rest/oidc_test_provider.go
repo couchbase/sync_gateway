@@ -36,6 +36,8 @@ const (
 	defaultIdTokenTTL         = 3600                              // Default ID token expiry
 )
 
+var testProviderAudiences = []string{testProviderAud} // Audiences in array format for test provider validation
+
 //This is the HTML template used to display the testing OP internal authentication form
 const login_html = `
 <h1>{{.Title}}</h1>
