@@ -209,7 +209,7 @@ func (c *channelIndexTest) readIndexBulk() error {
 		log.Printf("Unable to convert to couchbase bucket")
 		return errors.New("Unable to convert to couchbase bucket")
 	}
-	responses, err := couchbaseBucket.GetBulk(keys)
+	responses, _, err := couchbaseBucket.GetBulk(keys)
 	if err != nil {
 		return err
 	}
