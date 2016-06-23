@@ -49,6 +49,17 @@ After this operation completes you should have a new `sync_gateway` binary in `$
 $ go test github.com/couchbase/sync_gateway/...
 ```
 
+**Rebuilding**
+
+If you need to make any changes to the source and want to rebuild, run:
+
+```
+$ go install github.com/couchbase/sync_gateway/...
+```
+
+which will overwrite the `sync_gateway` binary in `$GOPATH/bin` with the newer version.
+
+
 **Switching to a feature branch**
 
 First, checkout the branch you want for Sync Gateway:
