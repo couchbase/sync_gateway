@@ -228,8 +228,8 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	if syncSource != "" {
 		params.Source, _ = url.Parse(syncSource)
 	}
-	// Strip leading / from path to get db name
-	params.SourceDb = strings.TrimLeft(sourceUrl.Path, "/")
+	// Strip leading and trailing / from path to get db name
+	params.SourceDb = strings.Trim(sourceUrl.Path, "/")
 
 	targetUrl, err := url.Parse(requestParams.Target)
 	if err != nil || requestParams.Target == "" {
@@ -240,7 +240,7 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	if syncTarget != "" {
 		params.Target, _ = url.Parse(syncTarget)
 	}
-	params.TargetDb = strings.TrimLeft(targetUrl.Path, "/")
+	params.TargetDb = strings.Trim(targetUrl.Path, "/")
 
 	if requestParams.Continuous {
 		params.Lifecycle = sgreplicate.CONTINUOUS
