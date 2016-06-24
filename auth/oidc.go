@@ -60,16 +60,19 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 }
 
 func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []string) *OIDCProvider {
+	base.LogTo("OIDC+", "GetProviderForIssuer with issuer: %v, audiences: %+v", issuer, audiences)
 	for _, provider := range opm {
 		if provider.Issuer == issuer && provider.ClientID != nil {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
 				if *provider.ClientID == aud {
+					base.LogTo("OIDC+", "Provider matches, returning")
 					return provider
 				}
 			}
 		}
 	}
+	base.LogTo("OIDC+", "No provider match found")
 	return nil
 }
 

@@ -286,19 +286,27 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 
+	base.LogTo("OIDC+", "AuthenticateJWT called with token: %s", token)
+
 	// Parse JWT (needed to determine issuer/provider)
 	jwt, err := jose.ParseJWT(token)
 	if err != nil {
+		base.LogTo("OIDC+", "Error parsing JWT in AuthenticateJWT: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
 	// Get client for issuer
 	issuer, audiences, err := GetJWTIssuer(jwt)
+	base.LogTo("OIDC+", "JWT issuer: %v, audiences: %v", issuer, audiences)
 	if err != nil {
+		base.LogTo("OIDC+", "Error getting JWT issuer: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
+	base.LogTo("OIDC+", "Call GetProviderForIssuer w/ providers: %+v", providers)
 	provider := providers.GetProviderForIssuer(issuer, audiences)
+	base.LogTo("OIDC+", "Provider for issuer: %+v", provider)
+
 	if provider == nil {
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
 	}
@@ -314,6 +322,7 @@ func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OI
 	// Parse JWT
 	jwt, err := jose.ParseJWT(token)
 	if err != nil {
+		base.LogTo("OIDC+", "Error parsing JWT in AuthenticateJWTForProvider: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
@@ -321,23 +330,29 @@ func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OI
 }
 
 func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
+
 	// Verify JWT
 	client := provider.GetClient(callbackURLFunc)
 	err := client.VerifyJWT(jwt)
 	if err != nil {
+		base.LogTo("OIDC+", "Client %v could not verify JWT. Error: %v", client, err)
 		return nil, jwt, err
 	}
 
 	// Extract identity from token
 	identity, identityErr := GetJWTIdentity(jwt)
+	base.LogTo("OIDC+", "JWT identity: %+v", identity)
 	if identityErr != nil {
+		base.LogTo("OIDC+", "Error getting JWT identity. Error: %v", identityErr)
 		return nil, jwt, identityErr
 	}
 
 	username := auth.getOIDCUsername(provider, identity.ID)
+	base.LogTo("OIDC+", "OIDCUsername: %v", username)
 
 	user, userErr := auth.GetUser(username)
 	if userErr != nil {
+		base.LogTo("OIDC+", "Failed to get OIDC User from %v.  Error: %v", username, userErr)
 		return nil, jwt, userErr
 	}
 
@@ -345,8 +360,11 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider,
 	// external auth system)
 	if user != nil && identity.Email != "" {
 		if identity.Email != user.Email() {
+			base.LogTo("OIDC+", "Updating user email to: %v", identity.Email)
 			if err := user.SetEmail(identity.Email); err == nil {
 				auth.Save(user)
+			} else {
+				base.Warn("Unable to set user email to %v for OIDC", identity.Email)
 			}
 		}
 	}
@@ -354,8 +372,10 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider,
 	// Auto-registration.  This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
+		base.LogTo("OIDC+", "Registering new user: %v with email: %v", username, identity.Email)
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil {
+			base.LogTo("OIDC+", "Error registering new user: %v", err)
 			return nil, jwt, err
 		}
 	}
