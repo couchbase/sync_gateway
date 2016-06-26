@@ -214,7 +214,31 @@ func (h *handler) logRequestLine() {
 	if h.rq.ProtoMajor >= 2 {
 		proto = " HTTP/2"
 	}
-	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, h.rq.URL, proto, as)
+
+	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, sanitizeRequestURL(h.rq.URL), proto, as)
+}
+
+// Replaces sensitive data from the URL query string with ******.
+// Have to use string replacement instead of writing directly to the Values URL object, as only the URL's raw query is mutable.
+func sanitizeRequestURL(requestURL *url.URL) string {
+	urlString := requestURL.String()
+	// Do a basic contains for the values we care about, to minimize performance impact on other requests.
+	if strings.Contains(urlString, "code=") || strings.Contains(urlString, "token=") {
+		// Iterate over the URL values looking for matches, and then do a string replacement of the found value
+		// into urlString.  Need to unescapte the urlString, as the values returned by URL.Query() get unescaped.
+		urlString, _ = url.QueryUnescape(urlString)
+		values := requestURL.Query()
+		for key, vals := range values {
+			if key == "code" || strings.Contains(key, "token") {
+				//In case there are multiple entries
+				for _, val := range vals {
+					urlString = strings.Replace(urlString, fmt.Sprintf("%s=%s", key, val), fmt.Sprintf("%s=******", key), -1)
+				}
+			}
+		}
+	}
+
+	return urlString
 }
 
 func (h *handler) logDuration(realTime bool) {
