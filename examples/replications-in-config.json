@@ -1,33 +1,65 @@
 {
-  "log": [
-    "*"
-  ],
-  "adminInterface": "0.0.0.0:4985",
-  "replications": [
-    {
-      "replication_id": "one-shot",
-      "source": "source",
-      "target": "target"
-    },
-    {
-      "replication_id": "one-shot-async",
-      "source": "source",
-      "target": "target",
-      "async": true
-    },
-    {
-      "replication_id": "continuous",
-      "source": "source",
-      "target": "target",
-      "continuous": true
-    }
-  ],
-  "databases": {
-    "source": {
-      "server": "walrus:"
+   "log":[
+      "*"
+   ],
+   "databases":{
+      "db":{
+         "server":"walrus:"
       },
-    "target": {
-      "server": "walrus:"
-    }
-  }
+      "db2":{
+         "server":"walrus:"
+      },
+      "db3":{
+         "server":"walrus:"
+      },
+      "db4":{
+         "server":"walrus:",
+         "users":{
+            "GUEST":{
+               "disabled":false,
+               "admin_channels":[
+                  "*"
+               ]
+            }
+         }
+      },
+      "db5":{
+         "server":"walrus:",
+         "users":{
+            "GUEST":{
+               "disabled":false,
+               "admin_channels":[
+                  "*"
+               ]
+            }
+         }
+      }
+   },
+   "replications":[
+      {
+         "replication_id":"push-to-other-continuous",
+         "source":"http://localhost:4985/db",
+         "target":"http://otherhost.com:4985/db",
+         "continuous":true
+      },
+      {
+         "replication_id":"pull-from-other-continuous",
+         "source":"http://otherhost.com:4985/db",
+         "target":"http://localhost:4985/db",
+         "continuous":true
+      },
+      {
+         "replication_id":"local-to-local-one-shot",
+         "source":"http://localhost:4985/db2",
+         "target":"http://localhost:4985/db3",
+         "continuous":false
+      },
+      {
+         "replication_id":"local-to-local-one-shot-non-admin-async",
+         "source":"http://localhost:4984/db4",
+         "target":"http://localhost:4984/db5",
+         "continuous":false,
+         "async":true
+      }
+   ]
 }
