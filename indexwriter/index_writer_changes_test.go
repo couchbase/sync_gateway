@@ -787,6 +787,11 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
+	if len(changes.Results) != 5 {
+		for index, entry := range changes.Results {
+			log.Printf("Unexpected result count (%v): %+v", index, entry)
+		}
+	}
 	assert.Equals(t, len(changes.Results), 5)
 
 	// Delete

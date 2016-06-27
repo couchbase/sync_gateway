@@ -101,7 +101,7 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, rt.sendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
 }
-func TestUserPasswordValidation (t *testing.T) {
+func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	var rt restTester
 
@@ -149,7 +149,7 @@ func TestUserPasswordValidation (t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
-func TestUserAllowEmptyPassword (t *testing.T) {
+func TestUserAllowEmptyPassword(t *testing.T) {
 	// PUT a user
 	var rt restTester
 
@@ -1153,10 +1153,10 @@ func TestReplicateErrorConditions(t *testing.T) {
 }
 
 //These tests validate request parameters not actual replication
-func TestReplicate(t *testing.T) {
+func TestDocumentChangeReplicate(t *testing.T) {
 	var rt restTester
 
-	time.Sleep(10*time.Second)
+	time.Sleep(10 * time.Second)
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)

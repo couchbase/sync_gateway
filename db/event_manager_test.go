@@ -111,6 +111,17 @@ func TestDocumentChangeEvent(t *testing.T) {
 	// wait for Event Manager queue worker to process
 	time.Sleep(10 * time.Millisecond)
 
+	if len(resultChannel) != 10 {
+		for {
+			select {
+			case result := <-resultChannel:
+				log.Printf("result: %v", result)
+			default:
+				break
+			}
+		}
+	}
+
 	assert.True(t, len(resultChannel) == 10)
 
 }
