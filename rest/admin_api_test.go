@@ -789,13 +789,15 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.True(t, body["state"].(string) == "Offline")
 
+	var firstResyncResponse *testResponse
 	go func() {
-		assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 200)
+		firstResyncResponse = rt.sendAdminRequest("POST", "/db/_resync", "")
 	}()
 
 	// Allow goroutine to get scheduled
 	time.Sleep(50 * time.Millisecond)
 
+	assertStatus(t, firstResyncResponse, 200)
 	assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 503)
 }
 
