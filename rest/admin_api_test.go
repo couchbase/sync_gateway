@@ -790,15 +790,19 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	var firstResyncResponse *testResponse
+
+	wg := sync.WaitGroup{}
 	go func() {
+		defer wg.Done()
+		wg.Add(1)
 		firstResyncResponse = rt.sendAdminRequest("POST", "/db/_resync", "")
 	}()
 
 	// Allow goroutine to get scheduled
 	time.Sleep(50 * time.Millisecond)
-
-	assertStatus(t, firstResyncResponse, 200)
 	assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 503)
+	wg.Wait()
+	assertStatus(t, firstResyncResponse, 200)
 }
 
 // Single threaded bring DB online

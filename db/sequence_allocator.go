@@ -91,7 +91,7 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 			return max, err
 		}
 	}
-	base.Warn("Too many failed Incr in sequence allocator - failing (%d): %v", numToReserve, err)
+	base.Warn("Too many unsuccessful Incr attempts in sequence allocator - giving up (%d): %v", numToReserve, err)
 	// Note: 'err' should be non-nil here (from Incr response above) but as described on issue #1810, there are cases where the value
 	//       is nil by the time we log the warning above.  This seems most likely to be a race/scope issue with the callback processing
 	//       in the go-couchbase Incr/Do, and the sleep after the last attempt above.  Forcing the error to non-nil here to ensure we don't
