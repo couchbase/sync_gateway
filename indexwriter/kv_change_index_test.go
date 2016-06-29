@@ -181,12 +181,8 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(300, 5, "foo3", "1-a", []string{"ABC", "CBS"}))
 	writer.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
 
-	// wait for add
-	time.Sleep(200 * time.Millisecond)
-
 	// Verify entries
-	entries, err := changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
-	assert.Equals(t, len(entries), 3)
+	_, err := getExpectedChangesWithRetry(changeIndex, "ABC", 0, 3)
 	assert.True(t, err == nil)
 
 	// Add entries across multiple partitions in the same block
@@ -194,12 +190,8 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(100, 8, "foo100-8", "1-a", []string{"ABC", "CBS"}))
 	writer.addToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
 
-	// wait for add
-	time.Sleep(200 * time.Millisecond)
-
 	// Verify entries
-	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
-	assert.Equals(t, len(entries), 6)
+	_, err = getExpectedChangesWithRetry(changeIndex, "ABC", 0, 6)
 	assert.True(t, err == nil)
 
 	// Add entries across multiple partitions, multiple blocks
@@ -207,32 +199,24 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(100, 10100, "foo100-10100", "1-a", []string{"ABC", "CBS"}))
 	writer.addToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
 
-	// wait for add
-	time.Sleep(200 * time.Millisecond)
 	// Verify entries
-	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
-	assert.Equals(t, len(entries), 9)
+	_, err = getExpectedChangesWithRetry(changeIndex, "ABC", 0, 9)
 	assert.True(t, err == nil)
 
 	// Retrieval for a more restricted range
-	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(100)})
-	assert.Equals(t, len(entries), 3)
+	_, err = getExpectedChangesWithRetry(changeIndex, "ABC", 100, 3)
 	assert.True(t, err == nil)
 
 	// Retrieval for a more restricted range where the since matches a valid sequence number (since border case)
-	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(10100)})
-	assert.Equals(t, len(entries), 1)
+	_, err = getExpectedChangesWithRetry(changeIndex, "ABC", 10100, 1)
 	assert.True(t, err == nil)
 
 	// Add entries that skip a block in a partition
 	writer.addToCache(channelEntry(800, 100, "foo800-100", "1-a", []string{"ABC", "CBS"}))
 	writer.addToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
 
-	// wait for add
-	time.Sleep(200 * time.Millisecond)
 	// Verify entries
-	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
-	assert.Equals(t, len(entries), 11)
+	_, err = getExpectedChangesWithRetry(changeIndex, "ABC", 0, 11)
 	assert.True(t, err == nil)
 
 	// Test deduplication by doc id, including across empty blocks
@@ -241,12 +225,29 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(700, 300, "foo700", "1-c", []string{"DUP"}))
 	writer.addToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
 	writer.addToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
-	// wait for add
-	time.Sleep(200 * time.Millisecond)
+
 	// Verify entries
-	entries, err = changeIndex.GetChanges("DUP", db.ChangesOptions{Since: SimpleClockSequence(0)})
-	assert.Equals(t, len(entries), 1)
+	_, err = getExpectedChangesWithRetry(changeIndex, "DUP", 0, 1)
 	assert.True(t, err == nil)
+}
+
+func getExpectedChangesWithRetry(changeIndex db.ChangeIndex, channelName string, simpleSince uint64, expectedChanges int) ([]*db.LogEntry, error) {
+
+	// Retry with backoff, up to ~5s total
+	waitTime := time.Millisecond * 10
+	for i := 0; i < 8; i++ {
+		entries, err := changeIndex.GetChanges(channelName, db.ChangesOptions{Since: SimpleClockSequence(simpleSince)})
+		if err != nil {
+			return nil, err
+		}
+		if len(entries) == expectedChanges {
+			return entries, nil
+		}
+		time.Sleep(waitTime)
+		waitTime = waitTime * 2
+	}
+	return nil, fmt.Errorf("Changes never returned expected change count of %v", expectedChanges)
+
 }
 
 // Currently disabled, due to test race conditions between the continuous changes start (in its own goroutine),
