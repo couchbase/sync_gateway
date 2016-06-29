@@ -109,7 +109,7 @@ func TestDocumentChangeEvent(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 	// wait for Event Manager queue worker to process
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	if len(resultChannel) != 10 {
 		for {
