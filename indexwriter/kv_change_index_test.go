@@ -182,7 +182,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(500, 1, "foo5", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Verify entries
 	entries, err := changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
@@ -195,7 +195,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(498, 3, "foo498-3", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Verify entries
 	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
@@ -208,7 +208,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(498, 20003, "foo498-20003", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	// Verify entries
 	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
 	assert.Equals(t, len(entries), 9)
@@ -229,7 +229,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(800, 20100, "foo800-20100", "1-a", []string{"ABC", "CBS"}))
 
 	// wait for add
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	// Verify entries
 	entries, err = changeIndex.GetChanges("ABC", db.ChangesOptions{Since: SimpleClockSequence(0)})
 	assert.Equals(t, len(entries), 11)
@@ -242,7 +242,7 @@ func TestChangeIndexGetChanges(t *testing.T) {
 	writer.addToCache(channelEntry(700, 10100, "foo700", "1-d", []string{"DUP"}))
 	writer.addToCache(channelEntry(700, 30100, "foo700", "1-e", []string{"DUP"}))
 	// wait for add
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	// Verify entries
 	entries, err = changeIndex.GetChanges("DUP", db.ChangesOptions{Since: SimpleClockSequence(0)})
 	assert.Equals(t, len(entries), 1)
@@ -372,7 +372,7 @@ func TestPollResultReuseLongpoll(t *testing.T) {
 	adminDB, _ := db.GetDatabase(dbContext, nil)
 
 	adminDB.Put("docABC_1", db.Body{"channels": []string{"ABC"}})
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	// Do a basic changes to trigger start of polling for channel
 	changes, err := adminDB.GetChanges(base.SetOf("ABC"), db.ChangesOptions{Since: SimpleClockSequence(0)})
 	assertTrue(t, err == nil, "Error getting changes")
@@ -392,7 +392,7 @@ func TestPollResultReuseLongpoll(t *testing.T) {
 		assert.Equals(t, len(abcHboChanges), 2)
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	// Write an entry to channel ABC to notify the waiting longpoll
 	adminDB.Put("docABC_2", db.Body{"channels": []string{"ABC"}})
 
