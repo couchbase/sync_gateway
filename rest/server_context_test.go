@@ -28,10 +28,7 @@ func TestConfigServer(t *testing.T) {
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil,
 		`{
 			"bucket": "fivez",
-			"server": "walrus:/fake",
-			"users": {
-				"GUEST": {"disabled": false, "admin_channels": ["*"] }
-			}
+			"server": "walrus:/fake"
 		}`))
 
 	var rt restTester
@@ -57,9 +54,6 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	fakeConfig := `{
 			"bucket": "fivez",
 			"server": "walrus:/fake",
-			"users": {
-				"GUEST": {"disabled": false, "admin_channels": ["*"] }
-			},
 			"sync":%s%s%s
 		}`
 
@@ -101,6 +95,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
 	rt.bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
+
 }
 
 //////// MOCK HTTP CLIENT: (TODO: Move this into a separate package)
