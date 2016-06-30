@@ -7,7 +7,6 @@ import (
 	"log"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
