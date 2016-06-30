@@ -767,7 +767,10 @@ func TestDBOfflinePostResync(t *testing.T) {
 }
 
 //Take DB offline and ensure only one _resync can be in progress
-func TestDBOfflineSingleResync(t *testing.T) {
+// When running under the race flag, we can't guarantee which resync call gets executed first,
+// or even that they execute at the same time.  Disabling test
+/*
+func RaceTestDBOfflineSingleResync(t *testing.T) {
 	var rt restTester
 
 	//create documents in DB to cause resync to take a few seconds
@@ -804,6 +807,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	wg.Wait()
 	assertStatus(t, firstResyncResponse, 200)
 }
+*/
 
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
