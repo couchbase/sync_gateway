@@ -24,7 +24,6 @@ REPO_SHA        = ARGV[3] || "master"
 PLATFORM        = ARGV[4] || 'windows-x64'
 ARCH            = ARGV[5] || 'x64'
 PRODUCT_KIND    = ARGV[6] || "sync-gateway"
-EDITION         = ARGV[7] || ""
 
 PRODUCT         = "#{PRODUCT_BASE}-#{PRODUCT_KIND}"
 RELEASE         = PRODUCT_VERSION.split('-')[0]    # e.g., 1.0.0
@@ -80,7 +79,7 @@ proj_param    = "#{INSTALL_SRC}/#{INSTALL_PROJ}"
 proj_param    = proj_param.gsub('/', '\\')
 
 path_to_workspace = "#{ENV['WORKSPACE']}"
-path_to_sgw_files = "#{path_to_workspace}\\#{RELEASE}\\#{EDITION}\\godeps\\src\\github.com\\couchbase\\sync_gateway\\build\\opt\\#{PRODUCT}"
+path_to_sgw_files = "#{path_to_workspace}\\godeps\\src\\github.com\\couchbase\\sync_gateway\\build\\opt\\#{PRODUCT}"
 installer_params  = "-l PATH_TO_JENKINS_WORKSPACE=#{path_to_workspace} -l PATH_TO_SYNC_GATEWAY_FILES=#{path_to_sgw_files}"
 
 print "\nISCmdBld.exe -v -y #{RELEASE} -d ProductVersion=#{RELEASE}.#{BLDNUM} #{installer_params} -p #{proj_param}\n"
