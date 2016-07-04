@@ -139,12 +139,13 @@ func (op *OIDCProvider) InitOIDCClient() error {
 			providerLoaded = true
 			break
 		}
-		base.LogTo("OIDC", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
+		base.LogTo("OIDC+", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
 			op.Issuer, i, retryCount, err)
-		time.Sleep(1 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	if !providerLoaded {
+		base.Warn("Unable to retrieve and validate config from discovery endpoint based on issuer %s", op.Issuer)
 		return fmt.Errorf("Unable to fetch provider - OIDC unavailable")
 	}
 

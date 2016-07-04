@@ -25,6 +25,7 @@ import (
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/key"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -80,19 +81,6 @@ type Page struct {
 	Query string
 }
 
-type OidcProviderConfiguration struct {
-	Issuer                 string   `json:"issuer"`
-	AuthEndpoint           string   `json:"authorization_endpoint"`
-	TokenEndpoint          string   `json:"token_endpoint"`
-	JwksUri                string   `json:"jwks_uri"`
-	ResponseTypesSupported []string `json:"response_types_supported"`
-	SubjectTypesSupported  []string `json:"subject_types_supported"`
-	ItsaValuesSupported    []string `json:"id_token_signing_alg_values_supported"`
-	ScopesSupported        []string `json:"scopes_supported"`
-	AuthMethodsSupported   []string `json:"token_endpoint_auth_methods_supported"`
-	ClaimsSupported        []string `json:"claims_supported"`
-}
-
 type AuthState struct {
 	CallbackURL string
 	TokenTTL    time.Duration
@@ -112,7 +100,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	issuerUrl := issuerUrl(h)
 	base.LogTo("OIDC+", "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
-	config := &OidcProviderConfiguration{
+	config := &auth.OidcProviderConfiguration{
 		Issuer:                 issuerUrl,
 		AuthEndpoint:           fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
 		TokenEndpoint:          fmt.Sprintf("%s/%s", issuerUrl, "token"),
