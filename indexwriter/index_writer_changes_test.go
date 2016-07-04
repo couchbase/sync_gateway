@@ -367,7 +367,7 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 	assertStatus(t, response, 201)
 	response = it.sendAdminRequest("PUT", "/db/pbs4", `{"value":4, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	changesResponse = it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
@@ -412,7 +412,7 @@ func TestMultiChannelUserAndDocs(t *testing.T) {
 		assertStatus(t, response, 201)
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	type simpleChangeResult struct {
 		Seq string
@@ -787,6 +787,11 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
+	if len(changes.Results) != 5 {
+		for index, entry := range changes.Results {
+			log.Printf("Unexpected result count (%v): %+v", index, entry)
+		}
+	}
 	assert.Equals(t, len(changes.Results), 5)
 
 	// Delete
@@ -801,7 +806,7 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	response = it.sendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	assertStatus(t, response, 201)
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`

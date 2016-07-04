@@ -1461,6 +1461,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	// What happens if we call access() with a nonexistent username?
 	assertStatus(t, rt.send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
 
+	// Wait for change caching to complete before running resync below
+	time.Sleep(200 * time.Millisecond)
+
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
