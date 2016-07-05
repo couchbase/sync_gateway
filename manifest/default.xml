@@ -90,7 +90,7 @@
 
   <project name="osext" path="godeps/src/github.com/kardianos/osext" remote="kardianos" revision="29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"/>
 
-  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="coreos" revision="e6174c764e906bd60c76fdfc33faf5e0bdc875d6"/>
+  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="coreos" revision="5aa9381f6e998aa16cc96b4347d33dcc29792864"/>
 
   <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="coreos" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>
 
