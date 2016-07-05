@@ -10,7 +10,7 @@
 package auth
 
 import (
-	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -18,9 +18,14 @@ import (
 	"sync"
 	"time"
 
+	phttp "github.com/coreos/go-oidc/http"
 	"github.com/coreos/go-oidc/oauth2"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
+)
+
+const (
+	discoveryConfigPath = "/.well-known/openid-configuration"
 )
 
 // Options for OpenID Connect
@@ -31,19 +36,21 @@ type OIDCOptions struct {
 
 type OIDCProvider struct {
 	JWTOptions
-	Issuer             string   `json:"issuer"`                    // OIDC Issuer
-	Register           bool     `json:"register"`                  // If true, server will register new user accounts
-	ClientID           *string  `json:"client_id,omitempty"`       // Client ID
-	ValidationKey      *string  `json:"validation_key,omitempty"`  // Client secret
-	CallbackURL        *string  `json:"callback_url,omitempty"`    // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
-	DisableSession     bool     `json:"disable_session,omitempty"` // Disable Sync Gateway session creation on successful OIDC authentication
-	Scope              []string `json:"scope,omitempty"`           // Scope sent for openid request
-	IncludeAccessToken bool     `json:"include_access,omitempty"`  // Whether the _oidc_callback response should include OP access token and associated fields (token_type, expires_in)
-	UserPrefix         string   `json:"user_prefix,omitempty"`     // Username prefix for users created for this provider
-	OIDCClient         *oidc.Client
-	OIDCClientOnce     sync.Once
-	IsDefault          bool
-	Name               string
+	Issuer                  string   `json:"issuer"`                           // OIDC Issuer
+	Register                bool     `json:"register"`                         // If true, server will register new user accounts
+	ClientID                *string  `json:"client_id,omitempty"`              // Client ID
+	ValidationKey           *string  `json:"validation_key,omitempty"`         // Client secret
+	CallbackURL             *string  `json:"callback_url,omitempty"`           // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
+	DisableSession          bool     `json:"disable_session,omitempty"`        // Disable Sync Gateway session creation on successful OIDC authentication
+	Scope                   []string `json:"scope,omitempty"`                  // Scope sent for openid request
+	IncludeAccessToken      bool     `json:"include_access,omitempty"`         // Whether the _oidc_callback response should include OP access token and associated fields (token_type, expires_in)
+	UserPrefix              string   `json:"user_prefix,omitempty"`            // Username prefix for users created for this provider
+	DiscoveryURI            string   `json:"discovery_url,omitempty"`          // Non-standard discovery endpoints
+	DisableConfigValidation bool     `json:"disable_cfg_validation,omitempty"` // Bypasses config validation based on the OIDC spec.  Required for some OPs that don't strictly adhere to spec (eg. Yahoo)
+	OIDCClient              *oidc.Client
+	OIDCClientOnce          sync.Once
+	IsDefault               bool
+	Name                    string
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
@@ -115,37 +122,24 @@ func (op *OIDCProvider) InitUserPrefix() error {
 	op.UserPrefix = issuerURL.Host + issuerURL.Path
 
 	// If the prefix contains forward slash or underscore, it's not valid as-is for a username: forward slash
-	// breaks the REST API, underscore breaks uniqueness of "[prefix]_[sub]".  MD5 hash the prefix in this
-	// scenario.
-	if strings.ContainsAny(op.UserPrefix, "/_") {
-		op.UserPrefix = fmt.Sprintf("%x", md5.Sum([]byte(op.UserPrefix)))
-	}
+	// breaks the REST API, underscore breaks uniqueness of "[prefix]_[sub]".  URL encode the prefix to cover
+	// this scenario
+
+	op.UserPrefix = url.QueryEscape(op.UserPrefix)
+
 	return nil
 }
 
 func (op *OIDCProvider) InitOIDCClient() error {
 
-	var config oidc.ProviderConfig
-	var err error
 	if op.Issuer == "" {
 		return fmt.Errorf("Issuer not defined for OpenID Connect provider %+v", op)
 	}
-	base.LogTo("OIDC", "Attempting to fetch provider config from discovery endpoint for issuer %s...", op.Issuer)
-	retryCount := 5
-	var providerLoaded bool
-	for i := 1; i <= 5; i++ {
-		config, err = oidc.FetchProviderConfig(http.DefaultClient, op.Issuer)
-		if err == nil {
-			providerLoaded = true
-			break
-		}
-		base.LogTo("OIDC", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
-			op.Issuer, i, retryCount, err)
-		time.Sleep(1 * time.Second)
-	}
 
-	if !providerLoaded {
-		return fmt.Errorf("Unable to fetch provider - OIDC unavailable")
+	config, shouldSyncConfig, err := op.DiscoverConfig()
+	if err != nil || config == nil {
+		base.Warn("Error during OIDC discovery - unable to initialize client: %v", err)
+		return err
 	}
 
 	clientCredentials := oidc.ClientCredentials{
@@ -156,7 +150,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	}
 
 	clientConfig := oidc.ClientConfig{
-		ProviderConfig: config,
+		ProviderConfig: *config,
 		Credentials:    clientCredentials,
 		RedirectURL:    *op.CallbackURL,
 	}
@@ -173,7 +167,10 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	}
 
 	// Start process for ongoing sync of the provider config
-	op.OIDCClient.SyncProviderConfig(op.Issuer)
+	if shouldSyncConfig {
+		base.LogTo("OIDC", "Not synchronizing provider config for issuer %s...", op.Issuer)
+		op.OIDCClient.SyncProviderConfig(op.Issuer)
+	}
 
 	// Initialize the prefix for users created for this provider
 	if err = op.InitUserPrefix(); err != nil {
@@ -181,6 +178,85 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	}
 
 	return nil
+}
+
+func (op *OIDCProvider) DiscoverConfig() (config *oidc.ProviderConfig, shouldSync bool, err error) {
+
+	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
+
+	if op.DiscoveryURI != "" || op.DisableConfigValidation {
+		config, err = op.FetchCustomProviderConfig(op.DiscoveryURI)
+		shouldSync = false
+	} else {
+
+		var standardConfig oidc.ProviderConfig
+		maxRetryAttempts := 5
+		for i := 1; i <= maxRetryAttempts; i++ {
+			standardConfig, err = oidc.FetchProviderConfig(http.DefaultClient, op.Issuer)
+			if err == nil {
+				config = &standardConfig
+				shouldSync = true
+				break
+			}
+			base.LogTo("OIDC+", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
+				op.Issuer, i, maxRetryAttempts, err)
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	return config, shouldSync, err
+}
+
+func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.ProviderConfig, error) {
+
+	var customConfig OidcProviderConfiguration
+
+	// If discovery URL is empty, use the standard discovery URL
+	if discoveryURL == "" {
+		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
+	}
+
+	base.LogTo("OIDC+", "Fetching custom provider config from %s", discoveryURL)
+	req, err := http.NewRequest("GET", discoveryURL, nil)
+	if err != nil {
+		base.LogTo("OIDC+", "Error building new request for URL %s: %v", discoveryURL, err)
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		base.LogTo("OIDC+", "Error invoking calling discovery URL %s: %v", discoveryURL, err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&customConfig); err != nil {
+		base.LogTo("OIDC+", "Error parsing body %s: %v", discoveryURL, err)
+		return nil, err
+	}
+
+	var oidcConfig oidc.ProviderConfig
+	oidcConfig, err = customConfig.AsProviderConfig()
+	if err != nil {
+		base.LogTo("OIDC+", "Error invoking calling discovery URL %s: %v", discoveryURL, err)
+		return nil, err
+	}
+
+	// Set expiry on config, if defined in response header
+	var ttl time.Duration
+	var ok bool
+	ttl, ok, err = phttp.Cacheable(resp.Header)
+	if err != nil {
+		return nil, err
+	} else if ok {
+		oidcConfig.ExpiresAt = time.Now().UTC().Add(ttl)
+	}
+
+	base.LogTo("OIDC+", "Returning config: %v", oidcConfig)
+	return &oidcConfig, nil
+
+}
+
+func GetOIDCUsername(provider *OIDCProvider, subject string) string {
+	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
 }
 
 // Converts an OpenID Connect / OAuth2 error to an HTTP error

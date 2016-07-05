@@ -347,7 +347,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider,
 		return nil, jwt, identityErr
 	}
 
-	username := auth.getOIDCUsername(provider, identity.ID)
+	username := GetOIDCUsername(provider, identity.ID)
 	base.LogTo("OIDC+", "OIDCUsername: %v", username)
 
 	user, userErr := auth.GetUser(username)
@@ -381,10 +381,6 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider,
 	}
 
 	return user, jwt, nil
-}
-
-func (auth *Authenticator) getOIDCUsername(provider *OIDCProvider, subject string) string {
-	return fmt.Sprintf("%s_%s", provider.UserPrefix, subject)
 }
 
 // Registers a new user account based on the given verified email address.
