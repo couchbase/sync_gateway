@@ -25,11 +25,13 @@ import (
 const dbRegex = "[^_/][^/]*"
 const docRegex = "[^_/][^/]*"
 
-// Regex that matches a URI containing a regular doc ID with an escaped "/" character
+// Regex that matches a URI containing either:
+//  - A regular doc ID with an escaped "/" character
+//  - A user name with an escaped "/" character
 var docWithSlashPathRegex *regexp.Regexp
 
 func init() {
-	docWithSlashPathRegex, _ = regexp.Compile("/" + dbRegex + "/[^_].*%2[fF]")
+	docWithSlashPathRegex, _ = regexp.Compile("/" + dbRegex + "/([^_]|_user/).*%2[fF]")
 }
 
 // Creates a GorillaMux router containing the basic HTTP handlers for a server.

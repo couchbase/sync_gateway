@@ -32,7 +32,7 @@ var kValidNameRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	kValidNameRegexp, err = regexp.Compile(`^[-+.@\w]*$`)
+	kValidNameRegexp, err = regexp.Compile(`^[-+.@%\w]*$`)
 	if err != nil {
 		panic("Bad kValidNameRegexp")
 	}

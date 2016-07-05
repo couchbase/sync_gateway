@@ -130,6 +130,9 @@ func (pc OidcProviderConfiguration) AsProviderConfig() (oidc.ProviderConfig, err
 
 func (pc *OidcProviderConfiguration) parseURI(s string) (*url.URL, error) {
 
+	if s == "" {
+		return nil, nil
+	}
 	u, err := url.Parse(s)
 	if err == nil {
 		if u.Host == "" {
