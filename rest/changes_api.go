@@ -119,11 +119,14 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 		if docidsParam != "" {
 			var querydocidKeys []string
 			err := json.Unmarshal([]byte(docidsParam), &querydocidKeys)
-			if err != nil {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Bad doc id's")
-			}
-			if len(querydocidKeys) > 0 {
-				docIdsArray = querydocidKeys
+			if err == nil {
+				if len(querydocidKeys) > 0 {
+					docIdsArray = querydocidKeys
+				}
+			} else {
+				//This is not a JSON array so treat as a simple
+				//comma separated list of doc id's
+				docIdsArray = strings.Split(docidsParam, ",")
 			}
 		}
 	}
@@ -187,11 +190,14 @@ func (h *handler) handleChanges() error {
 		if docidsParam != "" {
 			var docidKeys []string
 			err := json.Unmarshal([]byte(docidsParam), &docidKeys)
-			if err != nil {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Bad doc id's")
-			}
-			if len(docidKeys) > 0 {
-				docIdsArray = docidKeys
+			if err == nil {
+				if len(docidKeys) > 0 {
+					docIdsArray = docidKeys
+				}
+			} else {
+				//This is not a JSON array so treat as a simple
+				//comma separated list of doc id's
+				docIdsArray = strings.Split(docidsParam, ",")
 			}
 		}
 
@@ -430,7 +436,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 
 		userCanSeeDocChannel := false
 
-		if h.user.Channels().Contains(ch.UserStarChannel) {
+		if h.user == nil || h.user.Channels().Contains(ch.UserStarChannel) {
 			userCanSeeDocChannel = true
 		} else if len(populatedDoc.Channels) > 0 {
 			//Do special _removed/_deleted processing

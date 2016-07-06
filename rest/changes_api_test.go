@@ -19,9 +19,11 @@ import (
 
 	"github.com/couchbaselabs/go.assert"
 
+	"bytes"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"net/http"
 )
 
 type indexTester struct {
@@ -552,6 +554,189 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	changesActiveOnly(t, it)
+}
+
+func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
+
+	var logKeys = map[string]bool{
+		"TEST": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+
+	// Create user1
+	response := rt.sendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	assertStatus(t, response, 201)
+	// Create user2
+	response = rt.sendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["beta"]}`)
+	assertStatus(t, response, 201)
+	// Create user3
+	response = rt.sendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha","beta"]}`)
+	assertStatus(t, response, 201)
+
+	// Create user4
+	response = rt.sendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":[]}`)
+	assertStatus(t, response, 201)
+
+	// Create user5
+	response = rt.sendAdminRequest("PUT", "/db/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", "admin_channels":["*"]}`)
+	assertStatus(t, response, 201)
+
+	//Create docs
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc3", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/doc4", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docA", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docB", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docC", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.sendRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
+
+	// Create struct to hold changes response
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+
+	//User has access to single channel
+	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
+	request, _ := http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err := json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Results[1].ID, "doc4")
+
+	//User has access to different single channel
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "docB", "docD", "doc1"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user2", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 3)
+	assert.Equals(t, changes.Results[2].ID, "docD")
+
+	//User has access to multiple channels
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[3].ID, "docD")
+
+	//User has no channel access
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user4", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 0)
+
+	//User has "*" channel access
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user5", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 5)
+
+	//User has "*" channel access, override POST with GET params
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
+	request, _ = http.NewRequest("POST", `/db/_changes?doc_ids=["docC","doc1"]`, bytes.NewBufferString(body))
+	request.SetBasicAuth("user5", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 2)
+
+	//User has "*" channel access, use GET
+	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, nil)
+	request.SetBasicAuth("user5", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 3)
+
+	//User has "*" channel access, use GET with doc_ids plain comma separated list
+	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, nil)
+	request.SetBasicAuth("user5", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+
+	//Admin User
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "docA"]}`
+	response = rt.sendAdminRequest("POST", "/db/_changes", body)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+
+	//Use since value to restrict results
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 3)
+	assert.Equals(t, changes.Results[2].ID, "docD")
+
+	//Use since value and limit value to restrict results
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6, "limit":1}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "doc4")
+
+	//test parameter include_docs=true
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "include_docs":true }`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[3].ID, "docD")
+	assert.Equals(t, changes.Results[3].Doc["_id"], "docD")
+
+	//test parameter style=all_docs
+	//Create a conflict revision on docC
+	assertStatus(t, rt.sendRequest("POST", "/db/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC", "_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
+
+	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "style":"all_docs"}`
+	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request.SetBasicAuth("user3", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Results[3].ID, "docC")
+	assert.Equals(t, len(changes.Results[3].Changes), 2)
+
 }
 
 // Test _changes with channel filter
