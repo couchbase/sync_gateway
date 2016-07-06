@@ -663,13 +663,22 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 2)
 
 	//User has "*" channel access, use GET
-	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, bytes.NewBufferString(body))
+	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, nil)
 	request.SetBasicAuth("user5", "letmein")
 	response = rt.send(request)
 	assertStatus(t, response, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 3)
+
+	//User has "*" channel access, use GET with doc_ids plain comma separated list
+	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, nil)
+	request.SetBasicAuth("user5", "letmein")
+	response = rt.send(request)
+	assertStatus(t, response, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 4)
 
 	//Admin User
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "docA"]}`
