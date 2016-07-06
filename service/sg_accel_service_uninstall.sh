@@ -66,6 +66,18 @@ fi
 
 #Install the service for the specific platform
 case $OS in
+    Debian)
+        case $OS_MAJOR_VERSION in
+            8) 
+                systemctl stop ${SERVICE_NAME}
+                systemctl disable ${SERVICE_NAME}
+                
+                if [ -f /usr/lib/systemd/system/${SERVICE_NAME}.service ]; then
+                	rm /usr/lib/systemd/system/${SERVICE_NAME}.service
+                fi
+                ;;
+        esac
+    ;;
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)

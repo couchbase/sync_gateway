@@ -66,6 +66,14 @@ fi
 
 #Install the service for the specific platform
 case $OS in
+    Debian)
+        case $OS_MAJOR_VERSION in
+            8) 
+                systemctl stop ${SERVICE_NAME}
+                systemctl start ${SERVICE_NAME}
+                ;;
+        esac
+    ;;
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
