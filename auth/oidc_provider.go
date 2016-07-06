@@ -25,9 +25,7 @@ type OidcProviderConfiguration struct {
 	RegistrationEndpoint   string   `json:"registration_endpoint,omitempty"`
 	ResponseTypesSupported []string `json:"response_types_supported,omitempty"`
 	SubjectTypesSupported  []string `json:"subject_types_supported,omitempty"`
-	ItsaValuesSupported    []string `json:"id_token_signing_alg_values_supported,omitempty"`
 	ScopesSupported        []string `json:"scopes_supported,omitempty"`
-	AuthMethodsSupported   []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 	ClaimsSupported        []string `json:"claims_supported,omitempty"`
 
 	ResponseModesSupported []string `json:"response_modes_supported,omitempty"`
