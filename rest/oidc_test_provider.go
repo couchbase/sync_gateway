@@ -101,16 +101,16 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	base.LogTo("OIDC+", "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
 	config := &auth.OidcProviderConfiguration{
-		Issuer:                 issuerUrl,
-		AuthEndpoint:           fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
-		TokenEndpoint:          fmt.Sprintf("%s/%s", issuerUrl, "token"),
-		JwksUri:                fmt.Sprintf("%s/%s", issuerUrl, "certs"),
-		ResponseTypesSupported: []string{"code"},
-		SubjectTypesSupported:  []string{"public"},
-		ItsaValuesSupported:    []string{"RS256"},
-		ScopesSupported:        []string{"openid", "email", "profile"},
-		AuthMethodsSupported:   []string{"client_secret_basic"},
-		ClaimsSupported:        []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
+		Issuer:                            issuerUrl,
+		AuthEndpoint:                      fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
+		TokenEndpoint:                     fmt.Sprintf("%s/%s", issuerUrl, "token"),
+		JwksUri:                           fmt.Sprintf("%s/%s", issuerUrl, "certs"),
+		ResponseTypesSupported:            []string{"code"},
+		SubjectTypesSupported:             []string{"public"},
+		IDTokenSigningAlgValues:           []string{"RS256"},
+		ScopesSupported:                   []string{"openid", "email", "profile"},
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+		ClaimsSupported:                   []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
 	}
 
 	if bytes, err := json.Marshal(config); err == nil {
