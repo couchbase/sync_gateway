@@ -128,19 +128,21 @@ func (wh *Webhook) HandleEvent(event Event) {
 		}()
 
 		if err != nil {
-			base.Warn("Error attempting to post to url %s: %s -- %+v", wh.url, err)
+			base.Warn("Error attempting to post to url %s: %s -- %+v", wh.SanitizedUrl(), err)
 			return
 		}
 
 		base.LogTo("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-			payload, wh.url, resp.Status)
+			payload, wh.SanitizedUrl(), resp.Status)
 	}()
 
 }
 
 func (wh *Webhook) String() string {
-	// Basic auth credentials may have been included in the URL, in which case obscure them
-	sanitizedUrl := kBasicAuthUrlRegexp.ReplaceAllLiteralString(wh.url, "://****:****@")
+	return fmt.Sprintf("Webhook handler [%s]", wh.SanitizedUrl())
+}
 
-	return fmt.Sprintf("Webhook handler [%s]", sanitizedUrl)
+func (wh *Webhook) SanitizedUrl() string {
+	// Basic auth credentials may have been included in the URL, in which case obscure them
+	return kBasicAuthUrlRegexp.ReplaceAllLiteralString(wh.url, "://****:****@")
 }
