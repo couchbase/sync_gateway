@@ -343,7 +343,7 @@
 		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_windows.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_windows.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>sgcollect_info</td><td>{33630111-6855-4D6F-AF25-45AAD04FE5FE}</td><td>INSTALLDIR</td><td>8</td><td/><td>sgcollect_info</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>sgcollect_info</td><td>{33630111-6855-4D6F-AF25-45AAD04FE5FE}</td><td>INSTALLDIR</td><td>8</td><td/><td>sgcollect_info.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sync_gateway.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sync_gateway.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
