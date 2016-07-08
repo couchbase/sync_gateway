@@ -344,7 +344,7 @@
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel_service.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel_service.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>sgcollect_info.exe</td><td>{F473CFCD-3165-42A2-9D85-32A666655F2F}</td><td>INSTALLDIR</td><td>8</td><td/><td>sgcollect_info.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>sgcollect_info.exe</td><td>{F473CFCD-3165-42A2-9D85-32A666655F2F}</td><td>TOOLS</td><td>8</td><td/><td>sgcollect_info.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
 	<table name="Condition">
