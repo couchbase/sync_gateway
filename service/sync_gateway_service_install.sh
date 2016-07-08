@@ -181,6 +181,21 @@ done
 
 #Install the service for the specific platform
 case $OS in
+    Debian)
+        case $OS_MAJOR_VERSION in
+            8)
+                if [ "$SERVICE_CMD_ONLY" = true ]; then
+                    echo "systemctl start ${SERVICE_NAME}"
+                else
+                    pre_install_actions
+		    mkdir -p /usr/lib/systemd/system
+                    render_template script_templates/systemd_debian_sync_gateway.tpl > /usr/lib/systemd/system/${SERVICE_NAME}.service
+                    systemctl enable ${SERVICE_NAME}
+                    systemctl start ${SERVICE_NAME}
+                fi
+                ;;
+        esac
+    ;;
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
