@@ -59,7 +59,7 @@ Dir.chdir("#{START_DIR}") do
     sh %{tar --directory #{File.dirname(PREFIXD)} -czf "#{STAGE_DIR}/rpmbuild/SOURCES/#{PRODUCT}_#{RELEASE}.tar.gz" #{File.basename(PREFIXD)}}
 end
 Dir.chdir("#{STAGE_DIR}") do
-    sh %{rpmbuild -bb rpm.spec}
+    sh %{rpmbuild -bb --define "_binary_filedigest_algorithm  1"  --define "_binary_payload 1" rpm.spec}
 end
 
 FileUtils.cp "#{STAGE_DIR}/rpmbuild/RPMS/#{ARCH}/#{PRODUCT}-#{RELEASE}-#{BLDNUM}.#{ARCH}.rpm", "#{PREFIXD}/#{PRODUCT}_#{PRODUCT_VERSION}_#{ARCH}.rpm"
