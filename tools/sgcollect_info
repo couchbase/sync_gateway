@@ -29,7 +29,7 @@ from tasks import make_os_tasks
 from tasks import get_server_guts
 from tasks import log
 from tasks import read_guts
-from tasks import AllOsTask
+from tasks import AllOsTask, UnixTask, WindowsTask
 from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
@@ -81,6 +81,9 @@ def create_option_parser():
                       help="Path to Sync Gateway config.  By default will try to discover via expvars")
     parser.add_option("--sync-gateway-executable", dest="sync_gateway_executable",
                       help="Path to Sync Gateway executable.  By default will try to discover via expvars")
+    parser.add_option("--log-file-path", dest="log_file_path",
+                      help="Path to the Sync Gateway log file. Use this if you are logging via stderr redirection"
+                           " (or are on Windows)")
     
     return parser
 
@@ -147,7 +150,7 @@ def extract_element_from_config(element, config):
         # If we can't deserialise the json or find the key then return nothing
         return
 
-def make_collect_logs_tasks(zip_dir, sg_url):
+def make_collect_logs_tasks(zip_dir, sg_url, sg_log_path):
     sg_log_files = {
         "sync_gateway_access.log": "/home/sync_gateway/logs/sync_gateway_access.log",
         "sg_accel_access.log": "/home/sg_accel/logs/sg_accel_access.log",
@@ -168,17 +171,26 @@ def make_collect_logs_tasks(zip_dir, sg_url):
     if guessed_log_path:
         sg_log_files["sync_gateway_error.log"] = guessed_log_path
     else:
-        sg_log_files["sync_gateway_error.log"] = "/home/sync_gateway/logs/sync_gateway_error.log"
+        if sg_log_path:
+            sg_log_files["sync_gateway_error.log"] = sg_log_path
+        else:
+            sg_log_files["sync_gateway_error.log"] = "/home/sync_gateway/logs/sync_gateway_error.log"
 
     sg_tasks = []
 
     for sg_log_file, path in sg_log_files.iteritems():
-        task = AllOsTask(
+        task = UnixTask(
             "sg logs (%s)" % sg_log_file,
             "cat {}".format(path),
             log_file=sg_log_file,
         )
         sg_tasks.append(task)
+
+    sg_tasks.append(WindowsTask(
+        "sg logs (sync_gateway_error.log)",
+        "type {}".format(sg_log_path),
+        log_file="sync_gateway_error.log"
+    ))
 
     return sg_tasks
 
@@ -249,7 +261,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     # Get static server config
     for sg_config_file in sg_config_files:
-        task = AllOsTask(
+        task = UnixTask(
             "sg config (%s)" % sg_config_file,
             "cat {}".format(sg_config_file),
             log_file=os.path.basename(sg_config_file),
@@ -262,7 +274,8 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
                                  user="",
                                  password="",
                                  url=server_config_url,
-                                 log_file="running_server_config.log")
+                                 log_file="running_server_config.log",
+                                 base_task=UnixTask)
     collect_config_tasks.append(config_task)
         
     # Get list of dbs from _all_dbs
@@ -274,7 +287,8 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
                                      user="",
                                      password="",
                                      url=db_config_url,
-                                     log_file="running_db_{}_config.log".format(db))
+                                     log_file="running_db_{}_config.log".format(db),
+                                     base_task=UnixTask)
         collect_config_tasks.append(config_task)
 
     return collect_config_tasks
@@ -321,7 +335,7 @@ def get_absolute_path(relative_path):
     return os.path.join(sync_gateway_cwd, relative_path)
     
 
-def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path):
+def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, sg_log_path):
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
@@ -332,9 +346,9 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         if not os.path.exists(sync_gateway_executable_path):
             raise Exception("Path to sync gateway executable passed in does not exist: {}".format(sync_gateway_executable_path))
         sg_binary_path = sync_gateway_executable_path
-    
+
     # Collect logs
-    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
+    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url, sg_log_path)
     
     # Add a task to collect expvars from port 4985
     expvar_task = make_curl_task(name="Collect Expvars",
@@ -461,7 +475,7 @@ def main():
 
     # Run SG specific tasks
     print "zip_dir: {}".format(zip_dir)
-    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable):
+    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, options.log_file_path):
         runner.run(task)
 
     # Collect the SG binary
