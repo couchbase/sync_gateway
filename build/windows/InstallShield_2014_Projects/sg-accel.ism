@@ -344,7 +344,6 @@
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel_service.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel_service.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>sgcollect_info.exe</td><td>{F473CFCD-3165-42A2-9D85-32A666655F2F}</td><td>TOOLS</td><td>8</td><td/><td>sgcollect_info.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
 	<table name="Condition">
@@ -1013,7 +1012,6 @@
 		<col key="yes" def="s72">Directory_</col>
 		<col key="yes" def="s72">Component_</col>
 		<row><td>INSTALLDIR</td><td>IS_ININSTALL_SHORTCUT</td></row>
-		<row><td>INSTALLDIR</td><td>sgcollect_info</td></row>
 	</table>
 
 	<table name="CustomAction">
@@ -1127,7 +1125,6 @@
 		<row><td>System64Folder</td><td>TARGETDIR</td><td>.:System64</td><td/><td>0</td><td/></row>
 		<row><td>SystemFolder</td><td>TARGETDIR</td><td>.:System32</td><td/><td>0</td><td/></row>
 		<row><td>TARGETDIR</td><td/><td>SourceDir</td><td/><td>0</td><td/></row>
-		<row><td>TOOLS</td><td>INSTALLDIR</td><td>tools</td><td/><td>0</td><td/></row>
 		<row><td>TempFolder</td><td>TARGETDIR</td><td>.:Temp</td><td/><td>0</td><td/></row>
 		<row><td>TemplateFolder</td><td>TARGETDIR</td><td>.:ShellNew</td><td/><td>0</td><td/></row>
 		<row><td>USERPROFILE</td><td>TARGETDIR</td><td>.:USERPR~1|UserProfile</td><td/><td>0</td><td/></row>
@@ -1851,7 +1848,6 @@
 		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\README.txt</td><td>1</td><td/></row>
 		<row><td>sg_accel.exe</td><td>sg_accel.exe</td><td>sg_accel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\bin\sg_accel.exe</td><td>1</td><td/></row>
 		<row><td>sg_accel_service.exe</td><td>sg_accel_service.exe</td><td>SG-ACC~1.EXE|sg-accel-service.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG-WINDOWS_FILES&gt;\sg-accel-service.exe</td><td>1</td><td/></row>
-		<row><td>sgcollect_info.exe</td><td>sgcollect_info.exe</td><td>SGCOLL~1|sgcollect_info.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\app-under-test\sync_gateway\build\opt\couchbase-sync-gateway\tools\sgcollect_info.exe</td><td>1</td><td/></row>
 		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
 	</table>
 
@@ -2005,7 +2001,6 @@
 		<row><td>IS_ININSTALL_SHORTCUT</td><td/><td/><td>_293EBFE3_A3F9_4726_9D49_510ED0C578AB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sg_accel.exe</td><td/><td/><td>_074FBDC3_5A35_4CDB_940C_23B4369E994A_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sg_accel_service.exe</td><td/><td/><td>_E5BC4C67_528B_47DE_99C3_91D7DB1E6FE2_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>sgcollect_info.exe</td><td/><td/><td>_79A59CBF_102C_4229_9513_8C008FC04B07_FILTER</td><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="ISCustomActionReference">
