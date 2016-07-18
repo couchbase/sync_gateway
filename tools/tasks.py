@@ -320,23 +320,14 @@ class UnixTask(SolarisTask, LinuxTask, MacOSXTask):
 class AllOsTask(UnixTask, WindowsTask):
     platforms = UnixTask.platforms + WindowsTask.platforms
 
-def make_curl_task(name, user, password, url,
-                   timeout=60, log_file="couchbase.log", base_task=AllOsTask,
-                   **kwargs):
-    def make_cmd(pwd):
-        return ["curl", "-sS", "--proxy", "",
-                "-u", "%s:%s" % (user, pwd), url]
 
-    return base_task(name, make_cmd(password),
-                     timeout=timeout,
-                     log_file=log_file,
-                     command_to_print=make_cmd("*****"), **kwargs)
-
-
-def make_python_curl_task(name, url, user="", password="",
+def make_curl_task(name, url, user="", password="",
                    timeout=60, log_file="python_curl.log",
                    **kwargs):
-
+    """
+    NOTE: this used to use curl but was later reworked to use pure python
+    in order to be more cross platform, since Windows doesn't ship with curl
+    """
     def python_curl_task():
         r = urllib2.Request(url=url)
         if len(user) > 0:
