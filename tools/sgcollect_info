@@ -320,7 +320,22 @@ def get_absolute_path(relative_path):
         sync_gateway_cwd = ''
 
     return os.path.join(sync_gateway_cwd, relative_path)
-    
+
+
+def make_download_expvars_task(sg_url):
+
+    def expvar_py_task():
+        r = urllib2.Request(url=expvar_url(sg_url))
+        response_file_handle = urllib2.urlopen(r)
+        response_string = response_file_handle.read()
+        return response_string
+
+    return PythonTask(
+        description="Download expvars via python",
+        callable=expvar_py_task,
+        log_file="expvars_json.log"
+    )
+
 
 def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path):
 
@@ -336,27 +351,8 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     
     # Collect logs
     collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
-    
-    # Add a task to collect expvars from port 4985
-    expvar_task = make_curl_task(name="Collect Expvars",
-                          user="",
-                          password="",
-                          url=expvar_url(sg_url),
-                          log_file="expvars_json.log")
 
-    def expvar_py_task():
-        r = urllib2.Request(url='http://us-east.testfest.couchbasemobile.com:4985/_expvar')
-        #r.add_header('User-Agent', 'awesome fetcher')
-        #r.add_data(urllib.urlencode({'foo': 'bar'})
-        response_file_handle = urllib2.urlopen(r)
-        response_string = response_file_handle.read()
-        print("expvar response: {}".format(response_string))
-        return response_string
-
-    py_expvar_task = PythonTask(
-        description="Download expvars via python",
-        callable=expvar_py_task,
-    )
+    py_expvar_task = make_download_expvars_task(sg_url)
 
     # If the user passed in a valid config path, then use that rather than what's in the expvars
     if sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0 and os.path.exists(sync_gateway_config_path_option):
