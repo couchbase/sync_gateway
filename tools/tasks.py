@@ -17,6 +17,8 @@ import signal
 import urllib
 import shutil
 import urlparse
+import urllib2
+import base64
 
 class AltExitC(object):
     def __init__(self):
@@ -150,7 +152,7 @@ class PythonTask(object):
 
     def execute(self, fp):
         """Run the task"""
-        print("self.callable: {}.  type: {}".format(self.callable, type(self.callable)))
+        print("log_file: {}. ".format(self.log_file))
         try:
             result = self.callable()
             fp.write(result)
@@ -330,6 +332,26 @@ def make_curl_task(name, user, password, url,
                      log_file=log_file,
                      command_to_print=make_cmd("*****"), **kwargs)
 
+
+def make_python_curl_task(name, url, user="", password="",
+                   timeout=60, log_file="python_curl.log",
+                   **kwargs):
+
+    def python_curl_task():
+        r = urllib2.Request(url=url)
+        if len(user) > 0:
+            base64string = base64.encodestring('%s:%s' % (user, password)).replace('\n', '')
+            r.add_header("Authorization", "Basic %s" % base64string)
+        response_file_handle = urllib2.urlopen(r, timeout=timeout)
+        response_string = response_file_handle.read()
+        return response_string
+
+    return PythonTask(
+        description=name,
+        callable=python_curl_task,
+        log_file=log_file,
+        **kwargs
+    )
 
 def make_query_task(statement, user, password, port):
     url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.quote(statement))

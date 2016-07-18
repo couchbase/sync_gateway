@@ -34,6 +34,7 @@ from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
 from tasks import PythonTask
+from tasks import make_python_curl_task
 
 # Collects the following info from Sync Gateway
 #
@@ -324,15 +325,9 @@ def get_absolute_path(relative_path):
 
 def make_download_expvars_task(sg_url):
 
-    def expvar_py_task():
-        r = urllib2.Request(url=expvar_url(sg_url))
-        response_file_handle = urllib2.urlopen(r)
-        response_string = response_file_handle.read()
-        return response_string
-
-    return PythonTask(
-        description="Download expvars via python",
-        callable=expvar_py_task,
+    return make_python_curl_task(
+        name="download_sg_expvars",
+        url=expvar_url(sg_url),
         log_file="expvars_json.log"
     )
 
