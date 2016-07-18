@@ -33,6 +33,7 @@ from tasks import AllOsTask
 from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
+from tasks import PythonTask
 
 # Collects the following info from Sync Gateway
 #
@@ -343,6 +344,20 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
                           url=expvar_url(sg_url),
                           log_file="expvars_json.log")
 
+    def expvar_py_task():
+        r = urllib2.Request(url='http://us-east.testfest.couchbasemobile.com:4985/_expvar')
+        #r.add_header('User-Agent', 'awesome fetcher')
+        #r.add_data(urllib.urlencode({'foo': 'bar'})
+        response_file_handle = urllib2.urlopen(r)
+        response_string = response_file_handle.read()
+        print("expvar response: {}".format(response_string))
+        return response_string
+
+    py_expvar_task = PythonTask(
+        description="Download expvars via python",
+        callable=expvar_py_task,
+    )
+
     # If the user passed in a valid config path, then use that rather than what's in the expvars
     if sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0 and os.path.exists(sync_gateway_config_path_option):
         sg_config_path = sync_gateway_config_path_option
@@ -360,7 +375,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     sg_tasks = flatten(
         [
             collect_logs_tasks,
-            expvar_task,
+            py_expvar_task,
             pprof_tasks,
             config_tasks,
             status_tasks,

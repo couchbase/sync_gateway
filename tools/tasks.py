@@ -132,6 +132,38 @@ class Task(object):
         return sys.platform in self.platforms
 
 
+class PythonTask(object):
+    """
+    A task that takes a python function as an argument rather than an OS command.
+    These will run on any platform.
+    """
+    privileged = False
+    no_header = False
+    num_samples = 1
+    interval = 0
+    def __init__(self, description, callable, timeout=None, **kwargs):
+        self.description = description
+        self.callable = callable
+        self.command = "pythontask"
+        self.timeout = timeout
+        self.__dict__.update(kwargs)
+
+    def execute(self, fp):
+        """Run the task"""
+        print("self.callable: {}.  type: {}".format(self.callable, type(self.callable)))
+        try:
+            result = self.callable()
+            fp.write(result)
+            return 0
+        except Exception as e:
+            print("Exception executing python task: {}".format(e))
+            return 1
+
+    def will_run(self):
+        """Determine if this task will run on this platform."""
+        return True
+
+
 class TaskRunner(object):
 
     def __init__(self, verbosity=0, default_name="couchbase.log"):
@@ -297,6 +329,7 @@ def make_curl_task(name, user, password, url,
                      timeout=timeout,
                      log_file=log_file,
                      command_to_print=make_cmd("*****"), **kwargs)
+
 
 def make_query_task(statement, user, password, port):
     url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.quote(statement))
