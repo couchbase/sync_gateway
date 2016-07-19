@@ -258,13 +258,24 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
         task = add_file_task(sourcefile_path=sg_config_file)
         collect_config_tasks.append(task)
 
+    def reverser(s):
+        """
+        Here is an example of a content postprocessor that
+        reverses the string:
+        """
+
+        # return s[::-1]  # <-- uncomment to reverse the string
+
+        return s  # this just returns the original string, so it does nothing
+
     # Get server config
     server_config_url = "{}/_config".format(sg_url)
     config_task = make_curl_task(name="Collect server config",
                                  user="",
                                  password="",
                                  url=server_config_url,
-                                 log_file="running_server_config.log")
+                                 log_file="running_server_config.log",
+                                 content_postprocessors=[reverser])
     collect_config_tasks.append(config_task)
         
     # Get list of dbs from _all_dbs

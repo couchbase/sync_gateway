@@ -321,12 +321,26 @@ class AllOsTask(UnixTask, WindowsTask):
     platforms = UnixTask.platforms + WindowsTask.platforms
 
 
-def make_curl_task(name, url, user="", password="",
+def make_curl_task(name, url, user="", password="", content_postprocessors=[],
                    timeout=60, log_file="python_curl.log",
                    **kwargs):
     """
     NOTE: this used to use curl but was later reworked to use pure python
     in order to be more cross platform, since Windows doesn't ship with curl
+
+    The content_postprocessors is a list of functions that:
+
+        - Are given a string as their only parameter
+        - Return a string as their only return value
+
+    For example:
+
+    def reverser(s):
+        return s[::-1]  # reverse string
+
+    They are run in order.  This allows for stripping out passwords and other
+    sensitive info
+
     """
     def python_curl_task():
         r = urllib2.Request(url=url)
@@ -335,6 +349,8 @@ def make_curl_task(name, url, user="", password="",
             r.add_header("Authorization", "Basic %s" % base64string)
         response_file_handle = urllib2.urlopen(r, timeout=timeout)
         response_string = response_file_handle.read()
+        for content_postprocessor in content_postprocessors:
+            response_string = content_postprocessor(response_string)
         return response_string
 
     return PythonTask(
@@ -344,13 +360,18 @@ def make_curl_task(name, url, user="", password="",
         **kwargs
     )
 
-def add_file_task(sourcefile_path):
+def add_file_task(sourcefile_path, content_postprocessors=[]):
     """
     Adds the contents of a file to the output zip
+
+    The content_postprocessors is a list of functions -- see make_curl_task
     """
     def python_add_file_task():
         with open(sourcefile_path, 'r') as infile:
-            return infile.read()
+            contents = infile.read()
+            for content_postprocessor in content_postprocessors:
+                contents = content_postprocessor(contents)
+            return contents
 
     task = PythonTask(
         description="Contents of {}".format(sourcefile_path),
