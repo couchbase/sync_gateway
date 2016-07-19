@@ -155,12 +155,14 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         "sync_gateway_error.log": os.path.join("sync_gateway", "logs", "sync_gateway_error.log"),
         "sg_accel_access.log": os.path.join("sg_accel", "logs", "sg_accel_access.log"),
         "sg_accel_error.log": os.path.join("sg_accel", "logs", "sg_accel_error.log"),
+        "windows_sg_error.log": os.path.join("logs", "sync_gateway_access.log"),
+        "windows_sa_error.log": os.path.join("logs", "sg_accel_error.log"),
     }
 
     os_home_dirs = [
-        "/home",                         # linux
-        "/Users"            # OSX
-        # TODO: Windows
+        "/home",                                                    # linux
+        "/Users",                                                   # OSX
+        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase'       #Windows
     ]
     # Try to find user-specified log path
     config_url = "{}/_config".format(sg_url)
@@ -240,11 +242,12 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     # Here are the "usual suspects" to probe for finding the static config
     sg_config_files = [
-        "/home/sg_accel/sg_accel.json",                     # linux sg accel
-        "/home/sync_gateway/sync_gateway.json",             # linux sync gateway
-        "/Users/sync_gateway/sg_accel.json",                # OSX sg accel
-        "/Users/sync_gateway/sync_gateway.json"             # OSX sync gateway
-        # TODO: add windows paths
+        "/home/sg_accel/sg_accel.json",                                     # linux sg accel
+        "/home/sync_gateway/sync_gateway.json",                             # linux sync gateway
+        "/Users/sync_gateway/sg_accel.json",                                # OSX sg accel
+        "/Users/sync_gateway/sync_gateway.json"                             # OSX sync gateway
+        R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows sg accel
+        R'C:\Program Files (x86)\Couchbase\serviceconfig.json'               # Windows sync gateway
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
 
