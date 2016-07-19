@@ -33,6 +33,7 @@ from tasks import AllOsTask
 from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
+from tasks import add_file_task
 
 # Collects the following info from Sync Gateway
 #
@@ -148,13 +149,21 @@ def extract_element_from_config(element, config):
         return
 
 def make_collect_logs_tasks(zip_dir, sg_url):
+
     sg_log_files = {
-        "sync_gateway_access.log": "/home/sync_gateway/logs/sync_gateway_access.log",
-        "sg_accel_access.log": "/home/sg_accel/logs/sg_accel_access.log",
-        "sg_accel_error.log": "/home/sg_accel/logs/sg_accel_error.log",
-        "error.log": "/tmp/logs/error.log",  # TEMP TESTING!
+        "sync_gateway_access.log": os.path.join("sync_gateway", "logs", "sync_gateway_access.log"),
+        "sync_gateway_error.log": os.path.join("sync_gateway", "logs", "sync_gateway_error.log"),
+        "sg_accel_access.log": os.path.join("sg_accel", "logs", "sg_accel_access.log"),
+        "sg_accel_error.log": os.path.join("sg_accel", "logs", "sg_accel_error.log"),
+        "windows_sg_error.log": os.path.join("logs", "sync_gateway_access.log"),
+        "windows_sa_error.log": os.path.join("logs", "sg_accel_error.log"),
     }
 
+    os_home_dirs = [
+        "/home",                                                    # linux
+        "/Users",                                                   # OSX
+        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase'       #Windows
+    ]
     # Try to find user-specified log path
     config_url = "{}/_config".format(sg_url)
     try:
@@ -167,18 +176,14 @@ def make_collect_logs_tasks(zip_dir, sg_url):
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
     if guessed_log_path:
         sg_log_files["sync_gateway_error.log"] = guessed_log_path
-    else:
-        sg_log_files["sync_gateway_error.log"] = "/home/sync_gateway/logs/sync_gateway_error.log"
 
     sg_tasks = []
 
-    for sg_log_file, path in sg_log_files.iteritems():
-        task = AllOsTask(
-            "sg logs (%s)" % sg_log_file,
-            "cat {}".format(path),
-            log_file=sg_log_file,
-        )
-        sg_tasks.append(task)
+    for _, path in sg_log_files.iteritems():
+        for os_home_dir in os_home_dirs:
+            sg_log_file_path = os.path.join(os_home_dir, path)
+            task = add_file_task(sourcefile_path=sg_log_file_path)
+            sg_tasks.append(task)
 
     return sg_tasks
 
@@ -237,24 +242,34 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     # Here are the "usual suspects" to probe for finding the static config
     sg_config_files = [
-        "/home/sg_accel/sg_accel.json",
-        "/home/sync_gateway/sync_gateway.json",
+        "/home/sg_accel/sg_accel.json",                                     # linux sg accel
+        "/home/sync_gateway/sync_gateway.json",                             # linux sync gateway
+        "/Users/sync_gateway/sg_accel.json",                                # OSX sg accel
+        "/Users/sync_gateway/sync_gateway.json"                             # OSX sync gateway
+        R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows sg accel
+        R'C:\Program Files (x86)\Couchbase\serviceconfig.json'               # Windows sync gateway
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
 
-    # If a config path was discovered from the expvars, add that in the
+    # If a config path was discovered from the expvars, or passed in via the user, add that in the
     # list of files to probe
     if sg_config_path is not None:
         sg_config_files.append(sg_config_path)
 
     # Get static server config
     for sg_config_file in sg_config_files:
-        task = AllOsTask(
-            "sg config (%s)" % sg_config_file,
-            "cat {}".format(sg_config_file),
-            log_file=os.path.basename(sg_config_file),
-        )
+        task = add_file_task(sourcefile_path=sg_config_file)
         collect_config_tasks.append(task)
+
+    def reverser(s):
+        """
+        Here is an example of a content postprocessor that
+        reverses the string:
+        """
+
+        # return s[::-1]  # <-- uncomment to reverse the string
+
+        return s  # this just returns the original string, so it does nothing
 
     # Get server config
     server_config_url = "{}/_config".format(sg_url)
@@ -262,7 +277,8 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
                                  user="",
                                  password="",
                                  url=server_config_url,
-                                 log_file="running_server_config.log")
+                                 log_file="running_server_config.log",
+                                 content_postprocessors=[reverser])
     collect_config_tasks.append(config_task)
         
     # Get list of dbs from _all_dbs
@@ -319,7 +335,16 @@ def get_absolute_path(relative_path):
         sync_gateway_cwd = ''
 
     return os.path.join(sync_gateway_cwd, relative_path)
-    
+
+
+def make_download_expvars_task(sg_url):
+
+    return make_curl_task(
+        name="download_sg_expvars",
+        url=expvar_url(sg_url),
+        log_file="expvars_json.log"
+    )
+
 
 def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path):
 
@@ -335,13 +360,8 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     
     # Collect logs
     collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
-    
-    # Add a task to collect expvars from port 4985
-    expvar_task = make_curl_task(name="Collect Expvars",
-                          user="",
-                          password="",
-                          url=expvar_url(sg_url),
-                          log_file="expvars_json.log")
+
+    py_expvar_task = make_download_expvars_task(sg_url)
 
     # If the user passed in a valid config path, then use that rather than what's in the expvars
     if sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0 and os.path.exists(sync_gateway_config_path_option):
@@ -360,7 +380,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     sg_tasks = flatten(
         [
             collect_logs_tasks,
-            expvar_task,
+            py_expvar_task,
             pprof_tasks,
             config_tasks,
             status_tasks,

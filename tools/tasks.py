@@ -17,6 +17,8 @@ import signal
 import urllib
 import shutil
 import urlparse
+import urllib2
+import base64
 
 class AltExitC(object):
     def __init__(self):
@@ -130,6 +132,38 @@ class Task(object):
     def will_run(self):
         """Determine if this task will run on this platform."""
         return sys.platform in self.platforms
+
+
+class PythonTask(object):
+    """
+    A task that takes a python function as an argument rather than an OS command.
+    These will run on any platform.
+    """
+    privileged = False
+    no_header = False
+    num_samples = 1
+    interval = 0
+    def __init__(self, description, callable, timeout=None, **kwargs):
+        self.description = description
+        self.callable = callable
+        self.command = "pythontask"
+        self.timeout = timeout
+        self.__dict__.update(kwargs)
+
+    def execute(self, fp):
+        """Run the task"""
+        print("log_file: {}. ".format(self.log_file))
+        try:
+            result = self.callable()
+            fp.write(result)
+            return 0
+        except Exception as e:
+            print("Exception executing python task: {}".format(e))
+            return 1
+
+    def will_run(self):
+        """Determine if this task will run on this platform."""
+        return True
 
 
 class TaskRunner(object):
@@ -286,17 +320,66 @@ class UnixTask(SolarisTask, LinuxTask, MacOSXTask):
 class AllOsTask(UnixTask, WindowsTask):
     platforms = UnixTask.platforms + WindowsTask.platforms
 
-def make_curl_task(name, user, password, url,
-                   timeout=60, log_file="couchbase.log", base_task=AllOsTask,
-                   **kwargs):
-    def make_cmd(pwd):
-        return ["curl", "-sS", "--proxy", "",
-                "-u", "%s:%s" % (user, pwd), url]
 
-    return base_task(name, make_cmd(password),
-                     timeout=timeout,
-                     log_file=log_file,
-                     command_to_print=make_cmd("*****"), **kwargs)
+def make_curl_task(name, url, user="", password="", content_postprocessors=[],
+                   timeout=60, log_file="python_curl.log",
+                   **kwargs):
+    """
+    NOTE: this used to use curl but was later reworked to use pure python
+    in order to be more cross platform, since Windows doesn't ship with curl
+
+    The content_postprocessors is a list of functions that:
+
+        - Are given a string as their only parameter
+        - Return a string as their only return value
+
+    For example:
+
+    def reverser(s):
+        return s[::-1]  # reverse string
+
+    They are run in order.  This allows for stripping out passwords and other
+    sensitive info
+
+    """
+    def python_curl_task():
+        r = urllib2.Request(url=url)
+        if len(user) > 0:
+            base64string = base64.encodestring('%s:%s' % (user, password)).replace('\n', '')
+            r.add_header("Authorization", "Basic %s" % base64string)
+        response_file_handle = urllib2.urlopen(r, timeout=timeout)
+        response_string = response_file_handle.read()
+        for content_postprocessor in content_postprocessors:
+            response_string = content_postprocessor(response_string)
+        return response_string
+
+    return PythonTask(
+        description=name,
+        callable=python_curl_task,
+        log_file=log_file,
+        **kwargs
+    )
+
+def add_file_task(sourcefile_path, content_postprocessors=[]):
+    """
+    Adds the contents of a file to the output zip
+
+    The content_postprocessors is a list of functions -- see make_curl_task
+    """
+    def python_add_file_task():
+        with open(sourcefile_path, 'r') as infile:
+            contents = infile.read()
+            for content_postprocessor in content_postprocessors:
+                contents = content_postprocessor(contents)
+            return contents
+
+    task = PythonTask(
+        description="Contents of {}".format(sourcefile_path),
+        callable=python_add_file_task,
+        log_file=os.path.basename(sourcefile_path)
+    )
+
+    return task
 
 def make_query_task(statement, user, password, port):
     url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.quote(statement))
