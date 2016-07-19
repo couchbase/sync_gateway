@@ -37,8 +37,8 @@ def escape_json_value(raw_value):
     """
     escaped = raw_value
     escaped = escaped.replace('\\', "\\\\")  # Escape any backslashes
-    escaped = escaped.replace('"', '\\"')    # Excape double quotes
-    escaped = escaped.replace("'", "\\'")    # Excape single quotes
+    escaped = escaped.replace('"', '\\"')    # Escape double quotes
+    escaped = escaped.replace("'", "\\'")    # Escape single quotes
 
     # TODO: other stuff should be escaped like \n \t and other control characters
     # See http://stackoverflow.com/questions/983451/where-can-i-find-a-list-of-escape-characters-required-for-my-json-ajax-return-ty
