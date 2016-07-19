@@ -7,6 +7,7 @@ Removes passwords from config files
 import unittest
 import json
 import re
+from urlparse import urlparse, urlunparse
 
 def is_valid_json(invalid_json):
     """
@@ -21,6 +22,61 @@ def is_valid_json(invalid_json):
 
     return got_exception == False
 
+
+def remove_passwords(json_text):
+    """
+    Here is an example of a content postprocessor that
+    strips out all of the sensitive passwords
+    """
+
+    valid_json = convert_to_valid_json(json_text)
+    print("valid_json: {0}".format(valid_json))
+
+    parsed_json = json.loads(valid_json)
+
+    # TODO: find specific json fields and remove them
+    databases = parsed_json["databases"]
+    print("databases: {0}".format(databases))
+    print("type databases: {0}".format(type(databases)))
+    for key, value in databases.iteritems():
+        # print("server: {0}".format(database["server"]))
+        print("key: {0}".format(key))
+        print("value type: {0}".format(type(value)))
+        print("keys: {0}".format(value.keys()))
+        print("server: {0}".format(value["server"]))
+        value["server"] = strip_password_from_url(value["server"])
+
+    formatted_json_string = json.dumps(parsed_json, indent=4)
+
+    return formatted_json_string
+
+def strip_password_from_url(url_string):
+    """
+    Given a URL string like:
+
+    http://bucket-1:foobar@localhost:8091
+
+    Strip out the password and return:
+
+    http://bucket-1:@localhost:8091
+
+    """
+
+    parsed_url = urlparse(url_string)
+    print("parsed_url: {0}".format(parsed_url))
+    print("username: {0}".format(parsed_url.username))
+    # parsed_url.password = "*******"
+    #parsed_url = parsed_url._replace(username="****")
+    # return parsed_url.geturl()
+    #new_url = urlunparse(parsed_url)
+    #print("new_url: {0}".format(new_url))
+    new_url = "{0}://{1}:{2}/{3}".format(
+        parsed_url.scheme,
+        parsed_url.hostname,
+        parsed_url.port,
+        parsed_url.query
+    )
+    return new_url
 
 def escape_json_value(raw_value):
     """
@@ -82,20 +138,57 @@ def convert_to_valid_json(invalid_json):
 
     return result
 
-class TestConvertToValidJSON(unittest.TestCase):
+class TestStripPasswordsFromUrl(unittest.TestCase):
 
-    valid_json = """
+    url_with_password = "http://bucket-1:foobar@localhost:8091"
+    url_no_password = strip_password_from_url(url_with_password)
+    print("url_no_password: {0}".format(url_no_password))
+    assert "foobar" not in url_no_password
+
+
+class TestRemovePasswords(unittest.TestCase):
+    json_with_passwords = """
     {
       "log": ["*"],
       "databases": {
+        "db2": {
+            "server": "http://bucket-1:foobar@localhost:8091"
+        },
         "db": {
-          "server": "walrus:",
+          "server": "http://localhost:8091",
+          "bucket":"bucket-1",
+          "username":"bucket-1",
+          "password":"foobar",
           "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
-          "sync":"function(doc, oldDoc) { if (doc.type == \\"reject_me\\") { throw({forbidden : \\"Rejected document\\"}) } else if (doc.type == \\"bar\\") { // add \\"bar\\" docs to the \\"important\\" channel channel(\\"important\\"); } else if (doc.type == \\"secret\\") { if (!doc.owner) { throw({forbidden : \\"Secret documents must have an owner field\\"}) } } else { // all other documents just go into all channels listed in the doc[\\"channels\\"] field channel(doc.channels) } }"
+          "sync":
+        `
+          function(doc, oldDoc) {
+            if (doc.type == "reject_me") {
+              throw({forbidden : "Rejected document"})
+            } else if (doc.type == "bar") {
+          // add "bar" docs to the "important" channel
+                channel("important");
+        } else if (doc.type == "secret") {
+              if (!doc.owner) {
+                throw({forbidden : "Secret documents \ must have an owner field"})
+              }
+        } else {
+            // all other documents just go into all channels listed in the doc["channels"] field
+            channel(doc.channels)
+        }
+          }
+        `
         }
       }
     }
     """
+
+    with_passwords_removed = remove_passwords(json_with_passwords)
+    assert "foobar" not in with_passwords_removed
+
+
+class TestConvertToValidJSON(unittest.TestCase):
+
 
     invalid_json = """
     {
@@ -139,40 +232,6 @@ class TestConvertToValidJSON(unittest.TestCase):
         pass
 
     assert got_exception == False, "Failed to convert to valid JSON"
-#
-# def remove_passwords(config_str):
-#
-#     # look for regexes like
-#     # "password":"foobar"
-#
-#     # look for regexes like
-#     # "server":"http://bucket-2:foobar@localhost:8091"
-#
-#     return config_str
-#
-# class TestRemovePasswords(unittest.TestCase):
-#
-#     def test_remove_passwords(self):
-#         config_str = """
-#         {
-#            "log":[
-#               "*"
-#            ],
-#            "databases":{
-#               "db":{
-#                  "server":"http://localhost:8091",
-#                  "bucket":"bucket-1",
-#                  "username":"bucket-1",
-#                  "password":"foobar"
-#               },
-#               "db2":{
-#                  "server":"http://bucket-2:foobar@localhost:8091"
-#               }
-#            }
-#         }
-#         """
-#         passwords_removed = remove_passwords(config_str)
-#         assert "foobar" not in passwords_removed
 
 
 if __name__=="__main__":
