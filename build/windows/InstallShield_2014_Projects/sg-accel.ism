@@ -1851,7 +1851,7 @@
 		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\README.txt</td><td>1</td><td/></row>
 		<row><td>sg_accel.exe</td><td>sg_accel.exe</td><td>sg_accel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\bin\sg_accel.exe</td><td>1</td><td/></row>
 		<row><td>sg_accel_service.exe</td><td>sg_accel_service.exe</td><td>SG-ACC~1.EXE|sg-accel-service.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG-WINDOWS_FILES&gt;\sg-accel-service.exe</td><td>1</td><td/></row>
-		<row><td>sgcollect_info.exe</td><td>sgcollect_info.exe</td><td>SGCOLL~1|sgcollect_info.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_TOOLS_FILE&gt;\sgcollect_info.exe</td><td>1</td><td/></row>
+		<row><td>sgcollect_info.exe</td><td>sgcollect_info.exe</td><td>SGCOLL~1|sgcollect_info.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_TOOLS_FILES&gt;\sgcollect_info.exe</td><td>1</td><td/></row>
 		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
 	</table>
 
