@@ -238,12 +238,15 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     # Here are the "usual suspects" to probe for finding the static config
     sg_config_files = [
-        "/home/sg_accel/sg_accel.json",
-        "/home/sync_gateway/sync_gateway.json",
+        "/home/sg_accel/sg_accel.json",                     # linux sg accel
+        "/home/sync_gateway/sync_gateway.json",             # linux sync gateway
+        "/Users/sync_gateway/sg_accel.json",                # OSX sg accel
+        "/Users/sync_gateway/sync_gateway.json"             # OSX sync gateway
+        # TODO: add windows paths
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
 
-    # If a config path was discovered from the expvars, add that in the
+    # If a config path was discovered from the expvars, or passed in via the user, add that in the
     # list of files to probe
     if sg_config_path is not None:
         sg_config_files.append(sg_config_path)
