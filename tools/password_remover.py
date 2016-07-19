@@ -30,24 +30,15 @@ def remove_passwords(json_text):
     """
 
     valid_json = convert_to_valid_json(json_text)
-    print("valid_json: {0}".format(valid_json))
 
     parsed_json = json.loads(valid_json)
 
-    # TODO: find specific json fields and remove them
     databases = parsed_json["databases"]
-    print("databases: {0}".format(databases))
-    print("type databases: {0}".format(type(databases)))
-    for key, value in databases.iteritems():
-        # print("server: {0}".format(database["server"]))
-        print("key: {0}".format(key))
-        print("value type: {0}".format(type(value)))
-        print("keys: {0}".format(value.keys()))
-        print("server: {0}".format(value["server"]))
-        if "server" in value:
-            value["server"] = strip_password_from_url(value["server"])
-        if "password" in value:
-            value["password"] = "******"
+    for key, database in databases.iteritems():
+        if "server" in database:
+            database["server"] = strip_password_from_url(database["server"])
+        if "password" in database:
+            database["password"] = "******"
 
     formatted_json_string = json.dumps(parsed_json, indent=4)
 
@@ -142,7 +133,6 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
 
     url_with_password = "http://bucket-1:foobar@localhost:8091"
     url_no_password = strip_password_from_url(url_with_password)
-    print("url_no_password: {0}".format(url_no_password))
     assert "foobar" not in url_no_password
     assert "bucket-1" in url_no_password
 
@@ -227,7 +217,6 @@ class TestConvertToValidJSON(unittest.TestCase):
     try:
         parsed_json = json.loads(valid_json)
         formatted_json_string = json.dumps(parsed_json, indent=4)
-        print formatted_json_string
         got_exception = False
     except Exception as e:
         pass
