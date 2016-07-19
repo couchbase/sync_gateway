@@ -149,13 +149,19 @@ def extract_element_from_config(element, config):
         return
 
 def make_collect_logs_tasks(zip_dir, sg_url):
+
     sg_log_files = {
-        "sync_gateway_access.log": "/home/sync_gateway/logs/sync_gateway_access.log",
-        "sg_accel_access.log": "/home/sg_accel/logs/sg_accel_access.log",
-        "sg_accel_error.log": "/home/sg_accel/logs/sg_accel_error.log",
-        "error.log": "/tmp/logs/error.log",  # TEMP TESTING!
+        "sync_gateway_access.log": os.path.join("sync_gateway", "logs", "sync_gateway_access.log"),
+        "sync_gateway_error.log": os.path.join("sync_gateway", "logs", "sync_gateway_error.log"),
+        "sg_accel_access.log": os.path.join("sg_accel", "logs", "sg_accel_access.log"),
+        "sg_accel_error.log": os.path.join("sg_accel", "logs", "sg_accel_error.log"),
     }
 
+    os_home_dirs = [
+        "/home",                         # linux
+        "/Users"            # OSX
+        # TODO: Windows
+    ]
     # Try to find user-specified log path
     config_url = "{}/_config".format(sg_url)
     try:
@@ -168,18 +174,14 @@ def make_collect_logs_tasks(zip_dir, sg_url):
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
     if guessed_log_path:
         sg_log_files["sync_gateway_error.log"] = guessed_log_path
-    else:
-        sg_log_files["sync_gateway_error.log"] = "/home/sync_gateway/logs/sync_gateway_error.log"
 
     sg_tasks = []
 
-    for sg_log_file, path in sg_log_files.iteritems():
-        task = AllOsTask(
-            "sg logs (%s)" % sg_log_file,
-            "cat {}".format(path),
-            log_file=sg_log_file,
-        )
-        sg_tasks.append(task)
+    for _, path in sg_log_files.iteritems():
+        for os_home_dir in os_home_dirs:
+            sg_log_file_path = os.path.join(os_home_dir, path)
+            task = add_file_task(sourcefile_path=sg_log_file_path)
+            sg_tasks.append(task)
 
     return sg_tasks
 
