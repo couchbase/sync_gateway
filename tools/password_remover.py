@@ -8,6 +8,7 @@ import unittest
 import json
 import re
 from urlparse import urlparse, urlunparse
+import traceback
 
 def is_valid_json(invalid_json):
     """
@@ -18,6 +19,8 @@ def is_valid_json(invalid_json):
         json.loads(invalid_json)
         got_exception = False
     except Exception as e:
+        print("Got exception trying to parse json: {0}".format(e))
+        print(invalid_json)
         pass
 
     return got_exception == False
@@ -28,21 +31,30 @@ def remove_passwords(json_text):
     Here is an example of a content postprocessor that
     strips out all of the sensitive passwords
     """
+    try:
+        print("remove_passwords called with: {0}".format(json_text))
+        valid_json = convert_to_valid_json(json_text)
 
-    valid_json = convert_to_valid_json(json_text)
+        parsed_json = json.loads(valid_json)
 
-    parsed_json = json.loads(valid_json)
+        if "databases" in parsed_json:
+            databases = parsed_json["databases"]
+            for key, database in databases.iteritems():
+                if "server" in database:
+                    database["server"] = strip_password_from_url(database["server"])
+                if "password" in database:
+                    database["password"] = "******"
 
-    databases = parsed_json["databases"]
-    for key, database in databases.iteritems():
-        if "server" in database:
-            database["server"] = strip_password_from_url(database["server"])
-        if "password" in database:
-            database["password"] = "******"
+        formatted_json_string = json.dumps(parsed_json, indent=4)
 
-    formatted_json_string = json.dumps(parsed_json, indent=4)
+        print("remove_passwords returning: {0}".format(formatted_json_string))
 
-    return formatted_json_string
+        return formatted_json_string
+
+    except Exception as e:
+        print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
+        traceback.print_exc()
+        return json_text
 
 def strip_password_from_url(url_string):
     """
@@ -106,13 +118,21 @@ def convert_to_valid_json(invalid_json):
     # it would need to take that into account since '.' will only match any character *except* newlines
     no_newlines = invalid_json.replace('\n', '')
 
+    # is it valid json after stripping newlines?
+    if is_valid_json(no_newlines):
+        return no_newlines
+
     # (.*)     any characters - group 0
     # `(.*)`   any characters within backquotes - group 1 -- what we want
     # (.*)     any characters - group 2
     regex_expression = '(.*)`(.*)`(.*)'
 
-    groups = re.match(regex_expression, no_newlines).groups()
-    if len(groups) != 3:
+    match = re.match(regex_expression, no_newlines)
+    if match is None:
+        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.  Not sure what to do")
+
+    groups = match.groups()
+    if groups is None or len(groups) != 3:
         raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.  Not sure what to do")
 
     # The text of the sync function will be in the 2nd group
@@ -138,44 +158,56 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
 
 
 class TestRemovePasswords(unittest.TestCase):
-    json_with_passwords = """
-    {
-      "log": ["*"],
-      "databases": {
-        "db2": {
-            "server": "http://bucket-1:foobar@localhost:8091"
-        },
-        "db": {
-          "server": "http://localhost:8091",
-          "bucket":"bucket-1",
-          "username":"bucket-1",
-          "password":"foobar",
-          "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
-          "sync":
-        `
-          function(doc, oldDoc) {
-            if (doc.type == "reject_me") {
-              throw({forbidden : "Rejected document"})
-            } else if (doc.type == "bar") {
-          // add "bar" docs to the "important" channel
-                channel("important");
-        } else if (doc.type == "secret") {
-              if (!doc.owner) {
-                throw({forbidden : "Secret documents \ must have an owner field"})
-              }
-        } else {
-            // all other documents just go into all channels listed in the doc["channels"] field
-            channel(doc.channels)
-        }
-          }
-        `
-        }
-      }
-    }
-    """
 
-    with_passwords_removed = remove_passwords(json_with_passwords)
-    assert "foobar" not in with_passwords_removed
+    def test_basic(self):
+        print("test_basic")
+        json_with_passwords = """
+        {
+          "log": ["*"],
+          "databases": {
+            "db2": {
+                "server": "http://bucket-1:foobar@localhost:8091"
+            },
+            "db": {
+              "server": "http://localhost:8091",
+              "bucket":"bucket-1",
+              "username":"bucket-1",
+              "password":"foobar",
+              "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+              "sync":
+            `
+              function(doc, oldDoc) {
+                if (doc.type == "reject_me") {
+                  throw({forbidden : "Rejected document"})
+                } else if (doc.type == "bar") {
+              // add "bar" docs to the "important" channel
+                    channel("important");
+            } else if (doc.type == "secret") {
+                  if (!doc.owner) {
+                    throw({forbidden : "Secret documents \ must have an owner field"})
+                  }
+            } else {
+                // all other documents just go into all channels listed in the doc["channels"] field
+                channel(doc.channels)
+            }
+              }
+            `
+            }
+          }
+        }
+        """
+        with_passwords_removed = remove_passwords(json_with_passwords)
+        assert "foobar" not in with_passwords_removed
+        pass
+
+    def test_alternative_config(self):
+        print("test_alternative_config")
+
+        sg_config = '{"Interface":":4984","AdminInterface":":4985","Facebook":{"Register":true},"Log":["*"],"Databases":{"todolite":{"server":"http://localhost:8091","pool":"default","bucket":"default","name":"todolite","sync":"\\nfunction(doc, oldDoc) {\\n  // NOTE this function is the same across the iOS, Android, and PhoneGap versions.\\n  if (doc.type == \\"task\\") {\\n    if (!doc.list_id) {\\n      throw({forbidden : \\"Items must have a list_id.\\"});\\n    }\\n    channel(\\"list-\\"+doc.list_id);\\n  } else if (doc.type == \\"list\\" || (doc._deleted \\u0026\\u0026 oldDoc \\u0026\\u0026 oldDoc.type == \\"list\\")) {\\n    // Make sure that the owner propery exists:\\n    var owner = oldDoc ? oldDoc.owner : doc.owner;\\n    if (!owner) {\\n      throw({forbidden : \\"List must have an owner.\\"});\\n    }\\n\\n    // Make sure that only the owner of the list can update the list:\\n    if (doc.owner \\u0026\\u0026 owner != doc.owner) {\\n      throw({forbidden : \\"Cannot change owner for lists.\\"});\\n    }\\n\\n    var ownerName = owner.substring(owner.indexOf(\\":\\")+1);\\n    requireUser(ownerName);\\n\\n    var ch = \\"list-\\"+doc._id;\\n    if (!doc._deleted) {\\n      channel(ch);\\n    }\\n\\n    // Grant owner access to the channel:\\n    access(ownerName, ch);\\n\\n    // Grant shared members access to the channel:\\n    var members = !doc._deleted ? doc.members : oldDoc.members;\\n    if (Array.isArray(members)) {\\n      var memberNames = [];\\n      for (var i = members.length - 1; i \\u003e= 0; i--) {\\n        memberNames.push(members[i].substring(members[i].indexOf(\\":\\")+1))\\n      };\\n      access(memberNames, ch);\\n    }\\n  } else if (doc.type == \\"profile\\") {\\n    channel(\\"profiles\\");\\n    var user = doc._id.substring(doc._id.indexOf(\\":\\")+1);\\n    if (user !== doc.user_id) {\\n      throw({forbidden : \\"Profile user_id must match docid.\\"});\\n    }\\n    requireUser(user);\\n    access(user, \\"profiles\\");\\n  }\\n}\\n","users":{"GUEST":{"name":"","admin_channels":["*"],"all_channels":null,"disabled":true}}}}}'
+
+        with_passwords_removed = remove_passwords(sg_config)
+
+        assert "foobar" not in with_passwords_removed
 
 
 class TestConvertToValidJSON(unittest.TestCase):
