@@ -68,15 +68,18 @@ def convert_to_valid_json(invalid_json):
     if len(groups) != 3:
         raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.  Not sure what to do")
 
+    # The text of the sync function will be in the 2nd group
     sync_function_text = groups[1]
-    print sync_function_text
-    sync_function_escaped = escape_json_value(sync_function_text)
-    print sync_function_escaped
 
-    # result =  "{}\"\"{}".format(groups[0], groups[2])
-    result = groups[0] + '"' + sync_function_escaped + '"' + " " + groups[2]
-    # print("result: {}".format(result))
-    print "result: " + result
+    # Escape double quotes etc so that it's a valid json value
+    sync_function_escaped = escape_json_value(sync_function_text)
+
+    result = "{0}\"{1}\" {2}".format(
+        groups[0],
+        sync_function_escaped,
+        groups[2]
+    )
+
     return result
 
 class TestConvertToValidJSON(unittest.TestCase):
