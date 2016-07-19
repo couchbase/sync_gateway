@@ -344,6 +344,22 @@ def make_curl_task(name, url, user="", password="",
         **kwargs
     )
 
+def add_file_task(sourcefile_path):
+    """
+    Adds the contents of a file to the output zip
+    """
+    def python_add_file_task():
+        with open(sourcefile_path, 'r') as infile:
+            return infile.read()
+
+    task = PythonTask(
+        description="Contents of {}".format(sourcefile_path),
+        callable=python_add_file_task,
+        log_file=os.path.basename(sourcefile_path)
+    )
+
+    return task
+
 def make_query_task(statement, user, password, port):
     url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.quote(statement))
 

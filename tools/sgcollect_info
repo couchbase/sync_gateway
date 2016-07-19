@@ -33,7 +33,7 @@ from tasks import AllOsTask
 from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
-from tasks import PythonTask
+from tasks import add_file_task
 
 # Collects the following info from Sync Gateway
 #
@@ -250,21 +250,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     # Get static server config
     for sg_config_file in sg_config_files:
-        # task = AllOsTask(
-        #    "sg config (%s)" % sg_config_file,
-        #    "cat {}".format(sg_config_file),
-        #    log_file=os.path.basename(sg_config_file),
-        # )
-        def python_cat_file_task():
-            with open(sg_config_file, 'r') as infile:
-                return infile.read()
-
-        task = PythonTask(
-            description="Contents of {}".format(sg_config_file),
-            callable=python_cat_file_task,
-            log_file=os.path.basename(sg_config_file)
-        )
-
+        task = add_file_task(sourcefile_path=sg_config_file)
         collect_config_tasks.append(task)
 
     # Get server config
