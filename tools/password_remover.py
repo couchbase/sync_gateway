@@ -44,7 +44,10 @@ def remove_passwords(json_text):
         print("value type: {0}".format(type(value)))
         print("keys: {0}".format(value.keys()))
         print("server: {0}".format(value["server"]))
-        value["server"] = strip_password_from_url(value["server"])
+        if "server" in value:
+            value["server"] = strip_password_from_url(value["server"])
+        if "password" in value:
+            value["password"] = "******"
 
     formatted_json_string = json.dumps(parsed_json, indent=4)
 
@@ -63,15 +66,12 @@ def strip_password_from_url(url_string):
     """
 
     parsed_url = urlparse(url_string)
-    print("parsed_url: {0}".format(parsed_url))
-    print("username: {0}".format(parsed_url.username))
-    # parsed_url.password = "*******"
-    #parsed_url = parsed_url._replace(username="****")
-    # return parsed_url.geturl()
-    #new_url = urlunparse(parsed_url)
-    #print("new_url: {0}".format(new_url))
-    new_url = "{0}://{1}:{2}/{3}".format(
+    if parsed_url.username == None and parsed_url.password == None:
+       return url_string
+
+    new_url = "{0}://{1}:*****@{2}:{3}/{4}".format(
         parsed_url.scheme,
+        parsed_url.username,
         parsed_url.hostname,
         parsed_url.port,
         parsed_url.query
@@ -144,6 +144,7 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
     url_no_password = strip_password_from_url(url_with_password)
     print("url_no_password: {0}".format(url_no_password))
     assert "foobar" not in url_no_password
+    assert "bucket-1" in url_no_password
 
 
 class TestRemovePasswords(unittest.TestCase):
