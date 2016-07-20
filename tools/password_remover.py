@@ -19,8 +19,6 @@ def is_valid_json(invalid_json):
         json.loads(invalid_json)
         got_exception = False
     except Exception as e:
-        print("Got exception trying to parse json: {0}".format(e))
-        print(invalid_json)
         pass
 
     return got_exception == False
@@ -32,8 +30,6 @@ def remove_passwords(json_text):
     strips out all of the sensitive passwords
     """
     try:
-
-        print("remove_passwords called with: {0}".format(json_text))
 
         # lower case everything so that "databases" works as a key even if the JSON has "Databases"
         # as a key.  seems like there has to be a better way!
@@ -60,8 +56,6 @@ def remove_passwords(json_text):
                     database["password"] = "******"
 
         formatted_json_string = json.dumps(parsed_json, indent=4)
-
-        print("remove_passwords returning: {0}".format(formatted_json_string))
 
         return formatted_json_string
 
@@ -165,11 +159,11 @@ def convert_to_valid_json(invalid_json):
 
 class TestStripPasswordsFromUrl(unittest.TestCase):
 
-    url_with_password = "http://bucket-1:foobar@localhost:8091"
-    url_no_password = strip_password_from_url(url_with_password)
-    assert "foobar" not in url_no_password
-    assert "bucket-1" in url_no_password
-
+    def basic_test(self):
+        url_with_password = "http://bucket-1:foobar@localhost:8091"
+        url_no_password = strip_password_from_url(url_with_password)
+        assert "foobar" not in url_no_password
+        assert "bucket-1" in url_no_password
 
 class TestRemovePasswords(unittest.TestCase):
 
@@ -241,48 +235,49 @@ class TestRemovePasswords(unittest.TestCase):
 
 class TestConvertToValidJSON(unittest.TestCase):
 
+    def basic_test(self):
 
-    invalid_json = """
-    {
-      "log": ["*"],
-      "databases": {
-        "db": {
-          "server": "walrus:",
-          "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
-          "sync":
-        `
-          function(doc, oldDoc) {
-            if (doc.type == "reject_me") {
-              throw({forbidden : "Rejected document"})
-            } else if (doc.type == "bar") {
-          // add "bar" docs to the "important" channel
-                channel("important");
-        } else if (doc.type == "secret") {
-              if (!doc.owner) {
-                throw({forbidden : "Secret documents \ must have an owner field"})
+        invalid_json = """
+        {
+          "log": ["*"],
+          "databases": {
+            "db": {
+              "server": "walrus:",
+              "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+              "sync":
+            `
+              function(doc, oldDoc) {
+                if (doc.type == "reject_me") {
+                  throw({forbidden : "Rejected document"})
+                } else if (doc.type == "bar") {
+              // add "bar" docs to the "important" channel
+                    channel("important");
+            } else if (doc.type == "secret") {
+                  if (!doc.owner) {
+                    throw({forbidden : "Secret documents \ must have an owner field"})
+                  }
+            } else {
+                // all other documents just go into all channels listed in the doc["channels"] field
+                channel(doc.channels)
+            }
               }
-        } else {
-            // all other documents just go into all channels listed in the doc["channels"] field
-            channel(doc.channels)
-        }
+            `
+            }
           }
-        `
         }
-      }
-    }
-    """
+        """
 
-    valid_json = convert_to_valid_json(invalid_json)
+        valid_json = convert_to_valid_json(invalid_json)
 
-    got_exception = True
-    try:
-        parsed_json = json.loads(valid_json)
-        formatted_json_string = json.dumps(parsed_json, indent=4)
-        got_exception = False
-    except Exception as e:
-        pass
+        got_exception = True
+        try:
+            parsed_json = json.loads(valid_json)
+            formatted_json_string = json.dumps(parsed_json, indent=4)
+            got_exception = False
+        except Exception as e:
+            pass
 
-    assert got_exception == False, "Failed to convert to valid JSON"
+        assert got_exception == False, "Failed to convert to valid JSON"
 
 
 if __name__=="__main__":
