@@ -48,10 +48,9 @@ def remove_passwords_from_db_config(database):
         if "password" in channel_index_settings:
             channel_index_settings["password"] = "******"
 
-def remove_passwords(json_text):
+def remove_passwords(json_text, log_json_parsing_exceptions=True):
     """
-    Here is an example of a content postprocessor that
-    strips out all of the sensitive passwords
+    Content postprocessor that strips out all of the sensitive passwords
     """
     try:
 
@@ -80,8 +79,9 @@ def remove_passwords(json_text):
 
     except Exception as e:
         msg = "Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e)
-        print(msg)
-        traceback.print_exc()
+        if log_json_parsing_exceptions:
+            print(msg)
+            traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
 def strip_password_from_url(url_string):
@@ -134,48 +134,62 @@ def escape_json_value(raw_value):
 
 def convert_to_valid_json(invalid_json):
 
-    """
-    Find multiline string wrapped in backticks (``) and convert to a single line wrapped in double quotes
-    """
+    STATE_OUTSIDE_BACKTICK = "STATE_OUTSIDE_BACKTICK"
+    STATE_INSIDE_BACKTICK = "STATE_INSIDE_BACKTICK"
+    state = STATE_OUTSIDE_BACKTICK
+    output = []
+    sync_function_buffer = []
 
-    # is it already valid json?
-    if is_valid_json(invalid_json):
-        return invalid_json
+    # Strip newlines
+    invalid_json = invalid_json.replace('\n', '')
 
-    # remove all newlines to simplify our regular expression.  if newlines were left in, then
-    # it would need to take that into account since '.' will only match any character *except* newlines
-    no_newlines = invalid_json.replace('\n', '')
+    # Strip tabs
+    invalid_json = invalid_json.replace('\t', '')
 
-    # is it valid json after stripping newlines?
-    if is_valid_json(no_newlines):
-        return no_newlines
+    # read string char by char
+    for json_char in invalid_json:
 
-    # (.*)     any characters - group 0
-    # `(.*)`   any characters within backquotes - group 1 -- what we want
-    # (.*)     any characters - group 2
-    regex_expression = '(.*)`(.*)`(.*)'
+        # if non-backtick character:
+        if json_char != '`':
 
-    match = re.match(regex_expression, no_newlines)
-    if match is None:
-        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.")
+            # if in OUTSIDE_BACKTICK state
+            if state == STATE_OUTSIDE_BACKTICK:
+                # append char to output
+                output.append(json_char)
 
-    groups = match.groups()
-    if groups is None or len(groups) != 3:
-        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.")
+            # if in INSIDE_BACKTICK state
+            elif state == STATE_INSIDE_BACKTICK:
+                # append to sync_function_buffer
+                sync_function_buffer.append(json_char)
 
-    # The text of the sync function will be in the 2nd group
-    sync_function_text = groups[1]
+        # if backtick character
+        elif json_char == '`':
 
-    # Escape double quotes etc so that it's a valid json value
-    sync_function_escaped = escape_json_value(sync_function_text)
+            # if in OUTSIDE_BACKTICK state
+            if state == STATE_OUTSIDE_BACKTICK:
+                # transition to INSIDE_BACKTICK state
+                state = STATE_INSIDE_BACKTICK
 
-    result = "{0}\"{1}\" {2}".format(
-        groups[0],
-        sync_function_escaped,
-        groups[2]
-    )
+            # if in INSIDE_BACKTICK state
+            elif state == STATE_INSIDE_BACKTICK:
+                # run sync_function_buffer through escape_json_value()
+                sync_function_buffer_str = "".join(sync_function_buffer)
+                sync_function_buffer_str = escape_json_value(sync_function_buffer_str)
 
-    return result
+                # append to output
+                output.append('"')  # append a double quote
+                output.append(sync_function_buffer_str)
+                output.append('"')  # append a double quote
+
+                # empty the sync_function_buffer
+                sync_function_buffer = []
+
+                # transition to OUTSIDE_BACKTICK state
+                state = STATE_OUTSIDE_BACKTICK
+
+    output_str = "".join(output)
+    return output_str
+
 
 class TestStripPasswordsFromUrl(unittest.TestCase):
 
@@ -307,8 +321,10 @@ class TestRemovePasswords(unittest.TestCase):
           }
         }
         """
-        with_passwords_removed = remove_passwords(unparseable_json_with_passwords)
+        with_passwords_removed = remove_passwords(unparseable_json_with_passwords, log_json_parsing_exceptions=False)
         assert "foobar" not in with_passwords_removed
+
+
 
 
 
@@ -354,7 +370,73 @@ class TestConvertToValidJSON(unittest.TestCase):
             formatted_json_string = json.dumps(parsed_json, indent=4)
             got_exception = False
         except Exception as e:
-            pass
+            print("Exception: {0}".format(e))
+
+        assert got_exception == False, "Failed to convert to valid JSON"
+
+    def basic_test_two_sync_functions(self):
+
+        invalid_json = """
+            {
+              "log": ["*"],
+              "databases": {
+                "db": {
+                  "server": "walrus:",
+                  "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+                  "sync":
+                `
+                  function(doc, oldDoc) {
+                    if (doc.type == "reject_me") {
+                      throw({forbidden : "Rejected document"})
+                    } else if (doc.type == "bar") {
+                  // add "bar" docs to the "important" channel
+                        channel("important");
+                } else if (doc.type == "secret") {
+                      if (!doc.owner) {
+                        throw({forbidden : "Secret documents \ must have an owner field"})
+                      }
+                } else {
+                    // all other documents just go into all channels listed in the doc["channels"] field
+                    channel(doc.channels)
+                }
+                  }
+                `
+                },
+                "db2": {
+                  "server": "walrus:",
+                  "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+                  "sync":
+                `
+                  function(doc, oldDoc) {
+                    if (doc.type == "reject_me") {
+                      throw({forbidden : "Rejected document"})
+                    } else if (doc.type == "bar") {
+                  // add "bar" docs to the "important" channel
+                        channel("important");
+                } else if (doc.type == "secret") {
+                      if (!doc.owner) {
+                        throw({forbidden : "Secret documents \ must have an owner field"})
+                      }
+                } else {
+                    // all other documents just go into all channels listed in the doc["channels"] field
+                    channel(doc.channels)
+                }
+                  }
+                `
+                },
+              }
+            }
+            """
+
+        valid_json = convert_to_valid_json(invalid_json)
+
+        got_exception = True
+        try:
+            parsed_json = json.loads(valid_json)
+            formatted_json_string = json.dumps(parsed_json, indent=4)
+            got_exception = False
+        except Exception as e:
+            print("Exception: {0}".format(e))
 
         assert got_exception == False, "Failed to convert to valid JSON"
 
