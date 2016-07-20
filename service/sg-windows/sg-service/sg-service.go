@@ -32,15 +32,16 @@ func (p *program) run() {
 		p.SyncGateway = exec.Command(p.ExePath)
 	}
 
-	f, err := os.OpenFile("C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sync_gateway_error.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
+	stderrPath := "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sync_gateway_error.log"
+	f, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
 	if err != nil {
-		logger.Warningf("Failed to open std err %q: %v", p.Stderr, err)
+		logger.Warningf("Failed to open std err %q: %v", stderrPath, err)
 		return
 	}
 	defer f.Close()
 	p.SyncGateway.Stderr = f
 
-	err := p.SyncGateway.Start()
+	err = p.SyncGateway.Start()
 	if err != nil {
 		logger.Errorf("Failed to start Sync Gateway due to error %v", err)
 		return
