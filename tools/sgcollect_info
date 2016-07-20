@@ -260,7 +260,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
     # Get static server config
     for sg_config_file in sg_config_files:
-        task = add_file_task(sourcefile_path=sg_config_file)
+        task = add_file_task(sourcefile_path=sg_config_file, content_postprocessors=[password_remover.remove_passwords])
         collect_config_tasks.append(task)
 
 
@@ -283,7 +283,8 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
                                      user="",
                                      password="",
                                      url=db_config_url,
-                                     log_file="running_db_{}_config.log".format(db))
+                                     log_file="running_db_{}_config.log".format(db),
+                                     content_postprocessors=[password_remover.remove_passwords])
         collect_config_tasks.append(config_task)
 
     return collect_config_tasks
