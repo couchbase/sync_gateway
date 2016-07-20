@@ -318,7 +318,8 @@ def get_paths_from_expvars(sg_url):
             try:
                 sg_config_path = get_absolute_path(get_config_path_from_cmdline(cmdline_args[1:]))
             except Exception as e:
-                print("Exception trying to get sync gateway path from expvars: {0}".format(e))
+                print("Exception trying to get absolute sync gateway path from expvars: {0}".format(e))
+                sg_config_path = get_config_path_from_cmdline(cmdline_args[1:])
 
     return (sg_binary_path, sg_config_path)
 
