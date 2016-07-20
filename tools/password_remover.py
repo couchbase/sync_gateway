@@ -79,9 +79,10 @@ def remove_passwords(json_text):
         return formatted_json_string
 
     except Exception as e:
-        print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
+        msg = "Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e)
+        print(msg)
         traceback.print_exc()
-        return json_text
+        return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
 def strip_password_from_url(url_string):
     """
@@ -156,11 +157,11 @@ def convert_to_valid_json(invalid_json):
 
     match = re.match(regex_expression, no_newlines)
     if match is None:
-        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.  Not sure what to do")
+        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.")
 
     groups = match.groups()
     if groups is None or len(groups) != 3:
-        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.  Not sure what to do")
+        raise Exception("Was not valid JSON, but could not find a sync function enclosed in backquotes.")
 
     # The text of the sync function will be in the 2nd group
     sync_function_text = groups[1]
@@ -230,7 +231,7 @@ class TestRemovePasswords(unittest.TestCase):
         """
         with_passwords_removed = remove_passwords(json_with_passwords)
         assert "foobar" not in with_passwords_removed
-        pass
+
 
     def test_alternative_config(self):
 
@@ -260,6 +261,55 @@ class TestRemovePasswords(unittest.TestCase):
         with_passwords_removed = remove_passwords(db_config)
         assert "foobar" not in with_passwords_removed
         pass
+
+    def test_non_parseable_config(self):
+        """
+        If a config is not JSON parseable, make sure passwords are not stored in result
+        """
+        unparseable_json_with_passwords = """
+        {
+          "log": ["*"],
+          "databases": {
+            "db2": {
+                "server": "http://bucket-1:foobar@localhost:8091",
+                "shadow": {
+                    "server": "http://bucket2:foobar@localhost:8091"
+                },
+                "channel_index": {
+                    "server": "http://bucket3:foobar@localhost:8091"
+                }
+            },
+            "db": {
+              "server": "http://localhost:8091",
+              "bucket":"bucket-1",
+              "username":"bucket-1",
+              "password":"foobar",
+              "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+              "sync":
+
+              function(doc, oldDoc) {
+                if (doc.type == "reject_me") {
+                  throw({forbidden : "Rejected document"})
+                } else if (doc.type == "bar") {
+              // add "bar" docs to the "important" channel
+                    channel("important");
+            } else if (doc.type == "secret") {
+                  if (!doc.owner) {
+                    throw({forbidden : "Secret documents \ must have an owner field"})
+                  }
+            } else {
+                // all other documents just go into all channels listed in the doc["channels"] field
+                channel(doc.channels)
+            }
+              }
+            `
+            }
+          }
+        }
+        """
+        with_passwords_removed = remove_passwords(unparseable_json_with_passwords)
+        assert "foobar" not in with_passwords_removed
+
 
 
 class TestConvertToValidJSON(unittest.TestCase):
