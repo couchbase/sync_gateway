@@ -23,6 +23,30 @@ def is_valid_json(invalid_json):
 
     return got_exception == False
 
+def remove_passwords_from_db_config(database):
+    """
+    Given a dictionary with database level config, remove all passwords and sensitive info
+    """
+    if "server" in database:
+        database["server"] = strip_password_from_url(database["server"])
+    if "password" in database:
+        database["password"] = "******"
+
+    # bucket shadowing
+    if "shadow" in database:
+        shadow_settings = database["shadow"]
+        if "server" in shadow_settings:
+            shadow_settings["server"] = strip_password_from_url(shadow_settings["server"])
+        if "password" in shadow_settings:
+            shadow_settings["password"] = "******"
+
+    # distributed index / sg accell
+    if "channel_index" in database:
+        channel_index_settings = database["channel_index"]
+        if "server" in channel_index_settings:
+            channel_index_settings["server"] = strip_password_from_url(channel_index_settings["server"])
+        if "password" in channel_index_settings:
+            channel_index_settings["password"] = "******"
 
 def remove_passwords(json_text):
     """
@@ -42,18 +66,13 @@ def remove_passwords(json_text):
         # if only a database config fragment was passed rather than a full SG config
         # there will be top level "server" and "password" elements that need to be
         # patches
-        if "server" in parsed_json:
-            parsed_json["server"] = strip_password_from_url(parsed_json["server"])
-        if "password" in parsed_json:
-            parsed_json["password"] = "******"
+        remove_passwords_from_db_config(parsed_json)
 
         if "databases" in parsed_json:
             databases = parsed_json["databases"]
             for key, database in databases.iteritems():
-                if "server" in database:
-                    database["server"] = strip_password_from_url(database["server"])
-                if "password" in database:
-                    database["password"] = "******"
+                remove_passwords_from_db_config(database)
+
 
         formatted_json_string = json.dumps(parsed_json, indent=4)
 
@@ -168,13 +187,18 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
 class TestRemovePasswords(unittest.TestCase):
 
     def test_basic(self):
-        print("test_basic")
         json_with_passwords = """
         {
           "log": ["*"],
           "databases": {
             "db2": {
-                "server": "http://bucket-1:foobar@localhost:8091"
+                "server": "http://bucket-1:foobar@localhost:8091",
+                "shadow": {
+                    "server": "http://bucket2:foobar@localhost:8091"
+                },
+                "channel_index": {
+                    "server": "http://bucket3:foobar@localhost:8091"
+                }
             },
             "db": {
               "server": "http://localhost:8091",
@@ -209,7 +233,6 @@ class TestRemovePasswords(unittest.TestCase):
         pass
 
     def test_alternative_config(self):
-        print("test_alternative_config")
 
         sg_config = '{"Interface":":4984","AdminInterface":":4985","Facebook":{"Register":true},"Log":["*"],"Databases":{"todolite":{"server":"http://localhost:8091","pool":"default","bucket":"default","password":"foobar","name":"todolite","sync":"\\nfunction(doc, oldDoc) {\\n  // NOTE this function is the same across the iOS, Android, and PhoneGap versions.\\n  if (doc.type == \\"task\\") {\\n    if (!doc.list_id) {\\n      throw({forbidden : \\"Items must have a list_id.\\"});\\n    }\\n    channel(\\"list-\\"+doc.list_id);\\n  } else if (doc.type == \\"list\\" || (doc._deleted \\u0026\\u0026 oldDoc \\u0026\\u0026 oldDoc.type == \\"list\\")) {\\n    // Make sure that the owner propery exists:\\n    var owner = oldDoc ? oldDoc.owner : doc.owner;\\n    if (!owner) {\\n      throw({forbidden : \\"List must have an owner.\\"});\\n    }\\n\\n    // Make sure that only the owner of the list can update the list:\\n    if (doc.owner \\u0026\\u0026 owner != doc.owner) {\\n      throw({forbidden : \\"Cannot change owner for lists.\\"});\\n    }\\n\\n    var ownerName = owner.substring(owner.indexOf(\\":\\")+1);\\n    requireUser(ownerName);\\n\\n    var ch = \\"list-\\"+doc._id;\\n    if (!doc._deleted) {\\n      channel(ch);\\n    }\\n\\n    // Grant owner access to the channel:\\n    access(ownerName, ch);\\n\\n    // Grant shared members access to the channel:\\n    var members = !doc._deleted ? doc.members : oldDoc.members;\\n    if (Array.isArray(members)) {\\n      var memberNames = [];\\n      for (var i = members.length - 1; i \\u003e= 0; i--) {\\n        memberNames.push(members[i].substring(members[i].indexOf(\\":\\")+1))\\n      };\\n      access(memberNames, ch);\\n    }\\n  } else if (doc.type == \\"profile\\") {\\n    channel(\\"profiles\\");\\n    var user = doc._id.substring(doc._id.indexOf(\\":\\")+1);\\n    if (user !== doc.user_id) {\\n      throw({forbidden : \\"Profile user_id must match docid.\\"});\\n    }\\n    requireUser(user);\\n    access(user, \\"profiles\\");\\n  }\\n}\\n","users":{"GUEST":{"name":"","admin_channels":["*"],"all_channels":null,"disabled":true}}}}}'
 
@@ -225,7 +248,13 @@ class TestRemovePasswords(unittest.TestCase):
             "bucket": "bucket1",
             "server": "http://localhost:8091",
             "password": "foobar",
-            "pool": "default"
+            "pool": "default",
+            "shadow": {
+                "server": "http://bucket2:foobar@localhost:8091"
+            },
+            "channel_index": {
+                "server": "http://bucket3:foobar@localhost:8091"
+            }
         }
         """
         with_passwords_removed = remove_passwords(db_config)
