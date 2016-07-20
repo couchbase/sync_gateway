@@ -341,6 +341,10 @@
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
 		<row><td>AllOtherFiles</td><td>{313AA091-BBF1-45B2-BF63-4810EA8A2F03}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles2</td><td>{51DAF77D-B04C-44A8-9301-E8F91ECDB0F7}</td><td>VAR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles3</td><td>{10B44FD0-E1DA-4578-9876-C52573AA0D6D}</td><td>LIB</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles4</td><td>{31493EF4-B363-4C0E-A325-B219A8AFF6FB}</td><td>COUCHBASE</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles5</td><td>{178E74A5-3BA2-48B8-8E75-E9E8F0AEFE3E}</td><td>LOGS</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_windows.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_windows.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sgcollect_info.exe</td><td>{33630111-6855-4D6F-AF25-45AAD04FE5FE}</td><td>TOOLS</td><td>8</td><td/><td>sgcollect_info.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
@@ -1012,8 +1016,16 @@
 	<table name="CreateFolder">
 		<col key="yes" def="s72">Directory_</col>
 		<col key="yes" def="s72">Component_</col>
+		<row><td>COUCHBASE</td><td>AllOtherFiles4</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles2</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles3</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles4</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles5</td></row>
 		<row><td>INSTALLDIR</td><td>IS_ININSTALL_SHORTCUT</td></row>
 		<row><td>INSTALLDIR</td><td>sgcollect_info</td></row>
+		<row><td>LIB</td><td>AllOtherFiles3</td></row>
+		<row><td>LOGS</td><td>AllOtherFiles5</td></row>
+		<row><td>VAR</td><td>AllOtherFiles2</td></row>
 	</table>
 
 	<table name="CustomAction">
@@ -1096,6 +1108,7 @@
 		<row><td>ALLUSERSPROFILE</td><td>TARGETDIR</td><td>.:ALLUSE~1|All Users</td><td/><td>0</td><td/></row>
 		<row><td>AdminToolsFolder</td><td>TARGETDIR</td><td>.:Admint~1|AdminTools</td><td/><td>0</td><td/></row>
 		<row><td>AppDataFolder</td><td>TARGETDIR</td><td>.:APPLIC~1|Application Data</td><td/><td>0</td><td/></row>
+		<row><td>COUCHBASE</td><td>LIB</td><td>COUCHB~1|couchbase</td><td/><td>0</td><td/></row>
 		<row><td>COUCHBASE__INC.</td><td>ProgramFilesFolder</td><td>COUCHB~1|Couchbase</td><td/><td>0</td><td/></row>
 		<row><td>CommonAppDataFolder</td><td>TARGETDIR</td><td>.:Common~1|CommonAppData</td><td/><td>0</td><td/></row>
 		<row><td>CommonFiles64Folder</td><td>TARGETDIR</td><td>.:Common64</td><td/><td>0</td><td/></row>
@@ -1111,6 +1124,8 @@
 		<row><td>ISMyCompanyDir</td><td>ProgramFilesFolder</td><td>MYCOMP~1|My Company Name</td><td/><td>0</td><td/></row>
 		<row><td>ISMyProductDir</td><td>ISMyCompanyDir</td><td>MYPROD~1|My Product Name</td><td/><td>0</td><td/></row>
 		<row><td>ISYourDataBaseDir</td><td>INSTALLDIR</td><td>Database</td><td/><td>0</td><td/></row>
+		<row><td>LIB</td><td>VAR</td><td>lib</td><td/><td>0</td><td/></row>
+		<row><td>LOGS</td><td>COUCHBASE</td><td>logs</td><td/><td>0</td><td/></row>
 		<row><td>LocalAppDataFolder</td><td>TARGETDIR</td><td>.:LocalA~1|LocalAppData</td><td/><td>0</td><td/></row>
 		<row><td>MY_PRODUCT_NAME</td><td>COUCHBASE__INC.</td><td>MYPROD~1|My Product Name</td><td/><td>0</td><td/></row>
 		<row><td>MyPicturesFolder</td><td>TARGETDIR</td><td>.:MyPict~1|MyPictures</td><td/><td>0</td><td/></row>
@@ -1131,6 +1146,7 @@
 		<row><td>TempFolder</td><td>TARGETDIR</td><td>.:Temp</td><td/><td>0</td><td/></row>
 		<row><td>TemplateFolder</td><td>TARGETDIR</td><td>.:ShellNew</td><td/><td>0</td><td/></row>
 		<row><td>USERPROFILE</td><td>TARGETDIR</td><td>.:USERPR~1|UserProfile</td><td/><td>0</td><td/></row>
+		<row><td>VAR</td><td>INSTALLDIR</td><td>var</td><td/><td>0</td><td/></row>
 		<row><td>WindowsFolder</td><td>TARGETDIR</td><td>.:Windows</td><td/><td>0</td><td/></row>
 		<row><td>WindowsVolume</td><td>TARGETDIR</td><td>.:WinRoot</td><td/><td>0</td><td/></row>
 		<row><td>couchb_1_couchbase__inc.</td><td>ProgramMenuFolder</td><td>COUCHB~1|Couchbase, Inc.</td><td/><td>1</td><td/></row>
@@ -1829,6 +1845,10 @@
 		<col key="yes" def="s72">Component_</col>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles</td></row>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles1</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles2</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles3</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles4</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles5</td></row>
 		<row><td>Sync_Gateway_Files</td><td>IS_ININSTALL_SHORTCUT</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sg_windows.exe</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sgcollect_info.exe</td></row>
@@ -2003,6 +2023,10 @@
 		<col def="S0">Miscellaneous</col>
 		<row><td>AllOtherFiles</td><td/><td/><td>_18BC31A1_BA70_4DC6_A80A_B57B53686816_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>AllOtherFiles1</td><td/><td/><td>_E0898BA1_B9A4_40FB_BE7A_DED099FFD6CA_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles2</td><td/><td/><td>_7E0D3F57_C3A3_4DB3_B276_06F9A0277097_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles3</td><td/><td/><td>_667A2695_F40A_4BC1_B1F1_BB730BAB2521_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles4</td><td/><td/><td>_FCD00A24_A4B9_4DC8_8280_6570A03A9E3A_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles5</td><td/><td/><td>_CE2F0011_A179_43EA_BC85_EC1444FD5507_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td/><td/><td>_293EBFE3_A3F9_4726_9D49_510ED0C578AB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sg_windows.exe</td><td/><td/><td>_E5BC4C67_528B_47DE_99C3_91D7DB1E6FE2_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sgcollect_info.exe</td><td/><td/><td>_7E7D338D_9E02_43E0_B5D1_4E47E4961915_FILTER</td><td/><td/><td/><td/></row>

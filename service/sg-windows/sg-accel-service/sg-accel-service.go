@@ -31,6 +31,15 @@ func (p *program) run() {
 	} else {
 		p.SGAccel = exec.Command(p.ExePath)
 	}
+
+	f, err := os.OpenFile("C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sg_accel_error.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
+	if err != nil {
+		logger.Warningf("Failed to open std err %q: %v", p.Stderr, err)
+		return
+	}
+
+	defer f.Close()
+	p.SyncGateway.Stderr = f
 	err := p.SGAccel.Start()
 	if err != nil {
 		logger.Errorf("Failed to start Sync Gateway Accelerator due to error %v", err)

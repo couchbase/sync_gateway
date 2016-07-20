@@ -341,6 +341,10 @@
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
 		<row><td>AllOtherFiles</td><td>{313AA091-BBF1-45B2-BF63-4810EA8A2F03}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles2</td><td>{EF194135-3EC4-4350-B395-31B248684E19}</td><td>VAR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles3</td><td>{1D41728F-E94C-452C-AF9E-0F31DAD3BB94}</td><td>LIB</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles4</td><td>{C2053965-4596-4445-910D-8B2852112044}</td><td>COUCHBASE</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles5</td><td>{18D8D968-907B-4503-9D25-E364F49F9A4C}</td><td>LOGS</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel_service.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel_service.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
@@ -1012,8 +1016,16 @@
 	<table name="CreateFolder">
 		<col key="yes" def="s72">Directory_</col>
 		<col key="yes" def="s72">Component_</col>
+		<row><td>COUCHBASE</td><td>AllOtherFiles4</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles2</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles3</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles4</td></row>
+		<row><td>INSTALLDIR</td><td>AllOtherFiles5</td></row>
 		<row><td>INSTALLDIR</td><td>IS_ININSTALL_SHORTCUT</td></row>
 		<row><td>INSTALLDIR</td><td>sgcollect_info</td></row>
+		<row><td>LIB</td><td>AllOtherFiles3</td></row>
+		<row><td>LOGS</td><td>AllOtherFiles5</td></row>
+		<row><td>VAR</td><td>AllOtherFiles2</td></row>
 	</table>
 
 	<table name="CustomAction">
@@ -1096,6 +1108,7 @@
 		<row><td>ALLUSERSPROFILE</td><td>TARGETDIR</td><td>.:ALLUSE~1|All Users</td><td/><td>0</td><td/></row>
 		<row><td>AdminToolsFolder</td><td>TARGETDIR</td><td>.:Admint~1|AdminTools</td><td/><td>0</td><td/></row>
 		<row><td>AppDataFolder</td><td>TARGETDIR</td><td>.:APPLIC~1|Application Data</td><td/><td>0</td><td/></row>
+		<row><td>COUCHBASE</td><td>LIB</td><td>COUCHB~1|couchbase</td><td/><td>0</td><td/></row>
 		<row><td>COUCHBASE__INC.</td><td>ProgramFilesFolder</td><td>COUCHB~1|Couchbase</td><td/><td>0</td><td/></row>
 		<row><td>CommonAppDataFolder</td><td>TARGETDIR</td><td>.:Common~1|CommonAppData</td><td/><td>0</td><td/></row>
 		<row><td>CommonFiles64Folder</td><td>TARGETDIR</td><td>.:Common64</td><td/><td>0</td><td/></row>
@@ -1111,6 +1124,8 @@
 		<row><td>ISMyCompanyDir</td><td>ProgramFilesFolder</td><td>MYCOMP~1|My Company Name</td><td/><td>0</td><td/></row>
 		<row><td>ISMyProductDir</td><td>ISMyCompanyDir</td><td>MYPROD~1|My Product Name</td><td/><td>0</td><td/></row>
 		<row><td>ISYourDataBaseDir</td><td>INSTALLDIR</td><td>Database</td><td/><td>0</td><td/></row>
+		<row><td>LIB</td><td>VAR</td><td>lib</td><td/><td>0</td><td/></row>
+		<row><td>LOGS</td><td>COUCHBASE</td><td>logs</td><td/><td>0</td><td/></row>
 		<row><td>LocalAppDataFolder</td><td>TARGETDIR</td><td>.:LocalA~1|LocalAppData</td><td/><td>0</td><td/></row>
 		<row><td>MY_PRODUCT_NAME</td><td>COUCHBASE__INC.</td><td>MYPROD~1|My Product Name</td><td/><td>0</td><td/></row>
 		<row><td>MyPicturesFolder</td><td>TARGETDIR</td><td>.:MyPict~1|MyPictures</td><td/><td>0</td><td/></row>
@@ -1131,6 +1146,7 @@
 		<row><td>TempFolder</td><td>TARGETDIR</td><td>.:Temp</td><td/><td>0</td><td/></row>
 		<row><td>TemplateFolder</td><td>TARGETDIR</td><td>.:ShellNew</td><td/><td>0</td><td/></row>
 		<row><td>USERPROFILE</td><td>TARGETDIR</td><td>.:USERPR~1|UserProfile</td><td/><td>0</td><td/></row>
+		<row><td>VAR</td><td>INSTALLDIR</td><td>var</td><td/><td>0</td><td/></row>
 		<row><td>WindowsFolder</td><td>TARGETDIR</td><td>.:Windows</td><td/><td>0</td><td/></row>
 		<row><td>WindowsVolume</td><td>TARGETDIR</td><td>.:WinRoot</td><td/><td>0</td><td/></row>
 		<row><td>couchb_1_couchbase__inc.</td><td>ProgramMenuFolder</td><td>COUCHB~1|Couchbase, Inc.</td><td/><td>1</td><td/></row>
@@ -1829,6 +1845,10 @@
 		<col key="yes" def="s72">Component_</col>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles</td></row>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles1</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles2</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles3</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles4</td></row>
+		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles5</td></row>
 		<row><td>Sync_Gateway_Files</td><td>IS_ININSTALL_SHORTCUT</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sg_accel.exe</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sg_accel_service.exe</td></row>
@@ -2002,6 +2022,10 @@
 		<col def="S0">Miscellaneous</col>
 		<row><td>AllOtherFiles</td><td/><td/><td>_18BC31A1_BA70_4DC6_A80A_B57B53686816_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>AllOtherFiles1</td><td/><td/><td>_E0898BA1_B9A4_40FB_BE7A_DED099FFD6CA_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles2</td><td/><td/><td>_216A126F_4401_4BD0_BEF0_1E3C5C12FFB1_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles3</td><td/><td/><td>_856FD1B5_EC1C_496E_8DD1_9320C58288D7_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles4</td><td/><td/><td>_EF0515C7_5993_455B_9F49_0F2590D8E181_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>AllOtherFiles5</td><td/><td/><td>_A70DA330_213B_41EA_BCD9_D95EB44A39AB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td/><td/><td>_293EBFE3_A3F9_4726_9D49_510ED0C578AB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sg_accel.exe</td><td/><td/><td>_074FBDC3_5A35_4CDB_940C_23B4369E994A_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>sg_accel_service.exe</td><td/><td/><td>_E5BC4C67_528B_47DE_99C3_91D7DB1E6FE2_FILTER</td><td/><td/><td/><td/></row>
