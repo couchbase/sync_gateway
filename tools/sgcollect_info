@@ -96,7 +96,43 @@ def expvar_url(sg_url):
 
     return '{}/_expvar'.format(sg_url)
 
-def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
+
+def make_http_client_pprof_tasks(sg_url):
+
+    """
+    These tasks use the python http client to collect the raw pprof data, which can later
+    be rendered into something human readable
+    """
+    profile_types = [
+        "profile",
+        "heap",
+        "goroutine",
+    ]
+
+    base_pprof_url = "{}/_debug/pprof".format(sg_url)
+
+    pprof_tasks = []
+    for profile_type in profile_types:
+        sg_pprof_url = "{}/{}".format(base_pprof_url, profile_type)
+        task = make_curl_task(name="Collect {0} pprof via http client".format(profile_type),
+                              user="",
+                              password="",
+                              url=sg_pprof_url,
+                              log_file="pprof_http_{}.log".format(profile_type))
+
+        pprof_tasks.append(task)
+
+    return pprof_tasks
+
+
+def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
+
+    """
+    These tasks use "go tool" to try to collect the pprof data.  This only works if "go" is
+    installed on the target system, but has the advantage that the output will be pre-rendered,
+    possibly into PDFs, which means less work will be required to generate human readable pprof
+    output
+    """
 
     pprof_tasks = []
 
@@ -371,7 +407,9 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         sg_config_path = sync_gateway_config_path_option
     
     # Add a task to collect pprofs
-    pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url)
+    go_tool_pprof_tasks = make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url)
+
+    http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url)
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url)
@@ -384,7 +422,8 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         [
             collect_logs_tasks,
             py_expvar_task,
-            pprof_tasks,
+            http_client_pprof_tasks,
+            go_tool_pprof_tasks,
             config_tasks,
             status_tasks,
         ]
