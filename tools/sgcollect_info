@@ -63,24 +63,29 @@ def create_option_parser():
     parser.add_option("-p", dest="product_only", help="gather only product related information",
                       action="store_true", default=False)
     parser.add_option("-d", action="callback", callback=dump_utilities,
-                      help="dump a list of commands that cbcollect_info needs")
+                      help="dump a list of commands that sgcollect_info needs")
     parser.add_option("--watch-stdin", dest="watch_stdin",
                       action="store_true", default=False,
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--just-upload-into", dest="just_upload_into",
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
-                      help="gather diagnotics and upload it for couchbase support. Gives upload host")
+                      help="if specified, gathers diagnotics and uploads it to the specified host,"
+                           " e.g 's3.amazonaws.com/cb-customers'")
     parser.add_option("--customer", dest="upload_customer",
-                      help="specifies customer name for upload")
+                      help="used in conjunction with '--upload-host' and '--ticket', "
+                           "specifies the customer name for the upload")
     parser.add_option("--ticket", dest="upload_ticket", type='ticket',
-                      help="specifies support ticket number for upload")
+                      help="used in conjunction with '--upload-host' and '--customer',"
+                           " specifies the support ticket number for the upload."
+                           " e.g 1234 (must be numeric), contact Couchbase Support to open a new"
+                           "ticket if you do not already have one.")
     parser.add_option("--sync-gateway-url", dest="sync_gateway_url",
                       help="Sync Gateway admin port URL, eg, http://localhost:4985")
     parser.add_option("--sync-gateway-config", dest="sync_gateway_config",
-                      help="Path to Sync Gateway config.  By default will try to discover via expvars")
+                      help="path to Sync Gateway config.  By default will try to discover via expvars")
     parser.add_option("--sync-gateway-executable", dest="sync_gateway_executable",
-                      help="Path to Sync Gateway executable.  By default will try to discover via expvars")
+                      help="path to Sync Gateway executable.  By default will try to discover via expvars")
     
     return parser
 
