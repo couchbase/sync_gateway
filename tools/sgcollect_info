@@ -157,7 +157,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         "sync_gateway_error.log": os.path.join("sync_gateway", "logs", "sync_gateway_error.log"),
         "sg_accel_access.log": os.path.join("sg_accel", "logs", "sg_accel_access.log"),
         "sg_accel_error.log": os.path.join("sg_accel", "logs", "sg_accel_error.log"),
-        "windows_sg_error.log": os.path.join("logs", "sync_gateway_access.log"),
+        "windows_sg_error.log": os.path.join("logs", "sync_gateway_error.log"),
         "windows_sa_error.log": os.path.join("logs", "sg_accel_error.log"),
     }
 
