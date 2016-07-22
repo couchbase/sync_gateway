@@ -878,35 +878,20 @@ class CurlKiller:
         self.p = None
 
 def do_upload_and_exit(path, url):
-    output_fd, output_file = tempfile.mkstemp()
-    os.close(output_fd)
+    infile = open(path, 'rb')
+    filedata = infile.read()
+    opener = urllib.build_opener()
+    request = urllib.Request(url.encode('utf-8'),data=filedata)
+    request.add_header(str('Content-Type'), str('application/zip'))
+    request.get_method = lambda: str('PUT')
+    url = opener.open(request)
 
-    AltExit.register(lambda: os.unlink(output_file))
-
-    args = ["curl", "-sS",
-            "--output", output_file,
-            "--write-out", "%{http_code}", "--upload-file", path, url]
-    AltExit.lock.acquire()
-    try:
-        p = subprocess.Popen(args, stdout=subprocess.PIPE)
-        k = CurlKiller(p)
-        AltExit.register_and_unlock(k.cleanup)
-    except Exception, e:
-        AltExit.lock.release()
-        raise e
-
-    stdout, _ = p.communicate()
-    k.disarm()
-
-    if p.returncode != 0:
-        sys.exit(1)
+    if url.getcode() == 200:
+        log('Done uploading')
+        sys.exit(0)
     else:
-        if stdout.strip() == '200':
-            log('Done uploading')
-            sys.exit(0)
-        else:
-            log('HTTP status code: %s' % stdout)
-            sys.exit(1)
+        log('HTTP status code: %s' % url.getcode())
+        sys.exit(1)
 
 def parse_host(host):
     url = urlparse.urlsplit(host)
