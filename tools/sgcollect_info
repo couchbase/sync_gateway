@@ -20,6 +20,7 @@ import shutil
 import urlparse
 import json
 import tempfile
+from sys import platform as _platform
 
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
@@ -96,7 +97,43 @@ def expvar_url(sg_url):
 
     return '{}/_expvar'.format(sg_url)
 
-def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
+
+def make_http_client_pprof_tasks(sg_url):
+
+    """
+    These tasks use the python http client to collect the raw pprof data, which can later
+    be rendered into something human readable
+    """
+    profile_types = [
+        "profile",
+        "heap",
+        "goroutine",
+    ]
+
+    base_pprof_url = "{}/_debug/pprof".format(sg_url)
+
+    pprof_tasks = []
+    for profile_type in profile_types:
+        sg_pprof_url = "{}/{}".format(base_pprof_url, profile_type)
+        task = make_curl_task(name="Collect {0} pprof via http client".format(profile_type),
+                              user="",
+                              password="",
+                              url=sg_pprof_url,
+                              log_file="pprof_http_{}.log".format(profile_type))
+
+        pprof_tasks.append(task)
+
+    return pprof_tasks
+
+
+def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
+
+    """
+    These tasks use "go tool" to try to collect the pprof data.  This only works if "go" is
+    installed on the target system, but has the advantage that the output will be pre-rendered,
+    possibly into PDFs, which means less work will be required to generate human readable pprof
+    output
+    """
 
     pprof_tasks = []
 
@@ -134,7 +171,7 @@ def make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url):
             task = AllOsTask(
                 description,
                 cmd,
-                log_file=out_filename,
+                log_file=dest_path,
             )
             pprof_tasks.append(task)
 
@@ -330,12 +367,13 @@ def get_paths_from_expvars(sg_url):
 
 
 def get_absolute_path(relative_path):
-
+    sync_gateway_cwd = ''
     try:
-        sync_gateway_pid = subprocess.check_output(['pgrep', 'sync_gateway']).split()[0]
-        sync_gateway_cwd = subprocess.check_output(['readlink', '-e', '/proc/{}/cwd'.format(sync_gateway_pid)]).strip('\n')
+        if _platform.startswith("linux"):
+            sync_gateway_pid = subprocess.check_output(['pgrep', 'sync_gateway']).split()[0]
+            sync_gateway_cwd = subprocess.check_output(['readlink', '-e', '/proc/{}/cwd'.format(sync_gateway_pid)]).strip('\n')
     except subprocess.CalledProcessError:
-        sync_gateway_cwd = ''
+        pass
 
     return os.path.join(sync_gateway_cwd, relative_path)
 
@@ -353,7 +391,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
-    print "Expvars sg_binary_path: {} sg_config_path: {}".format(sg_binary_path, sg_config_path) 
+    print "Discovered from expvars: sg_binary_path={} sg_config_path={}".format(sg_binary_path, sg_config_path)
 
     # If user passed in a specific path to the SG binary, then use it
     if sync_gateway_executable_path is not None and len(sync_gateway_executable_path) > 0:
@@ -371,7 +409,9 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         sg_config_path = sync_gateway_config_path_option
     
     # Add a task to collect pprofs
-    pprof_tasks = make_collect_pprof_tasks(zip_dir, sg_binary_path, sg_url)
+    go_tool_pprof_tasks = make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url)
+
+    http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url)
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url)
@@ -384,7 +424,8 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         [
             collect_logs_tasks,
             py_expvar_task,
-            pprof_tasks,
+            http_client_pprof_tasks,
+            go_tool_pprof_tasks,
             config_tasks,
             status_tasks,
         ]
@@ -491,7 +532,6 @@ def main():
         sg_binary_path = options.sync_gateway_executable
 
     # Run SG specific tasks
-    print "zip_dir: {}".format(zip_dir)
     for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable):
         runner.run(task)
 
