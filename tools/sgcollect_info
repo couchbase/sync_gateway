@@ -170,7 +170,7 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
             task = AllOsTask(
                 description,
                 cmd,
-                log_file=out_filename,
+                log_file=dest_path,
             )
             pprof_tasks.append(task)
 
