@@ -158,7 +158,8 @@ class PythonTask(object):
             fp.write(result)
             return 0
         except Exception as e:
-            print("Exception executing python task: {}".format(e))
+            if self.log_exception:
+                print("Exception executing python task: {}".format(e))
             return 1
 
     def will_run(self):
@@ -376,7 +377,8 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
     task = PythonTask(
         description="Contents of {}".format(sourcefile_path),
         callable=python_add_file_task,
-        log_file=os.path.basename(sourcefile_path)
+        log_file=os.path.basename(sourcefile_path),
+        log_exception=False,
     )
 
     return task

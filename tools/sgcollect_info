@@ -20,6 +20,7 @@ import shutil
 import urlparse
 import json
 import tempfile
+from sys import platform as _platform
 
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
@@ -366,12 +367,13 @@ def get_paths_from_expvars(sg_url):
 
 
 def get_absolute_path(relative_path):
-
+    sync_gateway_cwd = ''
     try:
-        sync_gateway_pid = subprocess.check_output(['pgrep', 'sync_gateway']).split()[0]
-        sync_gateway_cwd = subprocess.check_output(['readlink', '-e', '/proc/{}/cwd'.format(sync_gateway_pid)]).strip('\n')
+        if _platform.startswith("linux"):
+            sync_gateway_pid = subprocess.check_output(['pgrep', 'sync_gateway']).split()[0]
+            sync_gateway_cwd = subprocess.check_output(['readlink', '-e', '/proc/{}/cwd'.format(sync_gateway_pid)]).strip('\n')
     except subprocess.CalledProcessError:
-        sync_gateway_cwd = ''
+        pass
 
     return os.path.join(sync_gateway_cwd, relative_path)
 
@@ -389,7 +391,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
-    print "Expvars sg_binary_path: {} sg_config_path: {}".format(sg_binary_path, sg_config_path) 
+    print "Discovered from expvars: sg_binary_path={} sg_config_path={}".format(sg_binary_path, sg_config_path)
 
     # If user passed in a specific path to the SG binary, then use it
     if sync_gateway_executable_path is not None and len(sync_gateway_executable_path) > 0:
@@ -530,7 +532,6 @@ def main():
         sg_binary_path = options.sync_gateway_executable
 
     # Run SG specific tasks
-    print "zip_dir: {}".format(zip_dir)
     for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable):
         runner.run(task)
 
