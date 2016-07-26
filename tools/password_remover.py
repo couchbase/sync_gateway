@@ -57,7 +57,7 @@ def remove_passwords_from_db_config(database):
         if isinstance(item, dict):
             print "is a dictionary"
             remove_passwords_from_db_config(item)
-            walk(item)
+            # walk(item)
 
 
 def walk(node):
@@ -247,7 +247,7 @@ class TestRemovePasswords(unittest.TestCase):
                 }
             },
             "db": {
-              "server": "http://localhost:8091",
+              "server": "http://bucket4:foobar@localhost:8091",
               "bucket":"bucket-1",
               "username":"bucket-1",
               "password":"foobar",
