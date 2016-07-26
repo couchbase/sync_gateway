@@ -289,6 +289,8 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
     sg_config_files = [
         "/home/sg_accel/sg_accel.json",                                     # linux sg accel
         "/home/sync_gateway/sync_gateway.json",                             # linux sync gateway
+        "/opt/sync_gateway/etc/sync_gateway.json",                          # amazon linux AMI sync gateway
+        "/opt/sg_accel/etc/sg_accel.json",                                  # amazon linux AMI sg accel
         "/Users/sync_gateway/sg_accel.json",                                # OSX sg accel
         "/Users/sync_gateway/sync_gateway.json"                             # OSX sync gateway
         R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows sg accel
