@@ -27,26 +27,54 @@ def remove_passwords_from_db_config(database):
     """
     Given a dictionary with database level config, remove all passwords and sensitive info
     """
+
+    if not isinstance(database, dict):
+        return
+
     if "server" in database:
         database["server"] = strip_password_from_url(database["server"])
     if "password" in database:
         database["password"] = "******"
 
-    # bucket shadowing
-    if "shadow" in database:
-        shadow_settings = database["shadow"]
-        if "server" in shadow_settings:
-            shadow_settings["server"] = strip_password_from_url(shadow_settings["server"])
-        if "password" in shadow_settings:
-            shadow_settings["password"] = "******"
+    # # bucket shadowing
+    # if "shadow" in database:
+    #     shadow_settings = database["shadow"]
+    #     if "server" in shadow_settings:
+    #         shadow_settings["server"] = strip_password_from_url(shadow_settings["server"])
+    #     if "password" in shadow_settings:
+    #         shadow_settings["password"] = "******"
+    #
+    # # distributed index / sg accell
+    # if "channel_index" in database:
+    #     channel_index_settings = database["channel_index"]
+    #     if "server" in channel_index_settings:
+    #         channel_index_settings["server"] = strip_password_from_url(channel_index_settings["server"])
+    #     if "password" in channel_index_settings:
+    #         channel_index_settings["password"] = "******"
 
-    # distributed index / sg accell
-    if "channel_index" in database:
-        channel_index_settings = database["channel_index"]
-        if "server" in channel_index_settings:
-            channel_index_settings["server"] = strip_password_from_url(channel_index_settings["server"])
-        if "password" in channel_index_settings:
-            channel_index_settings["password"] = "******"
+    for key, item in database.items():
+        print "key: {0} item: {1}".format(key, item)
+        if isinstance(item, dict):
+            print "is a dictionary"
+            remove_passwords_from_db_config(item)
+            walk(item)
+
+
+def walk(node):
+
+    for key, item in node.items():
+        print "key: {0} item: {1}".format(key, item)
+        if isinstance(item, dict):
+            print "is a dictionary"
+            remove_passwords_from_db_config(item)
+            walk(item)
+
+
+    # for key, item in node.items():
+    #     if isinstance(item, dict):
+    #         walk(item)
+    #     else:
+    #         remove_passwords_from_db_config(item)
 
 def remove_passwords(json_text, log_json_parsing_exceptions=True):
     """
@@ -62,16 +90,19 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
 
         parsed_json = json.loads(valid_json)
 
-        # if only a database config fragment was passed rather than a full SG config
-        # there will be top level "server" and "password" elements that need to be
-        # patches
         remove_passwords_from_db_config(parsed_json)
 
-        if "databases" in parsed_json:
-            databases = parsed_json["databases"]
-            for key, database in databases.iteritems():
-                remove_passwords_from_db_config(database)
+        # walk(parsed_json)
 
+        # # if only a database config fragment was passed rather than a full SG config
+        # # there will be top level "server" and "password" elements that need to be
+        # # patches
+        # remove_passwords_from_db_config(parsed_json)
+        #
+        # if "databases" in parsed_json:
+        #     databases = parsed_json["databases"]
+        #     for key, database in databases.iteritems():
+        #         remove_passwords_from_db_config(database)
 
         formatted_json_string = json.dumps(parsed_json, indent=4)
 
@@ -220,7 +251,7 @@ class TestRemovePasswords(unittest.TestCase):
               "bucket":"bucket-1",
               "username":"bucket-1",
               "password":"foobar",
-              "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+              "users": { "Foo": { "password": "foobar", "disabled": false, "admin_channels": ["*"] } },
               "sync":
             `
               function(doc, oldDoc) {
