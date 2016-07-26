@@ -158,15 +158,16 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
         for format_type in format_types:
             out_filename = "{0}.{1}".format(profile_type, format_type)
             dest_path = os.path.join(os.environ["PPROF_TMPDIR"], out_filename)
-            cmd = "go tool pprof -{0} -seconds=5 -output={1} {2} {3}/{4}".format(
+            cmd = "go tool pprof -{0} -seconds=5 {1} {2}/{3}".format(
                 format_type,
-                dest_path,
                 sg_binary_path,
                 sg_pprof_url,
                 profile_type,
             )
-            print "Command to collect pprof: {}".format(cmd)
-            description = "Collecting sg pprof profile -- which can take several seconds: {} format: {}".format(profile_type, format_type)
+            description = "Running go tool pprof -- which can take several seconds: {} format: {}".format(
+                profile_type,
+                format_type
+            )
 
             task = AllOsTask(
                 description,
