@@ -23,58 +23,26 @@ def is_valid_json(invalid_json):
 
     return got_exception == False
 
-def remove_passwords_from_db_config(database):
+def remove_passwords_from_config(config_fragment):
     """
-    Given a dictionary with database level config, remove all passwords and sensitive info
+    Given a dictionary that contains configuration values, recursively walk the dictionary and:
+
+    - Replace any fields w/ key "password" with "*****"
+    - Replace any fields w/ key "server" with the result of running it through strip_password_from_url()
     """
 
-    if not isinstance(database, dict):
+    if not isinstance(config_fragment, dict):
         return
 
-    if "server" in database:
-        database["server"] = strip_password_from_url(database["server"])
-    if "password" in database:
-        database["password"] = "******"
+    if "server" in config_fragment:
+        config_fragment["server"] = strip_password_from_url(config_fragment["server"])
+    if "password" in config_fragment:
+        config_fragment["password"] = "******"
 
-    # # bucket shadowing
-    # if "shadow" in database:
-    #     shadow_settings = database["shadow"]
-    #     if "server" in shadow_settings:
-    #         shadow_settings["server"] = strip_password_from_url(shadow_settings["server"])
-    #     if "password" in shadow_settings:
-    #         shadow_settings["password"] = "******"
-    #
-    # # distributed index / sg accell
-    # if "channel_index" in database:
-    #     channel_index_settings = database["channel_index"]
-    #     if "server" in channel_index_settings:
-    #         channel_index_settings["server"] = strip_password_from_url(channel_index_settings["server"])
-    #     if "password" in channel_index_settings:
-    #         channel_index_settings["password"] = "******"
-
-    for key, item in database.items():
-        print "key: {0} item: {1}".format(key, item)
+    for key, item in config_fragment.items():
         if isinstance(item, dict):
-            print "is a dictionary"
-            remove_passwords_from_db_config(item)
-            # walk(item)
+            remove_passwords_from_config(item)
 
-
-def walk(node):
-
-    for key, item in node.items():
-        print "key: {0} item: {1}".format(key, item)
-        if isinstance(item, dict):
-            print "is a dictionary"
-            remove_passwords_from_db_config(item)
-            walk(item)
-
-
-    # for key, item in node.items():
-    #     if isinstance(item, dict):
-    #         walk(item)
-    #     else:
-    #         remove_passwords_from_db_config(item)
 
 def remove_passwords(json_text, log_json_parsing_exceptions=True):
     """
@@ -90,19 +58,7 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
 
         parsed_json = json.loads(valid_json)
 
-        remove_passwords_from_db_config(parsed_json)
-
-        # walk(parsed_json)
-
-        # # if only a database config fragment was passed rather than a full SG config
-        # # there will be top level "server" and "password" elements that need to be
-        # # patches
-        # remove_passwords_from_db_config(parsed_json)
-        #
-        # if "databases" in parsed_json:
-        #     databases = parsed_json["databases"]
-        #     for key, database in databases.iteritems():
-        #         remove_passwords_from_db_config(database)
+        remove_passwords_from_config(parsed_json)
 
         formatted_json_string = json.dumps(parsed_json, indent=4)
 
