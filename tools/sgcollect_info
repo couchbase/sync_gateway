@@ -157,7 +157,7 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
     for profile_type in profile_types:
         for format_type in format_types:
             out_filename = "{0}.{1}".format(profile_type, format_type)
-            dest_path = os.path.join(zip_dir, out_filename)
+            dest_path = os.path.join(os.environ["PPROF_TMPDIR"], out_filename)
             cmd = "go tool pprof -{0} -seconds=5 -output={1} {2} {3}/{4}".format(
                 format_type,
                 dest_path,
@@ -548,11 +548,11 @@ def main():
     )
     runner.run(cmd_line_args_task)
 
-    # Clean up intermediate pprof files
-    shutil.rmtree(os.environ["PPROF_TMPDIR"], ignore_errors=True)
-
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
+
+    # Clean up intermediate pprof files
+    shutil.rmtree(os.environ["PPROF_TMPDIR"], ignore_errors=True)
 
     # Upload the zip to the URL to S3 if required
     if upload_url:
