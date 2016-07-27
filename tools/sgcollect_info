@@ -151,7 +151,13 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     #if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
     if not os.path.isfile(sg_binary_path):
-        sg_binary_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "bin", os.path.basename(sg_binary_path))
+        # the filename of the sg_binary without any path information, eg, "sync_gateway"
+        sg_binary_filename = os.path.basename(sg_binary_path)
+
+        # generate path to sync_gateway root folder relative to the location of this sgcollect_info binary (__file__)
+        root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+        sg_binary_path = os.path.join(root_path, "bin", sg_binary_filename)
 
     sg_pprof_url = "{}/_debug/pprof".format(sg_url)
 
