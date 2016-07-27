@@ -200,8 +200,6 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         "sync_gateway_error.log": os.path.join("sync_gateway_error.log"),
         "sg_accel_access.log": os.path.join("sg_accel_access.log"),
         "sg_accel_error.log": os.path.join("sg_accel_error.log"),
-        "windows_sg_error.log": os.path.join("logs", "sync_gateway_error.log"),
-        "windows_sa_error.log": os.path.join("logs", "sg_accel_error.log"),
     }
 
     os_home_dirs = [
@@ -211,7 +209,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         "/var/log/sync_gateway",
         "/Users/sync_gateway/logs",
         "/Users/sg_accel/logs",
-        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase'
+        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs'
     ]
     # Try to find user-specified log path
     config_url = "{}/_config".format(sg_url)
