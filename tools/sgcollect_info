@@ -196,18 +196,20 @@ def extract_element_from_config(element, config):
 def make_collect_logs_tasks(zip_dir, sg_url):
 
     sg_log_files = {
-        "sync_gateway_access.log": os.path.join("sync_gateway", "logs", "sync_gateway_access.log"),
-        "sync_gateway_error.log": os.path.join("sync_gateway", "logs", "sync_gateway_error.log"),
-        "sg_accel_access.log": os.path.join("sg_accel", "logs", "sg_accel_access.log"),
-        "sg_accel_error.log": os.path.join("sg_accel", "logs", "sg_accel_error.log"),
-        "windows_sg_error.log": os.path.join("logs", "sync_gateway_error.log"),
-        "windows_sa_error.log": os.path.join("logs", "sg_accel_error.log"),
+        "sync_gateway_access.log": os.path.join("sync_gateway_access.log"),
+        "sync_gateway_error.log": os.path.join("sync_gateway_error.log"),
+        "sg_accel_access.log": os.path.join("sg_accel_access.log"),
+        "sg_accel_error.log": os.path.join("sg_accel_error.log"),
     }
 
     os_home_dirs = [
-        "/home",                                                    # linux
-        "/Users",                                                   # OSX
-        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase'       #Windows
+        "/home/sg_accel/logs",
+        "/home/sync_gateway/logs",  
+        "/var/log/sg_accel",
+        "/var/log/sync_gateway",
+        "/Users/sync_gateway/logs",
+        "/Users/sg_accel/logs",
+        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs'
     ]
     # Try to find user-specified log path
     config_url = "{}/_config".format(sg_url)
@@ -289,6 +291,8 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
     sg_config_files = [
         "/home/sg_accel/sg_accel.json",                                     # linux sg accel
         "/home/sync_gateway/sync_gateway.json",                             # linux sync gateway
+        "/opt/sync_gateway/etc/sync_gateway.json",                          # amazon linux AMI sync gateway
+        "/opt/sg_accel/etc/sg_accel.json",                                  # amazon linux AMI sg accel
         "/Users/sync_gateway/sg_accel.json",                                # OSX sg accel
         "/Users/sync_gateway/sync_gateway.json"                             # OSX sync gateway
         R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows sg accel
