@@ -149,6 +149,10 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
         "raw",
     ]
 
+    #if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
+    if not os.path.isfile(sg_binary_path):
+        sg_binary_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "bin", os.path.basename(sg_binary_path))
+
     sg_pprof_url = "{}/_debug/pprof".format(sg_url)
 
     # make sure raw profile gz files end up in results dir
