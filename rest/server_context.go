@@ -357,7 +357,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
 				worker := func() (shouldRetry bool, err error, value interface{}) {
-					err = dc.Bucket.Refresh()
+
+					//If DB is going online via an admin request Bucket will be nil
+					if dc.Bucket != nil {
+						err = dc.Bucket.Refresh()
+					} else {
+						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q is going _online", dbName)
+					}
+
 					return err != nil, err, nil
 				}
 
