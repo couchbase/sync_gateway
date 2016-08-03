@@ -19,6 +19,7 @@ import shutil
 import urlparse
 import urllib2
 import base64
+import mmap
 
 class AltExitC(object):
     def __init__(self):
@@ -878,20 +879,28 @@ class CurlKiller:
         self.p = None
 
 def do_upload_and_exit(path, url):
-    infile = open(path, 'rb')
-    filedata = infile.read()
+
+    f = open(path, 'rb')
+
+    # mmap the file to reduce the amount of memory required (see bit.ly/2aNENXC)
+    filedata = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
     opener = urllib2.build_opener()
     request = urllib2.Request(url.encode('utf-8'),data=filedata)
     request.add_header(str('Content-Type'), str('application/zip'))
     request.get_method = lambda: str('PUT')
     url = opener.open(request)
 
+    exit_code = 0
     if url.getcode() == 200:
         log('Done uploading')
-        sys.exit(0)
     else:
-        log('HTTP status code: %s' % url.getcode())
-        sys.exit(1)
+        log('Error uploading.  HTTP status code: %s' % url.getcode())
+        exit_code = 1
+
+    filedata.close()
+    f.close()
+
+    sys.exit(exit_code)
 
 def parse_host(host):
     url = urlparse.urlsplit(host)
