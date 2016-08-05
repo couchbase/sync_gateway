@@ -363,6 +363,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 						err = dc.Bucket.Refresh()
 					} else {
 						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q is going _online", dbName)
+						return false, err, nil
 					}
 
 					return err != nil, err, nil
