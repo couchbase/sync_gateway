@@ -762,9 +762,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		revChannels := doc.History[newRevID].Channels
 		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
-		// Raise event
-		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
+		// Raise event if this is not an echo from a shadow bucket
+		if newRevID != doc.UpstreamRev {
+			if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+				db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
+			}
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache
