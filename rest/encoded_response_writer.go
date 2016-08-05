@@ -21,7 +21,10 @@ type EncodedResponseWriter struct {
 
 // Creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
 func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *EncodedResponseWriter {
-	if !strings.Contains(rq.Header.Get("Accept-Encoding"), "gzip") ||
+	isWebSocketRequest := strings.ToLower(rq.Header.Get("Upgrade")) == "websocket" &&
+		strings.Contains(strings.ToLower(rq.Header.Get("Connection")), "upgrade")
+
+	if isWebSocketRequest || !strings.Contains(rq.Header.Get("Accept-Encoding"), "gzip") ||
 		rq.Method == "HEAD" || rq.Method == "PUT" || rq.Method == "DELETE" {
 		return nil
 	}
