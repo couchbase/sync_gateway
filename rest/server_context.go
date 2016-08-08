@@ -362,7 +362,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 					if dc.Bucket != nil {
 						err = dc.Bucket.Refresh()
 					} else {
-						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q is going _online", dbName)
+						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is no available", dbName)
 						return false, err, nil
 					}
 
@@ -370,8 +370,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				}
 
 				sleeper := base.CreateDoublingSleeperFunc(
-					20, //MaxNumRetries
-					5,   //InitialRetrySleepTimeMS
+					7,  //MaxNumRetries approx 10 minutes total retry duration
+					5,  //InitialRetrySleepTimeMS
 				)
 
 				description := fmt.Sprintf("Attempt reconnect to lost TAP Feed for : %v", dc.Name)

@@ -122,8 +122,8 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
-		20, //MaxNumRetries
-		5,  //InitialRetrySleepTimeMS
+		7, //MaxNumRetries approx 10 minutes total retry duration
+		5, //InitialRetrySleepTimeMS
 	)
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
@@ -570,8 +570,8 @@ func installViews(bucket base.Bucket) error {
 		}
 
 		sleeper := base.CreateDoublingSleeperFunc(
-			20, //MaxNumRetries
-			5,  //InitialRetrySleepTimeMS
+			6, //MaxNumRetries approx 5 minutes total retry duration
+			5, //InitialRetrySleepTimeMS
 		)
 
 		description := fmt.Sprintf("Attempt to install Couchbase design doc bucket : %v", designDocName)
