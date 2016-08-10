@@ -5,8 +5,8 @@
             "release": "default",
             "release_name": "Couchbase Sync Gateway",
             "production": true,
-            "interval": 10,
-            "start_build": 100
+            "interval": 5,
+            "start_build": 1
         }
     }
 }
