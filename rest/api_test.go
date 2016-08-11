@@ -1525,6 +1525,9 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
+	// Wait for change caching to complete
+	time.Sleep(200 * time.Millisecond)
+
 	// Validate the user gets the doc on the _changes feed
 	// Check the _changes feed:
 	var changes struct {
@@ -1540,6 +1543,9 @@ func TestAccessOnTombstone(t *testing.T) {
 	// Delete the document
 	response = rt.send(request("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), ""))
 	assertStatus(t, response, 200)
+
+	// Wait for change caching to complete
+	time.Sleep(200 * time.Millisecond)
 
 	// Check user access again:
 	changes.Results = nil
