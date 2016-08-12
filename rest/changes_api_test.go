@@ -148,7 +148,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assertStatus(t, rt.send(request("DELETE", "/db/alpha?rev="+rev1, "")), 200)
 
 	// Get the updates from the _changes feed:
-	time.Sleep(100 * time.Millisecond)
+	rt.waitForPendingChanges()
 	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since),
 		"", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
@@ -242,6 +242,8 @@ func TestPostChangesWithQueryString(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = it.sendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+
+	it.waitForPendingChanges()
 
 	var changes struct {
 		Results  []db.ChangeEntry

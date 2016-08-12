@@ -138,6 +138,31 @@ func (rt *restTester) ServerContext() *ServerContext {
 	return rt._sc
 }
 
+// Returns first database found for server context.
+func (rt *restTester) getDatabase() *db.DatabaseContext {
+
+	for _, database := range rt.ServerContext().AllDatabases() {
+		return database
+	}
+	return nil
+}
+
+func (rt *restTester) waitForSequence(seq uint64) error {
+	database := rt.getDatabase()
+	if database == nil {
+		return fmt.Errorf("No database found")
+	}
+	return database.WaitForSequence(seq)
+}
+
+func (rt *restTester) waitForPendingChanges() error {
+	database := rt.getDatabase()
+	if database == nil {
+		return fmt.Errorf("No database found")
+	}
+	return database.WaitForPendingChanges()
+}
+
 func (rt *restTester) setAdminParty(partyTime bool) {
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, _ := a.GetUser("")
@@ -1525,8 +1550,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
-	// Wait for change caching to complete
-	time.Sleep(200 * time.Millisecond)
+	rt.waitForPendingChanges()
 
 	// Validate the user gets the doc on the _changes feed
 	// Check the _changes feed:
@@ -1545,7 +1569,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	// Wait for change caching to complete
-	time.Sleep(200 * time.Millisecond)
+	rt.waitForPendingChanges()
 
 	// Check user access again:
 	changes.Results = nil
