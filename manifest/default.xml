@@ -14,7 +14,6 @@
   <remote fetch="git://github.com/kardianos/" name="kardianos"/>
   <remote fetch="git://github.com/coreos/" name="coreos"/>
   <remote fetch="git://github.com/jonboulle/" name="jonboulle"/>
-  <remote fetch="git://github.com/rs/" name="rs"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
 
   
@@ -101,8 +100,6 @@
   <project name="clockwork" path="godeps/src/github.com/jonboulle/clockwork" remote="jonboulle" revision="ed104f61ea4877bea08af6f759805674861e968d"/>
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
-  
-  <project name="xstats" path="godeps/src/github.com/rs/xstats" remote="rs" revision="b242768748b7c5bad2f2c72020f2daf76760d98d"/>
 
 </manifest>
 
