@@ -858,10 +858,8 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			makeUserCtx(db.user))
 		if err == nil {
 			result = output.Channels
-			if !doc.hasFlag(channels.Deleted) { // deleted docs can't grant access
-				access = output.Access
-				roles = output.Roles
-			}
+			access = output.Access
+			roles = output.Roles
 			err = output.Rejection
 			if err != nil {
 				base.Logf("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
