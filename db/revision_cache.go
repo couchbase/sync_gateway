@@ -112,12 +112,12 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Body
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	if value.body == nil && value.err == nil {
-		dbExpvars.Add("revisionCache_misses", 1)
+		base.StatsExpvars.Add("revisionCache_misses", 1)
 		if loaderFunc != nil {
 			value.body, value.history, value.channels, value.err = loaderFunc(value.key)
 		}
 	} else {
-		dbExpvars.Add("revisionCache_hits", 1)
+		base.StatsExpvars.Add("revisionCache_hits", 1)
 	}
 	body := value.body
 	if body != nil {

@@ -15,6 +15,7 @@
   <remote fetch="git://github.com/coreos/" name="coreos"/>
   <remote fetch="git://github.com/jonboulle/" name="jonboulle"/>
   <remote fetch="ssh://github.com/couchbaselabs/" name="couchbaselabs_private"/>
+
   
   <default remote="couchbase" revision="master"/>
 
@@ -99,7 +100,7 @@
   <project name="clockwork" path="godeps/src/github.com/jonboulle/clockwork" remote="jonboulle" revision="ed104f61ea4877bea08af6f759805674861e968d"/>
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
-  
+
 </manifest>
 
 
