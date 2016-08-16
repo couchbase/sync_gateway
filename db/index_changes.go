@@ -38,12 +38,22 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		}()
 
 		var changeWaiter *changeWaiter
-		var userChangeCount uint64
+		var userCounter uint64     // Wait counter used to identify changes to the user document
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
+		var userChanged bool       // Whether the user document has changed
+
+		// Restrict to available channels, expand wild-card, and find since when these channels
+		// have been available to the user:
+		var channelsSince channels.TimedSet
+		if db.user != nil {
+			channelsSince = db.user.FilterToAvailableChannels(chans)
+		} else {
+			channelsSince = channels.AtSequence(chans, 0)
+		}
 
 		if options.Wait {
-			changeWaiter = db.startChangeWaiter(chans)
-			userChangeCount = changeWaiter.CurrentUserCount()
+			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
+			userCounter = changeWaiter.CurrentUserCount()
 			db.initializePrincipalPolling(changeWaiter.GetUserKeys())
 		}
 
@@ -58,15 +68,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			if err != nil {
 				base.Warn("MultiChangesFeed got error reading stable sequence: %v", err)
 				return
-			}
-
-			// Restrict to available channels, expand wild-card, and find since when these channels
-			// have been available to the user:
-			var channelsSince channels.TimedSet
-			if db.user != nil {
-				channelsSince = db.user.FilterToAvailableChannels(chans)
-			} else {
-				channelsSince = channels.AtSequence(chans, 0)
 			}
 
 			// Updates the changeWaiter to the current set of available channels.
@@ -201,7 +202,10 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
-			userChangeCount, addedChannels, err = db.checkForUserUpdates(userChangeCount, changeWaiter)
+			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter)
+			if userChanged && db.user != nil {
+				channelsSince = db.user.FilterToAvailableChannels(chans)
+			}
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
