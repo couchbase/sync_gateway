@@ -11,9 +11,6 @@
     "default": {
       "server": "http://localhost:8091",
       "bucket": "default",
-      "users": {
-        "GUEST": { "disabled": false, "admin_channels": ["*"] }
-      },
       "channel_index": {
         "writer": true,
         "server":"http://localhost:8091",
