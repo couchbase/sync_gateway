@@ -131,7 +131,7 @@ func (h *handler) handleOIDCCallback() error {
 	}
 
 	// Create a Sync Gateway session
-	username, sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
+	username, sessionID, err := h.createSessionForTrustedIdToken(tokenResponse.IDToken, provider)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	username, sessionID, err := h.createSessionForIdToken(tokenResponse.IDToken, provider)
+	username, sessionID, err := h.createSessionForTrustedIdToken(tokenResponse.IDToken, provider)
 	if err != nil {
 		return err
 	}
@@ -200,9 +200,9 @@ func (h *handler) handleOIDCRefresh() error {
 	return nil
 }
 
-func (h *handler) createSessionForIdToken(idToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
+func (h *handler) createSessionForTrustedIdToken(idToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
 
-	user, jwt, err := h.db.Authenticator().AuthenticateJWTForProvider(idToken, provider, h.getOIDCCallbackURL)
+	user, jwt, err := h.db.Authenticator().AuthenticateTrustedJWT(idToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}

@@ -122,7 +122,7 @@ func (h *handler) invoke(method handlerMethod) error {
 	base.StatsExpvars.Add("requests_total", 1)
 	base.StatsExpvars.Add("requests_active", 1)
 	defer base.StatsExpvars.Add("requests_active", -1)
-	
+
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
@@ -279,7 +279,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
-			h.user, _, err = context.Authenticator().AuthenticateJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
+			h.user, _, err = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
@@ -293,7 +293,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		* then authorize this request
 		 */
 		if unsupportedOptions := context.Options.UnsupportedOptions; unsupportedOptions != nil {
-			if unsupportedOptions.EnableOidcTestProvider && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
+			if unsupportedOptions.OidcTestProvider.Enabled && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
 				if username, password := h.getBasicAuth(); username != "" && password != "" {
 					provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name), testProviderAudiences)
 					if provider != nil && provider.ClientID != nil && provider.ValidationKey != nil {
