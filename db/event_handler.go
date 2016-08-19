@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"time"
 )
 
@@ -31,6 +32,9 @@ type Webhook struct {
 
 // default HTTP post timeout
 const kDefaultWebhookTimeout = 60
+
+// used to match the HTTP basic auth component of a URL
+var kBasicAuthUrlRegexp = regexp.MustCompilePOSIX(`:\/\/[^:/]+:[^@/]+@`)
 
 // Creates a new webhook handler based on the url and filter function.
 func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, error) {
@@ -124,16 +128,21 @@ func (wh *Webhook) HandleEvent(event Event) {
 		}()
 
 		if err != nil {
-			base.Warn("Error attempting to post to url %s: %s -- %+v", wh.url, err)
+			base.Warn("Error attempting to post to url %s: %s -- %+v", wh.SanitizedUrl(), err)
 			return
 		}
 
 		base.LogTo("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-			payload, wh.url, resp.Status)
+			payload, wh.SanitizedUrl(), resp.Status)
 	}()
 
 }
 
 func (wh *Webhook) String() string {
-	return fmt.Sprintf("Webhook handler [%s]", wh.url)
+	return fmt.Sprintf("Webhook handler [%s]", wh.SanitizedUrl())
+}
+
+func (wh *Webhook) SanitizedUrl() string {
+	// Basic auth credentials may have been included in the URL, in which case obscure them
+	return kBasicAuthUrlRegexp.ReplaceAllLiteralString(wh.url, "://****:****@")
 }
