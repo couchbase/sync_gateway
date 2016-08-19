@@ -115,11 +115,25 @@ func ValidateDatabaseName(dbName string) error {
 
 // Helper function to open a Couchbase connection and return a specific bucket.
 func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err error)) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(spec, callback)
+	//start a retry loop to connect to the bucket backing off double the delay each time
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		bucket, err = base.GetBucket(spec, callback)
+		return err != nil, err, bucket
+	}
+
+	sleeper := base.CreateDoublingSleeperFunc(
+		7, //MaxNumRetries approx 10 minutes total retry duration
+		5, //InitialRetrySleepTimeMS
+	)
+
+	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
+	err, ibucket := base.RetryLoop(description, worker, sleeper)
+
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadGateway,
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
 	} else {
+		bucket, _ := ibucket.(base.Bucket)
 		err = installViews(bucket)
 	}
 	return
@@ -545,10 +559,25 @@ func installViews(bucket base.Bucket) error {
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
-		if err := bucket.PutDDoc(designDocName, designDoc); err != nil {
-			base.Warn("Error installing Couchbase design doc: %v", err)
-			return err
+
+		//start a retry loop to put design document backing off double the delay each time
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			err = bucket.PutDDoc(designDocName, designDoc)
+			if err != nil {
+				base.Warn("Error installing Couchbase design doc: %v", err)
+			}
+			return err != nil, err, nil
 		}
+
+		sleeper := base.CreateDoublingSleeperFunc(
+			6, //MaxNumRetries approx 5 minutes total retry duration
+			5, //InitialRetrySleepTimeMS
+		)
+
+		description := fmt.Sprintf("Attempt to install Couchbase design doc bucket : %v", designDocName)
+		err, _ := base.RetryLoop(description, worker, sleeper)
+
+		return err
 	}
 
 	return nil
