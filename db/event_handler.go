@@ -132,8 +132,10 @@ func (wh *Webhook) HandleEvent(event Event) {
 			return
 		}
 
-		base.LogTo("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-			payload, wh.SanitizedUrl(), resp.Status)
+		if base.LogEnabled("Events+") {
+			base.LogTo("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
+				payload, wh.SanitizedUrl(), resp.Status)
+		}
 	}()
 
 }
