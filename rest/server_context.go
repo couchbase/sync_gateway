@@ -363,7 +363,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 				sleeper := base.CreateDoublingSleeperFunc(
 					20, //MaxNumRetries
-					5,   //InitialRetrySleepTimeMS
+					5,  //InitialRetrySleepTimeMS
 				)
 
 				description := fmt.Sprintf("Attempt reconnect to lost TAP Feed for : %v", dc.Name)
@@ -464,11 +464,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				unsupportedOptions.EnableUserViews = *config.Unsupported.UserViews.Enabled
 			}
 		}
-		if config.Unsupported.OidcTestProvider != nil {
-			if config.Unsupported.OidcTestProvider.Enabled != nil {
-				unsupportedOptions.EnableOidcTestProvider = *config.Unsupported.OidcTestProvider.Enabled
-			}
-		}
+		unsupportedOptions.OidcTestProvider = *config.Unsupported.OidcTestProvider
 	}
 
 	// Enable doc tracking if needed for autoImport or shadowing
