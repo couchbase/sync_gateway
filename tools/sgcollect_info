@@ -75,7 +75,7 @@ def create_option_parser():
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
                       help="if specified, gathers diagnotics and uploads it to the specified host,"
-                           " e.g 's3.amazonaws.com/cb-customers'")
+                           " e.g 'https://s3.amazonaws.com/cb-customers'")
     parser.add_option("--customer", dest="upload_customer",
                       help="used in conjunction with '--upload-host' and '--ticket', "
                            "specifies the customer name for the upload")
@@ -83,7 +83,8 @@ def create_option_parser():
                       help="used in conjunction with '--upload-host' and '--customer',"
                            " specifies the support ticket number for the upload."
                            " e.g 1234 (must be numeric), contact Couchbase Support to open a new"
-                           "ticket if you do not already have one.")
+                           "ticket if you do not already have one.  For more info, see"
+                           "http://www.couchbase.com/wiki/display/couchbase/Working+with+the+Couchbase+Technical+Support+Team")
     parser.add_option("--sync-gateway-url", dest="sync_gateway_url",
                       help="Sync Gateway admin port URL, eg, http://localhost:4985")
     parser.add_option("--sync-gateway-config", dest="sync_gateway_config",
