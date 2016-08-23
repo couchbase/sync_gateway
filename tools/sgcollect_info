@@ -448,6 +448,31 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     
     return sg_tasks
 
+def discover_sg_binary_path(options, sg_url):
+
+    sg_bin_dirs = [
+        "/opt/couchbase-sync-gateway/bin/sync_gateway",            # Linux + OSX
+        "/opt/couchbase-sg-accel/bin/sg_accel",                    # Linux + OSX
+        R'C:\Program Files (x86)\Couchbase\sync_gateway.exe',      # Windows
+        R'C:\Program Files (x86)\Couchbase\sg_accel.exe',          # Windows
+    ]
+
+    for sg_binary_path_candidate in sg_bin_dirs:
+        if os.path.exists(sg_binary_path_candidate):
+            return sg_binary_path_candidate
+
+
+    # Collect the SG binary
+    sg_binary_path, _ = get_paths_from_expvars(sg_url)
+
+    if options.sync_gateway_executable is not None and len(options.sync_gateway_executable) > 0:
+        if not os.path.exists(options.sync_gateway_executable):
+            raise Exception(
+                "Path to sync gateway executable passed in does not exist: {}".format(options.sync_gateway_executable))
+        return sg_binary_path
+
+    # fallback to whatever was specified in options
+    return options.sync_gateway_executable
 
 def main():
 
@@ -538,13 +563,8 @@ def main():
     if options.verbosity:
         log("Python version: %s" % sys.version)
 
-    # Collect the SG binary
-    sg_binary_path, _ = get_paths_from_expvars(sg_url)
-
-    if options.sync_gateway_executable is not None and len(options.sync_gateway_executable) > 0:
-        if not os.path.exists(options.sync_gateway_executable):
-            raise Exception("Path to sync gateway executable passed in does not exist: {}".format(options.sync_gateway_executable))
-        sg_binary_path = options.sync_gateway_executable
+    # Find path to sg binary
+    sg_binary_path = discover_sg_binary_path(options, sg_url)
 
     # Run SG specific tasks
     for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable):
