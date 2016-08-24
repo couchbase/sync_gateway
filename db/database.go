@@ -122,7 +122,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
-		7, //MaxNumRetries approx 10 minutes total retry duration
+		13, //MaxNumRetries approx 40 seconds total retry duration
 		5, //InitialRetrySleepTimeMS
 	)
 
@@ -557,6 +557,11 @@ func installViews(bucket base.Bucket) error {
 		},
 	}
 
+	sleeper := base.CreateDoublingSleeperFunc(
+		11, //MaxNumRetries approx 10 seconds total retry duration
+		5, //InitialRetrySleepTimeMS
+	)
+
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
 
@@ -569,15 +574,12 @@ func installViews(bucket base.Bucket) error {
 			return err != nil, err, nil
 		}
 
-		sleeper := base.CreateDoublingSleeperFunc(
-			6, //MaxNumRetries approx 5 minutes total retry duration
-			5, //InitialRetrySleepTimeMS
-		)
-
 		description := fmt.Sprintf("Attempt to install Couchbase design doc bucket : %v", designDocName)
 		err, _ := base.RetryLoop(description, worker, sleeper)
 
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
