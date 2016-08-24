@@ -462,7 +462,6 @@ def discover_sg_binary_path(options, sg_url):
             return sg_binary_path_candidate
 
 
-    # Collect the SG binary
     sg_binary_path, _ = get_paths_from_expvars(sg_url)
 
     if options.sync_gateway_executable is not None and len(options.sync_gateway_executable) > 0:
