@@ -229,7 +229,7 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 	return feeds, names
 }
 
-func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter) (newCount uint64, newChannels base.Set, err error) {
+func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter) (isChanged bool, newCount uint64, newChannels base.Set, err error) {
 	if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
 		var previousChannels channels.TimedSet
 		var newChannels base.Set
@@ -240,7 +240,7 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 			previousChannels = db.user.InheritedChannels()
 			if err := db.ReloadUser(); err != nil {
 				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
-				return 0, nil, err
+				return false, 0, nil, err
 			}
 			// check whether channels have changed
 			newChannels = db.user.GetAddedChannels(previousChannels)
@@ -248,9 +248,9 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 				base.LogTo("Changes+", "New channels found after user reload: %v", newChannels)
 			}
 		}
-		return newCount, newChannels, nil
+		return true, newCount, newChannels, nil
 	} else {
-		return userChangeCount, nil, nil
+		return false, userChangeCount, nil, nil
 	}
 }
 
@@ -271,10 +271,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		}()
 
 		var changeWaiter *changeWaiter
-		var userChangeCount uint64
 		var lowSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
+		var userCounter uint64     // Wait counter used to identify changes to the user document
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
+		var userChanged bool       // Whether the user document has changed in a given iteration loop
 
 		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 		// skipped sequences in a future iteration or request.
@@ -285,10 +286,19 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			lowSequence = 0
 		}
 
+		// Restrict to available channels, expand wild-card, and find since when these channels
+		// have been available to the user:
+		var channelsSince channels.TimedSet
+		if db.user != nil {
+			channelsSince = db.user.FilterToAvailableChannels(chans)
+		} else {
+			channelsSince = channels.AtSequence(chans, 0)
+		}
+
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(chans)
-			userChangeCount = changeWaiter.CurrentUserCount()
+			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
+			userCounter = changeWaiter.CurrentUserCount()
 
 		}
 
@@ -309,14 +319,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
-			// Restrict to available channels, expand wild-card, and find since when these channels
-			// have been available to the user:
-			var channelsSince channels.TimedSet
-			if db.user != nil {
-				channelsSince = db.user.FilterToAvailableChannels(chans)
-			} else {
-				channelsSince = channels.AtSequence(chans, 0)
-			}
 
 			// Updates the changeWaiter to the current set of available channels
 			if changeWaiter != nil {
@@ -530,12 +532,15 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Check whether user channel access has changed while waiting:
 			var err error
-			userChangeCount, addedChannels, err = db.checkForUserUpdates(userChangeCount, changeWaiter)
+			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter)
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
 				output <- &change
 				return
+			}
+			if userChanged && db.user != nil {
+				channelsSince = db.user.FilterToAvailableChannels(chans)
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)

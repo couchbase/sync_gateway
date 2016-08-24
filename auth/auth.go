@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/coreos/go-oidc/jose"
+	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -282,9 +283,10 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 
 // Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
 // issuer in the token with a provider.
+// Used to authenticate a JWT token coming from an insecure source (e.g. client request)
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
+func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 
 	base.LogTo("OIDC+", "AuthenticateJWT called with token: %s", token)
 
@@ -311,33 +313,37 @@ func (auth *Authenticator) AuthenticateJWT(token string, providers OIDCProviderM
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
 	}
 
-	return auth.authenticateJWT(jwt, provider, callbackURLFunc)
-}
-
-// Authenticates a user based on a JWT token string and a provider.
-// If the token is validated but the user for the username defined in the subject claim doesn't exist,
-// creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateJWTForProvider(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
-
-	// Parse JWT
-	jwt, err := jose.ParseJWT(token)
-	if err != nil {
-		base.LogTo("OIDC+", "Error parsing JWT in AuthenticateJWTForProvider: %v", err)
-		return nil, jose.JWT{}, err
-	}
-
-	return auth.authenticateJWT(jwt, provider, callbackURLFunc)
-}
-
-func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
-
-	// Verify JWT
+	// VerifyJWT validates the claims and signature on the JWT
 	client := provider.GetClient(callbackURLFunc)
-	err := client.VerifyJWT(jwt)
+	err = client.VerifyJWT(jwt)
 	if err != nil {
 		base.LogTo("OIDC+", "Client %v could not verify JWT. Error: %v", client, err)
 		return nil, jwt, err
 	}
+
+	return auth.authenticateJWT(jwt, provider)
+}
+
+// Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
+// Verifies the token claims, but doesn't require signature verification.
+// If the token is validated but the user for the username defined in the subject claim doesn't exist,
+// creates the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
+
+	// Parse JWT
+	jwt, err := jose.ParseJWT(token)
+	if err != nil {
+		base.LogTo("OIDC+", "Error parsing JWT in AuthenticateTrustedJWT: %v", err)
+		return nil, jose.JWT{}, err
+	}
+
+	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
+	oidc.VerifyClaims(jwt, provider.Issuer, *provider.ClientID)
+	return auth.authenticateJWT(jwt, provider)
+}
+
+// Obtains a Sync Gateway User for the JWT.  Expects that the JWT has already been verified for OIDC compliance.
+func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider) (User, jose.JWT, error) {
 
 	// Extract identity from token
 	identity, identityErr := GetJWTIdentity(jwt)
@@ -373,6 +379,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider,
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
 		base.LogTo("OIDC+", "Registering new user: %v with email: %v", username, identity.Email)
+		var err error
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil {
 			base.LogTo("OIDC+", "Error registering new user: %v", err)

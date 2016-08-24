@@ -357,20 +357,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
 				worker := func() (shouldRetry bool, err error, value interface{}) {
-
-					//If DB is going online via an admin request Bucket will be nil
-					if dc.Bucket != nil {
-						err = dc.Bucket.Refresh()
-					} else {
-						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is no available", dbName)
-						return false, err, nil
-					}
-
+					err = dc.Bucket.Refresh()
 					return err != nil, err, nil
 				}
 
 				sleeper := base.CreateDoublingSleeperFunc(
-					17, //MaxNumRetries approx 10 minutes total retry duration
+					20, //MaxNumRetries
 					5,  //InitialRetrySleepTimeMS
 				)
 
@@ -472,11 +464,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				unsupportedOptions.EnableUserViews = *config.Unsupported.UserViews.Enabled
 			}
 		}
-		if config.Unsupported.OidcTestProvider != nil {
-			if config.Unsupported.OidcTestProvider.Enabled != nil {
-				unsupportedOptions.EnableOidcTestProvider = *config.Unsupported.OidcTestProvider.Enabled
-			}
-		}
+		unsupportedOptions.OidcTestProvider = *config.Unsupported.OidcTestProvider
 	}
 
 	// Enable doc tracking if needed for autoImport or shadowing

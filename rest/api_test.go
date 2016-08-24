@@ -138,6 +138,31 @@ func (rt *restTester) ServerContext() *ServerContext {
 	return rt._sc
 }
 
+// Returns first database found for server context.
+func (rt *restTester) getDatabase() *db.DatabaseContext {
+
+	for _, database := range rt.ServerContext().AllDatabases() {
+		return database
+	}
+	return nil
+}
+
+func (rt *restTester) waitForSequence(seq uint64) error {
+	database := rt.getDatabase()
+	if database == nil {
+		return fmt.Errorf("No database found")
+	}
+	return database.WaitForSequence(seq)
+}
+
+func (rt *restTester) waitForPendingChanges() error {
+	database := rt.getDatabase()
+	if database == nil {
+		return fmt.Errorf("No database found")
+	}
+	return database.WaitForPendingChanges()
+}
+
 func (rt *restTester) setAdminParty(partyTime bool) {
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, _ := a.GetUser("")
@@ -1492,6 +1517,70 @@ func TestChannelAccessChanges(t *testing.T) {
 	db.ChangesClientStats.Reset()
 	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(0))
+}
+
+func TestAccessOnTombstone(t *testing.T) {
+	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
+
+	rt := restTester{syncFn: `function(doc,oldDoc) {
+			 if (doc.owner) {
+			 	access(doc.owner, doc.channel);
+			 }
+			 if (doc._deleted && oldDoc.owner) {
+			 	access(oldDoc.owner, oldDoc.channel);
+			 }
+			 channel(doc.channel)
+		 }`}
+	a := rt.ServerContext().Database("db").Authenticator()
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create user:
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("zero"))
+	a.Save(bernard)
+
+	// Create doc that gives user access to its channel
+	response := rt.send(request("PUT", "/db/alpha", `{"owner":"bernard", "channel":"PBS"}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId := body["rev"].(string)
+
+	rt.waitForPendingChanges()
+
+	// Validate the user gets the doc on the _changes feed
+	// Check the _changes feed:
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "alpha")
+
+	// Delete the document
+	response = rt.send(request("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), ""))
+	assertStatus(t, response, 200)
+
+	// Wait for change caching to complete
+	rt.waitForPendingChanges()
+
+	// Check user access again:
+	changes.Results = nil
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	if len(changes.Results) > 0 {
+		assert.Equals(t, changes.Results[0].ID, "alpha")
+		assert.Equals(t, changes.Results[0].Deleted, true)
+	}
+
 }
 
 //Test for wrong _changes entries for user joining a populated channel

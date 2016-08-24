@@ -84,6 +84,10 @@ func (g *goroutineTracker) recordSnapshot() {
 	// bump the high water mark
 	if numGoroutines > g.HighWaterMark {
 		g.HighWaterMark = numGoroutines
+
+		varInt := expvar.Int{}
+		varInt.Set(int64(numGoroutines))
+		base.StatsExpvars.Set("goroutines_highWaterMark", &varInt)
 	}
 
 	// append to history

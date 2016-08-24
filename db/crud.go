@@ -637,7 +637,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 				doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
 			}
 
-			if len(doc.RecentSequences) > 20 {
+			if len(doc.RecentSequences) > kMaxRecentSequences {
 				// Prune recent sequences that are earlier than the nextSequence.  The dedup window
 				// on the feed is small - sub-second, so we usually shouldn't care about more than
 				// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
@@ -762,9 +762,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		revChannels := doc.History[newRevID].Channels
 		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
-		// Raise event
-		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
+		// Raise event if this is not an echo from a shadow bucket
+		if newRevID != doc.UpstreamRev {
+			if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+				db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
+			}
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache
@@ -856,10 +858,8 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			makeUserCtx(db.user))
 		if err == nil {
 			result = output.Channels
-			if !doc.hasFlag(channels.Deleted) { // deleted docs can't grant access
-				access = output.Access
-				roles = output.Roles
-			}
+			access = output.Access
+			roles = output.Roles
 			err = output.Rejection
 			if err != nil {
 				base.Logf("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)

@@ -38,6 +38,13 @@ const (
 	defaultIdTokenTTL         = 3600                              // Default ID token expiry
 )
 
+type TokenRequestType uint8
+
+const (
+	TokenRequest_AuthCode TokenRequestType = iota
+	TokenRequest_Refresh
+)
+
 var testProviderAudiences = []string{testProviderAud} // Audiences in array format for test provider validation
 
 //This is the HTML template used to display the testing OP internal authentication form
@@ -93,7 +100,7 @@ var authCodeTokenMap map[string]AuthState = make(map[string]AuthState)
  * Returns the OpenID provider configuration info
  */
 func (h *handler) handleOidcProviderConfiguration() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
+	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -134,7 +141,7 @@ type AuthorizeParameters struct {
  * which is part of an internal authentication flow
  */
 func (h *handler) handleOidcTestProviderAuthorize() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
+	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -183,7 +190,7 @@ func validateAuthRequestScope(scope string) error {
 type OidcTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 	ExpiresIn    int    `json:"expires_in"`
 	IdToken      string `json:"id_token"`
 }
@@ -193,7 +200,7 @@ type OidcTokenResponse struct {
  * Return tokens for Auth code flow
  */
 func (h *handler) handleOidcTestProviderToken() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
+	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -215,7 +222,7 @@ func (h *handler) handleOidcTestProviderToken() error {
  * Return public certificates for signing keys
  */
 func (h *handler) handleOidcTestProviderCerts() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
+	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -252,7 +259,7 @@ func (h *handler) handleOidcTestProviderCerts() error {
  * Return an OAuth 2.0 Authorization Response
  */
 func (h *handler) handleOidcTestProviderAuthenticate() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.EnableOidcTestProvider {
+	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -313,7 +320,7 @@ func scopeStringToMap(scope string) map[string]struct{} {
 }
 
 //Creates a signed JWT token for the requesting subject and issuer URL
-func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}) (jwt *jose.JWT, err error) {
+func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}, unsignedToken bool) (jwt *jose.JWT, err error) {
 
 	privateKey, err := privateKey()
 	if err != nil {
@@ -341,13 +348,24 @@ func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, sc
 	}
 
 	signer := jose.NewSignerRSA(testProviderKeyIdentifier, *privateKey)
+	if !unsignedToken {
+		jwt, err = jose.NewSignedJWT(cl, signer)
+		if err != nil {
+			return nil, err
+		}
 
-	jwt, err = jose.NewSignedJWT(cl, signer)
+	} else {
 
-	if err != nil {
-		return nil, err
+		header := jose.JOSEHeader{
+			"alg": signer.Alg(),
+			"kid": signer.ID(),
+		}
+		unsignedJWT, err := jose.NewJWT(header, cl)
+		if err != nil {
+			return nil, err
+		}
+		jwt = &unsignedJWT
 	}
-
 	return
 }
 
@@ -399,7 +417,7 @@ func handleAuthCodeRequest(h *handler) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
 
-	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL, authState.Scopes)
+	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL, authState.Scopes, TokenRequest_AuthCode)
 }
 
 func handleRefreshTokenRequest(h *handler) error {
@@ -418,15 +436,19 @@ func handleRefreshTokenRequest(h *handler) error {
 	if err != nil {
 		return err
 	}
-	return writeTokenResponse(h, subject, issuerUrl(h), authState.TokenTTL, authState.Scopes)
+	return writeTokenResponse(h, subject, issuerUrl(h), authState.TokenTTL, authState.Scopes, TokenRequest_Refresh)
 }
 
-func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}) error {
+func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}, requestType TokenRequestType) error {
 
 	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
-	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 
-	idToken, err := createJWTToken(subject, issuerUrl, tokenttl, scopesMap)
+	var refreshToken string
+	if requestType == TokenRequest_AuthCode {
+		refreshToken = base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
+	}
+
+	idToken, err := createJWTToken(subject, issuerUrl, tokenttl, scopesMap, h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.UnsignedIDToken)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
 	}

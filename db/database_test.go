@@ -863,12 +863,11 @@ func TestRecentSequenceHistory(t *testing.T) {
 	}
 
 	db.changeCache.waitForSequence(24)
-	time.Sleep(50 * time.Millisecond)
 	revid, err = db.Put("doc1", body)
 	doc, err = db.GetDoc("doc1")
 	assert.True(t, err == nil)
 	log.Printf("recent:%d, max:%d", len(doc.RecentSequences), kMaxRecentSequences)
-	assert.True(t, len(doc.RecentSequences) < kMaxRecentSequences)
+	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
 
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
@@ -878,11 +877,11 @@ func TestRecentSequenceHistory(t *testing.T) {
 	}
 
 	db.changeCache.waitForSequence(64)
-	time.Sleep(50 * time.Millisecond)
 	revid, err = db.Put("doc1", body)
 	doc, err = db.GetDoc("doc1")
 	assert.True(t, err == nil)
-	assert.True(t, len(doc.RecentSequences) < kMaxRecentSequences)
+	log.Printf("Recent sequences: %v (shouldn't exceed %v)", len(doc.RecentSequences), kMaxRecentSequences)
+	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
 
 }
 
