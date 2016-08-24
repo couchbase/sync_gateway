@@ -361,7 +361,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 					if dc.Bucket != nil {
 						err = dc.Bucket.Refresh()
 					} else {
-						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is no available", dbName)
+						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
 						return false, err, nil
 					}
 					return err != nil, err, nil
