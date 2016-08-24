@@ -370,7 +370,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				}
 
 				sleeper := base.CreateDoublingSleeperFunc(
-					7,  //MaxNumRetries approx 10 minutes total retry duration
+					17, //MaxNumRetries approx 10 minutes total retry duration
 					5,  //InitialRetrySleepTimeMS
 				)
 

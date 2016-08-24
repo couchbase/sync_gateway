@@ -123,7 +123,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 
 	sleeper := base.CreateDoublingSleeperFunc(
 		13, //MaxNumRetries approx 40 seconds total retry duration
-		5, //InitialRetrySleepTimeMS
+		5,  //InitialRetrySleepTimeMS
 	)
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
@@ -559,7 +559,7 @@ func installViews(bucket base.Bucket) error {
 
 	sleeper := base.CreateDoublingSleeperFunc(
 		11, //MaxNumRetries approx 10 seconds total retry duration
-		5, //InitialRetrySleepTimeMS
+		5,  //InitialRetrySleepTimeMS
 	)
 
 	// add all design docs from map into bucket
