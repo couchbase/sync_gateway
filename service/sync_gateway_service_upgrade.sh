@@ -80,6 +80,10 @@ case $OS in
 				service ${SERVICE_NAME} stop
                 service ${SERVICE_NAME} start
                 ;;
+            16)
+                systemctl stop ${SERVICE_NAME}
+                systemctl start ${SERVICE_NAME}
+                ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
                 usage

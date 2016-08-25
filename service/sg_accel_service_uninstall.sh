@@ -86,6 +86,15 @@ case $OS in
                 	rm /etc/init/${SERVICE_NAME}.conf
                 fi
                 ;;
+            16)
+                systemctl stop ${SERVICE_NAME}
+                systemctl disable ${SERVICE_NAME}
+
+                if [ -f /lib/systemd/system/${SERVICE_NAME}.service ]; then
+                        rm /lib/systemd/system/${SERVICE_NAME}.service
+                fi
+                ;;
+
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
                 usage

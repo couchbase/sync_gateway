@@ -81,9 +81,17 @@ case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
-				service ${SERVICE_NAME} stop
+		service ${SERVICE_NAME} stop
                 if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
                 	rm /etc/init/${SERVICE_NAME}.conf
+                fi
+                ;;
+            16)
+                systemctl stop ${SERVICE_NAME}
+                systemctl disable ${SERVICE_NAME}
+                
+                if [ -f /lib/systemd/system/${SERVICE_NAME}.service ]; then
+                	rm /lib/systemd/system/${SERVICE_NAME}.service
                 fi
                 ;;
             *)

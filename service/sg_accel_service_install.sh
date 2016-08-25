@@ -210,6 +210,16 @@ case $OS in
                     #service ${SERVICE_NAME} start
                 fi
                 ;;
+            16)
+                if [ "$SERVICE_CMD_ONLY" = true ]; then
+                    echo "systemctl start ${SERVICE_NAME}"
+                else
+                    pre_install_actions
+                    render_template script_templates/systemd_debian_sync_gateway.tpl > /lib/systemd/system/${SERVICE_NAME}.service
+                    systemctl enable ${SERVICE_NAME}
+                    systemctl start ${SERVICE_NAME}
+                fi
+                ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
                 usage
