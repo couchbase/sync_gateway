@@ -338,7 +338,9 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 	}
 
 	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-	oidc.VerifyClaims(jwt, provider.Issuer, *provider.ClientID)
+	if err := oidc.VerifyClaims(jwt, provider.Issuer, *provider.ClientID); err != nil {
+		return nil, jose.JWT{}, err
+	}
 	return auth.authenticateJWT(jwt, provider)
 }
 
