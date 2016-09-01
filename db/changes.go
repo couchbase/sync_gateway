@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -299,6 +300,15 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			options.Wait = false
 			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
 			userCounter = changeWaiter.CurrentUserCount()
+			// Reload user to pick up user changes that happened between auth and the change waiter
+			// initialization.  Without this, notification for user doc changes in that window (a) won't be
+			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
+			if db.user != nil {
+				if err := db.ReloadUser(); err != nil {
+					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
+					return
+				}
+			}
 
 		}
 
