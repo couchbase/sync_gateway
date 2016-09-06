@@ -167,10 +167,10 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 || resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %d) --> %d changes valid from #%d",
+		base.LogTo("Cache", "getCachedChanges(%q, %s) --> %d changes valid from #%d",
 			c.channelName, options.Since, numFromCache, cacheValidFrom)
 	} else if resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %d) --> nothing cached",
+		base.LogTo("Cache", "getCachedChanges(%q, %s) --> nothing cached",
 			c.channelName, options.Since)
 	}
 	startSeq := options.Since.SafeSequence() + 1

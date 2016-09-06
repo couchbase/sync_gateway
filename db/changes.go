@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -273,6 +272,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		var changeWaiter *changeWaiter
 		var lowSequence uint64
+		var currentCachedSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
 		var userCounter uint64     // Wait counter used to identify changes to the user document
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
@@ -345,6 +345,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				lowSequence = 0
 			}
 
+			// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
+			currentCachedSequence = db.changeCache.GetStableSequence("").Seq
+
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
@@ -353,6 +356,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
 			// could be written to channel X during one iteration, and channel Y during another.  Users
 			// with access to both channels would see two versions on the feed.
+
 			for name, vbSeqAddedAt := range channelsSince {
 				chanOpts := options
 				seqAddedAt := vbSeqAddedAt.Sequence
@@ -477,6 +481,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
+				// Don't send any entries later than the cached sequence at the start of this iteration
+				if currentCachedSequence < minEntry.Seq.Seq {
+					continue
+				}
+
 				// Update options.Since for use in the next outer loop iteration.  Only update
 				// when minSeq is greater than the previous options.Since value - we don't want to
 				// roll back the Since value when we get an late sequence is processed.
@@ -494,6 +503,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Send the entry, and repeat the loop:
 				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
+
 				select {
 				case <-options.Terminator:
 					return
