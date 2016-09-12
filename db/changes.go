@@ -296,6 +296,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			channelsSince = channels.AtSequence(chans, 0)
 		}
 
+		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
+		currentCachedSequence = db.changeCache.GetStableSequence("").Seq
+
 		if options.Wait {
 			options.Wait = false
 			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
@@ -345,9 +348,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				lowSequence = 0
 			}
 
-			// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
-			currentCachedSequence = db.changeCache.GetStableSequence("").Seq
-
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 			names := make([]string, 0, len(channelsSince))
@@ -377,7 +377,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
 
 				// Backfill required when seqAddedAt is before current sequence
-				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt})
+				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
 
 				// Ensure backfill isn't already in progress for this seqAddedAt
 				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
@@ -549,6 +549,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 			}
+			// Update the current max cached sequence for the next changes iteration
+			currentCachedSequence = db.changeCache.GetStableSequence("").Seq
 
 			// Check whether user channel access has changed while waiting:
 			var err error
