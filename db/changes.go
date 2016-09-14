@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -277,6 +278,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var userCounter uint64     // Wait counter used to identify changes to the user document
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 		var userChanged bool       // Whether the user document has changed in a given iteration loop
+		var deferredBackfill bool  // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
 		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 		// skipped sequences in a future iteration or request.
@@ -357,6 +359,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// could be written to channel X during one iteration, and channel Y during another.  Users
 			// with access to both channels would see two versions on the feed.
 
+			deferredBackfill = false
 			for name, vbSeqAddedAt := range channelsSince {
 				chanOpts := options
 				seqAddedAt := vbSeqAddedAt.Sequence
@@ -378,6 +381,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Backfill required when seqAddedAt is before current sequence
 				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
+				if seqAddedAt > currentCachedSequence {
+					deferredBackfill = true
+				}
 
 				// Ensure backfill isn't already in progress for this seqAddedAt
 				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
@@ -530,6 +536,14 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			output <- nil
 		waitForChanges:
 			for {
+				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
+				// visible to the user), and so changeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
+				if deferredBackfill {
+					time.Sleep(250 * time.Millisecond)
+					if db.changeCache.GetStableSequence("").Seq != currentCachedSequence {
+						break waitForChanges
+					}
+				}
 				waitResponse := changeWaiter.Wait()
 				if waitResponse == WaiterClosed {
 					break outer

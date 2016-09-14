@@ -617,7 +617,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// Go-routine to work the feed channel and write to an array for use by assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// Validate the initial sequences arrive as expected
 	err = appendFromFeed(&changes, feed, 3)
@@ -637,7 +637,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	db.changeCache.waitForSequence(9)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 4)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 7)
