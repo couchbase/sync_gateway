@@ -313,10 +313,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		PoolName:   pool,
 		BucketName: bucketName,
 		FeedType:   feedType,
-	}
-
-	if config.Username != "" {
-		spec.Auth = config
+		Auth:       config,
 	}
 
 	// Set cache properties, if present
