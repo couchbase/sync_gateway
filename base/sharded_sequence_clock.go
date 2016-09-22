@@ -215,6 +215,11 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 	return true, nil
 }
 
+func (s *ShardedClock) GetSequence(vbNo uint16) (vbSequence uint64) {
+	partitionNo := s.partitionMap.VbMap[vbNo]
+	return s.partitions[partitionNo].GetSequence(vbNo)
+}
+
 func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) (err error) {
 
 	// Build set of sequence updates by partition
