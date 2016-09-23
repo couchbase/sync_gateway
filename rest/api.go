@@ -28,7 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-const ServerName = "Couchbase Sync Gateway"          // DO NOT CHANGE; clients check this
+const ServerName = "@PRODCT_NAME@"                    // DO NOT CHANGE; clients check this
 const VersionNumber float64 = 1.3                    // API/feature level
 const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
 const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
@@ -56,8 +56,13 @@ func init() {
 
 		VersionString = fmt.Sprintf("%s/%s", ServerName, BuildVersionString)
 	} else {
-		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
-		VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", ServerName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		if ServerName[0] != '@' {
+			LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
+			VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", ServerName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		} else {
+			LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", GitProjectName, GitBranch, GitCommit, GitDirty)
+			VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", ServerName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		}
 	}
 }
 
