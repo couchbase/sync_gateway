@@ -28,7 +28,7 @@ type LogEntry struct {
 	Channels     ChannelMap   // Channels this entry is in or was removed from
 	Skipped      bool         // Late arriving entry
 	Type         LogEntryType // Log entry type
-	Value        []byte       // Currently only used to transport checkpoint data
+	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
 }
 
 type ChannelMap map[string]*ChannelRemoval
