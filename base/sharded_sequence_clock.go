@@ -17,7 +17,7 @@ func init() {
 
 const (
 	KIndexPartitionKey       = "_idxPartitionMap"
-	kIndexPrefix             = "_idx"
+	KIndexPrefix             = "_idx"
 	kCountKeyFormat          = "_idx_c:%s:count"    // key
 	kClockPartitionKeyFormat = "_idx_c:%s:clock-%d" // key, partition index
 	KPrincipalCountKeyFormat = "_idx_p_count:%s"    // key for principal count
@@ -217,7 +217,12 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 
 func (s *ShardedClock) GetSequence(vbNo uint16) (vbSequence uint64) {
 	partitionNo := s.partitionMap.VbMap[vbNo]
-	return s.partitions[partitionNo].GetSequence(vbNo)
+	clockPartition, ok := s.partitions[partitionNo]
+	if ok {
+		return clockPartition.GetSequence(vbNo)
+	} else {
+		return 0
+	}
 }
 
 func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) (err error) {

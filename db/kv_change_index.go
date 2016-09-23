@@ -24,7 +24,6 @@ import (
 )
 
 const (
-	kIndexPrefix   = "_idx"
 	kPollFrequency = 500
 )
 
@@ -67,7 +66,6 @@ func (k *kvChangeIndex) Clear() {
 }
 
 func (k *kvChangeIndex) Stop() {
-
 	k.reader.Stop()
 }
 

@@ -552,17 +552,17 @@ func SearchSortedEntrySet(a SortedEntrySet, x uint64) int {
 
 // Get the key for the cache count doc
 func getIndexCountKey(channelName string) string {
-	return fmt.Sprintf("%s_count:%s", kIndexPrefix, channelName)
+	return fmt.Sprintf("%s_count:%s", base.KIndexPrefix, channelName)
 }
 
 // Get the key for the cache block, based on the block index
 func GetIndexBlockKey(channelName string, blockIndex uint16, partition uint16) string {
-	return fmt.Sprintf("%s:%s:block%d:%s", kIndexPrefix, channelName, blockIndex, vbSuffixMap[partition])
+	return fmt.Sprintf("%s:%s:block%d:%s", base.KIndexPrefix, channelName, blockIndex, vbSuffixMap[partition])
 }
 
 // Get the key for the cache block, based on the block index
 func GetChannelClockKey(channelName string) string {
-	return fmt.Sprintf("%s_SequenceClock:%s", kIndexPrefix, channelName)
+	return fmt.Sprintf("%s_SequenceClock:%s", base.KIndexPrefix, channelName)
 }
 
 func minUint64(a, b uint64) uint64 {

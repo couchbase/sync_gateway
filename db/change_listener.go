@@ -66,7 +66,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
 					listener.Notify(base.SetOf(key))
-				} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, kIndexPrefix) {
+				} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) {
 					if listener.OnDocChanged != nil {
 						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo)
 					}
