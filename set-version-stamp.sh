@@ -11,7 +11,7 @@ git update-index --assume-unchanged ${BUILD_INFO}
 
 # Escape forward slash's so sed command does not get confused
 # We use thses in feature branches e.g. feature/issue_nnn
-PRODUCT_NAME=`echo "Couchbase Sync Gateway"`
+PRODUCT_NAME="Couchbase Sync Gateway"
 GIT_BRANCH=`git status -b -s | sed q | sed 's/## //' | sed 's/\.\.\..*$//' | sed 's/\\//\\\\\//g' | sed 's/[[:space:]]//g'`
 GIT_COMMIT=`git rev-parse HEAD`
 GIT_DIRTY=$(test -n "`git status --porcelain`" && echo "+CHANGES" || true)
