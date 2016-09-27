@@ -8,17 +8,27 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// LogEntryType
+type LogEntryType uint8
+
+const (
+	LogEntryDocument = LogEntryType(iota)
+	LogEntryPrincipal
+	LogEntryCheckpoint
+)
+
 type LogEntry struct {
-	Sequence     uint64     // Sequence number
-	DocID        string     // Document ID
-	RevID        string     // Revision ID
-	Flags        uint8      // Deleted/Removed/Hidden flags
-	VbNo         uint16     // vbucket number
-	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
-	TimeReceived time.Time  // Time received from tap feed
-	Channels     ChannelMap // Channels this entry is in or was removed from
-	Skipped      bool       // Late arriving entry
-	IsPrincipal  bool       // Entry for a user or role
+	Sequence     uint64       // Sequence number
+	DocID        string       // Document ID
+	RevID        string       // Revision ID
+	Flags        uint8        // Deleted/Removed/Hidden flags
+	VbNo         uint16       // vbucket number
+	TimeSaved    time.Time    // Time doc revision was saved (just used for perf metrics)
+	TimeReceived time.Time    // Time received from tap feed
+	Channels     ChannelMap   // Channels this entry is in or was removed from
+	Skipped      bool         // Late arriving entry
+	Type         LogEntryType // Log entry type
+	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
 }
 
 type ChannelMap map[string]*ChannelRemoval

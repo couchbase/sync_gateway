@@ -937,7 +937,7 @@ func readIndexEntriesInto(bucket base.Bucket, keys []string, entries map[string]
 
 // Generate the key for a single sequence/entry
 func getEntryKey(vbNo uint16, sequence uint64) string {
-	return fmt.Sprintf("%s_entry:%d:%d", kIndexPrefix, vbNo, sequence)
+	return fmt.Sprintf("%s_entry:%d:%d", base.KIndexPrefix, vbNo, sequence)
 }
 
 func getSuffixForVbNo(vbNo uint16) string {
