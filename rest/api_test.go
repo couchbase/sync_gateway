@@ -2482,6 +2482,68 @@ func DisabledTestLongpollWithWildcard(t *testing.T) {
 	wg.Wait()
 }
 
+func TestUnsupportedConfig(t *testing.T) {
+
+	sc := NewServerContext(&ServerConfig{})
+	testProviderOnlyJSON := `{"name": "test_provider_only",
+        			"server": "walrus:",
+        			"bucket": "test_provider_only",
+			        "unsupported": {
+			          "oidc_test_provider": {
+			            "enabled":true,
+			            "unsigned_id_token":true
+			          }
+			        }
+      			   }`
+
+	var testProviderOnlyConfig DbConfig
+	err := json.Unmarshal([]byte(testProviderOnlyJSON), &testProviderOnlyConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&testProviderOnlyConfig)
+	assertNoError(t, err, "Error adding testProviderOnly database.")
+
+	viewsOnlyJSON := `{"name": "views_only",
+        			"server": "walrus:",
+        			"bucket": "views_only",
+			        "unsupported": {
+			          "user_views": {
+			            "enabled":true
+			          }
+			        }
+      			   }`
+
+	var viewsOnlyConfig DbConfig
+	err = json.Unmarshal([]byte(viewsOnlyJSON), &viewsOnlyConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&viewsOnlyConfig)
+	assertNoError(t, err, "Error adding viewsOnlyConfig database.")
+
+	viewsAndTestJSON := `{"name": "views_and_test",
+        			"server": "walrus:",
+        			"bucket": "views_and_test",
+			        "unsupported": {
+			          "oidc_test_provider": {
+			            "enabled":true,
+			            "unsigned_id_token":true
+			          },
+			          "user_views": {
+			            "enabled":true
+			          }
+			        }
+      			   }`
+
+	var viewsAndTestConfig DbConfig
+	err = json.Unmarshal([]byte(viewsAndTestJSON), &viewsAndTestConfig)
+	assert.True(t, err == nil)
+
+	_, err = sc.AddDatabaseFromConfig(&viewsAndTestConfig)
+	assertNoError(t, err, "Error adding viewsAndTestConfig database.")
+
+	sc.Close()
+}
+
 var prt restTester
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
