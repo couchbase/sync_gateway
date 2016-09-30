@@ -28,7 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-const ServerName = "Couchbase Sync Gateway"          // DO NOT CHANGE; clients check this
+const ServerName = "@PRODUCT_NAME@"                   // DO NOT CHANGE; clients check this
 const VersionNumber float64 = 1.4                    // API/feature level
 const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
 const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
@@ -41,6 +41,9 @@ var VersionString string
 
 // This includes build number; appears in the response of "GET /" and the initial log message
 var LongVersionString string
+
+// Either comes from Gerrit (jenkins builds) or Git (dev builds)
+var ProductName string
 
 func init() {
 	if VersionBuildNumberString[0] != '@' {
@@ -55,9 +58,11 @@ func init() {
 			ServerName, BuildVersionString, BuildNumberString, VersionCommitSHA)
 
 		VersionString = fmt.Sprintf("%s/%s", ServerName, BuildVersionString)
+		ProductName = ServerName
 	} else {
-		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", ServerName, GitBranch, GitCommit, GitDirty)
-		VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", ServerName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", GitProductName, GitBranch, GitCommit, GitDirty)
+		VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", GitProductName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		ProductName = GitProductName
 	}
 }
 
@@ -66,7 +71,7 @@ func (h *handler) handleRoot() error {
 	response := map[string]interface{}{
 		"couchdb": "Welcome",
 		"version": LongVersionString,
-		"vendor":  db.Body{"name": ServerName, "version": VersionNumber},
+		"vendor":  db.Body{"name": ProductName, "version": VersionNumber},
 	}
 	if h.privs == adminPrivs {
 		response["ADMIN"] = true
