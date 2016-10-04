@@ -15,6 +15,48 @@
 
 # -------------------------------- Functions ---------------------------------------
 
+# Parse the options and save into variables
+parseOptions () {
+
+    local product_arg_specified=0
+    
+    while getopts "p:c:" opt; do
+	case $opt in
+	    c)
+		COMMIT=$OPTARG
+		echo "Using commit: $COMMIT"
+		;;
+	    p)
+		product_arg_specified=1
+		case $OPTARG in
+		    sg)
+			PRODUCT="sg"
+			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
+			;;
+		    sg-accel)
+			PRODUCT="sg-accel"			
+			TARGET_REPO="https://github.com/couchbaselabs/sync-gateway-accel.git"		    
+			;;		
+		    *)
+			echo "Unknown product.  Aborting."
+			exit 1
+			;;
+		esac
+		;;
+	    \?)
+		echo "Invalid option: -$OPTARG.  Aborting" >&2
+		exit 1
+		;;
+	esac
+    done
+
+    if [ $product_arg_specified -eq 0 ]; then
+	echo "You must specify a product.  Aborting."
+	exit 1
+    fi
+	
+}
+
 # rewriteManifest (): Function which rewrites the manifest according commit passed in arguments.
 # This is needed by the CI system in order to test feature branches.
 #
@@ -28,20 +70,32 @@
 # This technically doesn't need to run on the master branch, and should be a no-op
 # in that case.  I have left that in for now since it enables certain testing.
 rewriteManifest () {
-    COMMIT="$1"
+
     curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
     chmod +x rewrite-manifest.sh
-    ./rewrite-manifest.sh --manifest-url "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml" --project-name "sync_gateway" --set-revision "$COMMIT" > .repo/manifest.xml
+
+    case $PRODUCT in
+	sg)
+	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
+	    PROJECT_NAME="sync_gateway"
+	    ;;
+	sg-accel)
+	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
+	    PROJECT_NAME="sync_gateway"
+	    ;;
+	*)
+	    echo "Unknown product: $PRODUCT (Aborting)"
+	    exit 1
+	    ;;
+
+    esac
+
+    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME"
+    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" > .repo/manifest.xml
+
 }
 
 downloadHelperScripts () {
-
-    # If run from CI, then use the commit specified by the CI server,
-    # otherwise default to using master
-    COMMIT="master"
-    if [ "$#" -eq 1 ]; then
-	COMMIT="$1"
-    fi
 
     if [ ! -f build.sh ]; then
 	echo "Downloading build.sh"
@@ -65,10 +119,16 @@ downloadHelperScripts () {
 }
 
 
-# ------------------------------------ Main ---------------------------------------
+# --------------------------------------- Main -------------------------------------------
+
+# By default, unless overridden by commit getopt arg, use the master branch everywhere
+COMMIT="master"
+
+# Parse the getopt options and set variables
+parseOptions "$@"
 
 ## This script is not intended to be run "in place" from a git clone.
-## The next check tries to ensure that's the case
+## Ensure that's the case by making sure there is no main.go file
 if [ -f "main.go" ]; then
     echo "This script is meant to run outside the clone directory.  See README"
     exit 1
@@ -85,12 +145,12 @@ fi
 ## If we don't already have a .repo directory, run "repo init"
 REPO_DIR=.repo
 if [ ! -d "$REPO_DIR" ]; then
-    echo "No .repo directory found, running 'repo init'"
-    repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
+    echo "No .repo directory found, running 'repo init' on $TARGET_REPO"
+    repo init -u "$TARGET_REPO" -m manifest/default.xml
 fi
 
 ## If a command line arg was passed in (commit), then rewrite manifest.xml
-if [ "$#" -eq 1 ]; then
+if [ "$COMMIT" != "master" ]; then
     rewriteManifest "$@"
 fi
 
@@ -100,4 +160,4 @@ repo sync
 ## Download helper scripts
 downloadHelperScripts "$@"
 
-echo "Bootstrap complete!  Run ./build.sh to build sync gateway, and ./test.sh to run tests"
+echo "Bootstrap complete!  Run ./build.sh to build and ./test.sh to run tests"
