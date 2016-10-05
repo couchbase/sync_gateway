@@ -14,7 +14,7 @@
   <remote fetch="git://github.com/kardianos/" name="kardianos"/>
   <remote fetch="git://github.com/coreos/" name="coreos"/>
   <remote fetch="git://github.com/jonboulle/" name="jonboulle"/>
-  <remote fetch="ssh://git@github.com:couchbaselabs/" name="couchbaselabs_private"/>
+  <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private"/>
 
   
   <default remote="couchbase" revision="master"/>
