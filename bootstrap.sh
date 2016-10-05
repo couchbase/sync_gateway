@@ -25,8 +25,6 @@ INIT_ONLY=0
 parseOptions () {
 
     local product_arg_specified=0
-    local github_username_specified=0
-    local github_api_token_specified=0    
     
     while getopts "p:c:u:t:i" opt; do
 	case $opt in
@@ -34,15 +32,6 @@ parseOptions () {
 		# If the -i option is set, skip the "repo sync".
 		# Useful if you want to hand-tweak the manifest before running "repo sync"
 		INIT_ONLY=1
-		;;
-	    u)
-		github_username_specified=1
-		GITHUB_USERNAME=$OPTARG
-		echo "Using github username: $GITHUB_USERNAME"
-		;;
-	    t)
-		github_api_token_specified=1    
-		GITHUB_API_TOKEN=$OPTARG
 		;;
 	    c)
 		COMMIT=$OPTARG
@@ -80,15 +69,6 @@ parseOptions () {
 	exit 1
     fi
 
-    if [ $github_username_specified -eq 1 ] && [ $github_api_token_specified -eq 0 ]; then
-	echo "If specifying a github username, you must also specify a github api token"
-	exit 1
-    fi
-
-    if [ $github_username_specified -eq 0 ] && [ $github_api_token_specified -eq 1 ]; then
-	echo "If specifying a github api token, you must also specify a github username"
-	exit 1
-    fi    
 	
 }
 
@@ -209,29 +189,12 @@ rewriteManifest () {
     # First emit the rewrite-manifest.sh script embedded as a string to the
     # file system so we can run it.  See comments on that function.
     emitRewriteManifestPythonScript
-    
-    case $PRODUCT in
-	sg)
-	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
-	    PROJECT_NAME="sync_gateway"
-	    ;;
-	sg-accel)
-	    if [ -z "$GITHUB_USERNAME" ]; then
-		echo "You must proviate a github username and API token.  Aborting"
-		exit 1
-	    fi
-	    MANIFEST_URL="https://raw.githubusercontent.com/couchbaselabs/sync-gateway-accel/$COMMIT/manifest/default.xml"
-	    PROJECT_NAME="sync-gateway-accel"
-	    ;;
-	*)
-	    echo "Unknown product: $PRODUCT (Aborting)"
-	    exit 1
-	    ;;
 
-    esac
+    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
+    PROJECT_NAME="sync_gateway"
 
     echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME with username: $GITHUB_USERNAME"
-    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --username "$GITHUB_USERNAME" --password "$GITHUB_API_TOKEN" > .repo/manifest.xml
+    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" > .repo/manifest.xml
 
 }
 
