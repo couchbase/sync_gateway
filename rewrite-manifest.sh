@@ -38,10 +38,12 @@ def parse_args():
     """
     parser = optparse.OptionParser()
     parser.add_option('-u', '--manifest-url', help='Manifest URL')
+    parser.add_option('-n', '--username', help='Basic Auth username')
+    parser.add_option('-w', '--password', help='Basic Auth password')        
     parser.add_option('-p', '--project-name', help="Project name to modify revision")
     parser.add_option('-s', '--set-revision', help="SHA hash of revision to modify project specified via --project-name")
     (opts, args) = parser.parse_args()
-    return (parser, opts.manifest_url, opts.project_name, opts.set_revision)
+    return (parser, opts.manifest_url, opts.project_name, opts.set_revision, opts.username, opts.password)
 
 def validate_args(parser, manifest_url, project_name, set_revision):
     """
@@ -58,15 +60,21 @@ def validate_args(parser, manifest_url, project_name, set_revision):
         exit(-1)
 
 if __name__=="__main__":
-
+    
    # get arguments
-   (parser, manifest_url, project_name, set_revision) = parse_args()
+   (parser, manifest_url, project_name, set_revision, username, password) = parse_args()
 
    # validate arguments
    validate_args(parser, manifest_url, project_name, set_revision)
    
-   # fetch manifest content and parse xml 
-   tree = ET.ElementTree(file=urllib2.urlopen(manifest_url))
+   # fetch manifest content and parse xml
+   request = urllib2.Request(manifest_url)
+   print(manifest_url)
+   if username != "":
+       base64string = base64.b64encode('%s:%s' % (username, password))
+       request.add_header("Authorization", "Basic %s" % base64string)
+   file = urllib2.urlopen(request)
+   tree = ET.ElementTree(file)
 
    # modify xml according to parameters
    root = tree.getroot()

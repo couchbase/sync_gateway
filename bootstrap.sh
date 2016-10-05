@@ -19,9 +19,20 @@
 parseOptions () {
 
     local product_arg_specified=0
+    local github_username_specified=0
+    local github_api_token_specified=0    
     
-    while getopts "p:c:" opt; do
+    while getopts "p:c:u:t:" opt; do
 	case $opt in
+	    u)
+		github_username_specified=1
+		GITHUB_USERNAME=$OPTARG
+		echo "Using github username: $GITHUB_USERNAME"
+		;;
+	    t)
+		github_api_token_specified=1    
+		GITHUB_API_TOKEN=$OPTARG
+		;;
 	    c)
 		COMMIT=$OPTARG
 		echo "Using commit: $COMMIT"
@@ -54,6 +65,16 @@ parseOptions () {
 	echo "You must specify a product.  Aborting."
 	exit 1
     fi
+
+    if [ $github_username_specified -eq 1 ] && [ $github_api_token_specified -eq 0 ]; then
+	echo "If specifying a github username, you must also specify a github api token"
+	exit 1
+    fi
+
+    if [ $github_username_specified -eq 0 ] && [ $github_api_token_specified -eq 1 ]; then
+	echo "If specifying a github api token, you must also specify a github username"
+	exit 1
+    fi    
 	
 }
 
@@ -71,17 +92,22 @@ parseOptions () {
 # in that case.  I have left that in for now since it enables certain testing.
 rewriteManifest () {
 
-    curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
+    curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/rewrite-manifest.sh" > rewrite-manifest.sh
     chmod +x rewrite-manifest.sh
 
+    
     case $PRODUCT in
 	sg)
 	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
 	    PROJECT_NAME="sync_gateway"
 	    ;;
 	sg-accel)
-	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
-	    PROJECT_NAME="sync_gateway"
+	    if [ -z "$GITHUB_USERNAME" ]; then
+		echo "You must proviate a github username and API token.  Aborting"
+		exit 1
+	    fi
+	    MANIFEST_URL="https://raw.githubusercontent.com/couchbaselabs/sync-gateway-accel/$COMMIT/manifest/default.xml"
+	    PROJECT_NAME="sync-gateway-accel"
 	    ;;
 	*)
 	    echo "Unknown product: $PRODUCT (Aborting)"
@@ -90,8 +116,8 @@ rewriteManifest () {
 
     esac
 
-    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME"
-    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" > .repo/manifest.xml
+    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME username $GITHUB_USERNAME"
+    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --username "$GITHUB_USERNAME" --password "$GITHUB_API_TOKEN" > .repo/manifest.xml
 
 }
 
@@ -99,19 +125,19 @@ downloadHelperScripts () {
 
     if [ ! -f build.sh ]; then
 	echo "Downloading build.sh"
-	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/build.sh" > build.sh
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh" > build.sh
 	chmod +x build.sh    
     fi
 
     if [ ! -f test.sh ]; then
 	echo "Downloading test.sh"
-	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/test.sh" > test.sh
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/test.sh" > test.sh
 	chmod +x test.sh
     fi
 
     if [ ! -f bench.sh ]; then
 	echo "Downloading bench.sh"
-	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/bench.sh" > bench.sh
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/bench.sh" > bench.sh
 	chmod +x bench.sh
     fi
 
@@ -137,7 +163,7 @@ fi
 ## If the repo tool is not installed, then download it into current directory
 if ! type "repo" > /dev/null; then
     echo "Did not find repo tool, downloading to current directory"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > repo
+    curl -s https://storage.googleapis.com/git-repo-downloads/repo > repo
     chmod +x repo
     export PATH=$PATH:.
 fi
