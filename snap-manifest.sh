@@ -3,7 +3,7 @@
 import shutil
 import subprocess
 import os
-
+import xml.etree.ElementTree as ET
 
 # This script is  related to buiilding sync gateway from source via the `repo` tool,
 # which is a tool to deal with multiple git repos based on a manifest XML file which
@@ -35,15 +35,35 @@ def repo_sync():
     """
     subprocess.call(['repo', 'sync'])  # TODO: does this need a subshell for any reason?
 
-def copy_modified_manifest(product_repo_commit, source_manifest_path, dest_path):
+def copy_modified_manifest(product, product_repo_commit, source_manifest_path, dest_path):
+    """
+    This will copy the manifest from source_manifest_path to dest_path, but
+    modify it along the way to update:
+
+    <project name="sync_gateway"/>
+
+    to
+
+    <project name="sync_gateway" revision="82493418e" />
+ 
+    To stamp it with the particular revision corresponding to the current repo commit
     """
 
-    """
+    sourcefile = open(source_manifest_path)
+    tree = ET.ElementTree(file=sourcefile)
 
-    # TODO: modify the XML to set the product version
-    print "repo commit: {}".format(product_repo_commit)
+    # modify xml according to parameters
+    root = tree.getroot()
+    for element in root:
+        if element.get("name") == product:
+            element.set("revision", product_repo_commit)
+           
+    # write modified xml to stdout
+    destfile = open(dest_path, 'w')
+    tree.write(destfile)
     
-    shutil.copy(source_manifest_path, dest_path)
+    destfile.close()
+    sourcefile.close()
 
 def discover_product_repo_commit(source_manifest_path):
 
@@ -84,6 +104,7 @@ if __name__=="__main__":
     
     # Copy it to the ./repo/manifest.xml file
     copy_modified_manifest(
+        product,
         product_repo_commit,
         source_manifest_path,
         ".repo/manifest.xml"
