@@ -274,6 +274,12 @@ func DurationToCbsExpiry(ttl time.Duration) int {
 	}
 }
 
+//This function takes a ttl in seconds and returns an int
+//formatted as required by CBS expiry processing
+func SecondsToCbsExpiry(ttl int) int {
+	return DurationToCbsExpiry(time.Duration(ttl) * time.Second)
+}
+
 //This function takes a CBS expiry and returns as a time
 func CbsExpiryToTime(expiry uint32) time.Time {
 	if expiry <= kMaxDeltaTtl {

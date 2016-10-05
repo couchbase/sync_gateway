@@ -23,7 +23,7 @@ import (
 )
 
 const kHashPrefix = "_sequence:"
-const kDefaultHashExpiry = uint32(2592000)
+const kDefaultHashExpiry = uint32(2592000) //30days in seconds
 const kDefaultSize = uint8(32)
 const kDefaultHasherCacheCapacity = 500
 const kDefaultChangesHashFrequency = 100
@@ -176,7 +176,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		if err != nil {
 			return err
 		}
-		_, err = base.WriteCasRaw(s.bucket, key, initialValue, existingClocks.cas, int(s.hashExpiry), func(value []byte) (updatedValue []byte, err error) {
+		_, err = base.WriteCasRaw(s.bucket, key, initialValue, existingClocks.cas, base.SecondsToCbsExpiry(int(s.hashExpiry)), func(value []byte) (updatedValue []byte, err error) {
 			// Note: The following is invoked upon cas failure - may be called multiple times
 			base.LogTo("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", key)
 			var sClocks storedClocks
@@ -321,7 +321,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (*storedClocks, error) {
 	stored := storedClocks{}
 	key := kHashPrefix + strconv.FormatUint(hashValue, 10)
 
-	bytes, cas, err := s.bucket.GetAndTouchRaw(key, int(s.hashExpiry))
+	bytes, cas, err := s.bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(s.hashExpiry)))
 	IndexExpvars.Add("get_hashLoadClocks", 1)
 
 	if err != nil {
