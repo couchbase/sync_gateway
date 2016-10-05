@@ -31,5 +31,14 @@ updateVersionStamp
 echo "Building code with 'go install' ..."
 go install "$@" github.com/couchbase/sync_gateway/...
 
-echo "Success! Output is godeps/bin/sync_gateway and godeps/bin/sg_accel "
+echo "Success!"
+
+# Let user where to know where to find binaries
+if [ -f godeps/bin/sync_gateway ]; then
+    echo "Sync Gateway binary compiled to: godeps/bin/sync_gateway"
+fi
+if [ -f godeps/bin/sg_accel ]; then
+    echo "Sync Gateway Accel compiled to: godeps/bin/sg_accel"
+fi
+
 
