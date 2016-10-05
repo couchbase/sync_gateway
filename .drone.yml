@@ -6,6 +6,6 @@ build:
     - wget https://raw.githubusercontent.com/couchbase/sync_gateway/$$COMMIT/bootstrap.sh
     - cat bootstrap.sh
     - chmod +x bootstrap.sh
-    - ./bootstrap.sh $$COMMIT
+    - ./bootstrap.sh -c $$COMMIT -p sg-accel
     - ./build.sh -v
     - ./test.sh
