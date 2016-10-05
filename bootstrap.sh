@@ -86,7 +86,7 @@ fi
 REPO_DIR=.repo
 if [ ! -d "$REPO_DIR" ]; then
     echo "No .repo directory found, running 'repo init'"
-    repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml -g all
+    repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
 fi
 
 ## If a command line arg was passed in (commit), then rewrite manifest.xml
