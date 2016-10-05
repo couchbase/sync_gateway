@@ -15,6 +15,12 @@
 
 # -------------------------------- Functions ---------------------------------------
 
+set -x  # print out all commands executed
+set -e  # abort on non-zero exit codes
+
+# By default, will run "repo init" followed by "repo sync".  If this is set to 1, skips "repo sync" 
+INIT_ONLY=0
+
 # Parse the options and save into variables
 parseOptions () {
 
@@ -22,8 +28,13 @@ parseOptions () {
     local github_username_specified=0
     local github_api_token_specified=0    
     
-    while getopts "p:c:u:t:" opt; do
+    while getopts "p:c:u:t:i" opt; do
 	case $opt in
+	    i)
+		# If the -i option is set, skip the "repo sync".
+		# Useful if you want to hand-tweak the manifest before running "repo sync"
+		INIT_ONLY=1
+		;;
 	    u)
 		github_username_specified=1
 		GITHUB_USERNAME=$OPTARG
@@ -45,8 +56,11 @@ parseOptions () {
 			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 			;;
 		    sg-accel)
-			PRODUCT="sg-accel"			
-			TARGET_REPO="https://github.com/couchbaselabs/sync-gateway-accel.git"		    
+			PRODUCT="sg-accel"
+			# Even when we build sg-accel, we want to grab the sync_gateway
+			# repo since it includes sg-accel in it's manifest and will
+			# build *both* sync gateway and sg-accel
+			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 			;;		
 		    *)
 			echo "Unknown product.  Aborting."
@@ -244,6 +258,24 @@ downloadHelperScripts () {
     
 }
 
+repoInit () {
+
+    case $PRODUCT in
+	sg)
+	    repo init -u "$TARGET_REPO" -m manifest/default.xml
+	    ;;
+	sg-accel)
+	    # Use -g all to pull in sg-accel deps as well
+	    repo init -u "$TARGET_REPO" -m manifest/default.xml -g all
+	    ;;
+	*)
+	    echo "Unknown product: $PRODUCT (Aborting)"
+	    exit 1
+	    ;;
+    esac
+    echo "Done running repo init"    
+}
+
 
 # --------------------------------------- Main -------------------------------------------
 
@@ -272,8 +304,7 @@ fi
 REPO_DIR=.repo
 if [ ! -d "$REPO_DIR" ]; then
     echo "No .repo directory found, running 'repo init' on $TARGET_REPO"
-    repo init -u "$TARGET_REPO" -m manifest/default.xml
-    echo "Done running repo init"
+    repoInit "$@"
 fi
 
 ## If a command line arg was passed in (commit), then rewrite manifest.xml
@@ -281,8 +312,10 @@ if [ "$COMMIT" != "master" ]; then
     rewriteManifest "$@"
 fi
 
-## Repo Sync
-repo sync
+## Repo sync (unless disabled)
+if [ $INIT_ONLY -eq 0 ]; then
+    repo sync
+fi
 
 ## Download helper scripts
 downloadHelperScripts "$@"
