@@ -78,77 +78,13 @@ parseOptions () {
 	
 }
 
-# rewriteManifest (): Function which rewrites the manifest according commit passed in arguments.
-# This is needed by the CI system in order to test feature branches.
-#
-# Steps
-#   - Fetches manifest with given commit
-#   - Updates sync gateway pinned commit to match the given commit (of feature branch)
-#   - Overwrites .repo/manifest.xml with this new manifest
-#
-# It should be run *before* 'repo sync'
-#
-# This technically doesn't need to run on the master branch, and should be a no-op
-# in that case.  I have left that in for now since it enables certain testing.
-rewriteManifest () {
-
-    
-    case $PRODUCT in
-	sg)
-	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
-	    PROJECT_NAME="sync_gateway"
-	    ;;
-	sg-accel)
-	    if [ -z "$GITHUB_USERNAME" ]; then
-		echo "You must proviate a github username and API token.  Aborting"
-		exit 1
-	    fi
-	    MANIFEST_URL="https://raw.githubusercontent.com/couchbaselabs/sync-gateway-accel/$COMMIT/manifest/default.xml"
-	    PROJECT_NAME="sync-gateway-accel"
-	    ;;
-	*)
-	    echo "Unknown product: $PRODUCT (Aborting)"
-	    exit 1
-	    ;;
-
-    esac
-
-    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME username $GITHUB_USERNAME"
-    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --username "$GITHUB_USERNAME" --password "$GITHUB_API_TOKEN" > .repo/manifest.xml
-
-}
-
-downloadHelperScripts () {
-
-    if [ ! -f build.sh ]; then
-	echo "Downloading build.sh"
-	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh" > build.sh
-	chmod +x build.sh    
-    fi
-
-    if [ ! -f test.sh ]; then
-	echo "Downloading test.sh"
-	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/test.sh" > test.sh
-	chmod +x test.sh
-    fi
-
-    if [ ! -f bench.sh ]; then
-	echo "Downloading bench.sh"
-	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/bench.sh" > bench.sh
-	chmod +x bench.sh
-    fi
-
-    
-}
-
-
-# --------------------------------------- Main -------------------------------------------
-
 # Super dirty hack to get rewrite-manifest.sh python script on file system
 # since it is awkward to download it from github via curl.
 # The deeper fix is to rewrite this boostrap.sh in python and just
 # call the code directly (rewrite-manifest.sh needs to parse xml)
-cat > rewrite-manifest.sh <<EOF
+emitRewriteManifestPythonScript() {
+
+    cat > rewrite-manifest.sh <<EOF
 #!/usr/bin/env python
 
 # This script updates the manifest created from a 'repo init -u <url>'
@@ -238,7 +174,78 @@ if __name__=="__main__":
 
 EOF
 
-chmod +x rewrite-manifest.sh
+    chmod +x rewrite-manifest.sh
+
+}
+
+# rewriteManifest (): Function which rewrites the manifest according commit passed in arguments.
+# This is needed by the CI system in order to test feature branches.
+#
+# Steps
+#   - Fetches manifest with given commit
+#   - Updates sync gateway pinned commit to match the given commit (of feature branch)
+#   - Overwrites .repo/manifest.xml with this new manifest
+#
+# It should be run *before* 'repo sync'
+#
+# This technically doesn't need to run on the master branch, and should be a no-op
+# in that case.  I have left that in for now since it enables certain testing.
+rewriteManifest () {
+
+    # First emit the rewrite-manifest.sh script embedded as a string to the
+    # file system so we can run it.  See comments on that function.
+    emitRewriteManifestPythonScript
+    
+    case $PRODUCT in
+	sg)
+	    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
+	    PROJECT_NAME="sync_gateway"
+	    ;;
+	sg-accel)
+	    if [ -z "$GITHUB_USERNAME" ]; then
+		echo "You must proviate a github username and API token.  Aborting"
+		exit 1
+	    fi
+	    MANIFEST_URL="https://raw.githubusercontent.com/couchbaselabs/sync-gateway-accel/$COMMIT/manifest/default.xml"
+	    PROJECT_NAME="sync-gateway-accel"
+	    ;;
+	*)
+	    echo "Unknown product: $PRODUCT (Aborting)"
+	    exit 1
+	    ;;
+
+    esac
+
+    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME username $GITHUB_USERNAME"
+    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --username "$GITHUB_USERNAME" --password "$GITHUB_API_TOKEN" > .repo/manifest.xml
+
+}
+
+downloadHelperScripts () {
+
+    if [ ! -f build.sh ]; then
+	echo "Downloading build.sh"
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/build.sh" > build.sh
+	chmod +x build.sh    
+    fi
+
+    if [ ! -f test.sh ]; then
+	echo "Downloading test.sh"
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/test.sh" > test.sh
+	chmod +x test.sh
+    fi
+
+    if [ ! -f bench.sh ]; then
+	echo "Downloading bench.sh"
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/master/bench.sh" > bench.sh
+	chmod +x bench.sh
+    fi
+
+    
+}
+
+
+# --------------------------------------- Main -------------------------------------------
 
 # By default, unless overridden by commit getopt arg, use the master branch everywhere
 COMMIT="master"
