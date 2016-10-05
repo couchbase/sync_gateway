@@ -252,6 +252,9 @@ func (h *handler) handlePutDoc() error {
 	if err != nil {
 		return err
 	}
+	if body == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Document body is empty")
+	}
 	var newRev string
 
 	if h.getQuery("new_edits") != "false" {

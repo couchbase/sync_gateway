@@ -441,6 +441,31 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	assertStatus(t, response, 404)
 }
 
+func TestDocumentUpdateWithNullBody(t *testing.T) {
+	var rt restTester
+
+	a := rt.ServerContext().Database("db").Authenticator()
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	//Create a test user
+	user, err = a.NewUser("user1", "letmein", channels.SetOf("foo"))
+	a.Save(user)
+	//Create document
+	response := rt.send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid := body["rev"].(string)
+
+	//Put new revision with null body
+	response = rt.send(requestByUser("PUT", "/db/doc?rev="+revid,"", "user1"))
+	assertStatus(t, response, 400)
+}
+
 func TestFunkyDocIDs(t *testing.T) {
 	var rt restTester
 	rt.createDoc(t, "AC%2FDC")
