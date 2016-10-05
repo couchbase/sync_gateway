@@ -1,103 +1,79 @@
-#!/bin/sh -e
+#!/usr/bin/env python
 
-# This script builds sync gateway using pinned dependencies via the repo tool
+# This script updates the manifest created from a 'repo init -u <url>'
+# command with a *different* manifest, presumably before 'repo sync'
+# has been run.
 #
-# It is intended to be run locally via developers (see README for instructions)
-# as well as by a CI server.
+# The purpose is to build from a manifest on a feature branch, for example
+# as part of validating a github pull request.
 #
-# The basic flow is:
+# Here are the actions performed:
+# 
+# 1. Fetches manifest from the given url
+# 2. Updates the given project revision to match the given commit
+# 3. Emits modified manifest to stdout
 #
-# - Detect if repo tool is installed, if not, install it
-# - Run 'repo init' to pull Sync Gateway manifest
-# - Run 'repo sync' to pull Sync Gateway code and dependencies
-# - (optional) for CI server, it can rewrite the manifest for a branch/commit
-# - Pull build.sh and test.sh script locally
-
-# -------------------------------- Functions ---------------------------------------
-
-# rewriteManifest (): Function which rewrites the manifest according commit passed in arguments.
-# This is needed by the CI system in order to test feature branches.
+# Usage:
 #
-# Steps
-#   - Fetches manifest with given commit
-#   - Updates sync gateway pinned commit to match the given commit (of feature branch)
-#   - Overwrites .repo/manifest.xml with this new manifest
+#     rewrite-manifest --manifest-url http://yourwebsite.co/manifest.xml --project-name your-project --set-revision new-sha > .repo/manifest.xml
 #
-# It should be run *before* 'repo sync'
+# If your existing manifest contained a project entry like:
 #
-# This technically doesn't need to run on the master branch, and should be a no-op
-# in that case.  I have left that in for now since it enables certain testing.
-rewriteManifest () {
-    COMMIT="$1"
-    curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
-    chmod +x rewrite-manifest.sh
-    ./rewrite-manifest.sh --manifest-url "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml" --project-name "sync_gateway" --set-revision "$COMMIT" > .repo/manifest.xml
-}
+#     <project name="your-project" path="somepath" remote="someremote"/> 
+#
+# the above command would modify it to be:
+#
+#     <project name="your-project" path="somepath" revision="new-sha" remote="someremote"/> 
+#
+# and emit it to stdout, which you can redirect to overwrite your .repo/manifest.xml file
 
-downloadHelperScripts () {
+import optparse
+import xml.etree.ElementTree as ET
+import urllib2
+import sys
 
-    # If run from CI, then use the commit specified by the CI server,
-    # otherwise default to using master
-    COMMIT="master"
-    if [ "$#" -eq 1 ]; then
-	COMMIT="$1"
-    fi
+def parse_args():
+    """
+    Parse command line args and return a tuple
+    """
+    parser = optparse.OptionParser()
+    parser.add_option('-u', '--manifest-url', help='Manifest URL')
+    parser.add_option('-p', '--project-name', help="Project name to modify revision")
+    parser.add_option('-s', '--set-revision', help="SHA hash of revision to modify project specified via --project-name")
+    (opts, args) = parser.parse_args()
+    return (parser, opts.manifest_url, opts.project_name, opts.set_revision)
 
-    if [ ! -f build.sh ]; then
-	echo "Downloading build.sh"
-	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/build.sh" > build.sh
-	chmod +x build.sh    
-    fi
+def validate_args(parser, manifest_url, project_name, set_revision):
+    """
+    Make sure all required args are passed, or else print usage
+    """
+    if manifest_url is None:
+        parser.print_help()
+        exit(-1)
+    if project_name is None:
+        parser.print_help()
+        exit(-1)
+    if set_revision is None:
+        parser.print_help()
+        exit(-1)
 
-    if [ ! -f test.sh ]; then
-	echo "Downloading test.sh"
-	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/test.sh" > test.sh
-	chmod +x test.sh
-    fi
+if __name__=="__main__":
 
-    if [ ! -f bench.sh ]; then
-	echo "Downloading bench.sh"
-	curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/bench.sh" > bench.sh
-	chmod +x bench.sh
-    fi
+   # get arguments
+   (parser, manifest_url, project_name, set_revision) = parse_args()
 
-    
-}
+   # validate arguments
+   validate_args(parser, manifest_url, project_name, set_revision)
+   
+   # fetch manifest content and parse xml 
+   tree = ET.ElementTree(file=urllib2.urlopen(manifest_url))
 
-
-# ------------------------------------ Main ---------------------------------------
-
-## This script is not intended to be run "in place" from a git clone.
-## The next check tries to ensure that's the case
-if [ -f "main.go" ]; then
-    echo "This script is meant to run outside the clone directory.  See README"
-    exit 1
-fi 
-
-## If the repo tool is not installed, then download it into current directory
-if ! type "repo" > /dev/null; then
-    echo "Did not find repo tool, downloading to current directory"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > repo
-    chmod +x repo
-    export PATH=$PATH:.
-fi
-
-## If we don't already have a .repo directory, run "repo init"
-REPO_DIR=.repo
-if [ ! -d "$REPO_DIR" ]; then
-    echo "No .repo directory found, running 'repo init'"
-    repo init -u "https://github.com/couchbase/sync_gateway.git" -m manifest/default.xml
-fi
-
-## If a command line arg was passed in (commit), then rewrite manifest.xml
-if [ "$#" -eq 1 ]; then
-    rewriteManifest "$@"
-fi
-
-## Repo Sync
-repo sync
-
-## Download helper scripts
-downloadHelperScripts "$@"
-
-echo "Bootstrap complete!  Run ./build.sh to build sync gateway, and ./test.sh to run tests"
+   # modify xml according to parameters
+   root = tree.getroot()
+   for element in root:
+       if element.get("name") == project_name:
+           element.set("revision", set_revision)
+           
+   # write modified xml to stdout
+   tree.write(sys.stdout)
+   sys.stdout.write("\n") # trailing newline
