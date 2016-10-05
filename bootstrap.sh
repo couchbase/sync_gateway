@@ -216,7 +216,7 @@ rewriteManifest () {
 
     esac
 
-    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME username $GITHUB_USERNAME"
+    echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME with username: $GITHUB_USERNAME"
     ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --username "$GITHUB_USERNAME" --password "$GITHUB_API_TOKEN" > .repo/manifest.xml
 
 }
