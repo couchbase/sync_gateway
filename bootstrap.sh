@@ -126,6 +126,11 @@ downloadHelperScripts () {
 	chmod +x bench.sh
     fi
 
+    if [ ! -f snap-manifest.sh ]; then
+	echo "Downloading snap-manifest.sh"
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/snap-manifest.sh" > bench.sh
+	chmod +x snap-manifest.sh
+    fi
     
 }
 
