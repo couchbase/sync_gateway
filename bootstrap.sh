@@ -15,10 +15,17 @@
 
 # -------------------------------- Functions ---------------------------------------
 
-set -x  # print out all commands executed
-set -e  # abort on non-zero exit codes
 
-# By default, will run "repo init" followed by "repo sync".  If this is set to 1, skips "repo sync" 
+# Default to SG product 
+PRODUCT="sg"
+
+# Even when we build sg-accel, we want to grab the sync_gateway
+# repo since it includes sg-accel in it's manifest and will
+# build *both* sync gateway and sg-accel
+TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
+			
+# By default, will run "repo init" followed by "repo sync".
+# If this is set to 1, skips "repo sync" 
 INIT_ONLY=0
 
 # Parse the options and save into variables
@@ -26,7 +33,7 @@ parseOptions () {
 
     local product_arg_specified=0
     
-    while getopts "p:c:u:t:i" opt; do
+    while getopts "p:c:u:t:ihd" opt; do
 	case $opt in
 	    i)
 		# If the -i option is set, skip the "repo sync".
@@ -37,23 +44,30 @@ parseOptions () {
 		COMMIT=$OPTARG
 		echo "Using commit: $COMMIT"
 		;;
+	    d)
+		set -x  # print out all commands executed
+		set -e  # abort on non-zero exit codes
+		echo "Running in debug mode"
+		;;
+	    h)
+		echo "./bootstrap.sh -p sg -c y0pl33g0r425 -i"
+		echo "-p <product> to choose which product to bootstrap"
+		echo "-c <commit> to start with a particular commit"
+		echo "-i to only run repo init and skip repo sync"
+		echo "-d to run in debug mode"
+		exit 0
+		;;
 	    p)
 		case $OPTARG in
 		    sg)
 			PRODUCT="sg"
-			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 			;;
 		    sg-accel)
 			PRODUCT="sg-accel"
-			# Even when we build sg-accel, we want to grab the sync_gateway
-			# repo since it includes sg-accel in it's manifest and will
-			# build *both* sync gateway and sg-accel
-			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 			;;		
 		    *)
-			# Just default to SG 
-			PRODUCT="sg"
-			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
+			echo "Unknown product"
+			exit 1
 			;;
 		esac
 		;;
@@ -80,7 +94,6 @@ parseOptions () {
 # This technically doesn't need to run on the master branch, and should be a no-op
 # in that case.  I have left that in for now since it enables certain testing.
 rewriteManifest () {
-
 
     curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
     chmod +x rewrite-manifest.sh
