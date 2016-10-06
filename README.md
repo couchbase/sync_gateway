@@ -87,7 +87,7 @@ After this operation completes you should have a new `sync_gateway` binary in `$
 
 *NOTE:* This build style is only suitable for development rather than deployment.  There is a chance this might fail or have runtime errors due to using the latest version of all dependencies (whereas release builds use dependency pinning).  Please file an [issue][ISSUE_TRACKER] if you run into problems.
 
-See the [Extended Build Instructions](build.md) to build with dependency pinning via the `repo` multi-repository tool.
+See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pinning via the `repo` multi-repository tool.
 
 ### License
 
