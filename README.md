@@ -70,6 +70,6 @@ Apache 2 license.
 [WALRUS]: https://github.com/couchbaselabs/walrus
 [HTTPIE]: http://httpie.org
 [MAILING_LIST]: https://groups.google.com/forum/?fromgroups#!forum/mobile-couchbase
-[FORUM]: forums.couchbase.com
+[FORUM]: http://forums.couchbase.com
 [ISSUE_TRACKER]: https://github.com/couchbase/sync_gateway/issues?state=open
 [MAC_STABLE_BUILD]: http://cbfs-ext.hq.couchbase.com/mobile/SyncGateway/SyncGateway-Mac.zip
