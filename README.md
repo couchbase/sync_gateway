@@ -8,7 +8,7 @@
 * Leverages [Couchbase Server][COUCHBASE_SERVER] as it's horizontally scalable backing data store
 * Clustered into a horizontally scalable tier
 * Provides access control and data routing
-* Changes stream of all database mutations
+* Provides HTTP longpoll changes stream of all database mutations
 
 *Deployment*
 
