@@ -38,7 +38,6 @@ parseOptions () {
 		echo "Using commit: $COMMIT"
 		;;
 	    p)
-		product_arg_specified=1
 		case $OPTARG in
 		    sg)
 			PRODUCT="sg"
@@ -52,8 +51,9 @@ parseOptions () {
 			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 			;;		
 		    *)
-			echo "Unknown product.  Aborting."
-			exit 1
+			# Just default to SG 
+			PRODUCT="sg"
+			TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 			;;
 		esac
 		;;
@@ -64,12 +64,6 @@ parseOptions () {
 	esac
     done
 
-    if [ $product_arg_specified -eq 0 ]; then
-	echo "You must specify a product.  Aborting."
-	exit 1
-    fi
-
-	
 }
 
 
