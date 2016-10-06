@@ -10,38 +10,9 @@
 * Provides access control and data routing
 * Provides HTTP longpoll changes stream of all database mutations
 
-*Deployment*
+*High Level Architecture*
 
-
-```
-                  ┌───────────────────┐    ┌───────────────────┐                         
-                  │                   │    │                   │                         
-                  │ Couchbase Server  │    │ Couchbase Server  │                         
-                  │                   │    │                   │                         
-                  └───────────────────┘    └───────────────────┘                         
-                      ▲           ▲           ▲           ▲                              
-     memcached / DCP  │           │           │           │    memcached / DCP           
-                      │           │           │           │                              
-       ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐               
-       │                   │  │                   │  │                   │               
-       │   Sync Gateway    │  │   Sync Gateway    │  │   Sync Gateway    │               
-       │                   │  │                   │  │                   │               
-       └───────────────────┘  └───────────────────┘  └───────────────────┘        Load   
-─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ Balancer 
-                                                                                         
-           ▲          ▲           ▲            ▲             ▲         ▲                 
-   HTTP    │          │           │    HTTP    │             │         │    HTTP         
-           │          │           │            │             │         │                 
-    ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐         
-    │         │  │         │  │         │  │         │  │         │  │         │         
-    │         │  │         │  │         │  │         │  │         │  │         │         
-    │ Mobile  │  │   IoT   │  │ Web/App │  │ Mobile  │  │   IoT   │  │ Web/App │         
-    │ Client  │  │ Device  │  │ Server  │  │ Client  │  │ Device  │  │ Server  │         
-    │         │  │         │  │         │  │         │  │         │  │         │         
-    │         │  │         │  │         │  │         │  │         │  │         │         
-    │         │  │         │  │         │  │         │  │         │  │         │         
-    └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘
-```
+![Diagram](http://images.cbauthx.com/mobile/1.3/20161004-093613/diagrams.001.png)
 
 ## Resources
 
