@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
 
-  <remote fetch="git://github.com/couchbase/" name="couchbase"/>
-  <remote fetch="git://github.com/couchbaselabs/" name="couchbaselabs"/>
-  <remote fetch="git://github.com/couchbasedeps/" name="couchbasedeps"/>
-  <remote fetch="git://github.com/elazarl/" name="elazarl"/>
-  <remote fetch="git://github.com/gorilla/" name="gorilla"/>
-  <remote fetch="git://github.com/natefinch/" name="natefinch"/>
-  <remote fetch="git://github.com/rcrowley/" name="rcrowley"/>
-  <remote fetch="git://github.com/samuel/" name="samuel"/>
-  <remote fetch="git://github.com/tleyden/" name="tleyden"/>
-  <remote fetch="git://github.com/mreiferson/" name="mreiferson"/>
-  <remote fetch="git://github.com/kardianos/" name="kardianos"/>
-  <remote fetch="git://github.com/coreos/" name="coreos"/>
-  <remote fetch="git://github.com/jonboulle/" name="jonboulle"/>
+  <remote fetch="https://github.com/couchbase/" name="couchbase"/>
+  <remote fetch="https://github.com/couchbaselabs/" name="couchbaselabs"/>
+  <remote fetch="https://github.com/couchbasedeps/" name="couchbasedeps"/>
+  <remote fetch="https://github.com/elazarl/" name="elazarl"/>
+  <remote fetch="https://github.com/gorilla/" name="gorilla"/>
+  <remote fetch="https://github.com/natefinch/" name="natefinch"/>
+  <remote fetch="https://github.com/rcrowley/" name="rcrowley"/>
+  <remote fetch="https://github.com/samuel/" name="samuel"/>
+  <remote fetch="https://github.com/tleyden/" name="tleyden"/>
+  <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
+  <remote fetch="https://github.com/kardianos/" name="kardianos"/>
+  <remote fetch="https://github.com/coreos/" name="coreos"/>
+  <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
   <remote fetch="https://github.com/couchbaselabs/" name="couchbaselabs_private" />
   
   <default remote="couchbase" revision="master"/>
