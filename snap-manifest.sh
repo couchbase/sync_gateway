@@ -17,7 +17,7 @@ def repo_sync():
     Run "repo sync", which will do all of the heavy lifting to get the 
     dependencies "snapped" / "syncd" to the versions specified in the manifest xml
     """
-    subprocess.call(['repo', 'sync'])  # TODO: does this need a subshell for any reason?
+    subprocess.call(['repo', 'sync', '-d'])  # TODO: does this need a subshell for any reason?
 
 def copy_modified_manifest(product, product_repo_commit, source_manifest_path, dest_path):
     """
