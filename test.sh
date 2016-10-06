@@ -6,5 +6,10 @@ if [ -d "godeps" ]; then
   export GOPATH=`pwd`/godeps
 fi
 
-go test "$@" github.com/couchbase/sync_gateway/...
+echo "Running Sync Gateway unit tests"
+go test -v "$@" github.com/couchbase/sync_gateway/...
 
+if [ -d godeps/src/github.com/couchbaselabs/sync-gateway-accel ]; then
+    echo "Running Sync Gateway Accel unit tests"
+    go test -v "$@" github.com/couchbaselabs/sync-gateway-accel/...
+fi
