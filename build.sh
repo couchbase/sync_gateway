@@ -27,9 +27,23 @@ updateVersionStamp () {
 
 updateVersionStamp
 
-## Go Install
-echo "Building code with 'go install' ..."
+## Go Install Sync Gateway
+echo "Building Sync Gateway with 'go install' ..."
 go install "$@" github.com/couchbase/sync_gateway/...
+echo "Success!"
+# Let user where to know where to find binaries
+if [ -f godeps/bin/sync_gateway ]; then
+    echo "Sync Gateway binary compiled to: godeps/bin/sync_gateway"
+fi
 
-echo "Success! Output is godeps/bin/sync_gateway and godeps/bin/sg_accel "
+# Go install Sg Accel
+if [ -d godeps/src/github.com/couchbaselabs/sync-gateway-accel ]; then
+    echo "Building Sync Gateway Accel with 'go install' ..."
+    go install "$@" github.com/couchbaselabs/sync-gateway-accel/...
+    if [ -f godeps/bin/sync-gateway-accel ]; then
+	echo "Sync Gateway Accel compiled to: godeps/bin/sync-gateway-accel"
+    fi    
+fi
+
+
 
