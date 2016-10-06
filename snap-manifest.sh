@@ -12,22 +12,6 @@ import xml.etree.ElementTree as ET
 # This script has the ability to "snap" all of your dependencies into place,
 # according to the versions specified in your manifest file
 
-def discover_product_from_repo_manifest():
-    """
-    Open ./repo/manifest.xml and figure out what the project name is:
-
-    <project name="sync-gateway-accel"..>
-
-    or 
-
-    <project name="sync_gateway"..>
-
-    """
-    
-    # TODO
-    return "sync_gateway"
-
-
 def repo_sync():
     """
     Run "repo sync", which will do all of the heavy lifting to get the 
@@ -88,20 +72,14 @@ def get_git_revision_hash():
     
 if __name__=="__main__":
 
-    manifest_locations = {
-        "sync_gateway": "godeps/src/github.com/couchbase/sync_gateway/manifest/default.xml",
-        "sync-gateway-accel": "godeps/src/github.com/couchbaselabs/sync-gateway-accel/manifest/default.xml",
-    }
+    product = "sync_gateway"
 
-    # Discover the product based on what's in .repo/manifest.xml
-    product = discover_product_from_repo_manifest()
-
-    # Find the manifest.xml in the cloned repo (sync gateway or sg accel)    
-    source_manifest_path = manifest_locations[product]
+    # Path to source manifest
+    source_manifest_path = "godeps/src/github.com/couchbase/sync_gateway/manifest/default.xml"
 
     product_repo_commit = discover_product_repo_commit(source_manifest_path)
     
-    # Copy it to the ./repo/manifest.xml file
+    # Modify manifest and copy it to the ./repo/manifest.xml file
     copy_modified_manifest(
         product,
         product_repo_commit,
