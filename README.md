@@ -2,7 +2,7 @@
 
 # Sync Gateway
 
-Features:
+*Features*
 
 * Manages HTTP-based data access for [Couchbase Lite][COUCHBASE_LITE] mobile clients 
 * Leverages [Couchbase Server][COUCHBASE_SERVER] as it's horizontally scalable backing data store
@@ -10,7 +10,7 @@ Features:
 * Provides access control and data routing
 * Changes stream of all database mutations
 
-Typical deployment:
+*Deployment*
 
 
 ```
