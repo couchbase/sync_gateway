@@ -7,6 +7,8 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
+// TODO: This code can be removed due to "The persona.org service is shutting down. This service will be unavailable after November 30th, 2016.  More Info..."
+
 package rest
 
 import (
