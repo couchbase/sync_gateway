@@ -19,7 +19,7 @@
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
-  <project name="build" path="cbbuild" remote="couchbase" revision="b3bea7ac2aadd581ce6ac51d615fb36d02ea6fd5">
+  <project name="build" path="cbbuild" remote="couchbase" revision="388ec72a70fc0925823d726609a209201052567b">
     <annotation name="VERSION" value="1.4.0"     keep="true"/>
     <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
