@@ -31,7 +31,7 @@
 
 To build Sync Gateway from source, you must have the following installed:
 
-* Go 1.5 or later with your `$GOPATH` set to a valid directory
+* Go 1.5 or later with your `$GOPATH` set to a valid directory (Go 1.7.1 or later for Mac OS Sierra)
 * GCC
 
 **Install Go**
