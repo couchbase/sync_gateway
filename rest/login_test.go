@@ -42,7 +42,6 @@ func TestVerifyFacebook(t *testing.T) {
 
 // This test exists because there have been problems with builds of Go being unable to make HTTPS
 // connections due to the TLS package missing the Cgo bits needed to load system root certs.
-// This then breaks our Persona support.
 func TestVerifyHTTPSSupport(t *testing.T) {
 	_, err := http.Get("https://google.com")
 	if err != nil {

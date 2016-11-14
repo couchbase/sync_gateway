@@ -73,7 +73,6 @@ func (rt *restTester) bucket() base.Bucket {
 		rt._sc = NewServerContext(&ServerConfig{
 			CORS:           corsConfig,
 			Facebook:       &FacebookConfig{},
-			Persona:        &PersonaConfig{},
 			AdminInterface: &DefaultAdminInterface,
 		})
 
@@ -112,7 +111,6 @@ func (rt *restTester) bucketAllowEmptyPassword() base.Bucket {
 	rt._sc = NewServerContext(&ServerConfig{
 		CORS:           &CORSConfig{},
 		Facebook:       &FacebookConfig{},
-		Persona:        &PersonaConfig{},
 		AdminInterface: &DefaultAdminInterface,
 	})
 
@@ -462,7 +460,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	revid := body["rev"].(string)
 
 	//Put new revision with null body
-	response = rt.send(requestByUser("PUT", "/db/doc?rev="+revid,"", "user1"))
+	response = rt.send(requestByUser("PUT", "/db/doc?rev="+revid, "", "user1"))
 	assertStatus(t, response, 400)
 }
 
@@ -660,9 +658,6 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	response := rt.sendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
 	assertStatus(t, response, 401)
 
-	response = rt.sendRequestWithHeaders("POST", "/db/_persona", `{"ok":true}`, reqHeaders)
-	assertStatus(t, response, 500)
-
 	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertStatus(t, response, 401)
 }
@@ -689,9 +684,6 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	}
 
 	response := rt.sendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
-	assertStatus(t, response, 400)
-
-	response = rt.sendRequestWithHeaders("POST", "/db/_persona", `{"ok":true}`, reqHeaders)
 	assertStatus(t, response, 400)
 
 	response = rt.sendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)

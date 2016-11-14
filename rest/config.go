@@ -64,7 +64,6 @@ type ServerConfig struct {
 	AdminUI                        *string                  `json:",omitempty"` // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface               *string                  `json:",omitempty"` // Interface to bind Go profile API to (no default)
 	ConfigServer                   *string                  `json:",omitempty"` // URL of config server (for dynamic db discovery)
-	Persona                        *PersonaConfig           `json:",omitempty"` // Configuration for Mozilla Persona validation
 	Facebook                       *FacebookConfig          `json:",omitempty"` // Configuration for Facebook validation
 	Google                         *GoogleConfig            `json:",omitempty"` // Configuration for Google validation
 	CORS                           *CORSConfig              `json:",omitempty"` // Configuration for allowing CORS
@@ -132,11 +131,6 @@ type DbConfig struct {
 type DbConfigMap map[string]*DbConfig
 
 type ReplConfigMap map[string]*ReplicationConfig
-
-type PersonaConfig struct {
-	Origin   string // Canonical server URL for Persona authentication
-	Register bool   // If true, server will register new user accounts
-}
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
@@ -432,9 +426,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.DeploymentID == nil {
 		self.DeploymentID = other.DeploymentID
 	}
-	if self.Persona == nil {
-		self.Persona = other.Persona
-	}
 	if self.Facebook == nil {
 		self.Facebook = other.Facebook
 	}
@@ -459,7 +450,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() {
 
-	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
@@ -571,13 +561,6 @@ func ParseCommandLine() {
 				},
 			},
 		}
-	}
-
-	if *siteURL != "" {
-		if config.Persona == nil {
-			config.Persona = new(PersonaConfig)
-		}
-		config.Persona.Origin = *siteURL
 	}
 
 	base.EnableLogKey("HTTP")
