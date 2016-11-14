@@ -10,15 +10,94 @@
 package base
 
 import (
+	"errors"
 	"fmt"
+	"github.com/couchbase/clog"
+	"github.com/natefinch/lumberjack"
 	"log"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
-	"github.com/couchbase/clog"
 )
+
+var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
+
+type Level int32
+
+const (
+	// DebugLevel logs are typically voluminous, and are usually disabled in
+	// production.
+	DebugLevel Level = iota - 1
+	// InfoLevel is the default logging priority.
+	InfoLevel
+	// WarnLevel logs are more important than Info, but don't need individual
+	// human review.
+	WarnLevel
+	// ErrorLevel logs are high-priority. If an application is running smoothly,
+	// it shouldn't generate any error-level logs.
+	ErrorLevel
+	// PanicLevel logs a message, then panics.
+	PanicLevel
+	// FatalLevel logs a message, then calls os.Exit(1).
+	FatalLevel
+)
+
+// String returns a lower-case ASCII representation of the log level.
+func (l Level) String() string {
+	switch l {
+	case DebugLevel:
+		return "debug"
+	case InfoLevel:
+		return "info"
+	case WarnLevel:
+		return "warn"
+	case ErrorLevel:
+		return "error"
+	case PanicLevel:
+		return "panic"
+	case FatalLevel:
+		return "fatal"
+	default:
+		return fmt.Sprintf("Level(%d)", l)
+	}
+}
+
+// MarshalText marshals the Level to text. Note that the text representation
+// drops the -Level suffix (see example).
+func (l *Level) MarshalText() ([]byte, error) {
+	if l == nil {
+		return nil, errMarshalNilLevel
+	}
+	return []byte(l.String()), nil
+}
+
+// UnmarshalText unmarshals text to a level. Like MarshalText, UnmarshalText
+// expects the text representation of a Level to drop the -Level suffix (see
+// example).
+//
+// In particular, this makes it easy to configure logging levels using YAML,
+// TOML, or JSON files.
+func (l *Level) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "debug":
+		*l = DebugLevel
+	case "info":
+		*l = InfoLevel
+	case "warn":
+		*l = WarnLevel
+	case "error":
+		*l = ErrorLevel
+	case "panic":
+		*l = PanicLevel
+	case "fatal":
+		*l = FatalLevel
+	default:
+		return fmt.Errorf("unrecognized level: %v", string(text))
+	}
+	return nil
+}
 
 // 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
 // Default value is 1.
@@ -36,6 +115,40 @@ var logger *log.Logger
 var logFile *os.File
 
 var logStar bool // enabling log key "*" enables all key-based logging
+
+type LogRotationConfig struct {
+	// MaxSize is the maximum size in megabytes of the log file before it gets
+	// rotated. It defaults to 100 megabytes.
+	MaxSize int `json:"maxsize,omitempty"`
+
+	// MaxAge is the maximum number of days to retain old log files based on the
+	// timestamp encoded in their filename.  Note that a day is defined as 24
+	// hours and may not exactly correspond to calendar days due to daylight
+	// savings, leap seconds, etc. The default is not to remove old log files
+	// based on age.
+	MaxAge int `json:"maxage,omitempty"`
+
+	// MaxBackups is the maximum number of old log files to retain.  The default
+	// is to retain all old log files (though MaxAge may still cause them to get
+	// deleted.)
+	MaxBackups int `json:"maxbackups,omitempty"`
+
+	// LocalTime determines if the time used for formatting the timestamps in
+	// backup files is the computer's local time.  The default is to use UTC
+	// time.
+	LocalTime bool `json:"localtime,omitempty"`
+	// contains filtered or unexported fields
+}
+
+type LoggingConfig struct {
+	// Filename is the file to write logs to.  Backup log files will be retained
+	// in the same directory.  It uses <processname>-lumberjack.log in
+	// os.TempDir() if empty.
+	Filename string             `json:"filename"`
+	LogKeys  []string           `json:"logKeys,omitempty"` // Log keywords to enable
+	LogLevel Level              `json:"logLevel,omitempty"`
+	Rotation *LogRotationConfig `json:"rotation,omitempty"`
+}
 
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
@@ -313,6 +426,23 @@ func UpdateLogger(logFilePath string) {
 			Warn("unable to close old log File after updating logger")
 		}
 	}
+}
+
+func createRollingLogger() {
+
+	lj := lumberjack.Logger{
+		Filename:   "/var/log/myapp/foo.log",
+		MaxSize:    500, // megabytes
+		MaxBackups: 3,
+		MaxAge:     28, //days
+	}
+
+	//Update default GoLang logger to use new rolling logger
+	log.SetOutput(&lj)
+
+	//Update sg_replicate logger to use rolling logger
+	clog.SetOutput(&lj)
+
 }
 
 // ANSI color control escape sequences.

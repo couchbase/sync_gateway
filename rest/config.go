@@ -68,8 +68,9 @@ type ServerConfig struct {
 	Facebook                       *FacebookConfig          `json:",omitempty"` // Configuration for Facebook validation
 	Google                         *GoogleConfig            `json:",omitempty"` // Configuration for Google validation
 	CORS                           *CORSConfig              `json:",omitempty"` // Configuration for allowing CORS
-	Log                            []string                 `json:",omitempty"` // Log keywords to enable
-	LogFilePath                    *string                  `json:",omitempty"` // Path to log file, if missing write to stderr
+	DeprecatedLog                  []string                 `json:",omitempty"` // Log keywords to enable
+	DeprecatedLogFilePath          *string                  `json:",omitempty"` // Path to log file, if missing write to stderr
+	Logging                        LoggingConfigMap         `json:",omitempty"` // Pre-configured databases, mapped by name
 	Pretty                         bool                     `json:",omitempty"` // Pretty-print JSON responses?
 	DeploymentID                   *string                  `json:",omitempty"` // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64                 `json:",omitempty"` // Optional stats report interval (0 to disable)
@@ -128,6 +129,8 @@ type DbConfig struct {
 	Unsupported        *UnsupportedConfig             `json:"unsupported,omitempty"`          // Config for unsupported features
 	OIDCConfig         *auth.OIDCOptions              `json:"oidc,omitempty"`                 // Config properties for OpenID Connect authentication
 }
+
+type LoggingConfigMap map[string]*base.LoggingConfig
 
 type DbConfigMap map[string]*DbConfig
 
@@ -441,8 +444,8 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.CORS == nil {
 		self.CORS = other.CORS
 	}
-	for _, flag := range other.Log {
-		self.Log = append(self.Log, flag)
+	for _, flag := range other.DeprecatedLog {
+		self.DeprecatedLog = append(self.DeprecatedLog, flag)
 	}
 	if other.Pretty {
 		self.Pretty = true
@@ -513,8 +516,8 @@ func ParseCommandLine() {
 		if *pretty {
 			config.Pretty = *pretty
 		}
-		if config.Log != nil {
-			base.ParseLogFlags(config.Log)
+		if config.DeprecatedLog != nil {
+			base.ParseLogFlags(config.DeprecatedLog)
 		}
 
 		// If the interfaces were not specified in either the config file or
@@ -527,7 +530,7 @@ func ParseCommandLine() {
 		}
 
 		if *logFilePath != "" {
-			config.LogFilePath = logFilePath
+			config.DeprecatedLogFilePath = logFilePath
 		}
 
 		if *skipRunModeValidation == true {
@@ -693,9 +696,9 @@ func RunServer(config *ServerConfig) {
 }
 
 // for now  just cycle the logger to allow for log file rotation
-func ReloadConf() {
-	if config.LogFilePath != nil {
-		base.UpdateLogger(*config.LogFilePath)
+func HandleSighup() {
+	if config.DeprecatedLogFilePath != nil {
+		base.UpdateLogger(*config.DeprecatedLogFilePath)
 	}
 }
 
@@ -730,7 +733,7 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine()
-	ReloadConf()
 	ValidateConfigOrPanic(runMode)
+	HandleSighup()
 	RunServer(config)
 }
