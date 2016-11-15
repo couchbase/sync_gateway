@@ -19,10 +19,11 @@ import (
 	"github.com/couchbaselabs/go.assert"
 
 	"bytes"
+	"net/http"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"net/http"
 )
 
 type indexTester struct {
@@ -45,7 +46,6 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 
 	it._sc = NewServerContext(&ServerConfig{
 		Facebook: &FacebookConfig{},
-		Persona:  &PersonaConfig{},
 	})
 
 	var syncFnPtr *string
