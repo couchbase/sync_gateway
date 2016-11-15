@@ -68,9 +68,9 @@ type ServerConfig struct {
 	Facebook                       *FacebookConfig          `json:",omitempty"`            // Configuration for Facebook validation
 	Google                         *GoogleConfig            `json:",omitempty"`            // Configuration for Google validation
 	CORS                           *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
-	DeprecatedLog                  []string                 `json:",omitempty"`            // Log keywords to enable
-	DeprecatedLogFilePath          *string                  `json:"log,omitempty"`         // Path to log file, if missing write to stderr
-	Logging                        LoggingConfigMap         `json:"logFilePath,omitempty"` // Pre-configured databases, mapped by name
+	DeprecatedLog                  []string                 `json:"log,omitempty"`         // Log keywords to enable
+	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
+	Logging                        *LoggingConfigMap        `json:",omitempty"`            // Pre-configured databases, mapped by name
 	Pretty                         bool                     `json:",omitempty"`            // Pretty-print JSON responses?
 	DeploymentID                   *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
@@ -130,7 +130,7 @@ type DbConfig struct {
 	OIDCConfig         *auth.OIDCOptions              `json:"oidc,omitempty"`                 // Config properties for OpenID Connect authentication
 }
 
-type LoggingConfigMap map[string]*base.LoggingConfig
+type LoggingConfigMap map[string]*base.LogAppenderConfig
 
 type DbConfigMap map[string]*DbConfig
 
@@ -346,6 +346,10 @@ func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
 		return nil, err
 	}
 
+	if err := config.validateLogging(); err != nil {
+		return nil, err
+	}
+
 	return config, nil
 }
 
@@ -397,6 +401,10 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 	if err := config.setupAndValidateDatabases(); err != nil {
 		return nil, err
 	}
+
+	if err = config.validateLogging(); err != nil {
+		return nil, err
+	}
 	return config, nil
 
 }
@@ -410,6 +418,21 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 	}
 	return nil
 }
+
+func (config *ServerConfig) validateLogging() error {
+	//If a logging config exists, it must contain a single
+	// appender named "default"
+	if config.Logging != nil {
+		if len(*config.Logging) != 1 || ((*config.Logging)["default"] == nil) {
+			return fmt.Errorf("The logging section must define a single \"default\" appender")
+		}
+		// Validate the default appender configuration
+		return (*config.Logging)["default"].ValidateLogAppender()
+	}
+	return nil
+}
+
+
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 

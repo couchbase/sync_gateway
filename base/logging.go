@@ -140,11 +140,11 @@ type LogRotationConfig struct {
 	// contains filtered or unexported fields
 }
 
-type LoggingConfig struct {
+type LogAppenderConfig struct {
 	// Filename is the file to write logs to.  Backup log files will be retained
 	// in the same directory.  It uses <processname>-lumberjack.log in
 	// os.TempDir() if empty.
-	LogFilePath string             `json:",omitempty"`
+	LogFilePath *string            `json:",omitempty"`
 	LogKeys     []string           `json:",omitempty"` // Log keywords to enable
 	LogLevel    Level              `json:",omitempty"`
 	Rotation    *LogRotationConfig `json:",omitempty"`
@@ -186,6 +186,15 @@ func ParseLogFlag(flag string) {
 	if flag != "" {
 		ParseLogFlags(strings.Split(flag, ","))
 	}
+}
+
+func (config *LogAppenderConfig) ValidateLogAppender() error {
+	//Fail validation if an appender contains a "rotation" sub document
+	// and no "logFilePath" appender property is defined
+	if config.Rotation != nil && config.LogFilePath == nil {
+		return fmt.Errorf("The appender must define a \"logFilePath\" when \"rotation\" is defined")
+	}
+	return nil
 }
 
 // Parses an array of log keys, probably coming from a argv flags.
