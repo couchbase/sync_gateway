@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"log"
 	"testing"
 
@@ -11,25 +10,7 @@ import (
 
 func testPartitionMap() *base.IndexPartitions {
 
-	partitions := make(base.PartitionStorageSet, 64)
-
-	numPartitions := uint16(64)
-	vbPerPartition := 1024 / numPartitions
-	for partition := uint16(0); partition < numPartitions; partition++ {
-		pStorage := base.PartitionStorage{
-			Index: partition,
-			Uuid:  fmt.Sprintf("partition_%d", partition),
-			VbNos: make([]uint16, vbPerPartition),
-		}
-		for index := uint16(0); index < vbPerPartition; index++ {
-			vb := partition*vbPerPartition + index
-			pStorage.VbNos[index] = vb
-		}
-		partitions[partition] = pStorage
-	}
-
-	indexPartitions := base.NewIndexPartitions(partitions)
-	return indexPartitions
+	return testPartitionMapWithShards(64)
 }
 
 func testContextAndChannelIndex(channelName string) (*DatabaseContext, *KvChannelIndex) {

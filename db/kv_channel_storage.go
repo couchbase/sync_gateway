@@ -426,7 +426,11 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 		}
 
 		entryKey := getEntryKey(entry.VbNo, entry.Sequence)
-		entryBytes := entries[entryKey]
+		entryBytes, ok := entries[entryKey]
+		if !ok || entryBytes == nil {
+			base.Warn("Expected entry for %s in get bulk response - not found", entryKey)
+			continue
+		}
 		removed := entry.isRemoved()
 		if err := json.Unmarshal(entryBytes, entry); err != nil {
 			base.Warn("Error unmarshalling entry for key %s: %v", entryKey, err)
