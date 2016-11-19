@@ -58,6 +58,9 @@ func testChannelStorage(storageType ChannelStorageType, indexBucket base.Bucket,
 //   2. Entries are randomly assigned to a vbucket.
 //   3. SequenceGap determines the gap between sequences for consecutive entries in a vbucket.  (This simulates a subset of
 //      sequences being assigned to a given channel)
+//
+// Uses a separate goroutine and a buffered channel since it might have non-zero overhead
+// and the caller will get log entries with lower latency.
 // ------------------------------------------------
 type LogEntryGenerator struct {
 	SequenceGap    uint64         // LogEntries will have gaps in sequences averaging SequenceGap (for each vbucket)
