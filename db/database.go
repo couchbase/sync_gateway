@@ -191,7 +191,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}, options.CacheOptions, options.IndexOptions)
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
-	if !(options.IndexOptions != nil && options.IndexOptions.Writer == false) {
+	if options.IndexOptions == nil {
 		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
 			context.TakeDbOffline("Lost TAP Feed")
 		}); err != nil {
