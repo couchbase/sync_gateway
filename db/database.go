@@ -191,10 +191,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}, options.CacheOptions, options.IndexOptions)
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
-	if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
-		context.TakeDbOffline("Lost TAP Feed")
-	}); err != nil {
-		return nil, err
+	if !(options.IndexOptions != nil && options.IndexOptions.Writer == false) {
+		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
+			context.TakeDbOffline("Lost TAP Feed")
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.

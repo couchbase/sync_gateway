@@ -112,7 +112,12 @@ func (k *kvChangeIndexReader) Stop() {
 	// Closing the terminator tells polling loop to stop, but may not be immediate.  Wait for polling to actually stop before closing the bucket
 	<-k.pollingActive
 	if k.indexReadBucket != nil {
-		k.indexReadBucket.Close()
+		switch t := k.indexReadBucket.(type) {
+		case base.CouchbaseBucketGoCB:
+			return
+		default:
+			t.Close()
+		}
 	}
 }
 
