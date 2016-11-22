@@ -906,10 +906,6 @@ func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbu
 	return nil, nil
 }
 
-func (bucket CouchbaseBucketGoCB) Close() {
-	LogPanic("Unimplemented method: Close()")
-}
-
 func (bucket CouchbaseBucketGoCB) Dump() {
 	LogPanic("Unimplemented method: Dump()")
 }
