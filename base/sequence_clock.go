@@ -35,6 +35,7 @@ type SequenceClock interface {
 	GetHashedValue() string                        // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	SetHashedValue(value string)                   // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
+	IsEmptyClock () bool			       // Evaluates if this an empty clock
 	AllAfter(otherClock SequenceClock) bool        // True if all entries in clock are greater than or equal to the corresponding values in otherClock
 	AllBefore(otherClock SequenceClock) bool       // True if all entries in clock are less than or equal to the corresponding values in otherClock
 	AnyAfter(otherClock SequenceClock) bool        // True if any entries in clock are greater than the corresponding values in otherClock
@@ -157,6 +158,15 @@ func (c *SequenceClockImpl) Equals(other SequenceClock) bool {
 	}
 	for vb, sequence := range other.Value() {
 		if sequence != c.value[vb] {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *SequenceClockImpl) IsEmptyClock() bool {
+	for _, v := range c.Value() {
+		if v != 0 {
 			return false
 		}
 	}
@@ -363,6 +373,12 @@ func (c *SyncSequenceClock) Equals(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.Clock.Equals(other)
+}
+
+func (c *SyncSequenceClock) IsEmptyClock() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.Clock.IsEmptyClock()
 }
 
 // Copies a channel clock
