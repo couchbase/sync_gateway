@@ -24,7 +24,7 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) run() {
-	logger.Infof("Starting the Sync Gateway Accelerator Accelerator service using command: `%s %s`", p.ExePath, p.ConfigPath)
+	logger.Infof("Starting the Sync Gateway Accelerator service using command: `%s %s`", p.ExePath, p.ConfigPath)
 
 	if p.ConfigPath != "" {
 		p.SGAccel = exec.Command(p.ExePath, p.ConfigPath)
@@ -54,7 +54,7 @@ func (p *program) run() {
 }
 
 func (p *program) Stop(s service.Service) error {
-	logger.Infof("Stopping Sync Gateway Accelerator Accelerator service...")
+	logger.Infof("Stopping Sync Gateway Accelerator service...")
 	p.SGAccel.Process.Kill()
 	return nil
 }
@@ -62,8 +62,8 @@ func (p *program) Stop(s service.Service) error {
 func main() {
 	svcConfig := &service.Config{
 		Name:        "SGAccel",
-		DisplayName: "Couchbase Sync Gateway Accelerator Accelerator",
-		Description: "Couchbase Sync Gateway Accelerator Accelerator performance and scalability service.",
+		DisplayName: "Couchbase Sync Gateway Accelerator",
+		Description: "Couchbase Sync Gateway Accelerator performance and scalability service.",
 	}
 
 	var exePath string
