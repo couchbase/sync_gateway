@@ -235,7 +235,7 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 		base.Warn("Error obtaining channel reader (need partition index?) for channel %s", channelName)
 		return nil, err
 	}
-	changes, err := reader.getChanges(sinceClock)
+	changes, err := reader.GetChanges(sinceClock)
 	if err != nil {
 		base.LogTo("DIndex+", "No clock found for channel %s, assuming no entries in index", channelName)
 		return nil, nil

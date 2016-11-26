@@ -120,6 +120,7 @@ type ChannelStorageBenchmarkSet struct {
 
 func initChannelStorageBenchmarkSet(storageType ChannelStorageType, sequenceGap uint64, statsEnabled bool) ChannelStorageBenchmarkSet {
 
+	base.SetLogLevel(2) // Disable logging
 	indexBucket := testIndexBucket()
 	if statsEnabled {
 		indexBucket = base.NewStatsBucket(indexBucket)
@@ -279,7 +280,8 @@ func TestChannelStorage_Read_Ops(t *testing.T) {
 // ------------------------------------------------
 //  Benchmarks
 // ------------------------------------------------
-func BenchmarkChannelStorage_Write_BitFlag_Multi(b *testing.B) {
+
+func BenchmarkChannelStorage_Control(b *testing.B) {
 
 	benchmarks := []struct {
 		name        string
@@ -297,8 +299,34 @@ func BenchmarkChannelStorage_Write_BitFlag_Multi(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				benchSet := initChannelStorageBenchmarkSet(ChannelStorageType_BitFlag, bm.sequenceGap, false)
-				defer benchSet.Close()
+				benchSet.Close()
+			}
+		})
+	}
+}
+
+func BenchmarkChannelStorage_Write_BitFlag_Multi(b *testing.B) {
+
+	benchmarks := []struct {
+		name        string
+		sequenceGap uint64
+	}{
+		{"ch=5", 5},
+		{"ch=50", 50},
+		{"ch=500", 500},
+		{"ch=5000", 5000},
+		{"ch=10000", 10000},
+		{"ch=20000", 20000},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				benchSet := initChannelStorageBenchmarkSet(ChannelStorageType_BitFlag, bm.sequenceGap, false)
+				b.StartTimer()
 				WriteEntries(benchSet.channelStorage, benchSet.generator, 10000)
+				benchSet.Close()
 			}
 		})
 	}
@@ -323,10 +351,10 @@ func BenchmarkChannelStorage_SingleRead_BitFlag_Multi(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				benchSet := initChannelStorageBenchmarkSet(ChannelStorageType_BitFlag, bm.sequenceGap, false)
-				defer benchSet.Close()
 				_, stableClock, _ := WriteEntries(benchSet.channelStorage, benchSet.generator, 10000)
 				b.StartTimer()
 				benchSet.channelStorage.GetChanges(base.NewSequenceClockImpl(), stableClock)
+				benchSet.Close()
 			}
 		})
 	}

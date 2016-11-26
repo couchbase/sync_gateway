@@ -98,11 +98,11 @@ type ChannelIndex interface {
 	Compact()
 }
 
-func (entry *LogEntry) isRemoved() bool {
+func (entry *LogEntry) IsRemoved() bool {
 	return entry.Flags&channels.Removed != 0
 }
 
-func (entry *LogEntry) setRemoved() {
+func (entry *LogEntry) SetRemoved() {
 	entry.Flags |= channels.Removed
 }
 

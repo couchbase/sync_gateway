@@ -86,7 +86,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	dbContext, err := it._sc.AddDatabaseFromConfig(dbConfig)
 
 	if useBucketIndex {
-		err := base.SeedTestPartitionMap(dbContext.GetIndexBucket(), 64)
+		_, err := base.SeedTestPartitionMap(dbContext.GetIndexBucket(), 64)
 		if err != nil {
 			panic(fmt.Sprintf("Error from seed partition map: %v", err))
 		}
