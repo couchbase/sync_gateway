@@ -96,6 +96,8 @@ func (s SequenceID) clockSeqToString() string {
 			return s.ClockHash
 		} else if s.Clock != nil && s.Clock.GetHashedValue() != "" {
 			return s.Clock.GetHashedValue()
+		} else if s.Clock != nil && s.Clock.IsEmptyClock()  {
+			return "0"
 		} else {
 			return fmt.Sprintf("%d.%d", s.vbNo, s.Seq)
 		}
