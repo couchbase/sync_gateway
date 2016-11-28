@@ -28,6 +28,9 @@ const (
 
 )
 
+// KvChannelIndex manages read requests from Sync Gateway to the bucket-based channel index, for a given channel.  Supports
+// one-shot requests, as well as polling to support notification for continuous/longpoll requests.  KvChangeIndex maintains a collection
+// of KvChannelIndex instances for active channels.
 type KvChannelIndex struct {
 	indexBucket            base.Bucket             // Database connection (used for connection queries)
 	channelName            string                  // Channel name
