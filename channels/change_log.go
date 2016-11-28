@@ -45,6 +45,7 @@ const (
 	Hidden               // This rev is not the default (hidden by a conflict)
 	Conflict             // Document is in conflict at this time
 	Branched             // Revision tree is branched
+	Added                // Doc was added to this channel
 
 	kMaxFlag = (1 << iota) - 1
 )
