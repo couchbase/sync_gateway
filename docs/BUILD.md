@@ -52,4 +52,4 @@ $ ./snap-manifest.sh
 Build via go get w/ dependency pinning
 --------------------------------------
 
-See the [Build Extra](docs/BUILD_EXTRA.md) for instructions on how to build via `go get` (as opposed to `repo`) with dependency pinning.
+See the [Build Extra](BUILD_EXTRA.md) for instructions on how to build via `go get` (as opposed to `repo`) with dependency pinning.
