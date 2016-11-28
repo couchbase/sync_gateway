@@ -576,7 +576,7 @@ func LoadClockCounter(baseKey string, bucket Bucket) (uint64, error) {
 }
 
 // Index partitions for unit tests
-func SeedTestPartitionMap(bucket Bucket, numPartitions uint16) error {
+func SeedTestPartitionMap(bucket Bucket, numPartitions uint16) (PartitionStorageSet, error) {
 	maxVbNo := uint16(1024)
 	partitionDefs := make(PartitionStorageSet, numPartitions)
 	vbPerPartition := maxVbNo / numPartitions
@@ -595,8 +595,8 @@ func SeedTestPartitionMap(bucket Bucket, numPartitions uint16) error {
 	// Persist to bucket
 	value, err := json.Marshal(partitionDefs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bucket.SetRaw(KIndexPartitionKey, 0, value)
-	return nil
+	return partitionDefs, nil
 }

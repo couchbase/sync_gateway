@@ -45,7 +45,6 @@ type ChannelStorage interface {
 	// manage these document outside the scope of a channel.  StoresLogEntries() allows callers to
 	// check whether this is available.
 	StoresLogEntries() bool
-	ReadLogEntry(vbNo uint16, sequence uint64) (*LogEntry, error)
 	WriteLogEntry(entry *LogEntry) error
 
 	// For unit testing only
@@ -142,7 +141,7 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	clockUpdates = base.NewSequenceClockImpl()
 	for _, entry := range entries {
 		// Update the sequence in the appropriate cache block
-		base.LogTo("DIndex+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.isRemoved())
+		base.LogTo("DIndex+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.IsRemoved())
 		blockKey := GenerateBlockKey(b.channelName, entry.Sequence, b.partitions.VbMap[entry.VbNo])
 		if _, ok := blockSets[blockKey]; !ok {
 			blockSets[blockKey] = make([]*LogEntry, 0)
@@ -431,14 +430,14 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 			base.Warn("Expected entry for %s in get bulk response - not found", entryKey)
 			continue
 		}
-		removed := entry.isRemoved()
+		removed := entry.IsRemoved()
 		if err := json.Unmarshal(entryBytes, entry); err != nil {
 			base.Warn("Error unmarshalling entry for key %s: %v", entryKey, err)
 		}
 		if _, exists := currentVbDocIDs[entry.DocID]; !exists {
 			currentVbDocIDs[entry.DocID] = struct{}{}
 			if removed {
-				entry.setRemoved()
+				entry.SetRemoved()
 			}
 			// TODO: optimize performance for prepend?
 			results = append([]*LogEntry{entry}, results...)
@@ -643,7 +642,7 @@ func (b *BitFlagBlock) AddEntry(entry *LogEntry) error {
 	if index < 0 || index >= uint64(len(b.value.Entries[entry.VbNo])) {
 		return errors.New("Sequence out of range of block")
 	}
-	if entry.isRemoved() {
+	if entry.IsRemoved() {
 		b.value.Entries[entry.VbNo][index] = byte(Seq_Removed)
 	} else {
 		b.value.Entries[entry.VbNo][index] = byte(Seq_InChannel)
@@ -666,7 +665,7 @@ func (b *BitFlagBlock) GetAllEntries() []*LogEntry {
 					Sequence: b.value.MinSequence + uint64(index),
 				}
 				if removed {
-					newEntry.setRemoved()
+					newEntry.SetRemoved()
 				}
 				results = append(results, newEntry)
 			}
@@ -713,7 +712,7 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 				Sequence: b.value.MinSequence + uint64(index),
 			}
 			if removed {
-				newEntry.setRemoved()
+				newEntry.SetRemoved()
 			}
 			entries = append(entries, newEntry)
 			if includeKeys {
@@ -798,7 +797,7 @@ func (b *BitFlagBufferBlock) AddEntry(entry *LogEntry) error {
 	if err != nil {
 		return err
 	}
-	if entry.isRemoved() {
+	if entry.IsRemoved() {
 		b.value[index] = byte(2)
 	} else {
 		b.value[index] = byte(1)
@@ -818,7 +817,7 @@ func (b *BitFlagBufferBlock) GetAllEntries() []*LogEntry {
 					Sequence: b.minSequence + uint64(index),
 				}
 				if removed {
-					newEntry.setRemoved()
+					newEntry.SetRemoved()
 				}
 				results = append(results, newEntry)
 			}
@@ -863,7 +862,7 @@ func (b *BitFlagBufferBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint6
 				Sequence: b.minSequence + uint64(index),
 			}
 			if removed {
-				newEntry.setRemoved()
+				newEntry.SetRemoved()
 			}
 			entries = append(entries, newEntry)
 			if includeKeys {
@@ -931,7 +930,7 @@ func readIndexEntriesInto(bucket base.Bucket, keys []string, entries map[string]
 				base.Warn("Error unmarshalling entry")
 			}
 			if removed {
-				entry.setRemoved()
+				entry.SetRemoved()
 			}
 		}
 	}

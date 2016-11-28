@@ -58,52 +58,8 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.
 	return channelIndex
 }
 
-//
-// Index Writing
-//
-
-func (k *KvChannelIndex) Add(entry *LogEntry) error {
-	// Update the sequence in the appropriate cache block
-	entries := make([]*LogEntry, 1)
-	entries[0] = entry
-	return k.AddSet(entries)
-}
-
-// Adds a set
-func (k *KvChannelIndex) AddSet(entries []*LogEntry) error {
-	base.LogTo("DIndex+", "Adding set of %d entries to channel %s", len(entries), k.channelName)
-
-	clockUpdates, err := k.channelStorage.AddEntrySet(entries)
-	if err != nil {
-		// Returns error, will be retried by the main indexing process.
-		base.Warn("Error adding entry set to channel %s: %v", k.channelName, err)
-		return err
-	}
-
-	// Update the clock.  Doing once per AddSet (instead of after each block update) to minimize the
-	// round trips.
-	err = k.writeClockCas(clockUpdates)
-
-	return err
-}
-
-func (k *KvChannelIndex) Compact() {
-	// TODO: for each index block being cached, check whether expired
-}
-
-func (k *KvChannelIndex) updateIndexCount() error {
-
-	// increment index count
-	key := getIndexCountKey(k.channelName)
-
-	_, err := k.indexBucket.Incr(key, 1, 1, 0)
-	if err != nil {
-		base.Warn("Error from Incr in updateCacheClock(%s): %v", key, err)
-		return err
-	}
-
-	return nil
-
+func (k *KvChannelIndex) IndexBucket() base.Bucket {
+	return k.indexBucket
 }
 
 func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
@@ -224,7 +180,7 @@ func (k *KvChannelIndex) checkLastPolled(since base.SequenceClock) (results []*L
 // Returns the set of index entries for the channel more recent than the
 // specified since SequenceClock.  Index entries with sequence values greater than
 // the index stable sequence are not returned.
-func (k *KvChannelIndex) getChanges(since base.SequenceClock) ([]*LogEntry, error) {
+func (k *KvChannelIndex) GetChanges(since base.SequenceClock) ([]*LogEntry, error) {
 
 	var results []*LogEntry
 
