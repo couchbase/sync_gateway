@@ -150,6 +150,8 @@ type LogAppenderConfig struct {
 	Rotation    *LogRotationConfig `json:",omitempty"`
 }
 
+type LoggingConfigMap map[string]*LogAppenderConfig
+
 //Attach logger to stderr during load, this may get re-attached once config is loaded
 func init() {
 	logger = log.New(os.Stderr, "", 0)
@@ -437,21 +439,33 @@ func UpdateLogger(logFilePath string) {
 	}
 }
 
-func createRollingLogger() {
+func CreateRollingLogger(logConfig *LogAppenderConfig) {
+	if logConfig != nil {
+		lj := lumberjack.Logger{}
 
-	lj := lumberjack.Logger{
-		Filename:   "/var/log/myapp/foo.log",
-		MaxSize:    500, // megabytes
-		MaxBackups: 3,
-		MaxAge:     28, //days
+		if logConfig.LogFilePath != nil {
+			lj.Filename = *logConfig.LogFilePath
+		}
+
+		if rotation := logConfig.Rotation; rotation != nil {
+			if rotation.MaxSize > 0 {
+				lj.MaxSize = rotation.MaxSize // megabytes
+			}
+			if rotation.MaxAge > 0 {
+				lj.MaxAge = rotation.MaxAge
+			}
+			if rotation.MaxBackups > 0 {
+				lj.MaxBackups = rotation.MaxBackups
+			}
+			lj.LocalTime = rotation.LocalTime
+		}
+
+		//Update default GoLang logger to use new rolling logger
+		log.SetOutput(&lj)
+
+		//Update sg_replicate logger to use rolling logger
+		clog.SetOutput(&lj)
 	}
-
-	//Update default GoLang logger to use new rolling logger
-	log.SetOutput(&lj)
-
-	//Update sg_replicate logger to use rolling logger
-	clog.SetOutput(&lj)
-
 }
 
 // ANSI color control escape sequences.

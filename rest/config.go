@@ -70,7 +70,7 @@ type ServerConfig struct {
 	CORS                           *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
 	DeprecatedLog                  []string                 `json:"log,omitempty"`         // Log keywords to enable
 	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
-	Logging                        *LoggingConfigMap        `json:",omitempty"`            // Pre-configured databases, mapped by name
+	Logging                        *base.LoggingConfigMap   `json:",omitempty"`            // Pre-configured databases, mapped by name
 	Pretty                         bool                     `json:",omitempty"`            // Pretty-print JSON responses?
 	DeploymentID                   *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
@@ -129,8 +129,6 @@ type DbConfig struct {
 	Unsupported        *UnsupportedConfig             `json:"unsupported,omitempty"`          // Config for unsupported features
 	OIDCConfig         *auth.OIDCOptions              `json:"oidc,omitempty"`                 // Config properties for OpenID Connect authentication
 }
-
-type LoggingConfigMap map[string]*base.LogAppenderConfig
 
 type DbConfigMap map[string]*DbConfig
 
@@ -346,7 +344,7 @@ func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
 		return nil, err
 	}
 
-	if err := config.validateLogging(); err != nil {
+	if err := config.setupAndValidateLogging(); err != nil {
 		return nil, err
 	}
 
@@ -380,7 +378,6 @@ func ReadServerConfig(path string) (*ServerConfig, error) {
 
 // Reads a ServerConfig from a JSON file.
 func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
-
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -402,7 +399,7 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 		return nil, err
 	}
 
-	if err = config.validateLogging(); err != nil {
+	if err = config.setupAndValidateLogging(); err != nil {
 		return nil, err
 	}
 	return config, nil
@@ -419,7 +416,7 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 	return nil
 }
 
-func (config *ServerConfig) validateLogging() error {
+func (config *ServerConfig) setupAndValidateLogging() error {
 	//If a logging config exists, it must contain a single
 	// appender named "default"
 	if config.Logging != nil {
@@ -427,12 +424,15 @@ func (config *ServerConfig) validateLogging() error {
 			return fmt.Errorf("The logging section must define a single \"default\" appender")
 		}
 		// Validate the default appender configuration
-		return (*config.Logging)["default"].ValidateLogAppender()
+		if defaultLogger := (*config.Logging)["default"]; defaultLogger != nil {
+			if err := defaultLogger.ValidateLogAppender(); err != nil {
+				return err
+			}
+			base.CreateRollingLogger(defaultLogger)
+		}
 	}
 	return nil
 }
-
-
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 
@@ -484,7 +484,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() {
-
 	siteURL := flag.String("personaOrigin", "", "Base URL that clients use to connect to the server")
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
