@@ -261,7 +261,7 @@ func (k *KvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 	key := GetChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
 	if err != nil {
-		base.LogTo("DIndex+", "Error loading channel clock for key %s:%v", key, err)
+		base.LogTo("DIndex+", "No existing channel clock for key %s:%v.  Using empty channel clock", key, err)
 		return chanClock, err
 	}
 	err = chanClock.Unmarshal(value)
