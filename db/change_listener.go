@@ -16,6 +16,7 @@ import (
 // changes.
 type changeListener struct {
 	bucket                base.Bucket
+	bucketName            string                 // Used for logging
 	tapFeed               base.TapFeed           // Observes changes to bucket
 	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
 	TapArgs               sgbucket.TapArguments  // The Tap Args (backfill, etc)
@@ -28,9 +29,18 @@ type changeListener struct {
 
 type DocChangedFunc func(docID string, jsonData []byte, seq uint64, vbNo uint16)
 
+func (listener *changeListener) Init(name string) {
+	listener.bucketName = name
+	listener.counter = 1
+	listener.terminateCheckCounter = 0
+	listener.keyCounts = map[string]uint64{}
+	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
+}
+
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
+	listener.bucketName = bucket.GetName()
 	listener.TapArgs = sgbucket.TapArguments{
 		Backfill: sgbucket.TapNoBackfill,
 		Notify:   notify,
@@ -41,10 +51,6 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify
 	}
 
 	listener.tapFeed = tapFeed
-	listener.counter = 1
-	listener.terminateCheckCounter = 0
-	listener.keyCounts = map[string]uint64{}
-	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	if trackDocs {
 		listener.DocChannel = make(chan sgbucket.TapEvent, 100)
 	}
@@ -106,7 +112,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 		listener.keyCounts[key] = listener.counter
 	}
 	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
-		listener.bucket.GetName(), keys, listener.counter)
+		listener.bucketName, keys, listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -145,7 +151,7 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
-		listener.bucket.GetName(), counter)
+		listener.bucketName, counter)
 	for {
 		curCounter := listener._currentCount(keys)
 
