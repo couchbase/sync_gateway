@@ -6,7 +6,7 @@ import (
 )
 
 // A ChangeIndex is responsible for indexing incoming events from change_listener, and
-// and servicing requests for indexed changes from changes.go.  In addition to basic feed processiw2BV23                                                                                                                                                                                                                                                                                                                                                                                                                                                                             ng, the
+// and servicing requests for indexed changes from changes.go.  In addition to basic feed processing
 // ChangeIndex is the component responsible for index consistency and sequence management.  The ChangeIndex
 // doesn't define storage - see ChannelIndex for storage details.
 //
