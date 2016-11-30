@@ -191,6 +191,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}, options.CacheOptions, options.IndexOptions)
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
+	// Initialize the tap Listener for notify handling
+	context.tapListener.Init(bucket.GetName())
+
+	// If not using channel index, start the tap feed
 	if options.IndexOptions == nil {
 		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
 			context.TakeDbOffline("Lost TAP Feed")
@@ -314,6 +318,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.tapListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
+	context.tapListener.Init(context.Bucket.GetName())
 	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, nil); err != nil {
 		return err
 	}
