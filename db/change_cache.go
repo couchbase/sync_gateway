@@ -350,6 +350,8 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		// If the recent sequence history includes any sequences earlier than the current sequence, and
 		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
 		// so that they are included in sequence buffering.
+		// If one of these sequences represents a removal from a channel then set the LogEntry removed flag
+		// and the set of channels it was removed from
 		currentSequence := doc.Sequence
 		if len(doc.UnusedSequences) > 0 {
 			currentSequence = doc.UnusedSequences[0]
@@ -364,6 +366,14 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 						Sequence:     seq,
 						TimeReceived: time.Now(),
 					}
+
+					//if the doc was removed from one or more channels at this sequence
+					// Set the removed flag and removed channel set on the LogEntry
+					if channelRemovals := doc.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+						change.Flags = channels.Removed
+						change.Channels = channelRemovals
+					}
+
 					c.processEntry(change)
 				}
 			}

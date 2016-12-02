@@ -66,6 +66,16 @@ func (entry *LogEntry) assertValid() {
 	}
 }
 
+func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) ChannelMap {
+	var channelsRemoved = make(ChannelMap)
+	for channel, removal := range channelMap {
+		if removal != nil && removal.Seq == seq {
+			channelsRemoved[channel] = removal
+		}
+	}
+	return channelsRemoved
+}
+
 func (cp *ChangeLog) LastSequence() uint64 {
 	if n := len(cp.Entries); n > 0 {
 		return cp.Entries[n-1].Sequence
