@@ -29,6 +29,7 @@ type LogEntry struct {
 	Skipped      bool         // Late arriving entry
 	Type         LogEntryType // Log entry type
 	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
+	PrevSequence uint64       // Sequence of previous active revision
 }
 
 type ChannelMap map[string]*ChannelRemoval

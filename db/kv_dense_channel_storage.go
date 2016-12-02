@@ -10,17 +10,24 @@
 package db
 
 import (
-	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"log"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
+)
+
+const (
+	KeyFormat_DenseBlockList       = "%s:blist%d:p%d:%s" //  base.KIndexPrefix, list index, partition, channelname
+	KeyFormat_DenseBlockListActive = "%s:blist:p%d:%s"   //  base.KIndexPrefix, partition, channelname
+	KeyFormat_DenseBlock           = "%s:block%d:p%d:%s" //  base.KIndexPrefix, block index, partition, channelname
 )
 
 // Implementation of ChannelStorage that stores entries as an append-based list of
 // full log entries
 type DenseStorage struct {
-	bucket           base.Bucket                       // Index bucket
+	indexBucket      base.Bucket                       // Index bucket
 	channelName      string                            // Channel name
 	partitions       *base.IndexPartitions             // Partition assignment map
 	partitionStorage map[uint16]*DensePartitionStorage // PartitionStorage for this channel
@@ -29,21 +36,11 @@ type DenseStorage struct {
 func NewDenseStorage(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) *DenseStorage {
 
 	storage := &DenseStorage{
-		bucket:      bucket,
-		channelName: channelName,
-		partitions:  partitions,
+		indexBucket:      bucket,
+		channelName:      channelName,
+		partitions:       partitions,
+		partitionStorage: make(map[uint16]*DensePartitionStorage, partitions.PartitionCount()),
 	}
-
-	// Maximum theoretical block cache capacity is 1024 - if this index writer were indexing every vbucket,
-	// and each vbucket sequence was in a different block.  More common case would be this index writer
-	// having at most 512 vbuckets, and most of those vbuckets working the same block index per partition (16 vbs per
-	// partition) == 32 blocks.  Setting default to 50 to handle any temporary spikes.
-	/* var err error
-	storage.indexBlockCache, err = base.NewLRUCache(50)
-	if err != nil {
-		base.LogFatal("Error creating LRU cache for index blocks: %v", err)
-	}
-	*/
 	return storage
 }
 
@@ -65,7 +62,12 @@ func (ds *DenseStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Sequ
 	// channel per batch
 	clockUpdates = base.NewSequenceClockImpl()
 	for partitionNo, entries := range partitionSets {
-		partitionUpdateClock, err := ds.partitionStorage[partitionNo].AddEntrySet(entries)
+		partitionStorage, ok := ds.partitionStorage[partitionNo]
+		if !ok {
+			partitionStorage = NewDensePartitionStorage(ds.channelName, partitionNo, ds.indexBucket)
+			ds.partitionStorage[partitionNo] = partitionStorage
+		}
+		partitionUpdateClock, err := partitionStorage.AddEntrySet(entries)
 		if err != nil {
 			base.LogTo("ChannelIndex", "Unable to add entry set to partition.  entries count:[%d] channel:[%s]", len(entries), ds.channelName)
 			return nil, err
@@ -93,365 +95,288 @@ func (ds *DenseStorage) WriteLogEntry(entry *LogEntry) error {
 	return nil
 }
 
+// DensePartitionStorage manages storage for a partition.  Index entries within a partition (across multiple vbuckets)
+// are stored in the same DenseBlocks
 type DensePartitionStorage struct {
-	partitionIndex      PartitionIndex // Mapping from clock to index block key
-	partitionBlockCache *base.LRUCache // Cache of recently used index blocks
+	blockList   *DenseBlockList // List of blocks associated with the partition and channel
+	channelName string          // Channel name
+	partitionNo uint16          // Partition number
+	indexBucket base.Bucket     // Index bucket
+}
+
+func NewDensePartitionStorage(channelName string, partitionNo uint16, indexBucket base.Bucket) *DensePartitionStorage {
+	storage := &DensePartitionStorage{
+		channelName: channelName,
+		partitionNo: partitionNo,
+		indexBucket: indexBucket,
+	}
+
+	storage.blockList = NewDenseBlockList(channelName, partitionNo, storage.indexBucket)
+	return storage
+}
+func (dps *DensePartitionStorage) init() error {
+	return nil
+}
+
+func (dps *DensePartitionStorage) getActiveBlock() *DenseBlock {
+	return dps.blockList.activeBlock
 }
 
 func (dps *DensePartitionStorage) AddEntrySet(entries []*LogEntry) (base.SequenceClock, error) {
-	// attempt to add to active block
-	// returns overflow, items requiring previous revision cleanup
-	// do previous revision cleanup
-	// handle the case where previous revision cleanup has made room on the active block
-	// else if returns overflow, initialize new block
-	// attempt to add to active block
-	// handle the case where len(entries) is greater than multiple blocks
-	// return updated clock (high sequence number for entries per vbno)
+
+	overflow, pendingRemoval, err := dps.getActiveBlock().addEntries(entries)
+	if err != nil {
+		return nil, err
+	}
+
+	// Process any entries with previous index entries in older blocks
+	if len(pendingRemoval) > 0 {
+		dps.removeEntries(pendingRemoval)
+	}
+
+	for len(overflow) > 0 {
+		_, err = dps.blockList.AddBlock()
+		if err != nil {
+			return nil, err
+		}
+		overflow, pendingRemoval, err = dps.getActiveBlock().addEntries(entries)
+		dps.removeEntries(pendingRemoval)
+	}
+
+	// TODO: return updated clock (high sequence number for entries per vbno)
 	return nil, nil
 }
 
-type PartitionIndex []PartitionIndexEntry
+// TODO: look up old entries in non-active blocks and remove them
+func (dps *DensePartitionStorage) removeEntries(pendingRemoval []*LogEntry) error {
+	return nil
+}
+
+// PartitionClock is simplified version of SequenceClock
 type PartitionClock map[uint16]uint64
 
-type PartitionIndexEntry struct {
-	partitionStart PartitionClock
-	blockId        string
-}
-
-// DenseBlock has the following binary-encoded format
-//  | Name               | Size                  | Description                                     |
-//  |--------------------|-----------------------|-------------------------------------------------|
-//  | blockIndexCount    | 2 bytes               | Number of entries in block                      |
-//  | []BlockIndexEntry  | 12 bytes/entry        | List of vb, seq and length for entries in block |
-//  | []BlockEntry       | variable length/entry | Key, rev id and flags for each entry            |
-//  ------------------------------------------------------------------------------------------------
-
-type DenseBlock struct {
-	key   string // Key of block document in the index bucket
-	value []byte // Binary storage of block data, in the above format
-	cas   uint64 // Document cas
-}
-
-func NewDenseBlock(key string) *DenseBlock {
-
-	// Set initial capacity of value to handle ~5 docs (depending on key length) - avoids a lot of
-	// alloc overhead when the first few entries in the channel are appended (since append only
-	// doubles capacity as needed).
-	// Initial length of value is set to 2, to initialize the entry count to zero.
-	return &DenseBlock{
-		key:   key,
-		value: make([]byte, 2, 400),
+func (clock PartitionClock) Add(other PartitionClock) {
+	for key, otherValue := range other {
+		value, _ := clock[key]
+		clock[key] = value + otherValue
 	}
 }
 
-func (d *DenseBlock) getEntryCount() uint16 {
-	return binary.BigEndian.Uint16(d.value[0:])
+func (clock PartitionClock) Copy() PartitionClock {
+	newClock := make(PartitionClock, len(clock))
+	for key, value := range clock {
+		newClock[key] = value
+	}
+	return newClock
 }
 
-func (d *DenseBlock) setEntryCount(count uint16) {
-	binary.BigEndian.PutUint16(d.value[0:2], count)
+const (
+	MaxListBlockCount = 1000 // When the number of blocks in the active list exceeds MaxListBlockCount, it's rotated
+)
+
+// DenseBlockList is an ordered list of DenseBlockListEntries keys.  Each key is associated with the starting
+// clock for that DenseBlock.  The list is persisted into one or more documents (DenseBlockListStorage) in the index.
+// The active list has key activeKey - older lists are rotated into activeKey_n
+type DenseBlockList struct {
+	indexBucket      base.Bucket           // Index Bucket
+	blocks           []DenseBlockListEntry // Dense Block keys
+	activeKey        string                // Key for active list doc
+	activeCas        uint64                // Cas for active list doc
+	activeStartIndex int                   // Position of the start of the active doc in the entries
+	activeCount      int                   // Counter for the active doc
+	channelName      string                // Channel Name
+	partition        uint16                // Partition number
+	activeBlock      *DenseBlock           // Active block for the list
 }
 
-func (d *DenseBlock) getBlockIndex() DenseBlockIndex {
-	return d.value[2 : 2+INDEX_ENTRY_LEN*d.getEntryCount()]
+type DenseBlockListStorage struct {
+	ListIndex uint32                `json:"list_index"`
+	Blocks    []DenseBlockListEntry `json:"blocks"`
 }
 
-func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
-	d.value, d.cas, err = bucket.GetRaw(d.key)
-	return err
+type DenseBlockListEntry struct {
+	BlockIndex int            `json:"index"` // Dense Block index
+	StartClock PartitionClock `json:"clock"` // Starting clock for Dense Block
 }
 
-// Adds entries to block and writes block to the bucket
-func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (pendingRemoval []*LogEntry, err error) {
+func NewDenseBlockList(channelName string, partition uint16, indexBucket base.Bucket) *DenseBlockList {
 
-	pendingRemoval, addError := d.addEntries(entries)
-	if addError != nil {
-		// Error adding entries - reset the block and return error
-		d.loadBlock(bucket)
-		return pendingRemoval, addError
+	list := &DenseBlockList{
+		channelName: channelName,
+		partition:   partition,
+		indexBucket: indexBucket,
+	}
+	list.activeKey = list.generateActiveListKey()
+	list.init()
+	return list
+}
+
+// Creates a new block, and adds to the block list
+func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
+
+	// Mark previous block inactive
+	if l.activeBlock != nil {
+		l.activeBlock.MarkInactive()
 	}
 
-	casOut, writeErr := base.WriteCasRaw(bucket, d.key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
-		// Note: The following is invoked upon cas failure - may be called multiple times
-		d.value = value
-		// Reapply update
-		pendingRemoval, addError = d.addEntries(entries)
-		if addError != nil {
-			d.loadBlock(bucket)
-			return nil, addError
-		}
-		return d.value, nil
-	})
-	if writeErr != nil {
-		return pendingRemoval, writeErr
-	}
-	d.cas = casOut
-	return pendingRemoval, nil
-}
-
-// Adds a set of log entries to the block
-func (d *DenseBlock) addEntries(entries []*LogEntry) (pendingRemoval []*LogEntry, err error) {
-
-	for _, entry := range entries {
-		removalRequired, err := d.addEntry(entry)
-		if err != nil {
-			return pendingRemoval, err
-		}
-		if removalRequired {
-			if pendingRemoval == nil {
-				pendingRemoval = make([]*LogEntry, 0)
-			}
-			pendingRemoval = append(pendingRemoval, entry)
-		}
-
-	}
-	return pendingRemoval, nil
-}
-
-// Adds a LogEntry to the block.  If the entry already exists in the block (new rev of existing doc),
-// handles removal
-func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err error) {
-
-	// Encode log entry as index and entry portions
-	entryBytes := NewDenseBlockEntry(logEntry.DocID, logEntry.RevID, logEntry.Flags)
-	indexBytes := NewDenseBlockIndexEntry(logEntry.VbNo, logEntry.Sequence, uint16(len(entryBytes)))
-
-	// If this is a new addition to the channel, don't need to remove previous entry
-	if logEntry.Flags&channels.Added != 0 {
-		err := d.appendEntry(indexBytes, entryBytes)
-		if err != nil {
-			return removalRequired, err
-		}
+	nextIndex := l.generateNextBlockIndex()
+	var nextStartClock PartitionClock
+	if l.activeBlock == nil {
+		// No previous active block - new block list
+		nextStartClock = make(PartitionClock)
 	} else {
-		// TODO: Entry already exists in the channel - handle potential removal from this block
-		oldIndexPos, oldEntryPos, oldEntryLen := d.getBlockIndex().findEntry(logEntry.VbNo, logEntry.Sequence)
-		if oldIndexPos > 0 {
-			d.replaceEntry(oldIndexPos, oldEntryPos, oldEntryLen, entryBytes, indexBytes)
-		} else {
-			// Exists in this channel, but not in this block
-			d.appendEntry(indexBytes, entryBytes)
-			removalRequired = true
-		}
+		// Determine index and startclock from previous active block
+		nextStartClock = l.activeBlock.startClock.Copy()
+		nextStartClock.Add(l.activeBlock.clock)
 	}
-	return removalRequired, err
+
+	nextBlockKey := l.generateBlockKey(nextIndex)
+	block := NewDenseBlock(nextBlockKey, nextStartClock)
+
+	// Add the new block to the list
+	listEntry := DenseBlockListEntry{
+		BlockIndex: nextIndex,
+		StartClock: nextStartClock,
+	}
+	l.blocks = append(l.blocks, listEntry)
+	// Do a CAS-safe write of the active list
+	value, err := l.marshalActive()
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("%s", value)
+
+	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, value, sgbucket.Raw)
+	if err != nil {
+		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
+		//  Re-initialize the current block list, and get the active block key from there.
+		l.init()
+		if len(l.blocks) == 0 {
+			return nil, fmt.Errorf("Unable to determine active block after DenseBlockList cas write failure")
+		}
+		latestEntry := l.blocks[len(l.blocks)-1]
+		return NewDenseBlock(l.generateBlockKey(latestEntry.BlockIndex), latestEntry.StartClock), nil
+	}
+	l.activeCas = casOut
+	l.activeBlock = block
+	return block, nil
 }
 
-// AppendEntry
-//  Increments the entry count of the block,
-//  appends the provided indexBytes to the index portion of the block, and
-//  appends the provided entryBytes to the entries portion of the block.
-func (d *DenseBlock) appendEntry(indexBytes, entryBytes []byte) error {
-	newCount, err := d.incrEntryCount(1)
+func (l *DenseBlockList) loadActiveBlock() *DenseBlock {
+	if len(l.blocks) == 0 {
+		return nil
+	} else {
+		latestEntry := l.blocks[len(l.blocks)-1]
+		return NewDenseBlock(l.generateBlockKey(latestEntry.BlockIndex), latestEntry.StartClock)
+	}
+
+}
+
+// Rotate out the active block list document from the active key to a rotated key (adds activeCount to the key), and
+// start a new empty block.
+func (l *DenseBlockList) rotate() error {
+	rotatedKey := l.generateRotatedListKey()
+
+	rotatedValue, err := l.marshalActive()
 	if err != nil {
 		return err
 	}
+	_, err = l.indexBucket.WriteCas(rotatedKey, 0, 0, 0, rotatedValue, sgbucket.Raw)
+	if err != nil {
+		// TODO: confirm cas error and not retry error
+		// CAS error - someone else has already rotated out for this count.  Continue to initialize empty
+	}
 
-	// Resize the block by appending entry AND index on the end (ensures we have capacity
-	// in d.value for indexBytes, entryBytes but avoids an additional alloc during append)
-	// See https://play.golang.org/p/pUNq2sUN6h
-	//   |n|oldIndex|oldEntries| -> |n|oldIndex|oldEntries|newEntry|newIndex|
-	d.value = append(d.value, entryBytes...)
-	d.value = append(d.value, indexBytes...)
-
-	endOfIndex := 2 + (newCount-1)*INDEX_ENTRY_LEN
-
-	//  Shift all entries:
-	// |n|oldIndex|oldEntries|newEntry|newIndexEntry| -> |n|oldIndex|oldEntrieoldEntries|newEntry|
-	copy(d.value[endOfIndex+INDEX_ENTRY_LEN:], d.value[endOfIndex:])
-
-	//  Insert index entry:
-	// |n|oldIndex|oldEntrieoldEntries|newEntry| -> |n|oldIndex|newIndex|oldEntries|newEntry|
-	copy(d.value[endOfIndex:endOfIndex+INDEX_ENTRY_LEN], indexBytes)
+	// Empty the active list
+	l.activeCount++
+	l.activeStartIndex = len(l.blocks)
+	activeValue, err := l.marshalActive()
+	if err != nil {
+		return err
+	}
+	l.activeCas, err = l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, activeValue, sgbucket.Raw)
+	if err != nil {
+		// CAS error.  Assume concurrent writer has already updated the active block list.
+		//  Re-initialize the current block list.
+		l.init()
+	}
 
 	return nil
 }
 
-// ReplaceEntry.  Replaces the existing entry with the specified index and entry positions/length with the new
-// entry described by indexBytes, entryBytes.  Used to replace a previous revision of a document in the cache with a minimum of slice
-// manipulation.
-func (d *DenseBlock) replaceEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16, indexBytes, entryBytes []byte) error {
+// Only loads the active block list doc during init.  Older entries are lazy loaded when a search
+// requests a clock earlier than the first entry's clock
+func (l *DenseBlockList) init() error {
 
-	// Shift and insert index entry
-	endOfIndex := uint32(2+INDEX_ENTRY_LEN) * uint32(d.getEntryCount())
-
-	// Replace index.
-	//  1. Unless oldIndexPos is the last entry in the index, shift index entries:
-	if oldIndexPos+uint32(INDEX_ENTRY_LEN) < endOfIndex {
-		copy(d.value[oldIndexPos:], d.value[oldIndexPos+INDEX_ENTRY_LEN:endOfIndex])
+	var activeBlockList DenseBlockListStorage
+	var err error
+	log.Printf("attempting to retrieve key: %s", l.activeKey)
+	l.activeCas, err = l.indexBucket.Get(l.activeKey, &activeBlockList)
+	if err != nil {
+		if base.GoCBErrorType(err) == base.GoCBErr_MemdStatusKeyNotFound {
+			l.blocks = make([]DenseBlockListEntry, 0)
+			l.activeCount = 0
+		} else {
+			return err
+		}
 	}
-	// 2. Replace last index entry
-	copy(d.value[endOfIndex-INDEX_ENTRY_LEN:endOfIndex], indexBytes)
+	l.blocks = activeBlockList.Blocks
+	l.activeStartIndex = 0
 
-	// Replace entry
-	//  1. Cut the previous entry
-	d.value = append(d.value[:oldEntryPos], d.value[oldEntryPos+uint32(oldEntryLen):]...)
-	//  2. Append the new entry
-	d.value = append(d.value, entryBytes...)
-
+	l.activeBlock = l.loadActiveBlock()
 	return nil
 }
 
-// Increments the entry count
-func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
-	count := d.getEntryCount()
-
-	// Check for overflow
-	if count+amount < count {
-		return 0, fmt.Errorf("Maximum block entry count exceeded")
+func (l *DenseBlockList) unmarshalActive(value []byte) error {
+	var activeBlock DenseBlockListStorage
+	if err := json.Unmarshal(value, &activeBlock); err != nil {
+		return err
 	}
-	d.setEntryCount(count + amount)
-	return count + amount, nil
+	return nil
 }
 
-func (d *DenseBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, includeKeys bool) (entries []*LogEntry, keySet []string) {
-	return nil, nil
-}
+// Marshals the active block list
+func (l *DenseBlockList) marshalActive() ([]byte, error) {
 
-func (d *DenseBlock) GetAllEntries() []*LogEntry {
-	count := d.getEntryCount()
-	entries := make([]*LogEntry, count)
-	entryPos := uint32(2 + count*INDEX_ENTRY_LEN)
-	var indexEntry DenseBlockIndexEntry
-	var entry DenseBlockEntry
-	for i := uint16(0); i < count; i++ {
-		indexEntry = d.value[2+i*INDEX_ENTRY_LEN : 2+(i+1)*INDEX_ENTRY_LEN]
-		entry = d.value[entryPos : entryPos+uint32(indexEntry.getEntryLen())]
-		entries[i] = &LogEntry{
-			VbNo:     indexEntry.getVbNo(),
-			Sequence: indexEntry.getSequence(),
-			DocID:    entry.getDocId(),
-			RevID:    entry.getRevId(),
-			Flags:    entry.getFlags(),
-		}
+	activeBlock := &DenseBlockListStorage{
+		ListIndex: uint32(l.activeCount),
 	}
-
-	return entries
-}
-
-type DenseBlockIndex []byte
-
-// Attempts to find the specified [vb, seq] in the block index.  Returns index position, entry position and
-// entry length when found.  Returns zeroes when not found
-func (bi DenseBlockIndex) findEntry(vbNo uint16, sequence uint64) (indexPosition, entryPosition uint32, entryLength uint16) {
-
-	indexPosition = 0
-	entryPosition = uint32(2 + len(bi))
-	indexBytes := []byte(bi)
-	for indexPosition < uint32(len(bi)) {
-		var entry DenseBlockIndexEntry
-		entry = indexBytes[indexPosition : indexPosition+12]
-		if entry.getVbNo() == vbNo {
-			if entry.getSequence() == sequence {
-				// Found, return location information
-				return indexPosition, entryPosition, entry.getEntryLen()
-			} else if entry.getSequence() > sequence {
-				// Not found (reached sequence greater than the targeted value, for the vbucket)
-				return 0, 0, 0
-			}
-		}
-		indexPosition += INDEX_ENTRY_LEN // Move to next index entry
-		entryPosition += uint32(entry.getEntryLen())
+	// When initializing an empty active block list (no blocks), activeStartIndex > len(l.blocks). Only
+	// include blocks in the output when this isn't the case.
+	log.Printf("startindex [%d], length [%d]", l.activeStartIndex, len(l.blocks))
+	if l.activeStartIndex <= len(l.blocks) {
+		log.Println("adding blocks")
+		activeBlock.Blocks = l.blocks[l.activeStartIndex:]
 	}
-
-	// Not found, return 0
-	return 0, 0, 0
+	return json.Marshal(activeBlock)
 }
 
-// DenseBlockIndexEntry format
-//  | Name      | Size     | Description                      |
-//  |-----------|----------|----------------------------------|
-//  | vbno      | 2 bytes  | Vbucket number                   |
-//  | sequence  | 8 bytes  | Vbucket seq                      |
-//  | entryLen  | 2 bytes  | Length of associated block entry |
-//  -----------------------------------------------------------
-type DenseBlockIndexEntry []byte
-
-func (e DenseBlockIndexEntry) getVbNo() uint16 {
-	return binary.BigEndian.Uint16(e[0:2])
+func (l *DenseBlockList) getActiveBlockListEntry() (entry DenseBlockListEntry, ok bool) {
+	if len(l.blocks) > 0 {
+		return l.blocks[len(l.blocks)-1], true
+	} else {
+		return entry, false
+	}
 }
 
-func (e DenseBlockIndexEntry) setVbNo(vbNo uint16) {
-	binary.BigEndian.PutUint16(e[0:2], vbNo)
+func (l *DenseBlockList) generateNextBlockIndex() int {
+	lastBlockIndex, ok := l.getActiveBlockListEntry()
+	if ok {
+		return lastBlockIndex.BlockIndex + 1
+	} else {
+		return 0
+	}
 }
 
-func (e DenseBlockIndexEntry) getSequence() uint64 {
-	return binary.BigEndian.Uint64(e[2:10])
+func (l *DenseBlockList) generateRotatedListKey() string {
+	return fmt.Sprintf(KeyFormat_DenseBlockList, base.KIndexPrefix, l.activeCount, l.partition, l.channelName)
 }
 
-func (e DenseBlockIndexEntry) setSequence(vbNo uint64) {
-	binary.BigEndian.PutUint64(e[2:10], vbNo)
+func (l *DenseBlockList) generateActiveListKey() string {
+	return fmt.Sprintf(KeyFormat_DenseBlockListActive, base.KIndexPrefix, l.partition, l.channelName)
 }
 
-func (e DenseBlockIndexEntry) getEntryLen() uint16 {
-	return binary.BigEndian.Uint16(e[10:12])
+func (l *DenseBlockList) generateBlockKey(blockIndex int) string {
+	return fmt.Sprintf(KeyFormat_DenseBlock, base.KIndexPrefix, blockIndex, l.partition, l.channelName)
 }
-
-func (e DenseBlockIndexEntry) setEntryLen(entryLen uint16) {
-	binary.BigEndian.PutUint16(e[10:12], entryLen)
-}
-
-const INDEX_ENTRY_LEN = 12
-
-func NewDenseBlockIndexEntry(vbno uint16, sequence uint64, entryLen uint16) DenseBlockIndexEntry {
-	indexEntry := make(DenseBlockIndexEntry, INDEX_ENTRY_LEN)
-	indexEntry.setVbNo(vbno)
-	indexEntry.setSequence(sequence)
-	indexEntry.setEntryLen(entryLen)
-	return indexEntry
-}
-
-// DenseBlockEntry format
-//  | Name      | Size     | Description                      |
-//  |-----------|----------|----------------------------------|
-//  | flags     | 1 byte   | Flags (deleted, removed, etc)    |
-//  | keylen    | 2 bytes  | Length of key                    |
-//  | key       | n bytes  | Key                              |
-//  | revid     | n bytes  | Revision id                      |
-//  -----------------------------------------------------------
-type DenseBlockEntry []byte
-
-func NewDenseBlockEntry(docID, revID string, flags uint8) DenseBlockEntry {
-	keyBytes := []byte(docID)
-	revBytes := []byte(revID)
-	entryLen := 3 + len(keyBytes) + len(revBytes)
-	entry := make(DenseBlockEntry, entryLen)
-	entry[0] = flags                                              // Flags
-	binary.BigEndian.PutUint16(entry[1:3], uint16(len(keyBytes))) // KeyLen
-	copy(entry[3:3+len(keyBytes)], keyBytes)                      // Key
-	copy(entry[3+len(keyBytes):], revBytes)                       // Rev
-	return entry
-}
-
-func (e DenseBlockIndexEntry) getDocID() string {
-	return binary.BigEndian.Uint16(e[0:2])
-}
-func (e DenseBlockIndexEntry) getRevID() string {
-	return binary.BigEndian.Uint16(e[0:2])
-}
-func (e DenseBlockIndexEntry) getFlags() uint8 {
-	return binary.BigEndian.Uint16(e[0:2])
-}
-
-/*
-func (e *DenseBlockEntry) encode() []byte {
-
-	data := make([]byte, e.Size())
-	pos := 0
-	// Write fixed length data
-	binary.BigEndian.PutUint16(data[0:2], e.vbno)
-	binary.BigEndian.PutUint64(data[2:10], e.sequence)
-	data[11] = byte(e.flags)
-	binary.BigEndian.PutUint16(data[11:13], len(e.docId))
-	binary.BigEndian.PutUint16(data[13:15], len(e.revId))
-
-	// Write variable length data
-	docIdEnd := 15 + len(e.docId)
-	copy(data[15:docIdEnd], e.docId)
-	copy(data[docIdEnd:docIdEnd+len(e.revId)], e.revId)
-	return data
-}
-
-func UnmarshalDenseBlockEntry(value []byte) (*DenseBlockEntry, error) {
-
-}
-*/

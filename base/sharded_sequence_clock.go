@@ -69,6 +69,10 @@ type IndexPartitions struct {
 	VbPositionMaps map[uint16]VbPositionMap // VBPositionMaps, keyed by partition
 }
 
+func (i IndexPartitions) PartitionCount() int {
+	return len(i.PartitionDefs)
+}
+
 func NewIndexPartitions(partitions PartitionStorageSet) *IndexPartitions {
 
 	indexPartitions := &IndexPartitions{
