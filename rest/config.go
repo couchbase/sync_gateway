@@ -197,7 +197,8 @@ type UnsupportedConfig struct {
 }
 
 type UnsupportedServerConfig struct {
-	Http2Config *Http2Config `json:"http2,omitempty"` // Config settings for HTTP2
+	Http2Config *Http2Config `json:"http2,omitempty"`   // Config settings for HTTP2
+	TestConfig  *TestConfig  `json:"testing,omitempty"` // Config settings for Testing
 }
 
 type UserViewsConfig struct {
@@ -206,6 +207,10 @@ type UserViewsConfig struct {
 
 type Http2Config struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
+}
+
+type TestConfig struct {
+	MockCBGTPindexEnabled *bool `json:"enabled,omitempty"` // Whether to use a Mock CBGT Pindex
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
