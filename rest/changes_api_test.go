@@ -181,6 +181,48 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assert.Equals(t, response.Code, 200)
 }
 
+func TestDocDeletionFromChannelCoalesced(t *testing.T) {
+	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	a := rt.ServerContext().Database("db").Authenticator()
+
+	// Create user:
+	alice, _ := a.NewUser("alice", "letmein", channels.SetOf("A","B"))
+	a.Save(alice)
+
+	// Create a doc Alice can see:
+	response := rt.send(request("PUT", "/db/alpha", `{"channel":"A"}`))
+
+	// Check the _changes feed:
+	rt.ServerContext().Database("db").WaitForPendingChanges()
+	var changes struct {
+		Results []db.ChangeEntry
+	}
+	response = rt.send(requestByUser("GET", "/db/_changes", "", "alice"))
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	since := changes.Results[0].Seq
+	assert.Equals(t, since.Seq, uint64(1))
+
+	assert.Equals(t, changes.Results[0].ID, "alpha")
+
+	// Update the document directly in the bucket
+	rv, _, _ := rt._bucket.GetRaw("alpha") // cas, err
+	syncData, err := db.UnmarshalDocumentSyncData(rv, true)
+
+	assert.True(t, err == nil)
+	mockRevs := []uint64{1, 2, 3}
+	syncData.RecentSequences = mockRevs
+
+	rt._bucket.SetRaw("alpha",0,rv)
+
+	// Get the updates from the _changes feed:
+	rt.waitForPendingChanges()
+	response = rt.send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", since), "", "alice"))
+	changes.Results = nil
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 0)
+}
+
 func TestPostChangesInteger(t *testing.T) {
 
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
