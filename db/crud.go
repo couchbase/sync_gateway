@@ -196,7 +196,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			}
 			ancestor := doc.History.findAncestorFromSet(revid, attachmentsSince)
 			if ancestor != "" {
-				minRevpos, _ = parseRevID(ancestor)
+				minRevpos, _ = ParseRevID(ancestor)
 				minRevpos++
 			}
 		}
@@ -416,7 +416,7 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 func (db *Database) Put(docid string, body Body) (string, error) {
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body["_rev"].(string)
-	generation, _ := parseRevID(matchRev)
+	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
@@ -439,7 +439,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 				if !doc.History[matchRev].Deleted {
 					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
-				generation, _ = parseRevID(matchRev)
+				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) {
@@ -465,7 +465,7 @@ func (db *Database) Put(docid string, body Body) (string, error) {
 // This is equivalent to the "new_edits":false mode of CouchDB.
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
 	newRev := docHistory[0]
-	generation, _ := parseRevID(newRev)
+	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
@@ -1036,10 +1036,10 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 		if !revtree.contains(revid) {
 			missing = append(missing, revid)
 			// Look at the doc's leaves for a known possible ancestor:
-			if gen, _ := parseRevID(revid); gen > 1 {
+			if gen, _ := ParseRevID(revid); gen > 1 {
 				revtree.forEachLeaf(func(possible *RevInfo) {
 					if !revidsSet.Contains(possible.ID) {
-						possibleGen, _ := parseRevID(possible.ID)
+						possibleGen, _ := ParseRevID(possible.ID)
 						if possibleGen < gen && possibleGen >= gen-100 {
 							possibleSet[possible.ID] = true
 						} else if possibleGen == gen && possible.Parent != "" {
