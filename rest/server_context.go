@@ -41,8 +41,8 @@ const kOneShotLocalDbReplicateWait = 10 * time.Second
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config *ServerConfig
-
+	config      *ServerConfig
+	databases_  map[string]*db.DatabaseContext
 	lock        sync.RWMutex
 	statsTicker *time.Ticker
 	HTTPClient  *http.Client
