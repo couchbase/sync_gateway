@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -272,10 +273,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		var changeWaiter *changeWaiter
 		var lowSequence uint64
+		var currentCachedSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
 		var userCounter uint64     // Wait counter used to identify changes to the user document
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 		var userChanged bool       // Whether the user document has changed in a given iteration loop
+		var deferredBackfill bool  // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
 		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 		// skipped sequences in a future iteration or request.
@@ -295,10 +298,22 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			channelsSince = channels.AtSequence(chans, 0)
 		}
 
+		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
+		currentCachedSequence = db.changeCache.GetStableSequence("").Seq
+
 		if options.Wait {
 			options.Wait = false
 			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
 			userCounter = changeWaiter.CurrentUserCount()
+			// Reload user to pick up user changes that happened between auth and the change waiter
+			// initialization.  Without this, notification for user doc changes in that window (a) won't be
+			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
+			if db.user != nil {
+				if err := db.ReloadUser(); err != nil {
+					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
+					return
+				}
+			}
 
 		}
 
@@ -343,6 +358,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
 			// could be written to channel X during one iteration, and channel Y during another.  Users
 			// with access to both channels would see two versions on the feed.
+
+			deferredBackfill = false
 			for name, vbSeqAddedAt := range channelsSince {
 				chanOpts := options
 				seqAddedAt := vbSeqAddedAt.Sequence
@@ -363,7 +380,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
 
 				// Backfill required when seqAddedAt is before current sequence
-				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt})
+				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
+				if seqAddedAt > currentCachedSequence {
+					deferredBackfill = true
+				}
 
 				// Ensure backfill isn't already in progress for this seqAddedAt
 				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
@@ -467,6 +487,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
+				// Don't send any entries later than the cached sequence at the start of this iteration
+				if currentCachedSequence < minEntry.Seq.Seq {
+					continue
+				}
+
 				// Update options.Since for use in the next outer loop iteration.  Only update
 				// when minSeq is greater than the previous options.Since value - we don't want to
 				// roll back the Since value when we get an late sequence is processed.
@@ -484,6 +509,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Send the entry, and repeat the loop:
 				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
+
 				select {
 				case <-options.Terminator:
 					return
@@ -510,6 +536,14 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			output <- nil
 		waitForChanges:
 			for {
+				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
+				// visible to the user), and so changeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
+				if deferredBackfill {
+					time.Sleep(250 * time.Millisecond)
+					if db.changeCache.GetStableSequence("").Seq != currentCachedSequence {
+						break waitForChanges
+					}
+				}
 				waitResponse := changeWaiter.Wait()
 				if waitResponse == WaiterClosed {
 					break outer
@@ -529,6 +563,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 			}
+			// Update the current max cached sequence for the next changes iteration
+			currentCachedSequence = db.changeCache.GetStableSequence("").Seq
 
 			// Check whether user channel access has changed while waiting:
 			var err error
