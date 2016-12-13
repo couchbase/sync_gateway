@@ -370,6 +370,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 					//if the doc was removed from one or more channels at this sequence
 					// Set the removed flag and removed channel set on the LogEntry
 					if channelRemovals := doc.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+						change.DocID = docID
 						change.Flags = channels.Removed
 						change.Channels = channelRemovals
 					}
