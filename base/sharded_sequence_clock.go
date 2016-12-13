@@ -73,6 +73,11 @@ func (i IndexPartitions) PartitionCount() int {
 	return len(i.PartitionDefs)
 }
 
+// Returns the partition the vb is assigned to
+func (i *IndexPartitions) PartitionForVb(vbNo uint16) uint16 {
+	return i.VbMap[vbNo]
+}
+
 func NewIndexPartitions(partitions PartitionStorageSet) *IndexPartitions {
 
 	indexPartitions := &IndexPartitions{

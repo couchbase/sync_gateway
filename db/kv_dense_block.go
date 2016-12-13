@@ -72,6 +72,14 @@ func (d *DenseBlock) getClock() PartitionClock {
 	return d.clock
 }
 
+// Get CumulativeClock returns the full clock for the partition:
+// the starting clock for this block, plus any changes made in this block
+func (d *DenseBlock) getCumulativeClock() PartitionClock {
+	cumulativeClock := d.startClock.Copy()
+	cumulativeClock.Add(d.clock)
+	return cumulativeClock
+}
+
 func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
 	d.value, d.cas, err = bucket.GetRaw(d.key)
 	d.clock = nil
@@ -91,18 +99,21 @@ func (d *DenseBlock) initClock() {
 }
 
 // Adds entries to block and writes block to the bucket
-func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, err error) {
+func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
 
+	base.LogTo("ChannelStorage+", "Adding entry set to block.  #entries:[%d]", len(entries))
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
-		return entries, pendingRemoval, nil
+		base.LogTo("ChannelStorage+", "Block full - returning entries as overflow.  #entries:[%d]", len(entries))
+		return entries, pendingRemoval, nil, nil
 	}
 
-	overflow, pendingRemoval, addError := d.addEntries(entries)
+	overflow, pendingRemoval, updateClock, addError := d.addEntries(entries)
 	if addError != nil {
 		// Error adding entries - reset the block and return error
+		base.LogTo("ChannelStorage+", "Error adding entries to block. %v", err)
 		d.loadBlock(bucket)
-		return nil, nil, addError
+		return nil, nil, nil, addError
 	}
 
 	casOut, writeErr := base.WriteCasRaw(bucket, d.key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
@@ -115,20 +126,22 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 			overflow = entries
 			return nil, nil
 		}
-		overflow, pendingRemoval, addError = d.addEntries(entries)
+		overflow, pendingRemoval, updateClock, addError = d.addEntries(entries)
 		if addError != nil {
+			log.Printf("AddEntrySet add error:%v", addError)
 			d.loadBlock(bucket)
 			return nil, addError
 		}
 		return d.value, nil
 	})
 	if writeErr != nil {
-		return overflow, pendingRemoval, writeErr
+		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		return entries, nil, nil, writeErr
 	}
 	d.cas = casOut
-	base.LogTo("ChannelStorage", "Added set to block. key:%s added:%d overflow:%d pendingRemoval:%d",
+	base.LogTo("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
 		d.key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
-	return overflow, pendingRemoval, nil
+	return overflow, pendingRemoval, updateClock, nil
 }
 
 // MarkInactive - apply any changes required when block stops being the active block
@@ -142,15 +155,19 @@ func (d *DenseBlock) MarkInactive() error {
 //  overflow        Entries that didn't fit in the block
 //  pendingRemoval  Entries with a parent that needs to be removed from the index,
 //                  but the parent isn't in this block
-func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, err error) {
+func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
 
 	blockFull := false
+	partitionClock := make(PartitionClock)
 	for i, entry := range entries {
 		if !blockFull {
 			removalRequired, err := d.addEntry(entry)
+			base.LogTo("ChannelStorage+", "Adding entry to block.  key:[%s]", entry.DocID)
 			if err != nil {
-				return nil, nil, err
+				base.LogTo("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
+				return nil, nil, nil, err
 			}
+			partitionClock.SetSequence(entry.VbNo, entry.Sequence)
 			if removalRequired {
 				if pendingRemoval == nil {
 					pendingRemoval = make([]*LogEntry, 0)
@@ -166,7 +183,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 		}
 
 	}
-	return overflow, pendingRemoval, nil
+	return overflow, pendingRemoval, partitionClock, nil
 }
 
 // Adds a LogEntry to the block.  If the entry already exists in the block (new rev of existing doc),
@@ -180,7 +197,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err err
 	// Ensure this entry hasn't already been written by another writer
 	clockSequence := d.getClock()[logEntry.VbNo]
 	if logEntry.Sequence <= clockSequence {
-		base.LogTo("ChannelStorage", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d]",
+		base.LogTo("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d]",
 			logEntry.DocID, logEntry.Sequence, clockSequence)
 		return false, nil
 	}
@@ -357,19 +374,33 @@ func (d *DenseBlock) GetAllEntries() []*LogEntry {
 	var indexEntry DenseBlockIndexEntry
 	var entry DenseBlockEntry
 	for i := uint16(0); i < count; i++ {
-		indexEntry = d.value[2+i*INDEX_ENTRY_LEN : 2+(i+1)*INDEX_ENTRY_LEN]
-		entry = d.value[entryPos : entryPos+uint32(indexEntry.getEntryLen())]
-		entries[i] = &LogEntry{
-			VbNo:     indexEntry.getVbNo(),
-			Sequence: indexEntry.getSequence(),
-			DocID:    string(entry.getDocId()),
-			RevID:    string(entry.getRevId()),
-			Flags:    entry.getFlags(),
-		}
+		indexEntry = d.GetIndexEntry(int64(2 + i*INDEX_ENTRY_LEN))
+		entry = d.GetEntry(int64(entryPos), indexEntry.getEntryLen())
+		entries[i] = d.MakeLogEntry(indexEntry, entry)
 		entryPos += uint32(indexEntry.getEntryLen())
 	}
 
 	return entries
+}
+
+func (d *DenseBlock) MakeLogEntry(indexEntry DenseBlockIndexEntry, entry DenseBlockEntry) *LogEntry {
+	return &LogEntry{
+		VbNo:     indexEntry.getVbNo(),
+		Sequence: indexEntry.getSequence(),
+		DocID:    string(entry.getDocId()),
+		RevID:    string(entry.getRevId()),
+		Flags:    entry.getFlags(),
+	}
+}
+
+func (d *DenseBlock) GetIndexEntry(position int64) (indexEntry DenseBlockIndexEntry) {
+	indexEntry = d.value[position : position+INDEX_ENTRY_LEN]
+	return indexEntry
+}
+
+func (d *DenseBlock) GetEntry(position int64, length uint16) (entry DenseBlockEntry) {
+	entry = d.value[position : position+int64(length)]
+	return entry
 }
 
 // DenseBlockIndexEntry is a helper class for interacting with entries in the index portion of a DenseBlock.
@@ -453,4 +484,54 @@ func (e DenseBlockEntry) getFlags() uint8 {
 }
 func (e DenseBlockEntry) getKeyLen() uint16 {
 	return binary.BigEndian.Uint16(e[1:3])
+}
+
+// DenseBlockIterator - manages iteration over the contents of a block by storing
+// pointer to index and entry locations
+type DenseBlockIterator struct {
+	block    *DenseBlock
+	indexPtr int64 // Current position in block index
+	entryPtr int64 // Current position in block entries
+}
+
+func NewDenseBlockIterator(block *DenseBlock) *DenseBlockIterator {
+	reader := DenseBlockIterator{
+		block: block,
+	}
+	reader.indexPtr = 2
+	reader.entryPtr = 2 + int64(block.getEntryCount())*INDEX_ENTRY_LEN
+	return &reader
+}
+
+// Returns current entry in the block, and moves pointers to the next entry.
+// Returns nil when at the end of the block
+func (r *DenseBlockIterator) next() *LogEntry {
+	if r.indexPtr >= 2+int64(r.block.getEntryCount())*INDEX_ENTRY_LEN {
+		return nil
+	}
+	indexEntry := r.block.GetIndexEntry(r.indexPtr)
+	entry := r.block.GetEntry(r.entryPtr, indexEntry.getEntryLen())
+	r.indexPtr += INDEX_ENTRY_LEN
+	r.entryPtr += int64(indexEntry.getEntryLen())
+	return r.block.MakeLogEntry(indexEntry, entry)
+}
+
+// Sets pointers to the last entry in the block
+func (r *DenseBlockIterator) end() {
+	r.indexPtr = 2 + int64(r.block.getEntryCount())*INDEX_ENTRY_LEN
+	r.entryPtr = int64(len(r.block.value))
+}
+
+// Returns entry preceding the pointers, and moves pointers back.
+// Returns nil when at the start of the block
+func (r *DenseBlockIterator) previous() *LogEntry {
+	if r.indexPtr <= 2 {
+		return nil
+	}
+	// Move pointers
+	r.indexPtr -= INDEX_ENTRY_LEN
+	indexEntry := r.block.GetIndexEntry(r.indexPtr)
+	r.entryPtr -= int64(indexEntry.getEntryLen())
+	entry := r.block.GetEntry(r.entryPtr, indexEntry.getEntryLen())
+	return r.block.MakeLogEntry(indexEntry, entry)
 }

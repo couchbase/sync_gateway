@@ -154,7 +154,6 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	if err != nil {
 		base.Warn("Error writing blockSets with cas for block %s: %+v", blockSets, err)
 	}
-
 	return clockUpdates, err
 }
 

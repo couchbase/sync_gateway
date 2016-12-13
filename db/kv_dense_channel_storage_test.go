@@ -29,7 +29,7 @@ func assertLogEntry(t *testing.T, entry *LogEntry, docId string, revId string, v
 	assertTrue(t, entry.DocID == docId, fmt.Sprintf("Doc ID mismatch.  Expected [%s] Actual [%s]", docId, entry.DocID))
 	assertTrue(t, entry.RevID == revId, fmt.Sprintf("Rev ID mismatch.  Expected [%s] Actual [%s]", revId, entry.RevID))
 	assertTrue(t, entry.VbNo == uint16(vbNo), fmt.Sprintf("VbNo mismatch.  Expected [%d] Actual [%d]", vbNo, entry.VbNo))
-	assertTrue(t, entry.Sequence == uint64(sequence), fmt.Sprintf("VbNo mismatch.  Expected [%d] Actual [%d]", sequence, entry.Sequence))
+	assertTrue(t, entry.Sequence == uint64(sequence), fmt.Sprintf("Sequence mismatch.  Expected [%d] Actual [%d]", sequence, entry.Sequence))
 }
 
 func assertLogEntriesEqual(t *testing.T, actualEntry *LogEntry, expectedEntry *LogEntry) {
@@ -50,10 +50,11 @@ func TestDenseBlockSingleDoc(t *testing.T) {
 	entries := make([]*LogEntry, 1)
 	entries[0] = makeBlockEntry("doc1", "1-abc", 50, 1, IsNotRemoval, IsAdded)
 
-	overflow, pendingRemoval, err := block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, updateClock.GetSequence(50), uint64(1))
 
 	foundEntries := block.GetAllEntries()
 	assert.Equals(t, len(foundEntries), 1)
@@ -62,10 +63,11 @@ func TestDenseBlockSingleDoc(t *testing.T) {
 	// Update within the same partition block, deduplicate by id
 	entries[0] = makeBlockEntry("doc1", "2-abc", 50, 3, IsNotRemoval, IsNotAdded)
 
-	overflow, pendingRemoval, err = block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, updateClock.GetSequence(50), uint64(3))
 
 	foundEntries = block.GetAllEntries()
 	assert.Equals(t, len(foundEntries), 1)
@@ -75,10 +77,11 @@ func TestDenseBlockSingleDoc(t *testing.T) {
 	entries[0] = makeBlockEntry("doc1", "3-abc", 50, 5, IsNotRemoval, IsNotAdded)
 	entries[0].PrevSequence = uint64(3)
 
-	overflow, pendingRemoval, err = block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, updateClock.GetSequence(50), uint64(5))
 
 	foundEntries = block.GetAllEntries()
 	assert.Equals(t, len(foundEntries), 1)
@@ -96,7 +99,7 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", i*10, i+1, IsNotRemoval, IsAdded)
 	}
-	overflow, pendingRemoval, err := block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
@@ -106,6 +109,7 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 	assert.Equals(t, len(foundEntries), 10)
 	for i := 0; i < 10; i++ {
 		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "1-abc", i*10, i+1)
+		assert.Equals(t, updateClock.GetSequence(uint16(i*10)), uint64(i+1))
 	}
 
 }
@@ -125,7 +129,7 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 		sequence := i + 1
 		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence, IsNotRemoval, IsAdded)
 	}
-	overflow, pendingRemoval, err := block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
@@ -137,6 +141,8 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 		vbno := 10*i + 1
 		sequence := i + 1
 		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence)
+		assert.Equals(t, updateClock.GetSequence(uint16(i*10+1)), uint64(i+1))
+
 	}
 
 	// Updates
@@ -147,7 +153,7 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "2-abc", vbno, sequence, IsNotRemoval, IsNotAdded)
 		entries[i].PrevSequence = uint64(i + 1)
 	}
-	overflow, pendingRemoval, err = block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
@@ -157,6 +163,7 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 	assert.Equals(t, len(foundEntries), 10)
 	for i := 0; i < 10; i++ {
 		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "2-abc", 10*i+1, 21+i)
+		assert.Equals(t, updateClock.GetSequence(uint16(i*10+1)), uint64(i+21))
 	}
 
 }
@@ -175,11 +182,12 @@ func TestDenseBlockOverflow(t *testing.T) {
 		sequence := i + 1
 		entries[i] = makeBlockEntry(fmt.Sprintf("longerDocumentID-%d", sequence), "1-abcdef01234567890", vbno, sequence, IsNotRemoval, IsAdded)
 	}
-	overflow, pendingRemoval, err := block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
 	assert.Equals(t, int(block.getEntryCount()), 100)
+	assert.Equals(t, updateClock.GetSequence(100), uint64(100))
 
 	foundEntries := block.GetAllEntries()
 	assert.Equals(t, len(foundEntries), 100)
@@ -195,12 +203,13 @@ func TestDenseBlockOverflow(t *testing.T) {
 		sequence := i + 101
 		entries[i] = makeBlockEntry(fmt.Sprintf("longerDocumentID-%d", sequence), "1-abcdef01234567890", vbno, sequence, IsNotRemoval, IsAdded)
 	}
-	overflow, pendingRemoval, err = block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 12)
 	assert.Equals(t, len(pendingRemoval), 0)
 	assert.Equals(t, int(block.getEntryCount()), 188)
 	assert.Equals(t, len(block.value), 10046)
+	assert.Equals(t, updateClock.GetSequence(100), uint64(188))
 
 	// Validate overflow contents (last 12 entries)
 	for i := 0; i < 12; i++ {
@@ -217,12 +226,13 @@ func TestDenseBlockOverflow(t *testing.T) {
 
 	// Retry the 12 entries, all should overflow
 	var newOverflow []*LogEntry
-	newOverflow, pendingRemoval, err = block.AddEntrySet(overflow, indexBucket)
+	newOverflow, pendingRemoval, updateClock, err = block.AddEntrySet(overflow, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(newOverflow), 12)
 	assert.Equals(t, len(pendingRemoval), 0)
 	assert.Equals(t, int(block.getEntryCount()), 188)
 	assert.Equals(t, len(block.value), 10046)
+	assert.Equals(t, len(updateClock), 0)
 
 }
 
@@ -238,10 +248,11 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 	entries := make([]*LogEntry, 1)
 	entries[0] = makeBlockEntry("doc1", "1-abc", 50, 1, IsNotRemoval, IsAdded)
 
-	overflow, pendingRemoval, err := block.AddEntrySet(entries, indexBucket)
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, updateClock.GetSequence(50), uint64(1))
 
 	foundEntries := block.GetAllEntries()
 	assert.Equals(t, len(foundEntries), 1)
@@ -254,10 +265,11 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 	entries2 := make([]*LogEntry, 1)
 	entries2[0] = makeBlockEntry("doc2", "1-abc", 50, 3, IsNotRemoval, IsAdded)
 
-	overflow2, pendingRemoval2, err := block2.AddEntrySet(entries2, indexBucket)
+	overflow2, pendingRemoval2, updateClock2, err := block2.AddEntrySet(entries2, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow2), 0)
 	assert.Equals(t, len(pendingRemoval2), 0)
+	assert.Equals(t, updateClock2.GetSequence(50), uint64(3))
 
 	log.Println("Wrote doc as block2")
 	foundEntries2 := block2.GetAllEntries()
@@ -266,10 +278,11 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 	assertLogEntry(t, foundEntries2[1], "doc2", "1-abc", 50, 3)
 
 	// Attempt to write the same entry with the first block/writer
-	overflow, pendingRemoval, err = block.AddEntrySet(entries2, indexBucket)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries2, indexBucket)
 	assertNoError(t, err, "Error adding entry set")
 	assert.Equals(t, len(overflow), 0)
 	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, updateClock.GetSequence(50), uint64(3))
 	log.Println("Wrote doc as block1")
 
 	foundEntries = block.GetAllEntries()
@@ -279,14 +292,76 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 	assert.Equals(t, int(block.getEntryCount()), 2)
 }
 
+// ------------------------
+// DenseBlockIterator Tests
+// ------------------------
+func TestDenseBlockIterator(t *testing.T) {
+
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+	block := NewDenseBlock("block1", nil)
+
+	// Inserts
+	entries := make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		vbno := 10*i + 1
+		sequence := i + 1
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence, IsNotRemoval, IsAdded)
+	}
+	overflow, pendingRemoval, _, err := block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(10))
+
+	reader := NewDenseBlockIterator(block)
+	i := 0
+	logEntry := reader.next()
+	for logEntry != nil {
+		assertLogEntry(t, logEntry, fmt.Sprintf("doc%d", i), "1-abc", 10*i+1, i+1)
+		i++
+		logEntry = reader.next()
+	}
+	assert.Equals(t, i, 10)
+
+	reverseReader := NewDenseBlockIterator(block)
+	reverseReader.end()
+	i = 9
+	logEntry = reader.previous()
+	for logEntry != nil {
+		assertLogEntry(t, logEntry, fmt.Sprintf("doc%d", i), "1-abc", 10*i+1, i+1)
+		i--
+		logEntry = reader.previous()
+	}
+	assert.Equals(t, i, -1)
+
+	bidiReader := NewDenseBlockIterator(block)
+	logEntry = bidiReader.next()
+	assertLogEntry(t, logEntry, fmt.Sprintf("doc0"), "1-abc", 1, 1)
+	logEntry = bidiReader.previous()
+	assertLogEntry(t, logEntry, fmt.Sprintf("doc0"), "1-abc", 1, 1)
+	logEntry = bidiReader.previous()
+	assert.Equals(t, logEntry == nil, true)
+	logEntry = bidiReader.next()
+	assertLogEntry(t, logEntry, fmt.Sprintf("doc0"), "1-abc", 1, 1)
+	bidiReader.end()
+	logEntry = bidiReader.next()
+	assert.Equals(t, logEntry == nil, true)
+	logEntry = bidiReader.previous()
+	assertLogEntry(t, logEntry, fmt.Sprintf("doc9"), "1-abc", 91, 10)
+
+}
+
 // --------------------
 // DenseBlockList Tests
 // --------------------
 func TestDenseBlockList(t *testing.T) {
 
+	base.EnableLogKey("ChannelStorage+")
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
 
+	// Initialize a new block list.  Will initialize with first block
 	list := NewDenseBlockList("ABC", 1, indexBucket)
 
 	// Simple insert
@@ -299,9 +374,9 @@ func TestDenseBlockList(t *testing.T) {
 
 	indexBucket.Dump()
 
-	// Create a new instance of the block list, validate contents
+	// Create a new instance of the same block list, validate contents
 	newList := NewDenseBlockList("ABC", 1, indexBucket)
-	assert.Equals(t, len(newList.blocks), 1)
+	assert.Equals(t, len(newList.blocks), 2)
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 
 	// Add a few more blocks to the new list
@@ -309,7 +384,7 @@ func TestDenseBlockList(t *testing.T) {
 	partitionClock.incrementPartitionClock(1)
 	_, err = newList.AddBlock()
 	assertNoError(t, err, "Error adding block2 to blocklist")
-	assert.Equals(t, len(newList.blocks), 2)
+	assert.Equals(t, len(newList.blocks), 3)
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
 
@@ -317,10 +392,53 @@ func TestDenseBlockList(t *testing.T) {
 	// mismatch, and reload the current state (i.e. newList)
 	partitionClock.incrementPartitionClock(1)
 	list.AddBlock()
-	assert.Equals(t, len(list.blocks), 2)
+	assert.Equals(t, len(list.blocks), 3)
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
 
+}
+
+func TestPartitionStorage(t *testing.T) {
+
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	partitionStorage := NewDensePartitionStorage("ABC", 1, indexBucket)
+
+	generator := LogEntryGenerator{
+		SequenceGap: 10,
+	}
+	generator.Start()
+	defer generator.Close()
+
+	batchSize := 100
+	numBatches := 10
+	sinceClock := make(PartitionClock)
+	toClock := make(PartitionClock)
+	// Write entries
+	for i := 0; i < numBatches; i++ {
+		batchSet := make([]*LogEntry, batchSize)
+		for j := 0; j < batchSize; j++ {
+			entry := <-generator.Output
+			batchSet[j] = entry
+			sinceClock.SetSequence(entry.VbNo, 0)
+			toClock.SetSequence(entry.VbNo, entry.Sequence)
+		}
+		_, err := partitionStorage.AddEntrySet(batchSet)
+		assertNoError(t, err, "Error adding to partition storage")
+	}
+	indexBucket.Dump()
+
+	reader := NewDensePartitionStorageReader("ABC", 1, indexBucket)
+
+	partitionRange := PartitionRange{
+		Since: sinceClock,
+		To:    toClock,
+	}
+	foundEntries, err := reader.GetChanges(partitionRange, 0)
+	assert.Equals(t, len(foundEntries), batchSize*numBatches)
+	assertNoError(t, err, "Error retrieving partition storage changes:")
 }
 
 func makePartitionClock(vbNos []uint16, sequences []uint64) PartitionClock {

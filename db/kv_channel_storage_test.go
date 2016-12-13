@@ -15,7 +15,7 @@ type ChannelStorageType uint8
 
 const (
 	ChannelStorageType_BitFlag ChannelStorageType = iota
-	ChannelStorageType_Inline
+	ChannelStorageType_Dense
 )
 
 func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
@@ -47,9 +47,10 @@ func testChannelStorage(storageType ChannelStorageType, indexBucket base.Bucket,
 
 	if storageType == ChannelStorageType_BitFlag {
 		return NewBitFlagStorage(indexBucket, channelName, partitionMap)
-	} else {
-		return nil
+	} else if storageType == ChannelStorageType_Dense {
+		return NewDenseStorage(indexBucket, channelName, partitionMap)
 	}
+	return nil
 }
 
 // ------------------------------------------------
@@ -180,7 +181,7 @@ func WriteEntries(storage ChannelStorage, generator LogEntryGenerator, count int
 // ------------------------------------------------
 //  Correctness Tests
 // ------------------------------------------------
-func TestChannelStorageCorrectness(t *testing.T) {
+func TestChannelStorageCorrectness_BitFlag(t *testing.T) {
 
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
@@ -217,10 +218,56 @@ func TestChannelStorageCorrectness(t *testing.T) {
 
 }
 
+func TestChannelStorageCorrectness_Dense(t *testing.T) {
+
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	channelStorage := testChannelStorage(ChannelStorageType_Dense, indexBucket, "ABC", 64)
+
+	generator := LogEntryGenerator{
+		SequenceGap: 79,
+	}
+	defer generator.Close()
+	generator.Start()
+
+	entryCount := 10340
+	validationSet, stableClock, err := WriteEntries(channelStorage, generator, entryCount)
+	assertTrue(t, validationSet != nil, "Missing validation set")
+	assertTrue(t, stableClock != nil, "Missing stable clock")
+	assertNoError(t, err, "Error writing entries")
+
+	indexBucket.Dump()
+	log.Printf("Stable clock:%s", base.PrintClock(stableClock))
+	retrievedEntries, err := channelStorage.GetChanges(base.NewSequenceClockImpl(), stableClock)
+	assertNoError(t, err, "Error retrieving entries")
+
+	assert.Equals(t, len(retrievedEntries), entryCount)
+
+	// Validate results against validation set
+	for _, retrievedEntry := range retrievedEntries {
+		matchedEntry, ok := validationSet[retrievedEntry.DocID]
+		if !ok {
+			assertFailed(t, fmt.Sprintf("Returned entry with doc ID %s not in validation set", retrievedEntry.DocID))
+		}
+		assert.Equals(t, retrievedEntry.RevID, matchedEntry.RevID)
+		assert.Equals(t, retrievedEntry.Sequence, matchedEntry.Sequence)
+		delete(validationSet, retrievedEntry.DocID)
+	}
+
+	// validationSet should be empty if we recieved everything we sent
+	assert.Equals(t, len(validationSet), 0)
+	for key, _ := range validationSet {
+		log.Printf("Failed to retrieve key:[%s]", key)
+	}
+
+}
+
 // ------------------------------------------------
 //  Ops benchmark tests
 // ------------------------------------------------
-func TestChannelStorage_Write_Ops(t *testing.T) {
+func TestChannelStorage_Write_Ops_BitFlag(t *testing.T) {
 	tests := []struct {
 		name        string
 		sequenceGap uint64
@@ -236,6 +283,34 @@ func TestChannelStorage_Write_Ops(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			benchSet := initChannelStorageBenchmarkSet(ChannelStorageType_BitFlag, tc.sequenceGap, true)
+			defer benchSet.Close()
+			WriteEntries(benchSet.channelStorage, benchSet.generator, 10000)
+			statsBucket, ok := benchSet.indexBucket.(*base.StatsBucket)
+			if ok {
+				stats := statsBucket.GetStats()
+				log.Printf("Stats (%s):%s", tc.name, stats.String())
+			}
+		})
+
+	}
+}
+
+func TestChannelStorage_Write_Ops_Dense(t *testing.T) {
+	tests := []struct {
+		name        string
+		sequenceGap uint64
+	}{
+		{"ch=5", 5},
+		{"ch=50", 50},
+		{"ch=500", 500},
+		{"ch=5000", 5000},
+		{"ch=10000", 10000},
+		{"ch=20000", 20000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			benchSet := initChannelStorageBenchmarkSet(ChannelStorageType_Dense, tc.sequenceGap, true)
 			defer benchSet.Close()
 			WriteEntries(benchSet.channelStorage, benchSet.generator, 10000)
 			statsBucket, ok := benchSet.indexBucket.(*base.StatsBucket)
