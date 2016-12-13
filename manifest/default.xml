@@ -53,7 +53,7 @@
 
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="4195073f3c64830ca5bad14016dc5de732211c32" remote="couchbaselabs"/>
 
-  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="871513e487f92bdc93bb07b78180627d7021b06b"/>
+  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="1f4834e6697e75599ffe95d11ba7e92221f55cb6"/>
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="6575cf14363c4a840f4fafc01532b42c473472f8"/>
 
@@ -61,7 +61,7 @@
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="6172a8c61c821c420071fe9e20e74d8e24c8cbd5"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="4e18ad7faca97bd4a232e9ae3305fce8da29ceb0"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="ce86393e7a2df2c80327df7269ccc570a5df69c9"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="elazarl" revision="d5cac425555ca5cf00694df246e04f05e6a55150"/>
 
