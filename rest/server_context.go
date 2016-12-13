@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -43,10 +42,6 @@ const kOneShotLocalDbReplicateWait = 10 * time.Second
 // be thread-safe.
 type ServerContext struct {
 	config *ServerConfig
-
-	// map key: dbName val: dbContext
-	// TODO: rename _databases -> databases
-	databases_ map[string]*db.DatabaseContext
 
 	lock        sync.RWMutex
 	statsTicker *time.Ticker
@@ -152,7 +147,6 @@ func (sc *ServerContext) Close() {
 func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	sc.lock.RLock()
 	dbc := sc.databases_[name]
-	log.Printf("databases: %+v", sc.databases_)
 	sc.lock.RUnlock()
 	if dbc != nil {
 		return dbc, nil
