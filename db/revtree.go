@@ -16,6 +16,7 @@ import (
 	"strconv"
 
 	"errors"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -394,7 +395,7 @@ func encodeRevisions(revs []string) Body {
 	ids := make([]string, len(revs))
 	var start int
 	for i, revid := range revs {
-		gen, id := parseRevID(revid)
+		gen, id := ParseRevID(revid)
 		ids[i] = id
 		if i == 0 {
 			start = gen
@@ -415,7 +416,7 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 	}
 	matchIndex := len(digests)
 	for _, revID := range ancestors {
-		gen, digest := parseRevID(revID)
+		gen, digest := ParseRevID(revID)
 		if index := start - gen; index >= 0 && index < matchIndex && digest == digests[index] {
 			matchIndex = index
 			maxUnmatchedLen = matchIndex + 1

@@ -895,10 +895,9 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	return nil
 }
 
-
-func (bucket CouchbaseBucketGoCB)  Refresh() error {
+func (bucket CouchbaseBucketGoCB) Refresh() error {
 	LogPanic("Unimplemented method: Refresh()")
-	return nil;
+	return nil
 }
 
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
@@ -907,7 +906,7 @@ func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbu
 }
 
 func (bucket CouchbaseBucketGoCB) Dump() {
-	LogPanic("Unimplemented method: Dump()")
+	Warn("CouchbaseBucketGoCB: Unimplemented method: Dump()")
 }
 
 func (bucket CouchbaseBucketGoCB) VBHash(docID string) uint32 {

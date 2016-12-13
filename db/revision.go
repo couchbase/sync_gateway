@@ -160,7 +160,7 @@ func genOfRevID(revid string) int {
 }
 
 // Splits a revision ID into generation number and hex digest.
-func parseRevID(revid string) (int, string) {
+func ParseRevID(revid string) (int, string) {
 	if revid == "" {
 		return 0, ""
 	}
@@ -175,8 +175,8 @@ func parseRevID(revid string) (int, string) {
 }
 
 func compareRevIDs(id1, id2 string) int {
-	gen1, sha1 := parseRevID(id1)
-	gen2, sha2 := parseRevID(id2)
+	gen1, sha1 := ParseRevID(id1)
+	gen2, sha2 := ParseRevID(id2)
 	switch {
 	case gen1 > gen2:
 		return 1
