@@ -55,31 +55,32 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface                      *string                  `json:",omitempty"` // Interface to bind REST API to, default ":4984"
-	SSLCert                        *string                  `json:",omitempty"` // Path to SSL cert file, or nil
-	SSLKey                         *string                  `json:",omitempty"` // Path to SSL private key file, or nil
-	ServerReadTimeout              *int                     `json:",omitempty"` // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout             *int                     `json:",omitempty"` // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface                 *string                  `json:",omitempty"` // Interface to bind admin API to, default ":4985"
-	AdminUI                        *string                  `json:",omitempty"` // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface               *string                  `json:",omitempty"` // Interface to bind Go profile API to (no default)
-	ConfigServer                   *string                  `json:",omitempty"` // URL of config server (for dynamic db discovery)
-	Facebook                       *FacebookConfig          `json:",omitempty"` // Configuration for Facebook validation
-	Google                         *GoogleConfig            `json:",omitempty"` // Configuration for Google validation
-	CORS                           *CORSConfig              `json:",omitempty"` // Configuration for allowing CORS
-	Log                            []string                 `json:",omitempty"` // Log keywords to enable
-	LogFilePath                    *string                  `json:",omitempty"` // Path to log file, if missing write to stderr
-	Pretty                         bool                     `json:",omitempty"` // Pretty-print JSON responses?
-	DeploymentID                   *string                  `json:",omitempty"` // Optional customer/deployment ID for stats reporting
-	StatsReportInterval            *float64                 `json:",omitempty"` // Optional stats report interval (0 to disable)
-	MaxCouchbaseConnections        *int                     `json:",omitempty"` // Max # of sockets to open to a Couchbase Server node
-	MaxCouchbaseOverflow           *int                     `json:",omitempty"` // Max # of overflow sockets to open
-	CouchbaseKeepaliveInterval     *int                     `json:",omitempty"` // TCP keep-alive interval between SG and Couchbase server
-	SlowServerCallWarningThreshold *int                     `json:",omitempty"` // Log warnings if database calls take this many ms
-	MaxIncomingConnections         *int                     `json:",omitempty"` // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors             *uint64                  `json:",omitempty"` // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses              *bool                    `json:",omitempty"` // If false, disables compression of HTTP responses
-	Databases                      DbConfigMap              `json:",omitempty"` // Pre-configured databases, mapped by name
+	Interface                      *string                  `json:",omitempty"`            // Interface to bind REST API to, default ":4984"
+	SSLCert                        *string                  `json:",omitempty"`            // Path to SSL cert file, or nil
+	SSLKey                         *string                  `json:",omitempty"`            // Path to SSL private key file, or nil
+	ServerReadTimeout              *int                     `json:",omitempty"`            // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout             *int                     `json:",omitempty"`            // maximum duration.Second before timing out write of the HTTP(S) response
+	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default ":4985"
+	AdminUI                        *string                  `json:",omitempty"`            // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface               *string                  `json:",omitempty"`            // Interface to bind Go profile API to (no default)
+	ConfigServer                   *string                  `json:",omitempty"`            // URL of config server (for dynamic db discovery)
+	Facebook                       *FacebookConfig          `json:",omitempty"`            // Configuration for Facebook validation
+	Google                         *GoogleConfig            `json:",omitempty"`            // Configuration for Google validation
+	CORS                           *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
+	DeprecatedLog                  []string                 `json:"log,omitempty"`         // Log keywords to enable
+	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
+	Logging                        *base.LoggingConfigMap   `json:",omitempty"`            // Pre-configured databases, mapped by name
+	Pretty                         bool                     `json:",omitempty"`            // Pretty-print JSON responses?
+	DeploymentID                   *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
+	StatsReportInterval            *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
+	MaxCouchbaseConnections        *int                     `json:",omitempty"`            // Max # of sockets to open to a Couchbase Server node
+	MaxCouchbaseOverflow           *int                     `json:",omitempty"`            // Max # of overflow sockets to open
+	CouchbaseKeepaliveInterval     *int                     `json:",omitempty"`            // TCP keep-alive interval between SG and Couchbase server
+	SlowServerCallWarningThreshold *int                     `json:",omitempty"`            // Log warnings if database calls take this many ms
+	MaxIncomingConnections         *int                     `json:",omitempty"`            // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors             *uint64                  `json:",omitempty"`            // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses              *bool                    `json:",omitempty"`            // If false, disables compression of HTTP responses
+	Databases                      DbConfigMap              `json:",omitempty"`            // Pre-configured databases, mapped by name
 	Replications                   []*ReplicationConfig     `json:",omitempty"`
 	MaxHeartbeat                   uint64                   `json:",omitempty"`                        // Max heartbeat value for _changes request (seconds)
 	ClusterConfig                  *ClusterConfig           `json:"cluster_config,omitempty"`          // Bucket and other config related to CBGT
@@ -131,6 +132,11 @@ type DbConfig struct {
 type DbConfigMap map[string]*DbConfig
 
 type ReplConfigMap map[string]*ReplicationConfig
+
+type PersonaConfig struct {
+	Origin   string // Canonical server URL for Persona authentication
+	Register bool   // If true, server will register new user accounts
+}
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts
@@ -367,7 +373,6 @@ func ReadServerConfig(path string) (*ServerConfig, error) {
 
 // Reads a ServerConfig from a JSON file.
 func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
-
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -388,6 +393,7 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 	if err := config.setupAndValidateDatabases(); err != nil {
 		return nil, err
 	}
+
 	return config, nil
 
 }
@@ -399,6 +405,34 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
+	//If a logging config exists, it must contain a single
+	// appender named "default"
+	if config.Logging == nil {
+		if config.DeprecatedLogFilePath != nil {
+			base.UpdateLogger(*config.DeprecatedLogFilePath)
+		}
+	} else {
+		if len(*config.Logging) != 1 || ((*config.Logging)["default"] == nil) {
+			return fmt.Errorf("The logging section must define a single \"default\" appender")
+		}
+		// Validate the default appender configuration
+		if defaultLogger := (*config.Logging)["default"]; defaultLogger != nil {
+			if err := defaultLogger.ValidateLogAppender(); err != nil {
+				return err
+			}
+			base.CreateRollingLogger(defaultLogger)
+		}
+	}
+
+	base.EnableLogKey("HTTP")
+	if verbose {
+		base.EnableLogKey("HTTP+")
+	}
+
 	return nil
 }
 
@@ -432,8 +466,8 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.CORS == nil {
 		self.CORS = other.CORS
 	}
-	for _, flag := range other.Log {
-		self.Log = append(self.Log, flag)
+	for _, flag := range other.DeprecatedLog {
+		self.DeprecatedLog = append(self.DeprecatedLog, flag)
 	}
 	if other.Pretty {
 		self.Pretty = true
@@ -449,7 +483,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine() {
-
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
@@ -503,8 +536,8 @@ func ParseCommandLine() {
 		if *pretty {
 			config.Pretty = *pretty
 		}
-		if config.Log != nil {
-			base.ParseLogFlags(config.Log)
+		if config.DeprecatedLog != nil {
+			base.ParseLogFlags(config.DeprecatedLog)
 		}
 
 		// If the interfaces were not specified in either the config file or
@@ -517,7 +550,7 @@ func ParseCommandLine() {
 		}
 
 		if *logFilePath != "" {
-			config.LogFilePath = logFilePath
+			config.DeprecatedLogFilePath = logFilePath
 		}
 
 		if *skipRunModeValidation == true {
@@ -563,11 +596,10 @@ func ParseCommandLine() {
 		}
 	}
 
-	base.EnableLogKey("HTTP")
-	if *verbose {
-		base.EnableLogKey("HTTP+")
-	}
 	base.ParseLogFlag(*logKeys)
+	if err := config.setupAndValidateLogging(*verbose); err != nil {
+		base.LogFatal("Error setting up logging %v", err)
+	}
 
 	//return config
 }
@@ -676,9 +708,9 @@ func RunServer(config *ServerConfig) {
 }
 
 // for now  just cycle the logger to allow for log file rotation
-func ReloadConf() {
-	if config.LogFilePath != nil {
-		base.UpdateLogger(*config.LogFilePath)
+func HandleSighup() {
+	if config.DeprecatedLogFilePath != nil {
+		base.UpdateLogger(*config.DeprecatedLogFilePath)
 	}
 }
 
@@ -713,7 +745,6 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine()
-	ReloadConf()
 	ValidateConfigOrPanic(runMode)
 	RunServer(config)
 }

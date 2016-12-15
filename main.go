@@ -26,8 +26,8 @@ func main() {
 
 	go func() {
 		for range signalchannel {
-			base.Logf("SIGHUP: Reloading Config....\n")
-			rest.ReloadConf()
+			base.Logf("Handling SIGHUP signal.\n")
+			rest.HandleSighup()
 		}
 	}()
 
