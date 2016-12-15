@@ -46,9 +46,6 @@ type ChannelStorage interface {
 	// check whether this is available.
 	StoresLogEntries() bool
 	WriteLogEntry(entry *LogEntry) error
-
-	// For unit testing only
-	getIndexBlockForEntry(entry *LogEntry) IndexBlock
 }
 
 func NewChannelStorage(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) ChannelStorage {

@@ -37,7 +37,7 @@ const (
 // a new entry is added to entries to store key/revId/flags, and entry count is incremented.
 
 type DenseBlock struct {
-	key        string         // Key of block document in the index bucket
+	Key        string         // Key of block document in the index bucket
 	value      []byte         // Binary storage of block data, in the above format
 	cas        uint64         // Document cas
 	clock      PartitionClock // Highest seq per vbucket written to the block
@@ -51,10 +51,14 @@ func NewDenseBlock(key string, startClock PartitionClock) *DenseBlock {
 	// doubles capacity as needed).
 	// Initial length of value is set to 2, to initialize the entry count to zero.
 	return &DenseBlock{
-		key:        key,
+		Key:        key,
 		value:      make([]byte, 2, 400),
 		startClock: startClock,
 	}
+}
+
+func (d *DenseBlock) Count() uint16 {
+	return d.getEntryCount()
 }
 
 func (d *DenseBlock) getEntryCount() uint16 {
@@ -81,7 +85,7 @@ func (d *DenseBlock) getCumulativeClock() PartitionClock {
 }
 
 func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
-	d.value, d.cas, err = bucket.GetRaw(d.key)
+	d.value, d.cas, err = bucket.GetRaw(d.Key)
 	d.clock = nil
 	return err
 }
@@ -116,7 +120,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 		return nil, nil, nil, addError
 	}
 
-	casOut, writeErr := base.WriteCasRaw(bucket, d.key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
+	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		d.value = value
 		d.clock = nil
@@ -140,7 +144,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	}
 	d.cas = casOut
 	base.LogTo("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
-		d.key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
+		d.Key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
 	return overflow, pendingRemoval, updateClock, nil
 }
 

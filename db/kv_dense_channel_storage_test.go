@@ -398,49 +398,6 @@ func TestDenseBlockList(t *testing.T) {
 
 }
 
-func TestPartitionStorage(t *testing.T) {
-
-	base.EnableLogKey("ChannelStorage+")
-	indexBucket := testIndexBucket()
-	defer indexBucket.Close()
-
-	partitionStorage := NewDensePartitionStorage("ABC", 1, indexBucket)
-
-	generator := LogEntryGenerator{
-		SequenceGap: 10,
-	}
-	generator.Start()
-	defer generator.Close()
-
-	batchSize := 100
-	numBatches := 10
-	sinceClock := make(PartitionClock)
-	toClock := make(PartitionClock)
-	// Write entries
-	for i := 0; i < numBatches; i++ {
-		batchSet := make([]*LogEntry, batchSize)
-		for j := 0; j < batchSize; j++ {
-			entry := <-generator.Output
-			batchSet[j] = entry
-			sinceClock.SetSequence(entry.VbNo, 0)
-			toClock.SetSequence(entry.VbNo, entry.Sequence)
-		}
-		_, err := partitionStorage.AddEntrySet(batchSet)
-		assertNoError(t, err, "Error adding to partition storage")
-	}
-	indexBucket.Dump()
-
-	reader := NewDensePartitionStorageReader("ABC", 1, indexBucket)
-
-	partitionRange := PartitionRange{
-		Since: sinceClock,
-		To:    toClock,
-	}
-	foundEntries, err := reader.GetChanges(partitionRange, 0)
-	assert.Equals(t, len(foundEntries), batchSize*numBatches)
-	assertNoError(t, err, "Error retrieving partition storage changes:")
-}
-
 func makePartitionClock(vbNos []uint16, sequences []uint64) PartitionClock {
 	clock := make(PartitionClock, len(vbNos))
 	for i := 0; i < len(vbNos); i++ {

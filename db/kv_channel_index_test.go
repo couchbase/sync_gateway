@@ -31,6 +31,29 @@ func testIndexBucket() base.Bucket {
 	return bucket
 }
 
+func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
+
+	partitions := make(base.PartitionStorageSet, numShards)
+
+	numPartitions := uint16(numShards)
+	vbPerPartition := 1024 / numPartitions
+	for partition := uint16(0); partition < numPartitions; partition++ {
+		pStorage := base.PartitionStorage{
+			Index: partition,
+			Uuid:  fmt.Sprintf("partition_%d", partition),
+			VbNos: make([]uint16, vbPerPartition),
+		}
+		for index := uint16(0); index < vbPerPartition; index++ {
+			vb := partition*vbPerPartition + index
+			pStorage.VbNos[index] = vb
+		}
+		partitions[partition] = pStorage
+	}
+
+	indexPartitions := base.NewIndexPartitions(partitions)
+	return indexPartitions
+}
+
 func testBitFlagStorage(channelName string) *BitFlagStorage {
 	return NewBitFlagStorage(testIndexBucket(), channelName, testPartitionMap())
 }

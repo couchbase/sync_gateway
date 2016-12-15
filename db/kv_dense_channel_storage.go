@@ -23,67 +23,6 @@ const (
 	KeyFormat_DenseBlock           = "%s:block%d:p%d:%s" //  base.KIndexPrefix, block index, partition, channelname
 )
 
-type DenseStorage struct {
-	DenseStorageWriter
-	DenseStorageReader
-}
-
-func NewDenseStorage(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) *DenseStorage {
-
-	storage := &DenseStorage{
-		DenseStorageWriter: DenseStorageWriter{
-			indexBucket:      bucket,
-			channelName:      channelName,
-			partitions:       partitions,
-			partitionStorage: make(map[uint16]*DensePartitionStorage, partitions.PartitionCount()),
-		},
-		DenseStorageReader: DenseStorageReader{
-			indexBucket:      bucket,
-			channelName:      channelName,
-			partitions:       partitions,
-			partitionStorage: make(map[uint16]*DensePartitionStorageReader, partitions.PartitionCount()),
-		},
-	}
-	return storage
-}
-
-// Retrieves the appropriate index block for an entry. If not found in the channel's block cache,
-// will initialize a new block and add to the map.
-func (b *DenseStorage) getIndexBlockForEntry(entry *LogEntry) IndexBlock {
-	return nil
-}
-
-// DensePartitionStorage manages storage for a partition.  Index entries within a partition (across multiple vbuckets)
-// are stored in the same DenseBlocks
-type DensePartitionStorage struct {
-	blockList   *DenseBlockList // List of blocks associated with the partition and channel
-	channelName string          // Channel name
-	partitionNo uint16          // Partition number
-	indexBucket base.Bucket     // Index bucket
-}
-
-func NewDensePartitionStorage(channelName string, partitionNo uint16, indexBucket base.Bucket) *DensePartitionStorage {
-	storage := &DensePartitionStorage{
-		channelName: channelName,
-		partitionNo: partitionNo,
-		indexBucket: indexBucket,
-	}
-	storage.blockList = NewDenseBlockList(channelName, partitionNo, storage.indexBucket)
-	return storage
-}
-func (dps *DensePartitionStorage) init() error {
-	return nil
-}
-
-func (dps *DensePartitionStorage) getActiveBlock() *DenseBlock {
-	return dps.blockList.activeBlock
-}
-
-// TODO: look up old entries in non-active blocks and remove them
-func (dps *DensePartitionStorage) removeEntries(pendingRemoval []*LogEntry) error {
-	return nil
-}
-
 // PartitionClock is simplified version of SequenceClock
 type PartitionClock map[uint16]uint64
 
@@ -353,8 +292,8 @@ func (l *DenseBlockList) initDenseBlockList() error {
 	return nil
 }
 
-func (l *DenseBlockList) writeFirstList() {
-
+func (l *DenseBlockList) GetActiveBlock() *DenseBlock {
+	return l.activeBlock
 }
 
 // LoadPrevious loads the previous DenseBlockList storage document, and:
