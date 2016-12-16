@@ -199,7 +199,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.Shadowing {
 
 		// Enable doc tracking if needed for autoImport or shadowing
-		trackDocs := options.AutoImport || options.Shadowing != nil
+		trackDocs := options.AutoImport || options.Shadowing
 		if err = context.tapListener.Start(bucket, trackDocs, func(bucket string, err error) {
 			context.TakeDbOffline("Lost TAP Feed")
 		}); err != nil {
@@ -324,7 +324,7 @@ func (context *DatabaseContext) RestartListener() error {
 	time.Sleep(2 * time.Second)
 	context.tapListener.Init(context.Bucket.GetName())
 	// Enable doc tracking if needed for autoImport or shadowing
-	trackDocs := context.Options.AutoImport || context.Options.Shadowing != nil
+	trackDocs := context.Options.AutoImport || context.Options.Shadowing
 	if err := context.tapListener.Start(context.Bucket, trackDocs, nil); err != nil {
 		return err
 	}
