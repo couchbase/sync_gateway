@@ -372,7 +372,6 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 					if channelRemovals, atRevId := doc.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
 						change.DocID = docID
 						change.RevID = atRevId
-						change.Flags = channels.Removed
 						change.Channels = channelRemovals
 					}
 
