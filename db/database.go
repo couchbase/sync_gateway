@@ -81,7 +81,8 @@ type DatabaseContextOptions struct {
 	RevisionCacheCapacity uint32
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
-	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	AutoImport            bool // Whether autoImport of documents without _sync is enabled
+	Shadowing             bool // Whether Shadowing is enabled
 	OIDCOptions           *auth.OIDCOptions
 }
 
@@ -194,9 +195,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	context.tapListener.Init(bucket.GetName())
 
-	// If not using channel index, start the tap feed
-	if options.IndexOptions == nil {
-		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
+	// If not using channel index or using shadowing, start the tap feed
+	if options.IndexOptions == nil || options.Shadowing {
+
+		// Enable doc tracking if needed for autoImport or shadowing
+		trackDocs := options.AutoImport || options.Shadowing != nil
+		if err = context.tapListener.Start(bucket, trackDocs, func(bucket string, err error) {
 			context.TakeDbOffline("Lost TAP Feed")
 		}); err != nil {
 			return nil, err
@@ -319,7 +323,9 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.tapListener.Init(context.Bucket.GetName())
-	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, nil); err != nil {
+	// Enable doc tracking if needed for autoImport or shadowing
+	trackDocs := context.Options.AutoImport || context.Options.Shadowing != nil
+	if err := context.tapListener.Start(context.Bucket, trackDocs, nil); err != nil {
 		return err
 	}
 	return nil

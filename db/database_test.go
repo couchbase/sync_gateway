@@ -56,7 +56,8 @@ func setupTestDB(t *testing.T) *Database {
 
 func setupTestDBForShadowing(t *testing.T) *Database {
 	dbcOptions := DatabaseContextOptions{
-		TrackDocs: true,
+		AutoImport: true,
+		Shadowing: true,
 	}
 	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
