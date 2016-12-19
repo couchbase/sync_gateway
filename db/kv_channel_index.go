@@ -43,7 +43,7 @@ type KvChannelIndex struct {
 	pollCount              uint32                  // Number of times the channel has polled for data and not found changes
 	onChange               func(base.Set)          // Notification callback
 	clock                  *base.SequenceClockImpl // Channel clock
-	channelStorage         ChannelStorage          // Channel storage - manages interaction with the index format
+	channelStorage         ChannelStorageReader    // Channel storage - manages interaction with the index format
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.IndexPartitions, onChangeCallback func(base.Set)) *KvChannelIndex {
@@ -52,7 +52,7 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.
 		channelName:    channelName,
 		indexBucket:    bucket,
 		onChange:       onChangeCallback,
-		channelStorage: NewChannelStorage(bucket, channelName, partitions),
+		channelStorage: NewChannelStorageReader(bucket, channelName, partitions),
 	}
 
 	// Initialize and load channel clock
@@ -120,7 +120,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock) error {
 
 	// Get changes since the last clock
-	recentChanges, err := k.channelStorage.GetChanges(k.lastPolledChannelClock, newChannelClock)
+	recentChanges, err := k.channelStorage.GetChanges(k.lastPolledChannelClock, newChannelClock, 0)
 	IndexExpvars.Add("updateChannelPolled", 1)
 	if err != nil {
 		return err
@@ -221,7 +221,7 @@ func (k *KvChannelIndex) GetChanges(since base.SequenceClock) ([]*LogEntry, erro
 	}
 	IndexExpvars.Add("getChanges_lastPolled_miss", 1)
 
-	return k.channelStorage.GetChanges(since, chanClock)
+	return k.channelStorage.GetChanges(since, chanClock, 0)
 }
 
 func (k *KvChannelIndex) getIndexCounter() (uint64, error) {

@@ -108,24 +108,41 @@ func (p PartitionRange) SinceAfter(clock PartitionClock) bool {
 	return true
 }
 
-// Identifies whether the specified vbNo, sequence is within the PartitionRange.
-// If the vbNo isn't included in the partition range, returns false.
-func (p PartitionRange) Includes(vbNo uint16, sequence uint64) bool {
+// PartitionRange.Compare Outcomes:
+//   Within, Before, After are returned if the sequence is within/before/after the range
+//   Unknown is returned if the range doesn't include since/to values for the vbno
+type PartitionRangeCompare int
+
+const (
+	PartitionRangeWithin = PartitionRangeCompare(iota)
+	PartitionRangeBefore
+	PartitionRangeAfter
+	PartitionRangeUnknown
+)
+
+// Identifies where the specified vbNo, sequence is relative to the partition range
+func (p PartitionRange) Compare(vbNo uint16, sequence uint64) PartitionRangeCompare {
 	var sinceSeq, toSeq uint64
 	var ok bool
+
 	sinceSeq, ok = p.Since[vbNo]
 	if !ok {
-		return false
+		return PartitionRangeUnknown
 	}
 	toSeq, ok = p.To[vbNo]
 	if !ok {
-		return false
+		return PartitionRangeUnknown
 	}
 
-	if sinceSeq < sequence && toSeq >= sequence {
-		return true
+	if sequence <= sinceSeq {
+		return PartitionRangeBefore
 	}
-	return false
+
+	if sequence > toSeq {
+		return PartitionRangeAfter
+	}
+
+	return PartitionRangeWithin
 }
 
 const (
@@ -172,6 +189,43 @@ func NewDenseBlockList(channelName string, partition uint16, indexBucket base.Bu
 		return nil
 	}
 	return list
+}
+
+func (l *DenseBlockList) ActiveListEntry() *DenseBlockListEntry {
+	if len(l.blocks) == 0 {
+		return nil
+	}
+	return &l.blocks[len(l.blocks)-1]
+}
+
+// Returns the block preceding the specified block index in the list.  Loads earlier block lists if needed.
+// Returns error if currentBlockIndex not found in list.  Returns nil if currentBlockIndex is the first
+// block in the list.
+func (l *DenseBlockList) PreviousBlock(currentBlockIndex int) (*DenseBlockListEntry, error) {
+	// Find the current block in the list
+	var currentPosition int
+	currentFound := false
+	for position, entry := range l.blocks {
+		if entry.BlockIndex == currentBlockIndex {
+			currentPosition = position
+			currentFound = true
+			break
+		}
+	}
+	if !currentFound {
+		return nil, fmt.Errorf("Requested previous for unknown current index: [%d]", currentBlockIndex)
+	}
+	if currentPosition == 0 {
+		// Not found in the current list, load the previous block list and run again
+		err := l.LoadPrevious()
+		if err != nil {
+			// Current is the first block on the list - return nil
+			return nil, nil
+		}
+		return l.PreviousBlock(currentBlockIndex)
+	} else {
+		return &l.blocks[currentPosition-1], nil
+	}
 }
 
 // Creates a new block, and adds to the block list
@@ -232,7 +286,7 @@ func (l *DenseBlockList) loadActiveBlock() *DenseBlock {
 		return NewDenseBlock(l.generateBlockKey(0), PartitionClock{})
 	} else {
 		latestEntry := l.blocks[len(l.blocks)-1]
-		return NewDenseBlock(l.generateBlockKey(latestEntry.BlockIndex), latestEntry.StartClock)
+		return l.LoadBlock(latestEntry)
 	}
 }
 
@@ -281,7 +335,7 @@ func (l *DenseBlockList) initDenseBlockList() error {
 		// New block list - add first empty block
 		base.LogTo("ChannelStorage+", "Creating new block list. channel:[%s] partition:[%d]", l.channelName, l.partition)
 		l.blocks = make([]DenseBlockListEntry, 0)
-		l.activeBlock, _ = l.AddBlock()
+		l.AddBlock()
 	} else {
 		l.blocks = activeBlockList.Blocks
 		l.activeCounter = activeBlockList.Counter

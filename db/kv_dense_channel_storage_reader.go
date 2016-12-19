@@ -10,8 +10,6 @@
 package db
 
 import (
-	"log"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -35,25 +33,50 @@ func NewDenseStorageReader(bucket base.Bucket, channelName string, partitions *b
 	return storage
 }
 
-// TODO: For channel backfill, need to guarantee that []*LogEntry is ordered identically for repeated requests
-
 // Returns all changes for the channel with sequences greater than sinceClock, and less than or equal to
-// toClock
-func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClock) ([]*LogEntry, error) {
-	// Identify which partitions have changed
-	changes := make([]*LogEntry, 0)
-	partitionRanges := ds.calculateChangedPartitions(sinceClock, toClock)
+// toClock.  Changes need to be ordered by vbNo in order to support interleaving of results from multiple channels by
+// caller.  Changes are retrieved in vbucket order, to allow a limit check after each vbucket (to avoid retrieval).  Since
+// a given partition includes results for more than one vbucket
+
+func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClock, limit int) (changes []*LogEntry, err error) {
+
+	changes = make([]*LogEntry, 0)
+
+	// Identify what's changed:
+	//  changedVbuckets: ordered list of vbuckets that have changes, based on the clock comparison
+	//  partitionRanges: map from partitionNo to PartitionRange for each partition that's changed
+	changedVbuckets, partitionRanges := ds.calculateChanged(sinceClock, toClock)
 	base.LogTo("ChannelStorage+", "DenseStorageReader.GetChanges.  #changed partitions:[%d]", len(partitionRanges))
 
-	for partitionNo, partitionRange := range partitionRanges {
-		partitionChanges, err := ds.getPartitionStorageReader(partitionNo).GetChanges(partitionRange, 0)
-		base.LogTo("ChannelStorage+", "DenseStorageReader.GetChanges.  partitionNo:[%d] #changes:[%d]", partitionNo, len(partitionChanges))
+	changedPartitions := make(map[uint16]*PartitionChanges, len(partitionRanges))
 
-		if err != nil {
-			return nil, err
+	for _, vbNo := range changedVbuckets {
+		partitionNo := ds.partitions.PartitionForVb(vbNo)
+		partitionChanges, ok := changedPartitions[partitionNo]
+		if !ok {
+			partitionChanges, err = ds.getPartitionStorageReader(partitionNo).GetChanges(*partitionRanges[partitionNo])
+			if err != nil {
+				return changes, err
+			}
 		}
-		changes = append(changes, partitionChanges...)
+		// Append the changes for this vbucket
+		changes = append(changes, partitionChanges.GetVbChanges(vbNo)...)
+		if limit > 0 && len(changes) > limit {
+			break
+		}
 	}
+	/*
+		for partitionNo, partitionRange := range partitionRanges {
+			if partitionRange != nil {
+				partitionChanges, err := ds.getPartitionStorageReader(uint16(partitionNo)).GetChanges(*partitionRange, 0)
+				if err != nil {
+					base.Warn("Error while iterating:%v", err)
+					return nil, err
+				}
+				changes = append(changes, partitionChanges...)
+			}
+		}
+	*/
 	return changes, nil
 }
 
@@ -69,24 +92,25 @@ func (ds *DenseStorageReader) getPartitionStorageReader(partitionNo uint16) (par
 }
 
 // calculateChangedPartitions identifies which vbuckets have changed after sinceClock until toClock, groups these
-// by partition, and returns as a map of PartitionRanges, indexed by partition number.
-func (ds *DenseStorageReader) calculateChangedPartitions(sinceClock, toClock base.SequenceClock) map[uint16]PartitionRange {
+// by partition, and returns as a array of PartitionRanges, indexed by partition number.
+func (ds *DenseStorageReader) calculateChanged(sinceClock, toClock base.SequenceClock) (changedVbs []uint16, changedPartitions []*PartitionRange) {
 
-	results := make(map[uint16]PartitionRange, 0)
+	changedVbs = make([]uint16, 0)
+	changedPartitions = make([]*PartitionRange, ds.partitions.PartitionCount())
 	for vbNoInt, toSeq := range toClock.Value() {
 		vbNo := uint16(vbNoInt)
 		sinceSeq := sinceClock.GetSequence(vbNo)
 		if sinceSeq < toSeq {
+			changedVbs = append(changedVbs, vbNo)
 			partitionNo := ds.partitions.PartitionForVb(vbNo)
-			partitionRange, ok := results[partitionNo]
-			if !ok {
-				partitionRange = NewPartitionRange()
-				results[partitionNo] = partitionRange
+			if changedPartitions[partitionNo] == nil {
+				partitionRange := NewPartitionRange()
+				changedPartitions[partitionNo] = &partitionRange
 			}
-			partitionRange.SetRange(vbNo, sinceSeq, toSeq)
+			changedPartitions[partitionNo].SetRange(vbNo, sinceSeq, toSeq)
 		}
 	}
-	return results
+	return changedVbs, changedPartitions
 }
 
 // DensePartitionStorageReader is a non-caching reader - every read request retrieves the latest from the bucket.
@@ -94,6 +118,39 @@ type DensePartitionStorageReader struct {
 	channelName string      // Channel name
 	partitionNo uint16      // Partition number
 	indexBucket base.Bucket // Index bucket
+}
+
+type PartitionChanges struct {
+	changes map[uint16][]*LogEntry
+}
+
+func NewPartitionChanges() *PartitionChanges {
+	return &PartitionChanges{
+		changes: make(map[uint16][]*LogEntry),
+	}
+}
+func (p *PartitionChanges) GetVbChanges(vbNo uint16) []*LogEntry {
+	if vbchanges, ok := p.changes[vbNo]; ok {
+		return vbchanges
+	} else {
+		return nil
+	}
+}
+
+func (p *PartitionChanges) AddEntry(entry *LogEntry) {
+	_, ok := p.changes[entry.VbNo]
+	if !ok {
+		p.changes[entry.VbNo] = make([]*LogEntry, 0)
+	}
+	p.changes[entry.VbNo] = append(p.changes[entry.VbNo], entry)
+}
+
+func (p *PartitionChanges) Count() int {
+	count := 0
+	for _, vbSet := range p.changes {
+		count += len(vbSet)
+	}
+	return count
 }
 
 func NewDensePartitionStorageReader(channelName string, partitionNo uint16, indexBucket base.Bucket) *DensePartitionStorageReader {
@@ -105,13 +162,12 @@ func NewDensePartitionStorageReader(channelName string, partitionNo uint16, inde
 	return storage
 }
 
-func (r *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange, limit int) ([]*LogEntry, error) {
+func (r *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange) (*PartitionChanges, error) {
 
-	entries := make([]*LogEntry, 0)
-	// Load the block list to the starting range
+	changes := NewPartitionChanges()
+
+	// Initialize the block list to the starting range, then find the starting block for the partition range
 	blockList := r.GetBlockListForRange(partitionRange)
-
-	// Find the starting block for the partitionRange
 	startIndex := 0
 	for startIndex < len(blockList.blocks) {
 		if partitionRange.SinceAfter(blockList.blocks[startIndex].StartClock) {
@@ -123,7 +179,7 @@ func (r *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange, 
 	}
 	startIndex--
 
-	// Iterate over the blocks, returning changes
+	// Iterate over the blocks, collecting entries by vbucket
 	for i := startIndex; i <= len(blockList.blocks)-1; i++ {
 		blockIter := NewDenseBlockIterator(blockList.LoadBlock(blockList.blocks[i]))
 		for {
@@ -131,17 +187,15 @@ func (r *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange, 
 			if logEntry == nil {
 				break
 			}
-			if partitionRange.Includes(logEntry.VbNo, logEntry.Sequence) {
-				entries = append(entries, logEntry)
-				if limit > 0 && len(entries) >= limit {
-					break
-				}
-			} else {
-				break
+			switch compare := partitionRange.Compare(logEntry.VbNo, logEntry.Sequence); compare {
+			case PartitionRangeAfter:
+				break // We've exceeded the range - return
+			case PartitionRangeWithin:
+				changes.AddEntry(logEntry)
 			}
 		}
 	}
-	return entries, nil
+	return changes, nil
 }
 
 func (r *DensePartitionStorageReader) GetBlockListForRange(partitionRange PartitionRange) *DenseBlockList {
@@ -153,7 +207,7 @@ func (r *DensePartitionStorageReader) GetBlockListForRange(partitionRange Partit
 	if partitionRange.SinceBefore(validFromClock) {
 		err := blockList.LoadPrevious()
 		if err != nil {
-			log.Println("loadPrevious error: %v", err)
+			base.Warn("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
 		}
 		validFromClock = blockList.ValidFrom()
 	}

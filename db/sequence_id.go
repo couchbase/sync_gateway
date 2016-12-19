@@ -96,7 +96,7 @@ func (s SequenceID) clockSeqToString() string {
 			return s.ClockHash
 		} else if s.Clock != nil && s.Clock.GetHashedValue() != "" {
 			return s.Clock.GetHashedValue()
-		} else if s.Clock != nil && s.Clock.IsEmptyClock()  {
+		} else if s.Clock != nil && s.Clock.IsEmptyClock() {
 			return "0"
 		} else {
 			return fmt.Sprintf("%d.%d", s.vbNo, s.Seq)
@@ -266,8 +266,6 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 
 // Unmarshals clock sequence.  If s.SequenceHasher is nil, UnmarshalClockSequence only populates the s.ClockHash value.
 func (s *SequenceID) unmarshalClockSequence(data []byte) error {
-
-	base.LogTo("Debug", "Unmarshalling clock sequence: %d", s.SeqType)
 	var hashValue string
 	err := json.Unmarshal(data, &hashValue)
 	if err != nil {

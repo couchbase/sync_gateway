@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"log"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -105,7 +104,6 @@ func (d *DenseBlock) initClock() {
 // Adds entries to block and writes block to the bucket
 func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
 
-	base.LogTo("ChannelStorage+", "Adding entry set to block.  #entries:[%d]", len(entries))
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
 		base.LogTo("ChannelStorage+", "Block full - returning entries as overflow.  #entries:[%d]", len(entries))
@@ -124,7 +122,6 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		d.value = value
 		d.clock = nil
-		log.Println("Cas failure, retrying")
 		// If block full, set overflow and cancel write
 		if len(d.value) > MaxBlockSize {
 			overflow = entries
@@ -132,7 +129,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 		}
 		overflow, pendingRemoval, updateClock, addError = d.addEntries(entries)
 		if addError != nil {
-			log.Printf("AddEntrySet add error:%v", addError)
+			base.LogTo("ChannelStorage+", "Error adding entries to block: %v", addError)
 			d.loadBlock(bucket)
 			return nil, addError
 		}
@@ -148,13 +145,6 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	return overflow, pendingRemoval, updateClock, nil
 }
 
-// MarkInactive - apply any changes required when block stops being the active block
-func (d *DenseBlock) MarkInactive() error {
-	// TODO: set a flag on the block to indicate it's inactive, for concurrency purposes?
-	return nil
-
-}
-
 // Adds a set of log entries to a block.  Returns:
 //  overflow        Entries that didn't fit in the block
 //  pendingRemoval  Entries with a parent that needs to be removed from the index,
@@ -166,7 +156,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 	for i, entry := range entries {
 		if !blockFull {
 			removalRequired, err := d.addEntry(entry)
-			base.LogTo("ChannelStorage+", "Adding entry to block.  key:[%s]", entry.DocID)
+			base.LogTo("ChannelStorage+", "Adding entry to block.  key:[%s] block:[%s] vb.seq:[%d.%d]", entry.DocID, d.Key, entry.VbNo, entry.Sequence)
 			if err != nil {
 				base.LogTo("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
 				return nil, nil, nil, err
@@ -239,6 +229,78 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err err
 	}
 	d.getClock()[logEntry.VbNo] = logEntry.Sequence
 	return removalRequired, err
+}
+
+// Attempts to remove entries from the block
+func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pendingRemoval []*LogEntry, err error) {
+
+	pendingRemoval = d.removeEntries(entries)
+	// If nothing was removed, don't update the block
+	if len(pendingRemoval) == len(entries) {
+		return entries, nil
+	}
+
+	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - may be called multiple times
+		d.value = value
+		d.clock = nil
+		pendingRemoval = d.removeEntries(entries)
+
+		// If nothing was removed, cancel the write
+		if len(pendingRemoval) == len(entries) {
+			return nil, nil
+		}
+		return d.value, nil
+	})
+	if writeErr != nil {
+		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		return entries, writeErr
+	}
+	d.cas = casOut
+	if len(pendingRemoval) != len(entries) {
+		base.LogTo("ChannelStorage+", "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
+			d.Key, len(entries)-len(pendingRemoval), len(pendingRemoval))
+	}
+	return pendingRemoval, nil
+}
+
+// MarkInactive - apply any changes required when block stops being the active block
+func (d *DenseBlock) MarkInactive() error {
+	// TODO: set a flag on the block to indicate it's inactive, for concurrency purposes?
+	return nil
+
+}
+
+// Attempt to remove entries from the block.  Return any entries not found in the block.
+func (d *DenseBlock) removeEntries(entries []*LogEntry) []*LogEntry {
+	// Note: need to store 'notRemoved' as a separate slice, instead of modifying entries, since we
+	// may need to replay removal on a cas retry
+	notRemoved := make([]*LogEntry, 0)
+	for _, entry := range entries {
+		var oldIndexPos, oldEntryPos uint32
+		var oldEntryLen uint16
+		if entry.PrevSequence != 0 {
+			oldIndexPos, oldEntryPos, oldEntryLen = d.findEntry(entry.VbNo, entry.PrevSequence)
+		} else {
+			oldIndexPos, oldEntryPos, oldEntryLen = d.findEntryByKey(entry.VbNo, []byte(entry.DocID))
+		}
+		if oldIndexPos > 0 {
+			d.removeEntry(oldIndexPos, oldEntryPos, oldEntryLen)
+		} else {
+			notRemoved = append(notRemoved, entry)
+		}
+	}
+	return notRemoved
+
+}
+
+// removeEntry
+//  Cuts an entry from the block,
+func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16) {
+	// Cut entry
+	d.value = append(d.value[:oldEntryPos], d.value[oldEntryPos+uint32(oldEntryLen):]...)
+	// Cut index entry
+	d.value = append(d.value[:oldIndexPos], d.value[oldIndexPos+INDEX_ENTRY_LEN:]...)
 }
 
 // AppendEntry

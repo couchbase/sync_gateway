@@ -30,15 +30,17 @@ const (
 	kSequenceOffsetLength = 0 // disabled until we actually need it
 )
 
-// ChannelStorage implemented as an interface, to support swapping to different underlying storage model
+// ChannelStorage implemented as two interfaces, to support swapping to different underlying storage model
 // without significant refactoring.
-type ChannelStorage interface {
+type ChannelStorageReader interface {
+	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
+	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
+}
+
+type ChannelStorageWriter interface {
 
 	// AddEntrySet adds a set of entries to the channel index
 	AddEntrySet(entries []*LogEntry) (clockUpdates base.SequenceClock, err error)
-
-	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
-	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock) ([]*LogEntry, error)
 
 	// If channel storage implementation uses separate storage for log entries and channel presence,
 	// WriteLogEntry and ReadLogEntry can be used to read/write.  Useful when changeIndex wants to
@@ -48,8 +50,13 @@ type ChannelStorage interface {
 	WriteLogEntry(entry *LogEntry) error
 }
 
-func NewChannelStorage(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) ChannelStorage {
-	return NewBitFlagStorage(bucket, channelName, partitions)
+type ChannelStorage interface {
+	ChannelStorageReader
+	ChannelStorageWriter
+}
+
+func NewChannelStorageReader(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) ChannelStorageReader {
+	return NewDenseStorageReader(bucket, channelName, partitions)
 
 }
 
@@ -286,7 +293,7 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 	return nil
 }
 
-func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock) ([]*LogEntry, error) {
+func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock, limit int) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
 	blocksByKey, blocksByVb, err := b.calculateChangedBlocks(fromSeq, toSeq)
