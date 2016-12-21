@@ -65,18 +65,6 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 			break
 		}
 	}
-	/*
-		for partitionNo, partitionRange := range partitionRanges {
-			if partitionRange != nil {
-				partitionChanges, err := ds.getPartitionStorageReader(uint16(partitionNo)).GetChanges(*partitionRange, 0)
-				if err != nil {
-					base.Warn("Error while iterating:%v", err)
-					return nil, err
-				}
-				changes = append(changes, partitionChanges...)
-			}
-		}
-	*/
 	return changes, nil
 }
 

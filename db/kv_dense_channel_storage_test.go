@@ -398,6 +398,61 @@ func TestDenseBlockList(t *testing.T) {
 
 }
 
+// ---------------------------------------------------------------------------------------------
+// Dense Storage Reader Tests
+//   The majority of reader tests are in sg_accel, leveraging the writer to populate the index.
+//   There are a few utility-type tests here.
+//----------------------------------------------------------------------------------------------
+
+func TestCalculateChangedPartitions(t *testing.T) {
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	reader := NewDenseStorageReader(indexBucket, "ABC", testPartitionMap())
+
+	startClock := getClockForMap(map[uint16]uint64{
+		0:   0,
+		100: 0,
+		200: 0,
+	})
+	endClock := getClockForMap(map[uint16]uint64{
+		0:   5,
+		100: 10,
+		200: 15,
+	})
+
+	changedVbs, changedPartitions := reader.calculateChanged(startClock, endClock)
+	assert.Equals(t, len(changedVbs), 3)
+	assert.Equals(t, changedVbs[0], uint16(0))   // Partition 0
+	assert.Equals(t, changedVbs[1], uint16(100)) // Partition 6
+	assert.Equals(t, changedVbs[2], uint16(200)) // Partition 12
+
+	changedPartitionCount := 0
+	for partition, partitionRange := range changedPartitions {
+		if partitionRange != nil {
+			changedPartitionCount++
+			assertTrue(t, partition == 0 || partition == 6 || partition == 12, "Unexpected changed partition")
+		}
+	}
+	assert.Equals(t, changedPartitions[0].Since.GetSequence(0), uint64(0))
+	assert.Equals(t, changedPartitions[6].Since.GetSequence(100), uint64(0))
+	assert.Equals(t, changedPartitions[12].Since.GetSequence(200), uint64(0))
+	assert.Equals(t, changedPartitions[0].To.GetSequence(0), uint64(5))
+	assert.Equals(t, changedPartitions[6].To.GetSequence(100), uint64(10))
+	assert.Equals(t, changedPartitions[12].To.GetSequence(200), uint64(15))
+	assert.Equals(t, changedPartitionCount, 3)
+
+}
+
+func getClockForMap(values map[uint16]uint64) base.SequenceClock {
+	clock := base.NewSequenceClockImpl()
+	for vb, seq := range values {
+		clock.SetSequence(vb, seq)
+	}
+	return clock
+}
+
 func makePartitionClock(vbNos []uint16, sequences []uint64) PartitionClock {
 	clock := make(PartitionClock, len(vbNos))
 	for i := 0; i < len(vbNos); i++ {

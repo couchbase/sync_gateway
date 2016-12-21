@@ -55,11 +55,6 @@ type ChannelStorage interface {
 	ChannelStorageWriter
 }
 
-func NewChannelStorageReader(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) ChannelStorageReader {
-	return NewDenseStorageReader(bucket, channelName, partitions)
-
-}
-
 // Bit flag values
 const (
 	Seq_NotInChannel = iota

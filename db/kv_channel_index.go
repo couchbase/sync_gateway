@@ -52,7 +52,7 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.
 		channelName:    channelName,
 		indexBucket:    bucket,
 		onChange:       onChangeCallback,
-		channelStorage: NewChannelStorageReader(bucket, channelName, partitions),
+		channelStorage: NewDenseStorageReader(bucket, channelName, partitions),
 	}
 
 	// Initialize and load channel clock
