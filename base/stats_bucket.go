@@ -1,6 +1,7 @@
 package base
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 
@@ -51,7 +52,7 @@ func NewStatsBucket(bucket Bucket) *StatsBucket {
 
 func (b *StatsBucket) docRead(count, bytesRead int) {
 	atomic.AddUint64(&b.docsRead, uint64(count))
-	if bytesRead == 0 {
+	if bytesRead == -1 {
 		atomic.AddUint64(&b.unknownSizeRead, uint64(1))
 	} else {
 		atomic.AddUint64(&b.bytesRead, uint64(bytesRead))
@@ -60,7 +61,7 @@ func (b *StatsBucket) docRead(count, bytesRead int) {
 
 func (b *StatsBucket) docWrite(count, bytesWritten int) {
 	atomic.AddUint64(&b.docsWritten, uint64(count))
-	if bytesWritten == 0 {
+	if bytesWritten == -1 {
 		atomic.AddUint64(&b.unknownSizeWritten, uint64(1))
 	} else {
 		atomic.AddUint64(&b.bytesWritten, uint64(bytesWritten))
@@ -83,8 +84,16 @@ func (b *StatsBucket) GetName() string {
 	return b.bucket.GetName()
 }
 func (b *StatsBucket) Get(k string, rv interface{}) (uint64, error) {
-	defer b.docRead(1, 0)
-	return b.bucket.Get(k, rv)
+
+	cas, err := b.bucket.Get(k, rv)
+	if vBytes, ok := rv.([]byte); ok {
+		defer b.docRead(1, len(vBytes))
+	} else if marshalledJSON, marshalErr := json.Marshal(rv); marshalErr == nil {
+		defer b.docRead(1, len(marshalledJSON))
+	} else {
+		defer b.docRead(1, -1)
+	}
+	return cas, err
 }
 func (b *StatsBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	v, cas, err = b.bucket.GetRaw(k)
@@ -104,7 +113,11 @@ func (b *StatsBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	return results, err
 }
 func (b *StatsBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
-	defer b.docWrite(1, 0)
+	if vBytes, ok := v.([]byte); ok {
+		defer b.docWrite(1, len(vBytes))
+	} else {
+		defer b.docWrite(1, -1)
+	}
 	return b.bucket.Add(k, exp, v)
 }
 func (b *StatsBucket) AddRaw(k string, exp int, v []byte) (added bool, err error) {
@@ -116,7 +129,11 @@ func (b *StatsBucket) Append(k string, data []byte) error {
 	return b.bucket.Append(k, data)
 }
 func (b *StatsBucket) Set(k string, exp int, v interface{}) error {
-	defer b.docWrite(1, 0)
+	if vBytes, ok := v.([]byte); ok {
+		defer b.docWrite(1, len(vBytes))
+	} else {
+		defer b.docWrite(1, -1)
+	}
 	return b.bucket.Set(k, exp, v)
 }
 func (b *StatsBucket) SetRaw(k string, exp int, v []byte) error {
@@ -127,19 +144,27 @@ func (b *StatsBucket) Delete(k string) error {
 	return b.bucket.Delete(k)
 }
 func (b *StatsBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
-	defer b.docWrite(1, 0)
+	if vBytes, ok := v.([]byte); ok {
+		defer b.docWrite(1, len(vBytes))
+	} else {
+		defer b.docWrite(1, -1)
+	}
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
 func (b *StatsBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
-	defer b.docWrite(1, 0)
+	if vBytes, ok := v.([]byte); ok {
+		defer b.docWrite(1, len(vBytes))
+	} else {
+		defer b.docWrite(1, -1)
+	}
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
 func (b *StatsBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
-	defer b.docWrite(1, 0)
+	defer b.docWrite(1, -1)
 	return b.bucket.Update(k, exp, callback)
 }
 func (b *StatsBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) (err error) {
-	defer b.docWrite(1, 0)
+	defer b.docWrite(1, -1)
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *StatsBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {

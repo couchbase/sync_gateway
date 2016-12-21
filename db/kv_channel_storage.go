@@ -30,15 +30,17 @@ const (
 	kSequenceOffsetLength = 0 // disabled until we actually need it
 )
 
-// ChannelStorage implemented as an interface, to support swapping to different underlying storage model
+// ChannelStorage implemented as two interfaces, to support swapping to different underlying storage model
 // without significant refactoring.
-type ChannelStorage interface {
+type ChannelStorageReader interface {
+	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
+	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
+}
+
+type ChannelStorageWriter interface {
 
 	// AddEntrySet adds a set of entries to the channel index
 	AddEntrySet(entries []*LogEntry) (clockUpdates base.SequenceClock, err error)
-
-	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
-	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock) ([]*LogEntry, error)
 
 	// If channel storage implementation uses separate storage for log entries and channel presence,
 	// WriteLogEntry and ReadLogEntry can be used to read/write.  Useful when changeIndex wants to
@@ -46,14 +48,11 @@ type ChannelStorage interface {
 	// check whether this is available.
 	StoresLogEntries() bool
 	WriteLogEntry(entry *LogEntry) error
-
-	// For unit testing only
-	getIndexBlockForEntry(entry *LogEntry) IndexBlock
 }
 
-func NewChannelStorage(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) ChannelStorage {
-	return NewBitFlagStorage(bucket, channelName, partitions)
-
+type ChannelStorage interface {
+	ChannelStorageReader
+	ChannelStorageWriter
 }
 
 // Bit flag values
@@ -154,7 +153,6 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	if err != nil {
 		base.Warn("Error writing blockSets with cas for block %s: %+v", blockSets, err)
 	}
-
 	return clockUpdates, err
 }
 
@@ -290,7 +288,7 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 	return nil
 }
 
-func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock) ([]*LogEntry, error) {
+func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock, limit int) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
 	blocksByKey, blocksByVb, err := b.calculateChangedBlocks(fromSeq, toSeq)

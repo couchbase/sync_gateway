@@ -29,6 +29,7 @@ type LogEntry struct {
 	Skipped      bool         // Late arriving entry
 	Type         LogEntryType // Log entry type
 	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
+	PrevSequence uint64       // Sequence of previous active revision
 }
 
 type ChannelMap map[string]*ChannelRemoval
@@ -45,6 +46,7 @@ const (
 	Hidden               // This rev is not the default (hidden by a conflict)
 	Conflict             // Document is in conflict at this time
 	Branched             // Revision tree is branched
+	Added                // Doc was added to this channel
 
 	kMaxFlag = (1 << iota) - 1
 )

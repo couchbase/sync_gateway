@@ -74,7 +74,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
+			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
 
 			// Build the channel feeds.
 			feeds, err := db.initializeChannelFeeds(channelsSince, options, addedChannels, userVbNo)
@@ -150,6 +150,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Send the entry, and repeat the loop:
+
+				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
 				select {
 				case <-options.Terminator:
 					return
@@ -230,6 +232,7 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 			}
 		}
 	}
+
 	// Find the current entry with the minimum sequence:
 	minSeq := MaxSequenceID
 	for _, cur := range current {
