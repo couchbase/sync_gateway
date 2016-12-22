@@ -1,4 +1,4 @@
-[![Build Status](http://drone.couchbase.io/api/badges/couchbase/sync_gateway/status.svg)](http://drone.couchbase.io/couchbase/sync_gateway) [![Join the chat at https://gitter.im/couchbase/discuss](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/discuss?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Build Status](http://drone.couchbase.io/api/badges/couchbase/sync_gateway/status.svg)](http://drone.couchbase.io/couchbase/sync_gateway) [![Join the chat at https://gitter.im/couchbase/discuss](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/discuss?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/github.com/couchbase/sync_gateway)](https://goreportcard.com/report/github.com/couchbase/sync_gateway)
 
 # Sync Gateway
 
