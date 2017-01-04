@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -358,6 +359,8 @@ func TestDenseBlockIterator(t *testing.T) {
 func TestDenseBlockList(t *testing.T) {
 
 	base.EnableLogKey("ChannelStorage+")
+
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
 
@@ -365,10 +368,6 @@ func TestDenseBlockList(t *testing.T) {
 	list := NewDenseBlockList("ABC", 1, indexBucket)
 
 	// Simple insert
-	partitionClock := makePartitionClock(
-		[]uint16{1, 3, 6, 11},
-		[]uint64{0, 0, 0, 0},
-	)
 	_, err := list.AddBlock()
 	assertNoError(t, err, "Error adding block to blocklist")
 
@@ -380,8 +379,6 @@ func TestDenseBlockList(t *testing.T) {
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 
 	// Add a few more blocks to the new list
-
-	partitionClock.incrementPartitionClock(1)
 	_, err = newList.AddBlock()
 	assertNoError(t, err, "Error adding block2 to blocklist")
 	assert.Equals(t, len(newList.blocks), 3)
@@ -390,11 +387,83 @@ func TestDenseBlockList(t *testing.T) {
 
 	// Attempt to add a block via original list.  Should be cancelled due to cas
 	// mismatch, and reload the current state (i.e. newList)
-	partitionClock.incrementPartitionClock(1)
 	list.AddBlock()
 	assert.Equals(t, len(list.blocks), 3)
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
+
+}
+
+// Artificially set the CAS to an invalid value, to ensure write processing recovers from CAS mismatch
+func TestDenseBlockListBadCas(t *testing.T) {
+
+	base.EnableLogKey("ChannelStorage+")
+
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	// Initialize a new block list manually to set an unexpected cas value.
+	list := &DenseBlockList{
+		channelName: "ABC",
+		partition:   1,
+		indexBucket: indexBucket,
+	}
+	list.activeCas = 50
+	list.activeKey = list.generateActiveListKey()
+	list.initDenseBlockList()
+
+	// Simple insert
+	_, err := list.AddBlock()
+	assertNoError(t, err, "Error adding block to blocklist")
+
+	indexBucket.Dump()
+
+	// Create a new instance of the same block list, validate contents
+	newList := NewDenseBlockList("ABC", 1, indexBucket)
+	assert.Equals(t, len(newList.blocks), 2)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
+
+	// Add a few more blocks to the new list
+	_, err = newList.AddBlock()
+	assertNoError(t, err, "Error adding block2 to blocklist")
+	assert.Equals(t, len(newList.blocks), 3)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
+	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
+
+	// Attempt to add a block via original list.  Should be cancelled due to cas
+	// mismatch, and reload the current state (i.e. newList)
+	list.AddBlock()
+	assert.Equals(t, len(list.blocks), 3)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
+	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
+
+}
+
+// Test multiple writers attempting to concurrently initialize a block
+func TestDenseBlockListConcurrentInit(t *testing.T) {
+
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	// Concurrent initialization
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			list := NewDenseBlockList("ABC", 1, indexBucket)
+			assertTrue(t, list != nil, "Error creating block list")
+		}()
+	}
+	wg.Wait()
+
+	// Create a new instance of the same block list, validate contents
+	newList := NewDenseBlockList("ABC", 1, indexBucket)
+	assert.Equals(t, len(newList.blocks), 1)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 
 }
 

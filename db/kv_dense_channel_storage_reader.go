@@ -46,7 +46,7 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 	//  changedVbuckets: ordered list of vbuckets that have changes, based on the clock comparison
 	//  partitionRanges: map from partitionNo to PartitionRange for each partition that's changed
 	changedVbuckets, partitionRanges := ds.calculateChanged(sinceClock, toClock)
-	base.LogTo("ChannelStorage+", "DenseStorageReader.GetChanges.  #changed partitions:[%d]", len(partitionRanges))
+	base.LogTo("ChannelStorage+", "DenseStorageReader.GetChanges.  #changed vbuckets:[%d]", len(changedVbuckets))
 
 	changedPartitions := make(map[uint16]*PartitionChanges, len(partitionRanges))
 
@@ -156,6 +156,10 @@ func (r *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange) 
 
 	// Initialize the block list to the starting range, then find the starting block for the partition range
 	blockList := r.GetBlockListForRange(partitionRange)
+	if blockList == nil {
+		base.LogTo("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+		return changes, nil
+	}
 	startIndex := 0
 	for startIndex < len(blockList.blocks) {
 		if partitionRange.SinceAfter(blockList.blocks[startIndex].StartClock) {
@@ -190,7 +194,10 @@ func (r *DensePartitionStorageReader) GetBlockListForRange(partitionRange Partit
 
 	// Initialize the block list, by loading all block list docs until we get one with
 	// a starting clock earlier than the partitionRange start.
-	blockList := NewDenseBlockList(r.channelName, r.partitionNo, r.indexBucket)
+	blockList := NewDenseBlockListReader(r.channelName, r.partitionNo, r.indexBucket)
+	if blockList == nil {
+		return nil
+	}
 	validFromClock := blockList.ValidFrom()
 	if partitionRange.SinceBefore(validFromClock) {
 		err := blockList.LoadPrevious()
