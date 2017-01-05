@@ -379,16 +379,14 @@ func (l *DenseBlockList) initDenseBlockList() error {
 // Only loads the active block list doc during init.  Older entries are lazy loaded when a search
 // requests a clock earlier than the first entry's clock
 func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
-	var activeBlockList DenseBlockListStorage
-	var casOut uint64
-	casOut, err = l.indexBucket.Get(l.activeKey, &activeBlockList)
 
-	if err != nil {
-		if base.IsKeyNotFoundError(l.indexBucket, err) {
+	activeBlockList, casOut, readError := l.getStorage(l.activeKey)
+	if readError != nil {
+		if base.IsKeyNotFoundError(l.indexBucket, readError) {
 			return false, nil
 		} else {
-			base.LogTo("ChannelStorage+", "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", l.activeKey, err)
-			return false, err
+			base.LogTo("ChannelStorage+", "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", l.activeKey, readError)
+			return false, readError
 		}
 	}
 	l.activeCas = casOut
@@ -414,10 +412,9 @@ func (l *DenseBlockList) LoadPrevious() error {
 	}
 	previousCount := l.validFromCounter - 1
 	previousBlockKey := l.generateNumberedListKey(previousCount)
-	var previousBlockList DenseBlockListStorage
-	cas, err := l.indexBucket.Get(previousBlockKey, &previousBlockList)
-	if err != nil {
-		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockKey, err)
+	previousBlockList, cas, readError := l.getStorage(l.activeKey)
+	if readError != nil {
+		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockKey, readError)
 	}
 	l.blocks = append(previousBlockList.Blocks, l.blocks...)
 	l.activeStartIndex += len(previousBlockList.Blocks)
@@ -425,6 +422,21 @@ func (l *DenseBlockList) LoadPrevious() error {
 	l.activeCas = cas
 
 	return nil
+}
+
+func (l *DenseBlockList) getStorage(key string) (storage DenseBlockListStorage, cas uint64, err error) {
+
+	value, casOut, err := l.indexBucket.GetRaw(key)
+	if err != nil {
+		return storage, 0, err
+	}
+
+	if err := json.Unmarshal(value, &storage); err != nil {
+		return storage, 0, err
+	}
+
+	return storage, casOut, nil
+
 }
 
 // ValidFrom returns the starting clock of the first block in the list.

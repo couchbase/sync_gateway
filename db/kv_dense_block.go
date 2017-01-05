@@ -156,7 +156,6 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 	for i, entry := range entries {
 		if !blockFull {
 			removalRequired, err := d.addEntry(entry)
-			base.LogTo("ChannelStorage+", "Adding entry to block.  key:[%s] block:[%s] vb.seq:[%d.%d]", entry.DocID, d.Key, entry.VbNo, entry.Sequence)
 			if err != nil {
 				base.LogTo("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
 				return nil, nil, nil, err
@@ -301,6 +300,8 @@ func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen ui
 	d.value = append(d.value[:oldEntryPos], d.value[oldEntryPos+uint32(oldEntryLen):]...)
 	// Cut index entry
 	d.value = append(d.value[:oldIndexPos], d.value[oldIndexPos+INDEX_ENTRY_LEN:]...)
+
+	d.decrEntryCount(1)
 }
 
 // AppendEntry
@@ -421,12 +422,22 @@ func (d *DenseBlock) replaceEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen u
 func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 	count := d.getEntryCount()
 
-	// Check for overflow
+	// Check for uint16 overflow
 	if count+amount < count {
 		return 0, fmt.Errorf("Maximum block entry count exceeded")
 	}
 	d.setEntryCount(count + amount)
 	return count + amount, nil
+}
+
+// Decrements the entry count
+func (d *DenseBlock) decrEntryCount(amount uint16) (uint16, error) {
+	count := d.getEntryCount()
+	if amount > count {
+		return 0, fmt.Errorf("Can't decrement block entry count below zero")
+	}
+	d.setEntryCount(count - amount)
+	return count - amount, nil
 }
 
 func (d *DenseBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, includeKeys bool) (entries []*LogEntry, keySet []string) {

@@ -167,6 +167,75 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 		assert.Equals(t, updateClock.GetSequence(uint16(i*10+1)), uint64(i+21))
 	}
 
+	// Validate pending removal by adding an entry where the previous revision isn't in the block
+	entries = make([]*LogEntry, 1)
+	entries[0] = makeBlockEntry("doc_not_in_block", "2-abc", 11, 65, IsNotRemoval, IsNotAdded)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 1)
+	assert.Equals(t, int(block.getEntryCount()), 11)
+
+}
+
+func TestDenseBlockRemovalByKey(t *testing.T) {
+	base.EnableLogKey("ChannelStorage")
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	block := NewDenseBlock("block1", nil)
+
+	vbno := 50
+	// Inserts
+	entries := make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		sequence := i + 1
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence, IsNotRemoval, IsAdded)
+	}
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(10))
+
+	foundEntries := block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 10)
+	for i := 0; i < 10; i++ {
+		sequence := i + 1
+		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence)
+	}
+	assert.Equals(t, updateClock.GetSequence(uint16(50)), uint64(10))
+
+	// Updates with removal by key
+	entries = make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		vbno := 50
+		sequence := i + 21
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "2-abc", vbno, sequence, IsNotRemoval, IsNotAdded)
+	}
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, int(block.getEntryCount()), 10)
+
+	foundEntries = block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 10)
+	for i := 0; i < 10; i++ {
+		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "2-abc", 50, 21+i)
+	}
+	assert.Equals(t, updateClock.GetSequence(uint16(50)), uint64(30))
+
+	// Validate pending removal by adding an entry where the previous revision isn't in the block
+	entries = make([]*LogEntry, 1)
+	entries[0] = makeBlockEntry("doc_not_in_block", "2-abc", 50, 65, IsNotRemoval, IsNotAdded)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 1)
+	assert.Equals(t, int(block.getEntryCount()), 11)
+
 }
 
 func TestDenseBlockOverflow(t *testing.T) {
