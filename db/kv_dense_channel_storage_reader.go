@@ -10,16 +10,19 @@
 package db
 
 import (
+	"sync"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
 // Implementation of ChannelStorage that stores entries as an append-based list of
 // full log entries
 type DenseStorageReader struct {
-	indexBucket      base.Bucket                             // Index bucket
-	channelName      string                                  // Channel name
-	partitions       *base.IndexPartitions                   // Partition assignment map
-	partitionStorage map[uint16]*DensePartitionStorageReader // PartitionStorage for this channel
+	indexBucket          base.Bucket                             // Index bucket
+	channelName          string                                  // Channel name
+	partitions           *base.IndexPartitions                   // Partition assignment map
+	partitionStorage     map[uint16]*DensePartitionStorageReader // PartitionStorage for this channel
+	partitionStorageLock sync.RWMutex                            // Coordinates read access to partition storage map
 }
 
 func NewDenseStorageReader(bucket base.Bucket, channelName string, partitions *base.IndexPartitions) *DenseStorageReader {
@@ -70,13 +73,32 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 
 // Returns PartitionStorageReader for this channel storage reader.  Initializes if needed.
 func (ds *DenseStorageReader) getPartitionStorageReader(partitionNo uint16) (partitionStorage *DensePartitionStorageReader) {
-	var ok bool
-	if partitionStorage, ok = ds.partitionStorage[partitionNo]; !ok {
-		partitionStorage = NewDensePartitionStorageReader(ds.channelName, partitionNo, ds.indexBucket)
-		ds.partitionStorage[partitionNo] = partitionStorage
+
+	partitionStorage = ds._getPartitionStorageReader(partitionNo)
+	if partitionStorage == nil {
+		partitionStorage = ds._newPartitionStorageReader(partitionNo)
 	}
 	return partitionStorage
 
+}
+
+func (ds *DenseStorageReader) _getPartitionStorageReader(partitionNo uint16) (partitionStorage *DensePartitionStorageReader) {
+
+	ds.partitionStorageLock.RLock()
+	defer ds.partitionStorageLock.RUnlock()
+	return ds.partitionStorage[partitionNo]
+}
+
+func (ds *DenseStorageReader) _newPartitionStorageReader(partitionNo uint16) (partitionStorage *DensePartitionStorageReader) {
+
+	ds.partitionStorageLock.Lock()
+	defer ds.partitionStorageLock.Unlock()
+	// make sure someone else hasn't created while we waited for the lock
+	if _, ok := ds.partitionStorage[partitionNo]; ok {
+		return ds.partitionStorage[partitionNo]
+	}
+	ds.partitionStorage[partitionNo] = NewDensePartitionStorageReader(ds.channelName, partitionNo, ds.indexBucket)
+	return ds.partitionStorage[partitionNo]
 }
 
 // calculateChangedPartitions identifies which vbuckets have changed after sinceClock until toClock, groups these
