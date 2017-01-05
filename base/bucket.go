@@ -478,3 +478,51 @@ func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, c
 		}
 	}
 }
+
+func IsKeyNotFoundError(bucket Bucket, err error) bool {
+
+	if err == nil {
+		return false
+	}
+
+	switch bucket.(type) {
+	case CouchbaseBucket:
+		if strings.Contains(err.Error(), "Not found") {
+			return true
+		}
+	case CouchbaseBucketGoCB:
+		if GoCBErrorType(err) == GoCBErr_MemdStatusKeyNotFound {
+			return true
+		}
+	default:
+		if _, ok := err.(sgbucket.MissingError); ok {
+			return true
+		}
+	}
+
+	return false
+
+}
+
+func IsCasMismatch(bucket Bucket, err error) bool {
+	if err == nil {
+		return false
+	}
+
+	switch bucket.(type) {
+	case CouchbaseBucket:
+		if strings.Contains(err.Error(), "CAS mismatch") {
+			return true
+		}
+	case CouchbaseBucketGoCB:
+		if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+			return true
+		}
+	default:
+		if strings.Contains(err.Error(), "CAS mismatch") {
+			return true
+		}
+	}
+
+	return false
+}

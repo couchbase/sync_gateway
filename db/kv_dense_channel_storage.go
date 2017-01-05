@@ -191,6 +191,22 @@ func NewDenseBlockList(channelName string, partition uint16, indexBucket base.Bu
 	return list
 }
 
+func NewDenseBlockListReader(channelName string, partition uint16, indexBucket base.Bucket) *DenseBlockList {
+
+	list := &DenseBlockList{
+		channelName: channelName,
+		partition:   partition,
+		indexBucket: indexBucket,
+	}
+	list.activeKey = list.generateActiveListKey()
+	found, err := list.loadDenseBlockList()
+	if !found || err != nil {
+		base.Warn("Error initializing dense block list:  found:[%v] err:[%v]", found, err)
+		return nil
+	}
+	return list
+}
+
 func (l *DenseBlockList) ActiveListEntry() *DenseBlockListEntry {
 	if len(l.blocks) == 0 {
 		return nil
@@ -267,11 +283,17 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	if err != nil {
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
-		l.initDenseBlockList()
+		err = l.initDenseBlockList()
+		if err != nil {
+			return nil, err
+		}
+
 		if len(l.blocks) == 0 {
 			return nil, fmt.Errorf("Unable to determine active block after DenseBlockList cas write failure")
 		}
 		latestEntry := l.blocks[len(l.blocks)-1]
+
+		base.LogTo("ChannelStorage+", "Handled AddBlock cas failure.  casOut:[%d] activeCas:[%d], err:[%v], activeBlock:[%v]", casOut, l.activeCas, err, latestEntry.BlockIndex)
 		return NewDenseBlock(l.generateBlockKey(latestEntry.BlockIndex), latestEntry.StartClock), nil
 	}
 	l.activeCas = casOut
@@ -300,9 +322,11 @@ func (l *DenseBlockList) rotate() error {
 		return err
 	}
 	_, err = l.indexBucket.WriteCas(rotatedKey, 0, 0, 0, rotatedValue, sgbucket.Raw)
-	if err != nil {
-		// TODO: confirm cas error and not retry error
-		// CAS error - someone else has already rotated out for this count.  Continue to initialize empty
+
+	// For CAS error - someone else has already rotated out for this count.  Continue to initialize empty.  For all other errors,
+	// return error
+	if err != nil && !base.IsCasMismatch(l.indexBucket, err) {
+		return err
 	}
 
 	// Empty the active list
@@ -312,38 +336,66 @@ func (l *DenseBlockList) rotate() error {
 	if err != nil {
 		return err
 	}
-	l.activeCas, err = l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, activeValue, sgbucket.Raw)
+	var casOut uint64
+	casOut, err = l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, activeValue, sgbucket.Raw)
 	if err != nil {
-		// CAS error.  Assume concurrent writer has already updated the active block list.
-		//  Re-initialize the current block list.
-		l.initDenseBlockList()
+		if base.IsCasMismatch(l.indexBucket, err) {
+			// CAS error.  Assume concurrent writer has already updated the active block list.
+			//  Re-initialize the current block list and return
+			err = l.initDenseBlockList()
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		l.activeCas = casOut
 	}
 
 	return nil
 }
 
+// Loads the dense block list.  Initializes an empty block list if not found.
+func (l *DenseBlockList) initDenseBlockList() error {
+	// Load the existing block list
+	found, err := l.loadDenseBlockList()
+	if err != nil {
+		return err
+	}
+	// If block list doesn't exist, add a block (which will initialize)
+	if !found {
+		l.activeCas = 0
+		base.LogTo("ChannelStorage+", "Creating new block list. channel:[%s] partition:[%d] cas:[%d]", l.channelName, l.partition, l.activeCas)
+		l.blocks = make([]DenseBlockListEntry, 0)
+		_, err = l.AddBlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Only loads the active block list doc during init.  Older entries are lazy loaded when a search
 // requests a clock earlier than the first entry's clock
-func (l *DenseBlockList) initDenseBlockList() error {
-	var activeBlockList DenseBlockListStorage
-	var err error
-	l.activeCas, err = l.indexBucket.Get(l.activeKey, &activeBlockList)
-	if err != nil {
-		// TODO: figure out how to make this work with walrus
-		//if base.GoCBErrorType(err) == base.GoCBErr_MemdStatusKeyNotFound {
+func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 
-		// New block list - add first empty block
-		base.LogTo("ChannelStorage+", "Creating new block list. channel:[%s] partition:[%d]", l.channelName, l.partition)
-		l.blocks = make([]DenseBlockListEntry, 0)
-		l.AddBlock()
-	} else {
-		l.blocks = activeBlockList.Blocks
-		l.activeCounter = activeBlockList.Counter
-		l.activeBlock = l.loadActiveBlock()
+	activeBlockList, casOut, readError := l.getStorage(l.activeKey)
+	if readError != nil {
+		if base.IsKeyNotFoundError(l.indexBucket, readError) {
+			return false, nil
+		} else {
+			base.LogTo("ChannelStorage+", "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", l.activeKey, readError)
+			return false, readError
+		}
 	}
+	l.activeCas = casOut
+	l.blocks = activeBlockList.Blocks
+	l.activeCounter = activeBlockList.Counter
+	l.activeBlock = l.loadActiveBlock()
 	l.activeStartIndex = 0
 	l.validFromCounter = l.activeCounter
-	return nil
+	return true, nil
 }
 
 func (l *DenseBlockList) GetActiveBlock() *DenseBlock {
@@ -360,10 +412,9 @@ func (l *DenseBlockList) LoadPrevious() error {
 	}
 	previousCount := l.validFromCounter - 1
 	previousBlockKey := l.generateNumberedListKey(previousCount)
-	var previousBlockList DenseBlockListStorage
-	cas, err := l.indexBucket.Get(previousBlockKey, &previousBlockList)
-	if err != nil {
-		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockKey, err)
+	previousBlockList, cas, readError := l.getStorage(l.activeKey)
+	if readError != nil {
+		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockKey, readError)
 	}
 	l.blocks = append(previousBlockList.Blocks, l.blocks...)
 	l.activeStartIndex += len(previousBlockList.Blocks)
@@ -371,6 +422,21 @@ func (l *DenseBlockList) LoadPrevious() error {
 	l.activeCas = cas
 
 	return nil
+}
+
+func (l *DenseBlockList) getStorage(key string) (storage DenseBlockListStorage, cas uint64, err error) {
+
+	value, casOut, err := l.indexBucket.GetRaw(key)
+	if err != nil {
+		return storage, 0, err
+	}
+
+	if err := json.Unmarshal(value, &storage); err != nil {
+		return storage, 0, err
+	}
+
+	return storage, casOut, nil
+
 }
 
 // ValidFrom returns the starting clock of the first block in the list.

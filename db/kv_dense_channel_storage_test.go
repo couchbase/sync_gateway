@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -165,6 +166,75 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "2-abc", 10*i+1, 21+i)
 		assert.Equals(t, updateClock.GetSequence(uint16(i*10+1)), uint64(i+21))
 	}
+
+	// Validate pending removal by adding an entry where the previous revision isn't in the block
+	entries = make([]*LogEntry, 1)
+	entries[0] = makeBlockEntry("doc_not_in_block", "2-abc", 11, 65, IsNotRemoval, IsNotAdded)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 1)
+	assert.Equals(t, int(block.getEntryCount()), 11)
+
+}
+
+func TestDenseBlockRemovalByKey(t *testing.T) {
+	base.EnableLogKey("ChannelStorage")
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	block := NewDenseBlock("block1", nil)
+
+	vbno := 50
+	// Inserts
+	entries := make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		sequence := i + 1
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence, IsNotRemoval, IsAdded)
+	}
+	overflow, pendingRemoval, updateClock, err := block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(10))
+
+	foundEntries := block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 10)
+	for i := 0; i < 10; i++ {
+		sequence := i + 1
+		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "1-abc", vbno, sequence)
+	}
+	assert.Equals(t, updateClock.GetSequence(uint16(50)), uint64(10))
+
+	// Updates with removal by key
+	entries = make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		vbno := 50
+		sequence := i + 21
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "2-abc", vbno, sequence, IsNotRemoval, IsNotAdded)
+	}
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, int(block.getEntryCount()), 10)
+
+	foundEntries = block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 10)
+	for i := 0; i < 10; i++ {
+		assertLogEntry(t, foundEntries[i], fmt.Sprintf("doc%d", i), "2-abc", 50, 21+i)
+	}
+	assert.Equals(t, updateClock.GetSequence(uint16(50)), uint64(30))
+
+	// Validate pending removal by adding an entry where the previous revision isn't in the block
+	entries = make([]*LogEntry, 1)
+	entries[0] = makeBlockEntry("doc_not_in_block", "2-abc", 50, 65, IsNotRemoval, IsNotAdded)
+	overflow, pendingRemoval, updateClock, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 1)
+	assert.Equals(t, int(block.getEntryCount()), 11)
 
 }
 
@@ -358,6 +428,8 @@ func TestDenseBlockIterator(t *testing.T) {
 func TestDenseBlockList(t *testing.T) {
 
 	base.EnableLogKey("ChannelStorage+")
+
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
 
@@ -365,10 +437,6 @@ func TestDenseBlockList(t *testing.T) {
 	list := NewDenseBlockList("ABC", 1, indexBucket)
 
 	// Simple insert
-	partitionClock := makePartitionClock(
-		[]uint16{1, 3, 6, 11},
-		[]uint64{0, 0, 0, 0},
-	)
 	_, err := list.AddBlock()
 	assertNoError(t, err, "Error adding block to blocklist")
 
@@ -380,8 +448,6 @@ func TestDenseBlockList(t *testing.T) {
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 
 	// Add a few more blocks to the new list
-
-	partitionClock.incrementPartitionClock(1)
 	_, err = newList.AddBlock()
 	assertNoError(t, err, "Error adding block2 to blocklist")
 	assert.Equals(t, len(newList.blocks), 3)
@@ -390,11 +456,83 @@ func TestDenseBlockList(t *testing.T) {
 
 	// Attempt to add a block via original list.  Should be cancelled due to cas
 	// mismatch, and reload the current state (i.e. newList)
-	partitionClock.incrementPartitionClock(1)
 	list.AddBlock()
 	assert.Equals(t, len(list.blocks), 3)
 	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
+
+}
+
+// Artificially set the CAS to an invalid value, to ensure write processing recovers from CAS mismatch
+func TestDenseBlockListBadCas(t *testing.T) {
+
+	base.EnableLogKey("ChannelStorage+")
+
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	// Initialize a new block list manually to set an unexpected cas value.
+	list := &DenseBlockList{
+		channelName: "ABC",
+		partition:   1,
+		indexBucket: indexBucket,
+	}
+	list.activeCas = 50
+	list.activeKey = list.generateActiveListKey()
+	list.initDenseBlockList()
+
+	// Simple insert
+	_, err := list.AddBlock()
+	assertNoError(t, err, "Error adding block to blocklist")
+
+	indexBucket.Dump()
+
+	// Create a new instance of the same block list, validate contents
+	newList := NewDenseBlockList("ABC", 1, indexBucket)
+	assert.Equals(t, len(newList.blocks), 2)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
+
+	// Add a few more blocks to the new list
+	_, err = newList.AddBlock()
+	assertNoError(t, err, "Error adding block2 to blocklist")
+	assert.Equals(t, len(newList.blocks), 3)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
+	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
+
+	// Attempt to add a block via original list.  Should be cancelled due to cas
+	// mismatch, and reload the current state (i.e. newList)
+	list.AddBlock()
+	assert.Equals(t, len(list.blocks), 3)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
+	assert.Equals(t, newList.blocks[1].BlockIndex, 1)
+
+}
+
+// Test multiple writers attempting to concurrently initialize a block
+func TestDenseBlockListConcurrentInit(t *testing.T) {
+
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	// Concurrent initialization
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			list := NewDenseBlockList("ABC", 1, indexBucket)
+			assertTrue(t, list != nil, "Error creating block list")
+		}()
+	}
+	wg.Wait()
+
+	// Create a new instance of the same block list, validate contents
+	newList := NewDenseBlockList("ABC", 1, indexBucket)
+	assert.Equals(t, len(newList.blocks), 1)
+	assert.Equals(t, newList.blocks[0].BlockIndex, 0)
 
 }
 
