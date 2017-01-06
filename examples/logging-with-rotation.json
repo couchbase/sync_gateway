@@ -1,0 +1,22 @@
+{
+  "logging": {
+    "default": {
+      "logFilePath": "/var/tmp/sglogfile.log",
+      "logKeys": ["*"],
+      "logLevel": "debug",
+      "rotation": {
+        "maxsize": 1,
+        "maxage": 30,
+        "maxbackups": 2,
+        "localtime": true
+      }
+    }
+  },
+  "databases": {
+    "db": {
+      "server": "walrus:data",
+      "bucket": "default",
+      "users": {"GUEST": {"disabled": false,"admin_channels": ["*"]}}
+    }
+  }
+}
