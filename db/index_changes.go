@@ -24,8 +24,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 		userVbNo = uint16(db.Bucket.VBHash(db.user.DocID()))
 	}
-
 	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -252,7 +252,7 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 
 	// Clear the current entries for any duplicates of the sequence just sent:
 	for i, cur := range current {
-		if cur != nil && cur.Seq == minSeq {
+		if cur != nil && cur.Seq.Equals(minSeq) {
 			current[i] = nil
 			// Track whether this is a removal from all user's channels
 			if cur.Removed == nil && minEntry.allRemoved == true {
@@ -313,7 +313,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 			vbAddedAt = *vbSeqAddedAt.VbNo
 		}
 
-		base.LogTo("Changes+", "Starting for channel... %s, %d", name, seqAddedAt)
+		base.LogTo("Changes+", "Starting for channel... %s, %d.%d", name, vbAddedAt, seqAddedAt)
 		chanOpts := options
 
 		// Check whether requires backfill based on addedChannels in this _changes feed
@@ -340,7 +340,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 
 		if isNewChannel || (backfillRequired && !backfillInProgress) {
 			// Case 2.  No backfill in progress, backfill required
-			base.LogTo("Changes+", "Starting backfill for channel... %s, %d", name, seqAddedAt)
+			base.LogTo("Changes+", "Starting backfill for channel... %s, [%d:%d]", name, vbAddedAt, seqAddedAt)
 			chanOpts.Since = SequenceID{
 				Seq:              0,
 				vbNo:             0,
@@ -362,6 +362,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		} else {
 			// Case 1.  Leave chanOpts.Since set to options.Since.
 		}
+
 		feed, err := db.vectorChangesFeed(name, chanOpts)
 		if err != nil {
 			base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
@@ -402,9 +403,12 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 		if options.Since.TriggeredByClock != nil {
 			for i := 0; i < len(log); i++ {
 				logEntry := log[i]
-				// If sequence is less than the backfillTo clock sequence for its vbucket, send as backfill (i.e. with triggered by)
-				isBackfill := logEntry.Sequence <= options.Since.TriggeredByClock.GetSequence(logEntry.VbNo)
 
+				// If vb.seq for the entry is earlier than the vb.seq that triggered this channel's backfill, send as backfill.
+				isBackfill := false
+				if base.CompareVbAndSequence(logEntry.VbNo, logEntry.Sequence, options.Since.TriggeredByVbNo, options.Since.TriggeredBy) == -1 {
+					isBackfill = true
+				}
 				// Only send backfill that's hasn't already been sent (i.e. after the sequence part of options.Since)
 				isPending := options.Since.VbucketSequenceBefore(logEntry.VbNo, logEntry.Sequence)
 

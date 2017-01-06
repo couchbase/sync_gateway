@@ -400,3 +400,22 @@ func (scp *GobShardedClockPartition) AddToClock(clock SequenceClock) error {
 	}
 	return nil
 }
+
+func TestCompareVbAndSequence(t *testing.T) {
+
+	// Vb and Seq equal
+	assert.Equals(t, CompareVbAndSequence(10, 100, 10, 100), 0)
+
+	// Vb equal
+	assert.Equals(t, CompareVbAndSequence(10, 100, 10, 101), -1)
+	assert.Equals(t, CompareVbAndSequence(10, 100, 10, 99), 1)
+
+	// Vb different
+	assert.Equals(t, CompareVbAndSequence(10, 100, 11, 100), -1)
+	assert.Equals(t, CompareVbAndSequence(10, 100, 11, 99), -1)
+	assert.Equals(t, CompareVbAndSequence(10, 100, 11, 101), -1)
+	assert.Equals(t, CompareVbAndSequence(10, 100, 9, 100), 1)
+	assert.Equals(t, CompareVbAndSequence(10, 100, 9, 99), 1)
+	assert.Equals(t, CompareVbAndSequence(10, 100, 9, 101), 1)
+
+}

@@ -60,6 +60,13 @@ func (s SequenceID) String() string {
 	}
 }
 
+// Diagnostic print of SequenceID
+func (s SequenceID) Print() string {
+	return fmt.Sprintf(
+		"SeqType:[%d] TriggeredBy:[%d] LowSeq:[%d] Seq:[%d] Clock:[%v] TriggeredByClock[%v] ClockHash:[%s] vbNo:[%d] TriggeredByVbno:[%d] LowHash:[%s]",
+		s.SeqType, s.TriggeredBy, s.LowSeq, s.Seq, s.Clock != nil, s.TriggeredByClock != nil, s.ClockHash, s.vbNo, s.TriggeredByVbNo, s.LowHash)
+}
+
 func (s SequenceID) intSeqToString() string {
 
 	if s.LowSeq > 0 && s.LowSeq < s.Seq {
@@ -294,6 +301,23 @@ func (s SequenceID) IsNonZero() bool {
 	} else {
 		return s.Seq > 0
 	}
+}
+
+// Equality of sequences, based on seq, triggered by and low hash
+func (s SequenceID) Equals(s2 SequenceID) bool {
+	if s.SeqType == ClockSequenceType {
+		return s.vectorEquals(s2)
+	} else {
+		return s.intEquals(s2)
+	}
+}
+
+func (s SequenceID) intEquals(s2 SequenceID) bool {
+	return s.SafeSequence() == s2.SafeSequence() && s.TriggeredBy == s2.TriggeredBy
+}
+
+func (s SequenceID) vectorEquals(s2 SequenceID) bool {
+	return s.Seq == s2.Seq && s.vbNo == s2.vbNo && s.TriggeredBy == s2.TriggeredBy && s.TriggeredByVbNo == s2.TriggeredByVbNo
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
