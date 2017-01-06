@@ -69,7 +69,7 @@ type ServerConfig struct {
 	CORS                           *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
 	DeprecatedLog                  []string                 `json:"log,omitempty"`         // Log keywords to enable
 	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
-	Logging                        *base.LoggingConfigMap   `json:",omitempty"`            // Pre-configured databases, mapped by name
+	Logging                        *base.LoggingConfigMap   `json:",omitempty"`            // Configuration for logging with optional log file rotation
 	Pretty                         bool                     `json:",omitempty"`            // Pretty-print JSON responses?
 	DeploymentID                   *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
@@ -132,11 +132,6 @@ type DbConfig struct {
 type DbConfigMap map[string]*DbConfig
 
 type ReplConfigMap map[string]*ReplicationConfig
-
-type PersonaConfig struct {
-	Origin   string // Canonical server URL for Persona authentication
-	Register bool   // If true, server will register new user accounts
-}
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts

@@ -64,6 +64,9 @@ func (l Level) String() string {
 	}
 }
 
+// Implementaion of the go encoding.TextMarshaller interface for the Level type
+// This method will also be called by the JSON Marshaller
+//
 // MarshalText marshals the Level to text. Note that the text representation
 // drops the -Level suffix (see example).
 func (l *Level) MarshalText() ([]byte, error) {
@@ -73,6 +76,10 @@ func (l *Level) MarshalText() ([]byte, error) {
 	return []byte(l.String()), nil
 }
 
+// Implementaion of the go encoding.TextUnmarshaller interface for the Level type
+// This method will also be called by the JSON Unmarshaller e.g. when loading
+// from logging configuration.
+//
 // UnmarshalText unmarshals text to a level. Like MarshalText, UnmarshalText
 // expects the text representation of a Level to drop the -Level suffix (see
 // example).
@@ -194,7 +201,7 @@ func (config *LogAppenderConfig) ValidateLogAppender() error {
 	//Fail validation if an appender contains a "rotation" sub document
 	// and no "logFilePath" appender property is defined
 	if config.Rotation != nil && config.LogFilePath == nil {
-		return fmt.Errorf("The appender must define a \"logFilePath\" when \"rotation\" is defined")
+		return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
 	}
 	return nil
 }
