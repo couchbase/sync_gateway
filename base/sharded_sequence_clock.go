@@ -105,6 +105,29 @@ type VbSequence struct {
 	seq  uint64
 }
 
+// Compares based on vbno, then sequence.  Returns 0 if identical, 1 if s1 > s2, -1 if s1 < s2
+func CompareVbSequence(s1, s2 VbSequence) int {
+	return CompareVbAndSequence(s1.vbNo, s1.seq, s2.vbNo, s2.seq)
+}
+
+// Compares based on vbno, then sequence.  Returns 0 if identical, 1 if s1 > s2, -1 if s1 < s2
+func CompareVbAndSequence(vb1 uint16, s1 uint64, vb2 uint16, s2 uint64) int {
+	if vb1 < vb2 {
+		return -1
+	}
+	if vb1 > vb2 {
+		return 1
+	}
+	// Vbno equal, compare sequences
+	if s1 < s2 {
+		return -1
+	}
+	if s1 > s2 {
+		return 1
+	}
+	return 0
+}
+
 // ShardedClock maintains the collection of clock shards (ShardedClockPartitions), and also manages
 // the counter for the clock.
 type ShardedClock struct {

@@ -406,6 +406,9 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 
 				// If vb.seq for the entry is earlier than the vb.seq that triggered this channel's backfill, send as backfill.
 				isBackfill := false
+				if base.CompareVbAndSequence(logEntry.VbNo, logEntry.Sequence, options.Since.TriggeredByVbNo, options.Since.TriggeredBy) == -1 {
+					isBackfill = true
+				}
 				if logEntry.VbNo < options.Since.TriggeredByVbNo || (logEntry.VbNo == options.Since.TriggeredByVbNo && logEntry.Sequence < options.Since.TriggeredBy) {
 					isBackfill = true
 				}
