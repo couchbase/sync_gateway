@@ -252,7 +252,7 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 
 	// Clear the current entries for any duplicates of the sequence just sent:
 	for i, cur := range current {
-		if cur != nil && cur.Seq == minSeq {
+		if cur != nil && cur.Seq.Equals(minSeq) {
 			current[i] = nil
 			// Track whether this is a removal from all user's channels
 			if cur.Removed == nil && minEntry.allRemoved == true {
