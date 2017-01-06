@@ -35,6 +35,7 @@ const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
 const kOneShotLocalDbReplicateWait = 10 * time.Second
+const KDefaultNumShards = 16
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -416,7 +417,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		if config.ChannelIndex.NumShards != 0 {
 			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
 		} else {
-			channelIndexOptions.NumShards = 64
+			channelIndexOptions.NumShards = KDefaultNumShards
 		}
 
 		channelIndexOptions.ValidateOrPanic()
