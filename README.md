@@ -46,6 +46,8 @@ $ yum install gcc
 
 ## Download and build
 
+**Warning** currently the `go get` style of building is [broken](https://github.com/couchbase/sync_gateway/issues/2209) due to upstream library changes, please use the [Extended Build Instructions](docs/BUILD.md)
+
 Download and build the code in a single step via `go get`:
 
 ```
