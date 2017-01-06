@@ -409,9 +409,6 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 				if base.CompareVbAndSequence(logEntry.VbNo, logEntry.Sequence, options.Since.TriggeredByVbNo, options.Since.TriggeredBy) == -1 {
 					isBackfill = true
 				}
-				if logEntry.VbNo < options.Since.TriggeredByVbNo || (logEntry.VbNo == options.Since.TriggeredByVbNo && logEntry.Sequence < options.Since.TriggeredBy) {
-					isBackfill = true
-				}
 				// Only send backfill that's hasn't already been sent (i.e. after the sequence part of options.Since)
 				isPending := options.Since.VbucketSequenceBefore(logEntry.VbNo, logEntry.Sequence)
 
