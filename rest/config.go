@@ -592,6 +592,10 @@ func ParseCommandLine() {
 	}
 
 	base.ParseLogFlag(*logKeys)
+
+	// Logging config will now have been loaded from command line
+	// or from a sync_gateway config file so we can validate the
+	// configuration and setup logging now
 	if err := config.setupAndValidateLogging(*verbose); err != nil {
 		base.LogFatal("Error setting up logging %v", err)
 	}
