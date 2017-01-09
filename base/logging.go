@@ -15,6 +15,7 @@ import (
 	"github.com/couchbase/clog"
 	"github.com/natefinch/lumberjack"
 	"log"
+	"math"
 	"os"
 	"runtime"
 	"strings"
@@ -26,6 +27,9 @@ var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
 
 type Level int32
 
+//By setting DebugLevel to -1, if LogLevel is not set in the logging config it
+//will default to the zero value for int32 (0) which will disable debug
+//logging, InfoLevel logging will be the default output.
 const (
 	// DebugLevel logs are typically voluminous, and are usually disabled in
 	// production.
@@ -43,6 +47,24 @@ const (
 	// FatalLevel logs a message, then calls os.Exit(1).
 	FatalLevel
 )
+
+// SgLevel returns a compatible internal SyncGateway Log Level for
+// the given logging config Level
+// The mapping is:
+//
+// DebugLevel	-1 --> 1
+// InfoLevel 	 0 --> 1
+// WarnLevel 	 1 --> 2
+// ErrorLevel 	 2 --> 2
+// PanicLevel 	 3 --> 3
+// FatalLevel 	 4 --> 3
+//
+// This can be mapped by addition of 2 to level value
+// and then a division by 2 and return the ceil of the result
+// to round to nearest int sgLevel value
+func (l Level) sgLevel() int {
+	return int(math.Ceil(float64(l+2) / float64(2)))
+}
 
 // String returns a lower-case ASCII representation of the log level.
 func (l Level) String() string {
@@ -454,6 +476,8 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 			lj.Filename = *logConfig.LogFilePath
 		}
 
+		SetLogLevel(logConfig.LogLevel.sgLevel())
+
 		if rotation := logConfig.Rotation; rotation != nil {
 			if rotation.MaxSize > 0 {
 				lj.MaxSize = rotation.MaxSize // megabytes
@@ -467,7 +491,7 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 			lj.LocalTime = rotation.LocalTime
 		}
 
-		log.Printf("Log entries will be written to the file %v",*logConfig.LogFilePath)
+		log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
 		//Update default GoLang logger to use new rolling logger
 		logger.SetOutput(&lj)
 
