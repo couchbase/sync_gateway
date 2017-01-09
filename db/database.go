@@ -82,6 +82,7 @@ type DatabaseContextOptions struct {
 	AdminInterface        *string
 	UnsupportedOptions    *UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	Shadowing	      bool
 	OIDCOptions           *auth.OIDCOptions
 }
 
@@ -194,8 +195,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	context.tapListener.Init(bucket.GetName())
 
-	// If not using channel index, start the tap feed
-	if options.IndexOptions == nil {
+	// If not using channel index or using channel index and shadowing, start the tap feed
+	if options.IndexOptions == nil || options.Shadowing {
 		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
 			context.TakeDbOffline("Lost TAP Feed")
 		}); err != nil {

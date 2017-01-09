@@ -474,7 +474,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// Enable doc tracking if needed for autoImport or shadowing
-	trackDocs := autoImport || config.Shadow != nil
+	shadowing := config.Shadow != nil
+	trackDocs := autoImport || shadowing
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:          &cacheOptions,
@@ -484,6 +485,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    unsupportedOptions,
 		TrackDocs:             trackDocs,
+		Shadowing:             shadowing,
 		OIDCOptions:           config.OIDCConfig,
 	}
 
