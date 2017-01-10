@@ -189,6 +189,7 @@ type changeWaiter struct {
 	userKeys                  []string
 	lastCounter               uint64
 	lastTerminateCheckCounter uint64
+	lastUserCount             uint64
 }
 
 // Creates a new changeWaiter that will wait for changes for the given document keys.
@@ -216,6 +217,9 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 	}
 	waiter := listener.NewWaiter(waitKeys)
 	waiter.userKeys = userKeys
+	if userKeys != nil {
+		waiter.lastUserCount = listener.CurrentCount(userKeys)
+	}
 	return waiter
 }
 
@@ -225,6 +229,9 @@ func (waiter *changeWaiter) Wait() uint32 {
 	lastTerminateCheckCounter := waiter.lastTerminateCheckCounter
 	lastCounter := waiter.lastCounter
 	waiter.lastCounter, waiter.lastTerminateCheckCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter, waiter.lastTerminateCheckCounter)
+	if waiter.userKeys != nil {
+		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
+	}
 	countChanged := waiter.lastCounter > lastCounter
 
 	//Uses != to compare as value can cycle back through 0
@@ -242,10 +249,7 @@ func (waiter *changeWaiter) Wait() uint32 {
 // Returns the current counter value for the waiter's user (and roles).
 // If this value changes, it means the user or roles have been updated.
 func (waiter *changeWaiter) CurrentUserCount() uint64 {
-	if waiter.userKeys == nil {
-		return 0
-	}
-	return waiter.listener.CurrentCount(waiter.userKeys)
+	return waiter.lastUserCount
 }
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
