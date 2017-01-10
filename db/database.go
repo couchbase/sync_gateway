@@ -194,8 +194,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	context.tapListener.Init(bucket.GetName())
 
-	// If not using channel index, start the tap feed
-	if options.IndexOptions == nil {
+	// If not using channel index or using channel index and tracking docs, start the tap feed
+	if options.IndexOptions == nil || options.TrackDocs {
 		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
 			context.TakeDbOffline("Lost TAP Feed")
 		}); err != nil {
