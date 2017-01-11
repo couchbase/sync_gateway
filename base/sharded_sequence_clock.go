@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"sync"
@@ -257,22 +258,22 @@ func (s *ShardedClock) GetSequence(vbNo uint16) (vbSequence uint64) {
 	}
 }
 
-func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) (err error) {
+func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 
 	// Build set of sequence updates by partition
 	// Future optimization: have method accept sequences already grouped by partition - potentially
 	// in a clock implementation
 	partitionSequences := make(map[uint16][]VbSequence)
 
-	for vb, sequence := range updateClock.Value() {
-		if sequence > 0 {
-			partitionNo := s.partitionMap.VbMap[uint16(vb)]
-			_, ok := partitionSequences[partitionNo]
-			if !ok {
-				partitionSequences[partitionNo] = make([]VbSequence, 0)
-			}
-			partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSequence{vbNo: uint16(vb), seq: sequence})
+	for vb, sequence := range updates {
+		log.Printf("Setting stable sequence: [%d:%d]", vb, sequence)
+		partitionNo := s.partitionMap.VbMap[uint16(vb)]
+		_, ok := partitionSequences[partitionNo]
+		if !ok {
+			partitionSequences[partitionNo] = make([]VbSequence, 0)
 		}
+		partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSequence{vbNo: uint16(vb), seq: sequence})
+
 	}
 
 	if len(partitionSequences) == 0 {
