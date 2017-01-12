@@ -21,9 +21,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -232,26 +230,6 @@ func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname st
 
 func IsPowerOfTwo(n uint16) bool {
 	return (n & (n - 1)) == 0
-}
-
-// IntMax is an expvar.Value that tracks the maximum value it's given.
-type IntMax struct {
-	i  int64
-	mu sync.RWMutex
-}
-
-func (v *IntMax) String() string {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-	return strconv.FormatInt(v.i, 10)
-}
-
-func (v *IntMax) SetIfMax(value int64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if value > v.i {
-		v.i = value
-	}
 }
 
 // This is how Couchbase Server handles document expiration times
