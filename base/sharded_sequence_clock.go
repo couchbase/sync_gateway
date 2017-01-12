@@ -275,6 +275,10 @@ func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) (err error) {
 		}
 	}
 
+	if len(partitionSequences) == 0 {
+		return nil
+	}
+
 	var wg sync.WaitGroup
 	// Update and cas write each changed partition
 	for partitionNo, sequences := range partitionSequences {
@@ -322,6 +326,7 @@ func (s *ShardedClock) UpdateAndWrite(updateClock SequenceClock) (err error) {
 
 	}
 	wg.Wait()
+
 	// Increment the clock count
 	s.counter, err = s.bucket.Incr(s.countKey, 1, 1, 0)
 
