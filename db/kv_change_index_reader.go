@@ -11,6 +11,7 @@ package db
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,6 +19,15 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 )
+
+var indexReaderOneShotCount expvar.Int
+var indexReaderPersistentCount expvar.Int
+var indexReaderPollReadersCount expvar.Int
+var indexReaderPollReadersTime base.DebugIntMeanVar
+var indexReaderPollPrincipalsCount expvar.Int
+var indexReaderPollPrincipalsTime base.DebugIntMeanVar
+var indexReaderGetChangesTime base.DebugIntMeanVar
+var indexReaderGetChangesCount expvar.Int
 
 type kvChangeIndexReader struct {
 	indexReadBucket           base.Bucket                // Index bucket
@@ -34,6 +44,17 @@ type kvChangeIndexReader struct {
 	activePrincipalCounts     map[string]uint64          // Counters for principals with active changes feeds
 	activePrincipalCountsLock sync.RWMutex               // Coordinates access to active principals map
 
+}
+
+func init() {
+	base.StatsExpvars.Set("indexReader.numReaders.OneShot", &indexReaderOneShotCount)
+	base.StatsExpvars.Set("indexReader.numReaders.Persistent", &indexReaderPersistentCount)
+	base.StatsExpvars.Set("indexReader.pollReaders.Time", &indexReaderPollReadersTime)
+	base.StatsExpvars.Set("indexReader.pollReaders.Count", &indexReaderPollReadersCount)
+	base.StatsExpvars.Set("indexReader.pollPrincipals.Time", &indexReaderPollPrincipalsTime)
+	base.StatsExpvars.Set("indexReader.pollPrincipals.Count", &indexReaderPollPrincipalsCount)
+	base.StatsExpvars.Set("indexReader.getChanges.Time", &indexReaderGetChangesTime)
+	base.StatsExpvars.Set("indexReader.getChanges.Count", &indexReaderGetChangesCount)
 }
 
 func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc) (err error) {
@@ -218,6 +239,9 @@ func (k *kvChangeIndexReader) SetNotifier(onChange func(base.Set)) {
 
 func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 
+	defer indexReaderGetChangesTime.AddSince(time.Now())
+	defer indexReaderGetChangesCount.Add(1)
+
 	var sinceClock base.SequenceClock
 	if options.Since.Clock == nil {
 		// If there's no since clock, we may be in backfill for another channel - revert to the triggered by clock.
@@ -260,6 +284,7 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options Chan
 		index := k.getChannelReader(channelName)
 		if index == nil {
 			index, err = k.newChannelReader(channelName)
+			indexReaderPersistentCount.Add(1)
 			IndexExpvars.Add("getOrCreateReader_create", 1)
 			base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 		} else {
@@ -273,6 +298,7 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options Chan
 		if err != nil {
 			return nil, err
 		}
+		indexReaderOneShotCount.Add(1)
 		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, nil), nil
 
 	}
@@ -313,6 +339,9 @@ func (k *kvChangeIndexReader) hasActiveReaders() bool {
 func (k *kvChangeIndexReader) pollReaders() bool {
 	k.channelIndexReaderLock.Lock()
 	defer k.channelIndexReaderLock.Unlock()
+
+	defer indexReaderPollReadersTime.AddSince(time.Now())
+	defer indexReaderPollReadersCount.Add(1)
 
 	if len(k.channelIndexReaders) == 0 {
 		return true
@@ -398,6 +427,9 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 // PollPrincipals checks the principal counts, stored in the index, to determine whether there's been
 // a change to a user or role that should trigger a notification for that principal.
 func (k *kvChangeIndexReader) pollPrincipals() {
+
+	defer indexReaderPollPrincipalsTime.AddSince(time.Now())
+	defer indexReaderPollPrincipalsCount.Add(1)
 
 	// Principal polling is strictly for notification handling, so skip if no notify function is defined
 	if k.onChange == nil {
