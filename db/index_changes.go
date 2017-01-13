@@ -11,6 +11,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -112,6 +113,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
 					postStableSeqsFound = true
+					dbExpvars.Add("index_changes.postStableSeqs", 1)
 					continue
 				}
 
@@ -186,27 +188,30 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
 
-			// If we saw documents later than the stable sequence, don't wait.
-			if !postStableSeqsFound {
-			waitForChanges:
-				for {
-					waitResponse := changeWaiter.Wait()
-					if waitResponse == WaiterClosed {
-						break outer
-					} else if waitResponse == WaiterHasChanges {
-						select {
-						case <-options.Terminator:
-							return
-						default:
-							break waitForChanges
-						}
-					} else if waitResponse == WaiterCheckTerminated {
-						// Check whether I was terminated while waiting for a change.  If not, resume wait.
-						select {
-						case <-options.Terminator:
-							return
-						default:
-						}
+		waitForChanges:
+			for {
+				if postStableSeqsFound {
+					// If we saw documents later than the stable sequence, use a temporary wait
+					// instead of the changeWaiter, as we won't get notified again about those documents
+					time.Sleep(kPollFrequency * time.Millisecond)
+					break waitForChanges
+				}
+				waitResponse := changeWaiter.Wait()
+				if waitResponse == WaiterClosed {
+					break outer
+				} else if waitResponse == WaiterHasChanges {
+					select {
+					case <-options.Terminator:
+						return
+					default:
+						break waitForChanges
+					}
+				} else if waitResponse == WaiterCheckTerminated {
+					// Check whether I was terminated while waiting for a change.  If not, resume wait.
+					select {
+					case <-options.Terminator:
+						return
+					default:
 					}
 				}
 			}
