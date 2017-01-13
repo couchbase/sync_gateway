@@ -11,6 +11,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -87,6 +88,11 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			current := make([]*ChangeEntry, len(feeds))
 			var sentSomething bool
 			nextEntry := getNextSequenceFromFeeds(current, feeds)
+
+			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
+			// may not get another wait notification, so we bypass wait loop processing.
+			postStableSeqsFound := false
+
 			for {
 				minEntry := nextEntry
 
@@ -106,6 +112,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
+					postStableSeqsFound = true
+					dbExpvars.Add("index_changes.postStableSeqs", 1)
 					continue
 				}
 
@@ -182,6 +190,12 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 		waitForChanges:
 			for {
+				if postStableSeqsFound {
+					// If we saw documents later than the stable sequence, use a temporary wait
+					// instead of the changeWaiter, as we won't get notified again about those documents
+					time.Sleep(kPollFrequency * time.Millisecond)
+					break waitForChanges
+				}
 				waitResponse := changeWaiter.Wait()
 				if waitResponse == WaiterClosed {
 					break outer
@@ -340,7 +354,6 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 
 		if isNewChannel || (backfillRequired && !backfillInProgress) {
 			// Case 2.  No backfill in progress, backfill required
-			base.LogTo("Changes+", "Starting backfill for channel... %s, [%d:%d]", name, vbAddedAt, seqAddedAt)
 			chanOpts.Since = SequenceID{
 				Seq:              0,
 				vbNo:             0,
@@ -349,6 +362,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 				TriggeredByVbNo:  vbAddedAt,
 				TriggeredByClock: getChangesClock(options.Since).Copy(),
 			}
+			base.LogTo("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInProgress {
 			// Case 3.  Backfill in progress.
 			chanOpts.Since = SequenceID{
@@ -359,6 +373,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 				TriggeredByVbNo:  vbAddedAt,
 				TriggeredByClock: options.Since.TriggeredByClock,
 			}
+			base.LogTo("Changes+", "Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else {
 			// Case 1.  Leave chanOpts.Since set to options.Since.
 		}

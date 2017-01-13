@@ -92,6 +92,13 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 		k.lastPolledValidTo = k.clock.Copy()
 	}
 
+	// Ensure we haven't read a channel clock that's later than the stable sequence (since writers persist channel clocks
+	// before the stable sequence).  If so, use the stable sequence as channel clock
+	// as the latest channel clock
+	if newChannelClock.AnyAfter(stableClock) {
+		newChannelClock = stableClock
+	}
+
 	if !newChannelClock.AnyAfter(k.lastPolledChannelClock) {
 		// No changes to channel clock - update validTo based on the new stable sequence
 		k.lastPolledValidTo.SetTo(stableClock)
