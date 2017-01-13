@@ -433,6 +433,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// This loop reads the available entries from all the feeds in parallel, merges them,
 			// and writes them to the output channel:
 			var sentSomething bool
+
+			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
+			// may not get another wait notification, so we bypass wait loop processing.
+			postStableSeqsFound := false
 			for {
 				// Read more entries to fill up the current[] array:
 				for i, cur := range current {
@@ -489,6 +493,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Don't send any entries later than the cached sequence at the start of this iteration
 				if currentCachedSequence < minEntry.Seq.Seq {
+					base.LogTo("Changes+", "Found sequence later than stable sequence: stable:[%d] entry:[%d] (%s)", currentCachedSequence, minEntry.Seq.Seq, minEntry.ID)
+					postStableSeqsFound = true
 					continue
 				}
 
@@ -538,12 +544,17 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			for {
 				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
 				// visible to the user), and so changeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
-				if deferredBackfill {
-					time.Sleep(250 * time.Millisecond)
-					if db.changeCache.GetStableSequence("").Seq != currentCachedSequence {
-						break waitForChanges
+				// Similar handling for when we see sequences later than the stable sequence.
+				if deferredBackfill || postStableSeqsFound {
+					for retry := 0; retry <= 50; retry++ {
+						time.Sleep(100 * time.Millisecond)
+						if db.changeCache.GetStableSequence("").Seq != currentCachedSequence {
+							break waitForChanges
+						}
 					}
+					break waitForChanges
 				}
+
 				waitResponse := changeWaiter.Wait()
 				if waitResponse == WaiterClosed {
 					break outer

@@ -63,8 +63,8 @@ func (s SequenceID) String() string {
 // Diagnostic print of SequenceID
 func (s SequenceID) Print() string {
 	return fmt.Sprintf(
-		"SeqType:[%d] TriggeredBy:[%d] LowSeq:[%d] Seq:[%d] Clock:[%v] TriggeredByClock[%v] ClockHash:[%s] vbNo:[%d] TriggeredByVbno:[%d] LowHash:[%s]",
-		s.SeqType, s.TriggeredBy, s.LowSeq, s.Seq, s.Clock != nil, s.TriggeredByClock != nil, s.ClockHash, s.vbNo, s.TriggeredByVbNo, s.LowHash)
+		"Since:[%d:%d], TriggeredBy:[%d:%d]",
+		s.vbNo, s.Seq, s.TriggeredByVbNo, s.TriggeredBy)
 }
 
 func (s SequenceID) intSeqToString() string {

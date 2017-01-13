@@ -87,6 +87,11 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			current := make([]*ChangeEntry, len(feeds))
 			var sentSomething bool
 			nextEntry := getNextSequenceFromFeeds(current, feeds)
+
+			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
+			// may not get another wait notification, so we bypass wait loop processing.
+			postStableSeqsFound := false
+
 			for {
 				minEntry := nextEntry
 
@@ -106,6 +111,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
+					postStableSeqsFound = true
 					continue
 				}
 
@@ -180,24 +186,27 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
 
-		waitForChanges:
-			for {
-				waitResponse := changeWaiter.Wait()
-				if waitResponse == WaiterClosed {
-					break outer
-				} else if waitResponse == WaiterHasChanges {
-					select {
-					case <-options.Terminator:
-						return
-					default:
-						break waitForChanges
-					}
-				} else if waitResponse == WaiterCheckTerminated {
-					// Check whether I was terminated while waiting for a change.  If not, resume wait.
-					select {
-					case <-options.Terminator:
-						return
-					default:
+			// If we saw documents later than the stable sequence, don't wait.
+			if !postStableSeqsFound {
+			waitForChanges:
+				for {
+					waitResponse := changeWaiter.Wait()
+					if waitResponse == WaiterClosed {
+						break outer
+					} else if waitResponse == WaiterHasChanges {
+						select {
+						case <-options.Terminator:
+							return
+						default:
+							break waitForChanges
+						}
+					} else if waitResponse == WaiterCheckTerminated {
+						// Check whether I was terminated while waiting for a change.  If not, resume wait.
+						select {
+						case <-options.Terminator:
+							return
+						default:
+						}
 					}
 				}
 			}
@@ -340,7 +349,6 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 
 		if isNewChannel || (backfillRequired && !backfillInProgress) {
 			// Case 2.  No backfill in progress, backfill required
-			base.LogTo("Changes+", "Starting backfill for channel... %s, [%d:%d]", name, vbAddedAt, seqAddedAt)
 			chanOpts.Since = SequenceID{
 				Seq:              0,
 				vbNo:             0,
@@ -349,6 +357,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 				TriggeredByVbNo:  vbAddedAt,
 				TriggeredByClock: getChangesClock(options.Since).Copy(),
 			}
+			base.LogTo("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInProgress {
 			// Case 3.  Backfill in progress.
 			chanOpts.Since = SequenceID{
@@ -359,6 +368,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 				TriggeredByVbNo:  vbAddedAt,
 				TriggeredByClock: options.Since.TriggeredByClock,
 			}
+			base.LogTo("Changes+", "Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else {
 			// Case 1.  Leave chanOpts.Since set to options.Since.
 		}
