@@ -61,9 +61,15 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		cumulativeClock = base.NewSyncSequenceClock()
 		cumulativeClock.SetTo(getChangesClock(options.Since))
 
+		var iterationStartTime time.Time
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
+
+			if base.TimingExpvarsEnabled {
+				iterationStartTime = time.Now()
+			}
+
 			// Get the last polled stable sequence.  We don't return anything later than stable sequence in each iteration
 			stableClock, err := db.changeCache.GetStableClock(true)
 			if err != nil {
@@ -164,6 +170,10 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				case <-options.Terminator:
 					return
 				case output <- minEntry:
+					if base.TimingExpvarsEnabled {
+						base.TimingExpvars.UpdateBySequenceAt("ChangesNotified", minEntry.Seq.vbNo, minEntry.Seq.Seq, iterationStartTime)
+						base.TimingExpvars.UpdateBySequence("ChangeEntrySent", minEntry.Seq.vbNo, minEntry.Seq.Seq)
+					}
 				}
 				sentSomething = true
 

@@ -388,7 +388,7 @@ func TestDenseBlockIterator(t *testing.T) {
 	i := 0
 	logEntry := reader.next()
 	for logEntry != nil {
-		assertLogEntry(t, logEntry, fmt.Sprintf("doc%d", i), "1-abc", 10*i+1, i+1)
+		assertLogEntry(t, logEntry.MakeLogEntry(), fmt.Sprintf("doc%d", i), "1-abc", 10*i+1, i+1)
 		i++
 		logEntry = reader.next()
 	}
@@ -399,7 +399,7 @@ func TestDenseBlockIterator(t *testing.T) {
 	i = 9
 	logEntry = reader.previous()
 	for logEntry != nil {
-		assertLogEntry(t, logEntry, fmt.Sprintf("doc%d", i), "1-abc", 10*i+1, i+1)
+		assertLogEntry(t, logEntry.MakeLogEntry(), fmt.Sprintf("doc%d", i), "1-abc", 10*i+1, i+1)
 		i--
 		logEntry = reader.previous()
 	}
@@ -407,18 +407,18 @@ func TestDenseBlockIterator(t *testing.T) {
 
 	bidiReader := NewDenseBlockIterator(block)
 	logEntry = bidiReader.next()
-	assertLogEntry(t, logEntry, fmt.Sprintf("doc0"), "1-abc", 1, 1)
+	assertLogEntry(t, logEntry.MakeLogEntry(), fmt.Sprintf("doc0"), "1-abc", 1, 1)
 	logEntry = bidiReader.previous()
-	assertLogEntry(t, logEntry, fmt.Sprintf("doc0"), "1-abc", 1, 1)
+	assertLogEntry(t, logEntry.MakeLogEntry(), fmt.Sprintf("doc0"), "1-abc", 1, 1)
 	logEntry = bidiReader.previous()
 	assert.Equals(t, logEntry == nil, true)
 	logEntry = bidiReader.next()
-	assertLogEntry(t, logEntry, fmt.Sprintf("doc0"), "1-abc", 1, 1)
+	assertLogEntry(t, logEntry.MakeLogEntry(), fmt.Sprintf("doc0"), "1-abc", 1, 1)
 	bidiReader.end()
 	logEntry = bidiReader.next()
 	assert.Equals(t, logEntry == nil, true)
 	logEntry = bidiReader.previous()
-	assertLogEntry(t, logEntry, fmt.Sprintf("doc9"), "1-abc", 91, 10)
+	assertLogEntry(t, logEntry.MakeLogEntry(), fmt.Sprintf("doc9"), "1-abc", 91, 10)
 
 }
 

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -185,11 +186,21 @@ func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 		return true
 	}
 
+	var prevTimingSeq uint64
+	if base.TimingExpvarsEnabled {
+		prevTimingSeq = k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo)
+	}
+
 	isChanged, err := k.readerStableSequence.Load()
 
 	if err != nil {
 		base.Warn("Error loading reader stable sequence")
 		return false
+	}
+
+	if base.TimingExpvarsEnabled && isChanged {
+		log.Printf("Timing stable sequence: from %d to %d", prevTimingSeq, k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo))
+		base.TimingExpvars.UpdateBySequenceRange("StableSequence", base.KTimingExpvarVbNo, prevTimingSeq, k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo))
 	}
 
 	return isChanged

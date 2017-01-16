@@ -125,6 +125,11 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock) error {
 
+	timingFrom := uint64(0)
+	if base.TimingExpvarsEnabled {
+		timingFrom = k.lastPolledChannelClock.GetSequence(base.KTimingExpvarVbNo)
+	}
+
 	// Update the storage cache, if present
 	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock)
 	if err != nil {
@@ -135,6 +140,13 @@ func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 	k.lastPolledSince.SetTo(k.lastPolledChannelClock)
 	k.lastPolledChannelClock.SetTo(newChannelClock)
 	k.lastPolledValidTo.SetTo(stableSequence)
+
+	if base.TimingExpvarsEnabled {
+		base.TimingExpvars.UpdateBySequenceRange("UpdateLastPolled",
+			base.KTimingExpvarVbNo,
+			timingFrom,
+			newChannelClock.GetSequence(base.KTimingExpvarVbNo))
+	}
 	return nil
 }
 
