@@ -35,6 +35,7 @@ const (
 type ChannelStorageReader interface {
 	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
 	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
+	UpdateCache(fromSeq base.SequenceClock, channelClock base.SequenceClock) error
 }
 
 type ChannelStorageWriter interface {
@@ -320,6 +321,11 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 
 	return results, nil
 
+}
+
+func (b *BitFlagStorage) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock) error {
+	// no-op, not a caching reader
+	return nil
 }
 
 type vbBlockSet struct {

@@ -93,10 +93,9 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	}
 
 	// Ensure we haven't read a channel clock that's later than the stable sequence (since writers persist channel clocks
-	// before the stable sequence).  If so, use the stable sequence as channel clock
-	// as the latest channel clock
+	// before the stable sequence).  If so, set the channel clock as the minimum of (channel clock, stable clock) per vbucket
 	if newChannelClock.AnyAfter(stableClock) {
-		newChannelClock = stableClock
+		newChannelClock = base.GetMinimumClock(newChannelClock, stableClock)
 	}
 
 	if !newChannelClock.AnyAfter(k.lastPolledChannelClock) {
@@ -126,65 +125,17 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock) error {
 
-	// Get changes since the last clock
-	recentChanges, err := k.channelStorage.GetChanges(k.lastPolledChannelClock, newChannelClock, 0)
-	IndexExpvars.Add("updateChannelPolled", 1)
+	// Update the storage cache, if present
+	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock)
 	if err != nil {
 		return err
 	}
-	if len(recentChanges) > 0 {
-		k.lastPolledChanges = recentChanges
-		k.lastPolledSince.SetTo(k.lastPolledChannelClock)
-		k.lastPolledChannelClock.SetTo(newChannelClock)
-		k.lastPolledValidTo.SetTo(stableSequence)
-	} else {
-		base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
-		return errors.New("Expected changes based on clock, none found")
-	}
 
+	IndexExpvars.Add("updateChannelPolled", 1)
+	k.lastPolledSince.SetTo(k.lastPolledChannelClock)
+	k.lastPolledChannelClock.SetTo(newChannelClock)
+	k.lastPolledValidTo.SetTo(stableSequence)
 	return nil
-}
-
-func (k *KvChannelIndex) checkLastPolled(since base.SequenceClock) (results []*LogEntry) {
-
-	k.lastPolledLock.RLock()
-	defer k.lastPolledLock.RUnlock()
-	if k.lastPolledValidTo == nil || k.lastPolledSince == nil {
-		return results
-	}
-
-	matchesLastPolledSince := true
-	lastPolledValue := k.lastPolledSince.Value()
-	validToValue := k.lastPolledValidTo.Value()
-	sinceValue := since.Value()
-	for vb, sequence := range sinceValue {
-		lastPolledVbValue := lastPolledValue[vb]
-		if sequence != lastPolledVbValue {
-			matchesLastPolledSince = false
-			if sequence < lastPolledVbValue || sequence > validToValue[vb] {
-				// poll results aren't sufficient for this request - return empty set
-				return results
-			}
-		}
-	}
-
-	// The last polled results are sufficient to serve this request.  If there's a match on the since values,
-	// return the entire last polled changes.  If not, filter the last polled changes and return all entries greater
-	// than the since value
-	if matchesLastPolledSince {
-		// TODO: come up with a solution that doesn't make as much GC work on every checkLastPolled hit,
-		// but doesn't break when k.lastPolledChanges gets updated mid-request.
-		results := make([]*LogEntry, len(k.lastPolledChanges))
-		copy(results, k.lastPolledChanges)
-		return results
-	} else {
-		for _, entry := range k.lastPolledChanges {
-			if entry.Sequence > sinceValue[entry.VbNo] {
-				results = append(results, entry)
-			}
-		}
-	}
-	return results
 }
 
 // Returns the set of index entries for the channel more recent than the
@@ -216,17 +167,6 @@ func (k *KvChannelIndex) GetChanges(since base.SequenceClock) ([]*LogEntry, erro
 		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
-
-	// If the since value is more recent than the last polled clock, return the results from the
-	// last polling.  Has the potential to return values earlier than since and later than
-	// lastPolledClock, but these duplicates will be ignored by replication.  Could validate
-	// greater than since inside this if clause, but leaving out as a performance optimization for
-	// now
-	if lastPolledResults := k.checkLastPolled(since); len(lastPolledResults) > 0 {
-		IndexExpvars.Add("getChanges_lastPolled_hit", 1)
-		return lastPolledResults, nil
-	}
-	IndexExpvars.Add("getChanges_lastPolled_miss", 1)
 
 	return k.channelStorage.GetChanges(since, chanClock, 0)
 }
