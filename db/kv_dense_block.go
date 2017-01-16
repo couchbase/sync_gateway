@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MaxBlockSize = 1000 // Maximum size of index block, in bytes
+	MaxBlockSize = 50000 // Maximum size of index block, in bytes
 )
 
 // DenseBlock stores a collection of LogEntries for a channel.  Entries which are added to a DenseBlock are
@@ -86,6 +86,7 @@ func (d *DenseBlock) getCumulativeClock() PartitionClock {
 func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
 	d.value, d.cas, err = bucket.GetRaw(d.Key)
 	d.clock = nil
+	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return err
 }
 

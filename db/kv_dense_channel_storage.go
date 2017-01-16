@@ -67,6 +67,14 @@ func (clock PartitionClock) AddToClock(seqClock base.SequenceClock) {
 	}
 }
 
+func (clock PartitionClock) String() string {
+	result := ""
+	for vb, seq := range clock {
+		result = fmt.Sprintf("%s[%d:%d]", result, vb, seq)
+	}
+	return result
+}
+
 // PartitionRange is a pair of clocks defining a range of sequences with a partition.
 // Defines helper functions for range comparison
 type PartitionRange struct {
@@ -173,6 +181,18 @@ type DenseBlockListStorage struct {
 type DenseBlockListEntry struct {
 	BlockIndex int            `json:"index"` // Dense Block index
 	StartClock PartitionClock `json:"clock"` // Starting clock for Dense Block
+	key        string         // Used for key helper function
+}
+
+func (e *DenseBlockListEntry) Key(parentList *DenseBlockList) string {
+	if parentList == nil {
+		base.Warn("Attempted to generate key without parent list")
+		return ""
+	}
+	if e.key == "" {
+		e.key = parentList.generateBlockKey(e.BlockIndex)
+	}
+	return e.key
 }
 
 func NewDenseBlockList(channelName string, partition uint16, indexBucket base.Bucket) *DenseBlockList {
@@ -476,6 +496,18 @@ func (l *DenseBlockList) generateNextBlockIndex() int {
 	} else {
 		return 0
 	}
+}
+
+func (l *DenseBlockList) populateForRange(partitionRange PartitionRange) error {
+	// Block lists can span multiple documents.  If current blockList doesn't extend back to the start
+	// of the requested partitionRange, load previous block list doc(s).
+	for partitionRange.SinceBefore(l.ValidFrom()) {
+		err := l.LoadPrevious()
+		if err != nil {
+			return fmt.Errorf("Unable to load previous block list: %v", err)
+		}
+	}
+	return nil
 }
 
 func (l *DenseBlockList) generatePreviousListKey() string {
