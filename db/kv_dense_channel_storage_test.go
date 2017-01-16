@@ -238,7 +238,7 @@ func TestDenseBlockRemovalByKey(t *testing.T) {
 
 }
 
-func TestDenseBlockOverflow(t *testing.T) {
+func DisableTestDenseBlockOverflow(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
