@@ -197,7 +197,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err err
 	}
 
 	// Encode log entry as index and entry portions
-	entryBytes := NewDenseBlockEntry(logEntry.DocID, logEntry.RevID, logEntry.Flags)
+	entryBytes := NewDenseBlockDataEntry(logEntry.DocID, logEntry.RevID, logEntry.Flags)
 	indexBytes := NewDenseBlockIndexEntry(logEntry.VbNo, logEntry.Sequence, uint16(len(entryBytes)))
 
 	// If this is a new addition to the channel, don't need to remove previous entry
@@ -378,7 +378,7 @@ func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos
 	indexPos = 2
 	entryPos = indexEnd
 	var indexEntry DenseBlockIndexEntry
-	var currentEntry DenseBlockEntry
+	var currentEntry DenseBlockDataEntry
 	for indexPos < indexEnd {
 		indexEntry = d.value[indexPos : indexPos+INDEX_ENTRY_LEN]
 		if indexEntry.getVbNo() == vbNo {
@@ -450,7 +450,7 @@ func (d *DenseBlock) GetAllEntries() []*LogEntry {
 	entries := make([]*LogEntry, count)
 	entryPos := uint32(2 + count*INDEX_ENTRY_LEN)
 	var indexEntry DenseBlockIndexEntry
-	var entry DenseBlockEntry
+	var entry DenseBlockDataEntry
 	for i := uint16(0); i < count; i++ {
 		indexEntry = d.GetIndexEntry(int64(2 + i*INDEX_ENTRY_LEN))
 		entry = d.GetEntry(int64(entryPos), indexEntry.getEntryLen())
@@ -461,7 +461,7 @@ func (d *DenseBlock) GetAllEntries() []*LogEntry {
 	return entries
 }
 
-func (d *DenseBlock) MakeLogEntry(indexEntry DenseBlockIndexEntry, entry DenseBlockEntry) *LogEntry {
+func (d *DenseBlock) MakeLogEntry(indexEntry DenseBlockIndexEntry, entry DenseBlockDataEntry) *LogEntry {
 	return &LogEntry{
 		VbNo:     indexEntry.getVbNo(),
 		Sequence: indexEntry.getSequence(),
@@ -476,9 +476,41 @@ func (d *DenseBlock) GetIndexEntry(position int64) (indexEntry DenseBlockIndexEn
 	return indexEntry
 }
 
-func (d *DenseBlock) GetEntry(position int64, length uint16) (entry DenseBlockEntry) {
+func (d *DenseBlock) GetEntry(position int64, length uint16) (entry DenseBlockDataEntry) {
 	entry = d.value[position : position+int64(length)]
 	return entry
+}
+
+type DenseBlockEntry struct {
+	DenseBlockIndexEntry
+	DenseBlockDataEntry
+}
+
+func (d *DenseBlockEntry) MakeLogEntry() *LogEntry {
+	if d.DenseBlockIndexEntry == nil || d.DenseBlockDataEntry == nil {
+		return nil
+	}
+	return &LogEntry{
+		VbNo:     d.getVbNo(),
+		Sequence: d.getSequence(),
+		DocID:    string(d.getDocId()),
+		RevID:    string(d.getRevId()),
+		Flags:    d.getFlags(),
+	}
+}
+
+// Used when the doc id has already been converted to string, to avoid performance overhead
+func (d *DenseBlockEntry) MakeLogEntryWithDocId(docId string) *LogEntry {
+	if d.DenseBlockIndexEntry == nil || d.DenseBlockDataEntry == nil {
+		return nil
+	}
+	return &LogEntry{
+		VbNo:     d.getVbNo(),
+		Sequence: d.getSequence(),
+		DocID:    docId,
+		RevID:    string(d.getRevId()),
+		Flags:    d.getFlags(),
+	}
 }
 
 // DenseBlockIndexEntry is a helper class for interacting with entries in the index portion of a DenseBlock.
@@ -526,7 +558,7 @@ func (e DenseBlockIndexEntry) setEntryLen(entryLen uint16) {
 
 const INDEX_ENTRY_LEN = 12
 
-// DenseBlockEntry - a single doc entry within a block.  Stores key, revId, and flags.
+// DenseBlockDataEntry - a single doc entry within a block.  Stores key, revId, and flags.
 // Storage format:
 //  |-----------|----------|----------------------------------|
 //  | flags     | 1 byte   | Flags (deleted, removed, etc)    |
@@ -535,15 +567,15 @@ const INDEX_ENTRY_LEN = 12
 //  | revid     | n bytes  | Revision id                      |
 //  -----------------------------------------------------------
 //  We don't store rev id length - it's derived from the entryLen stored in the DenseBlockEntryIndex.
-type DenseBlockEntry []byte
+type DenseBlockDataEntry []byte
 
 const DENSE_BLOCK_ENTRY_FIXED_LEN = 3 // Length of fixed length components (flags, keylen)
 
-func NewDenseBlockEntry(docId, revId string, flags uint8) DenseBlockEntry {
+func NewDenseBlockDataEntry(docId, revId string, flags uint8) DenseBlockDataEntry {
 	keyBytes := []byte(docId)
 	revBytes := []byte(revId)
 	entryLen := DENSE_BLOCK_ENTRY_FIXED_LEN + len(keyBytes) + len(revBytes)
-	entry := make(DenseBlockEntry, entryLen)
+	entry := make(DenseBlockDataEntry, entryLen)
 	entry[0] = flags                                                                             // Flags
 	binary.BigEndian.PutUint16(entry[1:3], uint16(len(keyBytes)))                                // KeyLen
 	copy(entry[DENSE_BLOCK_ENTRY_FIXED_LEN:DENSE_BLOCK_ENTRY_FIXED_LEN+len(keyBytes)], keyBytes) // Key
@@ -551,16 +583,16 @@ func NewDenseBlockEntry(docId, revId string, flags uint8) DenseBlockEntry {
 	return entry
 }
 
-func (e DenseBlockEntry) getDocId() []byte {
+func (e DenseBlockDataEntry) getDocId() []byte {
 	return e[DENSE_BLOCK_ENTRY_FIXED_LEN : DENSE_BLOCK_ENTRY_FIXED_LEN+e.getKeyLen()]
 }
-func (e DenseBlockEntry) getRevId() []byte {
+func (e DenseBlockDataEntry) getRevId() []byte {
 	return e[DENSE_BLOCK_ENTRY_FIXED_LEN+e.getKeyLen():]
 }
-func (e DenseBlockEntry) getFlags() uint8 {
+func (e DenseBlockDataEntry) getFlags() uint8 {
 	return e[0]
 }
-func (e DenseBlockEntry) getKeyLen() uint16 {
+func (e DenseBlockDataEntry) getKeyLen() uint16 {
 	return binary.BigEndian.Uint16(e[1:3])
 }
 
@@ -583,7 +615,7 @@ func NewDenseBlockIterator(block *DenseBlock) *DenseBlockIterator {
 
 // Returns current entry in the block, and moves pointers to the next entry.
 // Returns nil when at the end of the block
-func (r *DenseBlockIterator) next() *LogEntry {
+func (r *DenseBlockIterator) next() *DenseBlockEntry {
 	if r.indexPtr >= 2+int64(r.block.getEntryCount())*INDEX_ENTRY_LEN {
 		return nil
 	}
@@ -591,7 +623,10 @@ func (r *DenseBlockIterator) next() *LogEntry {
 	entry := r.block.GetEntry(r.entryPtr, indexEntry.getEntryLen())
 	r.indexPtr += INDEX_ENTRY_LEN
 	r.entryPtr += int64(indexEntry.getEntryLen())
-	return r.block.MakeLogEntry(indexEntry, entry)
+	return &DenseBlockEntry{
+		DenseBlockDataEntry:  entry,
+		DenseBlockIndexEntry: indexEntry,
+	}
 }
 
 // Sets pointers to the last entry in the block
@@ -602,7 +637,7 @@ func (r *DenseBlockIterator) end() {
 
 // Returns entry preceding the pointers, and moves pointers back.
 // Returns nil when at the start of the block
-func (r *DenseBlockIterator) previous() *LogEntry {
+func (r *DenseBlockIterator) previous() *DenseBlockEntry {
 	if r.indexPtr <= 2 {
 		return nil
 	}
@@ -611,5 +646,8 @@ func (r *DenseBlockIterator) previous() *LogEntry {
 	indexEntry := r.block.GetIndexEntry(r.indexPtr)
 	r.entryPtr -= int64(indexEntry.getEntryLen())
 	entry := r.block.GetEntry(r.entryPtr, indexEntry.getEntryLen())
-	return r.block.MakeLogEntry(indexEntry, entry)
+	return &DenseBlockEntry{
+		DenseBlockDataEntry:  entry,
+		DenseBlockIndexEntry: indexEntry,
+	}
 }

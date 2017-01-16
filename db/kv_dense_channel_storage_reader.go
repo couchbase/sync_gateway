@@ -249,15 +249,15 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange Partit
 	for i := startIndex; i <= len(blockList.blocks)-1; i++ {
 		blockIter := NewDenseBlockIterator(blockList.LoadBlock(blockList.blocks[i]))
 		for {
-			logEntry := blockIter.next()
-			if logEntry == nil {
+			blockEntry := blockIter.next()
+			if blockEntry == nil {
 				break
 			}
-			switch compare := partitionRange.Compare(logEntry.VbNo, logEntry.Sequence); compare {
+			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
 			case PartitionRangeAfter:
 				break // We've exceeded the range - return
 			case PartitionRangeWithin:
-				changes.AddEntry(logEntry)
+				changes.AddEntry(blockEntry.MakeLogEntry())
 			}
 		}
 	}
@@ -446,21 +446,22 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 		blockIter := NewDenseBlockIterator(currBlock)
 		blockChanges := NewPartitionChanges()
 		for {
-			logEntry := blockIter.next()
-			if logEntry == nil {
+			blockEntry := blockIter.next()
+			if blockEntry == nil {
 				// End of block, continue to next block
 				break
 			}
-			switch compare := partitionRange.Compare(logEntry.VbNo, logEntry.Sequence); compare {
+			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
 			case PartitionRangeAfter:
 				// Possible when processing the most recent block in the range, when block is ahead of stable seq
 				case PartitionRangeWithin:
 				// Deduplication check
-				if keySet[logEntry.DocID] {
+				docIdString := string(blockEntry.getDocId())
+				if keySet[docIdString] {
 					pr.notifyDuplicateFound(currBlock.Key)
 				} else {
-					blockChanges.AddEntry(logEntry)
-					keySet[logEntry.DocID] = true
+					blockChanges.AddEntry(blockEntry.MakeLogEntryWithDocId(docIdString))
+					keySet[docIdString] = true
 				}
 			case PartitionRangeBefore:
 				// Expected when processing the oldest block in the range.  Don't include in set
@@ -517,21 +518,22 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange Partitio
 		blockIter := NewDenseBlockIterator(currBlock)
 		blockChanges := NewPartitionChanges()
 		for {
-			logEntry := blockIter.next()
-			if logEntry == nil {
+			blockEntry := blockIter.next()
+			if blockEntry == nil {
 				// End of block, continue to next block
 				break
 			}
-			switch compare := partitionRange.Compare(logEntry.VbNo, logEntry.Sequence); compare {
+			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
 			case PartitionRangeAfter:
 				// Possible when processing the most recent block in the range
 			case PartitionRangeWithin:
 				// Deduplication check
-				if keySet[logEntry.DocID] {
+				docIdString := string(blockEntry.getDocId())
+				if keySet[docIdString] {
 					// Ignore duplicates.
 				} else {
-					blockChanges.AddEntry(logEntry)
-					keySet[logEntry.DocID] = true
+					blockChanges.AddEntry(blockEntry.MakeLogEntryWithDocId(docIdString))
+					keySet[docIdString] = true
 				}
 			case PartitionRangeBefore:
 				// Expected when processing the oldest block in the range.  Don't include in set
