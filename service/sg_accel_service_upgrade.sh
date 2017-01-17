@@ -77,8 +77,12 @@ case $OS in
     Ubuntu)
         case $OS_MAJOR_VERSION in
             12|14)
-				service ${SERVICE_NAME} stop
+		service ${SERVICE_NAME} stop
                 service ${SERVICE_NAME} start
+                ;;
+            16)
+                systemctl stop ${SERVICE_NAME}
+                systemctl start ${SERVICE_NAME}
                 ;;
             *)
                 echo "ERROR: Unsupported Ubuntu Version \"$VER\""
