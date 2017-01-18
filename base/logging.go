@@ -222,9 +222,21 @@ func ParseLogFlag(flag string) {
 func (config *LogAppenderConfig) ValidateLogAppender() error {
 	//Fail validation if an appender contains a "rotation" sub document
 	// and no "logFilePath" appender property is defined
-	if config.Rotation != nil && config.LogFilePath == nil {
-		return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
+	if config.Rotation != nil {
+		if config.LogFilePath == nil {
+			return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
+		}
+		if config.Rotation.MaxSize < 0 {
+			return fmt.Errorf("Log rotation MaxSize must >= 0")
+		}
+		if config.Rotation.MaxAge < 0 {
+			return fmt.Errorf("Log rotation MaxAge must >= 0")
+		}
+		if config.Rotation.MaxBackups < 0 {
+			return fmt.Errorf("Log rotation MaxBackups must >= 0")
+		}
 	}
+
 	return nil
 }
 
