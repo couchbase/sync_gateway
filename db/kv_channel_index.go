@@ -44,6 +44,7 @@ type KvChannelIndex struct {
 	onChange               func(base.Set)          // Notification callback
 	clock                  *base.SequenceClockImpl // Channel clock
 	channelStorage         ChannelStorageReader    // Channel storage - manages interaction with the index format
+	partitions             *base.IndexPartitions   // Partition map
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.IndexPartitions, onChangeCallback func(base.Set)) *KvChannelIndex {
@@ -53,6 +54,7 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.
 		indexBucket:    bucket,
 		onChange:       onChangeCallback,
 		channelStorage: NewDenseStorageReader(bucket, channelName, partitions),
+		partitions:     partitions,
 	}
 
 	// Initialize and load channel clock
@@ -92,13 +94,9 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 		k.lastPolledValidTo = k.clock.Copy()
 	}
 
-	// Ensure we haven't read a channel clock that's later than the stable sequence (since writers persist channel clocks
-	// before the stable sequence).  If so, set the channel clock as the minimum of (channel clock, stable clock) per vbucket
-	if newChannelClock.AnyAfter(stableClock) {
-		newChannelClock = base.GetMinimumClock(newChannelClock, stableClock)
-	}
+	isChanged, changedPartitions := k.calculateChanges(k.lastPolledChannelClock, stableClock, newChannelClock)
 
-	if !newChannelClock.AnyAfter(k.lastPolledChannelClock) {
+	if !isChanged {
 		// No changes to channel clock - update validTo based on the new stable sequence
 		k.lastPolledValidTo.SetTo(stableClock)
 		// If we've exceeded empty poll count, return hasChanges=true to trigger the "is
@@ -111,7 +109,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	}
 
 	// The clock has changed - load the changes and store in last polled
-	if err := k.updateLastPolled(stableClock, newChannelClock); err != nil {
+	if err := k.updateLastPolled(stableClock, newChannelClock, changedPartitions); err != nil {
 		base.Warn("Error updating last polled for channel %s: %v", k.channelName, err)
 		return false, false
 	}
@@ -123,7 +121,41 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	return true, false
 }
 
-func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock) error {
+func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*PartitionRange) {
+
+	// One iteration through the new channel clock, to:
+	//   1. Check whether it's later than the previous channel clock
+	//   2. If it's later than the stable clock, roll back to the stable clock
+	//   3. If it still represents a change, add to set of changed vbs and partition ranges
+	changedPartitions = make([]*PartitionRange, k.partitions.PartitionCount())
+	for vbNoInt, newChannelClockSeq := range newChannelClock.Value() {
+		vbNo := uint16(vbNoInt)
+		lastPolledClockSeq := lastPolledClock.GetSequence(vbNo)
+		if lastPolledClockSeq < newChannelClockSeq {
+			// Handle rollback to stable sequence if needed
+			stableSeq := stableClock.GetSequence(vbNo)
+			if stableSeq < newChannelClockSeq {
+				newChannelClock.SetSequence(vbNo, stableSeq)
+				// We've rolled back the new channel clock to the stable sequence.  Ensure that we still have a change for this vb.
+				if !(lastPolledClockSeq < stableSeq) {
+					continue
+				}
+				newChannelClockSeq = stableSeq
+			}
+			isChanged = true
+			partitionNo := k.partitions.PartitionForVb(vbNo)
+			if changedPartitions[partitionNo] == nil {
+				partitionRange := NewPartitionRange()
+				changedPartitions[partitionNo] = &partitionRange
+			}
+			changedPartitions[partitionNo].SetRange(vbNo, lastPolledClockSeq, newChannelClockSeq)
+		}
+	}
+	return isChanged, changedPartitions
+
+}
+
+func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*PartitionRange) error {
 
 	timingFrom := uint64(0)
 	if base.TimingExpvarsEnabled {
@@ -131,7 +163,7 @@ func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 	}
 
 	// Update the storage cache, if present
-	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock)
+	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock, changedPartitions)
 	if err != nil {
 		return err
 	}

@@ -35,7 +35,7 @@ type SequenceClock interface {
 	GetHashedValue() string                        // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	SetHashedValue(value string)                   // Returns previously hashed value, if present.  If not present, does NOT generate hash
 	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
-	IsEmptyClock () bool			       // Evaluates if this an empty clock
+	IsEmptyClock() bool                            // Evaluates if this an empty clock
 	AllAfter(otherClock SequenceClock) bool        // True if all entries in clock are greater than or equal to the corresponding values in otherClock
 	AllBefore(otherClock SequenceClock) bool       // True if all entries in clock are less than or equal to the corresponding values in otherClock
 	AnyAfter(otherClock SequenceClock) bool        // True if any entries in clock are greater than the corresponding values in otherClock
@@ -327,9 +327,10 @@ func (c *SyncSequenceClock) SetMaxSequence(vbNo uint16, vbSequence uint64) {
 	defer c.lock.Unlock()
 	c.Clock.SetMaxSequence(vbNo, vbSequence)
 }
+
 func (c *SyncSequenceClock) GetSequence(vbNo uint16) (sequence uint64) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	return c.Clock.GetSequence(vbNo)
 }
 
