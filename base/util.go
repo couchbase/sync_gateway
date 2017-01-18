@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"path/filepath"
 	"expvar"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"os"
 )
 
 const (
@@ -414,4 +416,22 @@ func ValueToStringArray(value interface{}) []string {
 	default:
 		return nil
 	}
+}
+
+// Assumes path argument is a path to a file
+func IsFilePathWritable (fp string) (bool, error) {
+	//Get the containing directory for the file
+	containingDir := filepath.Dir(fp)
+
+	//Check that dir exists
+	_, err := os.Stat(containingDir)
+	if err != nil { return false, err }
+
+	//Now validate that the logfile is writable
+	file, err := os.OpenFile(fp, os.O_WRONLY, 0666)
+	defer 	file.Close()
+	if err == nil { return true, nil }
+	if os.IsPermission(err) { return false, err }
+
+	return true, nil
 }

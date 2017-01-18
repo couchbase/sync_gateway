@@ -226,6 +226,9 @@ func (config *LogAppenderConfig) ValidateLogAppender() error {
 		if config.LogFilePath == nil {
 			return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
 		}
+		if _, err := IsFilePathWritable(*config.LogFilePath); err != nil {
+			return fmt.Errorf("logFilePath %s is not writable, error: %v",*config.LogFilePath, err)
+		}
 		if config.Rotation.MaxSize < 0 {
 			return fmt.Errorf("Log rotation MaxSize must >= 0")
 		}
