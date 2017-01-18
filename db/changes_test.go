@@ -10,6 +10,7 @@
 package db
 
 import (
+	"encoding/json"
 	"log"
 	"testing"
 	"time"
@@ -117,5 +118,160 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	// validate from zero
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assertNoError(t, err, "Couldn't GetChanges")
+	printChanges(changes)
+}
+
+func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
+	base.EnableLogKey("*")
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel A
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf("A"))
+	authenticator.Save(user)
+
+	// Create a doc on two channels (sequence 1):
+	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	db.changeCache.waitForSequence(1)
+	time.Sleep(100 * time.Millisecond)
+
+	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
+		changeCache.reader.indexReadBucket.Dump()
+	}
+	db.user, _ = authenticator.GetUser("alice")
+	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
+	assertNoError(t, err, "Couldn't GetChanges")
+	printChanges(changes)
+	time.Sleep(1000 * time.Millisecond)
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
+		Seq:     SequenceID{Seq: 1},
+		ID:      "alpha",
+		Changes: []ChangeRev{{"rev": revid}}})
+	lastSeq := getLastSeq(changes)
+	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+
+	// Get raw document from the bucket
+	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+
+	//Unmarshall into nested maps
+	var x map[string]interface{}
+	json.Unmarshal(rv, &x)
+	assert.True(t, err == nil)
+
+	sync := x["_sync"].(map[string]interface{})
+	sync["sequence"] = 3
+	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
+	sync["recent_sequences"] = []uint64{1, 2, 3}
+
+	cm := make(channels.ChannelMap)
+	cm["A"] = &channels.ChannelRemoval{Seq: 2, RevID: "2-e99405a23fa102238fa8c3fd499b15bc"}
+	sync["channels"] = cm
+
+	history := sync["history"].(map[string]interface{})
+	history["revs"] = []string{revid, "2-e99405a23fa102238fa8c3fd499b15bc", "3-e99405a23fa102238fa8c3fd499b15bc"}
+	history["parents"] = []int{-1, 0, 1}
+	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("B"), base.SetOf("B")}
+
+
+	//Marshall back to JSON
+	b, err := json.Marshal(x)
+
+	// Update raw document in the bucket
+	db.Bucket.SetRaw("alpha", 0, b)
+
+	// Check the _changes feed -- this is to make sure the changeCache properly received
+	// sequence 3 and isn't stuck waiting for it.
+	db.changeCache.waitForSequence(3)
+	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+
+	assertNoError(t, err, "Couldn't GetChanges (2nd)")
+
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:     SequenceID{Seq: 2},
+		ID:      "alpha",
+		Removed: base.SetOf("A"),
+		allRemoved: true,
+		Changes: []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}})
+
+	printChanges(changes)
+}
+
+func TestDocDeletionFromChannelCoalesced(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel A
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf("A"))
+	authenticator.Save(user)
+
+	// Create a doc on two channels (sequence 1):
+	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	db.changeCache.waitForSequence(1)
+	time.Sleep(100 * time.Millisecond)
+
+	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
+		changeCache.reader.indexReadBucket.Dump()
+	}
+	db.user, _ = authenticator.GetUser("alice")
+	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
+	assertNoError(t, err, "Couldn't GetChanges")
+	printChanges(changes)
+	time.Sleep(1000 * time.Millisecond)
+
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
+		Seq:     SequenceID{Seq: 1},
+		ID:      "alpha",
+		Changes: []ChangeRev{{"rev": revid}}})
+	lastSeq := getLastSeq(changes)
+	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+
+	// Get raw document from the bucket
+	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+
+	//Unmarshall into nested maps
+	var x map[string]interface{}
+	json.Unmarshal(rv, &x)
+
+	assert.True(t, err == nil)
+
+	sync := x["_sync"].(map[string]interface{})
+	sync["sequence"] = 3
+	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
+	sync["recent_sequences"] = []uint64{1, 2, 3}
+
+	history := sync["history"].(map[string]interface{})
+	history["revs"] = []string{revid, "2-e99405a23fa102238fa8c3fd499b15bc", "3-e99405a23fa102238fa8c3fd499b15bc"}
+	history["parents"] = []int{-1, 0, 1}
+	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("A", "B"), base.SetOf("A", "B")}
+
+	//Marshall back to JSON
+	b, err := json.Marshal(x)
+
+	// Update raw document in the bucket
+	db.Bucket.SetRaw("alpha", 0, b)
+
+	// Check the _changes feed -- this is to make sure the changeCache properly received
+	// sequence 3 (the modified document) and isn't stuck waiting for it.
+	db.changeCache.waitForSequence(3)
+
+	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+
+	assertNoError(t, err, "Couldn't GetChanges (2nd)")
+
+	assert.Equals(t, len(changes), 1)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:     SequenceID{Seq: 3},
+		ID:      "alpha",
+		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}})
+
 	printChanges(changes)
 }
