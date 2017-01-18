@@ -573,12 +573,12 @@ func TestCalculateChangedPartitions(t *testing.T) {
 			assertTrue(t, partition == 0 || partition == 6 || partition == 12, "Unexpected changed partition")
 		}
 	}
-	assert.Equals(t, changedPartitions[0].Since.GetSequence(0), uint64(0))
-	assert.Equals(t, changedPartitions[6].Since.GetSequence(100), uint64(0))
-	assert.Equals(t, changedPartitions[12].Since.GetSequence(200), uint64(0))
-	assert.Equals(t, changedPartitions[0].To.GetSequence(0), uint64(5))
-	assert.Equals(t, changedPartitions[6].To.GetSequence(100), uint64(10))
-	assert.Equals(t, changedPartitions[12].To.GetSequence(200), uint64(15))
+	assert.Equals(t, changedPartitions[0].GetSequenceRange(0).since, uint64(0))
+	assert.Equals(t, changedPartitions[6].GetSequenceRange(100).since, uint64(0))
+	assert.Equals(t, changedPartitions[12].GetSequenceRange(200).since, uint64(0))
+	assert.Equals(t, changedPartitions[0].GetSequenceRange(0).to, uint64(5))
+	assert.Equals(t, changedPartitions[6].GetSequenceRange(100).to, uint64(10))
+	assert.Equals(t, changedPartitions[12].GetSequenceRange(200).to, uint64(15))
 	assert.Equals(t, changedPartitionCount, 3)
 
 }

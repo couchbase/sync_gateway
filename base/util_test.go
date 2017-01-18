@@ -159,9 +159,9 @@ func TestValueToStringArray(t *testing.T) {
 	result := ValueToStringArray("foobar")
 	assert.DeepEquals(t, result, []string{"foobar"})
 
-	result = ValueToStringArray([]string{"foobar","moocar"})
-	assert.DeepEquals(t, result, []string{"foobar","moocar"})
+	result = ValueToStringArray([]string{"foobar", "moocar"})
+	assert.DeepEquals(t, result, []string{"foobar", "moocar"})
 
-	result = ValueToStringArray([]interface{}{"foobar",1,true})
+	result = ValueToStringArray([]interface{}{"foobar", 1, true})
 	assert.DeepEquals(t, result, []string{"foobar"})
 }

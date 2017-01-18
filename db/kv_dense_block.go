@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MaxBlockSize = 50000 // Maximum size of index block, in bytes
+	MaxBlockSize = 10000 // Maximum size of index block, in bytes
 )
 
 // DenseBlock stores a collection of LogEntries for a channel.  Entries which are added to a DenseBlock are
