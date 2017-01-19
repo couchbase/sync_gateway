@@ -300,7 +300,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		response = rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0", "", "bernard"))
+		changesResponse := rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
 		// When testing single threaded, this reproduces the issue described in #809.
 		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
 		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
@@ -308,14 +308,15 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		// 3. The DELETE is processed after the _changes auth completes, but before the MultiChangesFeed is instantiated.  The
 		//  changes feed doesn't have a trigger to attempt a reload of the user in this scenario, so will continue until disconnected
 		//  by the client.  This should be fixed more generally (to terminate all active user sessions when the user is deleted, not just
-		//  changes feeds) but that enhancement is too high risk to introduce at this time.
+		//  changes feeds) but that enhancement is too high risk to introduce at this time.  The timeout on changes will terminate the unit
+		//  test.
 		changesClosed = true
-		if response.Code == 401 {
+		if changesResponse.Code == 401 {
 			// case 1 - ok
 		} else {
 			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
 			// on whether the changes loop performed an additional iteration before catching the deleted user.
-			_, err := readContinuousChanges(response)
+			_, err := readContinuousChanges(changesResponse)
 			assert.Equals(t, err, nil)
 		}
 	}()
@@ -334,7 +335,6 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-
 }
 
 // Reads continuous changes feed response into slice of ChangeEntry
