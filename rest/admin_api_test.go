@@ -296,7 +296,10 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	changesClosed := false
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		response = rt.send(requestByUser("GET", "/db/_changes?feed=continuous&since=0", "", "bernard"))
 		// When testing single threaded, this reproduces the issue described in #809.
 		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
@@ -310,15 +313,15 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		if response.Code == 401 {
 			// case 1 - ok
 		} else {
-			// case 2 - ensure no error processing the changes response.  Ensure no more than 2 entries
-			changes, err := readContinuousChanges(response)
-			assert.True(t, len(changes) <= 2)
+			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
+			// on whether the changes loop performed an additional iteration before catching the deleted user.
+			_, err := readContinuousChanges(response)
 			assert.Equals(t, err, nil)
 		}
 	}()
 
 	// TODO: sleep required to ensure the changes feed iteration starts before the delete gets processed.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	rt.sendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
 	rt.sendAdminRequest("DELETE", "/db/_user/bernard", "")
 	rt.sendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
@@ -329,6 +332,8 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		docId := fmt.Sprintf("/db/bernard_doc%d", i+3)
 		response = rt.sendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
 	}
+
+	wg.Wait()
 
 }
 

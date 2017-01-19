@@ -44,6 +44,7 @@ type KvChannelIndex struct {
 	onChange               func(base.Set)          // Notification callback
 	clock                  *base.SequenceClockImpl // Channel clock
 	channelStorage         ChannelStorageReader    // Channel storage - manages interaction with the index format
+	partitions             *base.IndexPartitions   // Partition map
 }
 
 func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.IndexPartitions, onChangeCallback func(base.Set)) *KvChannelIndex {
@@ -53,6 +54,7 @@ func NewKvChannelIndex(channelName string, bucket base.Bucket, partitions *base.
 		indexBucket:    bucket,
 		onChange:       onChangeCallback,
 		channelStorage: NewDenseStorageReader(bucket, channelName, partitions),
+		partitions:     partitions,
 	}
 
 	// Initialize and load channel clock
@@ -92,7 +94,9 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 		k.lastPolledValidTo = k.clock.Copy()
 	}
 
-	if !newChannelClock.AnyAfter(k.lastPolledChannelClock) {
+	isChanged, changedPartitions := k.calculateChanges(k.lastPolledChannelClock, stableClock, newChannelClock)
+
+	if !isChanged {
 		// No changes to channel clock - update validTo based on the new stable sequence
 		k.lastPolledValidTo.SetTo(stableClock)
 		// If we've exceeded empty poll count, return hasChanges=true to trigger the "is
@@ -105,7 +109,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	}
 
 	// The clock has changed - load the changes and store in last polled
-	if err := k.updateLastPolled(stableClock, newChannelClock); err != nil {
+	if err := k.updateLastPolled(stableClock, newChannelClock, changedPartitions); err != nil {
 		base.Warn("Error updating last polled for channel %s: %v", k.channelName, err)
 		return false, false
 	}
@@ -117,67 +121,54 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	return true, false
 }
 
-func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock) error {
+func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*PartitionRange) {
 
-	// Get changes since the last clock
-	recentChanges, err := k.channelStorage.GetChanges(k.lastPolledChannelClock, newChannelClock, 0)
-	IndexExpvars.Add("updateChannelPolled", 1)
+	// One iteration through the new channel clock, to:
+	//   1. Check whether it's later than the previous channel clock
+	//   2. If it's later than the stable clock, roll back to the stable clock
+	//   3. If it still represents a change, add to set of changed vbs and partition ranges
+	changedPartitions = make([]*PartitionRange, k.partitions.PartitionCount())
+	for vbNoInt, newChannelClockSeq := range newChannelClock.Value() {
+		vbNo := uint16(vbNoInt)
+		lastPolledClockSeq := lastPolledClock.GetSequence(vbNo)
+		if lastPolledClockSeq < newChannelClockSeq {
+			// Handle rollback to stable sequence if needed
+			stableSeq := stableClock.GetSequence(vbNo)
+			if stableSeq < newChannelClockSeq {
+				newChannelClock.SetSequence(vbNo, stableSeq)
+				// We've rolled back the new channel clock to the stable sequence.  Ensure that we still have a change for this vb.
+				if !(lastPolledClockSeq < stableSeq) {
+					continue
+				}
+				newChannelClockSeq = stableSeq
+			}
+			isChanged = true
+			partitionNo := k.partitions.PartitionForVb(vbNo)
+			if changedPartitions[partitionNo] == nil {
+				partitionRange := NewPartitionRange()
+				changedPartitions[partitionNo] = &partitionRange
+			}
+			changedPartitions[partitionNo].SetRange(vbNo, lastPolledClockSeq, newChannelClockSeq)
+		}
+	}
+	return isChanged, changedPartitions
+
+}
+
+func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*PartitionRange) error {
+
+	// Update the storage cache, if present
+	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock, changedPartitions)
 	if err != nil {
 		return err
 	}
-	if len(recentChanges) > 0 {
-		k.lastPolledChanges = recentChanges
-		k.lastPolledSince.SetTo(k.lastPolledChannelClock)
-		k.lastPolledChannelClock.SetTo(newChannelClock)
-		k.lastPolledValidTo.SetTo(stableSequence)
-	} else {
-		base.Warn("pollForChanges: channel [%s] clock changed, but no changes found in cache.", k.channelName)
-		return errors.New("Expected changes based on clock, none found")
-	}
+
+	IndexExpvars.Add("updateChannelPolled", 1)
+	k.lastPolledSince.SetTo(k.lastPolledChannelClock)
+	k.lastPolledChannelClock.SetTo(newChannelClock)
+	k.lastPolledValidTo.SetTo(stableSequence)
 
 	return nil
-}
-
-func (k *KvChannelIndex) checkLastPolled(since base.SequenceClock) (results []*LogEntry) {
-
-	k.lastPolledLock.RLock()
-	defer k.lastPolledLock.RUnlock()
-	if k.lastPolledValidTo == nil || k.lastPolledSince == nil {
-		return results
-	}
-
-	matchesLastPolledSince := true
-	lastPolledValue := k.lastPolledSince.Value()
-	validToValue := k.lastPolledValidTo.Value()
-	sinceValue := since.Value()
-	for vb, sequence := range sinceValue {
-		lastPolledVbValue := lastPolledValue[vb]
-		if sequence != lastPolledVbValue {
-			matchesLastPolledSince = false
-			if sequence < lastPolledVbValue || sequence > validToValue[vb] {
-				// poll results aren't sufficient for this request - return empty set
-				return results
-			}
-		}
-	}
-
-	// The last polled results are sufficient to serve this request.  If there's a match on the since values,
-	// return the entire last polled changes.  If not, filter the last polled changes and return all entries greater
-	// than the since value
-	if matchesLastPolledSince {
-		// TODO: come up with a solution that doesn't make as much GC work on every checkLastPolled hit,
-		// but doesn't break when k.lastPolledChanges gets updated mid-request.
-		results := make([]*LogEntry, len(k.lastPolledChanges))
-		copy(results, k.lastPolledChanges)
-		return results
-	} else {
-		for _, entry := range k.lastPolledChanges {
-			if entry.Sequence > sinceValue[entry.VbNo] {
-				results = append(results, entry)
-			}
-		}
-	}
-	return results
 }
 
 // Returns the set of index entries for the channel more recent than the
@@ -209,17 +200,6 @@ func (k *KvChannelIndex) GetChanges(since base.SequenceClock) ([]*LogEntry, erro
 		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
-
-	// If the since value is more recent than the last polled clock, return the results from the
-	// last polling.  Has the potential to return values earlier than since and later than
-	// lastPolledClock, but these duplicates will be ignored by replication.  Could validate
-	// greater than since inside this if clause, but leaving out as a performance optimization for
-	// now
-	if lastPolledResults := k.checkLastPolled(since); len(lastPolledResults) > 0 {
-		IndexExpvars.Add("getChanges_lastPolled_hit", 1)
-		return lastPolledResults, nil
-	}
-	IndexExpvars.Add("getChanges_lastPolled_miss", 1)
 
 	return k.channelStorage.GetChanges(since, chanClock, 0)
 }
