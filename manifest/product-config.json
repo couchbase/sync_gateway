@@ -7,6 +7,13 @@
             "production": true,
             "interval": 5,
             "start_build": 1
+        },
+        "feature.xml": {
+            "release": "default",
+            "release_name": "Couchbase Sync Gateway",
+            "production": true,
+            "interval": 5,
+            "start_build": 1
         }
     }
 }
