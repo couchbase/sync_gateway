@@ -13,7 +13,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -199,7 +198,6 @@ func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 	}
 
 	if base.TimingExpvarsEnabled && isChanged {
-		log.Printf("Timing stable sequence: from %d to %d", prevTimingSeq, k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo))
 		base.TimingExpvars.UpdateBySequenceRange("StableSequence", base.KTimingExpvarVbNo, prevTimingSeq, k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo))
 	}
 
