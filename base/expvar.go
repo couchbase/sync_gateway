@@ -19,7 +19,7 @@ import (
 
 const (
 	exportDebugExpvars   = true
-	TimingExpvarsEnabled = true
+	TimingExpvarsEnabled = false
 )
 
 // SequenceTimingExpvarMap attempts to track timing information for targeted sequences as they move through the system.

@@ -173,12 +173,6 @@ func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 	k.lastPolledChannelClock.SetTo(newChannelClock)
 	k.lastPolledValidTo.SetTo(stableSequence)
 
-	if base.TimingExpvarsEnabled {
-		base.TimingExpvars.UpdateBySequenceRange("UpdateLastPolled",
-			base.KTimingExpvarVbNo,
-			timingFrom,
-			newChannelClock.GetSequence(base.KTimingExpvarVbNo))
-	}
 	return nil
 }
 
