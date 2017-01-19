@@ -153,10 +153,14 @@ func TestDBStateChangeEvent(t *testing.T) {
 	for i := 10; i < 20; i++ {
 		em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000")
 	}
-	// wait for Event Manager queue worker to process
-	time.Sleep(100 * time.Millisecond)
 
-	fmt.Println("resultChannel length:", len(resultChannel))
+	// Give the Event Manager queue worker some time to process
+	for i := 0; i < 25; i++ {
+		if len(resultChannel) == 20 {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 
 	assert.True(t, len(resultChannel) == 20)
 
