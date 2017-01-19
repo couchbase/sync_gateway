@@ -310,6 +310,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
 			if db.user != nil {
 				if err := db.ReloadUser(); err != nil {
+					change := makeErrorEntry("User not found during reload - terminating changes feed")
+					output <- &change
 					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
 					return
 				}
