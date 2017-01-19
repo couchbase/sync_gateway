@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	exportDebugExpvars   = true
-	TimingExpvarsEnabled = false
+	exportDebugExpvars = true
 )
+
+var TimingExpvarsEnabled = false
 
 // SequenceTimingExpvarMap attempts to track timing information for targeted sequences as they move through the system.
 // Creates a map that looks like the following, where Indexed, Polled, Changes are the incoming stages, the values are

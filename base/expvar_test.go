@@ -45,7 +45,7 @@ func assertMapEntry(t *testing.T, e SequenceTimingExpvar, key string) {
 }
 
 func TestTimingExpvarSequenceOnly(t *testing.T) {
-
+	TimingExpvarsEnabled = true
 	// Sequence only
 	e := NewSequenceTimingExpvar(5, 0, "testSeqOnlyTiming")
 	e.UpdateBySequence("SequenceBased", 0, 1)
@@ -57,14 +57,15 @@ func TestTimingExpvarSequenceOnly(t *testing.T) {
 	e.UpdateBySequence("SequenceBased", 0, 13)
 	e.UpdateBySequence("SequenceBased", 0, 16)
 
+	log.Printf("sequence only: %s", e.String())
 	assertMapEntry(t, e, "seq5:SequenceBased")
 	assertMapEntry(t, e, "seq10:SequenceBased")
 	assertMapEntry(t, e, "seq15:SequenceBased")
-	log.Printf("sequence only: %s", e.String())
 
 }
 
 func TestTimingExpvarRangeOnly(t *testing.T) {
+	TimingExpvarsEnabled = true
 
 	// Range only
 	e := NewSequenceTimingExpvar(5, 0, "testRangeTiming")
@@ -82,6 +83,7 @@ func TestTimingExpvarRangeOnly(t *testing.T) {
 }
 
 func TestTimingExpvarMixed(t *testing.T) {
+	TimingExpvarsEnabled = true
 
 	e := NewSequenceTimingExpvar(5, 0, "testTimingMixed")
 	e.UpdateBySequenceRange("Polled", 0, 0, 3)

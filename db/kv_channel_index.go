@@ -157,11 +157,6 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 
 func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*PartitionRange) error {
 
-	timingFrom := uint64(0)
-	if base.TimingExpvarsEnabled {
-		timingFrom = k.lastPolledChannelClock.GetSequence(base.KTimingExpvarVbNo)
-	}
-
 	// Update the storage cache, if present
 	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock, changedPartitions)
 	if err != nil {
