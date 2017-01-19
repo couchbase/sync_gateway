@@ -189,12 +189,22 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	h.logRequestLine()
 
+	if base.LogKeys["HTTP++"] {
+		h.logRequestBody()
+	}
+
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
 		}
+	}
+
+	if base.LogKeys["HTTP++"] {
+		// Wrap the existing ResponseWriter with one that "Tees" the output
+		// to stdout as well as writing back to the socket
+		h.response = NewLoggerTeeResponseWriter(h.response, "HTTP++")
 	}
 
 	return method(h) // Call the actual handler code
@@ -216,6 +226,21 @@ func (h *handler) logRequestLine() {
 	}
 
 	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, sanitizeRequestURL(h.rq.URL), proto, as)
+}
+
+func (h *handler) logRequestBody() {
+
+	if !base.LogEnabled("HTTP++") {
+		return
+	}
+
+	// Replace the requestBody io.ReadCloser with a TeeReadCloser that
+	// tees the request body to the base.Log with the HTTP++ logging key
+	h.requestBody = NewTeeReadCloser(
+		h.requestBody,
+		base.NewLoggerWriter("HTTP++"),
+	)
+
 }
 
 // Replaces sensitive data from the URL query string with ******.

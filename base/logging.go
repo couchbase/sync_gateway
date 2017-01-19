@@ -483,6 +483,25 @@ func UpdateLogger(logFilePath string) {
 	}
 }
 
+// This provides an io.Writer interface around the base.Log API
+type LoggerWriter struct {
+	LogKey string  // The log key to log to, eg, "HTTP++"
+
+}
+
+// Write() method to satisfy the io.Writer interface
+func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
+	printf(fgYellow+lw.LogKey+": "+reset+"%s", string(p))
+	return len(p), nil
+}
+
+// Create a new LoggerWriter
+func NewLoggerWriter(logKey string) *LoggerWriter {
+	return &LoggerWriter{
+		LogKey: logKey,
+	}
+}
+
 func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
 		lj := lumberjack.Logger{}
