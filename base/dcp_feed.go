@@ -83,7 +83,7 @@ func NewDCPReceiver() Receiver {
 	r.eventFeed = r.output
 	//r.SetEventFeed(r.GetOutput())
 
-	if LogKeys["DCP"] {
+	if LogEnabledExcludingLogStar("DCP") {
 		LogTo("DCP", "Using DCP Logging Receiver")
 		logRec := &DCPLoggingReceiver{rec: r}
 		return logRec

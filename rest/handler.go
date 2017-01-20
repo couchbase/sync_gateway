@@ -201,7 +201,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
-	if base.LogKeys["HTTP++"] {
+	if base.LogEnabledExcludingLogStar("HTTP+") {
 		// Wrap the existing ResponseWriter with one that "Tees" the output
 		// to stdout as well as writing back to the socket
 		h.response = NewLoggerTeeResponseWriter(

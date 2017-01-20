@@ -346,6 +346,12 @@ func LogEnabled(key string) bool {
 	return logStar || LogKeys[key]
 }
 
+func LogEnabledExcludingLogStar(key string) bool {
+	logLock.RLock()
+	defer logLock.RUnlock()
+	return LogKeys[key]
+}
+
 // Logs a message to the console.
 func Log(message string) {
 	logLock.RLock()

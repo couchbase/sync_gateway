@@ -58,8 +58,8 @@ type BucketSpec struct {
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
-	*couchbase.Bucket            // the underlying go-couchbase bucket
-	spec              BucketSpec // keep a copy of the BucketSpec for DCP usage
+	*couchbase.Bucket // the underlying go-couchbase bucket
+	spec BucketSpec   // keep a copy of the BucketSpec for DCP usage
 }
 
 type couchbaseFeedImpl struct {
@@ -439,7 +439,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	}
 
-	if LogKeys["Bucket"] {
+	if LogEnabledExcludingLogStar("Bucket") {
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return
