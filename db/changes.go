@@ -378,6 +378,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
 				//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
 				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
+				//   4. options.Since.TriggeredBy !=0 and options.Since.TriggeredBy > seqAddedAt: We're in the
+				//  middle of a backfill for another channel.  This should issue normal (non-backfill) changes
+				//  request with  since= options.Since.TriggeredBy for the non-backfill channel.
 
 				// Backfill required when seqAddedAt is before current sequence
 				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
@@ -388,10 +391,17 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// Ensure backfill isn't already in progress for this seqAddedAt
 				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
 
+				backfillInOtherChannel := options.Since.TriggeredBy != 0 && options.Since.TriggeredBy > seqAddedAt
+
+
 				if isNewChannel || (backfillRequired && backfillPending) {
 					// Newly added channel so initiate backfill:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
+				} else if (backfillInOtherChannel){
+					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy, TriggeredBy: seqAddedAt}
 				}
+
+
 				feed, err := db.changesFeed(name, chanOpts)
 				if err != nil {
 					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
