@@ -35,20 +35,21 @@ func (t *TeeReadCloser) Close() error {
 // the logging key
 type LoggingTeeResponseWriter struct {
 	http.ResponseWriter
-	LogKey string  // The log key to use, eg "HTTP++"
+	LogKey       string        // The log key to use, eg "HTTP++"
+	SerialNumber uint64        // The request ID
+	Request      *http.Request // The request
 }
 
-func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey string) http.ResponseWriter {
+func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey string, serialNum uint64, req *http.Request) http.ResponseWriter {
 	return &LoggingTeeResponseWriter{
 		ResponseWriter: wrappedResponseWriter,
-		LogKey: logKey,
+		LogKey:         logKey,
+		SerialNumber:   serialNum,
+		Request:        req,
 	}
 }
 
 func (l *LoggingTeeResponseWriter) Write(b []byte) (int, error) {
-	base.LogTo(l.LogKey, string(b))
+	base.LogTo(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request.URL), string(b))
 	return l.ResponseWriter.Write(b)
 }
-
-
-

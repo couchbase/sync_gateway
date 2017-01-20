@@ -204,7 +204,12 @@ func (h *handler) invoke(method handlerMethod) error {
 	if base.LogKeys["HTTP++"] {
 		// Wrap the existing ResponseWriter with one that "Tees" the output
 		// to stdout as well as writing back to the socket
-		h.response = NewLoggerTeeResponseWriter(h.response, "HTTP++")
+		h.response = NewLoggerTeeResponseWriter(
+			h.response,
+			"HTTP++",
+			h.serialNumber,
+			h.rq,
+		)
 	}
 
 	return method(h) // Call the actual handler code
@@ -225,7 +230,7 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, sanitizeRequestURL(h.rq.URL), proto, as)
+	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq.URL), proto, as)
 }
 
 func (h *handler) logRequestBody() {
@@ -238,32 +243,13 @@ func (h *handler) logRequestBody() {
 	// tees the request body to the base.Log with the HTTP++ logging key
 	h.requestBody = NewTeeReadCloser(
 		h.requestBody,
-		base.NewLoggerWriter("HTTP++"),
+		base.NewLoggerWriter(
+			"HTTP++",
+			h.serialNumber,
+			h.rq,
+		),
 	)
 
-}
-
-// Replaces sensitive data from the URL query string with ******.
-// Have to use string replacement instead of writing directly to the Values URL object, as only the URL's raw query is mutable.
-func sanitizeRequestURL(requestURL *url.URL) string {
-	urlString := requestURL.String()
-	// Do a basic contains for the values we care about, to minimize performance impact on other requests.
-	if strings.Contains(urlString, "code=") || strings.Contains(urlString, "token=") {
-		// Iterate over the URL values looking for matches, and then do a string replacement of the found value
-		// into urlString.  Need to unescapte the urlString, as the values returned by URL.Query() get unescaped.
-		urlString, _ = url.QueryUnescape(urlString)
-		values := requestURL.Query()
-		for key, vals := range values {
-			if key == "code" || strings.Contains(key, "token") {
-				//In case there are multiple entries
-				for _, val := range vals {
-					urlString = strings.Replace(urlString, fmt.Sprintf("%s=%s", key, val), fmt.Sprintf("%s=******", key), -1)
-				}
-			}
-		}
-	}
-
-	return urlString
 }
 
 func (h *handler) logDuration(realTime bool) {
@@ -275,7 +261,7 @@ func (h *handler) logDuration(realTime bool) {
 	var duration time.Duration
 	if realTime {
 		duration = time.Since(h.startTime)
-		bin := int(duration/(100*time.Millisecond)) * 100
+		bin := int(duration / (100 * time.Millisecond)) * 100
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 

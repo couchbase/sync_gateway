@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"net/http"
 )
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
@@ -63,7 +64,7 @@ const (
 // and then a division by 2 and return the ceil of the result
 // to round to nearest int sgLevel value
 func (l Level) sgLevel() int {
-	return int(math.Ceil(float64(l+2) / float64(2)))
+	return int(math.Ceil(float64(l + 2) / float64(2)))
 }
 
 // String returns a lower-case ASCII representation of the log level.
@@ -227,7 +228,7 @@ func (config *LogAppenderConfig) ValidateLogAppender() error {
 			return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
 		}
 		if _, err := IsFilePathWritable(*config.LogFilePath); err != nil {
-			return fmt.Errorf("logFilePath %s is not writable, error: %v",*config.LogFilePath, err)
+			return fmt.Errorf("logFilePath %s is not writable, error: %v", *config.LogFilePath, err)
 		}
 		if config.Rotation.MaxSize < 0 {
 			return fmt.Errorf("Log rotation MaxSize must >= 0")
@@ -269,7 +270,7 @@ func ParseLogFlags(flags []string) {
 				EnableSgReplicateLogging()
 			}
 			for strings.HasSuffix(key, "+") {
-				key = key[0 : len(key)-1]
+				key = key[0: len(key) - 1]
 				LogKeys[key] = true // "foo+" also enables "foo"
 			}
 		}
@@ -445,9 +446,9 @@ func printf(format string, args ...interface{}) {
 
 func lastComponent(path string) string {
 	if index := strings.LastIndex(path, "/"); index >= 0 {
-		path = path[index+1:]
+		path = path[index + 1:]
 	} else if index = strings.LastIndex(path, "\\"); index >= 0 {
-		path = path[index+1:]
+		path = path[index + 1:]
 	}
 	return path
 }
@@ -485,20 +486,23 @@ func UpdateLogger(logFilePath string) {
 
 // This provides an io.Writer interface around the base.Log API
 type LoggerWriter struct {
-	LogKey string  // The log key to log to, eg, "HTTP++"
-
+	LogKey       string        // The log key to log to, eg, "HTTP++"
+	SerialNumber uint64        // The request ID
+	Request      *http.Request // The request
 }
 
 // Write() method to satisfy the io.Writer interface
 func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
-	printf(fgYellow+lw.LogKey+": "+reset+"%s", string(p))
+	LogTo(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request.URL), string(p))
 	return len(p), nil
 }
 
 // Create a new LoggerWriter
-func NewLoggerWriter(logKey string) *LoggerWriter {
+func NewLoggerWriter(logKey string, serialNumber uint64, req *http.Request) *LoggerWriter {
 	return &LoggerWriter{
-		LogKey: logKey,
+		LogKey:       logKey,
+		SerialNumber: serialNumber,
+		Request:      req,
 	}
 }
 
