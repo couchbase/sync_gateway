@@ -76,6 +76,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	if unreadPollCount > kMaxUnreadPollCount {
 		// We've sent a notify, but had (kMaxUnreadPollCount) polls without anyone calling getChanges.
 		// Assume nobody is listening for updates - cancel polling for this channel
+		base.LogTo("ChannelIndex+", "Cancelling polling for channel:[%s] unreadPollCount:[%d] maxUnreadPollCount[%d]", k.channelName, unreadPollCount, kMaxUnreadPollCount)
 		return false, true
 	}
 
@@ -89,6 +90,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 	// First poll handling
 	if k.lastPolledChannelClock == nil {
+		base.LogTo("ChannelIndex+", "Setting up initial polling values for channel:[%s]", k.channelName)
 		k.lastPolledChannelClock = k.clock.Copy()
 		k.lastPolledSince = k.clock.Copy()
 		k.lastPolledValidTo = k.clock.Copy()
@@ -96,11 +98,14 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 	isChanged, changedPartitions := k.calculateChanges(k.lastPolledChannelClock, stableClock, newChannelClock)
 
+	base.LogTo("ChannelIndex+", "pollForChanges - calculateChanges results.  channel:[%s] isChanged:[%v] #changedPartitions:[%d]", k.channelName, isChanged, len(changedPartitions))
+
 	if !isChanged {
 		// No changes to channel clock - update validTo based on the new stable sequence
 		k.lastPolledValidTo.SetTo(stableClock)
 		// If we've exceeded empty poll count, return hasChanges=true to trigger the "is
 		// anyone listening" check
+		base.LogTo("ChannelIndex+", "pollForChanges - no changes.  channel:[%s] totalPollCount:[%d] kMaxEmptyPollCount:[%d]", k.channelName, totalPollCount, kMaxEmptyPollCount)
 		if totalPollCount > kMaxEmptyPollCount {
 			return true, false
 		} else {
@@ -158,6 +163,9 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*PartitionRange) error {
 
 	// Update the storage cache, if present
+
+	base.LogTo("ChannelIndex+", "updateLastPolled for channel:[%s] #changedPartitions[%d]", k.channelName, len(changedPartitions))
+
 	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock, changedPartitions)
 	if err != nil {
 		return err

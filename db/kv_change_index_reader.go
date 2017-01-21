@@ -289,20 +289,23 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options Chan
 	// For continuous or longpoll processing, use the shared reader from the channelindexReaders map to coordinate
 	// polling.
 	if options.Wait {
+		base.LogTo("ChannelIndex+", "One-shot changes request - attempting to use existing reader to retrieve for channel %s...", channelName)
 		var err error
 		index := k.getChannelReader(channelName)
 		if index == nil {
 			index, err = k.newChannelReader(channelName)
 			indexReaderPersistentCount.Add(1)
 			IndexExpvars.Add("getOrCreateReader_create", 1)
-			base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
+			base.LogTo("ChannelIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 		} else {
 			IndexExpvars.Add("getOrCreateReader_get", 1)
-			base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
+			base.LogTo("ChannelIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
 		}
 		return index, err
 	} else {
 		// For non-continuous/non-longpoll, use a one-off reader, no onChange handling.
+
+		base.LogTo("ChannelIndex+", "One-shot changes request - creating new reader to retrieve for channel %s...", channelName)
 		indexPartitions, err := k.indexPartitionsCallback()
 		if err != nil {
 			return nil, err
