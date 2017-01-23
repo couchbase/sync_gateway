@@ -476,7 +476,7 @@ func GetIndexBlockKey(channelName string, blockIndex uint16, partition uint16) s
 
 // Get the key for the cache block, based on the block index
 func GetChannelClockKey(channelName string) string {
-	return fmt.Sprintf("%s_SequenceClock:%s", base.KIndexPrefix, channelName)
+	return fmt.Sprintf("%s:chClock:%s", base.KIndexPrefix, channelName)
 }
 
 func minUint64(a, b uint64) uint64 {

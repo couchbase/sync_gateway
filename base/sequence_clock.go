@@ -292,13 +292,13 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 	}
 }
 
-func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*PartitionClock) {
+func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*PartitionClock, allowRollback bool) {
 
 	for _, partitionClock := range partitionClocks {
 		if partitionClock != nil {
 			for vbNo, seq := range *partitionClock {
 				if seq > 0 {
-					if seq < c.value[vbNo] {
+					if seq < c.value[vbNo] && !allowRollback {
 						panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq))
 					}
 					c.value[vbNo] = seq
@@ -502,10 +502,10 @@ func NewIndexablePartitionClock(key string, channelName string) *IndexablePartit
 }
 
 // Updates clock from another clock.  Will not lower sequence numbers (in case of concurrent writers) - logs warning in this scenario.
-func (s *IndexablePartitionClock) Update(clock PartitionClock) (changed bool) {
+func (s *IndexablePartitionClock) Update(clock PartitionClock, allowRollback bool) (changed bool) {
 	for vb, seq := range clock {
 		currentSequence := s.PartitionClock.GetSequence(vb)
-		if seq > currentSequence {
+		if seq > currentSequence || (seq < currentSequence && allowRollback) {
 			s.PartitionClock.SetSequence(vb, seq)
 			changed = true
 		} else if seq < currentSequence {

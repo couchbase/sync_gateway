@@ -264,6 +264,42 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 	return pendingRemoval, nil
 }
 
+// Removes all entries greater than vb, seq from the block.  Returns rollbackComplete=true if it finds a seq
+// in the block for the vbucket where seq <= rollbackSeq
+func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket base.Bucket) (rollbackComplete bool, err error) {
+
+	numRemoved := 0
+	numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
+
+	// If nothing was removed, don't update the block
+	if numRemoved == 0 {
+		return rollbackComplete, nil
+	}
+
+	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - may be called multiple times
+		d.value = value
+		d.clock = nil
+		numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
+
+		// If nothing was removed, cancel the write
+		if numRemoved == 0 {
+			return nil, nil
+		}
+		return d.value, nil
+	})
+	if writeErr != nil {
+		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		return true, writeErr
+	}
+	d.cas = casOut
+	if numRemoved > 0 {
+		base.LogTo("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
+			d.Key, numRemoved, rollbackComplete)
+	}
+	return rollbackComplete, nil
+}
+
 // MarkInactive - apply any changes required when block stops being the active block
 func (d *DenseBlock) MarkInactive() error {
 	// TODO: set a flag on the block to indicate it's inactive, for concurrency purposes?
@@ -292,6 +328,39 @@ func (d *DenseBlock) removeEntries(entries []*LogEntry) []*LogEntry {
 	}
 	return notRemoved
 
+}
+
+// Rollback removes any entries in the block for the vbucket greater than the specified sequence
+func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, rollbackComplete bool) {
+
+	// Work backwards through the block, removing entries greater than vbNo, seq
+	indexPos := 2 + uint32(d.getEntryCount()-1)*INDEX_ENTRY_LEN
+	entryPos := uint32(len(d.value))
+
+	for {
+		indexEntry := d.GetIndexEntry(int64(indexPos))
+		entryPos -= uint32(indexEntry.getEntryLen())
+		if indexEntry.getVbNo() == vbNo {
+			if indexEntry.getSequence() > seq {
+				d.removeEntry(indexPos, entryPos, indexEntry.getEntryLen())
+				entryPos -= INDEX_ENTRY_LEN // Move entryPos to account for the removed index entry
+				numRemoved++
+			} else {
+				rollbackComplete = true
+				break
+			}
+		}
+
+		// Move to previous
+		if indexPos <= 2 {
+			// Reached the beginning of the block, need to continue to the next block
+			rollbackComplete = false
+			break
+		}
+		indexPos -= INDEX_ENTRY_LEN
+	}
+
+	return numRemoved, rollbackComplete
 }
 
 // removeEntry

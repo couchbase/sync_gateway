@@ -258,6 +258,7 @@ func (s *ShardedClock) GetSequence(vbNo uint16) (vbSequence uint64) {
 	}
 }
 
+// Update and write a sharded clock with the specified values.
 func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 
 	// Build set of sequence updates by partition

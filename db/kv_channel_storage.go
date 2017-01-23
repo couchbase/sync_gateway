@@ -42,6 +42,7 @@ type ChannelStorageWriter interface {
 
 	// AddEntrySet adds a set of entries to the channel index
 	AddEntrySet(entries []*LogEntry) (clockUpdates []*base.PartitionClock, err error)
+	RollbackTo(rollbackVbNo uint16, rollbackSeq uint64) error
 
 	// If channel storage implementation uses separate storage for log entries and channel presence,
 	// WriteLogEntry and ReadLogEntry can be used to read/write.  Useful when changeIndex wants to
@@ -158,6 +159,10 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (partitionUpdates []*b
 
 	partitionUpdates = base.ConvertClockToPartitionClocks(clockUpdates, *b.partitions)
 	return partitionUpdates, nil
+}
+
+func (b *BitFlagStorage) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64) error {
+	return errors.New("Not implemented: BitFlagStorage.RollbackTo")
 }
 
 func (b *BitFlagStorage) writeBlockSetsWithCas(blockSets BlockSet) error {
