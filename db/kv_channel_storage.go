@@ -35,13 +35,13 @@ const (
 type ChannelStorageReader interface {
 	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
 	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
-	UpdateCache(fromSeq base.SequenceClock, channelClock base.SequenceClock, changedPartitions []*PartitionRange) error
+	UpdateCache(fromSeq base.SequenceClock, channelClock base.SequenceClock, changedPartitions []*base.PartitionRange) error
 }
 
 type ChannelStorageWriter interface {
 
 	// AddEntrySet adds a set of entries to the channel index
-	AddEntrySet(entries []*LogEntry) (clockUpdates base.SequenceClock, err error)
+	AddEntrySet(entries []*LogEntry) (clockUpdates []*base.PartitionClock, err error)
 
 	// If channel storage implementation uses separate storage for log entries and channel presence,
 	// WriteLogEntry and ReadLogEntry can be used to read/write.  Useful when changeIndex wants to
@@ -124,11 +124,11 @@ func (b *BitFlagStorage) readIndexEntryInto(vbNo uint16, sequence uint64, entry 
 }
 
 // Adds a set
-func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.SequenceClock, err error) {
+func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (partitionUpdates []*base.PartitionClock, err error) {
 
 	// Update the sequences in the appropriate cache block
 	if len(entries) == 0 {
-		return clockUpdates, nil
+		return partitionUpdates, nil
 	}
 
 	// The set of updates may be distributed over multiple partitions and blocks.
@@ -138,7 +138,7 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	//       same block as the first entry in the list, but this would force sequential
 	//       processing of the blocks.  Might be worth revisiting if we see high GC overhead.
 	blockSets := make(BlockSet)
-	clockUpdates = base.NewSequenceClockImpl()
+	clockUpdates := base.NewSequenceClockImpl()
 	for _, entry := range entries {
 		// Update the sequence in the appropriate cache block
 		base.LogTo("DIndex+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.IsRemoved())
@@ -153,8 +153,11 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (clockUpdates base.Seq
 	err = b.writeBlockSetsWithCas(blockSets)
 	if err != nil {
 		base.Warn("Error writing blockSets with cas for block %s: %+v", blockSets, err)
+		return partitionUpdates, err
 	}
-	return clockUpdates, err
+
+	partitionUpdates = base.ConvertClockToPartitionClocks(clockUpdates, *b.partitions)
+	return partitionUpdates, nil
 }
 
 func (b *BitFlagStorage) writeBlockSetsWithCas(blockSets BlockSet) error {
@@ -323,7 +326,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 
 }
 
-func (b *BitFlagStorage) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock, changedPartitions []*PartitionRange) error {
+func (b *BitFlagStorage) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock, changedPartitions []*base.PartitionRange) error {
 	// no-op, not a caching reader
 	return nil
 }

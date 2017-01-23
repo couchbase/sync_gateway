@@ -36,14 +36,14 @@ const (
 // a new entry is added to entries to store key/revId/flags, and entry count is incremented.
 
 type DenseBlock struct {
-	Key        string         // Key of block document in the index bucket
-	value      []byte         // Binary storage of block data, in the above format
-	cas        uint64         // Document cas
-	clock      PartitionClock // Highest seq per vbucket written to the block
-	startClock PartitionClock // Starting clock for the block (partition clock for all previous blocks)
+	Key        string              // Key of block document in the index bucket
+	value      []byte              // Binary storage of block data, in the above format
+	cas        uint64              // Document cas
+	clock      base.PartitionClock // Highest seq per vbucket written to the block
+	startClock base.PartitionClock // Starting clock for the block (partition clock for all previous blocks)
 }
 
-func NewDenseBlock(key string, startClock PartitionClock) *DenseBlock {
+func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 
 	// Set initial capacity of value to handle ~5 docs (depending on key length) - avoids a lot of
 	// alloc overhead when the first few entries in the channel are appended (since append only
@@ -68,7 +68,7 @@ func (d *DenseBlock) setEntryCount(count uint16) {
 	binary.BigEndian.PutUint16(d.value[0:2], count)
 }
 
-func (d *DenseBlock) getClock() PartitionClock {
+func (d *DenseBlock) getClock() base.PartitionClock {
 	if d.clock == nil {
 		d.initClock()
 	}
@@ -77,7 +77,7 @@ func (d *DenseBlock) getClock() PartitionClock {
 
 // Get CumulativeClock returns the full clock for the partition:
 // the starting clock for this block, plus any changes made in this block
-func (d *DenseBlock) getCumulativeClock() PartitionClock {
+func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
 	cumulativeClock.Add(d.clock)
 	return cumulativeClock
@@ -93,7 +93,7 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
 	// Initialize clock
-	d.clock = make(PartitionClock)
+	d.clock = make(base.PartitionClock)
 
 	var indexEntry DenseBlockIndexEntry
 	for i := 0; i < int(d.getEntryCount()); i++ {
@@ -103,7 +103,7 @@ func (d *DenseBlock) initClock() {
 }
 
 // Adds entries to block and writes block to the bucket
-func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
+func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
@@ -150,10 +150,10 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 //  overflow        Entries that didn't fit in the block
 //  pendingRemoval  Entries with a parent that needs to be removed from the index,
 //                  but the parent isn't in this block
-func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
+func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	blockFull := false
-	partitionClock := make(PartitionClock)
+	partitionClock := make(base.PartitionClock)
 	for i, entry := range entries {
 		if !blockFull {
 			removalRequired, err := d.addEntry(entry)

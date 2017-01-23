@@ -121,13 +121,13 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	return true, false
 }
 
-func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*PartitionRange) {
+func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*base.PartitionRange) {
 
 	// One iteration through the new channel clock, to:
 	//   1. Check whether it's later than the previous channel clock
 	//   2. If it's later than the stable clock, roll back to the stable clock
 	//   3. If it still represents a change, add to set of changed vbs and partition ranges
-	changedPartitions = make([]*PartitionRange, k.partitions.PartitionCount())
+	changedPartitions = make([]*base.PartitionRange, k.partitions.PartitionCount())
 	for vbNoInt, newChannelClockSeq := range newChannelClock.Value() {
 		vbNo := uint16(vbNoInt)
 		lastPolledClockSeq := lastPolledClock.GetSequence(vbNo)
@@ -145,7 +145,7 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 			isChanged = true
 			partitionNo := k.partitions.PartitionForVb(vbNo)
 			if changedPartitions[partitionNo] == nil {
-				partitionRange := NewPartitionRange()
+				partitionRange := base.NewPartitionRange()
 				changedPartitions[partitionNo] = &partitionRange
 			}
 			changedPartitions[partitionNo].SetRange(vbNo, lastPolledClockSeq, newChannelClockSeq)
@@ -155,7 +155,7 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 
 }
 
-func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*PartitionRange) error {
+func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*base.PartitionRange) error {
 
 	// Update the storage cache, if present
 	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock, changedPartitions)
@@ -267,32 +267,7 @@ func (k *KvChannelIndex) loadClock() {
 	}
 	k.clock.Unmarshal(data)
 	k.clock.SetCas(cas)
-}
 
-func (k *KvChannelIndex) writeClockCas(updateClock base.SequenceClock) error {
-	// Initial set, for the first cas update attempt
-	k.clock.UpdateWithClock(updateClock)
-	value, err := k.clock.Marshal()
-	if err != nil {
-		base.Warn("Error marshalling clock [%s] for update:%+v", base.PrintClock(k.clock), err)
-		return err
-	}
-	casOut, err := base.WriteCasRaw(k.indexBucket, GetChannelClockKey(k.channelName), value, k.clock.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
-		// Note: The following is invoked upon cas failure - may be called multiple times
-		writeErr := k.clock.Unmarshal(value)
-		if writeErr != nil {
-			base.Warn("Error unmarshalling clock during update", writeErr)
-			return nil, writeErr
-		}
-		k.clock.UpdateWithClock(updateClock)
-		return k.clock.Marshal()
-	})
-
-	if err != nil {
-		return err
-	}
-	k.clock.SetCas(casOut)
-	return nil
 }
 
 // A vbCache caches a set of LogEntry values, representing the set of entries for the channel for a

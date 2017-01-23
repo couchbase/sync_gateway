@@ -23,136 +23,6 @@ const (
 	KeyFormat_DenseBlock           = "%s:block%d:p%d:%s" //  base.KIndexPrefix, block index, partition, channelname
 )
 
-// PartitionClock is simplified version of SequenceClock
-type PartitionClock map[uint16]uint64
-
-// Adds the values from another clock to the current clock
-func (clock PartitionClock) Add(other PartitionClock) {
-	for key, otherValue := range other {
-		value, _ := clock[key]
-		clock[key] = value + otherValue
-	}
-}
-
-// Set the values in the current clock to the values in other clock
-func (clock PartitionClock) Set(other PartitionClock) {
-	for key, otherValue := range other {
-		clock[key] = otherValue
-	}
-}
-
-func (clock PartitionClock) Copy() PartitionClock {
-	newClock := make(PartitionClock, len(clock))
-	for key, value := range clock {
-		newClock[key] = value
-	}
-	return newClock
-}
-
-func (clock PartitionClock) SetSequence(vbNo uint16, seq uint64) {
-	clock[vbNo] = seq
-}
-
-func (clock PartitionClock) GetSequence(vbNo uint16) uint64 {
-	if seq, ok := clock[vbNo]; ok {
-		return seq
-	} else {
-		return 0
-	}
-}
-
-func (clock PartitionClock) AddToClock(seqClock base.SequenceClock) {
-	for vbNo, seq := range clock {
-		seqClock.SetSequence(vbNo, seq)
-	}
-}
-
-func (clock PartitionClock) String() string {
-	result := ""
-	for vb, seq := range clock {
-		result = fmt.Sprintf("%s[%d:%d]", result, vb, seq)
-	}
-	return result
-}
-
-type SequenceRange struct {
-	since uint64
-	to    uint64
-}
-
-// PartitionRange is a pair of clocks defining a range of sequences with a partition.
-// Defines helper functions for range comparison
-type PartitionRange struct {
-	seqRanges map[uint16]SequenceRange
-}
-
-func NewPartitionRange() PartitionRange {
-	return PartitionRange{
-		seqRanges: make(map[uint16]SequenceRange),
-	}
-}
-
-func (p PartitionRange) SetRange(vbNo uint16, sinceSeq, toSeq uint64) {
-	p.seqRanges[vbNo] = SequenceRange{sinceSeq, toSeq}
-}
-
-// StartsBefore returns true if any non-nil since sequences in the partition range
-// are earlier than the partition clock
-func (p PartitionRange) SinceBefore(clock PartitionClock) bool {
-	for vbNo, seqRange := range p.seqRanges {
-		if seqRange.since < clock.GetSequence(vbNo) {
-			return true
-		}
-	}
-	return false
-}
-
-// StartsAfter returns true if all since sequences in the partition range are
-// equal to or later than the partition clock
-func (p PartitionRange) SinceAfter(clock PartitionClock) bool {
-	for vbNo, seqRange := range p.seqRanges {
-		if seqRange.since < clock.GetSequence(vbNo) {
-			return false
-		}
-	}
-	return true
-}
-
-func (p PartitionRange) GetSequenceRange(vbNo uint16) SequenceRange {
-	return p.seqRanges[vbNo]
-}
-
-// PartitionRange.Compare Outcomes:
-//   Within, Before, After are returned if the sequence is within/before/after the range
-//   Unknown is returned if the range doesn't include since/to values for the vbno
-type PartitionRangeCompare int
-
-const (
-	PartitionRangeWithin = PartitionRangeCompare(iota)
-	PartitionRangeBefore
-	PartitionRangeAfter
-	PartitionRangeUnknown
-)
-
-// Identifies where the specified vbNo, sequence is relative to the partition range
-func (p PartitionRange) Compare(vbNo uint16, sequence uint64) PartitionRangeCompare {
-
-	seqRange, ok := p.seqRanges[vbNo]
-	if !ok {
-		return PartitionRangeUnknown
-	}
-
-	if sequence <= seqRange.since {
-		return PartitionRangeBefore
-	}
-
-	if sequence > seqRange.to {
-		return PartitionRangeAfter
-	}
-
-	return PartitionRangeWithin
-}
-
 const (
 	MaxListBlockCount = 1000 // When the number of blocks in the active list exceeds MaxListBlockCount, it's rotated
 )
@@ -179,9 +49,9 @@ type DenseBlockListStorage struct {
 }
 
 type DenseBlockListEntry struct {
-	BlockIndex int            `json:"index"` // Dense Block index
-	StartClock PartitionClock `json:"clock"` // Starting clock for Dense Block
-	key        string         // Used for key helper function
+	BlockIndex int                 `json:"index"` // Dense Block index
+	StartClock base.PartitionClock `json:"clock"` // Starting clock for Dense Block
+	key        string              // Used for key helper function
 }
 
 func (e *DenseBlockListEntry) Key(parentList *DenseBlockList) string {
@@ -273,10 +143,10 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 
 	nextIndex := l.generateNextBlockIndex()
-	var nextStartClock PartitionClock
+	var nextStartClock base.PartitionClock
 	if l.activeBlock == nil {
 		// No previous active block - new block list
-		nextStartClock = make(PartitionClock)
+		nextStartClock = make(base.PartitionClock)
 	} else {
 		// Determine index and startclock from previous active block
 		nextStartClock = l.activeBlock.getCumulativeClock()
@@ -325,7 +195,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 
 func (l *DenseBlockList) loadActiveBlock() *DenseBlock {
 	if len(l.blocks) == 0 {
-		return NewDenseBlock(l.generateBlockKey(0), PartitionClock{})
+		return NewDenseBlock(l.generateBlockKey(0), base.PartitionClock{})
 	} else {
 		latestEntry := l.blocks[len(l.blocks)-1]
 		return l.LoadBlock(latestEntry)
@@ -460,9 +330,9 @@ func (l *DenseBlockList) getStorage(key string) (storage DenseBlockListStorage, 
 }
 
 // ValidFrom returns the starting clock of the first block in the list.
-func (l *DenseBlockList) ValidFrom() PartitionClock {
+func (l *DenseBlockList) ValidFrom() base.PartitionClock {
 	if len(l.blocks) == 0 {
-		return make(PartitionClock)
+		return make(base.PartitionClock)
 	}
 	return l.blocks[0].StartClock
 }
@@ -498,7 +368,7 @@ func (l *DenseBlockList) generateNextBlockIndex() int {
 	}
 }
 
-func (l *DenseBlockList) populateForRange(partitionRange PartitionRange) error {
+func (l *DenseBlockList) populateForRange(partitionRange base.PartitionRange) error {
 	// Block lists can span multiple documents.  If current blockList doesn't extend back to the start
 	// of the requested partitionRange, load previous block list doc(s).
 	for partitionRange.SinceBefore(l.ValidFrom()) {
