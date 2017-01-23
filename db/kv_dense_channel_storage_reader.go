@@ -337,16 +337,26 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	pr.lock.Lock()
 	defer pr.lock.Unlock()
 
-	base.LogTo("ChannelIndex+", "Updating Cache for channel:[%s] numBlocks:[%d]", pr.channelName, numBlocks)
+	base.LogTo("ChannelIndex+", "Updating Cache for channel:[%s] numBlocks:[%d]",
+		pr.channelName,
+		numBlocks,
+	)
 	// Reload the block list if changed
 	if pr.blockList == nil {
-		pr.blockList = NewDenseBlockListReader(pr.channelName, pr.partitionNo, pr.indexBucket)
+		base.LogTo("ChannelIndex+", "Reloading blocklist from index for channel: [%s] pr.blockList.activeCas: [%d]",
+			pr.channelName,
+			pr.blockList.activeCas,
+		)
 		if pr.blockList == nil {
 			return errors.New("Unable to initialize block list")
 		}
 	}
 
-	base.LogTo("ChannelIndex+", "Reloaded block list document for channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
+	base.LogTo("ChannelIndex+", "Reloaded block list document for channel:[%s] pr.blockList.activeCas: [%d] partition:[%d]",
+		pr.channelName,
+		pr.partitionNo,
+		pr.blockList.activeCas,
+	)
 
 	// Block lists can span multiple documents.  If pr.blockList include numBlocks,
 	// of the requested partitionRange, attempt to load previous block list doc(s).
@@ -363,7 +373,10 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	base.LogTo("ChannelIndex+", "Populated block list for channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
 
 	if blockCount == 0 {
-		base.Warn("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
+		base.Warn("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]",
+			pr.channelName,
+			pr.partitionNo,
+		)
 		return errors.New("No blocks found when updating partition cache")
 	}
 	// cacheKeySet tracks the blocks that should be in the cache - used for cache expiry, below
@@ -379,7 +392,12 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 
 	pr.validFrom = activeBlockEntry.StartClock
 
-	base.LogTo("ChannelIndex+", "Reloaded the active block for channel:[%s] block key:[%s] new validFrom:[%s]", pr.channelName, activeBlockEntry.Key(pr.blockList), pr.validFrom.String())
+	base.LogTo("ChannelIndex+", "Reloaded the active block for channel:[%s] block key:[%s] pr.blockList.activeCas: [%d] new validFrom:[%s]",
+		pr.channelName,
+		activeBlockEntry.Key(pr.blockList),
+		pr.blockList.activeCas,
+		pr.validFrom.String(),
+	)
 
 	// Update cache with older blocks, up to numBlocks, when present.
 	blocksCached := 1
@@ -427,10 +445,18 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 	pr.lock.RLock()
 	defer pr.lock.RUnlock()
 
-	base.LogTo("ChannelIndex+", "getCachedChanges for partition [%d] channel [%s]", pr.partitionNo, pr.channelName)
+	base.LogTo("ChannelIndex+", "getCachedChanges for partition [%d] cas: [%d] channel [%s]",
+		pr.partitionNo,
+		pr.blockList.activeCas,
+		pr.channelName,
+	)
+
 	// If blocklist isn't loaded, no cache
 	if pr.blockList == nil {
-		base.LogTo("ChannelIndex+", "expected changes for channel[%s] partition[%d], but no block list", pr.channelName, pr.partitionNo)
+		base.LogTo("ChannelIndex+", "expected changes for channel[%s] partition[%d], but no block list",
+			pr.channelName,
+			pr.partitionNo,
+		)
 		return nil, false, nil
 	}
 
@@ -438,7 +464,10 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 	// Note: We're not comparing partitionRange.To with pr.validTo, because it's valid for the partition reader to
 	// be behind the requested range.
 	if partitionRange.SinceBefore(pr.validFrom) {
-		base.LogTo("ChannelIndex+", "expected changes for channel[%s] partition[%d], since is earlier than cache valid from", pr.channelName, pr.partitionNo)
+		base.LogTo("ChannelIndex+", "expected changes for channel[%s] partition[%d], since is earlier than cache valid from",
+			pr.channelName,
+			pr.partitionNo,
+		)
 		return nil, false, nil
 	}
 
@@ -459,7 +488,10 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 		currBlock, ok := pr._getCachedBlock(blockKey)
 		if !ok {
 			base.Warn("Unexpected missing block from partition cache. blockKey:[%s] block startClock:[%s] cache validFrom:[%s]",
-				blockKey, blockListEntry.StartClock.String(), pr.validFrom.String())
+				blockKey,
+				blockListEntry.StartClock.String(),
+				pr.validFrom.String(),
+			)
 			return nil, true, nil
 		}
 		blockIter := NewDenseBlockIterator(currBlock)
@@ -486,19 +518,36 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 				// Expected when processing the oldest block in the range.  Don't include in set
 			}
 		}
-		base.LogTo("ChannelIndex+", "Found #%d changes in block [%s] in the cache for channel:[%s] partition:[%d]", len(blockChanges.changes), blockKey, pr.channelName, pr.partitionNo)
+
+		base.LogTo("ChannelIndex+", "Found #%d changes in block [%s] in the cache for channel:[%s] partition:[%d]",
+			len(blockChanges.changes),
+			blockKey,
+			pr.channelName,
+			pr.partitionNo,
+		)
+
 		// Prepend partition changes with the results for this block
 		changes.PrependChanges(blockChanges)
 
 		// If we've reached a block with a startclock earlier than our since value, we're done
 		if partitionRange.SinceAfter(blockListEntry.StartClock) {
 
-			base.LogTo("ChannelIndex+", "Reached the earliest required block: [%s] in the cache for channel:[%s] partition:[%d]", blockKey, pr.channelName, pr.partitionNo)
+			base.LogTo("ChannelIndex+", "Reached the earliest required block: [%s] in the cache for channel:[%s] partition:[%d]",
+				blockKey,
+				pr.channelName,
+				pr.partitionNo,
+			)
 			break
 		}
 	}
 
-	base.LogTo("ChannelIndex+", "Found #%d total changes in block [%s] in the cache for channel:[%s] partition:[%d]", len(changes.changes), pr.channelName, pr.partitionNo)
+	base.LogTo("ChannelIndex+", "Found #%d total changes in block [%s] in the cache for channel:[%s] partition:[%d] # blocks in blocklist: [%d]",
+		len(changes.changes),
+		pr.channelName,
+		pr.partitionNo,
+		len(pr.blockList.blocks),
+
+	)
 	return changes, true, err
 }
 

@@ -105,7 +105,8 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 		k.lastPolledValidTo.SetTo(stableClock)
 		// If we've exceeded empty poll count, return hasChanges=true to trigger the "is
 		// anyone listening" check
-		base.LogTo("ChannelIndex+", "pollForChanges - no changes.  channel:[%s] totalPollCount:[%d] kMaxEmptyPollCount:[%d]", k.channelName, totalPollCount, kMaxEmptyPollCount)
+		base.LogTo("ChannelIndex+", "pollForChanges - no changes.  channel:[%s] totalPollCount:[%d] kMaxEmptyPollCount:[%d]",
+			k.channelName, totalPollCount, kMaxEmptyPollCount)
 		if totalPollCount > kMaxEmptyPollCount {
 			return true, false
 		} else {
