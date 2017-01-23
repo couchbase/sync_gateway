@@ -346,6 +346,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		base.LogTo("ChannelIndex+", "Reloading blocklist from index for channel: [%s]",
 			pr.channelName,
 		)
+		pr.blockList = NewDenseBlockListReader(pr.channelName, pr.partitionNo, pr.indexBucket)
 		if pr.blockList == nil {
 			return errors.New("Unable to initialize block list")
 		}
