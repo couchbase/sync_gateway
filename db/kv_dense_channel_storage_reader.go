@@ -318,7 +318,7 @@ func NewDensePartitionStorageReader(channelName string, partitionNo uint16, inde
 // during UpdateCache()
 func (pr *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange) (*PartitionChanges, error) {
 
-	base.LogTo("ChannelIndex+", "Attempting to get changes from the cache for channel %s...", pr.channelName)
+	base.LogTo("ChannelIndex+", "Attempting to get changes from the cache for channel %s", pr.channelName)
 	changes, cacheOk, err := pr.getCachedChanges(partitionRange)
 	if err != nil {
 		return nil, err
@@ -447,10 +447,11 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		pr.validFrom = blockListEntry.StartClock
 		blocksCached++
 
+		/*
 		base.LogTo("ChannelIndex+", "UpdateCache successful for channel:[%s] block key:[%s]",
 			pr.channelName,
 			blockKey,
-		)
+		)*/
 
 	}
 
