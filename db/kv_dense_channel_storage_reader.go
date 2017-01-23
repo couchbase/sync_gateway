@@ -343,9 +343,8 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	)
 	// Reload the block list if changed
 	if pr.blockList == nil {
-		base.LogTo("ChannelIndex+", "Reloading blocklist from index for channel: [%s] pr.blockList.activeCas: [%d]",
+		base.LogTo("ChannelIndex+", "Reloading blocklist from index for channel: [%s]",
 			pr.channelName,
-			pr.blockList.activeCas,
 		)
 		if pr.blockList == nil {
 			return errors.New("Unable to initialize block list")
@@ -384,11 +383,16 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 
 	// Reload the active block
 	activeBlockEntry := pr.blockList.blocks[blockCount-1]
-	_, err := pr._loadAndCacheBlock(activeBlockEntry)
+	cachedBlock, err := pr._loadAndCacheBlock(activeBlockEntry)
 	cacheKeySet[activeBlockEntry.Key(pr.blockList)] = true
 	if err != nil {
 		return err
 	}
+	base.LogTo("ChannelIndex+", "_loadAndCacheBlock channel :[%s] block key:[%s] cachedBlock.cas: [%d]",
+		pr.channelName,
+		activeBlockEntry.Key(pr.blockList),
+		cachedBlock.cas,
+	)
 
 	pr.validFrom = activeBlockEntry.StartClock
 
@@ -414,16 +418,40 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		if ok {
 			// If it's already in the cache, only reload if it's been flagged for reload
 			if pr.pendingReload[blockKey] {
-				pr._loadAndCacheBlock(blockListEntry)
+				cachedBlock, err := pr._loadAndCacheBlock(blockListEntry)
+				if err != nil {
+					base.Warn("error calling _loadAndCacheBlock to Update cache with older blocks for key: %s.  err: %v", blockKey, err)
+				}
+				base.LogTo("ChannelIndex+", "Called _loadAndCacheBlock to Update cache with older blocks for channel:[%s] block key:[%s] cachedBlock.cas: [%d]",
+					pr.channelName,
+					blockKey,
+					cachedBlock.cas,
+				)
 				delete(pr.pendingReload, blockKey)
 			}
 		} else {
 			// Not in the cache - add it
-			pr._loadAndCacheBlock(blockListEntry)
+			cachedBlock, err := pr._loadAndCacheBlock(blockListEntry)
+			if err != nil {
+				base.Warn("error calling _loadAndCacheBlock to Update cache with older blocks (Not in the cache - add it) for key: %s.  err: %v", blockKey, err)
+			}
+			base.LogTo("ChannelIndex+", "Called _loadAndCacheBlock to Update cache with older blocks (Not in the cache - add it) for channel:[%s] block key:[%s] cachedBlock.cas: [%d]",
+				pr.channelName,
+				blockKey,
+				cachedBlock.cas,
+			)
+
 		}
+
 		cacheKeySet[blockKey] = true
 		pr.validFrom = blockListEntry.StartClock
 		blocksCached++
+
+		base.LogTo("ChannelIndex+", "UpdateCache successful for channel:[%s] block key:[%s]",
+			pr.channelName,
+			blockKey,
+		)
+
 	}
 
 	base.LogTo("ChannelIndex+", "Updating cache for channel [%s]- cache should contain %+v", pr.channelName, cacheKeySet)
@@ -445,11 +473,18 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 	pr.lock.RLock()
 	defer pr.lock.RUnlock()
 
-	base.LogTo("ChannelIndex+", "getCachedChanges for partition [%d] cas: [%d] channel [%s]",
+
+	base.LogTo("ChannelIndex+", "getCachedChanges for partition [%d] channel [%s]",
 		pr.partitionNo,
-		pr.blockList.activeCas,
 		pr.channelName,
 	)
+	if pr.blockList != nil {
+		base.LogTo("ChannelIndex+", "getCachedChanges pr.blockList.activeCas: [%d]",
+			pr.blockList.activeCas,
+		)
+	} else {
+		base.LogTo("ChannelIndex+", "getCachedChanges blocklist is nil, no pr.blockList.activeCas")
+	}
 
 	// If blocklist isn't loaded, no cache
 	if pr.blockList == nil {
@@ -494,6 +529,11 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 			)
 			return nil, true, nil
 		}
+		base.LogTo("ChannelIndex+", "getCachedChanges _getCachedBlock got block from cache with cas: [%d] for partition [%d] channel [%s]",
+			currBlock.cas,
+			pr.partitionNo,
+			pr.channelName,
+		)
 		blockIter := NewDenseBlockIterator(currBlock)
 		blockChanges := NewPartitionChanges()
 		for {
@@ -585,6 +625,10 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange Partitio
 				blockKey, err)
 			return nil, err
 		}
+		base.LogTo("ChannelIndex+", "getIndexedChanges blockKey: [%s] cas: [%d]",
+			blockKey,
+			currBlock.cas,
+		)
 		blockIter := NewDenseBlockIterator(currBlock)
 		blockChanges := NewPartitionChanges()
 		for {
@@ -639,6 +683,10 @@ func (pr *DensePartitionStorageReader) _getCachedBlock(key string) (*DenseBlock,
 	if !ok {
 		return nil, false
 	}
+	base.LogTo("ChannelIndex+", "_getCachedBlock with key: [%s] cas: [%d]",
+		key,
+		block.cas,
+	)
 	return block, true
 }
 
@@ -650,6 +698,10 @@ func (pr *DensePartitionStorageReader) loadBlock(key string, startClock Partitio
 	if err != nil {
 		return nil, err
 	}
+	base.LogTo("ChannelIndex+", "loadBlock with key: [%s] cas: [%d]",
+		key,
+		block.cas,
+	)
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return block, nil
 }
