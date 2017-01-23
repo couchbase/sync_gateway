@@ -346,9 +346,19 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		base.LogTo("ChannelIndex+", "Reloading blocklist from index for channel: [%s]",
 			pr.channelName,
 		)
+		// TODO: this will only get updated the _first_ time it's loaded, since it starts out nil
+		// TODO: but what about subsequent times?
 		pr.blockList = NewDenseBlockListReader(pr.channelName, pr.partitionNo, pr.indexBucket)
 		if pr.blockList == nil {
 			return errors.New("Unable to initialize block list")
+		}
+	} else {
+		found, err := pr.blockList.loadDenseBlockList()
+		if !found {
+			return errors.New("Unable to find block list during UpdateCache")
+		}
+		if err != nil {
+			return err
 		}
 	}
 
