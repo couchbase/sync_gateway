@@ -398,7 +398,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					// Newly added channel so initiate backfill:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				} else if (backfillInOtherChannel){
-					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy, TriggeredBy: seqAddedAt}
+					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
 
 
