@@ -513,7 +513,7 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange Partitio
 		for {
 			blockEntry := blockIter.next()
 			if blockEntry == nil {
-				// End of block, continue to next block
+				// End of block, break out of inner for loop over block entries and continue to next block in outer for loop
 				break
 			}
 			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
