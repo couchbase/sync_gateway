@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -284,11 +285,30 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 			//  implementation - could consider removing for performance
 			currentSequence := c.value[vb]
 			if sequence < currentSequence {
+				// TODO: Return error instead of panic, to allow callers to handle and support better error reporting
 				panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vb, currentSequence, sequence))
 			}
 			c.value[vb] = sequence
 		}
 	}
+}
+
+func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*PartitionClock, allowRollback bool) {
+
+	for _, partitionClock := range partitionClocks {
+		if partitionClock != nil {
+			for vbNo, seq := range *partitionClock {
+				if seq > 0 {
+					if seq < c.value[vbNo] && !allowRollback {
+						// TODO: Return error instead of panic, to allow callers to handle and support better error reporting
+						panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq))
+					}
+					c.value[vbNo] = seq
+				}
+			}
+		}
+	}
+
 }
 
 // Synchronized Sequence Clock - should be used in shared usage scenarios
@@ -461,4 +481,220 @@ func GetMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
 		}
 	}
 	return minClock
+}
+
+// IndexablePartitionClock is used to persist clocks as JSON.  Used for rollback view query.
+type IndexablePartitionClock struct {
+	Cas            uint64
+	Key            string
+	PartitionClock PartitionClock
+	storage        *IndexablePartitionClockStorage
+}
+
+func NewIndexablePartitionClock(key string, channelName string) *IndexablePartitionClock {
+	return &IndexablePartitionClock{
+		Key:            key,
+		PartitionClock: make(PartitionClock),
+		storage: &IndexablePartitionClockStorage{
+			VbNos:   make([]uint16, 0),
+			Seqs:    make([]uint64, 0),
+			Channel: channelName,
+		},
+	}
+}
+
+// Updates clock from another clock.  Will not lower sequence numbers (in case of concurrent writers) - logs warning in this scenario.
+func (s *IndexablePartitionClock) Update(clock PartitionClock, allowRollback bool) (changed bool) {
+	for vb, seq := range clock {
+		currentSequence := s.PartitionClock.GetSequence(vb)
+		if seq > currentSequence || (seq < currentSequence && allowRollback) {
+			s.PartitionClock.SetSequence(vb, seq)
+			changed = true
+		} else if seq < currentSequence {
+			Warn("Ignored update of sequence clock for vb:[%d] existing:[%d] update:[%d]", vb, currentSequence, seq)
+		}
+	}
+	return changed
+}
+
+type IndexablePartitionClockStorage struct {
+	Channel string   `json:"channel"`
+	VbNos   []uint16 `json:"vb"`
+	Seqs    []uint64 `json:"seq"`
+}
+
+// Updates the storage to match the specified clock.  Resets the storage slices to avoid re-allocation GC.
+func (s *IndexablePartitionClockStorage) update(clock PartitionClock) {
+	s.VbNos = s.VbNos[:0]
+	s.Seqs = s.Seqs[:0]
+	for vb, seq := range clock {
+		s.VbNos = append(s.VbNos, vb)
+		s.Seqs = append(s.Seqs, seq)
+	}
+}
+
+func (i *IndexablePartitionClock) MarshalJSON() ([]byte, error) {
+	i.storage.update(i.PartitionClock)
+	return json.Marshal(i.storage)
+}
+
+func (i *IndexablePartitionClock) UnmarshalJSON(data []byte) error {
+	// Reset clock based on storage
+	err := json.Unmarshal(data, i.storage)
+	if err != nil {
+		return err
+	}
+	if len(i.storage.VbNos) != len(i.storage.Seqs) {
+		return fmt.Errorf("Error unmarshalling clock %s: mismatched lengths (%d, %d)", i.Key, len(i.storage.VbNos), len(i.storage.Seqs))
+	}
+	i.PartitionClock = make(PartitionClock)
+	for index, vbNo := range i.storage.VbNos {
+		i.PartitionClock.SetSequence(vbNo, i.storage.Seqs[index])
+	}
+	return nil
+}
+
+// PartitionClock is simplified version of SequenceClock for a single partition
+type PartitionClock map[uint16]uint64
+
+// Adds the values from another clock to the current clock
+func (clock PartitionClock) Add(other PartitionClock) {
+	for key, otherValue := range other {
+		value, _ := clock[key]
+		clock[key] = value + otherValue
+	}
+}
+
+// Set the values in the current clock to the values in other clock
+func (clock PartitionClock) Set(other PartitionClock) {
+	for key, otherValue := range other {
+		clock[key] = otherValue
+	}
+}
+
+func (clock PartitionClock) Copy() PartitionClock {
+	newClock := make(PartitionClock, len(clock))
+	for key, value := range clock {
+		newClock[key] = value
+	}
+	return newClock
+}
+
+func (clock PartitionClock) SetSequence(vbNo uint16, seq uint64) {
+	clock[vbNo] = seq
+}
+
+func (clock PartitionClock) GetSequence(vbNo uint16) uint64 {
+	if seq, ok := clock[vbNo]; ok {
+		return seq
+	} else {
+		return 0
+	}
+}
+
+func (clock PartitionClock) AddToClock(seqClock SequenceClock) {
+	for vbNo, seq := range clock {
+		seqClock.SetSequence(vbNo, seq)
+	}
+}
+
+func (clock PartitionClock) String() string {
+	result := ""
+	for vb, seq := range clock {
+		result = fmt.Sprintf("%s[%d:%d]", result, vb, seq)
+	}
+	return result
+}
+
+func ConvertClockToPartitionClocks(clock SequenceClock, partitions IndexPartitions) []*PartitionClock {
+	result := make([]*PartitionClock, partitions.PartitionCount())
+	for vb, seq := range clock.Value() {
+		partitionNo := partitions.PartitionForVb(uint16(vb))
+		partitionClock := result[partitionNo]
+		if partitionClock == nil {
+			newClock := make(PartitionClock)
+			partitionClock = &newClock
+			result[partitionNo] = partitionClock
+		}
+		partitionClock.SetSequence(uint16(vb), seq)
+	}
+	return result
+}
+
+type SequenceRange struct {
+	Since uint64
+	To    uint64
+}
+
+// PartitionRange is a pair of clocks defining a range of sequences with a partition.
+// Defines helper functions for range comparison
+type PartitionRange struct {
+	seqRanges map[uint16]SequenceRange // SequenceRanges, indexed by vbNo
+}
+
+func NewPartitionRange() PartitionRange {
+	return PartitionRange{
+		seqRanges: make(map[uint16]SequenceRange),
+	}
+}
+
+func (p PartitionRange) SetRange(vbNo uint16, sinceSeq, toSeq uint64) {
+	p.seqRanges[vbNo] = SequenceRange{sinceSeq, toSeq}
+}
+
+// StartsBefore returns true if any non-nil since sequences in the partition range
+// are earlier than the partition clock
+func (p PartitionRange) SinceBefore(clock PartitionClock) bool {
+	for vbNo, seqRange := range p.seqRanges {
+		if seqRange.Since < clock.GetSequence(vbNo) {
+			return true
+		}
+	}
+	return false
+}
+
+// StartsAfter returns true if all since sequences in the partition range are
+// equal to or later than the partition clock
+func (p PartitionRange) SinceAfter(clock PartitionClock) bool {
+	for vbNo, seqRange := range p.seqRanges {
+		if seqRange.Since < clock.GetSequence(vbNo) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p PartitionRange) GetSequenceRange(vbNo uint16) SequenceRange {
+	return p.seqRanges[vbNo]
+}
+
+// PartitionRange.Compare Outcomes:
+//   Within, Before, After are returned if the sequence is within/before/after the range
+//   Unknown is returned if the range doesn't include since/to values for the vbno
+type PartitionRangeCompare int
+
+const (
+	PartitionRangeWithin = PartitionRangeCompare(iota)
+	PartitionRangeBefore
+	PartitionRangeAfter
+	PartitionRangeUnknown
+)
+
+// Identifies where the specified vbNo, sequence is relative to the partition range
+func (p PartitionRange) Compare(vbNo uint16, sequence uint64) PartitionRangeCompare {
+
+	seqRange, ok := p.seqRanges[vbNo]
+	if !ok {
+		return PartitionRangeUnknown
+	}
+
+	if sequence <= seqRange.Since {
+		return PartitionRangeBefore
+	}
+
+	if sequence > seqRange.To {
+		return PartitionRangeAfter
+	}
+
+	return PartitionRangeWithin
 }

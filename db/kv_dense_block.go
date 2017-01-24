@@ -35,15 +35,17 @@ const (
 // When an entry is added to the block, a new index entry is added to the index to store the vb/seq,
 // a new entry is added to entries to store key/revId/flags, and entry count is incremented.
 
+const DB_HEADER_LEN = 2 // Length of block header.  Currently only contains entry count
+
 type DenseBlock struct {
-	Key        string         // Key of block document in the index bucket
-	value      []byte         // Binary storage of block data, in the above format
-	cas        uint64         // Document cas
-	clock      PartitionClock // Highest seq per vbucket written to the block
-	startClock PartitionClock // Starting clock for the block (partition clock for all previous blocks)
+	Key        string              // Key of block document in the index bucket
+	value      []byte              // Binary storage of block data, in the above format
+	cas        uint64              // Document cas
+	clock      base.PartitionClock // Highest seq per vbucket written to the block
+	startClock base.PartitionClock // Starting clock for the block (partition clock for all previous blocks)
 }
 
-func NewDenseBlock(key string, startClock PartitionClock) *DenseBlock {
+func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 
 	// Set initial capacity of value to handle ~5 docs (depending on key length) - avoids a lot of
 	// alloc overhead when the first few entries in the channel are appended (since append only
@@ -51,7 +53,7 @@ func NewDenseBlock(key string, startClock PartitionClock) *DenseBlock {
 	// Initial length of value is set to 2, to initialize the entry count to zero.
 	return &DenseBlock{
 		Key:        key,
-		value:      make([]byte, 2, 400),
+		value:      make([]byte, DB_HEADER_LEN, 400),
 		startClock: startClock,
 	}
 }
@@ -68,7 +70,7 @@ func (d *DenseBlock) setEntryCount(count uint16) {
 	binary.BigEndian.PutUint16(d.value[0:2], count)
 }
 
-func (d *DenseBlock) getClock() PartitionClock {
+func (d *DenseBlock) getClock() base.PartitionClock {
 	if d.clock == nil {
 		d.initClock()
 	}
@@ -77,7 +79,7 @@ func (d *DenseBlock) getClock() PartitionClock {
 
 // Get CumulativeClock returns the full clock for the partition:
 // the starting clock for this block, plus any changes made in this block
-func (d *DenseBlock) getCumulativeClock() PartitionClock {
+func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
 	cumulativeClock.Add(d.clock)
 	return cumulativeClock
@@ -93,17 +95,17 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
 	// Initialize clock
-	d.clock = make(PartitionClock)
+	d.clock = make(base.PartitionClock)
 
 	var indexEntry DenseBlockIndexEntry
 	for i := 0; i < int(d.getEntryCount()); i++ {
-		indexEntry = d.value[2+i*INDEX_ENTRY_LEN : 2+(i+1)*INDEX_ENTRY_LEN]
+		indexEntry = d.value[DB_HEADER_LEN+i*INDEX_ENTRY_LEN : DB_HEADER_LEN+(i+1)*INDEX_ENTRY_LEN]
 		d.clock[indexEntry.getVbNo()] = indexEntry.getSequence()
 	}
 }
 
 // Adds entries to block and writes block to the bucket
-func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
+func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
@@ -150,10 +152,10 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 //  overflow        Entries that didn't fit in the block
 //  pendingRemoval  Entries with a parent that needs to be removed from the index,
 //                  but the parent isn't in this block
-func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
+func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	blockFull := false
-	partitionClock := make(PartitionClock)
+	partitionClock := make(base.PartitionClock)
 	for i, entry := range entries {
 		if !blockFull {
 			removalRequired, err := d.addEntry(entry)
@@ -264,6 +266,42 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 	return pendingRemoval, nil
 }
 
+// Removes all entries greater than vb, seq from the block.  Returns rollbackComplete=true if it finds a seq
+// in the block for the vbucket where seq <= rollbackSeq
+func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket base.Bucket) (rollbackComplete bool, err error) {
+
+	numRemoved := 0
+	numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
+
+	// If nothing was removed, don't update the block
+	if numRemoved == 0 {
+		return rollbackComplete, nil
+	}
+
+	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - may be called multiple times
+		d.value = value
+		d.clock = nil
+		numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
+
+		// If nothing was removed, cancel the write
+		if numRemoved == 0 {
+			return nil, nil
+		}
+		return d.value, nil
+	})
+	if writeErr != nil {
+		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		return false, writeErr
+	}
+	d.cas = casOut
+	if numRemoved > 0 {
+		base.LogTo("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
+			d.Key, numRemoved, rollbackComplete)
+	}
+	return rollbackComplete, nil
+}
+
 // MarkInactive - apply any changes required when block stops being the active block
 func (d *DenseBlock) MarkInactive() error {
 	// TODO: set a flag on the block to indicate it's inactive, for concurrency purposes?
@@ -294,6 +332,39 @@ func (d *DenseBlock) removeEntries(entries []*LogEntry) []*LogEntry {
 
 }
 
+// Rollback removes any entries in the block for the vbucket greater than the specified sequence
+func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, rollbackComplete bool) {
+
+	// Work backwards through the block, removing entries greater than vbNo, seq
+	indexPos := DB_HEADER_LEN + uint32(d.getEntryCount()-1)*INDEX_ENTRY_LEN
+	entryPos := uint32(len(d.value))
+
+	for {
+		indexEntry := d.GetIndexEntry(int64(indexPos))
+		entryPos -= uint32(indexEntry.getEntryLen())
+		if indexEntry.getVbNo() == vbNo {
+			if indexEntry.getSequence() > seq {
+				d.removeEntry(indexPos, entryPos, indexEntry.getEntryLen())
+				entryPos -= INDEX_ENTRY_LEN // Move entryPos to account for the removed index entry
+				numRemoved++
+			} else {
+				rollbackComplete = true
+				break
+			}
+		}
+
+		// Move to previous
+		if indexPos <= DB_HEADER_LEN {
+			// Reached the beginning of the block, need to continue to the next block
+			rollbackComplete = false
+			break
+		}
+		indexPos -= INDEX_ENTRY_LEN
+	}
+
+	return numRemoved, rollbackComplete
+}
+
 // removeEntry
 //  Cuts an entry from the block,
 func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16) {
@@ -322,7 +393,7 @@ func (d *DenseBlock) appendEntry(indexBytes, entryBytes []byte) error {
 	d.value = append(d.value, entryBytes...)
 	d.value = append(d.value, indexBytes...)
 
-	endOfIndex := 2 + (newCount-1)*INDEX_ENTRY_LEN
+	endOfIndex := DB_HEADER_LEN + (newCount-1)*INDEX_ENTRY_LEN
 
 	//  Shift all entries:
 	// |n|oldIndex|oldEntries|newEntry|newIndexEntry| -> |n|oldIndex|oldEntrieoldEntries|newEntry|
@@ -348,8 +419,8 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 	}
 
 	// Iterate through the index, looking for the entry
-	indexEnd := 2 + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
-	indexPos = 2
+	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
+	indexPos = DB_HEADER_LEN
 	entryPos = indexEnd
 	var indexEntry DenseBlockIndexEntry
 	for indexPos < indexEnd {
@@ -374,8 +445,8 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 // any vb matches
 func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos uint32, entryLength uint16) {
 
-	indexEnd := 2 + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
-	indexPos = 2
+	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
+	indexPos = DB_HEADER_LEN
 	entryPos = indexEnd
 	var indexEntry DenseBlockIndexEntry
 	var currentEntry DenseBlockDataEntry
@@ -402,7 +473,7 @@ func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos
 func (d *DenseBlock) replaceEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16, indexBytes, entryBytes []byte) {
 
 	// Shift and insert index entry
-	endOfIndex := 2 + uint32(INDEX_ENTRY_LEN)*uint32(d.getEntryCount())
+	endOfIndex := DB_HEADER_LEN + uint32(INDEX_ENTRY_LEN)*uint32(d.getEntryCount())
 
 	// Replace index.
 	//  1. Unless oldIndexPos is the last entry in the index, shift index entries:
@@ -448,11 +519,11 @@ func (d *DenseBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inclu
 func (d *DenseBlock) GetAllEntries() []*LogEntry {
 	count := d.getEntryCount()
 	entries := make([]*LogEntry, count)
-	entryPos := uint32(2 + count*INDEX_ENTRY_LEN)
+	entryPos := uint32(DB_HEADER_LEN + count*INDEX_ENTRY_LEN)
 	var indexEntry DenseBlockIndexEntry
 	var entry DenseBlockDataEntry
 	for i := uint16(0); i < count; i++ {
-		indexEntry = d.GetIndexEntry(int64(2 + i*INDEX_ENTRY_LEN))
+		indexEntry = d.GetIndexEntry(int64(DB_HEADER_LEN + i*INDEX_ENTRY_LEN))
 		entry = d.GetEntry(int64(entryPos), indexEntry.getEntryLen())
 		entries[i] = d.MakeLogEntry(indexEntry, entry)
 		entryPos += uint32(indexEntry.getEntryLen())
@@ -608,15 +679,15 @@ func NewDenseBlockIterator(block *DenseBlock) *DenseBlockIterator {
 	reader := DenseBlockIterator{
 		block: block,
 	}
-	reader.indexPtr = 2
-	reader.entryPtr = 2 + int64(block.getEntryCount())*INDEX_ENTRY_LEN
+	reader.indexPtr = DB_HEADER_LEN
+	reader.entryPtr = DB_HEADER_LEN + int64(block.getEntryCount())*INDEX_ENTRY_LEN
 	return &reader
 }
 
 // Returns current entry in the block, and moves pointers to the next entry.
 // Returns nil when at the end of the block
 func (r *DenseBlockIterator) next() *DenseBlockEntry {
-	if r.indexPtr >= 2+int64(r.block.getEntryCount())*INDEX_ENTRY_LEN {
+	if r.indexPtr >= DB_HEADER_LEN+int64(r.block.getEntryCount())*INDEX_ENTRY_LEN {
 		return nil
 	}
 	indexEntry := r.block.GetIndexEntry(r.indexPtr)
@@ -631,14 +702,14 @@ func (r *DenseBlockIterator) next() *DenseBlockEntry {
 
 // Sets pointers to the last entry in the block
 func (r *DenseBlockIterator) end() {
-	r.indexPtr = 2 + int64(r.block.getEntryCount())*INDEX_ENTRY_LEN
+	r.indexPtr = DB_HEADER_LEN + int64(r.block.getEntryCount())*INDEX_ENTRY_LEN
 	r.entryPtr = int64(len(r.block.value))
 }
 
 // Returns entry preceding the pointers, and moves pointers back.
 // Returns nil when at the start of the block
 func (r *DenseBlockIterator) previous() *DenseBlockEntry {
-	if r.indexPtr <= 2 {
+	if r.indexPtr <= DB_HEADER_LEN {
 		return nil
 	}
 	// Move pointers

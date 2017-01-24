@@ -120,6 +120,14 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 
 }
 
+func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
+
+	if bucket.spec.Auth != nil {
+		_, password, _ = bucket.spec.Auth.GetCredentials()
+	}
+	return bucket.spec.BucketName, password
+}
+
 func (bucket CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName
 }
@@ -697,8 +705,8 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 	}()
 
 	// we only support the sgbucket.Raw WriteOption at this point
-	if opt != sgbucket.Raw {
-		LogPanic("WriteOption must be sgbucket.Raw")
+	if opt != 0 && opt != sgbucket.Raw {
+		LogPanic("WriteOption must be empty or sgbucket.Raw")
 	}
 
 	// also, flags must be 0, since that is not supported by gocb
@@ -876,8 +884,32 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 }
 
 func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
-	LogPanic("Unimplemented method: PutDDoc()")
-	return nil
+
+	// Get bucket manager.  Relies on existing auth settings for bucket.
+	username, password := bucket.GetBucketCredentials()
+	manager := bucket.Bucket.Manager(username, password)
+	if manager == nil {
+		return fmt.Errorf("Unable to obtain manager for bucket %s - cannot PUT design doc %s", bucket.GetName(), docname)
+	}
+
+	sgDesignDoc, ok := value.(sgbucket.DesignDoc)
+	if !ok {
+		return fmt.Errorf("Unable to identify specified design document")
+	}
+
+	gocbDesignDoc := &gocb.DesignDocument{
+		Name:  docname,
+		Views: make(map[string]gocb.View),
+	}
+
+	for viewName, view := range sgDesignDoc.Views {
+		gocbView := gocb.View{
+			Map: view.Map,
+		}
+		gocbDesignDoc.Views[viewName] = gocbView
+	}
+
+	return manager.InsertDesignDocument(gocbDesignDoc)
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
@@ -912,4 +944,12 @@ func (bucket CouchbaseBucketGoCB) Dump() {
 func (bucket CouchbaseBucketGoCB) VBHash(docID string) uint32 {
 	LogPanic("Unimplemented method: VBHash()")
 	return 0
+}
+
+func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
+
+	if bucket.Bucket.IoRouter() != nil {
+		return uint16(bucket.Bucket.IoRouter().NumVbuckets()), nil
+	}
+	return 0, fmt.Errorf("Unable to determine vbucket count")
 }
