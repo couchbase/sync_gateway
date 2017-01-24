@@ -428,18 +428,18 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		_, ok := pr.blockCache[blockKey]
 		if ok {
 			// If it's already in the cache, only reload if it's been flagged for reload
-			if pr.pendingReload[blockKey] {
-				cachedBlock, err := pr._loadAndCacheBlock(blockListEntry)
-				if err != nil {
-					base.Warn("error calling _loadAndCacheBlock to Update cache with older blocks for key: %s.  err: %v", blockKey, err)
-				}
-				base.LogTo("ChannelIndex+", "Called _loadAndCacheBlock to Update cache with older blocks for channel:[%s] block key:[%s] cachedBlock.cas: [%d]",
-					pr.channelName,
-					blockKey,
-					cachedBlock.cas,
-				)
-				delete(pr.pendingReload, blockKey)
+			//if pr.pendingReload[blockKey] {
+			cachedBlock, err := pr._loadAndCacheBlock(blockListEntry)
+			if err != nil {
+				base.Warn("error calling _loadAndCacheBlock to Update cache with older blocks for key: %s.  err: %v", blockKey, err)
 			}
+			base.LogTo("ChannelIndex+", "Called _loadAndCacheBlock to Update cache with older blocks for channel:[%s] block key:[%s] cachedBlock.cas: [%d]",
+				pr.channelName,
+				blockKey,
+				cachedBlock.cas,
+			)
+			//delete(pr.pendingReload, blockKey)
+			//}
 		} else {
 			// Not in the cache - add it
 			cachedBlock, err := pr._loadAndCacheBlock(blockListEntry)
@@ -459,10 +459,10 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		blocksCached++
 
 		/*
-		base.LogTo("ChannelIndex+", "UpdateCache successful for channel:[%s] block key:[%s]",
-			pr.channelName,
-			blockKey,
-		)*/
+			base.LogTo("ChannelIndex+", "UpdateCache successful for channel:[%s] block key:[%s]",
+				pr.channelName,
+				blockKey,
+			)*/
 
 	}
 
@@ -484,7 +484,6 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange PartitionRange) (changes *PartitionChanges, isCached bool, err error) {
 	pr.lock.RLock()
 	defer pr.lock.RUnlock()
-
 
 	base.LogTo("ChannelIndex+", "getCachedChanges for partition [%d] channel [%s]",
 		pr.partitionNo,
@@ -598,7 +597,6 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 		pr.channelName,
 		pr.partitionNo,
 		len(pr.blockList.blocks),
-
 	)
 	return changes, true, err
 }
