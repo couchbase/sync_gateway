@@ -55,7 +55,7 @@ func TestShardedSequenceClock(t *testing.T) {
 	updateClock := NewSequenceClockImpl()
 	updateClock.SetSequence(50, 100)
 
-	shardedClock.UpdateAndWrite(updateClock)
+	shardedClock.UpdateAndWrite(updateClock.ValueAsMap())
 
 	// Validate sequence
 	postUpdateClock := shardedClock.AsClock()
@@ -76,11 +76,11 @@ func TestShardedSequenceClockCasError(t *testing.T) {
 	updateClock := NewSequenceClockImpl()
 	updateClock.SetSequence(50, 100)
 
-	shardedClock1.UpdateAndWrite(updateClock)
+	shardedClock1.UpdateAndWrite(updateClock.ValueAsMap())
 
 	updateClock2 := NewSequenceClockImpl()
 	updateClock2.SetSequence(51, 101)
-	assertNoError(t, shardedClock2.UpdateAndWrite(updateClock2), "Second update failed")
+	assertNoError(t, shardedClock2.UpdateAndWrite(updateClock2.ValueAsMap()), "Second update failed")
 
 	// Validate sequence
 	postUpdateClock := shardedClock2.AsClock()
@@ -90,7 +90,7 @@ func TestShardedSequenceClockCasError(t *testing.T) {
 	// Apply a second uipdate using the first sharded clock (which should now have invalid cas value for the partition)
 	updateClock3 := NewSequenceClockImpl()
 	updateClock3.SetSequence(51, 102)
-	shardedClock1.UpdateAndWrite(updateClock3)
+	shardedClock1.UpdateAndWrite(updateClock3.ValueAsMap())
 	// Validate sequence
 	postUpdateClock = shardedClock1.AsClock()
 	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))

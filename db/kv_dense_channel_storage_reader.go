@@ -40,7 +40,7 @@ func NewDenseStorageReader(bucket base.Bucket, channelName string, partitions *b
 // Number of blocks to store in channel cache, per partition
 const kCachedBlocksPerShard = 2
 
-func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock, changedPartitions []*PartitionRange) error {
+func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock, changedPartitions []*base.PartitionRange) error {
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(changedPartitions))
@@ -49,7 +49,7 @@ func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock
 			continue
 		}
 		wg.Add(1)
-		go func(partitionNo uint16, partitionRange *PartitionRange) {
+		go func(partitionNo uint16, partitionRange *base.PartitionRange) {
 			defer wg.Done()
 			reader := ds.getPartitionStorageReader(partitionNo)
 			if reader == nil {
@@ -140,10 +140,10 @@ func (ds *DenseStorageReader) _newPartitionStorageReader(partitionNo uint16) (pa
 
 // calculateChangedPartitions identifies which vbuckets have changed after sinceClock until toClock, groups these
 // by partition, and returns as a array of PartitionRanges, indexed by partition number.
-func (ds *DenseStorageReader) calculateChanged(sinceClock, toClock base.SequenceClock) (changedVbs []uint16, changedPartitions []*PartitionRange) {
+func (ds *DenseStorageReader) calculateChanged(sinceClock, toClock base.SequenceClock) (changedVbs []uint16, changedPartitions []*base.PartitionRange) {
 
 	changedVbs = make([]uint16, 0)
-	changedPartitions = make([]*PartitionRange, ds.partitions.PartitionCount())
+	changedPartitions = make([]*base.PartitionRange, ds.partitions.PartitionCount())
 	for vbNoInt, toSeq := range toClock.Value() {
 		vbNo := uint16(vbNoInt)
 		sinceSeq := sinceClock.GetSequence(vbNo)
@@ -151,7 +151,7 @@ func (ds *DenseStorageReader) calculateChanged(sinceClock, toClock base.Sequence
 			changedVbs = append(changedVbs, vbNo)
 			partitionNo := ds.partitions.PartitionForVb(vbNo)
 			if changedPartitions[partitionNo] == nil {
-				partitionRange := NewPartitionRange()
+				partitionRange := base.NewPartitionRange()
 				changedPartitions[partitionNo] = &partitionRange
 			}
 			changedPartitions[partitionNo].SetRange(vbNo, sinceSeq, toSeq)
@@ -219,7 +219,7 @@ func NewDensePartitionStorageReaderNonCaching(channelName string, partitionNo ui
 	return storage
 }
 
-func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange PartitionRange) (*PartitionChanges, error) {
+func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange base.PartitionRange) (*PartitionChanges, error) {
 
 	changes := NewPartitionChanges()
 
@@ -249,9 +249,9 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange Partit
 				break
 			}
 			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
-			case PartitionRangeAfter:
+			case base.PartitionRangeAfter:
 				break // We've exceeded the range - return
-			case PartitionRangeWithin:
+			case base.PartitionRangeWithin:
 				changes.AddEntry(blockEntry.MakeLogEntry())
 			}
 		}
@@ -259,7 +259,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange Partit
 	return changes, nil
 }
 
-func (r *DensePartitionStorageReaderNonCaching) GetBlockListForRange(partitionRange PartitionRange) *DenseBlockList {
+func (r *DensePartitionStorageReaderNonCaching) GetBlockListForRange(partitionRange base.PartitionRange) *DenseBlockList {
 
 	// Initialize the block list, by loading all block list docs until we get one with
 	// a starting clock earlier than the partitionRange start.
@@ -285,15 +285,16 @@ func (l *DenseBlockList) LoadBlock(listEntry DenseBlockListEntry) *DenseBlock {
 }
 
 type DensePartitionStorageReader struct {
-	channelName       string                 // Channel name
-	partitionNo       uint16                 // Partition number
-	indexBucket       base.Bucket            // Index bucket
-	blockList         *DenseBlockList        // Cached block list
-	blockCache        map[string]*DenseBlock // Cached blocks
-	lock              sync.RWMutex           // Storage reader lock
-	validFrom         PartitionClock         // Reader cache is valid from this clock
-	pendingReload     map[string]bool        // Set of blocks to be reloaded in next poll
-	pendingReloadLock sync.Mutex             // Allow holders of lock.RLock to update pendingReload
+	channelName          string                 // Channel name
+	partitionNo          uint16                 // Partition number
+	indexBucket          base.Bucket            // Index bucket
+	blockList            *DenseBlockList        // Cached block list
+	blockCache           map[string]*DenseBlock // Cached blocks
+	activeCachedBlockKey string                 // Latest block cached
+	lock                 sync.RWMutex           // Storage reader lock
+	validFrom            base.PartitionClock    // Reader cache is valid from this clock
+	pendingReload        map[string]bool        // Set of blocks to be reloaded in next poll
+	pendingReloadLock    sync.Mutex             // Allow holders of lock.RLock to update pendingReload
 }
 
 func NewDensePartitionStorageReader(channelName string, partitionNo uint16, indexBucket base.Bucket) *DensePartitionStorageReader {
@@ -309,17 +310,19 @@ func NewDensePartitionStorageReader(channelName string, partitionNo uint16, inde
 // GetChanges attempts to return results from the cached changes.  If the cache doesn't satisfy the specified range,
 // retrieves from the index.  Note: currently no writeback of indexed retrieval into the cache - cache is only updated
 // during UpdateCache()
-func (pr *DensePartitionStorageReader) GetChanges(partitionRange PartitionRange) (*PartitionChanges, error) {
+func (pr *DensePartitionStorageReader) GetChanges(partitionRange base.PartitionRange) (*PartitionChanges, error) {
 
 	changes, cacheOk, err := pr.getCachedChanges(partitionRange)
 	if err != nil {
 		return nil, err
 	}
 	if cacheOk {
+		base.LogTo("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
 		return changes, nil
 	}
 
 	// Cache didn't cover the partition range - retrieve from the index
+	base.LogTo("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
 	return pr.getIndexedChanges(partitionRange)
 
 }
@@ -333,6 +336,11 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		pr.blockList = NewDenseBlockListReader(pr.channelName, pr.partitionNo, pr.indexBucket)
 		if pr.blockList == nil {
 			return errors.New("Unable to initialize block list")
+		}
+	} else {
+		pr.blockList.loadDenseBlockList()
+		for _, block := range pr.blockList.blocks {
+			base.LogTo("Cache+", "block valid from: %v", block.StartClock)
 		}
 	}
 
@@ -355,35 +363,38 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	// cacheKeySet tracks the blocks that should be in the cache - used for cache expiry, below
 	cacheKeySet := make(map[string]bool)
 
-	// Reload the active block
-	activeBlockEntry := pr.blockList.blocks[blockCount-1]
-	_, err := pr._loadAndCacheBlock(activeBlockEntry)
-	cacheKeySet[activeBlockEntry.Key(pr.blockList)] = true
+	// Reload the active block first
+	blockListEntry := pr.blockList.ActiveListEntry()
+	base.LogTo("Cache+", "Reloading active block: %s", blockListEntry.Key(pr.blockList))
+	activeBlockKey := blockListEntry.Key(pr.blockList)
+	_, err := pr._loadAndCacheBlock(blockListEntry)
+	cacheKeySet[blockListEntry.Key(pr.blockList)] = true
 	if err != nil {
 		return err
 	}
-	pr.validFrom = activeBlockEntry.StartClock
+	pr.validFrom = blockListEntry.StartClock
 
 	// Update cache with older blocks, up to numBlocks, when present.
 	blocksCached := 1
 	for blocksCached < numBlocks {
-		blockIndex := blockCount - blocksCached
-		if blockIndex < 0 {
+		blockListEntry, err = pr.blockList.PreviousBlock(blockListEntry.BlockIndex)
+		if blockListEntry == nil {
 			// We've hit the end of the block list before reaching num blocks - we're done.
 			break
 		}
-		blockListEntry := pr.blockList.blocks[blockIndex]
 		blockKey := blockListEntry.Key(pr.blockList)
 
 		_, ok := pr.blockCache[blockKey]
 		if ok {
-			// If it's already in the cache, only reload if it's been flagged for reload
-			if pr.pendingReload[blockKey] {
+			// If it's already in the cache, reload if it was the previous active block, or it's been flagged for reload
+			if blockKey == pr.activeCachedBlockKey || pr.pendingReload[blockKey] {
+				base.LogTo("Cache+", "Reloading older block: %s", blockListEntry.Key(pr.blockList))
 				pr._loadAndCacheBlock(blockListEntry)
 				delete(pr.pendingReload, blockKey)
 			}
 		} else {
 			// Not in the cache - add it
+			base.LogTo("Cache+", "Adding older block to the cache: %s", blockListEntry.Key(pr.blockList))
 			pr._loadAndCacheBlock(blockListEntry)
 		}
 		cacheKeySet[blockKey] = true
@@ -397,12 +408,15 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 			delete(pr.blockCache, key)
 		}
 	}
+
+	// Update the active block key
+	pr.activeCachedBlockKey = activeBlockKey
 	return nil
 }
 
 // GetCachedChanges attempts to retrieve changes for the specified range using cached data.  If cache isn't
 // sufficient for the range, returns isCached=false and callers should call getIndexChanges
-func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange PartitionRange) (changes *PartitionChanges, isCached bool, err error) {
+func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange base.PartitionRange) (changes *PartitionChanges, isCached bool, err error) {
 	pr.lock.RLock()
 	defer pr.lock.RUnlock()
 
@@ -447,9 +461,9 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 				break
 			}
 			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
-			case PartitionRangeAfter:
+			case base.PartitionRangeAfter:
 			// Possible when processing the most recent block in the range, when block is ahead of stable seq
-			case PartitionRangeWithin:
+			case base.PartitionRangeWithin:
 				// Deduplication check
 				docIdString := string(blockEntry.getDocId())
 				if keySet[docIdString] {
@@ -458,7 +472,7 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange Partition
 					blockChanges.AddEntry(blockEntry.MakeLogEntryWithDocId(docIdString))
 					keySet[docIdString] = true
 				}
-			case PartitionRangeBefore:
+			case base.PartitionRangeBefore:
 				// Expected when processing the oldest block in the range.  Don't include in set
 			}
 		}
@@ -485,7 +499,7 @@ func (pr *DensePartitionStorageReader) notifyDuplicateFound(blockKey string) {
 }
 
 // GetIndexedChanges retrieves changes directly from the index.
-func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange PartitionRange) (changes *PartitionChanges, err error) {
+func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.PartitionRange) (changes *PartitionChanges, err error) {
 
 	// Initialize block list
 	blockList := NewDenseBlockListReader(pr.channelName, pr.partitionNo, pr.indexBucket)
@@ -517,9 +531,9 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange Partitio
 				break
 			}
 			switch compare := partitionRange.Compare(blockEntry.getVbNo(), blockEntry.getSequence()); compare {
-			case PartitionRangeAfter:
+			case base.PartitionRangeAfter:
 				// Possible when processing the most recent block in the range
-			case PartitionRangeWithin:
+			case base.PartitionRangeWithin:
 				// Deduplication check
 				docIdString := string(blockEntry.getDocId())
 				if keySet[docIdString] {
@@ -528,7 +542,7 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange Partitio
 					blockChanges.AddEntry(blockEntry.MakeLogEntryWithDocId(docIdString))
 					keySet[docIdString] = true
 				}
-			case PartitionRangeBefore:
+			case base.PartitionRangeBefore:
 				// Expected when processing the oldest block in the range.  Don't include in set
 			}
 		}
@@ -544,7 +558,7 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange Partitio
 }
 
 // Loads a block and adds to cache.  Callers must hold pr.lock.Lock()
-func (pr *DensePartitionStorageReader) _loadAndCacheBlock(listEntry DenseBlockListEntry) (*DenseBlock, error) {
+func (pr *DensePartitionStorageReader) _loadAndCacheBlock(listEntry *DenseBlockListEntry) (*DenseBlock, error) {
 	blockKey := listEntry.Key(pr.blockList)
 	block, err := pr.loadBlock(blockKey, listEntry.StartClock)
 	if err != nil {
@@ -566,7 +580,7 @@ func (pr *DensePartitionStorageReader) _getCachedBlock(key string) (*DenseBlock,
 }
 
 // Loads a block from the index bucket
-func (pr *DensePartitionStorageReader) loadBlock(key string, startClock PartitionClock) (*DenseBlock, error) {
+func (pr *DensePartitionStorageReader) loadBlock(key string, startClock base.PartitionClock) (*DenseBlock, error) {
 
 	block := NewDenseBlock(key, startClock)
 	err := block.loadBlock(pr.indexBucket)

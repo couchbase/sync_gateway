@@ -15,6 +15,7 @@ const (
 	LogEntryDocument = LogEntryType(iota)
 	LogEntryPrincipal
 	LogEntryCheckpoint
+	LogEntryRollback
 )
 
 type LogEntry struct {

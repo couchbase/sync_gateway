@@ -445,6 +445,41 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 	return
 }
 
+func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp int, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {
+
+	// If there's an incoming value, attempt to write with that first
+	if value != nil {
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, 0)
+		if err == nil {
+			return casOut, nil
+		}
+	}
+
+	for {
+		var currentValue interface{}
+		cas, err := bucket.Get(key, &currentValue)
+		if err != nil {
+			Warn("WriteCasJSON got error when calling Get:", err)
+			return 0, err
+		}
+		updatedValue, err := callback(currentValue)
+		if err != nil {
+			Warn("WriteCasJSON got error when calling callback:", err)
+			return 0, err
+		}
+		if updatedValue == nil {
+			// callback returned empty value - cancel write
+			return cas, nil
+		}
+		casOut, err := bucket.WriteCas(key, 0, exp, cas, updatedValue, 0)
+		if err != nil {
+			// CAS failure - reload block for another try
+		} else {
+			return casOut, nil
+		}
+	}
+}
+
 func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
 
 	// If there's an incoming value, attempt to write with that first

@@ -18,9 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-const (
-	MaxBlockSize = 10000 // Maximum size of index block, in bytes
-)
+var MaxBlockSize = 10000 // Maximum size of index block, in bytes
 
 // DenseBlock stores a collection of LogEntries for a channel.  Entries which are added to a DenseBlock are
 // appended to existing entries.  A DenseBlock is considered 'full' when the size of the block exceeds
@@ -36,14 +34,14 @@ const (
 // a new entry is added to entries to store key/revId/flags, and entry count is incremented.
 
 type DenseBlock struct {
-	Key        string         // Key of block document in the index bucket
-	value      []byte         // Binary storage of block data, in the above format
-	cas        uint64         // Document cas
-	clock      PartitionClock // Highest seq per vbucket written to the block
-	startClock PartitionClock // Starting clock for the block (partition clock for all previous blocks)
+	Key        string              // Key of block document in the index bucket
+	value      []byte              // Binary storage of block data, in the above format
+	cas        uint64              // Document cas
+	clock      base.PartitionClock // Highest seq per vbucket written to the block
+	startClock base.PartitionClock // Starting clock for the block (partition clock for all previous blocks)
 }
 
-func NewDenseBlock(key string, startClock PartitionClock) *DenseBlock {
+func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 
 	// Set initial capacity of value to handle ~5 docs (depending on key length) - avoids a lot of
 	// alloc overhead when the first few entries in the channel are appended (since append only
@@ -68,7 +66,7 @@ func (d *DenseBlock) setEntryCount(count uint16) {
 	binary.BigEndian.PutUint16(d.value[0:2], count)
 }
 
-func (d *DenseBlock) getClock() PartitionClock {
+func (d *DenseBlock) getClock() base.PartitionClock {
 	if d.clock == nil {
 		d.initClock()
 	}
@@ -77,9 +75,9 @@ func (d *DenseBlock) getClock() PartitionClock {
 
 // Get CumulativeClock returns the full clock for the partition:
 // the starting clock for this block, plus any changes made in this block
-func (d *DenseBlock) getCumulativeClock() PartitionClock {
+func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
-	cumulativeClock.Add(d.clock)
+	cumulativeClock.Set(d.clock)
 	return cumulativeClock
 }
 
@@ -93,7 +91,7 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
 	// Initialize clock
-	d.clock = make(PartitionClock)
+	d.clock = make(base.PartitionClock)
 
 	var indexEntry DenseBlockIndexEntry
 	for i := 0; i < int(d.getEntryCount()); i++ {
@@ -103,7 +101,7 @@ func (d *DenseBlock) initClock() {
 }
 
 // Adds entries to block and writes block to the bucket
-func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
+func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
@@ -150,10 +148,10 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 //  overflow        Entries that didn't fit in the block
 //  pendingRemoval  Entries with a parent that needs to be removed from the index,
 //                  but the parent isn't in this block
-func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock PartitionClock, err error) {
+func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	blockFull := false
-	partitionClock := make(PartitionClock)
+	partitionClock := make(base.PartitionClock)
 	for i, entry := range entries {
 		if !blockFull {
 			removalRequired, err := d.addEntry(entry)
@@ -264,6 +262,42 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 	return pendingRemoval, nil
 }
 
+// Removes all entries greater than vb, seq from the block.  Returns rollbackComplete=true if it finds a seq
+// in the block for the vbucket where seq <= rollbackSeq
+func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket base.Bucket) (rollbackComplete bool, err error) {
+
+	numRemoved := 0
+	numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
+
+	// If nothing was removed, don't update the block
+	if numRemoved == 0 {
+		return rollbackComplete, nil
+	}
+
+	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
+		// Note: The following is invoked upon cas failure - may be called multiple times
+		d.value = value
+		d.clock = nil
+		numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
+
+		// If nothing was removed, cancel the write
+		if numRemoved == 0 {
+			return nil, nil
+		}
+		return d.value, nil
+	})
+	if writeErr != nil {
+		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		return true, writeErr
+	}
+	d.cas = casOut
+	if numRemoved > 0 {
+		base.LogTo("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
+			d.Key, numRemoved, rollbackComplete)
+	}
+	return rollbackComplete, nil
+}
+
 // MarkInactive - apply any changes required when block stops being the active block
 func (d *DenseBlock) MarkInactive() error {
 	// TODO: set a flag on the block to indicate it's inactive, for concurrency purposes?
@@ -292,6 +326,39 @@ func (d *DenseBlock) removeEntries(entries []*LogEntry) []*LogEntry {
 	}
 	return notRemoved
 
+}
+
+// Rollback removes any entries in the block for the vbucket greater than the specified sequence
+func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, rollbackComplete bool) {
+
+	// Work backwards through the block, removing entries greater than vbNo, seq
+	indexPos := 2 + uint32(d.getEntryCount()-1)*INDEX_ENTRY_LEN
+	entryPos := uint32(len(d.value))
+
+	for {
+		indexEntry := d.GetIndexEntry(int64(indexPos))
+		entryPos -= uint32(indexEntry.getEntryLen())
+		if indexEntry.getVbNo() == vbNo {
+			if indexEntry.getSequence() > seq {
+				d.removeEntry(indexPos, entryPos, indexEntry.getEntryLen())
+				entryPos -= INDEX_ENTRY_LEN // Move entryPos to account for the removed index entry
+				numRemoved++
+			} else {
+				rollbackComplete = true
+				break
+			}
+		}
+
+		// Move to previous
+		if indexPos <= 2 {
+			// Reached the beginning of the block, need to continue to the next block
+			rollbackComplete = false
+			break
+		}
+		indexPos -= INDEX_ENTRY_LEN
+	}
+
+	return numRemoved, rollbackComplete
 }
 
 // removeEntry

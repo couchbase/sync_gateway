@@ -238,6 +238,84 @@ func TestDenseBlockRemovalByKey(t *testing.T) {
 
 }
 
+func TestDenseBlockRollbackTo(t *testing.T) {
+	base.EnableLogKey("ChannelStorage")
+	base.EnableLogKey("ChannelStorage+")
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	block := NewDenseBlock("block1", nil)
+
+	// Inserts the following entries:
+	// [0,1] [1,2] [2,3] [0,4] [1,5] [2,6] [0,7] [1,8] [2,9] [0,10]
+	entries := make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		sequence := i + 1
+		vbNo := i % 3 // mix up the vbuckets
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", vbNo, sequence, IsNotRemoval, IsAdded)
+	}
+	overflow, pendingRemoval, _, err := block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(10))
+
+	foundEntries := block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 10)
+	assertLogEntry(t, foundEntries[0], "doc0", "1-abc", 0, 1)
+	assertLogEntry(t, foundEntries[1], "doc1", "1-abc", 1, 2)
+	assertLogEntry(t, foundEntries[2], "doc2", "1-abc", 2, 3)
+	assertLogEntry(t, foundEntries[3], "doc3", "1-abc", 0, 4)
+	assertLogEntry(t, foundEntries[4], "doc4", "1-abc", 1, 5)
+	assertLogEntry(t, foundEntries[5], "doc5", "1-abc", 2, 6)
+	assertLogEntry(t, foundEntries[6], "doc6", "1-abc", 0, 7)
+	assertLogEntry(t, foundEntries[7], "doc7", "1-abc", 1, 8)
+	assertLogEntry(t, foundEntries[8], "doc8", "1-abc", 2, 9)
+	assertLogEntry(t, foundEntries[9], "doc9", "1-abc", 0, 10)
+
+	// Rollback should complete in this block
+	rollbackComplete, err := block.RollbackTo(2, 5, indexBucket)
+	assertNoError(t, err, "Error rolling back")
+	assert.Equals(t, rollbackComplete, true)
+	assert.Equals(t, block.getEntryCount(), uint16(8))
+
+	foundEntries = block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 8)
+	assertLogEntry(t, foundEntries[0], "doc0", "1-abc", 0, 1)
+	assertLogEntry(t, foundEntries[1], "doc1", "1-abc", 1, 2)
+	assertLogEntry(t, foundEntries[2], "doc2", "1-abc", 2, 3)
+	assertLogEntry(t, foundEntries[3], "doc3", "1-abc", 0, 4)
+	assertLogEntry(t, foundEntries[4], "doc4", "1-abc", 1, 5)
+	assertLogEntry(t, foundEntries[5], "doc6", "1-abc", 0, 7)
+	assertLogEntry(t, foundEntries[6], "doc7", "1-abc", 1, 8)
+	assertLogEntry(t, foundEntries[7], "doc9", "1-abc", 0, 10)
+
+	// Rollback should NOT complete in this block (haven't seen a sequence earlier than 1 in vb 1)
+	rollbackComplete, err = block.RollbackTo(1, 1, indexBucket)
+	assertNoError(t, err, "Error rolling back")
+	assert.Equals(t, rollbackComplete, false)
+	assert.Equals(t, block.getEntryCount(), uint16(5))
+
+	foundEntries = block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 5)
+	assertLogEntry(t, foundEntries[0], "doc0", "1-abc", 0, 1)
+	assertLogEntry(t, foundEntries[1], "doc2", "1-abc", 2, 3)
+	assertLogEntry(t, foundEntries[2], "doc3", "1-abc", 0, 4)
+	assertLogEntry(t, foundEntries[3], "doc6", "1-abc", 0, 7)
+	assertLogEntry(t, foundEntries[4], "doc9", "1-abc", 0, 10)
+
+	// Remove the first entry, make sure nothing breaks
+	rollbackComplete, err = block.RollbackTo(0, 0, indexBucket)
+	assertNoError(t, err, "Error rolling back")
+	assert.Equals(t, rollbackComplete, false)
+	assert.Equals(t, block.getEntryCount(), uint16(1))
+
+	foundEntries = block.GetAllEntries()
+	assert.Equals(t, len(foundEntries), 1)
+	assertLogEntry(t, foundEntries[0], "doc2", "1-abc", 2, 3)
+
+}
+
 func DisableTestDenseBlockOverflow(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	indexBucket := testIndexBucket()
@@ -573,12 +651,12 @@ func TestCalculateChangedPartitions(t *testing.T) {
 			assertTrue(t, partition == 0 || partition == 6 || partition == 12, "Unexpected changed partition")
 		}
 	}
-	assert.Equals(t, changedPartitions[0].GetSequenceRange(0).since, uint64(0))
-	assert.Equals(t, changedPartitions[6].GetSequenceRange(100).since, uint64(0))
-	assert.Equals(t, changedPartitions[12].GetSequenceRange(200).since, uint64(0))
-	assert.Equals(t, changedPartitions[0].GetSequenceRange(0).to, uint64(5))
-	assert.Equals(t, changedPartitions[6].GetSequenceRange(100).to, uint64(10))
-	assert.Equals(t, changedPartitions[12].GetSequenceRange(200).to, uint64(15))
+	assert.Equals(t, changedPartitions[0].GetSequenceRange(0).Since, uint64(0))
+	assert.Equals(t, changedPartitions[6].GetSequenceRange(100).Since, uint64(0))
+	assert.Equals(t, changedPartitions[12].GetSequenceRange(200).Since, uint64(0))
+	assert.Equals(t, changedPartitions[0].GetSequenceRange(0).To, uint64(5))
+	assert.Equals(t, changedPartitions[6].GetSequenceRange(100).To, uint64(10))
+	assert.Equals(t, changedPartitions[12].GetSequenceRange(200).To, uint64(15))
 	assert.Equals(t, changedPartitionCount, 3)
 
 }
@@ -591,16 +669,10 @@ func getClockForMap(values map[uint16]uint64) base.SequenceClock {
 	return clock
 }
 
-func makePartitionClock(vbNos []uint16, sequences []uint64) PartitionClock {
-	clock := make(PartitionClock, len(vbNos))
+func makePartitionClock(vbNos []uint16, sequences []uint64) base.PartitionClock {
+	clock := make(base.PartitionClock, len(vbNos))
 	for i := 0; i < len(vbNos); i++ {
 		clock[vbNos[i]] = sequences[i]
 	}
 	return clock
-}
-
-func (c PartitionClock) incrementPartitionClock(count uint64) {
-	for key, value := range c {
-		c[key] = value + count
-	}
 }
