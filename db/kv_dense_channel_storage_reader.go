@@ -38,7 +38,7 @@ func NewDenseStorageReader(bucket base.Bucket, channelName string, partitions *b
 }
 
 // Number of blocks to store in channel cache, per partition
-const kCachedBlocksPerShard = 2
+const kCachedBlocksPerShard = 5
 
 func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock, changedPartitions []*PartitionRange) error {
 
