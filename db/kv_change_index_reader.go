@@ -28,6 +28,8 @@ var indexReaderPollPrincipalsCount expvar.Int
 var indexReaderPollPrincipalsTime base.DebugIntMeanVar
 var indexReaderGetChangesTime base.DebugIntMeanVar
 var indexReaderGetChangesCount expvar.Int
+var indexReaderGetChangesUseCached expvar.Int
+var indexReaderGetChangesUseIndexed expvar.Int
 
 type kvChangeIndexReader struct {
 	indexReadBucket           base.Bucket                // Index bucket
@@ -55,6 +57,8 @@ func init() {
 	base.StatsExpvars.Set("indexReader.pollPrincipals.Count", &indexReaderPollPrincipalsCount)
 	base.StatsExpvars.Set("indexReader.getChanges.Time", &indexReaderGetChangesTime)
 	base.StatsExpvars.Set("indexReader.getChanges.Count", &indexReaderGetChangesCount)
+	base.StatsExpvars.Set("indexReader.getChanges.UseCached", &indexReaderGetChangesUseCached)
+	base.StatsExpvars.Set("indexReader.getChanges.UseIndexed", &indexReaderGetChangesUseIndexed)
 }
 
 func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc) (err error) {

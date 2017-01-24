@@ -319,11 +319,13 @@ func (pr *DensePartitionStorageReader) GetChanges(partitionRange base.PartitionR
 	}
 	if cacheOk {
 		base.LogTo("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+		indexReaderGetChangesUseCached.Add(1)
 		return changes, nil
 	}
 
 	// Cache didn't cover the partition range - retrieve from the index
 	base.LogTo("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+	indexReaderGetChangesUseIndexed.Add(1)
 	return pr.getIndexedChanges(partitionRange)
 
 }
