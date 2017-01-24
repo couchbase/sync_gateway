@@ -889,7 +889,7 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 	username, password := bucket.GetBucketCredentials()
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
-		return fmt.Errorf("Unable to obtain manager for bucket %s - cannot initialize view", bucket.GetName())
+		return fmt.Errorf("Unable to obtain manager for bucket %s - cannot PUT design doc %s", bucket.GetName(), docname)
 	}
 
 	sgDesignDoc, ok := value.(sgbucket.DesignDoc)

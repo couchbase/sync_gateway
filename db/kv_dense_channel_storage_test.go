@@ -290,7 +290,8 @@ func TestDenseBlockRollbackTo(t *testing.T) {
 	assertLogEntry(t, foundEntries[6], "doc7", "1-abc", 1, 8)
 	assertLogEntry(t, foundEntries[7], "doc9", "1-abc", 0, 10)
 
-	// Rollback should NOT complete in this block (haven't seen a sequence earlier than 1 in vb 1)
+	// Rollback should NOT complete in this block, because we don't see a sequence value earlier than
+	// rollback value in this block (haven't seen a sequence earlier than 1 in vb 1)
 	rollbackComplete, err = block.RollbackTo(1, 1, indexBucket)
 	assertNoError(t, err, "Error rolling back")
 	assert.Equals(t, rollbackComplete, false)

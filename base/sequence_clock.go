@@ -285,6 +285,7 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 			//  implementation - could consider removing for performance
 			currentSequence := c.value[vb]
 			if sequence < currentSequence {
+				// TODO: Return error instead of panic, to allow callers to handle and support better error reporting
 				panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vb, currentSequence, sequence))
 			}
 			c.value[vb] = sequence
@@ -299,6 +300,7 @@ func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*Partiti
 			for vbNo, seq := range *partitionClock {
 				if seq > 0 {
 					if seq < c.value[vbNo] && !allowRollback {
+						// TODO: Return error instead of panic, to allow callers to handle and support better error reporting
 						panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq))
 					}
 					c.value[vbNo] = seq
@@ -521,6 +523,7 @@ type IndexablePartitionClockStorage struct {
 	Seqs    []uint64 `json:"seq"`
 }
 
+// Updates the storage to match the specified clock.  Resets the storage slices to avoid re-allocation GC.
 func (s *IndexablePartitionClockStorage) update(clock PartitionClock) {
 	s.VbNos = s.VbNos[:0]
 	s.Seqs = s.Seqs[:0]
@@ -531,7 +534,6 @@ func (s *IndexablePartitionClockStorage) update(clock PartitionClock) {
 }
 
 func (i *IndexablePartitionClock) MarshalJSON() ([]byte, error) {
-	// Reset storage (without re-alloc)
 	i.storage.update(i.PartitionClock)
 	return json.Marshal(i.storage)
 }
@@ -627,7 +629,7 @@ type SequenceRange struct {
 // PartitionRange is a pair of clocks defining a range of sequences with a partition.
 // Defines helper functions for range comparison
 type PartitionRange struct {
-	seqRanges map[uint16]SequenceRange
+	seqRanges map[uint16]SequenceRange // SequenceRanges, indexed by vbNo
 }
 
 func NewPartitionRange() PartitionRange {
