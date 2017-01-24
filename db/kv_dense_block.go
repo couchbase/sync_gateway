@@ -18,9 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-const (
-	MaxBlockSize = 10000 // Maximum size of index block, in bytes
-)
+var MaxBlockSize = 10000 // Maximum size of index block, in bytes
 
 // DenseBlock stores a collection of LogEntries for a channel.  Entries which are added to a DenseBlock are
 // appended to existing entries.  A DenseBlock is considered 'full' when the size of the block exceeds
@@ -79,7 +77,7 @@ func (d *DenseBlock) getClock() base.PartitionClock {
 // the starting clock for this block, plus any changes made in this block
 func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
-	cumulativeClock.Add(d.clock)
+	cumulativeClock.Set(d.clock)
 	return cumulativeClock
 }
 
