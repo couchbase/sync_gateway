@@ -299,10 +299,11 @@ type DensePartitionStorageReader struct {
 
 func NewDensePartitionStorageReader(channelName string, partitionNo uint16, indexBucket base.Bucket) *DensePartitionStorageReader {
 	storage := &DensePartitionStorageReader{
-		channelName: channelName,
-		partitionNo: partitionNo,
-		indexBucket: indexBucket,
-		blockCache:  make(map[string]*DenseBlock),
+		channelName:   channelName,
+		partitionNo:   partitionNo,
+		indexBucket:   indexBucket,
+		blockCache:    make(map[string]*DenseBlock),
+		pendingReload: make(map[string]bool),
 	}
 	return storage
 }
@@ -450,7 +451,7 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange base.Part
 		if !ok {
 			base.Warn("Unexpected missing block from partition cache. blockKey:[%s] block startClock:[%s] cache validFrom:[%s]",
 				blockKey, blockListEntry.StartClock.String(), pr.validFrom.String())
-			return nil, true, nil
+			return nil, false, nil
 		}
 		blockIter := NewDenseBlockIterator(currBlock)
 		blockChanges := NewPartitionChanges()
