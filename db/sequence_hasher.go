@@ -241,12 +241,13 @@ func (s *sequenceHasher) GetClock(sequence string) (base.SequenceClock, error) {
 	}
 
 	cachedValue := s.getCacheValue(seqHash.hashValue)
-	storedClocks, loadErr := cachedValue.load(s.loadClocks)
+	storedClocks, loadErr := cachedValue.loadForIndex(s.loadClocks, seqHash.collisionIndex)
 	if loadErr != nil {
 		return clock, loadErr
 	}
 
 	if uint16(len(storedClocks.Sequences)) <= seqHash.collisionIndex {
+		base.LogTo("Changes+", "Stored hash not found for sequence [%s] collision index [%d], #storedClocks:%d", sequence, seqHash.collisionIndex, len(storedClocks.Sequences))
 		return clock, errors.New(fmt.Sprintf("Stored hash not found for sequence [%s], returning zero clock", sequence))
 	}
 	clock = base.NewSequenceClockImpl()
@@ -298,6 +299,24 @@ func (value *hashCacheValue) load(loaderFunc SeqHashCacheLoaderFunc) (*storedClo
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	if value.clocks == nil {
+		IndexExpvars.Add("seqHashCache_misses", 1)
+		value.clocks, value.err = loaderFunc(value.key)
+	} else {
+		IndexExpvars.Add("seqHashCacheCache_hits", 1)
+	}
+
+	// return a copy to ensure cache values don't get mutated outside of a hashCacheValue.store
+	return value.clocks.Copy(), value.err
+}
+
+// Gets the stored clocks out of a hashCacheValue, targeting a specific collision index.
+// If the targeted index is not found, will attempt to load from the index bucket
+func (value *hashCacheValue) loadForIndex(loaderFunc SeqHashCacheLoaderFunc, collisionIndex uint16) (*storedClocks, error) {
+	value.lock.Lock()
+	defer value.lock.Unlock()
+
+	// If clocks haven't been cached, or cache doesn't include target index, reload
+	if value.clocks == nil || collisionIndex >= uint16(len(value.clocks.Sequences)) {
 		IndexExpvars.Add("seqHashCache_misses", 1)
 		value.clocks, value.err = loaderFunc(value.key)
 	} else {
