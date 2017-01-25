@@ -22,7 +22,7 @@ var cachedHashes = map[string]struct{}{}
 var cacheLock sync.Mutex
 
 // The maximum number of pairs to keep in the above cache
-const kMaxCacheSize = 10000
+const kMaxCacheSize = 25000
 
 // Optimized wrapper around bcrypt.CompareHashAndPassword that caches successful results in
 // memory to avoid the _very_ high overhead of calling bcrypt.
