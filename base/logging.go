@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 	"net/http"
+	"github.com/couchbase/goutils/logging"
 )
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
@@ -49,7 +50,7 @@ const (
 	FatalLevel
 )
 
-// SgLevel returns a compatible internal SyncGateway Log Level for
+// sgLevel returns a compatible internal SyncGateway Log Level for
 // the given logging config Level
 // The mapping is:
 //
@@ -65,6 +66,35 @@ const (
 // to round to nearest int sgLevel value
 func (l Level) sgLevel() int {
 	return int(math.Ceil(float64(l + 2) / float64(2)))
+}
+
+// cgLevel returns a compatible go-couchbase/golog Log Level for
+// the given logging config Level
+// The mapping is:
+//
+// DebugLevel	-1 --> 7
+// InfoLevel 	 0 --> 4
+// WarnLevel 	 1 --> 3
+// ErrorLevel 	 2 --> 2
+// PanicLevel 	 3 --> 1
+// FatalLevel 	 4 --> 0
+func (l Level) cgLevel() logging.Level {
+	switch l {
+	case DebugLevel:
+		return logging.DEBUG
+	case InfoLevel:
+		return logging.INFO
+	case WarnLevel:
+		return logging.WARN
+	case ErrorLevel:
+		return logging.ERROR
+	case PanicLevel:
+		return logging.SEVERE
+	case FatalLevel:
+		return logging.SEVERE
+	default:
+		return logging.NONE
+	}
 }
 
 // String returns a lower-case ASCII representation of the log level.
@@ -541,6 +571,10 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 
 		//Update sg_replicate logger to use rolling logger
 		clog.SetOutput(&lj)
+
+		//Update go-couchbase to use rolling logger
+		gcblogger := logging.NewLogger(&lj, logConfig.LogLevel.cgLevel(), logging.TEXTFORMATTER)
+		logging.SetLogger(gcblogger)
 	}
 }
 
