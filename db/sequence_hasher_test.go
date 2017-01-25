@@ -34,6 +34,17 @@ func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
 
 }
 
+func testSequenceHasherForBucket(bucket base.Bucket, size uint8, expiry uint32) (*sequenceHasher, error) {
+
+	options := &SequenceHashOptions{
+		Bucket: bucket,
+		Size:   size,
+		Expiry: &expiry,
+	}
+
+	return NewSequenceHasher(options)
+}
+
 func TestHashCalculation(t *testing.T) {
 	// Create a hasher with a small range (0-256) for testing
 	seqHasher, err := testSequenceHasher(8, 0)
@@ -125,6 +136,29 @@ func TestHashStorage(t *testing.T) {
 	assert.Equals(t, missingClock.GetSequence(50), uint64(0))
 	assert.Equals(t, missingClock.GetSequence(80), uint64(0))
 	assert.Equals(t, missingClock.GetSequence(150), uint64(0))
+
+	// Create a different hasher (simulates another SG node) that creates a collision
+	seqHasher2, err := testSequenceHasherForBucket(seqHasher.bucket, 8, 0)
+	assertNoError(t, err, "Error creating second sequence hasher")
+
+	// Add a fourth clock that hashes to the same value via the new hasher
+	fourthClock := base.NewSequenceClockImpl()
+	fourthClock.SetSequence(50, 80)
+	fourthClock.SetSequence(80, 40)
+	fourthClock.SetSequence(150, 150)
+	fourthClock.SetSequence(300, 256)
+	hashValue, err = seqHasher2.GetHash(fourthClock)
+	assertNoError(t, err, "Error getting hash")
+	assert.Equals(t, hashValue, "14-3")
+
+	// Attempt to retrieve the third clock from the first hasher (validate cache reload)
+	fourthClockLoad, err := seqHasher.GetClock("14-3")
+	assertNoError(t, err, "Error loading hash from other writer.")
+	assert.Equals(t, fourthClockLoad.GetSequence(50), uint64(80))
+	assert.Equals(t, fourthClockLoad.GetSequence(80), uint64(40))
+	assert.Equals(t, fourthClockLoad.GetSequence(150), uint64(150))
+	assert.Equals(t, fourthClockLoad.GetSequence(300), uint64(256))
+
 }
 
 func TestConcurrentHashStorage(t *testing.T) {
