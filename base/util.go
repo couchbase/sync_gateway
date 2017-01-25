@@ -454,3 +454,41 @@ func HighSeqNosToSequenceClock(highSeqs map[uint16]uint64) (*SequenceClockImpl, 
 	return seqClock, nil
 
 }
+
+
+// Make sure that the index bucket and data bucket have correct sequence parity
+// https://github.com/couchbase/sync_gateway/issues/1133
+func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, bucket Bucket) error {
+
+	cbBucket, ok := bucket.(CouchbaseBucket)
+	if !ok {
+		Warn(fmt.Sprintf("Bucket is a %T not a base.CouchbaseBucket, skipping verifyBucketSequenceParity()\n", bucket))
+		return nil
+	}
+
+	maxVbNo, err := cbBucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+	_, highSeqnos, err := cbBucket.GetStatsVbSeqno(maxVbNo, false)
+	if err != nil {
+		return err
+	}
+	dataBucketClock, err := HighSeqNosToSequenceClock(highSeqnos)
+	if err != nil {
+		return err
+	}
+
+	// The index bucket stable clock should be before or equal to the data bucket clock,
+	// otherwise it could indicate that the data bucket has been _reset_ to empty or to
+	// a value, which would render the index bucket incorrect
+	if !indexBucketStableClock.AllBefore(dataBucketClock) {
+		return fmt.Errorf(
+			"IndexBucketStable clock [%v] is not AllBefore the data bucket clock [%v]",
+			indexBucketStableClock,
+			dataBucketClock,
+		)
+	}
+
+	return nil
+}

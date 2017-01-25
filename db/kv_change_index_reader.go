@@ -45,7 +45,6 @@ type kvChangeIndexReader struct {
 	overallPrincipalCount     uint64                     // Counter for all principals
 	activePrincipalCounts     map[string]uint64          // Counters for principals with active changes feeds
 	activePrincipalCountsLock sync.RWMutex               // Coordinates access to active principals map
-
 }
 
 func init() {
@@ -61,7 +60,8 @@ func init() {
 	base.StatsExpvars.Set("indexReader.getChanges.UseIndexed", &indexReaderGetChangesUseIndexed)
 }
 
-func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc) (err error) {
+
+func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc, context *DatabaseContext) (err error) {
 
 	k.channelIndexReaders = make(map[string]*KvChannelIndex)
 	k.indexPartitionsCallback = indexPartitionsCallback
@@ -85,6 +85,12 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 		// walrus, for unit testing
 		k.maxVbNo = 1024
 	}
+
+	// Make sure that the index bucket and data bucket have correct sequence parity
+	if err := k.verifyBucketSequenceParity(context); err != nil {
+		base.LogFatal("Unable to verify bucket sequence index parity: %v", err)
+	}
+
 
 	// Start background task to poll for changes
 	k.terminator = make(chan struct{})
@@ -127,6 +133,22 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 
 	return nil
 }
+
+// Make sure that the index bucket and data bucket have correct sequence parity
+// https://github.com/couchbase/sync_gateway/issues/1133
+func (k *kvChangeIndexReader) verifyBucketSequenceParity(context *DatabaseContext) error {
+
+	// Verify that the index bucket stable sequence is equal to or later to the
+	// data bucket stable sequence
+	indexBucketStableClock, err := k.GetStableClock()
+	if err != nil {
+		return err
+	}
+
+	return base.VerifyBucketSequenceParity(indexBucketStableClock, context.Bucket)
+
+}
+
 
 func (k *kvChangeIndexReader) Clear() {
 	k.channelIndexReaders = make(map[string]*KvChannelIndex)
