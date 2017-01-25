@@ -442,3 +442,15 @@ func SanitizeRequestURL(requestURL *url.URL) string {
 
 	return urlString
 }
+
+// Convert a map of vbno->seq high sequences (as returned by couchbasebucket.GetStatsVbSeqno()) to a SequenceClock
+func HighSeqNosToSequenceClock(highSeqs map[uint16]uint64) (*SequenceClockImpl, error) {
+
+	seqClock := NewSequenceClockImpl()
+	for vbNo, vbSequence := range highSeqs {
+		seqClock.SetSequence(vbNo, vbSequence)
+	}
+
+	return seqClock, nil
+
+}
