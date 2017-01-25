@@ -187,22 +187,6 @@ func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (str
 // Callback function to return the stable sequence
 type StableSequenceFunc func() (clock SequenceClock, err error)
 
-func LoadStableSequence(bucket Bucket) SequenceClock {
-	stableSequence := NewSequenceClockImpl()
-	value, cas, err := bucket.GetRaw(KStableSequenceKey)
-	if err != nil {
-		Warn("Stable sequence not found in index - resetting to 0.  Err: %v.  Bucket: %+v", err, bucket)
-		return stableSequence
-	}
-	stableSequence.Unmarshal(value)
-	stableSequence.SetCas(cas)
-	return stableSequence
-}
-
-func StableCallbackTest(callback StableSequenceFunc) (SequenceClock, error) {
-	return callback()
-}
-
 // This transforms raw input bucket credentials (for example, from config), to input
 // credentials expected by Couchbase server, based on a few rules
 func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {
