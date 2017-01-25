@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
-	"log"
 	"math"
 	"sort"
 	"sync"
@@ -267,7 +266,6 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 	partitionSequences := make(map[uint16][]VbSequence)
 
 	for vb, sequence := range updates {
-		log.Printf("Setting stable sequence: [%d:%d]", vb, sequence)
 		partitionNo := s.partitionMap.VbMap[uint16(vb)]
 		_, ok := partitionSequences[partitionNo]
 		if !ok {
