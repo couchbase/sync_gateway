@@ -99,19 +99,32 @@ func NewIndexPartitions(partitions PartitionStorageSet) *IndexPartitions {
 	return indexPartitions
 }
 
+// Priority of a journal message
+type CompareResult int
+
+const (
+	CompareLessThan CompareResult = iota - 1
+	CompareEquals
+	CompareGreaterThan
+)
+
 // VbSequence supports collections of {vb, seq} without requiring a map.
 type VbSequence struct {
-	vbNo uint16
-	seq  uint64
+	Vb  uint16
+	Seq uint64
+}
+
+func (v VbSequence) CompareTo(vb uint16, seq uint64) CompareResult {
+	return CompareVbAndSequence(v.Vb, v.Seq, vb, seq)
 }
 
 // Compares based on vbno, then sequence.  Returns 0 if identical, 1 if s1 > s2, -1 if s1 < s2
-func CompareVbSequence(s1, s2 VbSequence) int {
-	return CompareVbAndSequence(s1.vbNo, s1.seq, s2.vbNo, s2.seq)
+func CompareVbSequence(s1, s2 VbSequence) CompareResult {
+	return CompareVbAndSequence(s1.Vb, s1.Seq, s2.Vb, s2.Seq)
 }
 
 // Compares based on vbno, then sequence.  Returns 0 if identical, 1 if s1 > s2, -1 if s1 < s2
-func CompareVbAndSequence(vb1 uint16, s1 uint64, vb2 uint16, s2 uint64) int {
+func CompareVbAndSequence(vb1 uint16, s1 uint64, vb2 uint16, s2 uint64) CompareResult {
 	if vb1 < vb2 {
 		return -1
 	}
@@ -271,7 +284,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 		if !ok {
 			partitionSequences[partitionNo] = make([]VbSequence, 0)
 		}
-		partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSequence{vbNo: uint16(vb), seq: sequence})
+		partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSequence{Vb: uint16(vb), Seq: sequence})
 
 	}
 
@@ -298,7 +311,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 			defer wg.Done()
 			// Apply sequences to clock partition
 			for _, vbSeq := range seqs {
-				p.SetSequence(vbSeq.vbNo, vbSeq.seq)
+				p.SetSequence(vbSeq.Vb, vbSeq.Seq)
 			}
 			value, err := p.Marshal()
 
@@ -312,7 +325,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 				}
 				// Reapply sequences to partition
 				for _, vbSeq := range seqs {
-					p.SetSequence(vbSeq.vbNo, vbSeq.seq)
+					p.SetSequence(vbSeq.Vb, vbSeq.Seq)
 				}
 				return p.Marshal()
 			})

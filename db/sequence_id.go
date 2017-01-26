@@ -261,6 +261,9 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 
 func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	var raw string
+	if s.SeqType == Undefined {
+		s.SeqType = IntSequenceType
+	}
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		*s, err = parseIntegerSequenceID(string(data))
@@ -274,6 +277,9 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 // Unmarshals clock sequence.  If s.SequenceHasher is nil, UnmarshalClockSequence only populates the s.ClockHash value.
 func (s *SequenceID) unmarshalClockSequence(data []byte) error {
 	var hashValue string
+	if s.SeqType == Undefined {
+		s.SeqType = ClockSequenceType
+	}
 	err := json.Unmarshal(data, &hashValue)
 	if err != nil {
 		hashValue = string(data)
