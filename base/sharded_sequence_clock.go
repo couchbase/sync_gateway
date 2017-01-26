@@ -128,11 +128,11 @@ func CompareVbAndSequence(vb1 uint16, s1 uint64, vb2 uint16, s2 uint64) int {
 	return 0
 }
 
-// ShardedClock maintains the collection of clock shards (ShardedClockPartitions), and also manages
-// the counter for the clock.
+// ShardedClock is a full clock for the bucket.  ShardedClock manages the collection of clock shards (ShardedClockPartitions),
+// and also manages the counter for the clock.
 type ShardedClock struct {
 	baseKey       string                            // key prefix used to build keys for clock component docs
-	counter       uint64                            // count value for clock
+	counter       uint64                            // count value for clock to minimize clock reads
 	countKey      string                            // key used to incr count value
 	partitionMap  *IndexPartitions                  // Index partition map
 	partitions    map[uint16]*ShardedClockPartition // Clock partitions - one doc written per partition

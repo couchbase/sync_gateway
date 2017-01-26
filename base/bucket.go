@@ -285,6 +285,8 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	return &dcpFeed, nil
 }
 
+// Goes out to the bucket and gets the high sequence number for all vbuckets and returns
+// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
 func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	stats := bucket.Bucket.GetStats("vbucket-seqno")
