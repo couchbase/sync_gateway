@@ -167,6 +167,11 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 	}
 
 	s.SeqType = ClockSequenceType
+	// Sequences are in the format Low:TriggeredBy:Sequence, where low and triggered by are optional. Split
+	// the incoming sequence by the : delimiter, and process as either:
+	//     1 component:     Sequence
+	//     2 components:    TriggeredBy:Sequence
+	//     3 components:    Low::Sequence or Low:TriggeredBy:Sequence
 	components := strings.Split(str, ":")
 	if len(components) == 1 {
 		// Convert simple zero to empty clock, to handle clients sending zero to mean 'no previous since'
@@ -179,10 +184,12 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 			}
 		}
 	} else if len(components) == 2 {
-		// TriggeredBy Clock Hash, and triggerdvb.vb.seq sequence
+		// TriggeredBy Clock Hash, and sequence
 		if s.TriggeredByClock, err = sequenceHasher.GetClock(components[0]); err != nil {
 			return SequenceID{}, err
 		}
+		// When triggered by hash is present, sequence is in the format TriggeredByVb.Vb.Sequence.  Split by delimiter "." and assign
+		// to the appropriate sequence properties.
 		sequenceComponents := strings.Split(components[1], ".")
 		if len(sequenceComponents) != 3 {
 			base.Warn("Unexpected sequence format - ignoring and relying on triggered by")
