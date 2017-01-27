@@ -80,8 +80,6 @@ func (c *SequenceClockImpl) SetSequence(vbNo uint16, vbSequence uint64) {
 func (c *SequenceClockImpl) SetMaxSequence(vbNo uint16, vbSequence uint64) {
 	if c.value[vbNo] <= vbSequence {
 		c.value[vbNo] = vbSequence
-	} else {
-		Warn("Attempted to lower sequence value when calling SetMaxSequence")
 	}
 	// Invalidate any previous hash
 	c.hashedValue = ""
