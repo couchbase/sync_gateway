@@ -10,7 +10,6 @@
 package db
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -130,16 +129,18 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					db.addDocToChangeEntry(minEntry, options)
 				}
 
-				// Clock handling
+				// Clock and Hash handling
+				// Force new hash generation for non-continuous changes feeds if this is the last entry to be sent - either
+				// because there are no more entries in the channel feeds, or we're going to hit the limit.
+				forceHash := false
+				if options.Continuous == false && (nextEntry == nil || options.Limit == 1) {
+					forceHash = true
+				}
+				// Update the cumulative clock, and stick it on the entry.
+				cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
+
+				// Hash when necessary
 				if minEntry.Seq.TriggeredBy == 0 {
-					// Update the cumulative clock, and stick it on the entry.
-					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
-					// Force new hash generation for non-continuous changes feeds if this is the last entry to be sent - either
-					// because there are no more entries in the channel feeds, or we're going to hit the limit.
-					forceHash := false
-					if options.Continuous == false && (nextEntry == nil || options.Limit == 1) {
-						forceHash = true
-					}
 					lastHashedValue = db.calculateHashWhenNeeded(
 						options,
 						minEntry,
@@ -148,12 +149,11 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						lastHashedValue,
 						forceHash,
 					)
-
 				} else {
-					// All entries triggered by the same sequence reference the same triggered by clock, so it should only need to get hashed once.
+					// All entries triggered by the same sequence reference the same triggered by clock, so it should only need to get hashed twice -
+					// when the backfill starts, and when the changes feed returns (forceHash).
 					// If this is the first entry for this triggered by, initialize the triggered by clock's hash value.
-					cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
-					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
+					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" || forceHash {
 						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
 						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 						if err != nil {
@@ -165,7 +165,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Send the entry, and repeat the loop:
-
 				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
 				select {
 				case <-options.Terminator:
@@ -365,7 +364,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		backfillInOtherChannel := false
 		if options.Since.TriggeredByClock != nil {
 			// There's a backfill in progress for SOME channel - check if it's this one
-			if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt {
+			if options.Since.TriggeredByVbNo == vbAddedAt {
 				backfillInProgress = true
 			} else {
 				backfillInOtherChannel = true
@@ -454,7 +453,7 @@ func calculateBackfillRange(backfillPosition base.VbSequence, triggerPosition ba
 			fromSeq = MAX_SEQUENCE
 		} else if vbNo > backfillPosition.Vb {
 			fromSeq = sinceClock.GetSequence(vbNo)
-		} else { // vbNo == backfillPosition.Vb
+		} else if vbNo == backfillPosition.Vb {
 			fromSeq = backfillPosition.Seq
 		}
 		fromClock.SetSequence(vbNo, fromSeq)
@@ -464,7 +463,7 @@ func calculateBackfillRange(backfillPosition base.VbSequence, triggerPosition ba
 			toSeq = MAX_SEQUENCE
 		} else if vbNo > triggerPosition.Vb {
 			toSeq = sinceClock.GetSequence(vbNo)
-		} else { // vbNo==triggerPosition.Vb
+		} else if vbNo == triggerPosition.Vb {
 			toSeq = triggerPosition.Seq
 		}
 		toClock.SetSequence(vbNo, toSeq)
@@ -479,21 +478,27 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 	dbExpvars.Add("channelChangesFeeds", 1)
 	changeIndex, ok := db.changeCache.(*kvChangeIndex)
 	if !ok {
-		return nil, errors.New("Called vectorChangesFeed with non-index cache.")
+		return nil, fmt.Errorf("Called vectorChangesFeed with non-index cache type: %T", db.changeCache)
 	}
 
 	// If we're in backfill for this channel, we make one reader call for the backfill and one for non-backfill.  Without
 	// two requests, it's not possible to use limit to prevent a full index scan of some vbuckets while still preserving ordering.
 	// The second call should only be made if the first request doesn't return limit changes.
-	var backfillLog, log []*LogEntry
-	var err error
+	var (
+		backfillLog []*LogEntry
+		log         []*LogEntry
+		err         error
+	)
 
 	if options.Since.TriggeredByClock != nil {
 		// Changes feed is in backfill for this channel.
+
 		// Backfill position: (vb,seq) position in the backfill. e.g. [0,0] if we're just starting the backfill, [vb,seq] if we're midway through.
-		// Trigger position: (vb,seq) of the document that triggered this backfill (e.g. access granting doc or user doc)
 		backfillPosition := base.VbSequence{options.Since.vbNo, options.Since.Seq}
+
+		// Trigger position: (vb,seq) of the document that triggered this backfill (e.g. access granting doc or user doc)
 		triggerPosition := base.VbSequence{options.Since.TriggeredByVbNo, options.Since.TriggeredBy}
+
 		backfillFrom, backfillTo := calculateBackfillRange(backfillPosition, triggerPosition, options.Since.Clock)
 
 		backfillLog, err = changeIndex.reader.GetChangesForRange(channel, backfillFrom, backfillTo, options.Limit)
@@ -514,10 +519,10 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 	} else {
 		// Not backfill for this channel.  Standard changes processing
 		log, err = changeIndex.reader.GetChangesForRange(channel, options.Since.Clock, nil, options.Limit)
-		base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 		if err != nil {
 			return nil, err
 		}
+		base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	}
 
 	if len(log) == 0 && len(backfillLog) == 0 {

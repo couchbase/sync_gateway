@@ -92,7 +92,7 @@ func (s SequenceID) clockSeqToString() string {
 
 	// If TriggeredBy hash has been set, return it and vbucket sequence as triggeredByHash:vb.seq
 	if s.TriggeredByClock != nil && s.TriggeredByClock.GetHashedValue() != "" {
-		return fmt.Sprintf("%s:%d.%d", s.TriggeredByClock.GetHashedValue(), s.vbNo, s.Seq)
+		return fmt.Sprintf("%s:%d.%d.%d", s.TriggeredByClock.GetHashedValue(), s.TriggeredByVbNo, s.vbNo, s.Seq)
 	} else {
 		// If lowHash is defined, send that and the vbucket sequence as lowHash::vb.seq
 		if s.LowHash != "" {
@@ -179,21 +179,29 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 			}
 		}
 	} else if len(components) == 2 {
-		// TriggeredBy Clock Hash, and vb.seq sequence
+		// TriggeredBy Clock Hash, and triggerdvb.vb.seq sequence
 		if s.TriggeredByClock, err = sequenceHasher.GetClock(components[0]); err != nil {
 			return SequenceID{}, err
 		}
 		sequenceComponents := strings.Split(components[1], ".")
-		if len(sequenceComponents) != 2 {
+		if len(sequenceComponents) != 3 {
 			base.Warn("Unexpected sequence format - ignoring and relying on triggered by")
 			return
 		} else {
-			if vb64, err := strconv.ParseUint(sequenceComponents[0], 10, 16); err != nil {
-				base.Warn("Unable to convert sequence %v to int.", sequenceComponents[0])
-			} else {
-				s.vbNo = uint16(vb64)
-				s.Seq, err = strconv.ParseUint(sequenceComponents[1], 10, 64)
+			triggeredBy64, err := strconv.ParseUint(sequenceComponents[0], 10, 16)
+			if err != nil {
+				base.Warn("Unable to convert triggered by vb %v to int.", sequenceComponents[0])
 			}
+			s.TriggeredByVbNo = uint16(triggeredBy64)
+
+			vb64, err := strconv.ParseUint(sequenceComponents[1], 10, 16)
+			if err != nil {
+				base.Warn("Unable to convert vb %v to int.", sequenceComponents[0])
+			}
+			s.vbNo = uint16(vb64)
+
+			s.Seq, err = strconv.ParseUint(sequenceComponents[2], 10, 16)
+
 		}
 
 	} else if len(components) == 3 {
