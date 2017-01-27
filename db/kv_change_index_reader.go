@@ -274,9 +274,6 @@ func (k *kvChangeIndexReader) SetNotifier(onChange func(base.Set)) {
 
 func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 
-	defer indexReaderGetChangesTime.AddSince(time.Now())
-	defer indexReaderGetChangesCount.Add(1)
-
 	var sinceClock base.SequenceClock
 	if options.Since.Clock == nil {
 		// If there's no since clock, we may be in backfill for another channel - revert to the triggered by clock.
@@ -289,54 +286,42 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 		sinceClock = options.Since.Clock
 	}
 
-	reader, err := k.getOrCreateReader(channelName, options)
+	return k.GetChangesForRange(channelName, sinceClock, nil, options.Limit)
+}
+
+func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock base.SequenceClock, toClock base.SequenceClock, limit int) ([]*LogEntry, error) {
+
+	defer indexReaderGetChangesTime.AddSince(time.Now())
+	defer indexReaderGetChangesCount.Add(1)
+
+	reader, err := k.getOrCreateReader(channelName)
 	if err != nil {
 		base.Warn("Error obtaining channel reader (need partition index?) for channel %s", channelName)
 		return nil, err
 	}
-	changes, err := reader.GetChanges(sinceClock)
+	changes, err := reader.GetChanges(sinceClock, toClock, limit)
 	if err != nil {
 		base.LogTo("DIndex+", "No clock found for channel %s, assuming no entries in index", channelName)
 		return nil, nil
 	}
 
-	// Limit handling
-	if options.Limit > 0 && len(changes) > options.Limit {
-		limitResult := make([]*LogEntry, options.Limit)
-		copy(limitResult[0:], changes[0:])
-		return limitResult, nil
-	}
-
 	return changes, nil
 }
 
-func (k *kvChangeIndexReader) getOrCreateReader(channelName string, options ChangesOptions) (*KvChannelIndex, error) {
+func (k *kvChangeIndexReader) getOrCreateReader(channelName string) (*KvChannelIndex, error) {
 
-	// For continuous or longpoll processing, use the shared reader from the channelindexReaders map to coordinate
-	// polling.
-	if options.Wait {
-		var err error
-		index := k.getChannelReader(channelName)
-		if index == nil {
-			index, err = k.newChannelReader(channelName)
-			indexReaderPersistentCount.Add(1)
-			IndexExpvars.Add("getOrCreateReader_create", 1)
-			base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
-		} else {
-			IndexExpvars.Add("getOrCreateReader_get", 1)
-			base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
-		}
-		return index, err
+	var err error
+	index := k.getChannelReader(channelName)
+	if index == nil {
+		index, err = k.newChannelReader(channelName)
+		indexReaderPersistentCount.Add(1)
+		IndexExpvars.Add("getOrCreateReader_create", 1)
+		base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 	} else {
-		// For non-continuous/non-longpoll, use a one-off reader, no onChange handling.
-		indexPartitions, err := k.indexPartitionsCallback()
-		if err != nil {
-			return nil, err
-		}
-		indexReaderOneShotCount.Add(1)
-		return NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, nil), nil
-
+		IndexExpvars.Add("getOrCreateReader_get", 1)
+		base.LogTo("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
 	}
+	return index, err
 }
 
 func (k *kvChangeIndexReader) getChannelReader(channelName string) *KvChannelIndex {

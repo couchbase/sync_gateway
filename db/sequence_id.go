@@ -92,7 +92,7 @@ func (s SequenceID) clockSeqToString() string {
 
 	// If TriggeredBy hash has been set, return it and vbucket sequence as triggeredByHash:vb.seq
 	if s.TriggeredByClock != nil && s.TriggeredByClock.GetHashedValue() != "" {
-		return fmt.Sprintf("%s:%d.%d", s.TriggeredByClock.GetHashedValue(), s.vbNo, s.Seq)
+		return fmt.Sprintf("%s:%d.%d.%d", s.TriggeredByClock.GetHashedValue(), s.TriggeredByVbNo, s.vbNo, s.Seq)
 	} else {
 		// If lowHash is defined, send that and the vbucket sequence as lowHash::vb.seq
 		if s.LowHash != "" {
@@ -167,6 +167,11 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 	}
 
 	s.SeqType = ClockSequenceType
+	// Sequences are in the format Low:TriggeredBy:Sequence, where low and triggered by are optional. Split
+	// the incoming sequence by the : delimiter, and process as either:
+	//     1 component:     Sequence
+	//     2 components:    TriggeredBy:Sequence
+	//     3 components:    Low::Sequence or Low:TriggeredBy:Sequence
 	components := strings.Split(str, ":")
 	if len(components) == 1 {
 		// Convert simple zero to empty clock, to handle clients sending zero to mean 'no previous since'
@@ -179,21 +184,31 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 			}
 		}
 	} else if len(components) == 2 {
-		// TriggeredBy Clock Hash, and vb.seq sequence
+		// TriggeredBy Clock Hash, and sequence
 		if s.TriggeredByClock, err = sequenceHasher.GetClock(components[0]); err != nil {
 			return SequenceID{}, err
 		}
+		// When triggered by hash is present, sequence is in the format TriggeredByVb.Vb.Sequence.  Split by delimiter "." and assign
+		// to the appropriate sequence properties.
 		sequenceComponents := strings.Split(components[1], ".")
-		if len(sequenceComponents) != 2 {
+		if len(sequenceComponents) != 3 {
 			base.Warn("Unexpected sequence format - ignoring and relying on triggered by")
 			return
 		} else {
-			if vb64, err := strconv.ParseUint(sequenceComponents[0], 10, 16); err != nil {
-				base.Warn("Unable to convert sequence %v to int.", sequenceComponents[0])
-			} else {
-				s.vbNo = uint16(vb64)
-				s.Seq, err = strconv.ParseUint(sequenceComponents[1], 10, 64)
+			triggeredBy64, err := strconv.ParseUint(sequenceComponents[0], 10, 16)
+			if err != nil {
+				base.Warn("Unable to convert triggered by vb %v to int.", sequenceComponents[0])
 			}
+			s.TriggeredByVbNo = uint16(triggeredBy64)
+
+			vb64, err := strconv.ParseUint(sequenceComponents[1], 10, 16)
+			if err != nil {
+				base.Warn("Unable to convert vb %v to int.", sequenceComponents[0])
+			}
+			s.vbNo = uint16(vb64)
+
+			s.Seq, err = strconv.ParseUint(sequenceComponents[2], 10, 16)
+
 		}
 
 	} else if len(components) == 3 {
@@ -261,6 +276,9 @@ func (s *SequenceID) UnmarshalJSON(data []byte) error {
 
 func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	var raw string
+	if s.SeqType == Undefined {
+		s.SeqType = IntSequenceType
+	}
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		*s, err = parseIntegerSequenceID(string(data))
@@ -274,6 +292,9 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 // Unmarshals clock sequence.  If s.SequenceHasher is nil, UnmarshalClockSequence only populates the s.ClockHash value.
 func (s *SequenceID) unmarshalClockSequence(data []byte) error {
 	var hashValue string
+	if s.SeqType == Undefined {
+		s.SeqType = ClockSequenceType
+	}
 	err := json.Unmarshal(data, &hashValue)
 	if err != nil {
 		hashValue = string(data)

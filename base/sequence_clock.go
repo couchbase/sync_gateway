@@ -43,6 +43,7 @@ type SequenceClock interface {
 	AnyBefore(otherClock SequenceClock) bool       // True if any entries in clock are less than the corresponding values in otherClock
 	SetTo(otherClock SequenceClock)                // Sets the current clock to a copy of the other clock
 	Copy() SequenceClock                           // Returns a copy of the clock
+	LimitTo(otherClock SequenceClock)              // If any values in clock are greater than otherClock, sets them to otherClock
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -228,6 +229,15 @@ func (c *SequenceClockImpl) AnyAfter(other SequenceClock) bool {
 	return false
 }
 
+func (c *SequenceClockImpl) LimitTo(other SequenceClock) {
+	for vb, sequence := range c.Value() {
+		otherSequence := other.GetSequence(uint16(vb))
+		if otherSequence < sequence {
+			c.SetSequence(uint16(vb), otherSequence)
+		}
+	}
+}
+
 // Deep-copies a SequenceClock
 func (c *SequenceClockImpl) Copy() SequenceClock {
 	result := NewSequenceClockImpl()
@@ -388,6 +398,12 @@ func (c *SyncSequenceClock) AnyBefore(other SequenceClock) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.Clock.AllAfter(other)
+}
+
+func (c *SyncSequenceClock) LimitTo(other SequenceClock) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	c.Clock.LimitTo(other)
 }
 
 func (c *SyncSequenceClock) Equals(other SequenceClock) bool {

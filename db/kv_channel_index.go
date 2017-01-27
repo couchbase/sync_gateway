@@ -174,7 +174,7 @@ func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, new
 // Returns the set of index entries for the channel more recent than the
 // specified since SequenceClock.  Index entries with sequence values greater than
 // the index stable sequence are not returned.
-func (k *KvChannelIndex) GetChanges(since base.SequenceClock) ([]*LogEntry, error) {
+func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClock, limit int) ([]*LogEntry, error) {
 
 	var results []*LogEntry
 
@@ -196,12 +196,19 @@ func (k *KvChannelIndex) GetChanges(since base.SequenceClock) ([]*LogEntry, erro
 	}
 
 	// If requested clock is later than the channel clock, return empty
-	if since.AllAfter(chanClock) {
-		base.LogTo("DIndex+", "requested clock is later than channel clock - no new changes to report")
+	if sinceClock.AllAfter(chanClock) {
+		base.LogTo("ChannelIndex+", "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
 
-	return k.channelStorage.GetChanges(since, chanClock, 0)
+	// Don't request values later than channel clock
+	if toClock != nil {
+		toClock.LimitTo(chanClock)
+	} else {
+		toClock = chanClock
+	}
+
+	return k.channelStorage.GetChanges(sinceClock, toClock, limit)
 }
 
 func (k *KvChannelIndex) getIndexCounter() (uint64, error) {
