@@ -363,8 +363,11 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		backfillInProgress := false
 		backfillInOtherChannel := false
 		if options.Since.TriggeredByClock != nil {
-			// There's a backfill in progress for SOME channel - check if it's this one
-			if options.Since.TriggeredByVbNo == vbAddedAt {
+			// There's a backfill in progress for SOME channel - check if it's this one.  Check:
+			//  1. Whether the vb/seq in the TriggeredByClock matches vbAddedAt/seqAddedAt for this channel
+			//  2. Even if this matches, there could be multiple vbs in the clock that triggered some channel's backfill.  Compare the
+			//     triggered by vbNo (from the backfill sequence) with vbAddedAt to see if this is the channel in backfill.
+			if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt && options.Since.TriggeredByVbNo == vbAddedAt {
 				backfillInProgress = true
 			} else {
 				backfillInOtherChannel = true
