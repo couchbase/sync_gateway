@@ -86,6 +86,7 @@ type ServerConfig struct {
 	ClusterConfig                  *ClusterConfig           `json:"cluster_config,omitempty"`          // Bucket and other config related to CBGT
 	SkipRunmodeValidation          bool                     `json:"skip_runmode_validation,omitempty"` // If this is true, skips any config validation regarding accel vs normal mode
 	Unsupported                    *UnsupportedServerConfig `json:"unsupported,omitempty"`             // Config for unsupported features
+	RunMode                        SyncGatewayRunMode       `json:"runmode,omitempty"`                 // Whether this is an SG reader or an SG Accelerator
 }
 
 // Bucket configuration elements - used by db, shadow, index
@@ -299,6 +300,43 @@ func (dbConfig DbConfig) validate() error {
 
 }
 
+func (dbConfig *DbConfig) validateSgDbConfig() error {
+
+	if err := dbConfig.validate(); err != nil {
+		return err
+	}
+	
+	if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
+		return fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
+	}
+
+	return nil
+
+}
+
+func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
+
+	if err := dbConfig.validate(); err != nil {
+		return err
+	}
+
+	if dbConfig.ChannelIndex == nil {
+		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
+	}
+
+	if dbConfig.ChannelIndex.IndexWriter == false {
+		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter")
+	}
+
+	if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
+		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype")
+
+	}
+
+	return nil
+
+}
+
 func (dbConfig *DbConfig) modifyConfig() {
 	if dbConfig.ChannelIndex != nil {
 		// if there is NO feed type, set to DCPSHARD, since that's the only
@@ -325,13 +363,15 @@ func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, 
 }
 
 // Reads a ServerConfig from raw data
-func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
+func ReadServerConfigFromData(runMode SyncGatewayRunMode, data []byte) (*ServerConfig, error) {
 
 	data = base.ConvertBackQuotedStrings(data)
 	var config *ServerConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
+
+	config.RunMode = runMode
 
 	// Validation:
 	if err := config.setupAndValidateDatabases(); err != nil {
@@ -342,7 +382,7 @@ func ReadServerConfigFromData(data []byte) (*ServerConfig, error) {
 }
 
 // Reads a ServerConfig from a URL.
-func ReadServerConfigFromUrl(url string) (*ServerConfig, error) {
+func ReadServerConfigFromUrl(runMode SyncGatewayRunMode, url string) (*ServerConfig, error) {
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -353,21 +393,21 @@ func ReadServerConfigFromUrl(url string) (*ServerConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ReadServerConfigFromData(responseBody)
+	return ReadServerConfigFromData(runMode, responseBody)
 
 }
 
 // Reads a ServerConfig from either a JSON file or from a URL.
-func ReadServerConfig(path string) (*ServerConfig, error) {
+func ReadServerConfig(runMode SyncGatewayRunMode, path string) (*ServerConfig, error) {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		return ReadServerConfigFromUrl(path)
+		return ReadServerConfigFromUrl(runMode, path)
 	} else {
-		return ReadServerConfigFromFile(path)
+		return ReadServerConfigFromFile(runMode, path)
 	}
 }
 
 // Reads a ServerConfig from a JSON file.
-func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
+func ReadServerConfigFromFile(runMode SyncGatewayRunMode, path string) (*ServerConfig, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -383,6 +423,8 @@ func ReadServerConfigFromFile(path string) (*ServerConfig, error) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
+
+	config.RunMode = runMode
 
 	// Validation:
 	if err := config.setupAndValidateDatabases(); err != nil {
@@ -435,7 +477,14 @@ func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 
 	dbConfig.modifyConfig()
 
-	return dbConfig.validate()
+	switch config.RunMode {
+	case SyncGatewayRunModeNormal:
+		return dbConfig.validateSgDbConfig()
+	case SyncGatewayRunModeAccel:
+		return dbConfig.validateSgAccelDbConfig()
+	}
+
+	return fmt.Errorf("Unexpected RunMode: %v", config.RunMode)
 
 }
 
@@ -477,7 +526,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine() {
+func ParseCommandLine(runMode SyncGatewayRunMode) {
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
@@ -499,7 +548,7 @@ func ParseCommandLine() {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
-			c, err := ReadServerConfig(filename)
+			c, err := ReadServerConfig(runMode, filename)
 			if err != nil {
 				base.LogFatal("Error reading config file %s: %v", filename, err)
 			}
@@ -743,7 +792,7 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain(runMode SyncGatewayRunMode) {
-	ParseCommandLine()
+	ParseCommandLine(runMode)
 	ValidateConfigOrPanic(runMode)
 	RunServer(config)
 }
