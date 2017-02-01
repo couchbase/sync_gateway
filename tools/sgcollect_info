@@ -204,6 +204,22 @@ def extract_element_from_config(element, config):
         # If we can't deserialise the json or find the key then return nothing
         return
 
+    def extract_element_from_logging_config(element, config):
+    """ The config returned from /_config may not be fully formed json
+        due to the fact that the sync function is inside backticks (`)
+        Therefore this method grabs an element from the config after
+        removing the sync function
+    """
+
+    sync_regex = r'"Sync":(`.*`)'
+    config = re.sub(sync_regex, '"Sync":""', config)
+    try:
+        json.loads(config)["logging"]
+        return json.dumps()
+    except (ValueError, KeyError):
+        # If we can't deserialise the json or find the key then return nothing
+        return
+
 def make_collect_logs_tasks(zip_dir, sg_url):
 
     sg_log_files = {
@@ -233,6 +249,10 @@ def make_collect_logs_tasks(zip_dir, sg_url):
 
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
     if guessed_log_path:
+        sg_log_files["sync_gateway_error.log"] = guessed_log_path
+    else: 
+        guessed_log_path = extract_element_from_logging_config('LogFilePath', config_str)
+        if: guessed_log_path:
         sg_log_files["sync_gateway_error.log"] = guessed_log_path
 
     sg_tasks = []
