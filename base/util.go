@@ -483,11 +483,7 @@ func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, bucket Buc
 	// otherwise it could indicate that the data bucket has been _reset_ to empty or to
 	// a value, which would render the index bucket incorrect
 	if !indexBucketStableClock.AllBefore(dataBucketClock) {
-		return fmt.Errorf(
-			"IndexBucketStable clock [%v] is not AllBefore the data bucket clock [%v]",
-			indexBucketStableClock,
-			dataBucketClock,
-		)
+		return fmt.Errorf("IndexBucketStable clock is not AllBefore the data bucket clock")
 	}
 
 	return nil

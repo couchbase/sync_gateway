@@ -88,7 +88,9 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 
 	// Make sure that the index bucket and data bucket have correct sequence parity
 	if err := k.verifyBucketSequenceParity(context); err != nil {
-		base.LogFatal("Unable to verify bucket sequence index parity: %v", err)
+		base.Warn("Unable to verify bucket sequence index parity [%v]. " +
+			"Can indicate that Couchbase Server experienced a rollback," +
+			" which Sync Gateway will attempt to handle gracefully.", err)
 	}
 
 
