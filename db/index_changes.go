@@ -330,11 +330,11 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 	for name, vbSeqAddedAt := range channelsSince {
 		seqAddedAt := vbSeqAddedAt.Sequence
 
-		// If seqAddedAt == 0, this is an admin grant hasn't been processed by accel yet.
+		// For user feeds, seqAddedAt == 0 indicates an admin grant hasn't been processed by accel yet (and so
+		// hasn't had the granting vbucket sequence stamped on the user doc).
 		// Since we don't have a sequence to use for backfill, skip it for now (it will get backfilled
 		// after accel updates the user doc with the vb seq)
-		// Skip the channel
-		if seqAddedAt == 0 {
+		if db.user != nil && seqAddedAt == 0 {
 			continue
 		}
 
@@ -555,6 +555,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 				base.LogTo("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
+				base.LogTo("Changes+", "Adding %q as backfill to feed for channel %s", change.ID, channel)
 			}
 		}
 		// Now send any non-backfill entries
@@ -570,7 +571,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 				base.LogTo("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
-				base.LogTo("Changes+", "Sent non-backfill %s", change.ID)
+				base.LogTo("Changes+", "Adding %q to feed for channel %s", change.ID, channel)
 			}
 		}
 	}()
