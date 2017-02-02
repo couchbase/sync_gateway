@@ -216,7 +216,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 	return seqHash.String(), nil
 }
 
-func (s *sequenceHasher) GetClock(sequence string) (base.SequenceClock, error) {
+func (s *sequenceHasher) GetClock(sequence string) (*base.SequenceClockImpl, error) {
 
 	clock := base.NewSequenceClockImpl()
 	var err error

@@ -245,8 +245,7 @@ func (c *SequenceClockImpl) Copy() SequenceClock {
 	return result
 }
 
-// Compares another sequence clock with this one.  Returns true if ANY vb values in the clock
-// are greater than the corresponding values in other
+// Sets a sequence clock equal to the specified clock
 func (c *SequenceClockImpl) SetTo(other SequenceClock) {
 	for vbNo := uint16(0); vbNo < KMaxVbNo; vbNo++ {
 		c.value[vbNo] = other.GetSequence(vbNo)
@@ -329,6 +328,12 @@ func NewSyncSequenceClock() *SyncSequenceClock {
 	// Initialize empty clock
 	syncClock := SyncSequenceClock{}
 	syncClock.Clock = NewSequenceClockImpl()
+	return &syncClock
+}
+
+func ConvertToSyncSequenceClock(clock *SequenceClockImpl) *SyncSequenceClock {
+	syncClock := SyncSequenceClock{}
+	syncClock.Clock = clock
 	return &syncClock
 }
 
@@ -418,8 +423,8 @@ func (c *SyncSequenceClock) IsEmptyClock() bool {
 
 // Copies a channel clock
 func (c *SyncSequenceClock) SetTo(other SequenceClock) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.Clock.SetTo(other)
 }
 

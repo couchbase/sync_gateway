@@ -384,13 +384,15 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		if isNewChannel || (backfillRequired && !backfillInProgress) {
 			// Case 2.  No backfill in progress, backfill required
 			chanOpts.Since = SequenceID{
-				Seq:              0,
-				vbNo:             0,
-				Clock:            base.NewSequenceClockImpl(),
-				TriggeredBy:      seqAddedAt,
-				TriggeredByVbNo:  vbAddedAt,
-				TriggeredByClock: getChangesClock(options.Since).Copy(),
+				Seq:             0,
+				vbNo:            0,
+				Clock:           base.NewSequenceClockImpl(),
+				TriggeredBy:     seqAddedAt,
+				TriggeredByVbNo: vbAddedAt,
 			}
+			chanOpts.Since.TriggeredByClock = base.NewSyncSequenceClock()
+			chanOpts.Since.TriggeredByClock.SetTo(getChangesClock(options.Since))
+
 			base.LogTo("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInProgress {
 			// Case 3.  Backfill in progress.

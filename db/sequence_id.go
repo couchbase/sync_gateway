@@ -185,9 +185,12 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 		}
 	} else if len(components) == 2 {
 		// TriggeredBy Clock Hash, and sequence
-		if s.TriggeredByClock, err = sequenceHasher.GetClock(components[0]); err != nil {
-			return SequenceID{}, err
+		triggeredByClock, hashErr := sequenceHasher.GetClock(components[0])
+		if hashErr != nil {
+			return SequenceID{}, hashErr
 		}
+		s.TriggeredByClock = base.ConvertToSyncSequenceClock(triggeredByClock)
+
 		// When triggered by hash is present, sequence is in the format TriggeredByVb.Vb.Sequence.  Split by delimiter "." and assign
 		// to the appropriate sequence properties.
 		sequenceComponents := strings.Split(components[1], ".")
