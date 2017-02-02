@@ -338,7 +338,18 @@ func (s SequenceID) intEquals(s2 SequenceID) bool {
 }
 
 func (s SequenceID) vectorEquals(s2 SequenceID) bool {
-	return s.Seq == s2.Seq && s.vbNo == s2.vbNo && s.TriggeredBy == s2.TriggeredBy && s.TriggeredByVbNo == s2.TriggeredByVbNo
+
+	// Compare sequences
+	if s.Seq != s2.Seq || s.vbNo != s2.vbNo {
+		return false
+	}
+
+	// If triggered by is set, compare based on triggered by vb, seq
+	if s.TriggeredByClock != nil && s2.TriggeredByClock != nil {
+		return s.TriggeredBy == s2.TriggeredBy && s.TriggeredByVbNo == s2.TriggeredByVbNo
+	}
+
+	return true
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.

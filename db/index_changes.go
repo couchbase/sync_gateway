@@ -140,7 +140,11 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
 
 				// Hash when necessary
-				if minEntry.Seq.TriggeredBy == 0 {
+				if minEntry.Seq.TriggeredByClock == nil {
+					// TriggeredByClock==nil but TriggeredBy>0 means that triggered by needs to be added to the clock for a non-backfill entry
+					if minEntry.Seq.TriggeredBy > 0 {
+						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
+					}
 					lastHashedValue = db.calculateHashWhenNeeded(
 						options,
 						minEntry,
@@ -558,13 +562,26 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 				base.LogTo("Changes+", "Adding %q as backfill to feed for channel %s", change.ID, channel)
 			}
 		}
-		// Now send any non-backfill entries
+
+		// Now send any non-backfill entries.  If there was no backfill sent, we need to set triggered by seq and vbno (but not clock) on
+		// the first entry sent, to ensure the trigger gets added to the cumulative clock.
+		sendTrigger := false
+		if len(backfillLog) == 0 {
+			sendTrigger = true
+		}
 		for _, logEntry := range log {
 			seqID := SequenceID{
 				SeqType: ClockSequenceType,
 				Seq:     logEntry.Sequence,
 				vbNo:    logEntry.VbNo,
 			}
+
+			if sendTrigger {
+				seqID.TriggeredBy = options.Since.TriggeredBy
+				seqID.TriggeredByVbNo = options.Since.TriggeredByVbNo
+				sendTrigger = false
+			}
+
 			change := makeChangeEntry(logEntry, seqID, channel)
 			select {
 			case <-options.Terminator:
