@@ -185,9 +185,12 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 		}
 	} else if len(components) == 2 {
 		// TriggeredBy Clock Hash, and sequence
-		if s.TriggeredByClock, err = sequenceHasher.GetClock(components[0]); err != nil {
-			return SequenceID{}, err
+		triggeredByClock, hashErr := sequenceHasher.GetClock(components[0])
+		if hashErr != nil {
+			return SequenceID{}, hashErr
 		}
+		s.TriggeredByClock = base.ConvertToSyncSequenceClock(triggeredByClock)
+
 		// When triggered by hash is present, sequence is in the format TriggeredByVb.Vb.Sequence.  Split by delimiter "." and assign
 		// to the appropriate sequence properties.
 		sequenceComponents := strings.Split(components[1], ".")
@@ -338,7 +341,18 @@ func (s SequenceID) intEquals(s2 SequenceID) bool {
 }
 
 func (s SequenceID) vectorEquals(s2 SequenceID) bool {
-	return s.Seq == s2.Seq && s.vbNo == s2.vbNo && s.TriggeredBy == s2.TriggeredBy && s.TriggeredByVbNo == s2.TriggeredByVbNo
+
+	// Compare sequences
+	if s.Seq != s2.Seq || s.vbNo != s2.vbNo {
+		return false
+	}
+
+	// If triggered by is set, compare based on triggered by vb, seq
+	if s.TriggeredByClock != nil && s2.TriggeredByClock != nil {
+		return s.TriggeredBy == s2.TriggeredBy && s.TriggeredByVbNo == s2.TriggeredByVbNo
+	}
+
+	return true
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
