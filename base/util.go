@@ -13,18 +13,19 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"path/filepath"
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
-	"os"
 )
 
 const (
@@ -402,20 +403,36 @@ func ValueToStringArray(value interface{}) []string {
 	}
 }
 
-// Assumes path argument is a path to a file
-func IsFilePathWritable (fp string) (bool, error) {
+// Validates path argument is a path to a writable file
+func IsFilePathWritable(fp string) (bool, error) {
 	//Get the containing directory for the file
 	containingDir := filepath.Dir(fp)
 
-	//Check that dir exists
+	//Check that containing dir exists
 	_, err := os.Stat(containingDir)
-	if err != nil { return false, err }
+	if err != nil {
+		return false, err
+	}
+
+	//Check that the filePath points to a file not a directory
+	fi, err := os.Stat(fp)
+	if err == nil || !os.IsNotExist(err) {
+		Warn("filePath exists")
+		if fi.Mode().IsDir() {
+			err = errors.New("filePath is a directory")
+			return false, err
+		}
+	}
 
 	//Now validate that the logfile is writable
 	file, err := os.OpenFile(fp, os.O_WRONLY, 0666)
-	defer 	file.Close()
-	if err == nil { return true, nil }
-	if os.IsPermission(err) { return false, err }
+	defer file.Close()
+	if err == nil {
+		return true, nil
+	}
+	if os.IsPermission(err) {
+		return false, err
+	}
 
 	return true, nil
 }
@@ -454,7 +471,6 @@ func HighSeqNosToSequenceClock(highSeqs map[uint16]uint64) (*SequenceClockImpl, 
 	return seqClock, nil
 
 }
-
 
 // Make sure that the index bucket and data bucket have correct sequence parity
 // https://github.com/couchbase/sync_gateway/issues/1133
