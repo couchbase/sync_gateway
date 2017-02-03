@@ -110,7 +110,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
-	base.LogTo("DIndex+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	if err != nil {
 		return nil, err
 	}
@@ -395,14 +395,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				backfillInOtherChannel := options.Since.TriggeredBy != 0 && options.Since.TriggeredBy > seqAddedAt
 
-
 				if isNewChannel || (backfillRequired && backfillPending) {
 					// Newly added channel so initiate backfill:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
-				} else if (backfillInOtherChannel){
+				} else if backfillInOtherChannel {
 					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
-
 
 				feed, err := db.changesFeed(name, chanOpts)
 				if err != nil {
