@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// Vb and Sequence struct that's compatible with sequence-only (global sequence) mode
 type VbSequence struct {
 	VbNo     *uint16 `json:"vb,omitempty"`
 	Sequence uint64  `json:"seq"`
@@ -32,6 +33,14 @@ func NewVbSimpleSequence(sequence uint64) VbSequence {
 	return VbSequence{Sequence: sequence}
 }
 
+func (vbs VbSequence) String() string {
+	if vbs.VbNo != nil {
+		return fmt.Sprintf("[%d:%d]", *vbs.VbNo, vbs.Sequence)
+	} else {
+		return fmt.Sprintf("[nil:%d]", vbs.Sequence)
+	}
+}
+
 func (vbs VbSequence) Copy() VbSequence {
 	if vbs.VbNo == nil {
 		return NewVbSimpleSequence(vbs.Sequence)
@@ -39,6 +48,48 @@ func (vbs VbSequence) Copy() VbSequence {
 		vbInt := *vbs.VbNo
 		return NewVbSequence(vbInt, vbs.Sequence)
 	}
+}
+
+func (vbs VbSequence) Equals(other VbSequence) bool {
+	if vbs.Sequence != other.Sequence {
+		return false
+	}
+
+	if vbs.VbNo == nil {
+		if other.VbNo != nil {
+			return false
+		}
+		return true
+	} else {
+		if other.VbNo == nil {
+			return false
+		}
+		return *vbs.VbNo == *other.VbNo
+	}
+}
+
+func (vbs VbSequence) AsVbSeq() base.VbSeq {
+	if vbs.VbNo == nil {
+		return base.VbSeq{}
+	}
+	return base.VbSeq{*vbs.VbNo, vbs.Sequence}
+}
+
+// Compares to other VbSequence.  If EITHER vbNo is nil, does a sequence-only
+// comparison
+func (v VbSequence) CompareTo(other VbSequence) base.CompareResult {
+	if v.VbNo == nil || other.VbNo == nil {
+		return base.CompareVbAndSequence(0, v.Sequence, 0, other.Sequence)
+	}
+	return base.CompareVbAndSequence(*v.VbNo, v.Sequence, *other.VbNo, other.Sequence)
+}
+
+// Is sequence less than or equal to corresponding clock entry
+func (v VbSequence) IsLTEClock(clock base.SequenceClock) bool {
+	if v.VbNo == nil {
+		return false
+	}
+	return v.Sequence < clock.GetSequence(*v.VbNo)
 }
 
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
@@ -162,6 +213,16 @@ func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 				changed = true
 			}
 		}
+	}
+	return changed
+}
+
+// Merges the other set into the receiver at a given sequence. */
+func (set TimedSet) AddAtVbSequence(other TimedSet, atVbSequence VbSequence) bool {
+	changed := false
+	for ch, _ := range other {
+		set[ch] = atVbSequence
+		changed = true
 	}
 	return changed
 }
