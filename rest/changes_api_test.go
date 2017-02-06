@@ -78,7 +78,6 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 				Server: &serverName,
 				Bucket: &indexBucketName,
 			},
-			IndexWriter: true,
 		}
 		dbConfig.ChannelIndex = channelIndexConfig
 	}

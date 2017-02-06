@@ -467,7 +467,8 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		}
 
 		sinceSeq := getChangesClock(options.Since).GetSequence(vbAddedAt)
-		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt
+		stableSeq := stableClock.GetSequence(vbAddedAt)
+		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt && seqAddedAt <= stableSeq
 
 		if isNewChannel || (backfillRequired && !backfillInProgress) {
 			// Case 2.  No backfill in progress, backfill required
@@ -725,6 +726,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, cu
 				ID:       fmt.Sprintf("%s%s", backfillCompletePrefix, channel),
 				backfill: BackfillFlag_Complete,
 			}
+
 			select {
 			case <-options.Terminator:
 				base.LogTo("Changes+", "Aborting changesFeed")

@@ -86,6 +86,7 @@ func TestSkippedSequenceQueue(t *testing.T) {
 func TestLateSequenceHandling(t *testing.T) {
 
 	context := testBucketContext()
+	defer context.Close()
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -149,6 +150,7 @@ func TestLateSequenceHandling(t *testing.T) {
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	context := testBucketContext()
+	defer context.Close()
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
