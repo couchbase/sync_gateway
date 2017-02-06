@@ -60,7 +60,6 @@ func init() {
 	base.StatsExpvars.Set("indexReader.getChanges.UseIndexed", &indexReaderGetChangesUseIndexed)
 }
 
-
 func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc, context *DatabaseContext) (err error) {
 
 	k.channelIndexReaders = make(map[string]*KvChannelIndex)
@@ -88,11 +87,10 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 
 	// Make sure that the index bucket and data bucket have correct sequence parity
 	if err := k.verifyBucketSequenceParity(context); err != nil {
-		base.Warn("Unable to verify bucket sequence index parity [%v]. " +
-			"May indicate that Couchbase Server experienced a rollback," +
+		base.Warn("Unable to verify bucket sequence index parity [%v]. "+
+			"May indicate that Couchbase Server experienced a rollback,"+
 			" which Sync Gateway will attempt to handle gracefully.", err)
 	}
-
 
 	// Start background task to poll for changes
 	k.terminator = make(chan struct{})
@@ -115,7 +113,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 				//       stable sequence polling each poll interval, even if we *actually* don't have any
 				//       active readers.
 				pollStart = time.Now()
-				if k.hasActiveReaders() && k.stableSequenceChanged() {
+				if k.stableSequenceChanged() {
 					var wg sync.WaitGroup
 					wg.Add(2)
 					go func() {
@@ -150,7 +148,6 @@ func (k *kvChangeIndexReader) verifyBucketSequenceParity(context *DatabaseContex
 	return base.VerifyBucketSequenceParity(indexBucketStableClock, context.Bucket)
 
 }
-
 
 func (k *kvChangeIndexReader) Clear() {
 	k.channelIndexReaders = make(map[string]*KvChannelIndex)
