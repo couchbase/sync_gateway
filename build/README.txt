@@ -1,10 +1,10 @@
-Couchbase Sync Gateway 1.2
+Couchbase Sync Gateway 1.4
 
 This is a self-contained installation of Couchbase Sync Gateway. You start Sync Gateway by running sync_gateway with the -url option. The argument for the -url option is the HTTP URL of the Couchbase Server to which you want Sync Gateway to connect. If you do not include any additional command-line options, the default values are used.
 
 The following command starts Sync Gateway on port 4984, connects to a limited in-memory database called "walrus" that lives on Sync Gateway, and starts the admin server on port 4985.
 
-$ ./sync_gateway
+C:\Program Files (x86)\Couchbase\sync_gateway.exe
 
 Command-line options:
 
