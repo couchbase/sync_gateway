@@ -95,6 +95,13 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 	// Start background task to poll for changes
 	k.terminator = make(chan struct{})
 	k.pollingActive = make(chan struct{})
+
+	// Skip polling initialization if writer
+	if indexOptions != nil && indexOptions.Writer {
+		close(k.pollingActive)
+		return nil
+	}
+
 	go func(k *kvChangeIndexReader) {
 		defer close(k.pollingActive)
 		pollStart := time.Now()
