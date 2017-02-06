@@ -203,7 +203,7 @@ func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.
 
 	// Don't request values later than channel clock
 	if toClock != nil {
-		toClock.LimitTo(chanClock)
+		toClock = toClock.LimitTo(chanClock)
 	} else {
 		toClock = chanClock
 	}
