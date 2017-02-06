@@ -46,12 +46,21 @@ type ChangeEntry struct {
 	Err        error       `json:"err,omitempty"` // Used to notify feed consumer of errors
 	allRemoved bool        // Flag to track whether an entry is a removal in all channels visible to the user.
 	branched   bool
+	backfill   backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
 }
 
 const (
 	WaiterClosed uint32 = iota
 	WaiterHasChanges
 	WaiterCheckTerminated
+)
+
+type backfillFlag int8
+
+const (
+	BackfillFlag_None backfillFlag = iota
+	BackfillFlag_Pending
+	BackfillFlag_Complete
 )
 
 type ChangeRev map[string]string // Key is always "rev", value is rev ID

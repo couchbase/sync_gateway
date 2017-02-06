@@ -11,11 +11,15 @@ package db
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+)
+
+const (
+	backfillPendingPrefix  = "_sync:backfill:pending:"
+	backfillCompletePrefix = "_sync:backfill:complete:"
 )
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
@@ -85,7 +89,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
 
 			// Build the channel feeds.
-			feeds, err := db.initializeChannelFeeds(channelsSince, options, addedChannels, userVbNo)
+			feeds, err := db.initializeChannelFeeds(channelsSince, options, addedChannels, userVbNo, cumulativeClock, stableClock)
 			if err != nil {
 				return
 			}
@@ -110,6 +114,15 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				// Calculate next entry here, to help identify whether minEntry is the last entry we're sending,
 				// to guarantee hashing
 				nextEntry = getNextSequenceFromFeeds(current, feeds)
+
+				// Don't send backfill notification to clients
+				if minEntry.backfill != BackfillFlag_None {
+					if minEntry.backfill == BackfillFlag_Complete {
+						// Backfill complete means the backfill trigger needs to be added to cumulative clock
+						cumulativeClock.SetMaxSequence(minEntry.Seq.vbNo, minEntry.Seq.Seq)
+					}
+					continue
+				}
 
 				if options.ActiveOnly {
 					if minEntry.Deleted || minEntry.allRemoved {
@@ -141,10 +154,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Hash when necessary
 				if minEntry.Seq.TriggeredByClock == nil {
-					// TriggeredByClock==nil but TriggeredBy>0 means that triggered by needs to be added to the clock for a non-backfill entry
-					if minEntry.Seq.TriggeredBy > 0 {
-						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
-					}
 					lastHashedValue = db.calculateHashWhenNeeded(
 						options,
 						minEntry,
@@ -154,11 +163,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 						forceHash,
 					)
 				} else {
-					// All entries triggered by the same sequence reference the same triggered by clock, so it should only need to get hashed twice -
-					// when the backfill starts, and when the changes feed returns (forceHash).
+					// All entries triggered by the same sequence reference the same triggered by clock, so it should only need to get hashed once
 					// If this is the first entry for this triggered by, initialize the triggered by clock's hash value.
-					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" || forceHash {
-						cumulativeClock.SetMaxSequence(minEntry.Seq.TriggeredByVbNo, minEntry.Seq.TriggeredBy)
+					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
 						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 						if err != nil {
 							base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
@@ -262,10 +269,8 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 	}
 
 	// Find the current entry with the minimum sequence:
-	minSeq := MaxSequenceID
 	for _, cur := range current {
-		if cur != nil && cur.Seq.Before(minSeq) {
-			minSeq = cur.Seq
+		if cur != nil && VectorChangesBefore(cur, minEntry) {
 			minEntry = cur
 		}
 	}
@@ -280,8 +285,13 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 
 	// Clear the current entries for any duplicates of the sequence just sent:
 	for i, cur := range current {
-		if cur != nil && cur.Seq.Equals(minSeq) {
+		if cur != nil && VectorChangesEquals(cur, minEntry) {
 			current[i] = nil
+
+			// Skip removed processing if this is a backfill notification
+			if cur.backfill != BackfillFlag_None {
+				continue
+			}
 			// Track whether this is a removal from all user's channels
 			if cur.Removed == nil && minEntry.allRemoved == true {
 				minEntry.allRemoved = false
@@ -297,6 +307,85 @@ func getNextSequenceFromFeeds(current []*ChangeEntry, feeds []<-chan *ChangeEntr
 		}
 	}
 	return minEntry
+}
+
+// Determine whether two changes entries are equivalent, considering backfill flags along with sequence values
+func VectorChangesEquals(c1, c2 *ChangeEntry) bool {
+	// Note: BackfillFlag_None and BackfillFlag_Complete are considered equal (no comparison done),
+	//     to ensure a backfill complete trigger dedupes with the trigger seq present in another channel
+	if c1.backfill == BackfillFlag_Pending || c2.backfill == BackfillFlag_Pending {
+		return c1.backfill == c2.backfill
+	}
+	return c1.Seq.Equals(c2.Seq)
+}
+
+// Determine which of two changes entries should be processed first, considering backfill, triggered by and sequence values
+func VectorChangesBefore(c1, c2 *ChangeEntry) bool {
+
+	// Empty value handling
+	if c1 == nil || c2 == nil {
+		if c1 != nil {
+			return true
+		} else {
+			return false
+		}
+	}
+
+	// We want the following prioritization for changes entries:
+	//   1. Backfill in progress
+	//      a. If both entries represent entries from an active backfill, compare by vb.seq
+	//   2. No backfill in progress
+	//       a. Non-backfill and backfill_pending are prioritized over backfill_complete notifications, when vbseq are equal
+	//       b. If both entries are non-backfill, compare by vb.seq
+	//       c. If both entries are backfill_complete notifications, compare by vb.seq
+	s1 := c1.Seq
+	s2 := c2.Seq
+
+	// Case 1 checks
+	if s1.TriggeredByClock != nil {
+		if s2.TriggeredByClock == nil {
+			// c1 is backfill, c2 isn't
+			return true
+		} else {
+			// Both backfill, Case 1a.
+			return s1.VbucketSequenceBefore(s2.vbNo, s2.Seq)
+		}
+	}
+	if s2.TriggeredByClock != nil {
+		// c2 is backfill, c1 isn't
+		return false
+	}
+
+	// Case 2 checks
+	if c1.backfill == BackfillFlag_Complete {
+		if c2.backfill == BackfillFlag_Complete {
+			// Case 2c. Both backfill complete notifications
+			if s1.vbNo == s2.vbNo {
+				return s1.Seq < s2.Seq
+			} else {
+				return s1.vbNo < s2.vbNo
+			}
+		} else {
+			// 2a. if equal, give priority to non-backfill only when vb.seq equal
+			if s1.vbNo == s2.vbNo && s1.Seq == s2.Seq {
+				return false
+			} else {
+				return true
+			}
+		}
+	}
+	if c2.backfill == BackfillFlag_Complete {
+		// 2a - if equal, give priority to non-backfill
+		if s1.vbNo == s2.vbNo && s1.Seq == s2.Seq {
+			return true
+		} else {
+			return false
+		}
+	}
+
+	// Case 2b.
+	return s1.VbucketSequenceBefore(s2.vbNo, s2.Seq)
+
 }
 
 // Determines whether the clock hash should be calculated for the entry. For non-continuous changes feeds, hash is only calculated for
@@ -326,7 +415,8 @@ func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *Chang
 }
 
 // Creates a go-channel of ChangeEntry for each channel in channelsSince.  Each go-channel sends the ordered entries for that channel.
-func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, options ChangesOptions, addedChannels base.Set, userVbNo uint16) ([]<-chan *ChangeEntry, error) {
+func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, options ChangesOptions, addedChannels base.Set,
+	userVbNo uint16, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) ([]<-chan *ChangeEntry, error) {
 	// Populate the  array of feed channels:
 	feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 
@@ -362,16 +452,14 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		// Three possible scenarios for backfill handling, based on whether the incoming since value indicates a backfill in progress
 		// for this channel, and whether the channel requires a new backfill to be started
 		//   Case 1. No backfill in progress, no backfill required - use the incoming since to get changes
-		//   Case 2. No backfill in progress, backfill required for this channel.  Get changes since zero, backfilling to the incoming since
-		//   Case 3. Backfill in progress.  Get changes since zero, backfilling to incoming triggered by, filtered to later than incoming since.
+		//   Case 2. No backfill in progress, backfill required for this channel.  Start backfill from zero to current since when changes feed reaches trigger vb.seq.
+		//   Case 3. Backfill in progress.  Backfill from zero to triggeredByClock, omitting anything earlier than current backfill position.
 		backfillInProgress := false
 		backfillInOtherChannel := false
 		if options.Since.TriggeredByClock != nil {
 			// There's a backfill in progress for SOME channel - check if it's this one.  Check:
-			//  1. Whether the vb/seq in the TriggeredByClock matches vbAddedAt/seqAddedAt for this channel
-			//  2. Even if this matches, there could be multiple vbs in the clock that triggered some channel's backfill.  Compare the
-			//     triggered by vbNo (from the backfill sequence) with vbAddedAt to see if this is the channel in backfill.
-			if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt && options.Since.TriggeredByVbNo == vbAddedAt {
+			//  1. Whether the vb/seq in the TriggeredByClock == vbAddedAt/seqAddedAt-1 for this channel
+			if options.Since.TriggeredByClock.GetSequence(vbAddedAt) == seqAddedAt-1 && options.Since.TriggeredByVbNo == vbAddedAt {
 				backfillInProgress = true
 			} else {
 				backfillInOtherChannel = true
@@ -386,20 +474,15 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 			chanOpts.Since = SequenceID{
 				Seq:             0,
 				vbNo:            0,
-				Clock:           base.NewSequenceClockImpl(),
 				TriggeredBy:     seqAddedAt,
 				TriggeredByVbNo: vbAddedAt,
 			}
-			chanOpts.Since.TriggeredByClock = base.NewSyncSequenceClock()
-			chanOpts.Since.TriggeredByClock.SetTo(getChangesClock(options.Since))
-
 			base.LogTo("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInProgress {
 			// Case 3.  Backfill in progress.
 			chanOpts.Since = SequenceID{
 				Seq:              options.Since.Seq,
 				vbNo:             options.Since.vbNo,
-				Clock:            base.NewSequenceClockImpl(),
 				TriggeredBy:      seqAddedAt,
 				TriggeredByVbNo:  vbAddedAt,
 				TriggeredByClock: options.Since.TriggeredByClock,
@@ -407,15 +490,13 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 			base.LogTo("Changes+", "Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInOtherChannel {
 			chanOpts.Since = SequenceID{
-				Seq:   options.Since.TriggeredBy,
-				vbNo:  options.Since.TriggeredByVbNo,
 				Clock: options.Since.TriggeredByClock, // Update Clock to TriggeredByClock if we're in other backfill
 			}
 		} else {
 			// Case 1.  Leave chanOpts.Since set to options.Since.
 		}
 
-		feed, err := db.vectorChangesFeed(name, chanOpts)
+		feed, err := db.vectorChangesFeed(name, chanOpts, cumulativeClock, stableClock)
 		if err != nil {
 			base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 			return feeds, err
@@ -434,81 +515,89 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 //  For the given:
 //    - since clock SinceClock
 //    - current backfill position vb-B.seq-B,
-//    - granting sequence vb-G.seq-G
-//  We want to return everything for the channel from vb-B.seq-B up to vb-G.seq-G as backfill,
-//  and also return everything from vb-G.seq-G to vb-max.seq-max that's earlier the since value,
+//  We want to return everything for the channel after vb-B.seq-B that's earlier than the since value as backfill
 //
 // From Clock:
-// If vb < vb-B, seq = MaxUint
+// If vb < vb-B, seq = Since Clock Seq
 // If vb = vb-B, seq = seq-b
-// if vb > vb-B, seq = SinceClock seq
+// if vb > vb-B, seq = 0
 // To Clock:
-// If vb < vb-G, seq = MaxInt
-// If vb = vb-G, seq = seq-G
-// if vb > vb-G, seq = SinceClock
+// Since clock
 
 func calculateBackfillRange(backfillPosition base.VbSequence, triggerPosition base.VbSequence, sinceClock base.SequenceClock) (fromClock, toClock base.SequenceClock) {
 
 	fromClock = base.NewSequenceClockImpl()
-	toClock = base.NewSequenceClockImpl()
-	MAX_SEQUENCE := uint64(math.MaxUint64)
+	toClock = sinceClock
 
 	for vbInt, _ := range sinceClock.Value() {
 		vbNo := uint16(vbInt)
-		var fromSeq, toSeq uint64
-
+		var fromSeq uint64
 		// Calculate from sequence for vbucket
 		if vbNo < backfillPosition.Vb {
-			fromSeq = MAX_SEQUENCE
-		} else if vbNo > backfillPosition.Vb {
 			fromSeq = sinceClock.GetSequence(vbNo)
+		} else if vbNo > backfillPosition.Vb {
+			fromSeq = 0
 		} else if vbNo == backfillPosition.Vb {
 			fromSeq = backfillPosition.Seq
 		}
 		fromClock.SetSequence(vbNo, fromSeq)
-
-		// Calculate to sequence for vbucket
-		if vbNo < triggerPosition.Vb {
-			toSeq = MAX_SEQUENCE
-		} else if vbNo > triggerPosition.Vb {
-			toSeq = sinceClock.GetSequence(vbNo)
-		} else if vbNo == triggerPosition.Vb {
-			toSeq = triggerPosition.Seq
-		}
-		toClock.SetSequence(vbNo, toSeq)
 	}
 
 	return fromClock, toClock
 }
 
+type ChannelFeedType int8
+
+const (
+	ChannelFeedType_Standard ChannelFeedType = iota
+	ChannelFeedType_ActiveBackfill
+	ChannelFeedType_PendingBackfill
+)
+
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	changeIndex, ok := db.changeCache.(*kvChangeIndex)
 	if !ok {
 		return nil, fmt.Errorf("Called vectorChangesFeed with non-index cache type: %T", db.changeCache)
 	}
 
-	// If we're in backfill for this channel, we make one reader call for the backfill and one for non-backfill.  Without
+	// If we're mid-backfill for this channel, we make one reader call for the backfill and one for non-backfill.  Without
 	// two requests, it's not possible to use limit to prevent a full index scan of some vbuckets while still preserving ordering.
 	// The second call should only be made if the first request doesn't return limit changes.
 	var (
-		backfillLog []*LogEntry
-		log         []*LogEntry
-		err         error
+		pendingBackfillLog []*ChangeEntry
+		backfillLog        []*LogEntry
+		log                []*LogEntry
+		err                error
 	)
 
-	if options.Since.TriggeredByClock != nil {
-		// Changes feed is in backfill for this channel.
+	feedType := ChannelFeedType_Standard
+	// Determine whether we're
+	if options.Since.TriggeredByClock == nil && options.Since.TriggeredBy > 0 {
+		feedType = ChannelFeedType_PendingBackfill
+	} else if options.Since.TriggeredByClock != nil {
+		feedType = ChannelFeedType_ActiveBackfill
+	}
 
+	switch feedType {
+	case ChannelFeedType_Standard:
+		// Standard (non-backfill) changes feed - get everything from since to stable clock
+		log, err = changeIndex.reader.GetChangesForRange(channel, options.Since.Clock, stableClock, options.Limit)
+		if err != nil {
+			return nil, err
+		}
+		base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	case ChannelFeedType_ActiveBackfill:
+		// In-progress backfill for this channel
 		// Backfill position: (vb,seq) position in the backfill. e.g. [0,0] if we're just starting the backfill, [vb,seq] if we're midway through.
 		backfillPosition := base.VbSequence{options.Since.vbNo, options.Since.Seq}
 
 		// Trigger position: (vb,seq) of the document that triggered this backfill (e.g. access granting doc or user doc)
 		triggerPosition := base.VbSequence{options.Since.TriggeredByVbNo, options.Since.TriggeredBy}
 
-		backfillFrom, backfillTo := calculateBackfillRange(backfillPosition, triggerPosition, options.Since.Clock)
+		backfillFrom, backfillTo := calculateBackfillRange(backfillPosition, triggerPosition, options.Since.TriggeredByClock)
 
 		backfillLog, err = changeIndex.reader.GetChangesForRange(channel, backfillFrom, backfillTo, options.Limit)
 		if err != nil {
@@ -524,17 +613,39 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 			}
 			base.LogTo("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
 		}
-
-	} else {
-		// Not backfill for this channel.  Standard changes processing
-		log, err = changeIndex.reader.GetChangesForRange(channel, options.Since.Clock, nil, options.Limit)
-		if err != nil {
-			return nil, err
+	case ChannelFeedType_PendingBackfill:
+		// Pending backfill for this channel
+		pendingBackfillSequence := SequenceID{
+			SeqType: ClockSequenceType,
+			Seq:     options.Since.TriggeredBy,
+			vbNo:    options.Since.TriggeredByVbNo,
 		}
-		base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+
+		// For pending backfill, we want to block the backfill calculation until the changes feed catches up with the backfill trigger.
+		// The main changes loop will read the first entry from the feed channel immediately, and then won't read again until it's time for
+		// the backfill.  Since the feed channel is a buffered channel of size 1, we need to write three 'backfill pending' entries to the
+		// channel in order to block (first write is read immediately, second write is buffered, third write blocks).
+		pendingBackfillLog = make([]*ChangeEntry, 3)
+
+		pendingBackfillLog[0] = &ChangeEntry{
+			Seq:      pendingBackfillSequence,
+			ID:       fmt.Sprintf("%s0:%s", backfillPendingPrefix, channel),
+			backfill: BackfillFlag_Pending,
+		}
+		pendingBackfillLog[1] = &ChangeEntry{
+			Seq:      pendingBackfillSequence,
+			ID:       fmt.Sprintf("%s1:%s", backfillPendingPrefix, channel),
+			backfill: BackfillFlag_Pending,
+		}
+		pendingBackfillLog[2] = &ChangeEntry{
+			Seq:      pendingBackfillSequence,
+			ID:       fmt.Sprintf("%s2:%s", backfillPendingPrefix, channel),
+			backfill: BackfillFlag_Pending,
+		}
+
 	}
 
-	if len(log) == 0 && len(backfillLog) == 0 {
+	if len(pendingBackfillLog) == 0 && len(log) == 0 && len(backfillLog) == 0 {
 		// There are no entries newer than 'since'. Return an empty feed:
 		feed := make(chan *ChangeEntry)
 		close(feed)
@@ -544,6 +655,45 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
 		defer close(feed)
+
+		// Pending backfill processing
+		if len(pendingBackfillLog) > 0 {
+			for _, changeEntry := range pendingBackfillLog {
+				select {
+				case <-options.Terminator:
+					base.LogTo("Changes+", "Aborting changesFeed")
+					return
+				case feed <- changeEntry:
+				}
+			}
+			// Retrieve the backfill changes
+			// Add the seq before the backfill trigger to the cumulative clock and update triggered by clock for this backfill
+			cumulativeClock.SetMaxSequence(options.Since.TriggeredByVbNo, options.Since.TriggeredBy-1)
+			options.Since.TriggeredByClock = cumulativeClock.Copy()
+			clockHash, err := db.SequenceHasher.GetHash(options.Since.TriggeredByClock)
+			if err != nil {
+				base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
+				return
+			}
+			options.Since.TriggeredByClock.SetHashedValue(clockHash)
+
+			// Get everything from zero to the cumulative clock as backfill
+			backfillLog, err = changeIndex.reader.GetChangesForRange(channel, base.NewSequenceClockImpl(), cumulativeClock, options.Limit)
+			if err != nil {
+				base.Warn("Error processing backfill changes for channel %s: %v", channel, err)
+				return
+			}
+
+			// If we still have room, get everything from the cumulative clock to the stable clock as non-backfill
+			if options.Limit == 0 || len(backfillLog) < options.Limit {
+				log, err = changeIndex.reader.GetChangesForRange(channel, cumulativeClock, stableClock, options.Limit)
+				if err != nil {
+					base.Warn("Error processing changes for channel %s: %v", channel, err)
+					return
+				}
+				base.LogTo("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
+			}
+		}
 
 		// Send backfill first
 		for _, logEntry := range backfillLog {
@@ -561,27 +711,34 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 				base.LogTo("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
-				base.LogTo("Changes+", "Adding %q as backfill to feed for channel %s", change.ID, channel)
 			}
 		}
 
-		// Now send any non-backfill entries.  If there was no backfill sent, we need to set triggered by seq and vbno (but not clock) on
-		// the first entry sent, to ensure the trigger gets added to the cumulative clock.
-		sendTrigger := false
-		if len(backfillLog) == 0 {
-			sendTrigger = true
+		if feedType != ChannelFeedType_Standard {
+			// If we were in a backfill mode, send a 'backfill complete' entry
+			backfillCompleteEntry := ChangeEntry{
+				Seq: SequenceID{
+					SeqType: ClockSequenceType,
+					Seq:     options.Since.TriggeredBy,
+					vbNo:    options.Since.TriggeredByVbNo,
+				},
+				ID:       fmt.Sprintf("%s%s", backfillCompletePrefix, channel),
+				backfill: BackfillFlag_Complete,
+			}
+			select {
+			case <-options.Terminator:
+				base.LogTo("Changes+", "Aborting changesFeed")
+				return
+			case feed <- &backfillCompleteEntry:
+			}
 		}
+
+		// Now send any non-backfill entries.
 		for _, logEntry := range log {
 			seqID := SequenceID{
 				SeqType: ClockSequenceType,
 				Seq:     logEntry.Sequence,
 				vbNo:    logEntry.VbNo,
-			}
-
-			if sendTrigger {
-				seqID.TriggeredBy = options.Since.TriggeredBy
-				seqID.TriggeredByVbNo = options.Since.TriggeredByVbNo
-				sendTrigger = false
 			}
 
 			change := makeChangeEntry(logEntry, seqID, channel)
@@ -590,7 +747,6 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions) (<
 				base.LogTo("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
-				base.LogTo("Changes+", "Adding %q to feed for channel %s", change.ID, channel)
 			}
 		}
 	}()
