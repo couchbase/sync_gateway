@@ -899,6 +899,18 @@ func TestBulkDocsEmptyDocs(t *testing.T) {
 	assertStatus(t, response, 400)
 }
 
+func TestBulkDocsMalformedDocs(t *testing.T) {
+	var rt restTester
+	input := `{"docs":["A","B"]}`
+	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 400)
+
+	input = `{"docs": [{"_id": 3, "n": 1}]}`
+	response = rt.sendRequest("POST", "/db/_bulk_docs", input)
+	log.Printf("response:%s", response.Body.Bytes())
+	assertStatus(t, response, 400)
+}
+
 func TestBulkGetEmptyDocs(t *testing.T) {
 	var rt restTester
 	input := `{}`

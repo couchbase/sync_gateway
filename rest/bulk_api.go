@@ -390,7 +390,11 @@ func (h *handler) handleBulkDocs() error {
 	localDocs := make([]interface{}, 0, lenDocs)
 	docs := make([]interface{}, 0, lenDocs)
 	for _, item := range userDocs {
-		doc := item.(map[string]interface{})
+		doc, ok := item.(map[string]interface{})
+		if !ok {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Document body must be JSON")
+			return err
+		}
 		docid, _ := doc["_id"].(string)
 		if strings.HasPrefix(docid, "_local/") {
 			localDocs = append(localDocs, doc)
