@@ -57,8 +57,8 @@ func (p *program) wait() {
 	err := p.SyncGateway.Wait()
 	if err != nil {
 		logger.Errorf("Sync Gateway exiting with %v", err)
-		panic("Failed to start Sync Gateway service.")
 	}
+	panic("Sync Gateway service exited.")
 }
 
 func (p *program) Stop(s service.Service) error {
