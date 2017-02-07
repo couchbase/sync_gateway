@@ -88,8 +88,12 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
 
+			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
+			// may not get another wait notification, so we bypass wait loop processing.
+			postStableSeqsFound := false
+
 			// Build the channel feeds.
-			feeds, err := db.initializeChannelFeeds(channelsSince, options, addedChannels, userVbNo, cumulativeClock, stableClock)
+			feeds, postStableSeqsFound, err := db.initializeChannelFeeds(channelsSince, options, addedChannels, userVbNo, cumulativeClock, stableClock)
 			if err != nil {
 				return
 			}
@@ -99,10 +103,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			current := make([]*ChangeEntry, len(feeds))
 			var sentSomething bool
 			nextEntry := getNextSequenceFromFeeds(current, feeds)
-
-			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
-			// may not get another wait notification, so we bypass wait loop processing.
-			postStableSeqsFound := false
 
 			for {
 				minEntry := nextEntry
@@ -416,9 +416,10 @@ func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *Chang
 
 // Creates a go-channel of ChangeEntry for each channel in channelsSince.  Each go-channel sends the ordered entries for that channel.
 func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, options ChangesOptions, addedChannels base.Set,
-	userVbNo uint16, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) ([]<-chan *ChangeEntry, error) {
+	userVbNo uint16, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) ([]<-chan *ChangeEntry, bool, error) {
 	// Populate the  array of feed channels:
 	feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
+	hasPostChangesTriggers := false
 
 	base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
 	for name, vbSeqAddedAt := range channelsSince {
@@ -467,8 +468,14 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		}
 
 		sinceSeq := getChangesClock(options.Since).GetSequence(vbAddedAt)
+		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt
+
+		// If backfill required and the triggering seq is after the stable sequence, skip this channel in this iteration
 		stableSeq := stableClock.GetSequence(vbAddedAt)
-		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt && seqAddedAt <= stableSeq
+		if backfillRequired && seqAddedAt > stableSeq {
+			hasPostChangesTriggers = true
+			continue
+		}
 
 		if isNewChannel || (backfillRequired && !backfillInProgress) {
 			// Case 2.  No backfill in progress, backfill required
@@ -500,7 +507,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 		feed, err := db.vectorChangesFeed(name, chanOpts, cumulativeClock, stableClock)
 		if err != nil {
 			base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
-			return feeds, err
+			return feeds, false, err
 		}
 		feeds = append(feeds, feed)
 	}
@@ -509,7 +516,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, opti
 	if db.user != nil {
 		feeds, _ = db.appendVectorUserFeed(feeds, []string{}, options, userVbNo)
 	}
-	return feeds, nil
+	return feeds, hasPostChangesTriggers, nil
 }
 
 // Calculates the range for backfill processing, for compatibility with changes streaming.
