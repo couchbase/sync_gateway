@@ -185,6 +185,30 @@ func (ce *ChangeEntry) SetBranched(isBranched bool) {
 	ce.branched = isBranched
 }
 
+func (ce *ChangeEntry) String() string {
+
+	var deletedString, removedString, errString, allRemovedString, branchedString, backfillString string
+	if ce.Deleted {
+		deletedString = ", Deleted:true"
+	}
+	if len(ce.Removed) > 0 {
+		removedString = fmt.Sprintf(", Removed:%v", ce.Removed)
+	}
+	if ce.Err != nil {
+		errString = fmt.Sprintf(", Err:%v", ce.Err)
+	}
+	if ce.allRemoved {
+		allRemovedString = ", allRemoved:true"
+	}
+	if ce.branched {
+		branchedString = ", branched:true"
+	}
+	if ce.backfill != BackfillFlag_None {
+		backfillString = fmt.Sprintf(", backfill:%d", ce.backfill)
+	}
+	return fmt.Sprintf("{Seq:%s, ID:%s, Changes:%s%s%s%s%s%s%s}", ce.Seq, ce.ID, ce.Changes, deletedString, removedString, errString, allRemovedString, branchedString, backfillString)
+}
+
 func makeErrorEntry(message string) ChangeEntry {
 
 	change := ChangeEntry{

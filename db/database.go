@@ -547,15 +547,40 @@ func installViews(bucket base.Bucket) error {
 	                    }
 	               }`
 
+	// Vbucket sequence version of role access view, used by ComputeRolesForUser()
+	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
+
+	roleAccess_vbSeq_map := `function (doc, meta) {
+		                    var sync = doc._sync;
+		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+		                        return;
+		                    var access = sync.role_access;
+		                    if (access) {
+		                        for (var name in access) {
+		                        	// Build a timed set based on vb and vbseq of this revision
+		                        	var value = {};
+		                        	for (var role in access[name]) {
+		                        		var timedSetWithVbucket = {};
+				                        timedSetWithVbucket["vb"] = parseInt(meta.vb, 10);
+				                        timedSetWithVbucket["seq"] = parseInt(meta.seq, 10);
+				                        value[role] = timedSetWithVbucket;
+			                        }
+		                            emit(name, value)
+		                        }
+
+		                    }
+		               }`
+
 	designDocMap := map[string]sgbucket.DesignDoc{}
 
 	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewPrincipals:  sgbucket.ViewDef{Map: principals_map},
-			ViewChannels:    sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:      sgbucket.ViewDef{Map: access_map},
-			ViewAccessVbSeq: sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccess:  sgbucket.ViewDef{Map: roleAccess_map},
+			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
+			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:          sgbucket.ViewDef{Map: access_map},
+			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
+			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
 		},
 	}
 

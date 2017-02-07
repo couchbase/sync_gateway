@@ -108,18 +108,40 @@ const (
 	CompareGreaterThan
 )
 
-// VbSequence supports collections of {vb, seq} without requiring a map.
-type VbSequence struct {
+// VbSeq stores a vbucket number and vbucket sequence pair
+type VbSeq struct {
 	Vb  uint16
 	Seq uint64
 }
 
-func (v VbSequence) CompareTo(vb uint16, seq uint64) CompareResult {
+// Updates to the other sequence value if empty (seq=0), or the other value compares less than v
+func (v *VbSeq) UpdateIfEarlier(other VbSeq) bool {
+	if v.Seq == 0 || CompareVbSequence(other, *v) == CompareLessThan {
+		v.Vb = other.Vb
+		v.Seq = other.Seq
+		return true
+	}
+	return false
+}
+
+func (v VbSeq) LessThanOrEqualsClock(clock SequenceClock) bool {
+	if v.Seq == 0 {
+		return false
+	}
+
+	if v.Seq <= clock.GetSequence(v.Vb) {
+		return true
+	}
+	return false
+
+}
+
+func (v VbSeq) CompareTo(vb uint16, seq uint64) CompareResult {
 	return CompareVbAndSequence(v.Vb, v.Seq, vb, seq)
 }
 
 // Compares based on vbno, then sequence.  Returns 0 if identical, 1 if s1 > s2, -1 if s1 < s2
-func CompareVbSequence(s1, s2 VbSequence) CompareResult {
+func CompareVbSequence(s1, s2 VbSeq) CompareResult {
 	return CompareVbAndSequence(s1.Vb, s1.Seq, s2.Vb, s2.Seq)
 }
 
@@ -276,15 +298,15 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 	// Build set of sequence updates by partition
 	// Future optimization: have method accept sequences already grouped by partition - potentially
 	// in a clock implementation
-	partitionSequences := make(map[uint16][]VbSequence)
+	partitionSequences := make(map[uint16][]VbSeq)
 
 	for vb, sequence := range updates {
 		partitionNo := s.partitionMap.VbMap[uint16(vb)]
 		_, ok := partitionSequences[partitionNo]
 		if !ok {
-			partitionSequences[partitionNo] = make([]VbSequence, 0)
+			partitionSequences[partitionNo] = make([]VbSeq, 0)
 		}
-		partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSequence{Vb: uint16(vb), Seq: sequence})
+		partitionSequences[partitionNo] = append(partitionSequences[partitionNo], VbSeq{Vb: uint16(vb), Seq: sequence})
 
 	}
 
@@ -307,7 +329,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 
 		// Update partitions in parallel goroutines.
 		// Future optimization: implement a bulk set based version of WriteCasRaw
-		go func(p *ShardedClockPartition, seqs []VbSequence) {
+		go func(p *ShardedClockPartition, seqs []VbSeq) {
 			defer wg.Done()
 			// Apply sequences to clock partition
 			for _, vbSeq := range seqs {

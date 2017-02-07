@@ -215,6 +215,46 @@ func (user *userImpl) SetPassword(password string) {
 	}
 }
 
+// Returns the sequence number since which the user has been able to access the channel, else zero.  Sets the vb
+// for an admin channel grant, if needed.
+func (user *userImpl) CanSeeChannelSinceVbSeq(channel string, numVbuckets int) (base.VbSeq, bool) {
+	seq, ok := user.Channels_[channel]
+	if !ok {
+		seq, ok = user.Channels_[ch.UserStarChannel]
+		if !ok {
+			return base.VbSeq{}, false
+		}
+	}
+	if seq.VbNo == nil {
+		userDocVbno := user.getVbNo(numVbuckets)
+		seq.VbNo = &userDocVbno
+	}
+	return base.VbSeq{*seq.VbNo, seq.Sequence}, true
+}
+
+func (user *userImpl) getVbNo(numVbuckets int) uint16 {
+	if user.vbNo == nil {
+		calculatedVbNo := uint16(base.VBHash(user.DocID(), numVbuckets))
+		user.vbNo = &calculatedVbNo
+	}
+	return *user.vbNo
+}
+
+func (user *userImpl) ValidateGrant(vbSeq *ch.VbSequence, numVbuckets int) bool {
+
+	// If the sequence is zero, this is an admin grant that hasn't been updated by accel - ignore
+	if vbSeq.Sequence == 0 {
+		return false
+	}
+
+	// If vbSeq is nil, this is an admin grant.  Set the vb to the vb of the user doc
+	if vbSeq.VbNo == nil {
+		calculatedVbNo := user.getVbNo(numVbuckets)
+		vbSeq.VbNo = &calculatedVbNo
+	}
+	return true
+}
+
 //////// CHANNEL ACCESS:
 
 func (user *userImpl) GetRoles() []Role {
@@ -301,6 +341,183 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 		}
 	}
 	return output
+}
+
+/////////// Support for vb.seq based comparison of channel, role, and role channel grants
+
+// FilterToAvailableChannelsForSince is used for clock-based changes, and gives priority to vb.seq values
+// earlier than the provided since clock when returning results (because that means the channel doesn't require
+// backfill).
+func (user *userImpl) FilterToAvailableChannelsForSince(channels base.Set, since base.SequenceClock) (ch.TimedSet, ch.TimedSet) {
+	output := ch.TimedSet{}
+	secondaryTriggers := ch.TimedSet{}
+	for channel := range channels {
+		if channel == ch.AllChannelWildcard {
+			return user.InheritedChannelsForClock(since)
+		}
+		baseVbSeq, secondaryTriggerSeq, ok := user.CanSeeChannelSinceForClock(channel, since)
+		if ok {
+			output[channel] = ch.NewVbSequence(baseVbSeq.Vb, baseVbSeq.Seq)
+			if secondaryTriggerSeq.Seq > 0 {
+				secondaryTriggers[channel] = ch.NewVbSequence(secondaryTriggerSeq.Vb, secondaryTriggerSeq.Seq)
+			}
+		}
+	}
+	return output, secondaryTriggers
+}
+
+func (user *userImpl) InheritedChannelsForClock(sinceClock base.SequenceClock) (channels ch.TimedSet, secondaryTriggers ch.TimedSet) {
+
+	channels = make(ch.TimedSet, 0)
+	secondaryTriggers = make(ch.TimedSet, 0)
+	numVbuckets := len(sinceClock.Value())
+
+	// Initialize to the user channel timed set, regardless of since value
+	for channelName, channelGrant := range user.Channels() {
+		if ok := user.ValidateGrant(&channelGrant, numVbuckets); ok {
+			channels[channelName] = channelGrant
+		}
+	}
+	// For each role, evaluate role grant vbseq and role channel grant vbseq.
+	for _, role := range user.GetRoles() {
+		roleSince := user.RolesSince_[role.Name()]
+		roleGrantValid := role.ValidateGrant(&roleSince, numVbuckets)
+		if !roleGrantValid {
+			continue
+		}
+
+		for channelName, roleChannelSince := range role.Channels() {
+			if roleChannelGrantValid := role.ValidateGrant(&roleChannelSince, numVbuckets); !roleChannelGrantValid {
+				continue
+			}
+
+			rolePreSince, grantSeq, secondarySeq := CalculateRoleChannelGrant(roleSince.AsVbSeq(), roleChannelSince.AsVbSeq(), sinceClock)
+			roleGrantingSeq := ch.VbSequence{&grantSeq.Vb, grantSeq.Seq}
+			secondaryTriggerSeq := ch.VbSequence{}
+			if secondarySeq.Seq > 0 {
+				secondaryTriggerSeq.VbNo = &secondarySeq.Vb
+				secondaryTriggerSeq.Sequence = secondarySeq.Seq
+			}
+
+			// If the user doesn't already have channel access through user or a previous role, add to set
+			if existingValue, ok := channels[channelName]; !ok {
+				channels[channelName] = roleGrantingSeq
+				secondaryTriggers[channelName] = secondaryTriggerSeq
+			} else {
+				// Otherwise update the value in the set if the role channel depending on comparisons to the since value
+				if existingValue.IsLTEClock(sinceClock) {
+					// If both are pre-clock, use the role channel since if it's an earlier vbseq
+					if rolePreSince && roleGrantingSeq.CompareTo(existingValue) == base.CompareLessThan {
+						channels[channelName] = roleGrantingSeq
+						secondaryTriggers[channelName] = secondaryTriggerSeq
+					}
+				} else {
+					// If existing is post-clock and the role channel is pre-clock, use the role channel
+					if rolePreSince {
+						channels[channelName] = roleGrantingSeq
+						secondaryTriggers[channelName] = secondaryTriggerSeq
+					} else {
+						// If both are post-clock, use the role channel if it's an earlier vbseq
+						if roleChannelSince.CompareTo(existingValue) == base.CompareLessThan {
+							channels[channelName] = roleGrantingSeq
+							secondaryTriggers[channelName] = secondaryTriggerSeq
+						}
+					}
+				}
+			}
+
+		}
+	}
+	return channels, secondaryTriggers
+}
+
+// CanSeeChannelSinceForClock returns the vbseq at which the user was first granted access to the channel, with the following
+// method for comparing vb/seq across multiple grants:
+//   - Find the earliest vbseq among all grants earlier than the since clock using vbseq.Compare (minPreSince)
+//   - Find the earliest vbseq among all grants later than the since clock using vbseq.Compare (minPostSince)
+func (user *userImpl) CanSeeChannelSinceForClock(channel string, sinceClock base.SequenceClock) (channelSince base.VbSeq, secondaryTrigger base.VbSeq, ok bool) {
+
+	minPreSince := base.VbSeq{}
+	minPostSince := base.VbSeq{}
+	secondaryTrigger = base.VbSeq{}
+	numVbuckets := len(sinceClock.Value())
+	// Check for the channel in the user's grants
+	userChannelSince, ok := user.CanSeeChannelSinceVbSeq(channel, len(sinceClock.Value()))
+	if ok {
+		if userChannelSince.LessThanOrEqualsClock(sinceClock) {
+			minPreSince = userChannelSince
+		} else {
+			minPostSince = userChannelSince
+		}
+	}
+	// Check for the channel in the user's roles
+	for _, role := range user.GetRoles() {
+		roleChannelSince, ok := role.CanSeeChannelSinceVbSeq(channel, len(sinceClock.Value()))
+		if ok {
+			roleGrant := user.RolesSince_[role.Name()]
+			isValid := user.ValidateGrant(&roleGrant, numVbuckets)
+			if !isValid {
+				continue
+			}
+			roleGrantSince := base.VbSeq{*roleGrant.VbNo, roleGrant.Sequence}
+			preSince, grantingSeq, roleSecondaryTrigger := CalculateRoleChannelGrant(roleGrantSince, roleChannelSince, sinceClock)
+			if preSince {
+				minPreSince.UpdateIfEarlier(grantingSeq)
+			} else {
+				if minPostSince.UpdateIfEarlier(grantingSeq) {
+					secondaryTrigger = roleSecondaryTrigger
+				}
+			}
+		}
+	}
+
+	// If minPreSince exists, it gets priority over minPostSince, because it means the user already had access to
+	// the channel before the specified sinceClock.
+	if minPreSince.Seq != 0 {
+		return minPreSince, base.VbSeq{}, true
+	}
+	if minPostSince.Seq != 0 {
+		return minPostSince, secondaryTrigger, true
+	}
+	// Neither exist - the user can't see this channel.
+	return base.VbSeq{}, base.VbSeq{}, false
+}
+
+// Identifies whether the specified role grant or roleChannelGrant are new to the user (occured after the specified since clock).
+// If only one is post-since, returns that value
+// If both are pre-since or both are post-since, returns the higher vb.seq
+func CalculateRoleChannelGrant(roleGrant base.VbSeq, roleChannelGrant base.VbSeq, sinceClock base.SequenceClock) (preSinceGrant bool, grantSeq base.VbSeq, secondaryTrigger base.VbSeq) {
+
+	preSinceGrant = false
+	if roleGrant.LessThanOrEqualsClock(sinceClock) {
+		if roleChannelGrant.LessThanOrEqualsClock(sinceClock) {
+			preSinceGrant = true
+			// Existing role grant, existing channel grant, update with the later vb.seq value
+			if base.CompareVbSequence(roleChannelGrant, roleGrant) == base.CompareGreaterThan {
+				grantSeq = roleChannelGrant
+			} else {
+				grantSeq = roleGrant
+			}
+		} else {
+			// Existing role grant, new channel grant
+			grantSeq = roleChannelGrant
+		}
+	} else {
+		if roleChannelGrant.LessThanOrEqualsClock(sinceClock) {
+			// New role grant, existing role channel grant
+			grantSeq = roleGrant
+		} else {
+			// New role grant, new channel grant, update with the later vb.seq value
+			if base.CompareVbSequence(roleChannelGrant, roleGrant) == base.CompareGreaterThan {
+				grantSeq = roleChannelGrant
+				secondaryTrigger = roleGrant
+			} else {
+				grantSeq = roleGrant
+				secondaryTrigger = roleChannelGrant
+			}
+		}
+	}
+	return preSinceGrant, grantSeq, secondaryTrigger
 }
 
 //////// MARSHALING:

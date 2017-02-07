@@ -283,13 +283,21 @@ func TestSaveRoles(t *testing.T) {
 }
 
 type mockComputer struct {
-	channels ch.TimedSet
-	roles    ch.TimedSet
-	err      error
+	channels     ch.TimedSet
+	roles        ch.TimedSet
+	roleChannels ch.TimedSet
+	err          error
 }
 
-func (self *mockComputer) ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error) {
-	return self.channels, self.err
+func (self *mockComputer) ComputeChannelsForPrincipal(p Principal) (ch.TimedSet, error) {
+	switch p.(type) {
+	case User:
+		return self.channels, self.err
+	case Role:
+		return self.roleChannels, self.err
+	default:
+		return nil, self.err
+	}
 }
 
 func (self *mockComputer) ComputeRolesForUser(User) (ch.TimedSet, error) {
@@ -314,7 +322,7 @@ func TestRebuildUserChannels(t *testing.T) {
 }
 
 func TestRebuildRoleChannels(t *testing.T) {
-	computer := mockComputer{channels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
+	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	role, _ := auth.NewRole("testRole", ch.SetOf("explicit1"))
 	err := auth.InvalidateChannels(role)
@@ -410,4 +418,179 @@ func TestRegisterUser(t *testing.T) {
 	user, err = auth.GetUserByEmail("bar@example.com")
 	assert.Equals(t, user.Name(), "bar@example.com")
 	assert.Equals(t, err, nil)
+}
+
+// 8 cases
+// C: Channel grant
+// R: Role grant
+// RC: Channel grant to role
+// C R RC |                    AllBefore
+// C R    | RC
+// C RC   | R
+// C      | R RC
+// R RC   | C
+// RC     | C R
+// R      | C RC
+//        | C R RC
+
+func TestFilterToAvailableSince(t *testing.T) {
+
+	tests := []struct {
+		name                     string
+		syncGrantChannels        ch.TimedSet
+		syncGrantRoles           ch.TimedSet
+		syncGrantRoleChannels    ch.TimedSet
+		expectedResult           ch.VbSequence
+		expectedSecondaryTrigger ch.VbSequence
+	}{
+		{"AllBeforeSince",
+			ch.TimedSet{"A": ch.NewVbSequence(10, 50)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 60)},
+			ch.TimedSet{"A": ch.NewVbSequence(30, 70)},
+			ch.NewVbSequence(10, 50),
+			ch.VbSequence{},
+		},
+		{"UserBeforeSince",
+			ch.TimedSet{"A": ch.NewVbSequence(10, 50)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(30, 170)},
+			ch.NewVbSequence(10, 50),
+			ch.VbSequence{},
+		},
+		{"RoleGrantBeforeSince",
+			ch.TimedSet{"A": ch.NewVbSequence(10, 150)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 60)},
+			ch.TimedSet{"A": ch.NewVbSequence(30, 170)},
+			ch.NewVbSequence(10, 150),
+			ch.VbSequence{},
+		},
+		{"RoleGrantAfterSince",
+			ch.TimedSet{},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(30, 70)},
+			ch.NewVbSequence(20, 160),
+			ch.VbSequence{},
+		},
+		{"RoleAndRoleChannelGrantAfterSince_ChannelGrantFirst",
+			ch.TimedSet{},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(10, 170)},
+			ch.NewVbSequence(20, 160),
+			ch.NewVbSequence(10, 170),
+		},
+		{"RoleAndRoleChannelGrantAfterSince_RoleGrantFirst",
+			ch.TimedSet{},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(10, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(20, 170)},
+			ch.NewVbSequence(20, 170),
+			ch.NewVbSequence(10, 160),
+		},
+		{"UserGrantOnly",
+			ch.TimedSet{"A": ch.NewVbSequence(10, 50)},
+			ch.TimedSet{},
+			ch.TimedSet{},
+			ch.NewVbSequence(10, 50),
+			ch.VbSequence{},
+		},
+		{"RoleGrantBeforeSince",
+			ch.TimedSet{"A": ch.NewVbSequence(10, 150)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 60)},
+			ch.TimedSet{},
+			ch.NewVbSequence(10, 150),
+			ch.VbSequence{},
+		},
+		{"AllAfterSince",
+			ch.TimedSet{"A": ch.NewVbSequence(10, 150)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(30, 170)},
+			ch.NewVbSequence(10, 150),
+			ch.VbSequence{},
+		},
+		{"AllAfterSinceRoleGrantFirst",
+			ch.TimedSet{"A": ch.NewVbSequence(30, 150)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(10, 170)},
+			ch.NewVbSequence(20, 160),
+			ch.NewVbSequence(10, 170),
+		},
+		{"AllAfterSinceRoleChannelGrantFirst",
+			ch.TimedSet{"A": ch.NewVbSequence(30, 150)},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(10, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(20, 170)},
+			ch.NewVbSequence(20, 170),
+			ch.NewVbSequence(10, 160),
+		},
+		{"AllAfterSinceNoUserGrant",
+			ch.TimedSet{},
+			ch.TimedSet{"ROLE_1": ch.NewVbSequence(20, 160)},
+			ch.TimedSet{"A": ch.NewVbSequence(30, 170)},
+			ch.NewVbSequence(30, 170),
+			ch.NewVbSequence(20, 160),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+
+			sinceClock := NewTestingClockAtSequence(100)
+			computer := mockComputer{channels: tc.syncGrantChannels, roles: tc.syncGrantRoles, roleChannels: tc.syncGrantRoleChannels}
+			auth := NewAuthenticator(gTestBucket, &computer)
+
+			// Set up roles, user
+			role, _ := auth.NewRole("ROLE_1", nil)
+			assert.Equals(t, auth.Save(role), nil)
+
+			user, _ := auth.NewUser("testUser", "password", ch.SetOf("explicit1"))
+			user.setChannels(nil)
+			err := auth.Save(user)
+			assert.Equals(t, err, nil)
+
+			user2, err := auth.GetUser("testUser")
+			assert.Equals(t, err, nil)
+
+			channelsSinceStar, secondaryTriggersStar := user2.FilterToAvailableChannelsForSince(ch.SetOf("*"), sinceClock)
+			channelA_Star, ok := channelsSinceStar["A"]
+			log.Printf("channelA_Star: %s", channelA_Star)
+			assert.True(t, ok)
+			assert.True(t, channelA_Star.Equals(tc.expectedResult))
+			secondaryTriggerStar, ok := secondaryTriggersStar["A"]
+			log.Printf("secondaryTrigger %v, expected %v", secondaryTriggerStar, tc.expectedSecondaryTrigger)
+			assert.True(t, secondaryTriggerStar.Equals(tc.expectedSecondaryTrigger))
+
+			channelsSince, secondaryTriggersSince := user2.FilterToAvailableChannelsForSince(ch.SetOf("A"), sinceClock)
+			channelA_Single, ok := channelsSince["A"]
+			log.Printf("channelA_Single: %s", channelA_Single)
+			assert.True(t, ok)
+			assert.True(t, channelA_Single.Equals(tc.expectedResult))
+			secondaryTriggerSince, ok := secondaryTriggersSince["A"]
+			log.Printf("secondaryTrigger %v, expected %v", secondaryTriggerSince, tc.expectedSecondaryTrigger)
+			assert.True(t, secondaryTriggerSince.Equals(tc.expectedSecondaryTrigger))
+
+			channelBSince, secondaryTriggersB := user2.FilterToAvailableChannelsForSince(ch.SetOf("B"), sinceClock)
+			log.Printf("channelBSince: %s", channelBSince)
+			assert.True(t, len(channelBSince) == 0)
+			assert.True(t, len(secondaryTriggersB) == 0)
+
+			channelsSinceMulti, secondaryTriggersMulti := user2.FilterToAvailableChannelsForSince(ch.SetOf("A", "B"), sinceClock)
+			log.Printf("syncGrant1Multi: %s", channelsSinceMulti)
+			assert.True(t, len(channelsSinceMulti) == 1)
+			channelA_Multi, ok := channelsSinceMulti["A"]
+			assert.True(t, ok)
+			assert.True(t, channelA_Multi.Equals(tc.expectedResult))
+			secondaryTriggerMulti, ok := secondaryTriggersMulti["A"]
+			log.Printf("secondaryTrigger %v, expected %v", secondaryTriggerMulti, tc.expectedSecondaryTrigger)
+			assert.True(t, secondaryTriggerMulti.Equals(tc.expectedSecondaryTrigger))
+
+		})
+	}
+
+}
+
+func NewTestingClockAtSequence(sequence uint64) *base.SequenceClockImpl {
+	clock := base.NewSequenceClockImpl()
+	for k, _ := range clock.Value() {
+		clock.SetSequence(uint16(k), sequence)
+	}
+	return clock
+
 }

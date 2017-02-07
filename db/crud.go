@@ -986,9 +986,19 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 	return channelSet, nil
 }
 
-// Recomputes the set of roles a User has been granted access to by sync() functions.
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
+	if context.UseGlobalSequence() {
+		return context.ComputeSequenceRolesForUser(user)
+	} else {
+		return context.ComputeVbSequenceRolesForUser(user)
+	}
+}
+
+// Recomputes the set of roles a User has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
 	var vres struct {
 		Rows []struct {
 			Value channels.TimedSet
@@ -1009,6 +1019,27 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.Ti
 		}
 	}
 	return result, nil
+}
+
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// This is part of the ChannelComputer interface defined by the Authenticator.
+func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
+	opts := map[string]interface{}{"stale": false, "key": user.Name()}
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
+		return nil, verr
+	}
+
+	roleSet := channels.TimedSet{}
+	for _, row := range vres.Rows {
+		roleSet.Add(row.Value)
+	}
+	return roleSet, nil
 }
 
 //////// REVS_DIFF:

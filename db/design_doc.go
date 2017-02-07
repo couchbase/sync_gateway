@@ -20,6 +20,7 @@ const (
 	ViewAccess                = "access"
 	ViewAccessVbSeq           = "access_vbseq"
 	ViewRoleAccess            = "role_access"
+	ViewRoleAccessVbSeq       = "role_access_vbseq"
 	ViewAllBits               = "all_bits"
 	ViewAllDocs               = "all_docs"
 	ViewImport                = "import"
