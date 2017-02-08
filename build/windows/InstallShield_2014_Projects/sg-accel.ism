@@ -4400,7 +4400,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>ProductCode</td><td>{52DCD87A-762E-4D67-9265-C3F4AC37634B}</td><td/></row>
 		<row><td>ProductID</td><td>none</td><td/></row>
 		<row><td>ProductLanguage</td><td>1033</td><td/></row>
-		<row><td>ProductName</td><td>SG_Accel</td><td/></row>
+		<row><td>ProductName</td><td>Couchbase Sync Gateway Accelerator</td><td/></row>
 		<row><td>ProductVersion</td><td>1.3.0000</td><td/></row>
 		<row><td>ProgressType0</td><td>install</td><td/></row>
 		<row><td>ProgressType1</td><td>Installing</td><td/></row>
