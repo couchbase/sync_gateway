@@ -343,9 +343,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
 			if db.user != nil {
 				if err := db.ReloadUser(); err != nil {
+					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
-					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
 					return
 				}
 			}
@@ -438,6 +438,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				feed, err := db.changesFeed(name, chanOpts)
 				if err != nil {
 					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
+					output <- &change
 					return
 				}
 				feeds = append(feeds, feed)

@@ -15,7 +15,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,8 +252,6 @@ func (s *sequenceHasher) GetClock(sequence string) (*base.SequenceClockImpl, err
 	}
 	clock = base.NewSequenceClockImpl()
 	clock.Init(storedClocks.Sequences[seqHash.collisionIndex], seqHash.String())
-
-	log.Printf("Hash %s converts to clock: %s", sequence, base.PrintClock(clock))
 	return clock, nil
 
 }
