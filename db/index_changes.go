@@ -91,6 +91,8 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			stableClock, err := db.changeCache.GetStableClock(true)
 			if err != nil {
 				base.Warn("MultiChangesFeed got error reading stable sequence: %v", err)
+				change := makeErrorEntry("Error reading stable sequence")
+				output <- &change
 				return
 			}
 
@@ -107,6 +109,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Build the channel feeds.
 			feeds, postStableSeqsFound, err := db.initializeChannelFeeds(channelsSince, secondaryTriggers, options, addedChannels, userVbNo, cumulativeClock, stableClock)
 			if err != nil {
+				base.Warn("Error building channel feeds: %v", err)
+				change := makeErrorEntry("Error building channel feeds")
+				output <- &change
 				return
 			}
 
@@ -691,8 +696,9 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			if secondaryTrigger.Sequence > 0 {
 				cumulativeClock.SetMaxSequence(*secondaryTrigger.VbNo, secondaryTrigger.Sequence)
 			}
-			options.Since.TriggeredByClock = cumulativeClock.Copy()
-			clockHash, err := db.SequenceHasher.GetHash(options.Since.TriggeredByClock)
+
+			options.Since.TriggeredByClock = base.NewSequenceClockImpl()
+			clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 			if err != nil {
 				base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
 				return
