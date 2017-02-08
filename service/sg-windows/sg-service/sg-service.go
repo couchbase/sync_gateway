@@ -19,11 +19,15 @@ type program struct {
 }
 
 func (p *program) Start(s service.Service) error {
-	go p.run()
+	err := p.startup()
+	if err != nil {
+		return err
+	}
+	go p.wait()
 	return nil
 }
 
-func (p *program) run() {
+func (p *program) startup() error {
 	logger.Infof("Starting Sync Gateway service using command: `%s %s`", p.ExePath, p.ConfigPath)
 
 	if p.ConfigPath != "" {
@@ -36,7 +40,7 @@ func (p *program) run() {
 	f, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
 	if err != nil {
 		logger.Warningf("Failed to open std err %q: %v", stderrPath, err)
-		return
+		return err
 	}
 	defer f.Close()
 	p.SyncGateway.Stderr = f
@@ -44,13 +48,17 @@ func (p *program) run() {
 	err = p.SyncGateway.Start()
 	if err != nil {
 		logger.Errorf("Failed to start Sync Gateway due to error %v", err)
-		return
+		return err
 	}
-	err = p.SyncGateway.Wait()
+	return nil
+}
+
+func (p *program) wait() {
+	err := p.SyncGateway.Wait()
 	if err != nil {
 		logger.Errorf("Sync Gateway exiting with %v", err)
-		panic("Failed to start Sync Gateway service.")
 	}
+	panic("Sync Gateway service exited.")
 }
 
 func (p *program) Stop(s service.Service) error {
