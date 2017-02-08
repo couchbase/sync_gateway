@@ -189,7 +189,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	h.logRequestLine()
 
-	if base.LogKeys["HTTP++"] {
+	if base.EnableLogHTTPBodies {
 		h.logRequestBody()
 	}
 
@@ -201,12 +201,12 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
-	if base.LogEnabledExcludingLogStar("HTTP++") {
+	if base.EnableLogHTTPBodies {
 		// Wrap the existing ResponseWriter with one that "Tees" the output
 		// to stdout as well as writing back to the socket
 		h.response = NewLoggerTeeResponseWriter(
 			h.response,
-			"HTTP++",
+			"HTTP",
 			h.serialNumber,
 			h.rq,
 		)
@@ -235,16 +235,16 @@ func (h *handler) logRequestLine() {
 
 func (h *handler) logRequestBody() {
 
-	if !base.LogEnabled("HTTP++") {
+	if !base.EnableLogHTTPBodies {
 		return
 	}
 
 	// Replace the requestBody io.ReadCloser with a TeeReadCloser that
-	// tees the request body to the base.Log with the HTTP++ logging key
+	// tees the request body to the base.Log with the HTTPBody logging key
 	h.requestBody = NewTeeReadCloser(
 		h.requestBody,
 		base.NewLoggerWriter(
-			"HTTP++",
+			"HTTP",
 			h.serialNumber,
 			h.rq,
 		),
@@ -261,7 +261,7 @@ func (h *handler) logDuration(realTime bool) {
 	var duration time.Duration
 	if realTime {
 		duration = time.Since(h.startTime)
-		bin := int(duration / (100 * time.Millisecond)) * 100
+		bin := int(duration/(100*time.Millisecond)) * 100
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 

@@ -35,7 +35,7 @@ func (t *TeeReadCloser) Close() error {
 // the logging key
 type LoggingTeeResponseWriter struct {
 	http.ResponseWriter
-	LogKey       string        // The log key to use, eg "HTTP++"
+	LogKey       string        // The log key to use, eg "HTTP+"
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
 }

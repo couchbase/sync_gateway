@@ -27,6 +27,12 @@ import (
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
 
+const (
+	// If true, all HTTP request/response bodies will be logged.
+	// Use this sparingly as it will probably dump sensitive information into the logs.
+	EnableLogHTTPBodies = false
+)
+
 type Level int32
 
 //By setting DebugLevel to -1, if LogLevel is not set in the logging config it
@@ -522,7 +528,7 @@ func UpdateLogger(logFilePath string) {
 
 // This provides an io.Writer interface around the base.Log API
 type LoggerWriter struct {
-	LogKey       string        // The log key to log to, eg, "HTTP++"
+	LogKey       string        // The log key to log to, eg, "HTTP+"
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
 }
