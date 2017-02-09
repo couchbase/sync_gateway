@@ -310,6 +310,11 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 		return fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
 	}
 
+	// Don't allow Distributed Index and Bucket Shadowing to co-exist
+	if err := dbConfig.verifyNoDistributedIndexAndBucketShadowing(); err != nil {
+		return err
+	}
+
 	return nil
 
 }
@@ -320,7 +325,7 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 		return err
 	}
 
-	if dbConfig.ChannelIndex == nil {
+	if dbConfig.ChannelIndex == nil {	
 		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
 	}
 
@@ -333,8 +338,21 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 
 	}
 
+	// Don't allow Distributed Index and Bucket Shadowing to co-exist
+	if err := dbConfig.verifyNoDistributedIndexAndBucketShadowing(); err != nil {
+		return err
+	}
+
 	return nil
 
+}
+
+func (dbConfig *DbConfig) verifyNoDistributedIndexAndBucketShadowing() error {
+	// Don't allow Distributed Index and Bucket Shadowing to co-exist
+	if dbConfig.ChannelIndex != nil && dbConfig.Shadow != nil {
+		return fmt.Errorf("Using Sync Gateway Accel with Bucket Shadowing is not supported")
+	}
+	return nil
 }
 
 func (dbConfig *DbConfig) modifyConfig() {
