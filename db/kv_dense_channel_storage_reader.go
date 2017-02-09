@@ -280,7 +280,10 @@ func (r *DensePartitionStorageReaderNonCaching) GetBlockListForRange(partitionRa
 
 func (l *DenseBlockList) LoadBlock(listEntry DenseBlockListEntry) *DenseBlock {
 	block := NewDenseBlock(l.generateBlockKey(listEntry.BlockIndex), listEntry.StartClock)
-	block.loadBlock(l.indexBucket)
+	err := block.loadBlock(l.indexBucket)
+	if err != nil {
+		// error loading block - leave as new block, and let any conflicts get resolved on next write
+	}
 	return block
 }
 

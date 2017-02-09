@@ -305,22 +305,21 @@ func (c *SequenceClockImpl) UpdateWithClock(updateClock SequenceClock) {
 	}
 }
 
-func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*PartitionClock, allowRollback bool) {
+func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*PartitionClock, allowRollback bool) error {
 
 	for _, partitionClock := range partitionClocks {
 		if partitionClock != nil {
 			for vbNo, seq := range *partitionClock {
 				if seq > 0 {
 					if seq < c.value[vbNo] && !allowRollback {
-						// TODO: Return error instead of panic, to allow callers to handle and support better error reporting
-						panic(fmt.Sprintf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq))
+						return fmt.Errorf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq)
 					}
 					c.value[vbNo] = seq
 				}
 			}
 		}
 	}
-
+	return nil
 }
 
 // Synchronized Sequence Clock - should be used in shared usage scenarios
