@@ -305,7 +305,7 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 	if err := dbConfig.validate(); err != nil {
 		return err
 	}
-	
+
 	if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
 		return fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
 	}
@@ -325,7 +325,7 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 		return err
 	}
 
-	if dbConfig.ChannelIndex == nil {	
+	if dbConfig.ChannelIndex == nil {
 		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
 	}
 
