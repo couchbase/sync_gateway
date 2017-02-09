@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -83,17 +84,22 @@ func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	return cumulativeClock
 }
 
-func (d *DenseBlock) loadBlock(bucket base.Bucket) (err error) {
-	d.value, d.cas, err = bucket.GetRaw(d.Key)
+func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
+	value, cas, err := bucket.GetRaw(d.Key)
+	if err != nil {
+		return err
+	}
+	d.value = value
+	d.cas = cas
 	d.clock = nil
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
-	return err
+	return nil
 }
 
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
 	// Initialize clock
-	d.clock = make(base.PartitionClock)
+	d.clock = d.startClock.Copy()
 
 	var indexEntry DenseBlockIndexEntry
 	for i := 0; i < int(d.getEntryCount()); i++ {
@@ -103,12 +109,13 @@ func (d *DenseBlock) initClock() {
 }
 
 // Adds entries to block and writes block to the bucket
-func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
+func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, casFailure bool, err error) {
 
+	casFailure = false
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
 		base.LogTo("ChannelStorage+", "Block full - returning entries as overflow.  #entries:[%d]", len(entries))
-		return entries, pendingRemoval, nil, nil
+		return entries, pendingRemoval, nil, casFailure, nil
 	}
 
 	overflow, pendingRemoval, updateClock, addError := d.addEntries(entries)
@@ -116,34 +123,20 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 		// Error adding entries - reset the block and return error
 		base.LogTo("ChannelStorage+", "Error adding entries to block. %v", err)
 		d.loadBlock(bucket)
-		return nil, nil, nil, addError
+		return nil, nil, nil, casFailure, addError
 	}
 
-	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
-		// Note: The following is invoked upon cas failure - may be called multiple times
-		d.value = value
-		d.clock = nil
-		// If block full, set overflow and cancel write
-		if len(d.value) > MaxBlockSize {
-			overflow = entries
-			return nil, nil
-		}
-		overflow, pendingRemoval, updateClock, addError = d.addEntries(entries)
-		if addError != nil {
-			base.LogTo("ChannelStorage+", "Error adding entries to block: %v", addError)
-			d.loadBlock(bucket)
-			return nil, addError
-		}
-		return d.value, nil
-	})
-	if writeErr != nil {
-		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
-		return entries, nil, nil, writeErr
+	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
+	if err != nil {
+		casFailure = true
+		base.LogTo("ChannelStorage+", "CAS error writing block to database. %v", err)
+		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
+
 	d.cas = casOut
 	base.LogTo("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
 		d.Key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
-	return overflow, pendingRemoval, updateClock, nil
+	return overflow, pendingRemoval, updateClock, casFailure, nil
 }
 
 // Adds a set of log entries to a block.  Returns:
@@ -153,13 +146,17 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pendingRemoval []*LogEntry, updateClock base.PartitionClock, err error) {
 
 	blockFull := false
+	addCount := 0
 	partitionClock := make(base.PartitionClock)
 	for i, entry := range entries {
 		if !blockFull {
-			removalRequired, err := d.addEntry(entry)
+			added, removalRequired, err := d.addEntry(entry)
 			if err != nil {
 				base.LogTo("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
 				return nil, nil, nil, err
+			}
+			if added {
+				addCount++
 			}
 			partitionClock.SetSequence(entry.VbNo, entry.Sequence)
 			if removalRequired {
@@ -182,18 +179,18 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 
 // Adds a LogEntry to the block.  If the entry already exists in the block (new rev of existing doc),
 // handles removal
-func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err error) {
+func (d *DenseBlock) addEntry(logEntry *LogEntry) (added bool, removalRequired bool, err error) {
 
 	if logEntry == nil {
-		return false, fmt.Errorf("LogEntry must be non-nil")
+		return false, false, fmt.Errorf("LogEntry must be non-nil")
 	}
 
 	// Ensure this entry hasn't already been written by another writer
 	clockSequence := d.getClock()[logEntry.VbNo]
 	if logEntry.Sequence <= clockSequence {
-		base.LogTo("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d]",
-			logEntry.DocID, logEntry.Sequence, clockSequence)
-		return false, nil
+		base.LogTo("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
+			logEntry.DocID, logEntry.Sequence, clockSequence, d.Key)
+		return false, false, nil
 	}
 
 	// Encode log entry as index and entry portions
@@ -204,7 +201,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err err
 	if logEntry.Flags&channels.Added != 0 {
 		err := d.appendEntry(indexBytes, entryBytes)
 		if err != nil {
-			return removalRequired, err
+			return false, removalRequired, err
 		}
 	} else {
 		// Entry already exists in the channel - remove previous entry if present in this block.  Sequence-based
@@ -214,7 +211,11 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err err
 		if logEntry.PrevSequence != 0 {
 			oldIndexPos, oldEntryPos, oldEntryLen = d.findEntry(logEntry.VbNo, logEntry.PrevSequence)
 		} else {
-			oldIndexPos, oldEntryPos, oldEntryLen = d.findEntryByKey(logEntry.VbNo, []byte(logEntry.DocID))
+			var oldSeq uint64
+			oldIndexPos, oldEntryPos, oldEntryLen, oldSeq = d.findEntryByKey(logEntry.VbNo, []byte(logEntry.DocID))
+			if oldSeq == logEntry.Sequence {
+				oldIndexPos = 0
+			}
 		}
 		// If found, replace entry in this block.  Otherwise append new entry and
 		// return flag for removal from older block.
@@ -222,13 +223,13 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (removalRequired bool, err err
 			d.replaceEntry(oldIndexPos, oldEntryPos, oldEntryLen, indexBytes, entryBytes)
 		} else {
 			if err := d.appendEntry(indexBytes, entryBytes); err != nil {
-				return removalRequired, err
+				return false, removalRequired, err
 			}
 			removalRequired = true
 		}
 	}
 	d.getClock()[logEntry.VbNo] = logEntry.Sequence
-	return removalRequired, err
+	return true, removalRequired, err
 }
 
 // Attempts to remove entries from the block
@@ -318,7 +319,12 @@ func (d *DenseBlock) removeEntries(entries []*LogEntry) []*LogEntry {
 		if entry.PrevSequence != 0 {
 			oldIndexPos, oldEntryPos, oldEntryLen = d.findEntry(entry.VbNo, entry.PrevSequence)
 		} else {
-			oldIndexPos, oldEntryPos, oldEntryLen = d.findEntryByKey(entry.VbNo, []byte(entry.DocID))
+			var oldSeq uint64
+			oldIndexPos, oldEntryPos, oldEntryLen, oldSeq = d.findEntryByKey(entry.VbNo, []byte(entry.DocID))
+			if oldSeq == entry.Sequence {
+				// Safety check - don't remove if the returned sequence equals the sequence we're adding
+				oldIndexPos = 0
+			}
 		}
 		if oldIndexPos > 0 {
 			d.removeEntry(oldIndexPos, oldEntryPos, oldEntryLen)
@@ -441,7 +447,7 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 
 // Attempts to find the specified [vb, key] in the block.  Iterates through the index, looking up key for
 // any vb matches
-func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos uint32, entryLength uint16) {
+func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos uint32, entryLength uint16, seq uint64) {
 
 	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
 	indexPos = DB_HEADER_LEN
@@ -454,7 +460,7 @@ func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos
 			currentEntry = d.value[entryPos : entryPos+uint32(indexEntry.getEntryLen())]
 			if bytes.Equal(currentEntry.getDocId(), key) {
 				// Found, return location information
-				return indexPos, entryPos, indexEntry.getEntryLen()
+				return indexPos, entryPos, indexEntry.getEntryLen(), indexEntry.getSequence()
 			}
 		}
 		indexPos += INDEX_ENTRY_LEN // Move to next index entry
@@ -462,7 +468,7 @@ func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos
 	}
 
 	// Not found
-	return 0, 0, 0
+	return 0, 0, 0, 0
 }
 
 // ReplaceEntry.  Replaces the existing entry with the specified index and entry positions/length with the new

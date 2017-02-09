@@ -173,18 +173,14 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	if err != nil {
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
-		err = l.initDenseBlockList()
+		found, err := l.loadDenseBlockList()
 		if err != nil {
 			return nil, err
 		}
-
-		if len(l.blocks) == 0 {
-			return nil, fmt.Errorf("Unable to determine active block after DenseBlockList cas write failure")
+		if !found {
+			return nil, fmt.Errorf("CAS error during block list write during AddBlock, but list not found on reload.")
 		}
-		latestEntry := l.blocks[len(l.blocks)-1]
-
-		base.LogTo("ChannelStorage+", "Handled AddBlock cas failure.  casOut:[%d] activeCas:[%d], err:[%v], activeBlock:[%v]", casOut, l.activeCas, err, latestEntry.BlockIndex)
-		return NewDenseBlock(l.generateBlockKey(latestEntry.BlockIndex), latestEntry.StartClock), nil
+		return l.GetActiveBlock(), nil
 	}
 	l.activeCas = casOut
 	l.activeBlock = block
@@ -232,7 +228,10 @@ func (l *DenseBlockList) rotate() error {
 		if base.IsCasMismatch(l.indexBucket, err) {
 			// CAS error.  Assume concurrent writer has already updated the active block list.
 			//  Re-initialize the current block list and return
-			err = l.initDenseBlockList()
+			found, err := l.loadDenseBlockList()
+			if !found {
+				return fmt.Errorf("CAS fail on block list write, but no list found on reload.")
+			}
 			if err != nil {
 				return err
 			}
@@ -286,6 +285,10 @@ func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 	l.activeStartIndex = 0
 	l.validFromCounter = l.activeCounter
 	return true, nil
+}
+
+func (l *DenseBlockList) ReloadDenseBlockList() (found bool, err error) {
+	return l.loadDenseBlockList()
 }
 
 func (l *DenseBlockList) GetActiveBlock() *DenseBlock {
