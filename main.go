@@ -16,7 +16,83 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/dustin/go-humanize"
+	"runtime"
+	"time"
 )
+
+type AbbreviatedMemStats struct {
+
+	// General statistics.
+	Alloc      string // bytes allocated and not yet freed
+	TotalAlloc string // bytes allocated (even if freed)
+	Sys        string // bytes obtained from system (sum of XxxSys below)
+	Lookups    uint64 // number of pointer lookups
+	Mallocs    uint64 // number of mallocs
+	Frees      uint64 // number of frees
+
+	// Main allocation heap statistics.
+	HeapAlloc    string // bytes allocated and not yet freed (same as Alloc above)
+	HeapSys      string // bytes obtained from system
+	HeapIdle     string // bytes in idle spans
+	HeapInuse    string // bytes in non-idle span
+	HeapReleased string // bytes released to the OS
+	HeapObjects  uint64 // total number of allocated objects
+
+	// Low-level fixed-size structure allocator statistics.
+	//	Inuse is bytes used now.
+	//	Sys is bytes obtained from system.
+	StackInuse  string // bytes used by stack allocator
+	StackSys    string
+	MSpanInuse  uint64 // mspan structures
+	MSpanSys    uint64
+	MCacheInuse uint64 // mcache structures
+	MCacheSys   uint64
+	BuckHashSys uint64 // profiling bucket hash table
+	GCSys       uint64 // GC metadata
+	OtherSys    uint64 // other system allocations
+
+	// Garbage collector statistics.
+	NextGC        uint64 // next collection will happen when HeapAlloc ≥ this amount
+	LastGC        uint64 // end time of last collection (nanoseconds since 1970)
+	PauseTotalNs  uint64
+	NumGC         uint32
+	GCCPUFraction float64 // fraction of CPU time used by GC
+	EnableGC      bool
+	DebugGC       bool
+}
+
+func NewAbbreviatedMemStats(memstats runtime.MemStats) *AbbreviatedMemStats {
+	m := AbbreviatedMemStats{
+		Alloc: humanize.Bytes(memstats.Alloc),
+		TotalAlloc: humanize.Bytes(memstats.TotalAlloc),
+		Sys: humanize.Bytes(memstats.Sys),
+		Mallocs: memstats.Mallocs,
+		Frees: memstats.Frees,
+		HeapAlloc: humanize.Bytes(memstats.HeapAlloc),
+		HeapSys: humanize.Bytes(memstats.HeapSys),
+		HeapIdle: humanize.Bytes(memstats.HeapIdle),
+		HeapInuse: humanize.Bytes(memstats.HeapInuse),
+		HeapReleased: humanize.Bytes(memstats.HeapReleased),
+		HeapObjects: memstats.HeapObjects,
+		StackInuse: humanize.Bytes(memstats.StackInuse),
+		StackSys: humanize.Bytes(memstats.StackSys),
+		MSpanInuse: memstats.MSpanInuse,
+		MSpanSys: memstats.MSpanSys,
+		MCacheInuse: memstats.MCacheInuse,
+		MCacheSys: memstats.MCacheSys,
+		BuckHashSys: memstats.BuckHashSys,
+		GCSys: memstats.GCSys,
+		OtherSys: memstats.OtherSys,
+		NextGC: memstats.NextGC,
+		LastGC: memstats.LastGC,
+		PauseTotalNs: memstats.PauseTotalNs,
+		GCCPUFraction: memstats.GCCPUFraction,
+		EnableGC: memstats.EnableGC,
+		DebugGC: memstats.DebugGC,
+	}
+	return &m
+}
 
 // Simple Sync Gateway launcher tool.
 func main() {
@@ -28,6 +104,16 @@ func main() {
 		for range signalchannel {
 			base.Logf("Handling SIGHUP signal.\n")
 			rest.HandleSighup()
+		}
+	}()
+
+	go func() {
+		for {
+			var memstats runtime.MemStats
+			runtime.ReadMemStats(&memstats)
+			memStatsAbbreviated := NewAbbreviatedMemStats(memstats)
+			base.Logf("Memory stats: %+v", memStatsAbbreviated)
+			time.Sleep(time.Second)
 		}
 	}()
 
