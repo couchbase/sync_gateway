@@ -381,7 +381,7 @@ func (user *userImpl) InheritedChannelsForClock(sinceClock base.SequenceClock) (
 	// For each role, evaluate role grant vbseq and role channel grant vbseq.
 	for _, role := range user.GetRoles() {
 		roleSince := user.RolesSince_[role.Name()]
-		roleGrantValid := role.ValidateGrant(&roleSince, numVbuckets)
+		roleGrantValid := user.ValidateGrant(&roleSince, numVbuckets)
 		if !roleGrantValid {
 			continue
 		}

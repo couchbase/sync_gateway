@@ -89,7 +89,7 @@ func (v VbSequence) IsLTEClock(clock base.SequenceClock) bool {
 	if v.VbNo == nil {
 		return false
 	}
-	return v.Sequence < clock.GetSequence(*v.VbNo)
+	return v.Sequence <= clock.GetSequence(*v.VbNo)
 }
 
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
