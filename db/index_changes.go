@@ -490,6 +490,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 		// If backfill required and the triggering seq is after the stable sequence, skip this channel in this iteration
 		stableSeq := stableClock.GetSequence(vbAddedAt)
 		if backfillRequired && seqAddedAt > stableSeq {
+			base.LogTo("Changes+", "Trigger for channel [%s] is post-stable sequence - skipped for this iteration")
 			hasPostChangesTriggers = true
 			continue
 		}
