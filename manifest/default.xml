@@ -54,7 +54,7 @@
 
   <project name="stackimpact-go" path="godeps/src/github.com/stackimpact/stackimpact-go" remote="stackimpact" />
   
-  <project name="go-humanize" path="godeps/src/github.com/dustin/go-humanize" remote="dustin" />
+  <project name="go-humanize" path="godeps/src/github.com/dustin/go-humanize" remote="dustin" revision="7a41df006ff9af79a29f0ffa9c5f21fbe6314a2d"/>
 
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
 
