@@ -266,13 +266,18 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         # Get the parent directory and the log file name
         log_file_parent_dir = os.path.abspath(os.path.join(guessed_logging_path, os.pardir))
         log_file_name = os.path.basename(guessed_logging_path)
-        log_file_name_split = os.path.splitext(log_file_name)
+        name, ext = os.path.splitext(log_file_name)
 
         # iterate over all log files, including those with a timestamp prefix
-        rotated_logs_pattern = log_file_parent_dir+os.path.sep+log_file_name_split[0]+"*"+log_file_name_split[1]
+        log_file_pattern = "{}*{}".format(name, ext)
+        rotated_logs_pattern = os.path.join(
+           log_file_parent_dir,
+           log_file_pattern
+        )
+
         for log_file_item_name in glob.iglob(rotated_logs_pattern):
             log_file_item_path = os.path.join(log_file_parent_dir,log_file_item_name)
-            print('Capturing rotated log file >>> %s' % log_file_item_path)
+            print('Capturing rotated log file {}'.format(log_file_item_path))
             task = add_file_task(sourcefile_path=log_file_item_path)
             sg_tasks.append(task)
 
