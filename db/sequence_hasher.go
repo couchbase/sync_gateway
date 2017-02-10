@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -27,6 +28,14 @@ const kDefaultHashExpiry = uint32(2592000) //30days in seconds
 const kDefaultSize = uint8(32)
 const kDefaultHasherCacheCapacity = 500
 const kDefaultChangesHashFrequency = 100
+
+var sequenceHasherGetHashTime = base.NewIntRollingMeanVar(100)
+var sequenceHasherGetClockTime = base.NewIntRollingMeanVar(100)
+
+func init() {
+	base.StatsExpvars.Set("indexReader.seqHasher.GetHash", &sequenceHasherGetHashTime)
+	base.StatsExpvars.Set("indexReader.seqHasher.GetClockTime", &sequenceHasherGetClockTime)
+}
 
 type sequenceHasher struct {
 	bucket        base.Bucket              // Bucket to store hashed instances
@@ -115,6 +124,8 @@ func (s *sequenceHasher) calculateHash(clock base.SequenceClock) uint64 {
 }
 
 func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
+
+	defer sequenceHasherGetHashTime.AddSince(time.Now())
 
 	if clock == nil {
 		return "", errors.New("Can't calculate hash for nil clock")
@@ -218,6 +229,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 
 func (s *sequenceHasher) GetClock(sequence string) (*base.SequenceClockImpl, error) {
 
+	defer sequenceHasherGetClockTime.AddSince(time.Now())
 	clock := base.NewSequenceClockImpl()
 	var err error
 	var seqHash sequenceHash

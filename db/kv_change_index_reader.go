@@ -23,10 +23,10 @@ import (
 var indexReaderOneShotCount expvar.Int
 var indexReaderPersistentCount expvar.Int
 var indexReaderPollReadersCount expvar.Int
-var indexReaderPollReadersTime base.DebugIntMeanVar
+var indexReaderPollReadersTime = base.NewIntRollingMeanVar(100)
 var indexReaderPollPrincipalsCount expvar.Int
-var indexReaderPollPrincipalsTime base.DebugIntMeanVar
-var indexReaderGetChangesTime base.DebugIntMeanVar
+var indexReaderPollPrincipalsTime = base.NewIntRollingMeanVar(100)
+var indexReaderGetChangesTime = base.NewIntRollingMeanVar(100)
 var indexReaderGetChangesCount expvar.Int
 var indexReaderGetChangesUseCached expvar.Int
 var indexReaderGetChangesUseIndexed expvar.Int
