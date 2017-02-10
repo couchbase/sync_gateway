@@ -19,6 +19,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"runtime"
 	"time"
+	"github.com/stackimpact/stackimpact-go"
 )
 
 type AbbreviatedMemStats struct {
@@ -108,12 +109,21 @@ func main() {
 		}
 	}()
 
+	agent := stackimpact.NewAgent();
+	agent.Start(stackimpact.Options{
+		AgentKey: "0efbff50031f0ec4d75d7389355fa00ab394f4c2",
+		AppName: "SyncGateway",
+	})
+
+
 	go func() {
 		for {
 			var memstats runtime.MemStats
 			runtime.ReadMemStats(&memstats)
 			memStatsAbbreviated := NewAbbreviatedMemStats(memstats)
-			base.Logf("Memory stats: %+v", memStatsAbbreviated)
+			if memstats.HeapSys > 3000000000 && memstats.StackSys > 5000000000 && memstats.HeapIdle < 1000000000 {
+				base.Logf("Memory stats: %+v", memStatsAbbreviated)
+			}
 			time.Sleep(time.Millisecond * 100)
 		}
 	}()
