@@ -90,6 +90,7 @@ func NewAbbreviatedMemStats(memstats runtime.MemStats) *AbbreviatedMemStats {
 		GCCPUFraction: memstats.GCCPUFraction,
 		EnableGC: memstats.EnableGC,
 		DebugGC: memstats.DebugGC,
+		NumGC: memstats.NumGC,
 	}
 	return &m
 }
@@ -113,7 +114,7 @@ func main() {
 			runtime.ReadMemStats(&memstats)
 			memStatsAbbreviated := NewAbbreviatedMemStats(memstats)
 			base.Logf("Memory stats: %+v", memStatsAbbreviated)
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond * 100)
 		}
 	}()
 
