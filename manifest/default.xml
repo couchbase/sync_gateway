@@ -65,9 +65,9 @@
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="elazarl" revision="d5cac425555ca5cf00694df246e04f05e6a55150"/>
 
-  <project name="context" path="godeps/src/github.com/gorilla/context" remote="gorilla" revision="708054d61e5a2918b9f4e9700000ee611dcf03f5"/>
+  <project name="context" path="godeps/src/github.com/gorilla/context" remote="gorilla" revision="08b5f424b9271eedf6f9f0ce86cb9396ed337a42"/>
 
-  <project name="mux" path="godeps/src/github.com/gorilla/mux" remote="gorilla" revision="9b36453141c35697401168b07f2c09fcff7721ce"/>
+  <project name="mux" path="godeps/src/github.com/gorilla/mux" remote="gorilla" revision="392c28fe23e1c45ddba891b0320b3b5df220beea"/>
 
   <project name="npipe" path="godeps/src/github.com/natefinch/npipe" remote="natefinch" revision="0938d701e50e580f5925c773055eb6d6b32a0cbc"/>
 
