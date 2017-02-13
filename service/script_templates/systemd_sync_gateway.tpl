@@ -10,6 +10,7 @@ Environment=\"GATEWAY=${GATEWAY_TEMPLATE_VAR}\"
 Environment=\"CONFIG=${CONFIG_TEMPLATE_VAR}\"
 Environment=\"LOGS=${LOGS_TEMPLATE_VAR}\"
 Environment=\"NAME=${SERVICE_NAME}\"
+Environment="GODEBUG=gctrace=1"
 Type=simple
 User=${RUNAS_TEMPLATE_VAR}
 WorkingDirectory=${RUNBASE_TEMPLATE_VAR}
