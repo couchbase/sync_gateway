@@ -33,7 +33,7 @@ import (
 // The URL that stats will be reported to if deployment_id is set in the config
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
-const kDefaultSlowServerCallWarningThreshold = 200 // ms
+const kDefaultSlowServerCallWarningThreshold = 60000 // ms
 const kOneShotLocalDbReplicateWait = 10 * time.Second
 const KDefaultNumShards = 16
 
