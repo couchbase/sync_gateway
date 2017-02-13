@@ -372,6 +372,12 @@ func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, r
 // removeEntry
 //  Cuts an entry from the block,
 func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16) {
+
+	if len(d.value) < int(oldEntryPos)+int(oldEntryLen) {
+		base.Warn(fmt.Sprintf("Attempted to remove entry in invalid block, len=%d, old entry pos=%d, old entry len=%d", len(d.value), oldEntryPos, oldEntryLen))
+		return
+	}
+
 	// Cut entry
 	d.value = append(d.value[:oldEntryPos], d.value[oldEntryPos+uint32(oldEntryLen):]...)
 	// Cut index entry
@@ -385,6 +391,11 @@ func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen ui
 //  appends the provided indexBytes to the index portion of the block, and
 //  appends the provided entryBytes to the entries portion of the block.
 func (d *DenseBlock) appendEntry(indexBytes, entryBytes []byte) error {
+
+	if len(d.value) < DB_HEADER_LEN {
+		return fmt.Errorf("Attempted to append entry to invalid block, len=%d", len(d.value))
+	}
+
 	newCount, err := d.incrEntryCount(1)
 	if err != nil {
 		return err
@@ -425,6 +436,11 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 	// Iterate through the index, looking for the entry
 	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
 	indexPos = DB_HEADER_LEN
+
+	if len(d.value) < int(indexEnd) {
+		base.Warn(fmt.Sprintf("Attempted to find entry to invalid block, len=%d", len(d.value)))
+		return 0, 0, 0
+	}
 	entryPos = indexEnd
 	var indexEntry DenseBlockIndexEntry
 	for indexPos < indexEnd {
@@ -448,8 +464,11 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 // Attempts to find the specified [vb, key] in the block.  Iterates through the index, looking up key for
 // any vb matches
 func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos uint32, entryLength uint16, seq uint64) {
-
 	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
+	if len(d.value) < int(indexEnd) {
+		base.Warn(fmt.Sprintf("Attempted to find entry by key in invalid block, len=%d", len(d.value)))
+		return 0, 0, 0, 0
+	}
 	indexPos = DB_HEADER_LEN
 	entryPos = indexEnd
 	var indexEntry DenseBlockIndexEntry
@@ -479,6 +498,10 @@ func (d *DenseBlock) replaceEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen u
 	// Shift and insert index entry
 	endOfIndex := DB_HEADER_LEN + uint32(INDEX_ENTRY_LEN)*uint32(d.getEntryCount())
 
+	if len(d.value) < int(endOfIndex) {
+		base.Warn(fmt.Sprintf("Attempted to replace entry in invalid block, len=%d", len(d.value)))
+		return
+	}
 	// Replace index.
 	//  1. Unless oldIndexPos is the last entry in the index, shift index entries:
 	if oldIndexPos+uint32(INDEX_ENTRY_LEN) < endOfIndex {

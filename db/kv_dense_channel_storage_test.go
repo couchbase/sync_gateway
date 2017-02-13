@@ -625,6 +625,41 @@ func TestDenseBlockListConcurrentInit(t *testing.T) {
 
 }
 
+func TestDenseBlockListRotate(t *testing.T) {
+
+	initCount := MaxListBlockCount
+	MaxListBlockCount = 10
+	defer func() {
+		MaxListBlockCount = initCount
+	}()
+
+	base.EnableLogKey("ChannelStorage+")
+
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
+	indexBucket := testIndexBucket()
+	defer indexBucket.Close()
+
+	// Initialize a new block list.  Will initialize with first block
+	list := NewDenseBlockList("ABC", 1, indexBucket)
+
+	// Add more than max blocks to block list
+	for i := 1; i <= MaxListBlockCount+10; i++ {
+		_, err := list.AddBlock()
+		assertNoError(t, err, "Error adding block to blocklist")
+	}
+
+	indexBucket.Dump()
+
+	// Create a new instance of the same block list, validate contents
+	newList := NewDenseBlockList("ABC", 1, indexBucket)
+	assert.Equals(t, len(newList.blocks), 10)
+
+	err := newList.LoadPrevious()
+	assertNoError(t, err, "Error loading previous")
+	assert.Equals(t, len(newList.blocks), 21)
+
+}
+
 // ---------------------------------------------------------------------------------------------
 // Dense Storage Reader Tests
 //   The majority of reader tests are in sg_accel, leveraging the writer to populate the index.
