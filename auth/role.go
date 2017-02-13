@@ -48,7 +48,7 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 
 // Is this string a valid name for a User/Role? (Valid chars are alphanumeric and any of "_-+.@")
 func IsValidPrincipalName(name string) bool {
-	return kValidNameRegexp.MatchString(name)
+	return kValidNameRegexp.Copy().MatchString(name)
 }
 
 // Creates a new Role object.
