@@ -82,7 +82,6 @@
 		<row><td>CostInitialize</td><td>##IDS_ACTIONTEXT_ComputingSpace##</td><td/></row>
 		<row><td>CreateFolders</td><td>##IDS_ACTIONTEXT_CreatingFolders##</td><td>##IDS_ACTIONTEXT_Folder##</td></row>
 		<row><td>CreateShortcuts</td><td>##IDS_ACTIONTEXT_CreatingShortcuts##</td><td>##IDS_ACTIONTEXT_Shortcut##</td></row>
-		<row><td>DeleteServices</td><td>##IDS_ACTIONTEXT_DeletingServices##</td><td>##IDS_ACTIONTEXT_Service##</td></row>
 		<row><td>DuplicateFiles</td><td>##IDS_ACTIONTEXT_CreatingDuplicate##</td><td>##IDS_ACTIONTEXT_FileDirectorySize##</td></row>
 		<row><td>FileCost</td><td>##IDS_ACTIONTEXT_ComputingSpace2##</td><td/></row>
 		<row><td>FindRelatedProducts</td><td>##IDS_ACTIONTEXT_SearchForRelated##</td><td>##IDS_ACTIONTEXT_FoundApp##</td></row>
@@ -94,6 +93,7 @@
 		<row><td>InstallODBC</td><td>##IDS_ACTIONTEXT_InstallODBC##</td><td/></row>
 		<row><td>InstallSFPCatalogFile</td><td>##IDS_ACTIONTEXT_InstallingSystemCatalog##</td><td>##IDS_ACTIONTEXT_FileDependencies##</td></row>
 		<row><td>InstallServices</td><td>##IDS_ACTIONTEXT_InstallServices##</td><td>##IDS_ACTIONTEXT_Service2##</td></row>
+		<row><td>DeleteServices</td><td>##IDS_ACTIONTEXT_DeletingServices##</td><td>##IDS_ACTIONTEXT_Service##</td></row>
 		<row><td>InstallValidate</td><td>##IDS_ACTIONTEXT_Validating##</td><td/></row>
 		<row><td>LaunchConditions</td><td>##IDS_ACTIONTEXT_EvaluateLaunchConditions##</td><td/></row>
 		<row><td>MigrateFeatureStates</td><td>##IDS_ACTIONTEXT_MigratingFeatureStates##</td><td>##IDS_ACTIONTEXT_Application##</td></row>
@@ -127,14 +127,14 @@
 		<row><td>SelfRegModules</td><td>##IDS_ACTIONTEXT_RegisteringModules##</td><td>##IDS_ACTIONTEXT_FileFolder##</td></row>
 		<row><td>SelfUnregModules</td><td>##IDS_ACTIONTEXT_UnregisterModules##</td><td>##IDS_ACTIONTEXT_FileFolder2##</td></row>
 		<row><td>SetODBCFolders</td><td>##IDS_ACTIONTEXT_InitializeODBCDirs##</td><td/></row>
-		<row><td>StartServices</td><td>##IDS_ACTIONTEXT_StartingServices##</td><td>##IDS_ACTIONTEXT_Service3##</td></row>
-		<row><td>StopServices</td><td>##IDS_ACTIONTEXT_StoppingServices##</td><td>##IDS_ACTIONTEXT_Service4##</td></row>
 		<row><td>UnmoveFiles</td><td>##IDS_ACTIONTEXT_RemovingMoved##</td><td>##IDS_ACTIONTEXT_FileDir3##</td></row>
 		<row><td>UnpublishComponents</td><td>##IDS_ACTIONTEXT_UnpublishQualified##</td><td>##IDS_ACTIONTEXT_ComponentIdQualifier2##</td></row>
 		<row><td>UnpublishFeatures</td><td>##IDS_ACTIONTEXT_UnpublishProductFeatures##</td><td>##IDS_ACTIONTEXT_Feature##</td></row>
 		<row><td>UnpublishProduct</td><td>##IDS_ACTIONTEXT_UnpublishingProductInfo##</td><td/></row>
 		<row><td>UnregisterClassInfo</td><td>##IDS_ACTIONTEXT_UnregisterClassServers##</td><td>##IDS_ACTIONTEXT_ClsID##</td></row>
 		<row><td>UnregisterComPlus</td><td>##IDS_ACTIONTEXT_UnregisteringComPlus##</td><td>##IDS_ACTIONTEXT_AppId##</td></row>
+		<row><td>StartServices</td><td>##IDS_ACTIONTEXT_StartingServices##</td><td>##IDS_ACTIONTEXT_Service3##</td></row>
+		<row><td>StopServices</td><td>##IDS_ACTIONTEXT_StoppingServices##</td><td>##IDS_ACTIONTEXT_Service4##</td></row>
 		<row><td>UnregisterExtensionInfo</td><td>##IDS_ACTIONTEXT_UnregisterExtensionServers##</td><td>##IDS_ACTIONTEXT_Extension##</td></row>
 		<row><td>UnregisterFonts</td><td>##IDS_ACTIONTEXT_UnregisteringFonts##</td><td>##IDS_ACTIONTEXT_Font2##</td></row>
 		<row><td>UnregisterMIMEInfo</td><td>##IDS_ACTIONTEXT_UnregisteringMimeInfo##</td><td>##IDS_ACTIONTEXT_ContentTypeExtension2##</td></row>
@@ -340,15 +340,17 @@
 		<col def="S0">ISDotNetInstallerArgsUninstall</col>
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
 		<row><td>AllOtherFiles</td><td>{313AA091-BBF1-45B2-BF63-4810EA8A2F03}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>AllOtherFiles2</td><td>{EF194135-3EC4-4350-B395-31B248684E19}</td><td>VAR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>AllOtherFiles3</td><td>{1D41728F-E94C-452C-AF9E-0F31DAD3BB94}</td><td>LIB</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>AllOtherFiles4</td><td>{C2053965-4596-4445-910D-8B2852112044}</td><td>COUCHBASE</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>AllOtherFiles5</td><td>{18D8D968-907B-4503-9D25-E364F49F9A4C}</td><td>LOGS</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>IS_ININSTALL_SHORTCUT</td><td>{1E60087A-596B-4B99-9315-5DF6572BE94C}</td><td>INSTALLDIR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel.exe</td><td>{411B2B18-A064-4523-8080-B2B1B6BE646D}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sg_accel_service.exe</td><td>{A6023BDF-B3A7-464F-8410-97AE6E92271E}</td><td>INSTALLDIR</td><td>8</td><td/><td>sg_accel_service.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>sgcollect_info.exe</td><td>{F473CFCD-3165-42A2-9D85-32A666655F2F}</td><td>TOOLS</td><td>8</td><td/><td>sgcollect_info.exe</td><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+
+		<row><td>AllOtherFiles1</td><td>{870BCC3D-9C0C-4C1E-9D19-D6DA8E02DCFE}</td><td>EXAMPLES</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles2</td><td>{EF194135-3EC4-4350-B395-31B248684E19}</td><td>VAR</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles3</td><td>{1D41728F-E94C-452C-AF9E-0F31DAD3BB94}</td><td>LIB</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>AllOtherFiles4</td><td>{C2053965-4596-4445-910D-8B2852112044}</td><td>COUCHBASE</td><td>8</td><td/><td/><td>17</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		
 	</table>
 
 	<table name="Condition">
@@ -1041,11 +1043,11 @@
 		<row><td>ISSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFiles</td><td/><td/></row>
 		<row><td>ISSelfRegisterFinalize</td><td>1</td><td>ISSELFREG.DLL</td><td>ISSelfRegisterFinalize</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td>3073</td><td>ISSELFREG.DLL</td><td>ISUnSelfRegisterFiles</td><td/><td/></row>
+		<row><td>SetARPINSTALLLOCATION</td><td>51</td><td>ARPINSTALLLOCATION</td><td>[INSTALLDIR]</td><td/><td/></row>
+		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>3090</td><td>sg_accel_service.exe</td><td>install "[INSTALLDIR]\sg_accel.exe" "[INSTALLDIR]\basic_sg_accel_config.json"</td><td/><td/></row>
 		<row><td>IS_LAUNCH_MY_PROGRAM_PLEASE</td><td>210</td><td>sg_accel_service.exe</td><td/><td/><td/></row>
 		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>3090</td><td>sg_accel_service.exe</td><td>uninstall</td><td/><td/></row>
-		<row><td>SetARPINSTALLLOCATION</td><td>51</td><td>ARPINSTALLLOCATION</td><td>[INSTALLDIR]</td><td/><td/></row>
-		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>ShowMsiLog</td><td>226</td><td>SystemFolder</td><td>[SystemFolder]notepad.exe "[MsiLogFileLocation]"</td><td/><td>Shows Property-driven MSI Log</td></row>
 		<row><td>setAllUsersProfile2K</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%ALLUSERSPROFILE]</td><td/><td/></row>
 		<row><td>setUserProfileNT</td><td>51</td><td>USERPROFILE</td><td>[%USERPROFILE]</td><td/><td/></row>
@@ -1869,8 +1871,8 @@
 		<row><td>basic_sg_accel_config.json</td><td>sg_accel_service.exe</td><td>BASIC_~1.JSO|basic_sg_accel_config.json</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\examples\basic_sg_accel_config.json</td><td>1</td><td/></row>
 		<row><td>license.txt</td><td>AllOtherFiles</td><td>LICENSE.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\LICENSE.txt</td><td>1</td><td/></row>
 		<row><td>readme.txt</td><td>AllOtherFiles</td><td>README.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\README.txt</td><td>1</td><td/></row>
-		<row><td>sg_accel.exe</td><td>sg_accel.exe</td><td>sg_accel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\bin\sg_accel.exe</td><td>1</td><td/></row>
 		<row><td>sg_accel_service.exe</td><td>sg_accel_service.exe</td><td>SG-ACC~1.EXE|sg-accel-service.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG-WINDOWS_FILES&gt;\sg-accel-service.exe</td><td>1</td><td/></row>
+		<row><td>sg_accel.exe</td><td>sg_accel.exe</td><td>sg_accel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\bin\sg_accel.exe</td><td>1</td><td/></row>
 		<row><td>sgcollect_info.exe</td><td>sgcollect_info.exe</td><td>SGCOLL~1|sgcollect_info.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_TOOLS_FILES&gt;\sgcollect_info.exe</td><td>1</td><td/></row>
 		<row><td>version.txt</td><td>AllOtherFiles</td><td>VERSION.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_SG_ACCEL_FILES&gt;\VERSION.txt</td><td>1</td><td/></row>
 	</table>
