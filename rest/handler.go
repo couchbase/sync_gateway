@@ -444,6 +444,7 @@ func (h *handler) readJSONInto(into interface{}) error {
 
 // Reads & parses the request body, handling either JSON or multipart.
 func (h *handler) readDocument() (db.Body, error) {
+	defer h.requestBody.Close()
 	contentType, attrs, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 	switch contentType {
 	case "", "application/json":
