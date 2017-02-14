@@ -173,7 +173,7 @@ func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.  Sets the vb
 // for an admin channel grant, if needed.
-func (role *roleImpl) CanSeeChannelSinceVbSeq(channel string, numVbuckets int) (base.VbSeq, bool) {
+func (role *roleImpl) CanSeeChannelSinceVbSeq(channel string, hashFunction VBHashFunction) (base.VbSeq, bool) {
 	seq, ok := role.Channels_[channel]
 	if !ok {
 		seq, ok = role.Channels_[ch.UserStarChannel]
@@ -182,7 +182,7 @@ func (role *roleImpl) CanSeeChannelSinceVbSeq(channel string, numVbuckets int) (
 		}
 	}
 	if seq.VbNo == nil {
-		roleDocVbNo := role.getVbNo(numVbuckets)
+		roleDocVbNo := role.getVbNo(hashFunction)
 		seq.VbNo = &roleDocVbNo
 	}
 	return base.VbSeq{*seq.VbNo, seq.Sequence}, true
@@ -196,7 +196,7 @@ func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
 }
 
-func (role *roleImpl) ValidateGrant(vbSeq *ch.VbSequence, numVbuckets int) bool {
+func (role *roleImpl) ValidateGrant(vbSeq *ch.VbSequence, hashFunction VBHashFunction) bool {
 
 	// If the sequence is zero, this is an admin grant that hasn't been updated by accel - ignore
 	if vbSeq.Sequence == 0 {
@@ -205,15 +205,15 @@ func (role *roleImpl) ValidateGrant(vbSeq *ch.VbSequence, numVbuckets int) bool 
 
 	// If vbSeq is nil, this is an admin grant.  Set the vb to the vb of the user doc
 	if vbSeq.VbNo == nil {
-		calculatedVbNo := role.getVbNo(numVbuckets)
+		calculatedVbNo := role.getVbNo(hashFunction)
 		vbSeq.VbNo = &calculatedVbNo
 	}
 	return true
 }
 
-func (role *roleImpl) getVbNo(numVbuckets int) uint16 {
+func (role *roleImpl) getVbNo(hashFunction VBHashFunction) uint16 {
 	if role.vbNo == nil {
-		calculatedVbNo := uint16(base.VBHash(role.DocID(), numVbuckets))
+		calculatedVbNo := uint16(hashFunction(role.DocID()))
 		role.vbNo = &calculatedVbNo
 	}
 	return *role.vbNo

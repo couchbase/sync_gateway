@@ -12,6 +12,7 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/couchbase/gocb"
@@ -342,6 +343,51 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 
 }
 
+// Retrieve keys in bulk for increased efficiency.  If any keys are not found, they
+// will not be returned, and so the size of the map may be less than the size of the
+// keys slice, and no error will be returned in that case since it's an expected
+// situation.
+//
+// If there is an "overall error" calling the underlying GoCB bulk operation, then
+// that error will be returned.
+//
+// If there are errors on individual keys -- aside from "not found" errors -- such as
+// QueueOverflow errors that can be retried successfully, they will be retried
+// with a backoff loop.
+func (bucket CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uint64, error) {
+
+	gocbExpvars.Add("GetBulkRaw", 1)
+	gocbExpvars.Add("GetBulkRaw_totalKeys", int64(len(keys)))
+
+	// Create a RetryWorker for the GetBulkRaw operation
+	worker := bucket.newGetBulkCountersRetryWorker(keys)
+
+	// this is the function that will be called back by the RetryLoop to determine
+	// how long to sleep before retrying (uses backoff)
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	description := fmt.Sprintf("GetBulkRaw with %v keys", len(keys))
+	err, result := RetryLoop(description, worker, sleeper)
+
+	// If the RetryLoop returns a nil result, convert to an empty map.
+	if result == nil {
+		return map[string]uint64{}, err
+	}
+
+	// Type assertion of result into a map
+	resultMap, ok := result.(map[string]uint64)
+	if !ok {
+		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
+	}
+
+	return resultMap, err
+
+}
+
 func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryWorker {
 
 	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
@@ -358,7 +404,7 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 
 			// process batch and add successful results to resultAccumulator
 			// and recoverable (non "Not Found") errors to retryKeys
-			err := bucket.processGetBatch(keyBatch, resultAccumulator, retryKeys)
+			err := bucket.processGetRawBatch(keyBatch, resultAccumulator, retryKeys)
 			if err != nil {
 				return false, err, nil
 			}
@@ -382,7 +428,47 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 
 }
 
-func (bucket CouchbaseBucketGoCB) processGetBatch(keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
+func (bucket CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) RetryWorker {
+
+	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
+	resultAccumulator := make(map[string]uint64, len(keys))
+
+	// pendingKeys scoped in closure, represents set of keys that still need to be attempted or re-attempted
+	pendingKeys := keys
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		retryKeys := []string{}
+		keyBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
+		for _, keyBatch := range keyBatches {
+
+			// process batch and add successful results to resultAccumulator
+			// and recoverable (non "Not Found") errors to retryKeys
+			err := bucket.processGetCountersBatch(keyBatch, resultAccumulator, retryKeys)
+			if err != nil {
+				return false, err, nil
+			}
+
+		}
+
+		// if there are no keys to retry, then we're done.
+		if len(retryKeys) == 0 {
+			return false, nil, resultAccumulator
+		}
+
+		// otherwise, retry the keys the need to be retried
+		keys = retryKeys
+
+		// return true to signal that this function needs to be retried
+		return true, nil, nil
+
+	}
+
+	return worker
+
+}
+
+func (bucket CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
 
 	var items []gocb.BulkOp
 	for _, key := range keys {
@@ -407,6 +493,48 @@ func (bucket CouchbaseBucketGoCB) processGetBatch(keys []string, resultAccumulat
 			byteValue, ok := getOp.Value.(*[]byte)
 			if ok {
 				resultAccumulator[getOp.Key] = *byteValue
+			} else {
+				Warn("Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+			}
+		} else {
+			// if it's a recoverable error, then throw it in retry collection.
+			if isRecoverableGoCBError(getOp.Err) {
+				retryKeys = append(retryKeys, getOp.Key)
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (bucket CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultAccumulator map[string]uint64, retryKeys []string) error {
+
+	var items []gocb.BulkOp
+	for _, key := range keys {
+		var value uint64
+		item := &gocb.GetOp{Key: key, Value: &value}
+		items = append(items, item)
+	}
+	err := bucket.Do(items)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		getOp, ok := item.(*gocb.GetOp)
+		if !ok {
+			continue
+		}
+		// Ignore any ops with errors.
+		// NOTE: some of the errors are misleading:
+		// https://issues.couchbase.com/browse/GOCBC-64
+		if getOp.Err == nil {
+			intValue, ok := getOp.Value.(*uint64)
+			if ok {
+				resultAccumulator[getOp.Key] = *intValue
+			} else {
+				Warn("Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -942,8 +1070,8 @@ func (bucket CouchbaseBucketGoCB) Dump() {
 }
 
 func (bucket CouchbaseBucketGoCB) VBHash(docID string) uint32 {
-	LogPanic("Unimplemented method: VBHash()")
-	return 0
+	numVbuckets := bucket.Bucket.IoRouter().NumVbuckets()
+	return VBHash(docID, numVbuckets)
 }
 
 func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {

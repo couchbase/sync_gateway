@@ -47,11 +47,11 @@ type Principal interface {
 
 	// If the Principal has access to the given channel, returns the vb and sequence number at which
 	// access was granted; else returns zero.
-	CanSeeChannelSinceVbSeq(channel string, numVbuckets int) (base.VbSeq, bool)
+	CanSeeChannelSinceVbSeq(channel string, hashFunction VBHashFunction) (base.VbSeq, bool)
 
 	// Validate that the specified vbSeq has a non-zero sequence, and populate the vbucket for
 	// admin grants.
-	ValidateGrant(vbseq *ch.VbSequence, numVbuckets int) bool
+	ValidateGrant(vbseq *ch.VbSequence, hashFunction VBHashFunction) bool
 
 	// Returns an error if the Principal does not have access to all the channels in the set.
 	AuthorizeAllChannels(channels base.Set) error
@@ -67,7 +67,7 @@ type Principal interface {
 	accessViewKey() string
 	validate() error
 	setChannels(ch.TimedSet)
-	getVbNo(numVbuckets int) uint16
+	getVbNo(hashFunction VBHashFunction) uint16
 }
 
 // Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.

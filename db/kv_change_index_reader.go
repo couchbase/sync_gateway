@@ -23,10 +23,10 @@ import (
 var indexReaderOneShotCount expvar.Int
 var indexReaderPersistentCount expvar.Int
 var indexReaderPollReadersCount expvar.Int
-var indexReaderPollReadersTime base.DebugIntMeanVar
+var indexReaderPollReadersTime = base.NewIntRollingMeanVar(100)
 var indexReaderPollPrincipalsCount expvar.Int
-var indexReaderPollPrincipalsTime base.DebugIntMeanVar
-var indexReaderGetChangesTime base.DebugIntMeanVar
+var indexReaderPollPrincipalsTime = base.NewIntRollingMeanVar(100)
+var indexReaderGetChangesTime = base.NewIntRollingMeanVar(100)
 var indexReaderGetChangesCount expvar.Int
 var indexReaderGetChangesUseCached expvar.Int
 var indexReaderGetChangesUseIndexed expvar.Int
@@ -465,6 +465,10 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 	k.activePrincipalCountsLock.Lock()
 	defer k.activePrincipalCountsLock.Unlock()
 
+	if len(k.activePrincipalCounts) == 0 {
+		return
+	}
+
 	// Check whether ANY principals have been updated since last poll, before doing the work of retrieving individual keys
 	overallCount, err := k.indexReadBucket.Incr(base.KTotalPrincipalCountKey, 0, 0, 0)
 	if err != nil {
@@ -476,24 +480,59 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 	}
 	k.overallPrincipalCount = overallCount
 
-	// There's been a change - check whether any of our active principals have changed
+	// There's been a change - check if our active principals have changed
 	var changedWaitKeys []string
-	for principalID, currentCount := range k.activePrincipalCounts {
-		key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
-		newCount, err := k.indexReadBucket.Incr(key, 0, 0, 0)
-		if err != nil {
-			base.Warn("Principal polling encountered error getting overall count for key %s:%v", key, err)
-			continue
+
+	// When using a gocb bucket, use a single bulk operation to retrieve counters.
+	if gocbIndexBucket, ok := k.indexReadBucket.(base.CouchbaseBucketGoCB); ok {
+		principalKeySet := make([]string, len(k.activePrincipalCounts))
+		i := 0
+		for principalID, _ := range k.activePrincipalCounts {
+			key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
+			principalKeySet[i] = key
+			i++
 		}
-		if newCount != currentCount {
-			k.activePrincipalCounts[principalID] = newCount
-			waitKey := strings.TrimPrefix(key, base.KPrincipalCountKeyPrefix)
-			changedWaitKeys = append(changedWaitKeys, waitKey)
+
+		bulkGetResults, err := gocbIndexBucket.GetBulkCounters(principalKeySet)
+		if err != nil {
+			base.Warn("Error during GetBulkRaw while polling principals: %v", err)
+		}
+
+		for principalID, currentCount := range k.activePrincipalCounts {
+			key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
+			newCount, ok := bulkGetResults[key]
+			if !ok {
+				base.Warn("Expected key not found in results when checking for principal updates, key:[%s]", key)
+				continue
+			}
+			if newCount != currentCount {
+				k.activePrincipalCounts[principalID] = newCount
+				waitKey := strings.TrimPrefix(key, base.KPrincipalCountKeyPrefix)
+				changedWaitKeys = append(changedWaitKeys, waitKey)
+			}
+		}
+	} else {
+		// TODO: Add bulk counter retrieval support to walrus, go-couchbase.  Until then, doing sequential gets
+		// There's been a change - check whether any of our active principals have changed
+		for principalID, currentCount := range k.activePrincipalCounts {
+			key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
+			newCount, err := k.indexReadBucket.Incr(key, 0, 0, 0)
+			if err != nil {
+				base.Warn("Principal polling encountered error getting overall count for key %s:%v", key, err)
+				continue
+			}
+			if newCount != currentCount {
+				k.activePrincipalCounts[principalID] = newCount
+				waitKey := strings.TrimPrefix(key, base.KPrincipalCountKeyPrefix)
+				changedWaitKeys = append(changedWaitKeys, waitKey)
+			}
 		}
 	}
+
 	if len(changedWaitKeys) > 0 {
 		k.onChange(base.SetFromArray(changedWaitKeys))
 	}
+
 }
 
 // AddActivePrincipal - adds one or more principal keys to the set being polled.

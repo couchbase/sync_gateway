@@ -47,6 +47,8 @@ type userImplBody struct {
 
 var kValidEmailRegexp *regexp.Regexp
 
+type VBHashFunction func(string) uint32
+
 func init() {
 	var err error
 	kValidEmailRegexp, err = regexp.Compile(`^[-+.\w]+@\w[-.\w]+$`)
@@ -217,7 +219,7 @@ func (user *userImpl) SetPassword(password string) {
 
 // Returns the sequence number since which the user has been able to access the channel, else zero.  Sets the vb
 // for an admin channel grant, if needed.
-func (user *userImpl) CanSeeChannelSinceVbSeq(channel string, numVbuckets int) (base.VbSeq, bool) {
+func (user *userImpl) CanSeeChannelSinceVbSeq(channel string, hashFunction VBHashFunction) (base.VbSeq, bool) {
 	seq, ok := user.Channels_[channel]
 	if !ok {
 		seq, ok = user.Channels_[ch.UserStarChannel]
@@ -226,21 +228,21 @@ func (user *userImpl) CanSeeChannelSinceVbSeq(channel string, numVbuckets int) (
 		}
 	}
 	if seq.VbNo == nil {
-		userDocVbno := user.getVbNo(numVbuckets)
+		userDocVbno := user.getVbNo(hashFunction)
 		seq.VbNo = &userDocVbno
 	}
 	return base.VbSeq{*seq.VbNo, seq.Sequence}, true
 }
 
-func (user *userImpl) getVbNo(numVbuckets int) uint16 {
+func (user *userImpl) getVbNo(hashFunction VBHashFunction) uint16 {
 	if user.vbNo == nil {
-		calculatedVbNo := uint16(base.VBHash(user.DocID(), numVbuckets))
+		calculatedVbNo := uint16(hashFunction(user.DocID()))
 		user.vbNo = &calculatedVbNo
 	}
 	return *user.vbNo
 }
 
-func (user *userImpl) ValidateGrant(vbSeq *ch.VbSequence, numVbuckets int) bool {
+func (user *userImpl) ValidateGrant(vbSeq *ch.VbSequence, hashFunction VBHashFunction) bool {
 
 	// If the sequence is zero, this is an admin grant that hasn't been updated by accel - ignore
 	if vbSeq.Sequence == 0 {
@@ -249,7 +251,7 @@ func (user *userImpl) ValidateGrant(vbSeq *ch.VbSequence, numVbuckets int) bool 
 
 	// If vbSeq is nil, this is an admin grant.  Set the vb to the vb of the user doc
 	if vbSeq.VbNo == nil {
-		calculatedVbNo := user.getVbNo(numVbuckets)
+		calculatedVbNo := user.getVbNo(hashFunction)
 		vbSeq.VbNo = &calculatedVbNo
 	}
 	return true
@@ -370,24 +372,24 @@ func (user *userImpl) InheritedChannelsForClock(sinceClock base.SequenceClock) (
 
 	channels = make(ch.TimedSet, 0)
 	secondaryTriggers = make(ch.TimedSet, 0)
-	numVbuckets := len(sinceClock.Value())
+	hashFunction := user.auth.bucket.VBHash
 
 	// Initialize to the user channel timed set, regardless of since value
 	for channelName, channelGrant := range user.Channels() {
-		if ok := user.ValidateGrant(&channelGrant, numVbuckets); ok {
+		if ok := user.ValidateGrant(&channelGrant, hashFunction); ok {
 			channels[channelName] = channelGrant
 		}
 	}
 	// For each role, evaluate role grant vbseq and role channel grant vbseq.
 	for _, role := range user.GetRoles() {
 		roleSince := user.RolesSince_[role.Name()]
-		roleGrantValid := user.ValidateGrant(&roleSince, numVbuckets)
+		roleGrantValid := user.ValidateGrant(&roleSince, hashFunction)
 		if !roleGrantValid {
 			continue
 		}
 
 		for channelName, roleChannelSince := range role.Channels() {
-			if roleChannelGrantValid := role.ValidateGrant(&roleChannelSince, numVbuckets); !roleChannelGrantValid {
+			if roleChannelGrantValid := role.ValidateGrant(&roleChannelSince, hashFunction); !roleChannelGrantValid {
 				continue
 			}
 
@@ -440,9 +442,9 @@ func (user *userImpl) CanSeeChannelSinceForClock(channel string, sinceClock base
 	minPreSince := base.VbSeq{}
 	minPostSince := base.VbSeq{}
 	secondaryTrigger = base.VbSeq{}
-	numVbuckets := len(sinceClock.Value())
+	hashFunction := user.auth.bucket.VBHash
 	// Check for the channel in the user's grants
-	userChannelSince, ok := user.CanSeeChannelSinceVbSeq(channel, len(sinceClock.Value()))
+	userChannelSince, ok := user.CanSeeChannelSinceVbSeq(channel, hashFunction)
 	if ok {
 		if userChannelSince.LessThanOrEqualsClock(sinceClock) {
 			minPreSince = userChannelSince
@@ -452,10 +454,10 @@ func (user *userImpl) CanSeeChannelSinceForClock(channel string, sinceClock base
 	}
 	// Check for the channel in the user's roles
 	for _, role := range user.GetRoles() {
-		roleChannelSince, ok := role.CanSeeChannelSinceVbSeq(channel, len(sinceClock.Value()))
+		roleChannelSince, ok := role.CanSeeChannelSinceVbSeq(channel, hashFunction)
 		if ok {
 			roleGrant := user.RolesSince_[role.Name()]
-			isValid := user.ValidateGrant(&roleGrant, numVbuckets)
+			isValid := user.ValidateGrant(&roleGrant, hashFunction)
 			if !isValid {
 				continue
 			}
