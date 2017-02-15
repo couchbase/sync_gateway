@@ -60,8 +60,8 @@ func (c PartitionStorageSet) String() string {
 	return result
 }
 
-type IndexPartitionMap map[uint16]uint16 // Maps vbuckets to index partition value
-type VbPositionMap map[uint16]uint64     // Map from vbucket to position within partition.  Stored as uint64 to avoid cast during arithmetic
+type IndexPartitionMap []uint16      // Maps vbuckets to index partition value
+type VbPositionMap map[uint16]uint64 // Map from vbucket to position within partition.  Stored as uint64 to avoid cast during arithmetic
 
 type IndexPartitions struct {
 	PartitionDefs  PartitionStorageSet      // Partition definitions, as stored in bucket _idxPartitionMap
@@ -85,7 +85,7 @@ func NewIndexPartitions(partitions PartitionStorageSet) *IndexPartitions {
 	}
 	copy(indexPartitions.PartitionDefs, partitions)
 
-	indexPartitions.VbMap = make(map[uint16]uint16)
+	indexPartitions.VbMap = make([]uint16, 1024)
 	indexPartitions.VbPositionMaps = make(map[uint16]VbPositionMap)
 
 	for _, partition := range partitions {
@@ -166,13 +166,13 @@ func CompareVbAndSequence(vb1 uint16, s1 uint64, vb2 uint16, s2 uint64) CompareR
 // ShardedClock is a full clock for the bucket.  ShardedClock manages the collection of clock shards (ShardedClockPartitions),
 // and also manages the counter for the clock.
 type ShardedClock struct {
-	baseKey       string                            // key prefix used to build keys for clock component docs
-	counter       uint64                            // count value for clock to minimize clock reads
-	countKey      string                            // key used to incr count value
-	partitionMap  *IndexPartitions                  // Index partition map
-	partitions    map[uint16]*ShardedClockPartition // Clock partitions - one doc written per partition
-	bucket        Bucket                            // Bucket used to store clocks
-	partitionKeys []string                          // Keys for all partitions.  Convenience to avoid rebuilding set from partitions
+	baseKey       string                   // key prefix used to build keys for clock component docs
+	counter       uint64                   // count value for clock to minimize clock reads
+	countKey      string                   // key used to incr count value
+	partitionMap  *IndexPartitions         // Index partition map
+	partitions    []*ShardedClockPartition // Clock partitions - one doc written per partition
+	bucket        Bucket                   // Bucket used to store clocks
+	partitionKeys []string                 // Keys for all partitions.  Convenience to avoid rebuilding set from partitions
 }
 
 func NewShardedClock(baseKey string, partitions *IndexPartitions, bucket Bucket) *ShardedClock {
@@ -186,7 +186,7 @@ func NewShardedClock(baseKey string, partitions *IndexPartitions, bucket Bucket)
 	// Initialize partitions
 	numPartitions := len(partitions.PartitionDefs)
 
-	clock.partitions = make(map[uint16]*ShardedClockPartition, numPartitions)
+	clock.partitions = make([]*ShardedClockPartition, numPartitions)
 	clock.partitionKeys = make([]string, numPartitions)
 
 	return clock
@@ -204,7 +204,7 @@ func NewShardedClockWithPartitions(baseKey string, partitions *IndexPartitions, 
 	// Initialize partitions
 	numPartitions := len(partitions.PartitionDefs)
 
-	clock.partitions = make(map[uint16]*ShardedClockPartition, numPartitions)
+	clock.partitions = make([]*ShardedClockPartition, numPartitions)
 	clock.partitionKeys = make([]string, numPartitions)
 
 	// Initialize empty clock partitions
@@ -284,8 +284,8 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 
 func (s *ShardedClock) GetSequence(vbNo uint16) (vbSequence uint64) {
 	partitionNo := s.partitionMap.VbMap[vbNo]
-	clockPartition, ok := s.partitions[partitionNo]
-	if ok {
+	clockPartition := s.partitions[partitionNo]
+	if clockPartition != nil {
 		return clockPartition.GetSequence(vbNo)
 	} else {
 		return 0
