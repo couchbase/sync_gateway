@@ -349,6 +349,22 @@ func (v *IntRollingMeanVar) AddSince(start time.Time) {
 	v.AddValue(time.Since(start).Nanoseconds())
 }
 
+func (v *IntRollingMeanVar) AddSincePerItem(start time.Time, numItems int) {
+
+	// avoid divide by zero errors
+	if numItems == 0 {
+		numItems = 1
+	}
+
+	// calculate per-item time delta
+	timeDelta := time.Since(start).Nanoseconds()
+	timeDeltaPerItem := timeDelta / int64(numItems)
+
+	v.AddValue(timeDeltaPerItem)
+
+}
+
+
 // If we have fewer entries than capacity, regular mean calculation
 func (v *IntRollingMeanVar) addValue(value int64) {
 	v.entries = append(v.entries, value)
