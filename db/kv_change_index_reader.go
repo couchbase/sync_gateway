@@ -124,17 +124,29 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 				newStableClock, isChanged := k.stableSequenceChanged()
 				if isChanged {
 					var wg sync.WaitGroup
+					var changedPrincipals []string
+					var changedChannels []string
 					wg.Add(2)
 					go func() {
 						defer wg.Done()
-						k.pollReaders(newStableClock)
+						changedChannels = k.pollReaders(newStableClock)
 					}()
 					go func() {
 						defer wg.Done()
-						k.pollPrincipals()
+						changedPrincipals = k.pollPrincipals()
 					}()
 					wg.Wait()
 					k.updateReaderStableSequence(newStableClock)
+
+					if k.onChange != nil {
+						if len(changedPrincipals) > 0 {
+							k.onChange(base.SetFromArray(changedPrincipals))
+						}
+						if len(changedChannels) > 0 {
+							k.onChange(base.SetFromArray(changedChannels))
+						}
+					}
+
 				}
 			}
 
@@ -371,7 +383,7 @@ func (k *kvChangeIndexReader) hasActiveReaders() bool {
 	return len(k.channelIndexReaders) > 0
 }
 
-func (k *kvChangeIndexReader) pollReaders(stableSequence *base.ShardedClock) bool {
+func (k *kvChangeIndexReader) pollReaders(stableSequence *base.ShardedClock) (channels []string) {
 	k.channelIndexReaderLock.Lock()
 	defer k.channelIndexReaderLock.Unlock()
 
@@ -379,7 +391,7 @@ func (k *kvChangeIndexReader) pollReaders(stableSequence *base.ShardedClock) boo
 	defer indexReaderPollReadersCount.Add(1)
 
 	if len(k.channelIndexReaders) == 0 {
-		return true
+		return channels
 	}
 
 	// Build the set of clock keys to retrieve.  Stable sequence, plus one per channel reader
@@ -441,13 +453,8 @@ func (k *kvChangeIndexReader) pollReaders(stableSequence *base.ShardedClock) boo
 	close(cancelledChannels)
 
 	// Build channel set from the changed channels
-	var channels []string
 	for channelName := range changedChannels {
 		channels = append(channels, channelName)
-	}
-
-	if len(channels) > 0 && k.onChange != nil {
-		k.onChange(base.SetFromArray(channels))
 	}
 
 	// Remove cancelled channels from channel readers
@@ -456,12 +463,12 @@ func (k *kvChangeIndexReader) pollReaders(stableSequence *base.ShardedClock) boo
 		delete(k.channelIndexReaders, channelName)
 	}
 
-	return true
+	return channels
 }
 
 // PollPrincipals checks the principal counts, stored in the index, to determine whether there's been
 // a change to a user or role that should trigger a notification for that principal.
-func (k *kvChangeIndexReader) pollPrincipals() {
+func (k *kvChangeIndexReader) pollPrincipals() (changedPrincipals []string) {
 
 	defer indexReaderPollPrincipalsTime.AddSince(time.Now())
 	defer indexReaderPollPrincipalsCount.Add(1)
@@ -538,9 +545,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 		}
 	}
 
-	if len(changedWaitKeys) > 0 {
-		k.onChange(base.SetFromArray(changedWaitKeys))
-	}
+	return changedWaitKeys
 
 }
 
