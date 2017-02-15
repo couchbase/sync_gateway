@@ -433,7 +433,7 @@ func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *Chang
 
 // Creates a go-channel of ChangeEntry for each channel in channelsSince.  Each go-channel sends the ordered entries for that channel.
 func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, secondaryTriggers channels.TimedSet, options ChangesOptions, addedChannels base.Set,
-	userVbNo uint16, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) ([]<-chan *ChangeEntry, bool, error) {
+	userVbNo uint16, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClockReader) ([]<-chan *ChangeEntry, bool, error) {
 	// Populate the  array of feed channels:
 	feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 	hasPostChangesTriggers := false
@@ -582,7 +582,7 @@ const (
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, secondaryTrigger channels.VbSequence, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) (<-chan *ChangeEntry, error) {
+func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, secondaryTrigger channels.VbSequence, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClockReader) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	changeIndex, ok := db.changeCache.(*kvChangeIndex)
 	if !ok {

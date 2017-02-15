@@ -236,17 +236,17 @@ func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 	return isChanged
 }
 
-func (k *kvChangeIndexReader) getReaderStableSequence() base.SequenceClock {
+func (k *kvChangeIndexReader) getReaderStableSequence() base.SequenceClockReader {
 	k.readerStableSequenceLock.RLock()
 	defer k.readerStableSequenceLock.RUnlock()
 	if k.readerStableSequence != nil {
-		return k.readerStableSequence.AsClock()
+		return k.readerStableSequence
 	} else {
 		return nil
 	}
 }
 
-func (k *kvChangeIndexReader) GetStableClock() (clock base.SequenceClock, err error) {
+func (k *kvChangeIndexReader) GetStableClock() (clock base.SequenceClockReader, err error) {
 
 	// Validation partition map is available.
 	_, err = k.indexPartitionsCallback()
@@ -295,7 +295,7 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 	return k.GetChangesForRange(channelName, sinceClock, nil, options.Limit)
 }
 
-func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock base.SequenceClock, toClock base.SequenceClock, limit int) ([]*LogEntry, error) {
+func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock base.SequenceClock, toClock base.SequenceClockReader, limit int) ([]*LogEntry, error) {
 
 	defer indexReaderGetChangesTime.AddSince(time.Now())
 	defer indexReaderGetChangesCount.Add(1)

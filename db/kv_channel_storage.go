@@ -34,8 +34,8 @@ const (
 // without significant refactoring.
 type ChannelStorageReader interface {
 	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
-	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
-	UpdateCache(fromSeq base.SequenceClock, channelClock base.SequenceClock, changedPartitions []*base.PartitionRange) error
+	GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClockReader, limit int) ([]*LogEntry, error)
+	UpdateCache(fromSeq base.SequenceClock, toSeq base.SequenceClockReader, changedPartitions []*base.PartitionRange) error
 }
 
 type ChannelStorageWriter interface {

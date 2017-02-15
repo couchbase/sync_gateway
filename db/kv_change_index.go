@@ -85,7 +85,7 @@ func (k *kvChangeIndex) GetStableSequence(docID string) (seq SequenceID) {
 // new index.  Return a zero clock and let cbgt initialize DCP feed from zero.
 // If stale=true, returns the latest polled reader clock.
 // If stale=false, forces load from bucket
-func (k *kvChangeIndex) GetStableClock(stale bool) (clock base.SequenceClock, err error) {
+func (k *kvChangeIndex) GetStableClock(stale bool) (clock base.SequenceClockReader, err error) {
 	if stale {
 		result := k.reader.getReaderStableSequence()
 		if result == nil {

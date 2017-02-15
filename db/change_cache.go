@@ -596,7 +596,7 @@ func (c *changeCache) GetStableSequence(docID string) SequenceID {
 	return SequenceID{Seq: c.nextSequence - 1}
 }
 
-func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err error) {
+func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClockReader, err error) {
 	return nil, errors.New("Change cache doesn't use vector clocks")
 }
 

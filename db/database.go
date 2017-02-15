@@ -276,7 +276,7 @@ func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
 	context.tapListener.OnDocChanged = callback
 }
 
-func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
+func (context *DatabaseContext) GetStableClock() (clock base.SequenceClockReader, err error) {
 	staleOk := false
 	return context.changeCache.GetStableClock(staleOk)
 }

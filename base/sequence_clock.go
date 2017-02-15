@@ -23,27 +23,30 @@ const (
 )
 
 type SequenceClock interface {
-	SetSequence(vbNo uint16, vbSequence uint64)     // Sets the sequence value for a vbucket
-	SetMaxSequence(vbNo uint16, vbSequence uint64)  // Sets the sequence value for a vbucket - must be larger than existing sequence
-	GetSequence(vbNo uint16) (vbSequence uint64)    // Retrieves the sequence value for a vbucket
-	Cas() (casOut uint64)                           // Gets the last known cas for this sequence clock
-	SetCas(cas uint64)                              // Sets the last known cas for this sequence clock
-	Marshal() (value []byte, err error)             // Marshals the sequence value
-	Unmarshal(value []byte) error                   // Unmarshals the sequence value
-	UpdateWithClock(updateClock SequenceClock)      // Updates the clock with values from updateClock
-	Value() []uint64                                // Returns the raw vector clock
-	ValueAsMap() map[uint16]uint64                  // Returns the raw vector clock
-	GetHashedValue() string                         // Returns previously hashed value, if present.  If not present, does NOT generate hash
-	SetHashedValue(value string)                    // Returns previously hashed value, if present.  If not present, does NOT generate hash
-	Equals(otherClock SequenceClock) bool           // Evaluates whether two clocks are identical
-	IsEmptyClock() bool                             // Evaluates if this an empty clock
-	AllAfter(otherClock SequenceClock) bool         // True if all entries in clock are greater than or equal to the corresponding values in otherClock
-	AllBefore(otherClock SequenceClock) bool        // True if all entries in clock are less than or equal to the corresponding values in otherClock
-	AnyAfter(otherClock SequenceClock) bool         // True if any entries in clock are greater than the corresponding values in otherClock
-	AnyBefore(otherClock SequenceClock) bool        // True if any entries in clock are less than the corresponding values in otherClock
-	SetTo(otherClock SequenceClock)                 // Sets the current clock to a copy of the other clock
-	Copy() SequenceClock                            // Returns a copy of the clock
-	LimitTo(otherClock SequenceClock) SequenceClock // Returns a new clock where any values in clock that are greater than otherClock, are set to otherClock
+	SequenceClockReader
+	SetSequence(vbNo uint16, vbSequence uint64)    // Sets the sequence value for a vbucket
+	SetMaxSequence(vbNo uint16, vbSequence uint64) // Sets the sequence value for a vbucket - must be larger than existing sequence
+	Cas() (casOut uint64)                          // Gets the last known cas for this sequence clock
+	SetCas(cas uint64)                             // Sets the last known cas for this sequence clock
+	Marshal() (value []byte, err error)            // Marshals the sequence value
+	Unmarshal(value []byte) error                  // Unmarshals the sequence value
+	UpdateWithClock(updateClock SequenceClock)     // Updates the clock with values from updateClock
+	Value() []uint64                               // Returns the raw vector clock
+	ValueAsMap() map[uint16]uint64                 // Returns the raw vector clock
+	GetHashedValue() string                        // Returns previously hashed value, if present.  If not present, does NOT generate hash
+	SetHashedValue(value string)                   // Returns previously hashed value, if present.  If not present, does NOT generate hash
+	Equals(otherClock SequenceClock) bool          // Evaluates whether two clocks are identical
+	IsEmptyClock() bool                            // Evaluates if this an empty clock
+	AllAfter(otherClock SequenceClockReader) bool  // True if all entries in clock are greater than or equal to the corresponding values in otherClock
+	AllBefore(otherClock SequenceClockReader) bool // True if all entries in clock are less than or equal to the corresponding values in otherClock
+	AnyAfter(otherClock SequenceClockReader) bool  // True if any entries in clock are greater than the corresponding values in otherClock
+	AnyBefore(otherClock SequenceClockReader) bool // True if any entries in clock are less than the corresponding values in otherClock
+	SetTo(otherClock SequenceClock)                // Sets the current clock to a copy of the other clock
+	Copy() SequenceClock                           // Returns a copy of the clock
+}
+
+type SequenceClockReader interface {
+	GetSequence(vbNo uint16) (vbSequence uint64) // Retrieves the sequence value for a vbucket
 }
 
 // Vector-clock based sequence.  Not thread-safe - use SyncSequenceClock for usages with potential for concurrent access.
@@ -175,10 +178,10 @@ func (c *SequenceClockImpl) IsEmptyClock() bool {
 
 // Compares another sequence clock with this one.  Returns true only if ALL vb values in the clock
 // are greater than or equal to corresponding values in other
-func (c *SequenceClockImpl) AllAfter(other SequenceClock) bool {
+func (c *SequenceClockImpl) AllAfter(other SequenceClockReader) bool {
 
-	for vb, sequence := range other.Value() {
-		if sequence > c.value[vb] {
+	for vb, sequence := range c.value {
+		if sequence < other.GetSequence(uint16(vb)) {
 			return false
 		}
 	}
@@ -187,10 +190,10 @@ func (c *SequenceClockImpl) AllAfter(other SequenceClock) bool {
 
 // Compares another sequence clock with this one.  Returns true only if ALL vb values in
 // the clock are less than or equal to the corresponding values in other
-func (c *SequenceClockImpl) AllBefore(other SequenceClock) bool {
+func (c *SequenceClockImpl) AllBefore(other SequenceClockReader) bool {
 
-	for vb, sequence := range other.Value() {
-		if sequence < c.value[vb] {
+	for vb, sequence := range c.value {
+		if sequence > other.GetSequence(uint16(vb)) {
 			return false
 		}
 	}
@@ -199,13 +202,10 @@ func (c *SequenceClockImpl) AllBefore(other SequenceClock) bool {
 
 // Compares another sequence clock with this one.  Returns true if ANY vb values in
 // the clock are less than the corresponding values in other
-func (c *SequenceClockImpl) AnyBefore(other SequenceClock) bool {
+func (c *SequenceClockImpl) AnyBefore(other SequenceClockReader) bool {
 
-	if c.hashEquals(other.GetHashedValue()) {
-		return false
-	}
-	for vb, sequence := range other.Value() {
-		if c.value[vb] < sequence {
+	for vb, sequence := range c.value {
+		if sequence < other.GetSequence(uint16(vb)) {
 			return true
 		}
 	}
@@ -214,31 +214,14 @@ func (c *SequenceClockImpl) AnyBefore(other SequenceClock) bool {
 
 // Compares another sequence clock with this one.  Returns true if ANY vb values in the clock
 // are greater than the corresponding values in other
-func (c *SequenceClockImpl) AnyAfter(other SequenceClock) bool {
+func (c *SequenceClockImpl) AnyAfter(other SequenceClockReader) bool {
 
-	if c.hashEquals(other.GetHashedValue()) {
-		return false
-	}
-	for vb, sequence := range other.Value() {
-		if c.value[vb] > sequence {
+	for vb, sequence := range c.value {
+		if sequence > other.GetSequence(uint16(vb)) {
 			return true
 		}
 	}
 	return false
-}
-
-func (c *SequenceClockImpl) LimitTo(other SequenceClock) SequenceClock {
-
-	limitedClock := NewSequenceClockImpl()
-	for vb, sequence := range c.Value() {
-		otherSequence := other.GetSequence(uint16(vb))
-		if otherSequence < sequence {
-			limitedClock.SetSequence(uint16(vb), otherSequence)
-		} else {
-			limitedClock.SetSequence(uint16(vb), sequence)
-		}
-	}
-	return limitedClock
 }
 
 // Deep-copies a SequenceClock
@@ -383,39 +366,28 @@ func (c *SyncSequenceClock) SetHashedValue(value string) {
 	c.Clock.SetHashedValue(value)
 }
 
-func (c *SyncSequenceClock) AllAfter(other SequenceClock) bool {
+func (c *SyncSequenceClock) AllAfter(other SequenceClockReader) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.Clock.AllAfter(other)
 }
 
-func (c *SyncSequenceClock) AllBefore(other SequenceClock) bool {
+func (c *SyncSequenceClock) AllBefore(other SequenceClockReader) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.Clock.AllAfter(other)
+	return c.Clock.AllBefore(other)
 }
 
-func (c *SyncSequenceClock) AnyAfter(other SequenceClock) bool {
+func (c *SyncSequenceClock) AnyAfter(other SequenceClockReader) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.Clock.AllAfter(other)
+	return c.Clock.AnyAfter(other)
 }
 
-func (c *SyncSequenceClock) AnyBefore(other SequenceClock) bool {
+func (c *SyncSequenceClock) AnyBefore(other SequenceClockReader) bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.Clock.AllAfter(other)
-}
-
-func (c *SyncSequenceClock) LimitTo(other SequenceClock) SequenceClock {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	limitedSyncClock := NewSyncSequenceClock()
-	limitedClock, ok := c.Clock.LimitTo(other).(*SequenceClockImpl)
-	if ok {
-		limitedSyncClock.Clock = limitedClock
-	}
-	return limitedSyncClock
+	return c.Clock.AnyBefore(other)
 }
 
 func (c *SyncSequenceClock) Equals(other SequenceClock) bool {
@@ -490,6 +462,20 @@ func PrintClock(clock SequenceClock) string {
 		}
 	}
 	return output
+}
+
+func LimitTo(c1 SequenceClock, c2 SequenceClockReader) SequenceClockReader {
+
+	limitedClock := NewSequenceClockImpl()
+	for vb, sequence := range c1.Value() {
+		otherSequence := c2.GetSequence(uint16(vb))
+		if otherSequence < sequence {
+			limitedClock.SetSequence(uint16(vb), otherSequence)
+		} else {
+			limitedClock.SetSequence(uint16(vb), sequence)
+		}
+	}
+	return limitedClock
 }
 
 func GetMinimumClock(a SequenceClock, b SequenceClock) *SequenceClockImpl {
