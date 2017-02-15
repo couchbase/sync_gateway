@@ -282,6 +282,38 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 	return true, nil
 }
 
+// If changed, returns a new copy of the clock from bucket.  If counter isn't changed, returns nil and leaves as-is.
+// For newly initialized ShardedClocks (counter=0), this will only happen if there are no
+// entries in the bucket for the clock.
+func (s *ShardedClock) Reload() (isChanged bool, reloadedClock *ShardedClock, err error) {
+
+	newCounter, err := s.bucket.Incr(s.countKey, 0, 0, 0)
+	if err != nil {
+		Warn("Error getting count for %s:%v", s.countKey, err)
+		LogTo("DIndex+", "Error getting count:%v", err)
+		return false, nil, err
+	}
+	if newCounter == s.counter {
+		return false, nil, nil
+	}
+
+	reloadedClock = NewShardedClockWithPartitions(s.baseKey, s.partitionMap, s.bucket)
+	reloadedClock.counter = newCounter
+	resultsMap, err := reloadedClock.bucket.GetBulkRaw(reloadedClock.partitionKeys)
+	if err != nil {
+		Warn("Error retrieving partition keys:%v", err)
+		return false, nil, err
+	}
+	for key, partitionBytes := range resultsMap {
+		if len(partitionBytes) > 0 {
+			clockPartition := NewShardedClockPartitionForBytes(key, partitionBytes, s.partitionMap)
+			reloadedClock.partitions[clockPartition.GetIndex()] = clockPartition
+		}
+	}
+
+	return true, reloadedClock, nil
+}
+
 func (s *ShardedClock) GetSequence(vbNo uint16) (vbSequence uint64) {
 	partitionNo := s.partitionMap.VbMap[vbNo]
 	clockPartition, ok := s.partitions[partitionNo]

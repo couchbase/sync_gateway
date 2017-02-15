@@ -120,18 +120,21 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 				//       stable sequence polling each poll interval, even if we *actually* don't have any
 				//       active readers.
 				pollStart = time.Now()
-				if k.stableSequenceChanged() {
+
+				newStableClock, isChanged := k.stableSequenceChanged()
+				if isChanged {
 					var wg sync.WaitGroup
 					wg.Add(2)
 					go func() {
 						defer wg.Done()
-						k.pollReaders()
+						k.pollReaders(newStableClock)
 					}()
 					go func() {
 						defer wg.Done()
 						k.pollPrincipals()
 					}()
 					wg.Wait()
+					k.updateReaderStableSequence(newStableClock)
 				}
 			}
 
@@ -203,18 +206,18 @@ func (k *kvChangeIndexReader) loadStableSequence() (*base.ShardedClock, error) {
 	return stableSequence, err
 }
 
-func (k *kvChangeIndexReader) stableSequenceChanged() bool {
+func (k *kvChangeIndexReader) stableSequenceChanged() (updatedStableSequence *base.ShardedClock, isChanged bool) {
 
-	k.readerStableSequenceLock.Lock()
-	defer k.readerStableSequenceLock.Unlock()
+	k.readerStableSequenceLock.RLock()
+	defer k.readerStableSequenceLock.RUnlock()
+	var err error
 	if k.readerStableSequence == nil {
-		var err error
-		k.readerStableSequence, err = k.loadStableSequence()
+		updatedStableSequence, err = k.loadStableSequence()
 		if err != nil {
-			base.Warn("Error initializing reader stable sequence:%v", err)
-			return false
+			base.Warn("Error initializing reader stable sequence: %v", err)
+			return nil, false
 		}
-		return true
+		return updatedStableSequence, true
 	}
 
 	var prevTimingSeq uint64
@@ -222,18 +225,24 @@ func (k *kvChangeIndexReader) stableSequenceChanged() bool {
 		prevTimingSeq = k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo)
 	}
 
-	isChanged, err := k.readerStableSequence.Load()
+	isChanged, updatedStableSequence, err = k.readerStableSequence.Reload()
 
 	if err != nil {
-		base.Warn("Error loading reader stable sequence")
-		return false
+		base.Warn("Error loading reader stable sequence: %v", err)
+		return nil, false
 	}
 
 	if base.TimingExpvarsEnabled && isChanged {
-		base.TimingExpvars.UpdateBySequenceRange("StableSequence", base.KTimingExpvarVbNo, prevTimingSeq, k.readerStableSequence.GetSequence(base.KTimingExpvarVbNo))
+		base.TimingExpvars.UpdateBySequenceRange("StableSequence", base.KTimingExpvarVbNo, prevTimingSeq, updatedStableSequence.GetSequence(base.KTimingExpvarVbNo))
 	}
 
-	return isChanged
+	return updatedStableSequence, isChanged
+}
+
+func (k *kvChangeIndexReader) updateReaderStableSequence(newClock *base.ShardedClock) {
+	k.readerStableSequenceLock.Lock()
+	defer k.readerStableSequenceLock.Unlock()
+	k.readerStableSequence = newClock
 }
 
 func (k *kvChangeIndexReader) getReaderStableSequence() base.SequenceClockReader {
@@ -362,7 +371,7 @@ func (k *kvChangeIndexReader) hasActiveReaders() bool {
 	return len(k.channelIndexReaders) > 0
 }
 
-func (k *kvChangeIndexReader) pollReaders() bool {
+func (k *kvChangeIndexReader) pollReaders(stableSequence *base.ShardedClock) bool {
 	k.channelIndexReaderLock.Lock()
 	defer k.channelIndexReaderLock.Unlock()
 
@@ -416,7 +425,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 			}
 
 			// Poll for changes
-			hasChanges, cancelPolling := reader.pollForChanges(k.readerStableSequence, newChannelClock)
+			hasChanges, cancelPolling := reader.pollForChanges(stableSequence, newChannelClock)
 			if hasChanges {
 				changedChannels <- reader.channelName
 			}

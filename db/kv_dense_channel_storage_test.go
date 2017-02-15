@@ -649,7 +649,7 @@ func TestCalculateChangedPartitions(t *testing.T) {
 		200: 15,
 	})
 
-	changedVbs, changedPartitions := reader.calculateChanged(startClock, endClock)
+	changedVbs, changedPartitions := reader.calculateChanged(startClock, endClock, endClock)
 	assert.Equals(t, len(changedVbs), 3)
 	assert.Equals(t, changedVbs[0], uint16(0))   // Partition 0
 	assert.Equals(t, changedVbs[1], uint16(100)) // Partition 6
