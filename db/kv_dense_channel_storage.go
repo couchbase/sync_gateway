@@ -23,9 +23,8 @@ const (
 	KeyFormat_DenseBlock           = "%s:block%d:p%d:%s" //  base.KIndexPrefix, block index, partition, channelname
 )
 
-const (
-	MaxListBlockCount = 1000 // When the number of blocks in the active list exceeds MaxListBlockCount, it's rotated
-)
+// Using var instead of const to simplify testing
+var MaxListBlockCount = 1000 // When the number of blocks in the active list exceeds MaxListBlockCount, it's rotated
 
 // DenseBlockList is an ordered list of DenseBlockListEntries keys.  Each key is associated with the starting
 // clock for that DenseBlock.  The list is persisted into one or more documents (DenseBlockListStorage) in the index.
@@ -162,13 +161,20 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 		BlockIndex: nextIndex,
 		StartClock: nextStartClock,
 	}
+
+	if len(l.blocks) > l.activeStartIndex+MaxListBlockCount {
+		err := l.rotate()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	l.blocks = append(l.blocks, listEntry)
 	// Do a CAS-safe write of the active list
 	value, err := l.marshalActive()
 	if err != nil {
 		return nil, err
 	}
-
 	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, value, sgbucket.Raw)
 	if err != nil {
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
@@ -184,7 +190,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	l.activeCas = casOut
 	l.activeBlock = block
-	base.LogTo("ChannelStorage+", "Successfully added block to list. channel:[%s] partition:[%d] index:[%d]", l.channelName, l.partition, nextIndex)
+	base.LogTo("ChannelStorage+", "Successfully added block to list. channel:[%s] partition:[%d] index:[%d] activeBlocks:[%d]", l.channelName, l.partition, nextIndex, len(l.blocks))
 
 	return block, nil
 }
@@ -198,8 +204,8 @@ func (l *DenseBlockList) loadActiveBlock() *DenseBlock {
 	}
 }
 
-// Rotate out the active block list document from the active key to a rotated key (adds activeCounter to the key), and
-// start a new empty block.
+// Rotate out the active block list document from the active key to a rotated key (adds activeCounter to the key).  Rotate just modifies the underlying storage - the full set
+// of blocks is retained in the in-memory DenseBlockList.  Marshal/unmarshal ensures persistence of only the active blocks
 func (l *DenseBlockList) rotate() error {
 	rotatedKey := l.generateRotatedListKey()
 
@@ -218,6 +224,7 @@ func (l *DenseBlockList) rotate() error {
 	// Empty the active list
 	l.activeCounter++
 	l.activeStartIndex = len(l.blocks)
+
 	activeValue, err := l.marshalActive()
 	if err != nil {
 		return err
@@ -250,6 +257,7 @@ func (l *DenseBlockList) initDenseBlockList() error {
 	// Load the existing block list
 	found, err := l.loadDenseBlockList()
 	if err != nil {
+		base.Warn("Dense block list load failed: %v", err)
 		return err
 	}
 	// If block list doesn't exist, add a block (which will initialize)
@@ -282,7 +290,6 @@ func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 	l.blocks = activeBlockList.Blocks
 	l.activeCounter = activeBlockList.Counter
 	l.activeBlock = l.loadActiveBlock()
-	l.activeStartIndex = 0
 	l.validFromCounter = l.activeCounter
 	return true, nil
 }
@@ -305,7 +312,7 @@ func (l *DenseBlockList) LoadPrevious() error {
 	}
 	previousCount := l.validFromCounter - 1
 	previousBlockKey := l.generateNumberedListKey(previousCount)
-	previousBlockList, cas, readError := l.getStorage(l.activeKey)
+	previousBlockList, cas, readError := l.getStorage(previousBlockKey)
 	if readError != nil {
 		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockKey, readError)
 	}
@@ -325,6 +332,7 @@ func (l *DenseBlockList) getStorage(key string) (storage DenseBlockListStorage, 
 	}
 
 	if err := json.Unmarshal(value, &storage); err != nil {
+		base.Warn("Error unmarshalling value [%s] into block list storage", value)
 		return storage, 0, err
 	}
 
