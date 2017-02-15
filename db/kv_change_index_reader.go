@@ -268,7 +268,7 @@ func (k *kvChangeIndexReader) GetStableClock() (clock base.SequenceClockReader, 
 		base.Warn("Stable sequence and clock not found in index - returning err")
 		return nil, err
 	} else {
-		clock = stableShardedClock.AsClock()
+		clock = stableShardedClock
 	}
 
 	return clock, nil
@@ -416,7 +416,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 			}
 
 			// Poll for changes
-			hasChanges, cancelPolling := reader.pollForChanges(k.readerStableSequence.AsClock(), newChannelClock)
+			hasChanges, cancelPolling := reader.pollForChanges(k.readerStableSequence, newChannelClock)
 			if hasChanges {
 				changedChannels <- reader.channelName
 			}

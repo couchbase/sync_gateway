@@ -76,7 +76,7 @@ func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock
 // caller.  Changes are retrieved in vbucket order, to allow a limit check after each vbucket (to avoid retrieval).  Since
 // a given partition includes results for more than one vbucket
 
-func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClockReader, limit int) (changes []*LogEntry, err error) {
+func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClockReader, channelClock base.SequenceClock, limit int) (changes []*LogEntry, err error) {
 
 	changes = make([]*LogEntry, 0)
 
@@ -84,7 +84,7 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 	//  changedVbuckets: ordered list of vbuckets that have changes, based on the clock comparison
 	//  partitionRanges: array of PartitionRange, indexed by partitionNo
 
-	changedVbuckets, partitionRanges := ds.calculateChanged(sinceClock, toClock)
+	changedVbuckets, partitionRanges := ds.calculateChanged(sinceClock, toClock, channelClock)
 
 	// changed partitions is a cache of changes for a partition, for reuse by multiple vbs
 	changedPartitions := make(map[uint16]*PartitionChanges, len(partitionRanges))
@@ -140,13 +140,20 @@ func (ds *DenseStorageReader) _newPartitionStorageReader(partitionNo uint16) (pa
 
 // calculateChangedPartitions identifies which vbuckets have changed after sinceClock until toClock, groups these
 // by partition, and returns as a array of PartitionRanges, indexed by partition number.
-func (ds *DenseStorageReader) calculateChanged(sinceClock base.SequenceClock, toClock base.SequenceClockReader) (changedVbs []uint16, changedPartitions []*base.PartitionRange) {
+func (ds *DenseStorageReader) calculateChanged(sinceClock base.SequenceClock, toClock base.SequenceClockReader, channelClock base.SequenceClockReader) (changedVbs []uint16, changedPartitions []*base.PartitionRange) {
 
 	changedVbs = make([]uint16, 0)
 	changedPartitions = make([]*base.PartitionRange, ds.partitions.PartitionCount())
 	for vbNoInt, sinceSeq := range sinceClock.Value() {
 		vbNo := uint16(vbNoInt)
-		toSeq := sinceClock.GetSequence(vbNo)
+		// We don't want to return anything later than the channel clock OR the to clock
+		toSeq := channelClock.GetSequence(vbNo)
+		if toClock != nil {
+			toClockSeq := toClock.GetSequence(vbNo)
+			if toClockSeq < toSeq {
+				toSeq = toClockSeq
+			}
+		}
 		if sinceSeq < toSeq {
 			changedVbs = append(changedVbs, vbNo)
 			partitionNo := ds.partitions.PartitionForVb(vbNo)

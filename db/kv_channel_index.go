@@ -67,7 +67,7 @@ func (k *KvChannelIndex) IndexBucket() base.Bucket {
 	return k.indexBucket
 }
 
-func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
+func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClockReader, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
 
 	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
 	// Increment the overall poll count since a changes request (regardless of whether there have been polled changes)
@@ -121,7 +121,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	return true, false
 }
 
-func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*base.PartitionRange) {
+func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClockReader, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*base.PartitionRange) {
 
 	// One iteration through the new channel clock, to:
 	//   1. Check whether it's later than the previous channel clock
@@ -155,7 +155,7 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 
 }
 
-func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClock, newChannelClock base.SequenceClock, changedPartitions []*base.PartitionRange) error {
+func (k *KvChannelIndex) updateLastPolled(stableSequence base.SequenceClockReader, newChannelClock base.SequenceClock, changedPartitions []*base.PartitionRange) error {
 
 	// Update the storage cache, if present
 	err := k.channelStorage.UpdateCache(k.lastPolledChannelClock, newChannelClock, changedPartitions)
@@ -202,14 +202,16 @@ func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.
 	}
 
 	// Don't request values later than channel clock
-	var channelToClock base.SequenceClockReader
-	if toClock != nil {
-		channelToClock = base.LimitTo(chanClock, toClock)
-	} else {
-		channelToClock = chanClock
-	}
+	/*
+		var channelToClock base.SequenceClock
+		if toClock != nil {
+			channelToClock = base.LimitTo(chanClock, toClock)
+		} else {
+			channelToClock = chanClock
+		}
+	*/
 
-	return k.channelStorage.GetChanges(sinceClock, channelToClock, limit)
+	return k.channelStorage.GetChanges(sinceClock, toClock, chanClock, limit)
 }
 
 func (k *KvChannelIndex) getIndexCounter() (uint64, error) {

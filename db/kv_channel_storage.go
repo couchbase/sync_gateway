@@ -34,7 +34,7 @@ const (
 // without significant refactoring.
 type ChannelStorageReader interface {
 	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
-	GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClockReader, limit int) ([]*LogEntry, error)
+	GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClockReader, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
 	UpdateCache(fromSeq base.SequenceClock, toSeq base.SequenceClockReader, changedPartitions []*base.PartitionRange) error
 }
 
@@ -297,7 +297,7 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 	return nil
 }
 
-func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock, limit int) ([]*LogEntry, error) {
+func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, chanClock base.SequenceClockReader, toSeq base.SequenceClock, limit int) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
 	blocksByKey, blocksByVb, err := b.calculateChangedBlocks(fromSeq, toSeq)
@@ -331,7 +331,7 @@ func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.Seque
 
 }
 
-func (b *BitFlagStorage) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClock, changedPartitions []*base.PartitionRange) error {
+func (b *BitFlagStorage) UpdateCache(sinceClock base.SequenceClock, toClock base.SequenceClockReader, changedPartitions []*base.PartitionRange) error {
 	// no-op, not a caching reader
 	return nil
 }

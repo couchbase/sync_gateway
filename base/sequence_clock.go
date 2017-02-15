@@ -41,7 +41,7 @@ type SequenceClock interface {
 	AllBefore(otherClock SequenceClockReader) bool // True if all entries in clock are less than or equal to the corresponding values in otherClock
 	AnyAfter(otherClock SequenceClockReader) bool  // True if any entries in clock are greater than the corresponding values in otherClock
 	AnyBefore(otherClock SequenceClockReader) bool // True if any entries in clock are less than the corresponding values in otherClock
-	SetTo(otherClock SequenceClock)                // Sets the current clock to a copy of the other clock
+	SetTo(otherClock SequenceClockReader)          // Sets the current clock to a copy of the other clock
 	Copy() SequenceClock                           // Returns a copy of the clock
 }
 
@@ -234,11 +234,11 @@ func (c *SequenceClockImpl) Copy() SequenceClock {
 }
 
 // Sets a sequence clock equal to the specified clock
-func (c *SequenceClockImpl) SetTo(other SequenceClock) {
+func (c *SequenceClockImpl) SetTo(other SequenceClockReader) {
 	for vbNo := uint16(0); vbNo < KMaxVbNo; vbNo++ {
 		c.value[vbNo] = other.GetSequence(vbNo)
 	}
-	c.cas = other.Cas()
+	c.cas = 0
 	c.hashedValue = ""
 }
 
@@ -403,7 +403,7 @@ func (c *SyncSequenceClock) IsEmptyClock() bool {
 }
 
 // Copies a channel clock
-func (c *SyncSequenceClock) SetTo(other SequenceClock) {
+func (c *SyncSequenceClock) SetTo(other SequenceClockReader) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.Clock.SetTo(other)
@@ -464,7 +464,7 @@ func PrintClock(clock SequenceClock) string {
 	return output
 }
 
-func LimitTo(c1 SequenceClock, c2 SequenceClockReader) SequenceClockReader {
+func LimitTo(c1 SequenceClock, c2 SequenceClockReader) SequenceClock {
 
 	limitedClock := NewSequenceClockImpl()
 	for vb, sequence := range c1.Value() {
