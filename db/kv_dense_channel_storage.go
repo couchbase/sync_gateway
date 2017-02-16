@@ -10,10 +10,8 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -171,11 +169,11 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 
 	l.blocks = append(l.blocks, listEntry)
 	// Do a CAS-safe write of the active list
-	value, err := l.marshalActive()
+	storageValue, err := l.marshalAsStorage()
 	if err != nil {
 		return nil, err
 	}
-	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, value, sgbucket.Raw)
+	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, storageValue, 0)
 	if err != nil {
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
@@ -209,11 +207,11 @@ func (l *DenseBlockList) loadActiveBlock() *DenseBlock {
 func (l *DenseBlockList) rotate() error {
 	rotatedKey := l.generateRotatedListKey()
 
-	rotatedValue, err := l.marshalActive()
+	rotatedStorageValue, err := l.marshalAsStorage()
 	if err != nil {
 		return err
 	}
-	_, err = l.indexBucket.WriteCas(rotatedKey, 0, 0, 0, rotatedValue, sgbucket.Raw)
+	_, err = l.indexBucket.WriteCas(rotatedKey, 0, 0, 0, rotatedStorageValue, 0)
 
 	// For CAS error - someone else has already rotated out for this count.  Continue to initialize empty.  For all other errors,
 	// return error
@@ -225,12 +223,12 @@ func (l *DenseBlockList) rotate() error {
 	l.activeCounter++
 	l.activeStartIndex = len(l.blocks)
 
-	activeValue, err := l.marshalActive()
+	activeStorageValue, err := l.marshalAsStorage()
 	if err != nil {
 		return err
 	}
 	var casOut uint64
-	casOut, err = l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, activeValue, sgbucket.Raw)
+	casOut, err = l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, activeStorageValue, 0)
 	if err != nil {
 		if base.IsCasMismatch(l.indexBucket, err) {
 			// CAS error.  Assume concurrent writer has already updated the active block list.
@@ -277,7 +275,7 @@ func (l *DenseBlockList) initDenseBlockList() error {
 // requests a clock earlier than the first entry's clock
 func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 
-	activeBlockList, casOut, readError := l.getStorage(l.activeKey)
+	activeBlockListStorage, casOut, readError := l.loadStorage(l.activeKey)
 	if readError != nil {
 		if base.IsKeyNotFoundError(l.indexBucket, readError) {
 			return false, nil
@@ -287,8 +285,8 @@ func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 		}
 	}
 	l.activeCas = casOut
-	l.blocks = activeBlockList.Blocks
-	l.activeCounter = activeBlockList.Counter
+	l.blocks = activeBlockListStorage.Blocks
+	l.activeCounter = activeBlockListStorage.Counter
 	l.activeBlock = l.loadActiveBlock()
 	l.validFromCounter = l.activeCounter
 	return true, nil
@@ -311,31 +309,26 @@ func (l *DenseBlockList) LoadPrevious() error {
 		return fmt.Errorf("Attempted to load previous block list when count=0")
 	}
 	previousCount := l.validFromCounter - 1
-	previousBlockKey := l.generateNumberedListKey(previousCount)
-	previousBlockList, cas, readError := l.getStorage(previousBlockKey)
+	previousBlockListKey := l.generateNumberedListKey(previousCount)
+	previousBlockListStorage, cas, readError := l.loadStorage(previousBlockListKey)
 	if readError != nil {
-		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockKey, readError)
+		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockListKey, readError)
 	}
-	l.blocks = append(previousBlockList.Blocks, l.blocks...)
-	l.activeStartIndex += len(previousBlockList.Blocks)
+	l.blocks = append(previousBlockListStorage.Blocks, l.blocks...)
+	l.activeStartIndex += len(previousBlockListStorage.Blocks)
 	l.validFromCounter = previousCount
 	l.activeCas = cas
 
 	return nil
 }
 
-func (l *DenseBlockList) getStorage(key string) (storage DenseBlockListStorage, cas uint64, err error) {
+func (l *DenseBlockList) loadStorage(key string) (storage DenseBlockListStorage, cas uint64, err error) {
 
-	value, casOut, err := l.indexBucket.GetRaw(key)
+	storage = DenseBlockListStorage{}
+	casOut, err := l.indexBucket.Get(key, &storage)
 	if err != nil {
 		return storage, 0, err
 	}
-
-	if err := json.Unmarshal(value, &storage); err != nil {
-		base.Warn("Error unmarshalling value [%s] into block list storage", value)
-		return storage, 0, err
-	}
-
 	return storage, casOut, nil
 
 }
@@ -349,7 +342,7 @@ func (l *DenseBlockList) ValidFrom() base.PartitionClock {
 }
 
 // Marshals the active block list
-func (l *DenseBlockList) marshalActive() ([]byte, error) {
+func (l *DenseBlockList) marshalAsStorage() (*DenseBlockListStorage, error) {
 
 	activeBlock := &DenseBlockListStorage{
 		Counter: uint32(l.activeCounter),
@@ -359,7 +352,7 @@ func (l *DenseBlockList) marshalActive() ([]byte, error) {
 	if l.activeStartIndex <= len(l.blocks) {
 		activeBlock.Blocks = l.blocks[l.activeStartIndex:]
 	}
-	return json.Marshal(activeBlock)
+	return activeBlock, nil
 }
 
 func (l *DenseBlockList) getActiveBlockListEntry() (entry DenseBlockListEntry, ok bool) {
