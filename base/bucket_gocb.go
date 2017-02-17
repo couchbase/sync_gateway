@@ -135,12 +135,12 @@ func (bucket CouchbaseBucketGoCB) GetName() string {
 
 func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 
-	var returnVal interface{}
+	var returnVal []byte
 	cas, err = bucket.Get(k, &returnVal)
 	if returnVal == nil {
 		return nil, cas, err
 	}
-	return returnVal.([]byte), cas, err
+	return returnVal, cas, err
 
 }
 

@@ -62,7 +62,7 @@ func (d *DenseBlock) Count() uint16 {
 }
 
 func (d *DenseBlock) getEntryCount() uint16 {
-	return binary.BigEndian.Uint16(d.value[0:])
+	return binary.BigEndian.Uint16(d.value[0:2])
 }
 
 func (d *DenseBlock) setEntryCount(count uint16) {
@@ -89,7 +89,8 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 	if err != nil {
 		return err
 	}
-	d.value = value
+	d.value = make([]byte, len(value))
+	copy(d.value, value)
 	d.cas = cas
 	d.clock = nil
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
@@ -102,7 +103,8 @@ func (d *DenseBlock) initClock() {
 	d.clock = d.startClock.Copy()
 
 	var indexEntry DenseBlockIndexEntry
-	for i := 0; i < int(d.getEntryCount()); i++ {
+	numEntries := d.getEntryCount()
+	for i := 0; i < int(numEntries); i++ {
 		indexEntry = d.value[DB_HEADER_LEN+i*INDEX_ENTRY_LEN : DB_HEADER_LEN+(i+1)*INDEX_ENTRY_LEN]
 		d.clock[indexEntry.getVbNo()] = indexEntry.getSequence()
 	}
@@ -523,6 +525,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 
 	// Check for uint16 overflow
 	if count+amount < count {
+		base.Warn("Overflow incrementing entry count (%s): %d, %d", d.Key, count, amount)
 		return 0, fmt.Errorf("Maximum block entry count exceeded")
 	}
 	d.setEntryCount(count + amount)
@@ -533,6 +536,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 func (d *DenseBlock) decrEntryCount(amount uint16) (uint16, error) {
 	count := d.getEntryCount()
 	if amount > count {
+		base.Warn("Cannot decrement entry count below zero (%s): %d, %d", d.Key, count, amount)
 		return 0, fmt.Errorf("Can't decrement block entry count below zero")
 	}
 	d.setEntryCount(count - amount)
