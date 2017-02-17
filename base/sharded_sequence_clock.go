@@ -455,7 +455,8 @@ func (p *ShardedClockPartition) Marshal() ([]byte, error) {
 }
 
 func (p *ShardedClockPartition) Unmarshal(value []byte) error {
-	p.value = value
+	p.value = make([]byte, len(value))
+	copy(p.value, value)
 	return nil
 }
 

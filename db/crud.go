@@ -736,7 +736,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 		// Return the new raw document value for the bucket to store.
 		raw, err = json.Marshal(doc)
-		base.LogTo("Cache", "SAVING #%d", doc.Sequence) //TEMP?
+		base.LogTo("CRUD+", "SAVING #%d", doc.Sequence) //TEMP?
 		return
 	})
 
