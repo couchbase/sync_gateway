@@ -55,6 +55,12 @@ var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
 var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
 var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
 
+var checkAuthRollingMean = base.NewIntRollingMeanVar(100)
+
+func init() {
+	base.StatsExpvars.Set("handler.CheckAuthRollingMean", &checkAuthRollingMean)
+}
+
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
 	server         *ServerContext
@@ -285,6 +291,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	if context == nil {
 		return nil
 	}
+
+	defer checkAuthRollingMean.AddSince(time.Now())
 
 	var err error
 	// If oidc enabled, check for bearer ID token
