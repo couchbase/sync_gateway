@@ -695,7 +695,6 @@ func (h *SkippedSequenceQueue) Remove(x uint64) error {
 
 	i := SearchSequenceQueue(*h, x)
 	if i < len(*h) && (*h)[i].seq == x {
-
 		copy((*h)[i:], (*h)[i+1:])
 		(*h)[len(*h)-1] = nil
 		*h = (*h)[:len(*h)-1]
