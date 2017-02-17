@@ -1046,7 +1046,7 @@
 		<row><td>SetARPINSTALLLOCATION</td><td>51</td><td>ARPINSTALLLOCATION</td><td>[INSTALLDIR]</td><td/><td/></row>
 		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>3090</td><td>sg_accel_service.exe</td><td>install "[INSTALLDIR]\sg_accel.exe" "[INSTALLDIR]\basic_sg_accel_config.json"</td><td/><td/></row>
-		<row><td>IS_LAUNCH_MY_PROGRAM_PLEASE</td><td>210</td><td>sg_accel_service.exe</td><td/><td/><td/></row>
+		<row><td>IS_LAUNCH_MY_PROGRAM_PLEASE</td><td>210</td><td>sg_accel.exe</td><td/><td/><td/></row>
 		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>3090</td><td>sg_accel_service.exe</td><td>uninstall</td><td/><td/></row>
 		<row><td>ShowMsiLog</td><td>226</td><td>SystemFolder</td><td>[SystemFolder]notepad.exe "[MsiLogFileLocation]"</td><td/><td>Shows Property-driven MSI Log</td></row>
 		<row><td>setAllUsersProfile2K</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%ALLUSERSPROFILE]</td><td/><td/></row>
@@ -1852,8 +1852,9 @@
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles4</td></row>
 		<row><td>Sync_Gateway_Files</td><td>AllOtherFiles5</td></row>
 		<row><td>Sync_Gateway_Files</td><td>IS_ININSTALL_SHORTCUT</td></row>
-		<row><td>Sync_Gateway_Files</td><td>sg_accel.exe</td></row>
 		<row><td>Sync_Gateway_Files</td><td>sg_accel_service.exe</td></row>
+		<row><td>Sync_Gateway_Files</td><td>sgcollect_info.exe</td></row>
+		<row><td>Sync_Gateway_Files</td><td>sg_accel.exe</td></row>
 	</table>
 
 	<table name="File">
@@ -3901,7 +3902,7 @@
 		<col def="I2">ISIconIndex</col>
 		<row><td>ARPPRODUCTICON.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\godeps\src\github.com\couchbase\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 		<row><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\godeps\src\github.com\couchbase\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
-		<row><td>sync_gateway.exe_544F1BA173F24BD5B7689B3C75B0B1FD.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\godeps\src\github.com\couchbase\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
+		<row><td>sg_accel.exe_544F1BA173F24BD5B7689B3C75B0B1FD.exe</td><td/><td>&lt;PATH_TO_JENKINS_WORKSPACE&gt;\godeps\src\github.com\couchbase\sync_gateway\build\windows\couchbase.ico</td><td>0</td></row>
 	</table>
 
 	<table name="IniFile">
@@ -3945,10 +3946,10 @@
 		<row><td>ISPreventDowngrade</td><td>ISFOUNDNEWERPRODUCTVERSION</td><td>450</td><td>ISPreventDowngrade</td><td/></row>
 		<row><td>ISSelfRegisterCosting</td><td/><td>2201</td><td/><td/></row>
 		<row><td>ISSelfRegisterFiles</td><td/><td>5601</td><td/><td/></row>
-		<row><td>ISSelfRegisterFinalize</td><td/><td>6602</td><td/><td/></row>
+		<row><td>ISSelfRegisterFinalize</td><td/><td>6603</td><td/><td/></row>
 		<row><td>ISUnSelfRegisterFiles</td><td/><td>2202</td><td/><td/></row>
-		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>"Not Installed"</td><td>6505</td><td/><td/></row>
-		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>Installed</td><td>1950</td><td/><td/></row>
+		<row><td>IS_INSTALL_SERVICE_WRAPPER</td><td>REMOVE&lt;&gt;"ALL"</td><td>6505</td><td/><td/></row>
+		<row><td>IS_REMOVE_SERVICE_WRAPPER</td><td>REMOVE="ALL"</td><td>1950</td><td/><td/></row>
 		<row><td>InstallFiles</td><td/><td>4000</td><td>InstallFiles</td><td/></row>
 		<row><td>InstallFinalize</td><td/><td>6600</td><td>InstallFinalize</td><td/></row>
 		<row><td>InstallInitialize</td><td/><td>1501</td><td>InstallInitialize</td><td/></row>
@@ -4403,7 +4404,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>ProductID</td><td>none</td><td/></row>
 		<row><td>ProductLanguage</td><td>1033</td><td/></row>
 		<row><td>ProductName</td><td>Couchbase Sync Gateway Accelerator</td><td/></row>
-		<row><td>ProductVersion</td><td>1.3.0000</td><td/></row>
+		<row><td>ProductVersion</td><td>1.4.0000</td><td/></row>
 		<row><td>ProgressType0</td><td>install</td><td/></row>
 		<row><td>ProgressType1</td><td>Installing</td><td/></row>
 		<row><td>ProgressType2</td><td>installed</td><td/></row>
@@ -4478,7 +4479,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<row><td>FileKey1</td><td>sg_accel.exe</td><td/><td>couchb_1_couchbase__inc.</td><td>2</td></row>
 		<row><td>FileKey2</td><td>sg_accel.exe</td><td/><td>sync_g_1_sync_gateway</td><td>2</td></row>
 		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>IS_ININSTALL_SHORTCUT</td><td/><td>sync_gateway</td><td>2</td></row>
-		<row><td>sync_gateway.exe</td><td>sg_accel.exe</td><td/><td>sync_g_1_sync_gateway</td><td>2</td></row>
+		<row><td>sg_accel.exe</td><td>sg_accel.exe</td><td/><td>sync_g_1_sync_gateway</td><td>2</td></row>
 	</table>
 
 	<table name="RemoveIniFile">
@@ -4565,7 +4566,7 @@ UgBlAGwAZQBhAHMAZQABAFMASQBOAEcATABFAF8ARQBYAEUAXwBJAE0AQQBHAEUA
 		<col def="S255">ISShortcutName</col>
 		<col def="I4">ISAttributes</col>
 		<row><td>UNINST_Uninstall_Sync_Gateway</td><td>sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME2##</td><td>IS_ININSTALL_SHORTCUT</td><td>[SystemFolder]msiexec.exe</td><td>/x {354EC10C-E6CE-4A10-86C3-6D91B0A93119}</td><td/><td/><td>UNINST_Uninstall_S_E176092662E747798F308D313AF5AD4E.exe</td><td>0</td><td>1</td><td/><td/><td/><td/><td/><td/><td/><td/></row>
-		<row><td>sync_gateway.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sg_accel.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sync_gateway.exe_544F1BA173F24BD5B7689B3C75B0B1FD.exe</td><td>0</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
+		<row><td>sg_accel.exe</td><td>sync_g_1_sync_gateway</td><td>##IDS_SHORTCUT_DISPLAY_NAME1##</td><td>sg_accel.exe</td><td>Sync_Gateway_Files</td><td/><td/><td/><td>sg_accel.exe_544F1BA173F24BD5B7689B3C75B0B1FD.exe</td><td>0</td><td>1</td><td>INSTALLDIR</td><td/><td/><td/><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="Signature">
