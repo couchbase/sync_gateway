@@ -695,7 +695,11 @@ func (h *SkippedSequenceQueue) Remove(x uint64) error {
 
 	i := SearchSequenceQueue(*h, x)
 	if i < len(*h) && (*h)[i].seq == x {
-		*h = append((*h)[:i], (*h)[i+1:]...)
+		// GC-friendly removal of skipped sequence entries from the queue.
+		// (https://github.com/golang/go/wiki/SliceTricks)
+		copy((*h)[i:], (*h)[i+1:])
+		(*h)[len(*h)-1] = nil
+		*h = (*h)[:len(*h)-1]
 		return nil
 	} else {
 		return errors.New("Value not found")
