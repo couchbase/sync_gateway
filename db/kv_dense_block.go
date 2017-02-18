@@ -89,8 +89,7 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 	if err != nil {
 		return err
 	}
-	d.value = make([]byte, len(value))
-	copy(d.value, value)
+	d.value = value
 	d.cas = cas
 	d.clock = nil
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
