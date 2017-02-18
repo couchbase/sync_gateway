@@ -140,7 +140,11 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	if returnVal == nil {
 		return nil, cas, err
 	}
-	return returnVal, cas, err
+	// Take a copy of the returned value until gocb issue is fixed http://review.couchbase.org/#/c/72059/
+	rv = make([]byte, len(returnVal))
+	copy(rv, returnVal)
+
+	return rv, cas, err
 
 }
 
