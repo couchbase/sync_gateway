@@ -22,9 +22,9 @@ import (
 
 var indexReaderOneShotCount expvar.Int
 var indexReaderPersistentCount expvar.Int
-var indexReaderPollReadersCount expvar.Int
+var indexReaderPollReadersCount = base.NewIntRollingMeanVar(100)
 var indexReaderPollReadersTime = base.NewIntRollingMeanVar(100)
-var indexReaderPollPrincipalsCount expvar.Int
+var indexReaderPollPrincipalsCount = base.NewIntRollingMeanVar(100)
 var indexReaderPollPrincipalsTime = base.NewIntRollingMeanVar(100)
 var indexReaderGetChangesTime = base.NewIntRollingMeanVar(100)
 var indexReaderGetChangesCount expvar.Int
@@ -320,7 +320,6 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string) (*KvChannelI
 	index := k.getChannelReader(channelName)
 	if index == nil {
 		index, err = k.newChannelReader(channelName)
-		indexReaderPersistentCount.Add(1)
 		IndexExpvars.Add("getOrCreateReader_create", 1)
 		base.LogTo("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
 	} else {
@@ -350,7 +349,7 @@ func (k *kvChangeIndexReader) newChannelReader(channelName string) (*KvChannelIn
 		return nil, err
 	}
 	k.channelIndexReaders[channelName] = NewKvChannelIndex(channelName, k.indexReadBucket, indexPartitions, k.onChange)
-	IndexExpvars.Add("pollingChannels_active", 1)
+	indexReaderPersistentCount.Add(1)
 	return k.channelIndexReaders[channelName], nil
 }
 
@@ -366,12 +365,12 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 	k.channelIndexReaderLock.Lock()
 	defer k.channelIndexReaderLock.Unlock()
 
-	defer indexReaderPollReadersTime.AddSince(time.Now())
-	defer indexReaderPollReadersCount.Add(1)
-
 	if len(k.channelIndexReaders) == 0 {
 		return true
 	}
+
+	defer indexReaderPollReadersTime.AddSince(time.Now())
+	defer indexReaderPollReadersCount.AddValue(int64(len(k.channelIndexReaders)))
 
 	// Build the set of clock keys to retrieve.  Stable sequence, plus one per channel reader
 	keySet := make([]string, len(k.channelIndexReaders))
@@ -443,7 +442,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 
 	// Remove cancelled channels from channel readers
 	for channelName := range cancelledChannels {
-		IndexExpvars.Add("pollingChannels_active", -1)
+		indexReaderPersistentCount.Add(-1)
 		delete(k.channelIndexReaders, channelName)
 	}
 
@@ -453,9 +452,6 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 // PollPrincipals checks the principal counts, stored in the index, to determine whether there's been
 // a change to a user or role that should trigger a notification for that principal.
 func (k *kvChangeIndexReader) pollPrincipals() {
-
-	defer indexReaderPollPrincipalsTime.AddSince(time.Now())
-	defer indexReaderPollPrincipalsCount.Add(1)
 
 	// Principal polling is strictly for notification handling, so skip if no notify function is defined
 	if k.onChange == nil {
@@ -468,6 +464,9 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 	if len(k.activePrincipalCounts) == 0 {
 		return
 	}
+
+	defer indexReaderPollPrincipalsTime.AddSince(time.Now())
+	defer indexReaderPollPrincipalsCount.AddValue(int64(len(k.activePrincipalCounts)))
 
 	// Check whether ANY principals have been updated since last poll, before doing the work of retrieving individual keys
 	overallCount, err := k.indexReadBucket.Incr(base.KTotalPrincipalCountKey, 0, 0, 0)
