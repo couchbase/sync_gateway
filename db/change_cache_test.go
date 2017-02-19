@@ -386,6 +386,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Terminator = make(chan bool)
 	options.Continuous = true
 	options.Wait = true
+
+	defer close(options.Terminator)
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -447,7 +449,6 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		log.Printf("Did not receive expected docs: %v")
 	}
 	assert.Equals(t, len(expectedDocs), 0)
-	close(options.Terminator)
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed
