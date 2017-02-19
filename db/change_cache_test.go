@@ -378,11 +378,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"CBS"}, 6)
 
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
-
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
 	options.Terminator = make(chan bool)
@@ -391,30 +389,13 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
-	// Array to read changes from feed to support assertions
-	var changes = make([]*ChangeEntry, 0, 50)
-
 	time.Sleep(50 * time.Millisecond)
 
-	// Validate the initial sequences arrive as expected
-	err = appendFromFeed(&changes, feed, 4)
-	assert.True(t, err == nil)
-	assert.Equals(t, len(changes), 4)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
-
+	// Write some more docs
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
-
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 12})
-	time.Sleep(50 * time.Millisecond)
-	err = appendFromFeed(&changes, feed, 2)
 
-	assert.Equals(t, len(changes), 6)
-	assert.True(t, verifyChangesFullSequences(changes, []string{
-		"1", "2", "2::5", "2::6", "3", "3::12"}))
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
@@ -423,7 +404,6 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 13})
 	time.Sleep(50 * time.Millisecond)
 
-	err = appendFromFeed(&changes, feed, 4)
 	// We can't guarantee how compound sequences will be generated in a multi-core test - will
 	// depend on timing of arrival in late sequence logs.  e.g. could come through as any one of
 	// the following (where all are valid), depending on timing:
@@ -431,8 +411,42 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	//  ..."4", "6::7", "6::8", "6::13"
 	//  ..."3::4", "3::7", "3::8", "3::13"
 	// For this reason, we're just verifying the number of sequences is correct
-	assert.Equals(t, len(changes), 10)
 
+	// Validate that all docs eventually arrive
+	expectedDocs := map[string]bool{
+		"doc-1":  true,
+		"doc-2":  true,
+		"doc-3":  true,
+		"doc-4":  true,
+		"doc-5":  true,
+		"doc-6":  true,
+		"doc-7":  true,
+		"doc-8":  true,
+		"doc-12": true,
+		"doc-13": true,
+	}
+	for {
+		nextEntry, err := readNextFromFeed(feed, 5*time.Second)
+		log.Printf("Read changes entry: %v", nextEntry)
+		assertNoError(t, err, "Error reading next change entry from feed")
+		if err != nil {
+			break
+		}
+		if nextEntry == nil {
+			continue
+		}
+		_, ok := expectedDocs[nextEntry.ID]
+		if ok {
+			delete(expectedDocs, nextEntry.ID)
+		}
+		if len(expectedDocs) == 0 {
+			break
+		}
+	}
+	if len(expectedDocs) > 0 {
+		log.Printf("Did not receive expected docs: %v")
+	}
+	assert.Equals(t, len(expectedDocs), 0)
 	close(options.Terminator)
 }
 
@@ -1004,5 +1018,21 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 	}
 	log.Println("standard completion")
 	return nil
+
+}
+
+func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*ChangeEntry, error) {
+
+	select {
+	case entry, ok := <-feed:
+		if ok {
+			return entry, nil
+		} else {
+			log.Printf("Non-entry error (%v): %v", ok, entry)
+			return nil, errors.New("Non-entry returned on feed.")
+		}
+	case <-time.After(timeout):
+		return nil, errors.New("Timeout waiting for entry")
+	}
 
 }
