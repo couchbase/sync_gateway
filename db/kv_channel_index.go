@@ -39,6 +39,7 @@ type KvChannelIndex struct {
 	lastPolledValidTo      base.SequenceClock      // Stable sequence at time of last polling that found changes
 	lastPolledChannelClock base.SequenceClock      // Channel clock value that triggered the most recent polling
 	lastPolledLock         sync.RWMutex            // Synchronization for lastPolled data
+	lastPolledPostStable   bool                    // Whether the channel clock was later than the stable sequence during the most recent polling.  (used to trigger update next polling window even if channel clock is unchanged)
 	unreadPollCount        uint32                  // Number of times the channel has polled for data since the last non-empty poll, without a getChanges call
 	pollCount              uint32                  // Number of times the channel has polled for data and not found changes
 	onChange               func(base.Set)          // Notification callback
@@ -76,6 +77,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	if unreadPollCount > kMaxUnreadPollCount {
 		// We've sent a notify, but had (kMaxUnreadPollCount) polls without anyone calling getChanges.
 		// Assume nobody is listening for updates - cancel polling for this channel
+		base.LogTo("DIndex+", "Cancelling polling for channel %s", k.channelName)
 		return false, true
 	}
 
@@ -92,11 +94,13 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 		k.lastPolledChannelClock = k.clock.Copy()
 		k.lastPolledSince = k.clock.Copy()
 		k.lastPolledValidTo = k.clock.Copy()
+		k.lastPolledPostStable = true // We can't guarantee this wasn't the case when we loaded k.clock, so force an update
 	}
 
-	isChanged, changedPartitions := k.calculateChanges(k.lastPolledChannelClock, stableClock, newChannelClock)
+	// Minimum clock is minimum of stableClock, new channel clock.
+	isChanged, changedPartitions, hasPostStableChanges := k.calculateChanges(k.lastPolledChannelClock, stableClock, newChannelClock)
 
-	if !isChanged {
+	if !isChanged && !k.lastPolledPostStable {
 		// No changes to channel clock - update validTo based on the new stable sequence
 		k.lastPolledValidTo.SetTo(stableClock)
 		// If we've exceeded empty poll count, return hasChanges=true to trigger the "is
@@ -107,6 +111,11 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 			return false, false
 		}
 	}
+
+	if hasPostStableChanges {
+		base.LogTo("DIndex+", "Channel %s has changes later than the stable sequence - will be updated in next polling cycle.", k.channelName)
+	}
+	k.lastPolledPostStable = hasPostStableChanges
 
 	// The clock has changed - load the changes and store in last polled
 	if err := k.updateLastPolled(stableClock, newChannelClock, changedPartitions); err != nil {
@@ -121,12 +130,13 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	return true, false
 }
 
-func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*base.PartitionRange) {
+func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, stableClock base.SequenceClock, newChannelClock base.SequenceClock) (isChanged bool, changedPartitions []*base.PartitionRange, changesPostStable bool) {
 
 	// One iteration through the new channel clock, to:
 	//   1. Check whether it's later than the previous channel clock
 	//   2. If it's later than the stable clock, roll back to the stable clock
 	//   3. If it still represents a change, add to set of changed vbs and partition ranges
+	changesPostStable = false
 	changedPartitions = make([]*base.PartitionRange, k.partitions.PartitionCount())
 	for vbNoInt, newChannelClockSeq := range newChannelClock.Value() {
 		vbNo := uint16(vbNoInt)
@@ -135,6 +145,7 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 			// Handle rollback to stable sequence if needed
 			stableSeq := stableClock.GetSequence(vbNo)
 			if stableSeq < newChannelClockSeq {
+				changesPostStable = true
 				newChannelClock.SetSequence(vbNo, stableSeq)
 				// We've rolled back the new channel clock to the stable sequence.  Ensure that we still have a change for this vb.
 				if !(lastPolledClockSeq < stableSeq) {
@@ -151,7 +162,7 @@ func (k *KvChannelIndex) calculateChanges(lastPolledClock base.SequenceClock, st
 			changedPartitions[partitionNo].SetRange(vbNo, lastPolledClockSeq, newChannelClockSeq)
 		}
 	}
-	return isChanged, changedPartitions
+	return isChanged, changedPartitions, changesPostStable
 
 }
 
