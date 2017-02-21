@@ -48,18 +48,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 		var userChanged bool       // Whether the user document has changed
 
-		// Restrict to available channels, expand wild-card, and find since when these channels
-		// have been available to the user:
-		var channelsSince, secondaryTriggers channels.TimedSet
-		if db.user != nil {
-			channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
-		} else {
-			channelsSince = channels.AtSequence(chans, 0)
-		}
-
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
+			changeWaiter = db.startChangeWaiter(base.Set{})
 			userCounter = changeWaiter.CurrentUserCount()
 			db.initializePrincipalPolling(changeWaiter.GetUserKeys())
 			// Reload user to pick up user changes that happened between auth and the change waiter
@@ -73,6 +64,15 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					return
 				}
 			}
+		}
+
+		// Restrict to available channels, expand wild-card, and find since when these channels
+		// have been available to the user:
+		var channelsSince, secondaryTriggers channels.TimedSet
+		if db.user != nil {
+			channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
+		} else {
+			channelsSince = channels.AtSequence(chans, 0)
 		}
 
 		cumulativeClock = base.NewSyncSequenceClock()
@@ -256,7 +256,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
-			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter)
+			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter, options.Continuous)
 			if userChanged && db.user != nil {
 				channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
 			}
