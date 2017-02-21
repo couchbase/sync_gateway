@@ -116,7 +116,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeed(channel string, options ChangesOptions, to string) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
 	base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
@@ -154,10 +154,10 @@ func (db *Database) changesFeed(channel string, options ChangesOptions) (<-chan 
 
 			change := makeChangeEntry(logEntry, seqID, channel)
 
-			base.LogTo("Changes+", "Sending seq:%v from channel %s", seqID, channel)
+			base.LogTo("Changes+", "Channel feed processing seq:%v in channel %s %s", seqID, channel, to)
 			select {
 			case <-options.Terminator:
-				base.LogTo("Changes+", "Aborting changesFeed")
+				base.LogTo("Changes+", "Terminating channel feed %s", to)
 				return
 			case feed <- &change:
 			}
@@ -422,7 +422,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// Backfill required when seqAddedAt is before current sequence
 				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
 				if seqAddedAt > currentCachedSequence {
+					base.LogTo("Changes+", "Grant for channel [%s] is after the current sequence - skipped for this iteration.  Grant:[%d] Current:[%d] %s", name, seqAddedAt, currentCachedSequence, to)
 					deferredBackfill = true
+					continue
 				}
 
 				// Ensure backfill isn't already in progress for this seqAddedAt
@@ -437,7 +439,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
 
-				feed, err := db.changesFeed(name, chanOpts)
+				feed, err := db.changesFeed(name, chanOpts, to)
 				if err != nil {
 					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
