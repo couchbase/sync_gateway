@@ -1,10 +1,9 @@
 package db
 
 import (
+	"math"
 	"strings"
 	"sync"
-
-	"math"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"

@@ -58,8 +58,8 @@ type BucketSpec struct {
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
-	*couchbase.Bucket // the underlying go-couchbase bucket
-	spec BucketSpec   // keep a copy of the BucketSpec for DCP usage
+	*couchbase.Bucket            // the underlying go-couchbase bucket
+	spec              BucketSpec // keep a copy of the BucketSpec for DCP usage
 }
 
 type couchbaseFeedImpl struct {
@@ -377,8 +377,6 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 	}
 
 	micro = arr[2]
-
-	LogTo("CRUD+", "major = %i, minor = %i, micro = %s", major, minor, micro)
 
 	return
 }

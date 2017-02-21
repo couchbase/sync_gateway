@@ -263,8 +263,12 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 	return feeds, names
 }
 
-func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter) (isChanged bool, newCount uint64, newChannels base.Set, err error) {
-	if newCount := changeWaiter.CurrentUserCount(); newCount > userChangeCount {
+func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter, isContinuous bool) (isChanged bool, newCount uint64, newChannels base.Set, err error) {
+
+	newCount = changeWaiter.CurrentUserCount()
+	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by addedChannels check, and
+	// we can reload only when there's been a user change notification
+	if newCount > userChangeCount || !isContinuous {
 		var previousChannels channels.TimedSet
 		var newChannels base.Set
 		base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
@@ -283,9 +287,8 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 			}
 		}
 		return true, newCount, newChannels, nil
-	} else {
-		return false, userChangeCount, nil, nil
 	}
+	return false, userChangeCount, nil, nil
 }
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
@@ -322,21 +325,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			lowSequence = 0
 		}
 
-		// Restrict to available channels, expand wild-card, and find since when these channels
-		// have been available to the user:
-		var channelsSince channels.TimedSet
-		if db.user != nil {
-			channelsSince = db.user.FilterToAvailableChannels(chans)
-		} else {
-			channelsSince = channels.AtSequence(chans, 0)
-		}
-
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.GetStableSequence("").Seq
-
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
+			changeWaiter = db.startChangeWaiter(base.Set{}) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
 			userCounter = changeWaiter.CurrentUserCount()
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
@@ -350,6 +343,15 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 			}
 
+		}
+
+		// Restrict to available channels, expand wild-card, and find since when these channels
+		// have been available to the user:
+		var channelsSince channels.TimedSet
+		if db.user != nil {
+			channelsSince = db.user.FilterToAvailableChannels(chans)
+		} else {
+			channelsSince = channels.AtSequence(chans, 0)
 		}
 
 		// If a request has a low sequence that matches the current lowSequence,
@@ -374,7 +376,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince, to)
+			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
@@ -624,7 +626,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Check whether user channel access has changed while waiting:
 			var err error
-			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter)
+			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter, options.Continuous)
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
