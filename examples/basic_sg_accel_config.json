@@ -8,7 +8,6 @@
         "default":{
             "server":"http://localhost:8091",
             "bucket":"default",
-            "feed_type":"DCPSHARD",
             "channel_index":{
                 "server":"http://localhost:8091",
                 "bucket":"channel_bucket",
