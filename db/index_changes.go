@@ -32,6 +32,10 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	}
 	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
 
+	if db.user.Name() == "user-1" {
+		base.Warn("Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+	}
+
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -194,6 +198,9 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Send the entry, and repeat the loop:
 				base.LogTo("Changes+", "MultiChangesFeed sending %s %s", minEntry, to)
+				if db.user.Name() == "user-1" {
+					base.Warn("MultiChangesFeed sending %s %s", minEntry, to)
+				}
 				select {
 				case <-options.Terminator:
 					return
@@ -504,6 +511,9 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 				TriggeredByVbNo: vbAddedAt,
 			}
 			base.LogTo("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
+			if db.user.Name() == "user-1" {
+				base.Warn("Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
+			}
 		} else if backfillInProgress {
 			// Case 3.  Backfill in progress.
 			chanOpts.Since = SequenceID{
@@ -514,6 +524,9 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 				TriggeredByClock: options.Since.TriggeredByClock,
 			}
 			base.LogTo("Changes+", "Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
+			if db.user.Name() == "user-1" {
+				base.Warn("Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
+			}
 		} else if backfillInOtherChannel {
 			chanOpts.Since = SequenceID{
 				Clock: options.Since.TriggeredByClock, // Update Clock to TriggeredByClock if we're in other backfill
