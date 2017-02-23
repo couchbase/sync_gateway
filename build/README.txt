@@ -4,7 +4,7 @@ This is a self-contained installation of Couchbase Sync Gateway. You start Sync 
 
 The following command starts Sync Gateway on port 4984, connects to a limited in-memory database called "walrus" that lives on Sync Gateway, and starts the admin server on port 4985.
 
-C:\Program Files (x86)\Couchbase\sync_gateway.exe
+$ ./sync_gateway
 
 Command-line options:
 
