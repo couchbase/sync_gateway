@@ -48,9 +48,18 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 		var userChanged bool       // Whether the user document has changed
 
+		// Restrict to available channels, expand wild-card, and find since when these channels
+		// have been available to the user:
+		var channelsSince, secondaryTriggers channels.TimedSet
+		if db.user != nil {
+			channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
+		} else {
+			channelsSince = channels.AtSequence(chans, 0)
+		}
+
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(base.Set{})
+			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
 			userCounter = changeWaiter.CurrentUserCount()
 			db.initializePrincipalPolling(changeWaiter.GetUserKeys())
 			// Reload user to pick up user changes that happened between auth and the change waiter
@@ -64,15 +73,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					return
 				}
 			}
-		}
-
-		// Restrict to available channels, expand wild-card, and find since when these channels
-		// have been available to the user:
-		var channelsSince, secondaryTriggers channels.TimedSet
-		if db.user != nil {
-			channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
-		} else {
-			channelsSince = channels.AtSequence(chans, 0)
 		}
 
 		cumulativeClock = base.NewSyncSequenceClock()
