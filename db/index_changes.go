@@ -48,9 +48,18 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var addedChannels base.Set // Tracks channels added to the user during changes processing.
 		var userChanged bool       // Whether the user document has changed
 
+		// Restrict to available channels, expand wild-card, and find since when these channels
+		// have been available to the user:
+		var channelsSince, secondaryTriggers channels.TimedSet
+		if db.user != nil {
+			channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
+		} else {
+			channelsSince = channels.AtSequence(chans, 0)
+		}
+
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(base.Set{})
+			changeWaiter = db.startChangeWaiter(channelsSince.AsSet())
 			userCounter = changeWaiter.CurrentUserCount()
 			db.initializePrincipalPolling(changeWaiter.GetUserKeys())
 			// Reload user to pick up user changes that happened between auth and the change waiter
@@ -64,15 +73,6 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					return
 				}
 			}
-		}
-
-		// Restrict to available channels, expand wild-card, and find since when these channels
-		// have been available to the user:
-		var channelsSince, secondaryTriggers channels.TimedSet
-		if db.user != nil {
-			channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
-		} else {
-			channelsSince = channels.AtSequence(chans, 0)
 		}
 
 		cumulativeClock = base.NewSyncSequenceClock()
@@ -256,7 +256,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Before checking again, update the User object in case its channel access has
 			// changed while waiting:
-			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter, options.Continuous)
+			userChanged, userCounter, addedChannels, err = db.checkForUserUpdatesSince(userCounter, changeWaiter, options.Continuous, channelsSince, options.Since.Clock)
 			if userChanged && db.user != nil {
 				channelsSince, secondaryTriggers = db.user.FilterToAvailableChannelsForSince(chans, getChangesClock(options.Since))
 			}
@@ -270,6 +270,47 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	}()
 
 	return output, nil
+}
+
+func (db *Database) checkForUserUpdatesSince(userChangeCount uint64, changeWaiter *changeWaiter, isContinuous bool, previousChannels channels.TimedSet, since base.SequenceClock) (isChanged bool, newCount uint64, newChannels base.Set, err error) {
+
+	newCount = changeWaiter.CurrentUserCount()
+	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by addedChannels check, and
+	// we can reload only when there's been a user change notification
+	if newCount > userChangeCount || !isContinuous {
+		var newChannels base.Set
+		base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
+		userChangeCount = newCount
+
+		if db.user != nil {
+			if err := db.ReloadUser(); err != nil {
+				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+				return false, 0, nil, err
+			}
+			// check whether channels have changed
+			newChannels = base.Set{}
+			currentChannels, _ := db.user.InheritedChannelsForClock(since)
+			for userChannel := range currentChannels {
+				_, found := previousChannels[userChannel]
+				if !found {
+					newChannels[userChannel] = struct{}{}
+				}
+			}
+			if len(newChannels) > 0 {
+				base.LogTo("Changes+", "New channels found after user reload: %v", newChannels)
+			}
+		}
+		return true, newCount, newChannels, nil
+	}
+	return false, userChangeCount, nil, nil
+}
+
+func (db *Database) startChangeWaiterSince(chans base.Set, since base.SequenceClock) *changeWaiter {
+	waitChans := chans
+	if db.user != nil {
+		waitChans = db.user.ExpandWildCardChannelSince(chans, since)
+	}
+	return db.tapListener.NewWaiterWithChannels(waitChans, db.user)
 }
 
 // Gets the next sequence from the set of feeds, including handling for sequences appearing in multiple feeds.
