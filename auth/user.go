@@ -347,6 +347,15 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 
 /////////// Support for vb.seq based comparison of channel, role, and role channel grants
 
+// If a channel list contains the all-channel wildcard, replace it with all the user's accessible channels.
+func (user *userImpl) ExpandWildCardChannelSince(channels base.Set, since base.SequenceClock) base.Set {
+	if channels.Contains(ch.AllChannelWildcard) {
+		channelSet, _ := user.InheritedChannelsForClock(since)
+		channels = channelSet.AsSet()
+	}
+	return channels
+}
+
 // FilterToAvailableChannelsForSince is used for clock-based changes, and gives priority to vb.seq values
 // earlier than the provided since clock when returning results (because that means the channel doesn't require
 // backfill).

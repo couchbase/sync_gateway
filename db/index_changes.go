@@ -50,7 +50,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(base.Set{})
+			changeWaiter = db.startChangeWaiterSince(base.Set{}, getChangesClock(options.Since))
 			userCounter = changeWaiter.CurrentUserCount()
 			db.initializePrincipalPolling(changeWaiter.GetUserKeys())
 			// Reload user to pick up user changes that happened between auth and the change waiter
@@ -270,6 +270,14 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	}()
 
 	return output, nil
+}
+
+func (db *Database) startChangeWaiterSince(chans base.Set, since base.SequenceClock) *changeWaiter {
+	waitChans := chans
+	if db.user != nil {
+		waitChans = db.user.ExpandWildCardChannelSince(chans, since)
+	}
+	return db.tapListener.NewWaiterWithChannels(waitChans, db.user)
 }
 
 // Gets the next sequence from the set of feeds, including handling for sequences appearing in multiple feeds.

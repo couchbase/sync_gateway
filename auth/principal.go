@@ -117,6 +117,11 @@ type User interface {
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
 
+	// If the input set contains the wildcard "*" channel, returns the user's InheritedChannels, restricted
+	// by the since value;
+	// else returns the input channel list unaltered.
+	ExpandWildCardChannelSince(channels base.Set, since base.SequenceClock) base.Set
+
 	// Returns a TimedSet containing only the channels from the input set that the user has access
 	// to, annotated with the sequence number at which access was granted.  When there are multiple grants
 	// to the same channel, priority is given to values prior to the specified since.
