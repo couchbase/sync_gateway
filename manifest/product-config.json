@@ -1,16 +1,16 @@
 {
     "product": "sync_gateway",
     "manifests": {
-        "default.xml": {
+        "manifest/default.xml": {
             "release": "default",
             "release_name": "Couchbase Sync Gateway",
             "production": true,
             "interval": 5,
             "start_build": 1
         },
-        "1.4.0.xml": {
-            "release": "default",
-            "release_name": "Couchbase Sync Gateway 1.4.0",
+        "manifest/1.4.x.xml": {
+            "release": "1.4.x",
+            "release_name": "Couchbase Sync Gateway 1.4.x",
             "production": true,
             "interval": 15,
             "start_build": 1
