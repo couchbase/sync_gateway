@@ -602,7 +602,16 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 }
 
-func TestConcurrentDelete(t *testing.T) {
+func TestUnusedSequences(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		_testConcurrentDelete(t)
+		_testConcurrentPutAsDelete(t)
+		_testConcurrentUpdate(t)
+		_testConcurrentNewEditsFalseDelete(t)
+	}
+}
+
+func _testConcurrentDelete(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
 
 	rt := restTester{syncFn: `function(doc,oldDoc) {
@@ -640,7 +649,7 @@ func TestConcurrentDelete(t *testing.T) {
 
 }
 
-func TestConcurrentPutAsDelete(t *testing.T) {
+func _testConcurrentPutAsDelete(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
 
 	rt := restTester{syncFn: `function(doc,oldDoc) {
@@ -677,7 +686,7 @@ func TestConcurrentPutAsDelete(t *testing.T) {
 	rt.ServerContext().Database("db").WaitForPendingChanges()
 }
 
-func TestConcurrentUpdate(t *testing.T) {
+func _testConcurrentUpdate(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
 
 	rt := restTester{syncFn: `function(doc,oldDoc) {
@@ -714,7 +723,7 @@ func TestConcurrentUpdate(t *testing.T) {
 	rt.ServerContext().Database("db").WaitForPendingChanges()
 }
 
-func TestConcurrentNewEditsFalseDelete(t *testing.T) {
+func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+", "HTTP", "HTTP+"})
 
 	rt := restTester{syncFn: `function(doc,oldDoc) {
