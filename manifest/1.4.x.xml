@@ -18,8 +18,8 @@
   
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" revision="3d39b57188c372649beedd5c13c9003156d5a055" />
   <project name="build" path="cbbuild" revision="388ec72a70fc0925823d726609a209201052567b">
-    <annotation name="RELEASE" value="1.4.0" />
-    <annotation name="VERSION" value="1.4.0" />
+    <annotation name="RELEASE" value="1.4.0.1" />
+    <annotation name="VERSION" value="1.4.0.1" />
     <annotation name="PRODUCT_BRANCH" value="master" />
     <annotation name="PRODUCT" value="sync_gateway" />
     <annotation name="BLD_NUM" value="@BLD_NUM@" />
@@ -56,7 +56,7 @@
   <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" revision="a22e64010d08574baa33332695abb27c8e50d251" />
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="24b8252856d71a541cbfeb2203cf7c0ce3634b2b" />
   <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="7fe4854f1e98ea2ec0ab548bd763030cc133b61b" upstream="master" />
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" revision="9e18d3e60e1e6f3b39fddbcf2f59b567a5f4ff05" upstream="master" />
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" revision="2206672e54cd0df1ea66fc81513b41aed314cb1d" upstream="master" />
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" remote="couchbaselabs" revision="4195073f3c64830ca5bad14016dc5de732211c32" />
   <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e" />
   <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="c980adc4a823548817b9c47d38c6ca6b7d7d8b6a" />
