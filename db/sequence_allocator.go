@@ -10,6 +10,7 @@
 package db
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -18,7 +19,9 @@ import (
 )
 
 const (
-	kMaxIncrRetries = 3
+	kMaxIncrRetries         = 3                  // Max retries for incr operations
+	UnusedSequenceKeyPrefix = "_sync:unusedSeq:" // Prefix for unused sequence documents
+	UnusedSequenceTTL       = 10 * 60            // 10 minute expiry for unused sequence docs
 )
 
 type sequenceAllocator struct {
@@ -97,4 +100,14 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 	//       in the go-couchbase Incr/Do, and the sleep after the last attempt above.  Forcing the error to non-nil here to ensure we don't
 	//       proceed without an error in this case.
 	return 0, fmt.Errorf("Unable to increment sequence: %v", err)
+}
+
+// ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
+func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
+	key := fmt.Sprintf("%s%d", UnusedSequenceKeyPrefix, sequence)
+	body := make([]byte, 8)
+	binary.LittleEndian.PutUint64(body, sequence)
+	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	base.LogTo("CRUD+", "Released unused sequence #%d", sequence)
+	return err
 }
