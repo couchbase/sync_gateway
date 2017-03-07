@@ -740,6 +740,21 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		return
 	})
 
+	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
+	if err != nil && db.writeSequences() {
+		if docSequence > 0 {
+			if seqErr := db.sequences.releaseSequence(docSequence); seqErr != nil {
+				base.Warn("Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
+			}
+
+		}
+		for _, sequence := range unusedSequences {
+			if seqErr := db.sequences.releaseSequence(sequence); seqErr != nil {
+				base.Warn("Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
+			}
+		}
+	}
+
 	if err == couchbase.UpdateCancel {
 		return "", nil
 	} else if err == couchbase.ErrOverwritten {

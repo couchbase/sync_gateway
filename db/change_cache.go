@@ -6,6 +6,7 @@ import (
 	"expvar"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -321,6 +322,12 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 			return
 		}
 
+		// Is this an unused sequence notification?
+		if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
+			c.processUnusedSequence(docID)
+			return
+		}
+
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, err := UnmarshalDocumentSyncData(docJSON, false)
 		if err != nil || !doc.HasValidSyncData(c.context.writeSequences()) {
@@ -407,6 +414,22 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 	} else {
 		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
 	}
+}
+
+// Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
+func (c *changeCache) processUnusedSequence(docID string) {
+	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
+	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
+	if err != nil {
+		base.Warn("Unable to identify sequence number for unused sequence notification with key: %s, error:", docID, err)
+		return
+	}
+	change := &LogEntry{
+		Sequence:     sequence,
+		TimeReceived: time.Now(),
+	}
+	base.LogTo("Cache", "Received #%d (unused sequence)", sequence)
+	c.processEntry(change)
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
