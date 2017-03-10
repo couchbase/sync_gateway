@@ -554,6 +554,7 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 
 		if logConfig.LogFilePath != nil {
 			lj.Filename = *logConfig.LogFilePath
+			log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
 		}
 
 		SetLogLevel(logConfig.LogLevel.sgLevel())
@@ -570,8 +571,7 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 			}
 			lj.LocalTime = rotation.LocalTime
 		}
-
-		log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
+		
 		//Update default GoLang logger to use new rolling logger
 		logger.SetOutput(&lj)
 
