@@ -41,7 +41,7 @@
 
   <project groups="notdefault,sg-accel" name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="1323b92ac2619c29d50e588e59d7a6b4839da629"/>
   
-  <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="8e3ecd19340dabed7ad4fea9d9944ab97b5f916d"/>
+  <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="aedb0776e80d25a79d4b17c1f322a75a2c52a518"/>
 
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="3d39b57188c372649beedd5c13c9003156d5a055"/>
   
