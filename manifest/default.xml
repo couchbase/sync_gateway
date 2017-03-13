@@ -14,6 +14,9 @@
   <remote fetch="https://github.com/kardianos/" name="kardianos"/>
   <remote fetch="https://github.com/coreos/" name="coreos"/>
   <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
+  <remote fetch="https://gopkg.in/couchbase/" name="gopkg.in-couchbase"/>
+  <remote fetch="https://gopkg.in/couchbaselabs/" name="gopkg.in-couchbaselabs"/>
+
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
   <default remote="couchbase" revision="master"/>
@@ -58,6 +61,10 @@
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="6575cf14363c4a840f4fafc01532b42c473472f8"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="67fb8fa4c62451372108f31c93034c07d9d9f4ab"/>
+
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v2" remote="gopkg.in-couchbase"/>
+
+  <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="gopkg.in-couchbaselabs"/>
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="6172a8c61c821c420071fe9e20e74d8e24c8cbd5"/>
 
