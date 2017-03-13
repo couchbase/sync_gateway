@@ -60,9 +60,9 @@
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="67fb8fa4c62451372108f31c93034c07d9d9f4ab"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v2" remote="couchbase" revision="v2.0.0"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v2" remote="couchbase" revision="22d72f05785ba26be033aa8b6726435b5e50a7a0"/>
 
-  <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="v1.0.0"/>
+  <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="6172a8c61c821c420071fe9e20e74d8e24c8cbd5"/>
 
