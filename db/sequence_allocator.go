@@ -84,7 +84,17 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 	var err error
 	var max uint64
 	retries := 0
-	for retries < kMaxIncrRetries {
+	maxRetries := kMaxIncrRetries
+
+	// type assertion to hybrid bucket
+	_, ok := s.bucket.(*base.CouchbaseBucketGoCBGoCouchbaseHybrid)
+	if ok {
+		// CouchbaseBucketGoCBGoCouchbaseHybrid already has it's own retry mechanism, so short-circuit
+		// retry mechanism in incrWithRetry
+		maxRetries = 1
+	}
+
+	for retries < maxRetries {
 		max, err = s.bucket.Incr(key, numToReserve, numToReserve, 0)
 		if err != nil {
 			retries++

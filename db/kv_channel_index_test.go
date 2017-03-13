@@ -23,8 +23,9 @@ func testContextAndChannelIndex(channelName string) (*DatabaseContext, *KvChanne
 
 func testIndexBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     kTestURL,
-		BucketName: "index_tests"}, nil)
+		Server:          base.UnitTestUrl(),
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.IndexBucket],
+		BucketName:      "index_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

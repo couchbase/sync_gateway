@@ -310,11 +310,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
-		Server:     server,
-		PoolName:   pool,
-		BucketName: bucketName,
-		FeedType:   feedType,
-		Auth:       config,
+		Server:          server,
+		PoolName:        pool,
+		BucketName:      bucketName,
+		FeedType:        feedType,
+		Auth:            config,
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
 	}
 
 	// Set cache properties, if present
@@ -408,7 +409,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			Server:          indexServer,
 			PoolName:        indexPool,
 			BucketName:      indexBucketName,
-			CouchbaseDriver: base.GoCB,
+			CouchbaseDriver: base.DefaultDriverForBucketType[base.IndexBucket],
 		}
 		if config.ChannelIndex.Username != "" {
 			indexSpec.Auth = config.ChannelIndex
@@ -694,10 +695,11 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	}
 
 	spec := base.BucketSpec{
-		Server:     *shadow.Server,
-		PoolName:   "default",
-		BucketName: *shadow.Bucket,
-		FeedType:   shadow.FeedType,
+		Server:          *shadow.Server,
+		PoolName:        "default",
+		BucketName:      *shadow.Bucket,
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		FeedType:        shadow.FeedType,
 	}
 	if shadow.Pool != nil {
 		spec.PoolName = *shadow.Pool
