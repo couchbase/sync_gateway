@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocb/gocbcore"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"gopkg.in/couchbase/gocbcore.v2"
 )
 
 var gocbExpvars *expvar.Map
@@ -28,24 +28,11 @@ const (
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 )
 
-// GoCB error types - workaround until gocb has public error type lookup support
-type GoCBError uint8
-
-const (
-	GoCBErr_MemdStatusKeyNotFound GoCBError = iota
-	GoCBErr_MemdStatusKeyExists
-	GoCBErr_MemdStatusBusy
-	GoCBErr_MemdStatusTmpFail
-	GoCBErr_Timeout
-	GoCBErr_QueueOverflow
-	GoCBErr_Unknown
-)
-
-var recoverableGoCBErrors = map[GoCBError]struct{}{
-	GoCBErr_Timeout:           {},
-	GoCBErr_QueueOverflow:     {},
-	GoCBErr_MemdStatusBusy:    {},
-	GoCBErr_MemdStatusTmpFail: {},
+var recoverableGoCBErrors = map[string]struct{}{
+	gocbcore.ErrTimeout.Error():  {},
+	gocbcore.ErrOverload.Error(): {},
+	gocbcore.ErrBusy.Error():     {},
+	gocbcore.ErrTmpFail.Error():  {},
 }
 
 func init() {
@@ -79,7 +66,7 @@ func EnableGoCBLogging() {
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
+func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 
 	// Only wrap the gocb logging when the log key is set, to avoid the overhead of a log keys
 	// map lookup for every gocb log call
@@ -100,17 +87,17 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 	}
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
-
 	if err != nil {
 		return nil, err
 	}
+	goCBBucket.SetTranscoder(SGTranscoder{})
 
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
 
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
-	bucket = CouchbaseBucketGoCB{
+	bucket = &CouchbaseBucketGoCB{
 		goCBBucket,
 		spec,
 		make(chan struct{}, MaxConcurrentSingleOps),
@@ -633,59 +620,13 @@ var doSingleFakeRecoverableGOCBError = false
 //
 func isRecoverableGoCBError(err error) bool {
 
-	// uncomment this to enable the retry code to be excercised via
-	// certain unit tests
-	// if doSingleFakeRecoverableGOCBError == true {
-	// 	doSingleFakeRecoverableGOCBError = false
-	// 	return true
-	// }
-
 	if err == nil {
 		return false
 	}
 
-	goCBErr := GoCBErrorType(err)
-
-	_, ok := recoverableGoCBErrors[goCBErr]
+	_, ok := recoverableGoCBErrors[err.Error()]
 
 	return ok
-}
-
-// GoCB error types - workaround until gocb has public error type lookup support
-func GoCBErrorType(err error) GoCBError {
-
-	if err == nil {
-		return GoCBErr_Unknown
-	}
-
-	// gocb internal errors
-	if strings.Contains(err.Error(), "timed out") {
-		return GoCBErr_Timeout
-	}
-	if strings.Contains(err.Error(), "Queue overflow") {
-		return GoCBErr_QueueOverflow
-	}
-
-	// Transient Couchbase Server errors.  Copy-pasted from
-	// https://github.com/couchbase/gocb/blob/master/gocbcore/error.go#L62
-	// until gocb provides a way to validate.
-	if strings.Contains(err.Error(), "The server is busy. Try again later.") {
-		return GoCBErr_MemdStatusBusy
-	}
-	if strings.Contains(err.Error(), "A temporary failure occurred.  Try again later.") {
-		return GoCBErr_MemdStatusTmpFail
-	}
-
-	if strings.Contains(err.Error(), "Key not found.") {
-		return GoCBErr_MemdStatusKeyNotFound
-	}
-
-	if strings.Contains(err.Error(), "Key already exists.") {
-		return GoCBErr_MemdStatusKeyExists
-	}
-
-	return GoCBErr_Unknown
-
 }
 
 func isCasFailure(err error) bool {
@@ -765,7 +706,7 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 	gocbExpvars.Add("Add", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+	if err != nil && err.Error() == gocbcore.ErrKeyExists.Error() {
 		return false, nil
 	}
 	return err == nil, err
@@ -779,7 +720,7 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 	gocbExpvars.Add("AddRaw", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+	if err != nil && err.Error() == gocbcore.ErrKeyExists.Error() {
 		return false, nil
 	}
 	return err == nil, err
@@ -898,7 +839,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var value interface{}
+		var value []byte
 		var err error
 
 		// Load the existing value.
@@ -906,15 +847,14 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		// serious error, it will probably recur when calling other ops below
 
 		gocbExpvars.Add("Update_Get", 1)
-		cas, _ := bucket.Get(k, &value)
-
-		var callbackParam []byte
-		if value != nil {
-			callbackParam = value.([]byte)
+		cas, err := bucket.Get(k, &value)
+		if err != nil && err != gocb.ErrKeyNotFound {
+			// Unexpected error, abort
+			return err
 		}
 
 		// Invoke callback to get updated value
-		value, err = callback(callbackParam)
+		value, err = callback(value)
 		if err != nil {
 			return err
 		}
@@ -952,8 +892,85 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 }
 
 func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
-	LogPanic("Unimplemented method: WriteUpdate()")
-	return nil
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+
+	// The number of Couchbase Nodes that durable writes should be replicated to or persisted to
+	numNodesReplicateTo := uint(0)
+	numNodesPersistTo := uint(1)
+
+	maxCasRetries := 100000 // prevent infinite loop
+	for i := 0; i < maxCasRetries; i++ {
+
+		var value []byte
+		var err error
+		var writeOpts sgbucket.WriteOptions
+		var cas uint64
+
+		// Load the existing value.
+		gocbExpvars.Add("Update_Get", 1)
+		cas, err = bucket.Get(k, &value)
+		if err != nil && err != gocb.ErrKeyNotFound {
+			// Unexpected error, abort
+			return err
+		}
+
+		// Invoke callback to get updated value
+		value, writeOpts, err = callback(value)
+		if err != nil {
+			return err
+		}
+
+		if cas == 0 {
+			// If the Get fails, the cas will be 0 and so call Insert().
+			// If we get an error on the insert, due to a race, this will
+			// go back through the cas loop
+
+			gocbExpvars.Add("Update_Insert", 1)
+			if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
+				_, err = bucket.Bucket.InsertDura(k, value, uint32(exp), numNodesReplicateTo, numNodesPersistTo)
+			} else {
+				_, err = bucket.Bucket.Insert(k, value, uint32(exp))
+			}
+
+		} else {
+			if value == nil {
+
+				// This breaks the parity with the go-couchbase bucket behavior because it feels
+				// dangerous to remove data based on the callback return value.  If there are any
+				// errors in the callbacks to cause it to return a nil return value, and no error,
+				// it could erroneously remove data.  At present, nothing in the Sync Gateway codebase
+				// is known to use this functionality anyway.
+				//
+				// If this functionality is re-added, this method should probably take a flag called
+				// allowDeletes (bool) so that callers must intentionally allow deletes
+				return fmt.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
+
+			} else {
+				// Otherwise, attempt to do a replace.  won't succeed if
+				// updated underneath us
+				gocbExpvars.Add("Update_Replace", 1)
+				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
+					_, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), uint32(exp), numNodesReplicateTo, numNodesPersistTo)
+				} else {
+					_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), uint32(exp))
+				}
+
+			}
+		}
+
+		// If there was no error, we're done
+		if err == nil {
+			return nil
+		}
+
+	}
+
+	return fmt.Errorf("Failed to update after %v CAS attempts", maxCasRetries)
+
 }
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
@@ -1017,6 +1034,10 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
 
+	// NOTE: this doesn't seem to be identical in behavior with go-couchbase PutDDoc, since this returns an
+	// error if the design doc already exists, whereas go-couchbase PutDDoc handles it more gracefully.
+	// For this reason, the GoCBGoCouchbaseHybridBucket calls down into go-couchbase for it's DDoc operations.
+
 	// Get bucket manager.  Relies on existing auth settings for bucket.
 	username, password := bucket.GetBucketCredentials()
 	manager := bucket.Bucket.Manager(username, password)
@@ -1042,6 +1063,7 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 	}
 
 	return manager.InsertDesignDocument(gocbDesignDoc)
+
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {

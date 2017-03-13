@@ -518,7 +518,7 @@ func TestDenseBlockList(t *testing.T) {
 
 	base.EnableLogKey("ChannelStorage+")
 
-	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
 
@@ -557,7 +557,7 @@ func TestDenseBlockListBadCas(t *testing.T) {
 
 	base.EnableLogKey("ChannelStorage+")
 
-	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
 
@@ -635,7 +635,7 @@ func TestDenseBlockListRotate(t *testing.T) {
 
 	base.EnableLogKey("ChannelStorage+")
 
-	log.Printf("Calling testIndexBucket() to bucket on server: %v", kTestURL)
+	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 	indexBucket := testIndexBucket()
 	defer indexBucket.Close()
 

@@ -16,8 +16,9 @@ import (
 
 func makeExternalBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     "walrus:",
-		BucketName: "external_bucket"}, nil)
+		Server:          base.UnitTestUrl(),
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		BucketName:      "external_bucket"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}

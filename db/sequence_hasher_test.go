@@ -14,8 +14,9 @@ import (
 func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
 
 	hashBucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     "walrus:",
-		BucketName: "hash_bucket"}, nil)
+		Server:          base.UnitTestUrl(),
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		BucketName:      "hash_bucket"}, nil)
 	/*hashBucket, err := ConnectToBucket(base.BucketSpec{
 	Server:     "http://localhost:8091",
 	BucketName: "hash_bucket"})
