@@ -660,7 +660,6 @@ loop:
 		}
 	}
 
-	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return nil, forceClose
 }
 
