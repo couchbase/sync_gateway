@@ -515,6 +515,15 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
 // a periodic heartbeat while waiting.
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
+	err, forceClose := generateContinuousChanges(h.db, inChannels, options, nil, send)
+	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	return err, forceClose
+}
+
+// Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
+// This is called from BLIP connections as well as HTTP handlers, which is why this is not a
+// method on `handler`. (In the BLIP case the `h` parameter will be nil.)
+func generateContinuousChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, h *handler, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -540,11 +549,13 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	var err error
 
 	var closeNotify <-chan bool
-	cn, ok := h.response.(http.CloseNotifier)
-	if ok {
-		closeNotify = cn.CloseNotify()
-	} else {
-		base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
+	if h != nil {
+		cn, ok := h.response.(http.CloseNotifier)
+		if ok {
+			closeNotify = cn.CloseNotify()
+		} else {
+			base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
+		}
 	}
 
 	forceClose := false
@@ -556,11 +567,11 @@ loop:
 			if lastSeq.IsNonZero() { // start after end of last feed
 				options.Since = lastSeq
 			}
-			if h.db.IsClosed() {
+			if database.IsClosed() {
 				forceClose = true
 				break loop
 			}
-			feed, err = h.db.MultiChangesFeed(inChannels, options)
+			feed, err = database.MultiChangesFeed(inChannels, options)
 			if err != nil || feed == nil {
 				return err, forceClose
 			}
@@ -626,7 +637,9 @@ loop:
 			}
 		case <-heartbeat:
 			err = send(nil)
-			base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
+			if h != nil {
+				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
+			}
 		case <-timeout:
 			forceClose = true
 			break loop
@@ -634,13 +647,15 @@ loop:
 			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
 			forceClose = true
 			break loop
-		case <-h.db.ExitChanges:
+		case <-database.ExitChanges:
 			forceClose = true
 			break loop
 		}
 
 		if err != nil {
-			h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
+			if h != nil {
+				h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
+			}
 			return nil, forceClose // error is probably because the client closed the connection
 		}
 	}

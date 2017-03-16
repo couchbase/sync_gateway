@@ -195,6 +195,7 @@ type SequenceHashConfig struct {
 
 type UnsupportedConfig struct {
 	UserViews        *UserViewsConfig            `json:"user_views,omitempty"`         // Config settings for user views
+	Replicator2      bool                        `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider *db.OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
 }
 

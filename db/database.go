@@ -381,6 +381,10 @@ func (db *Database) SameAs(otherdb *Database) bool {
 		db.Bucket == otherdb.Bucket
 }
 
+func (db *Database) User() auth.User {
+	return db.user
+}
+
 // Reloads the database's User object, in case its persistent properties have been changed.
 func (db *Database) ReloadUser() error {
 	if db.user == nil {

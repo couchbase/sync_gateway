@@ -100,7 +100,7 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
 	var doc *document
 	var body Body
-	var revisions Body
+	var revisions map[string]interface{}
 	var inChannels base.Set
 	var err error
 	revIDGiven := (revid != "")

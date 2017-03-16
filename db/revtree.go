@@ -403,7 +403,7 @@ func encodeRevisions(revs []string) Body {
 			base.Warn("encodeRevisions found weird history %v", revs)
 		}
 	}
-	return Body{"start": start, "ids": ids}
+	return map[string]interface{}{"start": start, "ids": ids}
 }
 
 // Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
