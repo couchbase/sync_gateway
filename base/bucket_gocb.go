@@ -951,10 +951,92 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 
 }
 
+
 func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
-	LogPanic("Unimplemented method: WriteUpdate()")
-	return nil
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+
+	// The number of Couchbase Nodes that durable writes should be replicated to or persisted to
+	numNodesReplicateTo := uint(0)
+	numNodesPersistTo := uint(1)
+
+	maxCasRetries := 100000 // prevent infinite loop
+	for i := 0; i < maxCasRetries; i++ {
+
+		var value interface{}
+		var err error
+		var writeOpts sgbucket.WriteOptions
+
+		// Load the existing value.
+		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
+		// serious error, it will probably recur when calling other ops below
+
+		gocbExpvars.Add("Update_Get", 1)
+		cas, _ := bucket.Get(k, &value)
+
+		var callbackParam []byte
+		if value != nil {
+			callbackParam = value.([]byte)
+		}
+
+		// Invoke callback to get updated value
+		value, writeOpts, err = callback(callbackParam)
+		if err != nil {
+			return err
+		}
+
+		if cas == 0 {
+			// If the Get fails, the cas will be 0 and so call Insert().
+			// If we get an error on the insert, due to a race, this will
+			// go back through the cas loop
+
+			gocbExpvars.Add("Update_Insert", 1)
+			if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
+				_, err = bucket.Bucket.InsertDura(k, value, uint32(exp), numNodesReplicateTo, numNodesPersistTo)
+			} else {
+				_, err = bucket.Bucket.Insert(k, value, uint32(exp))
+			}
+
+
+		} else {
+			if value == nil {
+				// In order to match the go-couchbase bucket behavior, if the
+				// callback returns nil, we delete the doc
+				gocbExpvars.Add("Update_Remove", 1)
+				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
+					_, err = bucket.Bucket.RemoveDura(k, gocb.Cas(cas), numNodesReplicateTo, numNodesPersistTo)
+				} else {
+					_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
+				}
+
+
+			} else {
+				// Otherwise, attempt to do a replace.  won't succeed if
+				// updated underneath us
+				gocbExpvars.Add("Update_Replace", 1)
+				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
+					_, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), uint32(exp), numNodesReplicateTo, numNodesPersistTo)
+				} else {
+					_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), uint32(exp))
+				}
+
+			}
+		}
+
+		// If there was no error, we're done
+		if err == nil {
+			return nil
+		}
+
+	}
+
+	return fmt.Errorf("Failed to update after %v CAS attempts", maxCasRetries)
+
 }
+
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
