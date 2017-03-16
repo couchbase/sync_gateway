@@ -966,7 +966,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var value interface{}
+		var value []byte  // TODO: pass in pointer to a []byte to avoid potential extra work
 		var err error
 		var writeOpts sgbucket.WriteOptions
 
@@ -974,12 +974,18 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
 		// serious error, it will probably recur when calling other ops below
 
+
+
+
+		// TODO: check error, if it's a key not found error then make sure the CAS is 0,
+		// TODO: and continue on in loop.  Any other is an abort, return error
 		gocbExpvars.Add("Update_Get", 1)
 		cas, _ := bucket.Get(k, &value)
 
+
 		var callbackParam []byte
 		if value != nil {
-			callbackParam = value.([]byte)
+			callbackParam = value.([]byte)  // TODO: pass in pointer to a []byte to avoid potential extra work
 		}
 
 		// Invoke callback to get updated value
@@ -1003,14 +1009,21 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 		} else {
 			if value == nil {
-				// In order to match the go-couchbase bucket behavior, if the
-				// callback returns nil, we delete the doc
-				gocbExpvars.Add("Update_Remove", 1)
-				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-					_, err = bucket.Bucket.RemoveDura(k, gocb.Cas(cas), numNodesReplicateTo, numNodesPersistTo)
-				} else {
-					_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
-				}
+
+				// TODO: explain why .. sg should never do a delete on an update
+				// TODO: only happens if callback returns certain vals
+
+				return fmt.Errorf("Disabled remove")
+
+				//// In order to match the go-couchbase bucket behavior, if the
+				//// callback returns nil, we delete the doc
+				//gocbExpvars.Add("Update_Remove", 1)
+				//// TODO: (somewhere), log warning if we're actually trying to use Indexable
+				//if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
+				//	_, err = bucket.Bucket.RemoveDura(k, gocb.Cas(cas), numNodesReplicateTo, numNodesPersistTo)
+				//} else {
+				//	_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
+				//}
 
 
 			} else {
