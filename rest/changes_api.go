@@ -659,8 +659,7 @@ loop:
 			return nil, forceClose // error is probably because the client closed the connection
 		}
 	}
-
-	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	
 	return nil, forceClose
 }
 
