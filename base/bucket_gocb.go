@@ -79,7 +79,7 @@ func EnableGoCBLogging() {
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
+func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 
 	// Only wrap the gocb logging when the log key is set, to avoid the overhead of a log keys
 	// map lookup for every gocb log call
@@ -110,7 +110,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket Bucket, err error) {
 
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
-	bucket = CouchbaseBucketGoCB{
+	bucket = &CouchbaseBucketGoCB{
 		goCBBucket,
 		spec,
 		make(chan struct{}, MaxConcurrentSingleOps),
@@ -1112,6 +1112,9 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
 
+	// NOTE: this doesn't seem to be identical in behavior with go-couchbase PutDDoc, since this returns an
+	// error if the design doc already exists, whereas go-couchbase PutDDoc handles it more gracefully
+
 	// Get bucket manager.  Relies on existing auth settings for bucket.
 	username, password := bucket.GetBucketCredentials()
 	manager := bucket.Bucket.Manager(username, password)
@@ -1137,6 +1140,8 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 	}
 
 	return manager.InsertDesignDocument(gocbDesignDoc)
+
+
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {

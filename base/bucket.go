@@ -33,6 +33,7 @@ const (
 const (
 	GoCouchbase CouchbaseDriver = iota
 	GoCB
+	GoCBGoCouchbaseHybrid  // Defaults to GoCB, falls back to GoCouchbase for missing functionality
 )
 
 func init() {
@@ -382,7 +383,7 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
+func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket *CouchbaseBucket, err error) {
 	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
 	if err != nil {
 		return
@@ -407,7 +408,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 				callback(bucket, err)
 			}
 		})
-		bucket = CouchbaseBucket{cbbucket, spec}
+		bucket = &CouchbaseBucket{cbbucket, spec}
 	}
 
 	return
@@ -433,6 +434,8 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 		if spec.CouchbaseDriver == GoCB {
 			bucket, err = GetCouchbaseBucketGoCB(spec)
+		} else if  spec.CouchbaseDriver == GoCBGoCouchbaseHybrid {
+			bucket, err = NewCouchbaseBucketGoCBGoCouchbaseHybrid(spec, callback)
 		} else {
 			bucket, err = GetCouchbaseBucket(spec, callback)
 		}
