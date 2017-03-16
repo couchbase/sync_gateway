@@ -174,8 +174,6 @@ func ParseRevID(revid string) (int, string) {
 	return generation, id
 }
 
-func ParseRevID(revid string) (int, string) { return parseRevID(revid) }
-
 func compareRevIDs(id1, id2 string) int {
 	gen1, sha1 := ParseRevID(id1)
 	gen2, sha2 := ParseRevID(id2)
