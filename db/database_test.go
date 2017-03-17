@@ -148,7 +148,7 @@ func TestDatabase(t *testing.T) {
 	revisions := gotbody["_revisions"].(map[string]interface{})
 	assert.Equals(t, revisions["start"], 2)
 	assert.DeepEquals(t, revisions["ids"],
-		[]interface{}{"488724414d0ed6b398d6d2aeb228d797",
+		[]string{"488724414d0ed6b398d6d2aeb228d797",
 			"cb0c9a22be0e5a1b01084ec019defa81"})
 
 	// Test RevDiff:
@@ -212,7 +212,7 @@ func TestGetDeleted(t *testing.T) {
 		"_id":        "doc1",
 		"_rev":       rev2id,
 		"_deleted":   true,
-		"_revisions": map[string]interface{}{"start": 2, "ids": []interface{}{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
+		"_revisions": map[string]interface{}{"start": 2, "ids": []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
