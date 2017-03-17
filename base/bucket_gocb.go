@@ -966,30 +966,21 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var value []byte  // TODO: pass in pointer to a []byte to avoid potential extra work
+		var value []byte
 		var err error
 		var writeOpts sgbucket.WriteOptions
+		var cas uint64
 
 		// Load the existing value.
-		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
-		// serious error, it will probably recur when calling other ops below
-
-
-
-
-		// TODO: check error, if it's a key not found error then make sure the CAS is 0,
-		// TODO: and continue on in loop.  Any other is an abort, return error
 		gocbExpvars.Add("Update_Get", 1)
-		cas, _ := bucket.Get(k, &value)
-
-
-		var callbackParam []byte
-		if value != nil {
-			callbackParam = value.([]byte)  // TODO: pass in pointer to a []byte to avoid potential extra work
+		cas, err = bucket.Get(k, &value)
+		if err != nil && err != gocb.ErrKeyNotFound {
+			// Unexpected error, abort
+			return err
 		}
 
 		// Invoke callback to get updated value
-		value, writeOpts, err = callback(callbackParam)
+		value, writeOpts, err = callback(value)
 		if err != nil {
 			return err
 		}
@@ -1010,21 +1001,15 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		} else {
 			if value == nil {
 
-				// TODO: explain why .. sg should never do a delete on an update
-				// TODO: only happens if callback returns certain vals
-
-				return fmt.Errorf("Disabled remove")
-
-				//// In order to match the go-couchbase bucket behavior, if the
-				//// callback returns nil, we delete the doc
-				//gocbExpvars.Add("Update_Remove", 1)
-				//// TODO: (somewhere), log warning if we're actually trying to use Indexable
-				//if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-				//	_, err = bucket.Bucket.RemoveDura(k, gocb.Cas(cas), numNodesReplicateTo, numNodesPersistTo)
-				//} else {
-				//	_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
-				//}
-
+				// This breaks the parity with the go-couchbase bucket behavior because it feels
+				// dangerous to remove data based on the callback return value.  If there are any
+				// errors in the callbacks to cause it to return a nil return value, and no error,
+				// it could erroneously remove data.  At present, nothing in the Sync Gateway codebase
+				// is known to use this functionality anyway.
+				//
+				// If this functionality is re-added, this method should probably take a flag called
+				// allowDeletes (bool) so that callers must intentionally allow deletes
+				return fmt.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
 
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
