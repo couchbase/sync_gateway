@@ -552,14 +552,14 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
 		SetLogLevel(logConfig.LogLevel.sgLevel())
 
-		lj := lumberjack.Logger{}
-
 		if logConfig.LogFilePath == nil {
 			return
-		} else {
-			lj.Filename = *logConfig.LogFilePath
-			log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
 		}
+
+		lj := lumberjack.Logger{}
+
+		lj.Filename = *logConfig.LogFilePath
+		log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
 
 		if rotation := logConfig.Rotation; rotation != nil {
 			if rotation.MaxSize > 0 {
