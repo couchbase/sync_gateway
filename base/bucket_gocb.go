@@ -100,6 +100,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
+	goCBBucket.SetTranscoder(SGTranscoder{})
 
 	if err != nil {
 		return nil, err
@@ -898,7 +899,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 	maxCasRetries := 100000 // prevent infinite loop
 	for i := 0; i < maxCasRetries; i++ {
 
-		var value interface{}
+		var value []byte
 		var err error
 
 		// Load the existing value.
@@ -908,13 +909,9 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		gocbExpvars.Add("Update_Get", 1)
 		cas, _ := bucket.Get(k, &value)
 
-		var callbackParam []byte
-		if value != nil {
-			callbackParam = value.([]byte)
-		}
 
 		// Invoke callback to get updated value
-		value, err = callback(callbackParam)
+		value, err = callback(value)
 		if err != nil {
 			return err
 		}
