@@ -199,7 +199,10 @@ def extract_element_from_config(element, config):
     sync_regex = r'"Sync":(`.*`)'
     config = re.sub(sync_regex, '"Sync":""', config)
     try:
-        return json.loads(config)[element]
+        # convert dictionary keys to lower case
+        lower_case_keys_dict = {k.lower():v for k,v in json.loads(config).items()}
+        #lookup key after converting element name to lower case
+        return lower_case_keys_dict[element.lower()]
     except (ValueError, KeyError):
         # If we can't deserialise the json or find the key then return nothing
         return
@@ -211,7 +214,7 @@ def extract_element_from_default_logging_config(element, config):
             if logging_config:
                 default_logging_config = extract_element_from_config('default', json.dumps(logging_config))
                 if default_logging_config:
-                    guessed_log_path = extract_element_from_config('LogFilePath', json.dumps(default_logging_config))
+                    guessed_log_path = extract_element_from_config(element, json.dumps(default_logging_config))
                     if guessed_log_path:
                         return guessed_log_path
             return
