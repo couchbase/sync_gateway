@@ -11,9 +11,6 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-//const kTestURL = "http://localhost:8091"
-const kTestURL = "walrus:"
-
 var numShards = uint16(64)
 var maxVbNo = uint16(1024)
 
@@ -38,7 +35,7 @@ func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPar
 
 func testIndexBucket() Bucket {
 	bucket, err := GetBucket(BucketSpec{
-		Server:     kTestURL,
+		Server:     UnitTestUrl(),
 		BucketName: "index_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)

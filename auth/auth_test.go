@@ -22,15 +22,12 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-//const kTestURL = "http://localhost:8091"
-const kTestURL = "walrus:"
-
 var gTestBucket base.Bucket
 
 func init() {
 	var err error
 	gTestBucket, err = base.GetBucket(base.BucketSpec{
-		Server:     kTestURL,
+		Server:     base.UnitTestUrl(),
 		BucketName: "sync_gateway_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
