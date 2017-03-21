@@ -95,7 +95,7 @@ func IsDocNotFoundError(err error) bool {
 
 	log.Printf("IsDocNotFoundError called with err: %v with type: %T", err, err)
 
-	if err.Error() == gocbcore.ErrKeyNotFound.Error() {
+	if err != nil && err.Error() == gocbcore.ErrKeyNotFound.Error() {
 		return true
 	}
 

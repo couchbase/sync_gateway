@@ -549,7 +549,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 			return true
 		}
 	case CouchbaseBucketGoCB:
-		if err == gocbcore.ErrKeyNotFound {
+		if err.Error() == gocbcore.ErrKeyNotFound.Error() {
 			return true
 		}
 	default:
@@ -573,7 +573,7 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 			return true
 		}
 	case CouchbaseBucketGoCB:
-		if err == gocbcore.ErrKeyExists {
+		if err.Error() == gocbcore.ErrKeyExists.Error() {
 			return true
 		}
 	default:

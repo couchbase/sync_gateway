@@ -28,11 +28,11 @@ const (
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 )
 
-var recoverableGoCBErrors = map[error]struct{}{
-	gocbcore.ErrTimeout: {},
-	gocbcore.ErrOverload: {},
-	gocbcore.ErrBusy: {},
-	gocbcore.ErrTmpFail: {},
+var recoverableGoCBErrors = map[string]struct{}{
+	gocbcore.ErrTimeout.Error(): {},
+	gocbcore.ErrOverload.Error(): {},
+	gocbcore.ErrBusy.Error(): {},
+	gocbcore.ErrTmpFail.Error(): {},
 
 }
 
@@ -625,7 +625,7 @@ func isRecoverableGoCBError(err error) bool {
 		return false
 	}
 
-	_, ok := recoverableGoCBErrors[err]
+	_, ok := recoverableGoCBErrors[err.Error()]
 
 	return ok
 }
@@ -707,7 +707,7 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 	gocbExpvars.Add("Add", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if err == gocbcore.ErrKeyExists {
+	if err != nil && err.Error() == gocbcore.ErrKeyExists.Error() {
 		return false, nil
 	}
 	return err == nil, err
@@ -721,7 +721,7 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 	gocbExpvars.Add("AddRaw", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if err == gocbcore.ErrKeyExists {
+	if err != nil && err.Error() == gocbcore.ErrKeyExists.Error() {
 		return false, nil
 	}
 	return err == nil, err
