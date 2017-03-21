@@ -139,6 +139,10 @@ func ToInt64(value interface{}) (int64, bool) {
 	return 0, false
 }
 
+func IsPseudoDoc(ID string) bool {
+	return strings.HasPrefix(ID, "_user/") || strings.HasPrefix(ID, "_role/")
+}
+
 func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (string, error) {
 
 	// parse url and reconstruct it piece by piece

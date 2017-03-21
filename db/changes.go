@@ -79,6 +79,11 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	if !options.IncludeDocs && !includeConflicts {
 		return
 	}
+
+	// If this is pseudo doc, it will not be in the cache so ignore
+	if base.IsPseudoDoc(entry.ID) {
+		return
+	}
 	doc, err := db.GetDoc(entry.ID)
 	if err != nil {
 		base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
