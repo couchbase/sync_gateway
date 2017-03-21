@@ -105,7 +105,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 	goCBBucket.SetTranscoder(SGTranscoder{})
 
-
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
 
@@ -907,8 +906,11 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		// serious error, it will probably recur when calling other ops below
 
 		gocbExpvars.Add("Update_Get", 1)
-		cas, _ := bucket.Get(k, &value)
-
+		cas, err := bucket.Get(k, &value)
+		if err != nil && err != gocb.ErrKeyNotFound {
+			// Unexpected error, abort
+			return err
+		}
 
 		// Invoke callback to get updated value
 		value, err = callback(value)
@@ -947,7 +949,6 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 	return fmt.Errorf("Failed to update after %v CAS attempts", maxCasRetries)
 
 }
-
 
 func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
 
@@ -994,7 +995,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 				_, err = bucket.Bucket.Insert(k, value, uint32(exp))
 			}
 
-
 		} else {
 			if value == nil {
 
@@ -1031,7 +1031,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	return fmt.Errorf("Failed to update after %v CAS attempts", maxCasRetries)
 
 }
-
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
@@ -1122,7 +1121,6 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 	}
 
 	return manager.InsertDesignDocument(gocbDesignDoc)
-
 
 }
 
