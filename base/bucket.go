@@ -44,8 +44,8 @@ const (
 
 var (
 	DefaultDriverForBucketType = map[CouchbaseBucketType]CouchbaseDriver{
-		// DataBucket:  GoCBGoCouchbaseHybrid,
-		DataBucket:  GoCouchbase,
+		DataBucket:  GoCBGoCouchbaseHybrid,
+		// DataBucket:  GoCouchbase,
 		IndexBucket: GoCB,
 	}
 )
