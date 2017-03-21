@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
-	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -29,24 +28,12 @@ const (
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 )
 
-// GoCB error types - workaround until gocb has public error type lookup support
-type GoCBError uint8
+var recoverableGoCBErrors = map[error]struct{}{
+	gocbcore.ErrTimeout: {},
+	gocbcore.ErrOverload: {},
+	gocbcore.ErrBusy: {},
+	gocbcore.ErrTmpFail: {},
 
-const (
-	GoCBErr_MemdStatusKeyNotFound GoCBError = iota
-	GoCBErr_MemdStatusKeyExists
-	GoCBErr_MemdStatusBusy
-	GoCBErr_MemdStatusTmpFail
-	GoCBErr_Timeout
-	GoCBErr_QueueOverflow
-	GoCBErr_Unknown
-)
-
-var recoverableGoCBErrors = map[GoCBError]struct{}{
-	GoCBErr_Timeout:           {},
-	GoCBErr_QueueOverflow:     {},
-	GoCBErr_MemdStatusBusy:    {},
-	GoCBErr_MemdStatusTmpFail: {},
 }
 
 func init() {
@@ -634,61 +621,13 @@ var doSingleFakeRecoverableGOCBError = false
 //
 func isRecoverableGoCBError(err error) bool {
 
-	// uncomment this to enable the retry code to be excercised via
-	// certain unit tests
-	// if doSingleFakeRecoverableGOCBError == true {
-	// 	doSingleFakeRecoverableGOCBError = false
-	// 	return true
-	// }
-
 	if err == nil {
 		return false
 	}
 
-	goCBErr := GoCBErrorType(err)
-
-	_, ok := recoverableGoCBErrors[goCBErr]
+	_, ok := recoverableGoCBErrors[err]
 
 	return ok
-}
-
-// GoCB error types - workaround until gocb has public error type lookup support
-func GoCBErrorType(err error) GoCBError {
-
-	log.Printf("GoCBErrorType called with err: %v type: %T", err, err)
-
-	if err == nil {
-		return GoCBErr_Unknown
-	}
-
-	// gocb internal errors
-	if strings.Contains(err.Error(), "timed out") {
-		return GoCBErr_Timeout
-	}
-	if strings.Contains(err.Error(), "Queue overflow") {
-		return GoCBErr_QueueOverflow
-	}
-
-	// Transient Couchbase Server errors.  Copy-pasted from
-	// https://github.com/couchbase/gocb/blob/master/gocbcore/error.go#L62
-	// until gocb provides a way to validate.
-	if strings.Contains(err.Error(), "The server is busy. Try again later.") {
-		return GoCBErr_MemdStatusBusy
-	}
-	if strings.Contains(err.Error(), "A temporary failure occurred.  Try again later.") {
-		return GoCBErr_MemdStatusTmpFail
-	}
-
-	if strings.Contains(err.Error(), "Key not found.") {
-		return GoCBErr_MemdStatusKeyNotFound
-	}
-
-	if strings.Contains(err.Error(), "Key already exists.") {
-		return GoCBErr_MemdStatusKeyExists
-	}
-
-	return GoCBErr_Unknown
-
 }
 
 func isCasFailure(err error) bool {
@@ -768,7 +707,7 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 	gocbExpvars.Add("Add", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+	if err == gocbcore.ErrKeyExists {
 		return false, nil
 	}
 	return err == nil, err
@@ -782,7 +721,7 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 	gocbExpvars.Add("AddRaw", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+	if err == gocbcore.ErrKeyExists {
 		return false, nil
 	}
 	return err == nil, err

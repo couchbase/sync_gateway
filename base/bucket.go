@@ -23,6 +23,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"log"
+	"gopkg.in/couchbase/gocbcore.v2"
 )
 
 const (
@@ -548,7 +549,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 			return true
 		}
 	case CouchbaseBucketGoCB:
-		if GoCBErrorType(err) == GoCBErr_MemdStatusKeyNotFound {
+		if err == gocbcore.ErrKeyNotFound {
 			return true
 		}
 	default:
@@ -572,7 +573,7 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 			return true
 		}
 	case CouchbaseBucketGoCB:
-		if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
+		if err == gocbcore.ErrKeyExists {
 			return true
 		}
 	default:
