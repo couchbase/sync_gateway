@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"strings"
 )
 
 // Options for changes-feeds
@@ -69,6 +70,11 @@ type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
+//Return true if Doc ID represents a pseudo user or role doc
+func isPseudoDoc(ID string) bool {
+	return strings.HasPrefix(ID, "_user/") || strings.HasPrefix(ID, "_role/")
+}
+
 func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	db.addDocToChangeEntry(entry, options)
 }
@@ -81,7 +87,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	}
 
 	// If this is pseudo doc, it will not be in the cache so ignore
-	if base.IsPseudoDoc(entry.ID) {
+	if isPseudoDoc(entry.ID) {
 		return
 	}
 	doc, err := db.GetDoc(entry.ID)
