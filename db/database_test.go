@@ -23,10 +23,6 @@ import (
 	"github.com/robertkrimen/otto/underscore"
 )
 
-//const kTestURL = "http://localhost:8091"
-
-const kTestURL = "walrus:"
-
 func init() {
 	base.LogNoColor()
 	//base.LogKeys["CRUD"] = true
@@ -36,8 +32,9 @@ func init() {
 
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:     kTestURL,
-		BucketName: "sync_gateway_tests"}, nil)
+		Server:          base.UnitTestUrl(),
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		BucketName:      "sync_gateway_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -891,8 +888,9 @@ func BenchmarkDatabase(b *testing.B) {
 	base.SetLogLevel(2) // disables logging
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
-			Server:     kTestURL,
-			BucketName: fmt.Sprintf("b-%d", i)}, nil)
+			Server:          base.UnitTestUrl(),
+			CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+			BucketName:      fmt.Sprintf("b-%d", i)}, nil)
 		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)
 

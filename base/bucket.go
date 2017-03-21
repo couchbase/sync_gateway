@@ -33,7 +33,20 @@ const (
 const (
 	GoCouchbase CouchbaseDriver = iota
 	GoCB
-	GoCBGoCouchbaseHybrid  // Defaults to GoCB, falls back to GoCouchbase for missing functionality
+	GoCBGoCouchbaseHybrid // Defaults to GoCB, falls back to GoCouchbase for missing functionality
+)
+
+const (
+	DataBucket CouchbaseBucketType = iota
+	IndexBucket
+)
+
+var (
+	DefaultDriverForBucketType = map[CouchbaseBucketType]CouchbaseDriver{
+		// DataBucket:  GoCBGoCouchbaseHybrid,
+		DataBucket:  GoCouchbase,
+		IndexBucket: GoCB,
+	}
 )
 
 func init() {
@@ -47,6 +60,7 @@ type TapArguments sgbucket.TapArguments
 type TapFeed sgbucket.TapFeed
 type AuthHandler couchbase.AuthHandler
 type CouchbaseDriver int
+type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
@@ -434,10 +448,12 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 		if spec.CouchbaseDriver == GoCB {
 			bucket, err = GetCouchbaseBucketGoCB(spec)
-		} else if  spec.CouchbaseDriver == GoCBGoCouchbaseHybrid {
+		} else if spec.CouchbaseDriver == GoCBGoCouchbaseHybrid {
 			bucket, err = NewCouchbaseBucketGoCBGoCouchbaseHybrid(spec, callback)
-		} else {
+		} else if spec.CouchbaseDriver == GoCouchbase {
 			bucket, err = GetCouchbaseBucket(spec, callback)
+		} else {
+			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
 		}
 
 	}

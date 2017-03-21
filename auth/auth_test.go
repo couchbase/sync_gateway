@@ -27,8 +27,9 @@ var gTestBucket base.Bucket
 func init() {
 	var err error
 	gTestBucket, err = base.GetBucket(base.BucketSpec{
-		Server:     base.UnitTestUrl(),
-		BucketName: "sync_gateway_tests"}, nil)
+		Server:          base.UnitTestUrl(),
+		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		BucketName:      "sync_gateway_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
