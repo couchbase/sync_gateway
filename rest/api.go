@@ -152,6 +152,9 @@ func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
+
+	// TODO: should this get the RunStateString first and skip LastSequence() if offline?
+
 	lastSeq, _ := h.db.LastSequence()
 
 	response := db.Body{

@@ -170,6 +170,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	return vres, err
 }
 
+// Todo: change to StartMutationFeed?  (to be generic over tap/dcp)
 func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
 	// Uses tap by default, unless DCP is explicitly specified

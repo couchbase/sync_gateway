@@ -347,6 +347,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	}
 
+
+
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
 

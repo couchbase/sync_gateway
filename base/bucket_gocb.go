@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
+	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -983,6 +984,8 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
+		log.Printf("Incr calling Get")
+
 		// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
 		// attempt a simple get, which gocb will transcode to uint64
 		if amt == 0 {
@@ -999,11 +1002,13 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		}
 
 		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
+		log.Printf("Incr bucket.Counter result.  Err: %v type: %T", err, err)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, result
 
 	}
 
+	log.Printf("Incr retry specification: MaxNumRetries: %v.  InitialRetrySleepTimeMS: %v", bucket.spec.MaxNumRetries, bucket.spec.InitialRetrySleepTimeMS)
 	sleeper := CreateDoublingSleeperFunc(
 		bucket.spec.MaxNumRetries,
 		bucket.spec.InitialRetrySleepTimeMS,

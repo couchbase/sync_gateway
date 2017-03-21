@@ -37,12 +37,13 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, notify sgbucket.BucketNotifyFn) error {
+// Todo: rename notify -> bucketStateNotify
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.TapArgs = sgbucket.TapArguments{
 		Backfill: sgbucket.TapNoBackfill,
-		Notify:   notify,
+		Notify:   bucketStateNotify,
 	}
 	tapFeed, err := bucket.StartTapFeed(listener.TapArgs)
 	if err != nil {
