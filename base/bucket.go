@@ -543,13 +543,13 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 		return false
 	}
 
+	if err.Error() == gocbcore.ErrKeyNotFound.Error() {
+		return true
+	}
+
 	switch bucket.(type) {
 	case CouchbaseBucket:
 		if strings.Contains(err.Error(), "Not found") {
-			return true
-		}
-	case CouchbaseBucketGoCB:
-		if err.Error() == gocbcore.ErrKeyNotFound.Error() {
 			return true
 		}
 	default:
@@ -567,13 +567,13 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 		return false
 	}
 
+	if err.Error() == gocbcore.ErrKeyExists.Error() {
+		return true
+	}
+
 	switch bucket.(type) {
 	case CouchbaseBucket:
 		if strings.Contains(err.Error(), "CAS mismatch") {
-			return true
-		}
-	case CouchbaseBucketGoCB:
-		if err.Error() == gocbcore.ErrKeyExists.Error() {
 			return true
 		}
 	default:
