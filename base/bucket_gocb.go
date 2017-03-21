@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
+	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -653,6 +654,8 @@ func isRecoverableGoCBError(err error) bool {
 
 // GoCB error types - workaround until gocb has public error type lookup support
 func GoCBErrorType(err error) GoCBError {
+
+	log.Printf("GoCBErrorType called with err: %v type: %T", err, err)
 
 	if err == nil {
 		return GoCBErr_Unknown

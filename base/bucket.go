@@ -22,6 +22,7 @@ import (
 	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
+	"log"
 )
 
 const (
@@ -534,6 +535,8 @@ func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, c
 }
 
 func IsKeyNotFoundError(bucket Bucket, err error) bool {
+
+	log.Printf("IsKeyNotFoundError called.  err: %v. type: %T", err, err)
 
 	if err == nil {
 		return false
