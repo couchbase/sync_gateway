@@ -100,11 +100,11 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
-	goCBBucket.SetTranscoder(SGTranscoder{})
-
 	if err != nil {
 		return nil, err
 	}
+	goCBBucket.SetTranscoder(SGTranscoder{})
+
 
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
