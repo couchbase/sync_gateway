@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
+	"log"
 )
 
 // Simple error implementation wrapping an HTTP response status.
@@ -91,6 +92,8 @@ func CouchHTTPErrorName(status int) string {
 
 // Returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
+
+	log.Printf("IsDocNotFoundError called with err: %v with type: %T", err, err)
 
 	if err == gocbcore.ErrKeyNotFound {
 		return true
