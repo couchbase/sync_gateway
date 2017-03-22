@@ -19,7 +19,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
 	"log"
-	"time"
 )
 
 var gocbExpvars *expvar.Map
@@ -978,11 +977,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
-	functionCalledAt := time.Now()
-	log.Printf("CouchbaseBucketGoCB called. functionCalledAt=%v with key: %v.  amt: %v", functionCalledAt, k, amt)
-
-	// TODO: if this is called by sequenceAllocator.incrWithRetry(), there is a double retry loop.  Should fix.
-
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -990,28 +984,19 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		log.Printf("Incr worker() loop.  outer functionCalledAt=%v with key: %v.", functionCalledAt, k)
+		log.Printf("Incr calling Get")
 
 		// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
 		// attempt a simple get, which gocb will transcode to uint64
 		if amt == 0 {
 			var result uint64
 			_, err := bucket.Get(k, &result)
-			log.Printf("Incr worker() Get returned err: %v with type: %T. outer functionCalledAt=%v with key: %v.", err, err, functionCalledAt, k)
-
 			shouldRetry = isRecoverableGoCBError(err)
-			log.Printf("Incr worker() Get shouldRetry: %v. outer functionCalledAt=%v with key: %v.", shouldRetry, functionCalledAt, k)
-
 			// don't return an error, since that will break calling code
 			if err != nil {
-				log.Printf("Incr worker() Return err != nil shouldRetry: %v. outer functionCalledAt=%v with key: %v.", shouldRetry, functionCalledAt, k)
-
 				// but if there was an error, make sure to return a 0 result
 				return shouldRetry, nil, uint64(0)
 			}
-
-			log.Printf("Incr worker() Return err == nil shouldRetry: %v. outer functionCalledAt=%v with key: %v.", shouldRetry, functionCalledAt, k)
-			// TODO: shouldn't this return shouldRetry=false?
 			return shouldRetry, nil, result
 
 		}
