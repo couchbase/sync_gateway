@@ -20,7 +20,6 @@ import (
 	"gopkg.in/couchbase/gocbcore.v2"
 	"log"
 	"time"
-	"runtime/debug"
 )
 
 var gocbExpvars *expvar.Map
@@ -980,11 +979,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
 	functionCalledAt := time.Now()
-	log.Printf("CouchbaseBucketGoCB Incr() called. functionCalledAt=%v with key: %v.  amt: %v", functionCalledAt, k, amt)
-	defer log.Printf("/CouchbaseBucketGoCB Incr() called. functionCalledAt=%v with key: %v.  amt: %v", functionCalledAt, k, amt)
-
-
-	debug.PrintStack()
+	log.Printf("CouchbaseBucketGoCB called. functionCalledAt=%v with key: %v.  amt: %v", functionCalledAt, k, amt)
 
 	// TODO: if this is called by sequenceAllocator.incrWithRetry(), there is a double retry loop.  Should fix.
 
@@ -1001,7 +996,6 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		// attempt a simple get, which gocb will transcode to uint64
 		if amt == 0 {
 			var result uint64
-			log.Printf("Incr worker() loop calling Get() functionCalledAt=%v with key: %v.", functionCalledAt, k)
 			_, err := bucket.Get(k, &result)
 			log.Printf("Incr worker() Get returned err: %v with type: %T. outer functionCalledAt=%v with key: %v.", err, err, functionCalledAt, k)
 
@@ -1022,7 +1016,6 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 
 		}
 
-		log.Printf("Incr calling bucket.Counter() functionCalledAt=%v with key: %v.", functionCalledAt, k)
 		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
 		log.Printf("Incr bucket.Counter result.  Err: %v type: %T", err, err)
 		shouldRetry = isRecoverableGoCBError(err)
