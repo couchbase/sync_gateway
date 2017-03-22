@@ -1019,6 +1019,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
 		log.Printf("Incr bucket.Counter result.  Err: %v type: %T", err, err)
 		shouldRetry = isRecoverableGoCBError(err)
+		log.Printf("Incr worker() amt != 0.  return shouldretry: %v err: %v result: %v", shouldRetry, err, result)
 		return shouldRetry, err, result
 
 	}
@@ -1032,9 +1033,11 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 	// Kick off retry loop
 	description := fmt.Sprintf("Incr with key: %v", k)
 	err, result := RetryLoop(description, worker, sleeper)
+	log.Printf("Incr RetryLoop returned err: %v result: %v", err, result)
 
 	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
 	if result == nil {
+		log.Printf("Incr result is nil, set to 0")
 		result = uint64(0)
 	}
 
@@ -1043,6 +1046,8 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 	if !ok {
 		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
+
+	log.Printf("Incr return cas: %v err: %v", cas, err)
 
 	return cas, err
 
