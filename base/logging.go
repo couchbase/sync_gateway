@@ -550,13 +550,16 @@ func NewLoggerWriter(logKey string, serialNumber uint64, req *http.Request) *Log
 
 func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
-		lj := lumberjack.Logger{}
+		SetLogLevel(logConfig.LogLevel.sgLevel())
 
-		if logConfig.LogFilePath != nil {
-			lj.Filename = *logConfig.LogFilePath
+		if logConfig.LogFilePath == nil {
+			return
 		}
 
-		SetLogLevel(logConfig.LogLevel.sgLevel())
+		lj := lumberjack.Logger{}
+
+		lj.Filename = *logConfig.LogFilePath
+		log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
 
 		if rotation := logConfig.Rotation; rotation != nil {
 			if rotation.MaxSize > 0 {
@@ -571,7 +574,6 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 			lj.LocalTime = rotation.LocalTime
 		}
 
-		log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
 		//Update default GoLang logger to use new rolling logger
 		logger.SetOutput(&lj)
 
