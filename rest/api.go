@@ -157,9 +157,9 @@ func (h *handler) handleGetDB() error {
 	runState := db.RunStateString[atomic.LoadUint32(&h.db.State)]
 
 	// Don't bother trying to lookup LastSequence() if offline
-	// TEMP DISABLE OUTER FIX if runState != db.RunStateString[db.DBOffline] {
+	if runState != db.RunStateString[db.DBOffline] {
 		lastSeq, _ = h.db.LastSequence()
-	// TEMP DISABLE OUTER FIX }
+	}
 
 	response := db.Body{
 		"db_name":              h.db.Name,
