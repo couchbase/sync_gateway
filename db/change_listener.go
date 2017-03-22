@@ -37,7 +37,6 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-// Todo: rename notify -> bucketStateNotify
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
