@@ -1,9 +1,6 @@
 package base
 
-import (
-	"github.com/couchbase/sg-bucket"
-	"log"
-)
+import "github.com/couchbase/sg-bucket"
 
 // Defaults to gocb bucket, falls back to go-couchbase bucket
 type CouchbaseBucketGoCBGoCouchbaseHybrid struct {
@@ -13,13 +10,10 @@ type CouchbaseBucketGoCBGoCouchbaseHybrid struct {
 
 	// Ability to explicitly call down to go-couchbase bucket when needed
 	GoCouchbaseBucket *CouchbaseBucket
-
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
 func NewCouchbaseBucketGoCBGoCouchbaseHybrid(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket *CouchbaseBucketGoCBGoCouchbaseHybrid, err error) {
-
-	log.Printf("NewCouchbaseBucketGoCBGoCouchbaseHybrid")
 
 	hybrid := CouchbaseBucketGoCBGoCouchbaseHybrid{}
 
@@ -70,4 +64,3 @@ func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) StartTapFeed(args sgbucket.Ta
 func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) Dump() {
 	bucket.GoCouchbaseBucket.Dump()
 }
-

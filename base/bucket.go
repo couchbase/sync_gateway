@@ -50,6 +50,19 @@ var (
 	}
 )
 
+func (couchbaseDriver CouchbaseDriver) String() string {
+	switch couchbaseDriver {
+	case GoCouchbase:
+		return "GoCouchbase"
+	case GoCB:
+		return "GoCB"
+	case GoCBGoCouchbaseHybrid:
+		return "GoCBGoCouchbaseHybrid"
+	default:
+		return "UnknownCouchbaseDriver"
+	}
+}
+
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issues #210, #333, #342)
@@ -446,7 +459,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 			username, _, _ := spec.Auth.GetCredentials()
 			suffix = fmt.Sprintf(" as user %q", username)
 		}
-		Logf("Opening Couchbase database %s on <%s>%s", spec.BucketName, spec.Server, suffix)
+		Logf("%v Opening Couchbase database %s on <%s>%s", spec.CouchbaseDriver, spec.BucketName, spec.Server, suffix)
 
 		if spec.CouchbaseDriver == GoCB {
 			bucket, err = GetCouchbaseBucketGoCB(spec)
@@ -581,4 +594,36 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 	}
 
 	return false
+}
+
+func GetMaxVbnoForBucket(bucket Bucket) uint16 {
+
+	// TODO: Move to sg-bucket interface (https://github.com/couchbase/sync_gateway/issues/2418)
+
+	var maxVbNo uint16 = 1024
+	var err error
+
+	switch bucket := bucket.(type) {
+	case CouchbaseBucketGoCB:
+		maxVbNo, err = bucket.GetMaxVbno()
+	case *CouchbaseBucketGoCB:
+		maxVbNo, err = bucket.GetMaxVbno()
+	case CouchbaseBucketGoCBGoCouchbaseHybrid:
+		maxVbNo, err = bucket.GetMaxVbno()
+	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
+		maxVbNo, err = bucket.GetMaxVbno()
+	case CouchbaseBucket:
+		maxVbNo, err = bucket.GetMaxVbno()
+	case *CouchbaseBucket:
+		maxVbNo, err = bucket.GetMaxVbno()
+	default:
+		Warn("Not a couchbase bucket - assuming walrus, setting maxVbNo=1024")
+	}
+
+	if err != nil {
+		Warn("Error trying to obtain vbucket count from cluster: %v Defaulting to 1024", err)
+	}
+
+	return maxVbNo
+
 }
