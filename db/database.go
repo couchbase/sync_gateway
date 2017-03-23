@@ -197,7 +197,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
-			context.TakeDbOffline("Lost TAP Feed")
+			context.TakeDbOffline("Lost Mutation (TAP/DCP) Feed")
 		}); err != nil {
 			return nil, err
 		}
@@ -330,14 +330,23 @@ func (context *DatabaseContext) NotifyUser(username string) {
 }
 
 func (dc *DatabaseContext) TakeDbOffline(reason string) error {
-	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
+
 	dbState := atomic.LoadUint32(&dc.State)
+
+	// TODO: if we're taking the bucket offline, why aren't we closing the DCP feed?
+	// TODO: why aren't we calling dc.Close() here?  Where does it get called?
+
+	base.LogTo("CRUD", "Taking Database : %v, offline.  dbState: %v", dc.Name, dbState)
+
 	//If the DB is already trasitioning to: offline or is offline silently return
 	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
+		base.LogTo("CRUD", " DB is already trasitioning to: offline or is offline silently return")
 		return nil
 	}
 
 	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
+
+		base.LogTo("CRUD", " DBOnline -> DBStopping")
 
 		//notify all active _changes feeds to close
 		close(dc.ExitChanges)
@@ -354,6 +363,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		if dc.EventMgr.HasHandlerForEvent(DBStateChange) {
 			dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
 		}
+
 
 		return nil
 	} else {

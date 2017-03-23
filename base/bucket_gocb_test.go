@@ -26,8 +26,9 @@ import (
 
 func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
-		Server:     "http://localhost:8091",
+		Server:     UnitTestUrl(),
 		BucketName: "bucket-1",
+		CouchbaseDriver: DefaultDriverForBucketType[DataBucket],
 	}
 	bucket, err := GetCouchbaseBucketGoCB(spec)
 	if err != nil {

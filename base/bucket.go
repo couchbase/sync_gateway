@@ -22,6 +22,8 @@ import (
 	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
+	"log"
+	"gopkg.in/couchbase/gocbcore.v2"
 )
 
 const (
@@ -33,6 +35,20 @@ const (
 const (
 	GoCouchbase CouchbaseDriver = iota
 	GoCB
+	GoCBGoCouchbaseHybrid // Defaults to GoCB, falls back to GoCouchbase for missing functionality
+)
+
+const (
+	DataBucket CouchbaseBucketType = iota
+	IndexBucket
+)
+
+var (
+	DefaultDriverForBucketType = map[CouchbaseBucketType]CouchbaseDriver{
+		DataBucket:  GoCBGoCouchbaseHybrid,
+		// DataBucket:  GoCouchbase,
+		IndexBucket: GoCB,
+	}
 )
 
 func init() {
@@ -46,6 +62,7 @@ type TapArguments sgbucket.TapArguments
 type TapFeed sgbucket.TapFeed
 type AuthHandler couchbase.AuthHandler
 type CouchbaseDriver int
+type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
@@ -153,6 +170,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	return vres, err
 }
 
+// Todo: change to StartMutationFeed?  (to be generic over tap/dcp)
 func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
 	// Uses tap by default, unless DCP is explicitly specified
@@ -382,7 +400,7 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
+func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket *CouchbaseBucket, err error) {
 	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)
 	if err != nil {
 		return
@@ -407,7 +425,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 				callback(bucket, err)
 			}
 		})
-		bucket = CouchbaseBucket{cbbucket, spec}
+		bucket = &CouchbaseBucket{cbbucket, spec}
 	}
 
 	return
@@ -433,8 +451,12 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 		if spec.CouchbaseDriver == GoCB {
 			bucket, err = GetCouchbaseBucketGoCB(spec)
-		} else {
+		} else if spec.CouchbaseDriver == GoCBGoCouchbaseHybrid {
+			bucket, err = NewCouchbaseBucketGoCBGoCouchbaseHybrid(spec, callback)
+		} else if spec.CouchbaseDriver == GoCouchbase {
 			bucket, err = GetCouchbaseBucket(spec, callback)
+		} else {
+			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
 		}
 
 	}
@@ -516,17 +538,19 @@ func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, c
 
 func IsKeyNotFoundError(bucket Bucket, err error) bool {
 
+	log.Printf("IsKeyNotFoundError called.  err: %v. type: %T", err, err)
+
 	if err == nil {
 		return false
+	}
+
+	if err.Error() == gocbcore.ErrKeyNotFound.Error() {
+		return true
 	}
 
 	switch bucket.(type) {
 	case CouchbaseBucket:
 		if strings.Contains(err.Error(), "Not found") {
-			return true
-		}
-	case CouchbaseBucketGoCB:
-		if GoCBErrorType(err) == GoCBErr_MemdStatusKeyNotFound {
 			return true
 		}
 	default:
@@ -544,13 +568,13 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 		return false
 	}
 
+	if err.Error() == gocbcore.ErrKeyExists.Error() {
+		return true
+	}
+
 	switch bucket.(type) {
 	case CouchbaseBucket:
 		if strings.Contains(err.Error(), "CAS mismatch") {
-			return true
-		}
-	case CouchbaseBucketGoCB:
-		if GoCBErrorType(err) == GoCBErr_MemdStatusKeyExists {
 			return true
 		}
 	default:

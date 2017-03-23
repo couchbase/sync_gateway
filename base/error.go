@@ -16,6 +16,8 @@ import (
 
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"gopkg.in/couchbase/gocbcore.v2"
+	"log"
 )
 
 // Simple error implementation wrapping an HTTP response status.
@@ -38,6 +40,22 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	if err == nil {
 		return 200, "OK"
 	}
+
+	switch err.Error() {
+	case gocbcore.ErrKeyNotFound.Error():
+		return http.StatusNotFound, "missing"
+	case gocbcore.ErrKeyExists.Error():
+		return http.StatusConflict, "Conflict"
+	case gocbcore.ErrTimeout.Error():
+		return http.StatusServiceUnavailable, "Database server is over capacity"
+	case gocbcore.ErrOverload.Error():
+		return http.StatusServiceUnavailable, "Database server is over capacity"
+	case gocbcore.ErrBusy.Error():
+		return http.StatusServiceUnavailable, "Database server is over capacity"
+	case gocbcore.ErrTmpFail.Error():
+		return http.StatusServiceUnavailable, "Database server is over capacity"
+	}
+
 	switch err := err.(type) {
 	case *HTTPError:
 		return err.Status, err.Message
@@ -90,6 +108,13 @@ func CouchHTTPErrorName(status int) string {
 
 // Returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
+
+	log.Printf("IsDocNotFoundError called with err: %v with type: %T", err, err)
+
+	if err != nil && err.Error() == gocbcore.ErrKeyNotFound.Error() {
+		return true
+	}
+
 	switch err := err.(type) {
 	case *gomemcached.MCResponse:
 		return err.Status == gomemcached.KEY_ENOENT || err.Status == gomemcached.NOT_STORED
