@@ -1,3 +1,6 @@
+#!/bin/bash
+
+set -e
 
 ## Go Tests
 echo "Testing code with 'go test' ..."
