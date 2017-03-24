@@ -840,8 +840,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		<-bucket.singleOps
 	}()
 
-	maxCasRetries := 100000 // prevent infinite loop
-	for i := 0; i < maxCasRetries; i++ {
+	for {
 
 		var value []byte
 		var err error
@@ -891,7 +890,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 
 	}
 
-	return fmt.Errorf("Failed to update after %v CAS attempts", maxCasRetries)
+	return fmt.Errorf("Failed to update")
 
 }
 
@@ -912,9 +911,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	// so this is set to 1
 	numNodesPersistTo := uint(1)
 
-	maxCasRetries := 100000 // prevent infinite loop
-	for i := 0; i < maxCasRetries; i++ {
-
+	for {
 		var value []byte
 		var err error
 		var writeOpts sgbucket.WriteOptions
@@ -979,7 +976,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 	}
 
-	return fmt.Errorf("Failed to update after %v CAS attempts", maxCasRetries)
+	return fmt.Errorf("Failed to update")
 
 }
 
