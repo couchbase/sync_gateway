@@ -90,7 +90,11 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	if err != nil {
 		return nil, err
 	}
-	goCBBucket.SetTranscoder(SGTranscoder{})
+
+	// initially this was using SGTranscoder for all GoCB buckets, but due to
+	// https://github.com/couchbase/sync_gateway/pull/2416#issuecomment-288882896
+	// it's only being set for hybrid buckets
+	// goCBBucket.SetTranscoder(SGTranscoder{})
 
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5

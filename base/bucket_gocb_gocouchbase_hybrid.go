@@ -22,6 +22,13 @@ func NewCouchbaseBucketGoCBGoCouchbaseHybrid(spec BucketSpec, callback sgbucket.
 	if err != nil {
 		return nil, err
 	}
+	
+	// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
+	// the proper doctype flag and then later read them as JSON, which fails because it gets back a []byte
+	// initially this was using SGTranscoder for all GoCB buckets, but due to
+	// https://github.com/couchbase/sync_gateway/pull/2416#issuecomment-288882896
+	// it's only being set for hybrid buckets
+	hybrid.CouchbaseBucketGoCB.SetTranscoder(SGTranscoder{})
 
 	// Create go-couchbase bucket
 	hybrid.GoCouchbaseBucket, err = GetCouchbaseBucket(spec, callback)
