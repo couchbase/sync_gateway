@@ -902,8 +902,14 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		<-bucket.singleOps
 	}()
 
-	// The number of Couchbase Nodes that durable writes should be replicated to or persisted to
+
+	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
+	// In our case, we only want to block until it's durable on the node we're writing to, so this is set to 0.
 	numNodesReplicateTo := uint(0)
+
+	// Causes the write op to bock until the change has been persisted (made durable -- written to disk) on
+	// numNodesPersistTo.  In our case, we only want to block until it's durable on the node we're writing to,
+	// so this is set to 1
 	numNodesPersistTo := uint(1)
 
 	maxCasRetries := 100000 // prevent infinite loop
