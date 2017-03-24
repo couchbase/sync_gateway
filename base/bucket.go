@@ -578,19 +578,14 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 		return false
 	}
 
+	// GoCB handling
 	if err.Error() == gocbcore.ErrKeyExists.Error() {
 		return true
 	}
 
-	switch bucket.(type) {
-	case CouchbaseBucket:
-		if strings.Contains(err.Error(), "CAS mismatch") {
-			return true
-		}
-	default:
-		if strings.Contains(err.Error(), "CAS mismatch") {
-			return true
-		}
+	// GoCouchbase/Walrus handling
+	if strings.Contains(err.Error(), "CAS mismatch") {
+		return true
 	}
 
 	return false
