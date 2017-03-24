@@ -523,6 +523,17 @@ func GetCouchbaseBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucket
 	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
 		return *baseBucket.GoCouchbaseBucket, nil
 	default:
-		return CouchbaseBucket{}, fmt.Errorf("baseBucket %v was not any expected type.  Was type: %T", baseBucket, baseBucket)
+		return CouchbaseBucket{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucket.  Was type: %T", baseBucket, baseBucket)
+	}
+}
+
+func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB, err error) {
+	switch baseBucket := baseBucket.(type) {
+	case CouchbaseBucketGoCBGoCouchbaseHybrid:
+		return *baseBucket.CouchbaseBucketGoCB, nil
+	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
+		return *baseBucket.CouchbaseBucketGoCB, nil
+	default:
+		return CouchbaseBucketGoCB{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
 	}
 }

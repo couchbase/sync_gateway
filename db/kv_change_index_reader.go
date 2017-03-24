@@ -477,7 +477,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 	var changedWaitKeys []string
 
 	// When using a gocb bucket, use a single bulk operation to retrieve counters.
-	if gocbIndexBucket, ok := k.indexReadBucket.(base.CouchbaseBucketGoCB); ok {
+	if gocbIndexBucket, err := base.GetGoCBBucketFromBaseBucket(k.indexReadBucket); err == nil {
 		principalKeySet := make([]string, len(k.activePrincipalCounts))
 		i := 0
 		for principalID, _ := range k.activePrincipalCounts {
