@@ -916,7 +916,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 		// Load the existing value.
 		gocbExpvars.Add("Update_Get", 1)
-		cas, err = bucket.Get(k, &value)
+		value, cas, err = bucket.GetRaw(k)
 		if err != nil && err != gocb.ErrKeyNotFound {
 			// Unexpected error, abort
 			return err
