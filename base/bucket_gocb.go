@@ -851,7 +851,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 
 		gocbExpvars.Add("Update_Get", 1)
 		cas, err := bucket.Get(k, &value)
-		if err != nil && err != gocb.ErrKeyNotFound {
+		if !bucket.IsKeyNotFoundError(err) {
 			// Unexpected error, abort
 			return err
 		}
@@ -920,7 +920,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		// Load the existing value.
 		gocbExpvars.Add("Update_Get", 1)
 		value, cas, err = bucket.GetRaw(k)
-		if err != nil && err != gocb.ErrKeyNotFound {
+		if !bucket.IsKeyNotFoundError(err) {
 			// Unexpected error, abort
 			return err
 		}
@@ -1071,6 +1071,10 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 
 	return manager.InsertDesignDocument(gocbDesignDoc)
 
+}
+
+func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
+	return err.Error() == gocbcore.ErrKeyNotFound.Error()
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
