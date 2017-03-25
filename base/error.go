@@ -46,13 +46,13 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case gocbcore.ErrKeyExists.Error():
 		return http.StatusConflict, "Conflict"
 	case gocbcore.ErrTimeout.Error():
-		return http.StatusServiceUnavailable, "Database server is over capacity"
+		return http.StatusServiceUnavailable, "Database timeout error (gocbcore.ErrTimeout.Error)"
 	case gocbcore.ErrOverload.Error():
-		return http.StatusServiceUnavailable, "Database server is over capacity"
+		return http.StatusServiceUnavailable, "Database server is over capacity (gocbcore.ErrOverload.Error)"
 	case gocbcore.ErrBusy.Error():
-		return http.StatusServiceUnavailable, "Database server is over capacity"
+		return http.StatusServiceUnavailable, "Database server is over capacity (gocbcore.ErrBusy.Error)"
 	case gocbcore.ErrTmpFail.Error():
-		return http.StatusServiceUnavailable, "Database server is over capacity"
+		return http.StatusServiceUnavailable, "Database server is over capacity (gocbcore.ErrTmpFail.Error)"
 	}
 
 	switch err := err.(type) {
@@ -67,7 +67,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		case gomemcached.E2BIG:
 			return http.StatusRequestEntityTooLarge, "Too Large: " + string(err.Body)
 		case gomemcached.TMPFAIL:
-			return http.StatusServiceUnavailable, "Database server is over capacity"
+			return http.StatusServiceUnavailable, "Database server is over capacity (gomemcached.TMPFAIL)"
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(err.Body), err.Status.String())
