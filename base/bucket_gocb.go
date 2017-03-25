@@ -851,10 +851,14 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 
 		gocbExpvars.Add("Update_Get", 1)
 		cas, err := bucket.Get(k, &value)
-		if !bucket.IsKeyNotFoundError(err) {
-			// Unexpected error, abort
-			return err
+		if err != nil {
+			if !bucket.IsKeyNotFoundError(err) {
+				// Unexpected error, abort
+				return err
+			}
+			cas = 0  // Key not found error
 		}
+
 
 		// Invoke callback to get updated value
 		value, err = callback(value)
@@ -920,9 +924,12 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		// Load the existing value.
 		gocbExpvars.Add("Update_Get", 1)
 		value, cas, err = bucket.GetRaw(k)
-		if !bucket.IsKeyNotFoundError(err) {
-			// Unexpected error, abort
-			return err
+		if err != nil {
+			if !bucket.IsKeyNotFoundError(err) {
+				// Unexpected error, abort
+				return err
+			}
+			cas = 0  // Key not found error
 		}
 
 		// Invoke callback to get updated value
