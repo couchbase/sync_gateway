@@ -333,19 +333,12 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 	dbState := atomic.LoadUint32(&dc.State)
 
-	// TODO: if we're taking the bucket offline, why aren't we closing the DCP feed?
-	// TODO: why aren't we calling dc.Close() here?  Where does it get called?
-
-	base.LogTo("CRUD", "Taking Database : %v, offline.  dbState: %v", dc.Name, dbState)
-
 	//If the DB is already trasitioning to: offline or is offline silently return
 	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
 	}
 
 	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
-
-		base.LogTo("CRUD", " DBOnline -> DBStopping")
 
 		//notify all active _changes feeds to close
 		close(dc.ExitChanges)
