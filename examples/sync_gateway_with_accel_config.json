@@ -6,19 +6,12 @@
   "interface":"0.0.0.0:4984",
   "databases":{
     "default":{
-      "feed_type":"DCPSHARD",
       "server":"http://localhost:8091",
       "bucket":"default",
       "channel_index":{
         "server":"http://localhost:8091",
-        "bucket":"channel_bucket",
-        "writer":false
+        "bucket":"channel_bucket"
       }
     }
-  },
-  "cluster_config": {
-    "server":"http://localhost:8091",
-    "bucket":"default",
-    "data_dir":"."
   }
 }
