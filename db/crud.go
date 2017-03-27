@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"fmt"
 )
 
 const (
@@ -98,6 +99,9 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
 func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+
+	base.Log(fmt.Sprintf("GetRevWithHistory called with docId: %v, revId: %v maxHistory: %d", docid, revid, maxHistory))
+
 	var doc *document
 	var body Body
 	var revisions Body
@@ -108,6 +112,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
 		body, revisions, inChannels, err = db.revisionCache.Get(docid, revid)
+		base.Log(fmt.Sprintf("revisionCache: %v", revisions))
 		if body == nil {
 			if err == nil {
 				err = base.HTTPErrorf(404, "missing")

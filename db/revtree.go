@@ -410,8 +410,10 @@ func encodeRevisions(revs []string) Body {
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
 func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) bool {
+	base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor called"))
 	start, digests := splitRevisionList(revs)
 	if digests == nil {
+		base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor digests == nil"))
 		return false
 	}
 	matchIndex := len(digests)
@@ -422,8 +424,11 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 			maxUnmatchedLen = matchIndex + 1
 		}
 	}
+	base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor maxUnmatchedLen: %d, len(digests): %d", maxUnmatchedLen, len(digests)))
+
 	if maxUnmatchedLen < len(digests) {
 		revs["ids"] = digests[0:maxUnmatchedLen]
+		base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor up to %d", maxUnmatchedLen))
 	}
 	return true
 }
