@@ -409,15 +409,42 @@ func encodeRevisions(revs []string) Body {
 // Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
-func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) (trimmed bool, trimmedRevs Body) {
+//func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) (trimmed bool, trimmedRevs Body) {
+//
+//	base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor called"))
+//	trimmedRevs = revs
+//
+//	start, digests := splitRevisionList(revs)
+//	if digests == nil {
+//		base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor digests == nil"))
+//		return false, trimmedRevs
+//	}
+//	matchIndex := len(digests)
+//	for _, revID := range ancestors {
+//		gen, digest := ParseRevID(revID)
+//		if index := start - gen; index >= 0 && index < matchIndex && digest == digests[index] {
+//			matchIndex = index
+//			maxUnmatchedLen = matchIndex + 1
+//		}
+//	}
+//	base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor maxUnmatchedLen: %d, len(digests): %d", maxUnmatchedLen, len(digests)))
+//
+//	if maxUnmatchedLen < len(digests) {
+//		// TODO: make a copy, mutate, return mutated version
+//		// trimmedRevs =
+//		revs["ids"] = digests[0:maxUnmatchedLen]
+//		base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor up to %d", maxUnmatchedLen))
+//	}
+//	return true, trimmedRevs
+//}
 
-	base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor called"))
-	trimmedRevs = revs
-
+// Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
+// trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
+// length maxUnmatchedLen.
+func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) bool {
 	start, digests := splitRevisionList(revs)
 	if digests == nil {
-		base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor digests == nil"))
-		return false, trimmedRevs
+		return false
 	}
 	matchIndex := len(digests)
 	for _, revID := range ancestors {
@@ -427,13 +454,8 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 			maxUnmatchedLen = matchIndex + 1
 		}
 	}
-	base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor maxUnmatchedLen: %d, len(digests): %d", maxUnmatchedLen, len(digests)))
-
 	if maxUnmatchedLen < len(digests) {
-		// TODO: make a copy, mutate, return mutated version
-		// trimmedRevs =
 		revs["ids"] = digests[0:maxUnmatchedLen]
-		base.Log(fmt.Sprintf("trimEncodedRevisionsToAncestor up to %d", maxUnmatchedLen))
 	}
-	return true, trimmedRevs
+	return true
 }
