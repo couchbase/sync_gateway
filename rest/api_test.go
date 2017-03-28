@@ -2383,7 +2383,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 	numPruningBulkGetGoroutines := 10
 
 	// Each _bulk_get reader goroutine should only try this many times
-	maxIterationsPerBulkGetGoroutine := 100
+	maxIterationsPerBulkGetGoroutine := 200
 
 	// Do a write
 	response := rt.sendRequest("PUT", "/db/doc1", `{"channels":[]}`)
@@ -2397,15 +2397,15 @@ func TestBulkGetRevPruning(t *testing.T) {
 		response = rt.send(request("PUT", "/db/doc1", str))
 		json.Unmarshal(response.Body.Bytes(), &body)
 		revId = body["rev"]
-		// log.Printf("rev: %v", revId)
 	}
 
 	// Get latest rev id
 	response = rt.sendRequest("GET", "/db/doc1", "")
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revId = body["_rev"]
-	log.Printf("revId: %s", revId)
 
+	// Spin up several goroutines to all try to do a _bulk_get on the latest revision.
+	// Since they will be pruning the same shared rev history, it will cause a data race
 	wg := sync.WaitGroup{}
 	for i := 0; i < numPruningBulkGetGoroutines; i++ {
 		wg.Add(1)
@@ -2413,12 +2413,11 @@ func TestBulkGetRevPruning(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < maxIterationsPerBulkGetGoroutine; j++ {
-				// Multiple (or more) goroutines reading with bulk get revs_limit = 2
 				bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "doc1", "rev": "%v"}]}`, revId)
-
-				response = rt.sendRequest("POST", "/db/_bulk_get?revs=true&revs_limit=2", bulkGetDocs)
-				assertStatus(t, response, 200)
-				// response.DumpBody()
+				bulkGetResponse := rt.sendRequest("POST", "/db/_bulk_get?revs=true&revs_limit=2", bulkGetDocs)
+				if bulkGetResponse.Code != 200 {
+					panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
+				}
 			}
 
 		}()
