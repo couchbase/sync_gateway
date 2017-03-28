@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -69,6 +70,16 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 		if doc != nil && doc.Deleted_OLD {
 			doc.Deleted_OLD = false
 			doc.Flags |= channels.Deleted // Backward compatibility with old Deleted property
+		}
+	}
+	return doc, nil
+}
+
+func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte) (*document, error) {
+	doc := newDocument(docid)
+	if len(data) > 0 {
+		if err := doc.UnmarshalWithXATTR(data, xattrData); err != nil {
+			return nil, err
 		}
 	}
 	return doc, nil
@@ -259,11 +270,10 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 		doc.syncData = *root.SyncData
 	}
 
-	err = json.Unmarshal([]byte(data), &doc.body)
-	if err != nil {
-		base.Warn("Error unmarshaling body of doc %q: %s", doc.ID, err)
+	if err := doc.unmarshalBody(data); err != nil {
 		return err
 	}
+
 	delete(doc.body, "_sync")
 	return nil
 }
@@ -277,4 +287,45 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(body)
 	delete(body, "_sync")
 	return data, err
+}
+
+func (doc *document) UnmarshalWithXATTR(data []byte, xdata []byte) error {
+	if doc.ID == "" {
+		base.Warn("Attempted to unmarshal document without ID set")
+		return errors.New("Document was unmarshalled without ID set")
+	}
+
+	// Unmarshal sync metadata
+	doc.syncData = syncData{History: make(RevTree)}
+	if err := json.Unmarshal(xdata, &doc.syncData); err != nil {
+		return err
+	}
+	// Unmarshal document body
+	return doc.unmarshalBody(data)
+}
+
+func (doc *document) MarshalWithXATTR() (data []byte, xdata []byte, err error) {
+	body := doc.body
+	if body == nil {
+		body = Body{}
+	}
+	data, err = json.Marshal(body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	xdata, err = json.Marshal(doc.syncData)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return data, xdata, nil
+}
+
+func (doc *document) unmarshalBody(data []byte) error {
+	err := json.Unmarshal([]byte(data), &doc.body)
+	if err != nil {
+		base.Warn("Error unmarshaling body of doc %q: %s", doc.ID, err)
+	}
+	return err
 }

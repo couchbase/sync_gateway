@@ -91,6 +91,7 @@ type OidcTestProviderOptions struct {
 }
 
 type UnsupportedOptions struct {
+	EnableXATTR      bool `json:"enable_extended_attributes"`
 	EnableUserViews  bool
 	OidcTestProvider OidcTestProviderOptions
 }
@@ -999,6 +1000,13 @@ func (context *DatabaseContext) GetIndexBucket() base.Bucket {
 func (context *DatabaseContext) GetUserViewsEnabled() bool {
 	if context.Options.UnsupportedOptions != nil {
 		return context.Options.UnsupportedOptions.EnableUserViews
+	}
+	return false
+}
+
+func (context *DatabaseContext) UseXATTRs() bool {
+	if context.Options.UnsupportedOptions != nil {
+		return context.Options.UnsupportedOptions.EnableXATTR
 	}
 	return false
 }

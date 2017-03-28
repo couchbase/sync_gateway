@@ -711,7 +711,6 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 					// might not incorporate the effects of this change.
 					writeOpts |= sgbucket.Indexable
 				}
-
 			}
 
 		} else {
