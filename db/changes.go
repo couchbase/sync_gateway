@@ -41,13 +41,13 @@ type ChangeEntry struct {
 	ID         string      `json:"id"`
 	Deleted    bool        `json:"deleted,omitempty"`
 	Removed    base.Set    `json:"removed,omitempty"`
-	pseudoDoc  bool        `json:"[pseudo,omitempty` // Used to indicate _user docs e.t.c
 	Doc        Body        `json:"doc,omitempty"`
 	Changes    []ChangeRev `json:"changes"`
 	Err        error       `json:"err,omitempty"` // Used to notify feed consumer of errors
 	allRemoved bool        // Flag to track whether an entry is a removal in all channels visible to the user.
 	branched   bool
 	backfill   backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
+	pseudoDoc  bool         // Used to indicate _user docs e.t.c
 }
 
 const (
