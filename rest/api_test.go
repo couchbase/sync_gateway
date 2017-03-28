@@ -178,6 +178,10 @@ type testResponse struct {
 	rq *http.Request
 }
 
+func (r testResponse) DumpBody() {
+	log.Printf("%v", string(r.Body.Bytes()))
+}
+
 func (rt *restTester) sendRequest(method, resource string, body string) *testResponse {
 	return rt.send(request(method, resource, body))
 }
@@ -2364,6 +2368,68 @@ func TestEventConfigValidationFailure(t *testing.T) {
 	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
 
 	sc.Close()
+}
+
+// Reproduces https://github.com/couchbase/sync_gateway/issues/2427
+// NOTE: to repro, you must run with -race flag
+func TestBulkGetRevPruning(t *testing.T) {
+
+	var rt restTester
+	var body db.Body
+
+	// The number of goroutines that are reading the doc via the _bulk_get endpoint
+	// which causes the pruning on the map -- all goroutines end up modifying the
+	// same map reference concurrently and causing the data race
+	numPruningBulkGetGoroutines := 10
+
+	// Each _bulk_get reader goroutine should only try this many times
+	maxIterationsPerBulkGetGoroutine := 100
+
+	// Do a write
+	response := rt.sendRequest("PUT", "/db/doc1", `{"channels":[]}`)
+	assertStatus(t, response, 201)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId := body["rev"]
+
+	// Update 10 times
+	for i := 0; i < 20; i++ {
+		str := fmt.Sprintf(`{"_rev":%q}`, revId)
+		response = rt.send(request("PUT", "/db/doc1", str))
+		json.Unmarshal(response.Body.Bytes(), &body)
+		revId = body["rev"]
+		// log.Printf("rev: %v", revId)
+	}
+
+	// Get latest rev id
+	response = rt.sendRequest("GET", "/db/doc1", "")
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId = body["_rev"]
+	log.Printf("revId: %s", revId)
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < numPruningBulkGetGoroutines; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for j := 0; j < maxIterationsPerBulkGetGoroutine; j++ {
+				// Multiple (or more) goroutines reading with bulk get revs_limit = 2
+				bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "doc1", "rev": "%v"}]}`, revId)
+
+				response = rt.sendRequest("POST", "/db/_bulk_get?revs=true&revs_limit=2", bulkGetDocs)
+				assertStatus(t, response, 200)
+				// response.DumpBody()
+			}
+
+		}()
+
+	}
+
+	// Wait until all pruning bulk get goroutines finish
+	wg.Wait()
+
+
+
 }
 
 // TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
