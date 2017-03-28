@@ -409,7 +409,7 @@ func encodeRevisions(revs []string) Body {
 // Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
-// TODO: What should the boolean result represent?
+// TODO: Document/rename what the boolean result return value represents
 func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Body) {
 
 	trimmedRevs = revs

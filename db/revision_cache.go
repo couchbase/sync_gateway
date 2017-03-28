@@ -50,7 +50,6 @@ func NewRevisionCache(capacity int, loaderFunc RevisionCacheLoaderFunc) *Revisio
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-// TODO: 2nd Body return value should be RevHistory or a map.
 func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set, error) {
 	value := rc.getValue(docid, revid, rc.loaderFunc != nil)
 	if value == nil {
@@ -124,7 +123,6 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Body
 	if body != nil {
 		body = body.ShallowCopy() // Never let the caller mutate the stored body
 	}
-	// TODO: need to make a shallow copy of the history
 	return body, value.history, value.channels, value.err
 }
 
