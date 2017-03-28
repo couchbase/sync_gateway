@@ -117,6 +117,18 @@ func (b *LeakyBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
+func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, flags int, exp int, cas uint64, v interface{}, xv interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	return b.bucket.WriteCasWithXattr(k, xattr, flags, exp, cas, v, xv, opt)
+}
+
+func (b *LeakyBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+	return b.bucket.GetWithXattr(k, xattr, rv, xv)
+}
+
+func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
+	return b.bucket.DeleteWithXattr(k, xattr)
+}
+
 func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
 	if b.config.TapFeedDeDuplication {

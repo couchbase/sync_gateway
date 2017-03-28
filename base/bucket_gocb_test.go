@@ -24,12 +24,30 @@ import (
 // them to remove the Couchbase* prefix, and then rename them back before checking into
 // Git.
 
+type TestAuthenticator struct {
+	Username   string
+	Password   string
+	BucketName string
+}
+
+func (t TestAuthenticator) GetCredentials() (username, password, bucketname string) {
+	return t.Username, t.Password, t.BucketName
+}
+
 func GetBucketOrPanic() Bucket {
-	spec := BucketSpec{
-		Server:     UnitTestUrl(),
+	testAuth := TestAuthenticator{
+		Username:   "bucket-1",
+		Password:   "password",
 		BucketName: "bucket-1",
-		CouchbaseDriver: DefaultDriverForBucketType[DataBucket],
 	}
+
+	spec := BucketSpec{
+		Server:          UnitTestUrl(),
+		BucketName:      "bucket-1",
+		CouchbaseDriver: DefaultDriverForBucketType[DataBucket],
+		Auth:            testAuth,
+	}
+	log.Printf("Connecting to bucket: %v", spec.BucketName)
 	bucket, err := GetCouchbaseBucketGoCB(spec)
 	if err != nil {
 		panic("Could not open bucket")
@@ -41,7 +59,7 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
-	key := "TestSetGetRaw"
+	key := "TestSetGetRaw2"
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -62,7 +80,6 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error removing key from bucket")
 	}
-
 }
 
 func CouchbaseTestAddRaw(t *testing.T) {
@@ -531,4 +548,126 @@ func TestCreateBatchesKeys(t *testing.T) {
 	assert.Equals(t, batches[2][0], "five")
 	assert.Equals(t, batches[2][1], "six")
 	assert.Equals(t, batches[3][0], "seven")
+}
+
+// TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
+// TODO: Once https://issues.couchbase.com/browse/MB-23207 is merged, switch to use system xattr.
+func CouchbaseTestWriteCasXATTR(t *testing.T) {
+
+	log.Printf("Starting TestWriteCasXATTR")
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	key := "TestWriteCasXATTR"
+	xattrName := "sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = float64(123)
+	xattrVal["rev"] = "1-1234"
+
+	var existsVal map[string]interface{}
+	_, err := bucket.Get(key, existsVal)
+	if err == nil {
+		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
+		bucket.Delete(key)
+	}
+
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, 0, cas, val, xattrVal, 0)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+	log.Printf("Post-write, cas is %d", cas)
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	getCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	// TODO: Cas check fails, pending xattr code to make it to gocb master
+	assert.Equals(t, getCas, cas)
+	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+}
+
+// TestDeleteXATTR.  Verifies delete handling cases:
+//   1. Delete document and XATTR, ensure it's not available
+//   2. Delete document only.  System XATTR should be retained and retrievable.
+func CouchbaseTestDeleteXATTR(t *testing.T) {
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	// Create document with XATTR
+	xattrName := "sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-1234"
+
+	key := "TestDeleteXATTR_Case1"
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
+		bucket.Delete(key)
+	}
+
+	// Case 1. Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, 0, cas, val, xattrVal, 0)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	// Delete the document and XATTR.
+	// TODO: This fails while we're writing a user XATTR.  Pending https://issues.couchbase.com/browse/MB-23207
+	err = bucket.DeleteWithXattr(key, xattrName)
+	if err != nil {
+		t.Errorf("Error doing DeleteWithXATTR: %+v", err)
+	}
+
+	// Verify delete was successful
+	_, _, err = bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist after delete (TestDeleteXATTR): %+v", err)
+	}
+
+	// Case 2. Create w/ XATTR, delete doc only, retrieve doc (fail), retrieve XATTR (success)
+	key = "TestDeleteXATTR_Case2"
+	cas = uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, 0, cas, val, xattrVal, 0)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	// Delete the document and XATTR.
+	err = bucket.Delete(key)
+	if err != nil {
+		t.Errorf("Error doing DeleteWithXATTR: %+v", err)
+	}
+
+	// Verify delete was successful
+	// TODO: This fails while we're writing a user XATTR.  Pending https://issues.couchbase.com/browse/MB-23207
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		t.Errorf("Error retrieving system xattr after delete of document (TestDeleteXATTR): %+v", err)
+	}
+
 }
