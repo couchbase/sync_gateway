@@ -197,7 +197,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
-			context.TakeDbOffline("Lost TAP Feed")
+			context.TakeDbOffline("Lost Mutation (TAP/DCP) Feed")
 		}); err != nil {
 			return nil, err
 		}
@@ -330,8 +330,9 @@ func (context *DatabaseContext) NotifyUser(username string) {
 }
 
 func (dc *DatabaseContext) TakeDbOffline(reason string) error {
-	base.LogTo("CRUD", "Taking Database : %v, offline", dc.Name)
+
 	dbState := atomic.LoadUint32(&dc.State)
+
 	//If the DB is already trasitioning to: offline or is offline silently return
 	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
@@ -342,12 +343,10 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		//notify all active _changes feeds to close
 		close(dc.ExitChanges)
 
-		base.LogTo("CRUD", "Waiting for all active calls to complete on Database : %v", dc.Name)
 		//Block until all current calls have returned, including _changes feeds
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
-		base.LogTo("CRUD", "Database : %v, is offline", dc.Name)
 		//set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
 
@@ -357,8 +356,9 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 		return nil
 	} else {
-		base.LogTo("CRUD", "Unable to take Database offline, database must be in Online state")
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to take Database offline, database must be in Online state")
+		msg := "Unable to take Database offline, database must be in Online state"
+		base.LogTo("CRUD", msg)
+		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 	}
 }
 

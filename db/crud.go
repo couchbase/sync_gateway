@@ -701,7 +701,8 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
 			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				if cbb, ok := db.Bucket.(base.CouchbaseBucket); ok { //Backing store is Couchbase Server
+				cbb, errGetCbb := base.GetCouchbaseBucketFromBaseBucket(db.Bucket)
+				if errGetCbb == nil {
 					if major, _, _, err := cbb.CBSVersion(); err == nil && major >= 3 {
 						base.LogTo("CRUD+", "Optimizing write for Couchbase Server >= 3.0")
 					} else {
@@ -716,6 +717,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 					// might not incorporate the effects of this change.
 					writeOpts |= sgbucket.Indexable
 				}
+
 			}
 
 		} else {

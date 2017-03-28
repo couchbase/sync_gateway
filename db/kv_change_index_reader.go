@@ -77,13 +77,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 		return err
 	}
 
-	cbBucket, ok := k.indexReadBucket.(base.CouchbaseBucket)
-	if ok {
-		k.maxVbNo, _ = cbBucket.GetMaxVbno()
-	} else {
-		// walrus, for unit testing
-		k.maxVbNo = 1024
-	}
+	k.maxVbNo = base.GetMaxVbnoForBucket(k.indexReadBucket)
 
 	// Make sure that the index bucket and data bucket have correct sequence parity
 	if err := k.verifyBucketSequenceParity(context); err != nil {
@@ -483,7 +477,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 	var changedWaitKeys []string
 
 	// When using a gocb bucket, use a single bulk operation to retrieve counters.
-	if gocbIndexBucket, ok := k.indexReadBucket.(base.CouchbaseBucketGoCB); ok {
+	if gocbIndexBucket, err := base.GetGoCBBucketFromBaseBucket(k.indexReadBucket); err == nil {
 		principalKeySet := make([]string, len(k.activePrincipalCounts))
 		i := 0
 		for principalID, _ := range k.activePrincipalCounts {

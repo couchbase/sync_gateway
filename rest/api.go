@@ -152,7 +152,14 @@ func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
-	lastSeq, _ := h.db.LastSequence()
+
+	lastSeq := uint64(0)
+	runState := db.RunStateString[atomic.LoadUint32(&h.db.State)]
+
+	// Don't bother trying to lookup LastSequence() if offline
+	if runState != db.RunStateString[db.DBOffline] {
+		lastSeq, _ = h.db.LastSequence()
+	}
 
 	response := db.Body{
 		"db_name":              h.db.Name,
@@ -162,7 +169,7 @@ func (h *handler) handleGetDB() error {
 		"compact_running":      false, // TODO: Implement this
 		"purge_seq":            0,     // TODO: Should track this value
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
-		"state":                db.RunStateString[atomic.LoadUint32(&h.db.State)],
+		"state":                runState,
 		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)
