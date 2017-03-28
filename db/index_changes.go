@@ -842,9 +842,10 @@ func (db *Database) appendVectorUserFeed(feeds []<-chan *ChangeEntry, names []st
 				name = base.GuestUsername
 			}
 			entry := ChangeEntry{
-				Seq:     userSeq,
-				ID:      "_user/" + name,
-				Changes: []ChangeRev{},
+				Seq:       userSeq,
+				ID:        "_user/" + name,
+				Changes:   []ChangeRev{},
+				pseudoDoc: true,
 			}
 			userFeed := make(chan *ChangeEntry, 1)
 			userFeed <- &entry

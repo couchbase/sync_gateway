@@ -42,6 +42,7 @@ type ChangeEntry struct {
 	ID         string      `json:"id"`
 	Deleted    bool        `json:"deleted,omitempty"`
 	Removed    base.Set    `json:"removed,omitempty"`
+	pseudoDoc  bool        `json:"[pseudo,omitempty` // Used to indicate _user docs e.t.c
 	Doc        Body        `json:"doc,omitempty"`
 	Changes    []ChangeRev `json:"changes"`
 	Err        error       `json:"err,omitempty"` // Used to notify feed consumer of errors
@@ -70,11 +71,6 @@ type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
-//Return true if Doc ID represents a pseudo user or role doc
-func isPseudoDoc(ID string) bool {
-	return strings.HasPrefix(ID, "_user/") || strings.HasPrefix(ID, "_role/")
-}
-
 func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	db.addDocToChangeEntry(entry, options)
 }
@@ -87,7 +83,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	}
 
 	// If this is pseudo doc, it will not be in the cache so ignore
-	if isPseudoDoc(entry.ID) {
+	if entry.pseudoDoc {
 		return
 	}
 	doc, err := db.GetDoc(entry.ID)
@@ -261,9 +257,10 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 			name = base.GuestUsername
 		}
 		entry := ChangeEntry{
-			Seq:     userSeq,
-			ID:      "_user/" + name,
-			Changes: []ChangeRev{},
+			Seq:       userSeq,
+			ID:        "_user/" + name,
+			Changes:   []ChangeRev{},
+			pseudoDoc: true,
 		}
 		userFeed := make(chan *ChangeEntry, 1)
 		userFeed <- &entry
