@@ -409,10 +409,14 @@ func encodeRevisions(revs []string) Body {
 // Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
-func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) bool {
+// TODO: Document/rename what the boolean result return value represents
+func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Body) {
+
+	trimmedRevs = revs
+
 	start, digests := splitRevisionList(revs)
 	if digests == nil {
-		return false
+		return false, trimmedRevs
 	}
 	matchIndex := len(digests)
 	for _, revID := range ancestors {
@@ -423,7 +427,13 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 		}
 	}
 	if maxUnmatchedLen < len(digests) {
-		revs["ids"] = digests[0:maxUnmatchedLen]
+		// Make a shallow copy here in order to avoid data races where multiple goroutines are
+		// modifying the same underlying map returned from the revision cache.
+		// See https://github.com/couchbase/sync_gateway/issues/2427
+		trimmedRevs = revs.ShallowCopy()
+		trimmedRevs["ids"] = digests[0:maxUnmatchedLen]
 	}
-	return true
+	return true, trimmedRevs
+
 }
+
