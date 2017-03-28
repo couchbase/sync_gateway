@@ -136,7 +136,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 	}
 
 	if revisions != nil {
-		trimEncodedRevisionsToAncestor(revisions, historyFrom, maxHistory)
+		_, revisions = trimEncodedRevisionsToAncestor(revisions, historyFrom, maxHistory)
 	}
 
 	// Authorize the access:
