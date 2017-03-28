@@ -591,34 +591,4 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 	return false
 }
 
-func GetMaxVbnoForBucket(bucket Bucket) uint16 {
 
-	// TODO: Move to sg-bucket interface (https://github.com/couchbase/sync_gateway/issues/2418)
-
-	var maxVbNo uint16 = 1024
-	var err error
-
-	switch bucket := bucket.(type) {
-	case CouchbaseBucketGoCB:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case *CouchbaseBucketGoCB:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case CouchbaseBucketGoCBGoCouchbaseHybrid:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case CouchbaseBucket:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case *CouchbaseBucket:
-		maxVbNo, err = bucket.GetMaxVbno()
-	default:
-		Warn("Not a couchbase bucket - assuming walrus, setting maxVbNo=1024")
-	}
-
-	if err != nil {
-		Warn("Error trying to obtain vbucket count from cluster: %v Defaulting to 1024", err)
-	}
-
-	return maxVbNo
-
-}
