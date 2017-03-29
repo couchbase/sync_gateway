@@ -189,6 +189,9 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     return pprof_tasks
 
+def to_lower_case_keys_dict(original_dict):
+    return {k.lower():v for k,v in original_dict.items()}
+
 def extract_element_from_config(element, config):
     """ The config returned from /_config may not be fully formed json
         due to the fact that the sync function is inside backticks (`)
@@ -200,7 +203,9 @@ def extract_element_from_config(element, config):
     config = re.sub(sync_regex, '"Sync":""', config)
     try:
         # convert dictionary keys to lower case
-        lower_case_keys_dict = {k.lower():v for k,v in json.loads(config).items()}
+        original_dict = json.loads(config)
+        lower_case_keys_dict = to_lower_case_keys_dict(original_dict)
+        
         #lookup key after converting element name to lower case
         return lower_case_keys_dict[element.lower()]
     except (ValueError, KeyError):
