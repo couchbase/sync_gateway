@@ -47,6 +47,7 @@ type ChangeEntry struct {
 	allRemoved bool        // Flag to track whether an entry is a removal in all channels visible to the user.
 	branched   bool
 	backfill   backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
+	pseudoDoc  bool         // Used to indicate _user docs e.t.c
 }
 
 const (
@@ -77,6 +78,11 @@ func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
 	includeConflicts := options.Conflicts && entry.branched
 	if !options.IncludeDocs && !includeConflicts {
+		return
+	}
+
+	// If this is pseudo doc, it will not be in the cache so ignore
+	if entry.pseudoDoc {
 		return
 	}
 	doc, err := db.GetDoc(entry.ID)
@@ -250,9 +256,10 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 			name = base.GuestUsername
 		}
 		entry := ChangeEntry{
-			Seq:     userSeq,
-			ID:      "_user/" + name,
-			Changes: []ChangeRev{},
+			Seq:       userSeq,
+			ID:        "_user/" + name,
+			Changes:   []ChangeRev{},
+			pseudoDoc: true,
 		}
 		userFeed := make(chan *ChangeEntry, 1)
 		userFeed <- &entry
