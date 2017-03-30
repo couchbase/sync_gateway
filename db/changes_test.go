@@ -95,7 +95,8 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	assert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
 		Seq:     SequenceID{Seq: 2},
 		ID:      "_user/naomi",
-		Changes: []ChangeRev{}})
+		Changes: []ChangeRev{},
+		pseudoDoc: true})
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
