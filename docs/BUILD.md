@@ -48,11 +48,29 @@ To bootstrap and start with a different Sync Gateway commit:
 $ ./bootstrap.sh -c commit-hash
 ```
 
-**Switch to a different sync gateway branch**
+**Switch to a different sync gateway branch via snap-manifest.sh**
+
+If the commit or branch you want to switch to is on github, you can do the following:
 
 ```bash
 $ ./snap-manifest.sh sync-gateway-commit-or-branch
 ```
+
+**Manually switch to a different sync gateway branch**
+
+You can also switch to a different sync gateway branch manually with these steps.  The commit needs to be on github in this case too:
+
+```
+$ cd .repo/manifests
+$ git reset --hard
+$ git fetch
+$ git checkout sync-gateway-commit-or-branch
+$ cd ../..
+$ repo sync -d
+```
+
+At this point running `repo status` should return `(working directory clean)`
+
 
 Build via go get w/ dependency pinning
 --------------------------------------
