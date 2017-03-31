@@ -26,16 +26,22 @@ and make sure it returns:
 
     nothing to commit (working directory clean)
 
+
 Usage:
 
-    $ ./snap-manifest.sh sync-gateway-commit-hash
+    ./snap-manifest --sg-commit <commit-hash>
 
-This will:
+    or
 
-1. Download the manifest/default.xml file from the Sync Gateway github repo
+    ./snap-manifest --sg-commit <commit-hash> --local-manifest /path/to/sg/repo/manifest/default.xml 
+
+
+This script will:
+
+1. Download the manifest/default.xml file from the Sync Gateway github repo, or use the local file passed in
 2. Modify the manifest to set the Sync Gateway commit passed in
 3. Write the modified manifest to ./repo/manifest.xml
-4. Run repo sync
+4. Run repo sync -d
 
 """
 
@@ -76,18 +82,14 @@ def prepare_repo_dir():
     os.chdir(initial_directory)
 
 
-def get_local_manifest_xml():
-    pass 
-
+def get_local_manifest_xml(manifest_file):
+    if not os.path.exists(manifest_file):
+        raise Exception("Manifest file does not exist: {}".format(manifest_file))
+    return ET.ElementTree(file=open(manifest_file))
 
 if __name__=="__main__":
 
     """
-    ./snap-manifest --sg-commit <commit-hash>
-
-    or
-
-    ./snap-manifest --sg-commit <commit-hash> --local-manifest /path/to/sg/repo/manifest/default.xml 
 
     """
 
@@ -96,9 +98,11 @@ if __name__=="__main__":
     parser.add_argument("--local-manifest", help="The path to a local manifest to snap to.  In this case will pull locally rather than going out to github", required=False)
     args = parser.parse_args()
 
+    # Deletes existing .repo/manifest.xml and runs "git reset --hard" in .repo/manifests
     prepare_repo_dir()
 
     manifest_xml_content = "error"
+    print("args.local_manifest: {}".format(args.local_manifest))
     if args.local_manifest != None and args.local_manifest != "":
         manifest_xml_content = get_local_manifest_xml(args.local_manifest)
     else:
