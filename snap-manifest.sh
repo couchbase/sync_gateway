@@ -47,6 +47,7 @@ def repo_sync():
     Run "repo sync", which will do all of the heavy lifting to get the 
     dependencies "snapped" / "syncd" to the versions specified in the manifest xml
     """
+    print("Running repo sync -d")
     subprocess.call(['repo', 'sync', '-d'])  # TODO: does this need a subshell for any reason?
 
 
@@ -60,6 +61,7 @@ def update_sg_version(manifest_xml_content, commit):
 
 def get_manifest_xml_from_sg_github(commit):
     manifest_url="https://raw.githubusercontent.com/couchbase/sync_gateway/{}/manifest/default.xml".format(commit)
+    print("Fetching manifest from: {}".format(manifest_url))
     response = urllib2.urlopen(manifest_url)
     return ET.ElementTree(file=response)
 
@@ -109,6 +111,7 @@ if __name__=="__main__":
 
     # Write to dest file
     dest_path = ".repo/manifest.xml"
+    print("Write manifest to {}".format(dest_path))
     destfile = open(dest_path, 'w')
     versioned_manifest_xml_content.write(destfile)
     destfile.close()
