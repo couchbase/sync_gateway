@@ -50,14 +50,19 @@ $ ./bootstrap.sh -c commit-hash
 
 **Switch to a different sync gateway branch via snap-manifest.sh**
 
-If the commit or branch you want to switch to is on github, you can do the following:
+Make sure the `repo status` doesn't show any uncommitted changes.  For example in the output below, `docs/BUILD.md` is an uncommitted change:
 
 ```bash
-$ cd .repo
-$ rm manifest.xml
-$ cd manifests
-$ git reset --hard
-$ cd ../..
+$ repo status
+project godeps/src/github.com/couchbase/sync_gateway/ branch feature/fix_snap_manifest_rebased
+ -m     docs/BUILD.md
+project godeps/src/github.com/couchbaselabs/sync-gateway-accel/ branch master
+project godeps/src/github.com/couchbaselabs/walrus/ branch feature/sg_2418_sgbucket_interface
+```
+
+Once the `repo status` is clean, to switch to a different sync gateway commit (which must be pushed up to github):
+
+```bash
 $ ./snap-manifest.sh sync-gateway-commit-or-branch
 ```
 
@@ -65,7 +70,7 @@ $ ./snap-manifest.sh sync-gateway-commit-or-branch
 
 You can also switch to a different sync gateway branch manually with these steps.  The commit needs to be on github in this case too:
 
-```
+```bash
 $ cd .repo/manifests
 $ git reset --hard
 $ git fetch

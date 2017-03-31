@@ -59,12 +59,28 @@ def get_manifest_xml_from_sg_github(commit):
     response = urllib2.urlopen(manifest_url)
     return ET.ElementTree(file=response)
 
+def prepare_repo_dir():
+    """
+    $ cd .repo
+    $ rm manifest.xml
+    $ cd manifests
+    $ git reset --hard
+    $ cd ../..
+    """
+    initial_directory = os.getcwd()
+    os.chdir(".repo")
+    os.remove("manifest.xml")
+    os.chdir("manifests")
+    subprocess.call(['git', 'reset', '--hard'])
+    os.chdir(initial_directory)
+
+
 if __name__=="__main__":
-
-
 
     if len(sys.argv) <= 1:
         raise Exception("Usage: ./snap-manifest.sh sync-gateway-commit-hash")
+
+    prepare_repo_dir()
 
     commit = sys.argv[1]
     manifest_xml_content = get_manifest_xml_from_sg_github(commit)
