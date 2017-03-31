@@ -6,6 +6,7 @@ import os
 import xml.etree.ElementTree as ET
 import sys
 import urllib2
+import argparse
 
 """
 
@@ -75,16 +76,35 @@ def prepare_repo_dir():
     os.chdir(initial_directory)
 
 
+def get_local_manifest_xml():
+    pass 
+
+
 if __name__=="__main__":
 
-    if len(sys.argv) <= 1:
-        raise Exception("Usage: ./snap-manifest.sh sync-gateway-commit-hash")
+    """
+    ./snap-manifest --sg-commit <commit-hash>
+
+    or
+
+    ./snap-manifest --sg-commit <commit-hash> --local-manifest /path/to/sg/repo/manifest/default.xml 
+
+    """
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sg-commit", help="The Sync Gateway commit or branch name to snap to.  Will pull from github unless --local-manifest is specified", required=True)
+    parser.add_argument("--local-manifest", help="The path to a local manifest to snap to.  In this case will pull locally rather than going out to github", required=False)
+    args = parser.parse_args()
 
     prepare_repo_dir()
 
-    commit = sys.argv[1]
-    manifest_xml_content = get_manifest_xml_from_sg_github(commit)
-    versioned_manifest_xml_content = update_sg_version(manifest_xml_content, commit)
+    manifest_xml_content = "error"
+    if args.local_manifest != None and args.local_manifest != "":
+        manifest_xml_content = get_local_manifest_xml(args.local_manifest)
+    else:
+        manifest_xml_content = get_manifest_xml_from_sg_github(args.sg_commit)
+
+    versioned_manifest_xml_content = update_sg_version(manifest_xml_content, args.sg_commit)
 
     # Write to dest file
     dest_path = ".repo/manifest.xml"
