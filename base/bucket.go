@@ -187,8 +187,8 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 	// Uses tap by default, unless DCP is explicitly specified
 	switch bucket.spec.FeedType {
-	case DcpFeedType:
-		return bucket.StartDCPFeed(args)
+	case TapFeedType:
+		return bucket.StartCouchbaseTapFeed(args)
 
 	case DcpShardFeedType:
 
@@ -205,9 +205,8 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 		return feed, nil
 
 	default:
-		LogTo("Feed", "Using TAP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
-		return bucket.StartCouchbaseTapFeed(args)
-
+		LogTo("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
+		return bucket.StartDCPFeed(args)
 	}
 
 }
@@ -448,8 +447,8 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
 		sgbucket.SetLogging(LogEnabled("Walrus"))
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
-		// If feed type is specified and isn't TAP, wrap with pseudo-vbucket handling for walrus
-		if spec.FeedType != "" && spec.FeedType != TapFeedType {
+		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
+		if spec.FeedType == "" || spec.FeedType != TapFeedType {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 	} else {

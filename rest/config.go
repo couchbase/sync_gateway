@@ -316,6 +316,9 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 		return err
 	}
 
+	if dbConfig.FeedType == base.TapFeedType && dbConfig.ImportDocs == "continuous" {
+		return fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
+	}
 	return nil
 
 }
