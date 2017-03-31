@@ -20,12 +20,10 @@ back up your entire sync_gateway directory before running this.
 
 Before running this, you should run:
 
-    $ repo status
+    $ repo status > repo_status.txt
+    $ repo info > repo_info.txt
 
-and make sure it returns:
-
-    nothing to commit (working directory clean)
-
+in case there is a bug, these will be useful to have.
 
 Usage:
 
@@ -33,8 +31,7 @@ Usage:
 
     or
 
-    ./snap-manifest --sg-commit <commit-hash> --local-manifest /path/to/sg/repo/manifest/default.xml 
-
+    ./snap-manifest --sg-commit <commit-hash> --local-manifest /path/to/sg/repo/manifest/default.xml
 
 This script will:
 
