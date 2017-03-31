@@ -133,7 +133,7 @@ func TestHashStorage(t *testing.T) {
 
 	// Retrieve non-existent hash
 	missingClock, err := seqHasher.GetClock("1234")
-	assertTrue(t, err != nil, "Should return error for non-existent hash")
+	assertTrue(t, err == nil, "Should NOT return error for non-existent hash")
 	assert.Equals(t, missingClock.GetSequence(50), uint64(0))
 	assert.Equals(t, missingClock.GetSequence(80), uint64(0))
 	assert.Equals(t, missingClock.GetSequence(150), uint64(0))

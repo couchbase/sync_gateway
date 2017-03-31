@@ -258,13 +258,14 @@ func (s *sequenceHasher) GetClock(sequence string) (*base.SequenceClockImpl, err
 		return clock, loadErr
 	}
 
+	clock = base.NewSequenceClockImpl()
 	if uint16(len(storedClocks.Sequences)) <= seqHash.collisionIndex {
 		base.LogTo("Changes+", "Stored hash not found for sequence [%s] collision index [%d], #storedClocks:%d, returning zero clock", sequence, seqHash.collisionIndex, len(storedClocks.Sequences))
+	} else {
+		clock.Init(storedClocks.Sequences[seqHash.collisionIndex], seqHash.String())
 	}
-	clock = base.NewSequenceClockImpl()
-	clock.Init(storedClocks.Sequences[seqHash.collisionIndex], seqHash.String())
-	return clock, nil
 
+	return clock, nil
 }
 
 // s.cache[hashValue] contains the storedClocks for this hash value.  If present, getCacheValue
