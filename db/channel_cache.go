@@ -185,7 +185,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
-	cacheValidFrom, resultFromCache = c._getCachedChanges(options)
+	cacheValidFrom, resultFromCache = c.getCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
 		base.LogTo("Cache", "2nd getCachedChanges(%q, %d) got %d more, valid from #%d!",
 			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
