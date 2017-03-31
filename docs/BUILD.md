@@ -68,6 +68,7 @@ $ cd .repo/manifests
 $ git reset --hard
 $ git fetch
 $ git checkout sync-gateway-commit-or-branch
+$ vi manifests/default.xml  # edit the sync gateway project commit to have same commit hash as sync-gateway-commit-or-branch
 $ cd ../..
 $ repo sync -d
 ```
