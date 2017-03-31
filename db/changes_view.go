@@ -80,7 +80,7 @@ func changesViewOptions(channelName string, endSeq uint64, options ChangesOption
 		"startkey": []interface{}{channelName, options.Since.SafeSequence() + 1},
 		"endkey":   endKey,
 	}
-	if options.Limit > 0 {
+	if options.Limit > 0 && !options.ActiveOnly {
 		optMap["limit"] = options.Limit
 	}
 	return optMap
