@@ -53,7 +53,9 @@ $ ./bootstrap.sh -c commit-hash
 If the commit or branch you want to switch to is on github, you can do the following:
 
 ```bash
-$ cd .repo/manifests
+$ cd .repo
+$ rm manifest.xml
+$ cd manifests
 $ git reset --hard
 $ cd ../..
 $ ./snap-manifest.sh sync-gateway-commit-or-branch
