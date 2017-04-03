@@ -150,3 +150,7 @@ func (b *LoggingBucket) VBHash(docID string) uint32 {
 	LogTo("Bucket", "VBHash()")
 	return b.bucket.VBHash(docID)
 }
+
+func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
+	return 1024, nil
+}

@@ -113,6 +113,10 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
+func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
+	return 1024, nil
+}
+
 func (b *LeakyBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
@@ -335,3 +339,4 @@ func dedupeTapEvents(tapEvents []sgbucket.TapEvent) []sgbucket.TapEvent {
 func VBHash(key string, numVb int) uint32 {
 	return sgbucket.VBHash(key, uint16(numVb))
 }
+
