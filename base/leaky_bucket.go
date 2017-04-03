@@ -275,6 +275,11 @@ func (b *LeakyBucket) VBHash(docID string) uint32 {
 	}
 }
 
+func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+	return b.bucket.CouchbaseServerVersion()
+}
+
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.

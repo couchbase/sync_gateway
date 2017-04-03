@@ -154,3 +154,7 @@ func (b *LoggingBucket) VBHash(docID string) uint32 {
 func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
 	return 1024, nil
 }
+
+func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+	return b.bucket.CouchbaseServerVersion()
+}

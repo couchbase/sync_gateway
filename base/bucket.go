@@ -377,7 +377,7 @@ func (bucket CouchbaseBucket) Dump() {
 	Warn("Dump not implemented for couchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro string, err error) {
+func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
 	if versionString == "" {
 		stats := bucket.Bucket.GetStats("")

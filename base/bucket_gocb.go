@@ -1125,3 +1125,10 @@ func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 	}
 	return 0, fmt.Errorf("Unable to determine vbucket count")
 }
+
+func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+
+	// TODO: implement this using the ServerStats map + add unit test
+	// https://github.com/couchbase/gocb/blob/master/bucket_crud.go#L90
+	return 0, 0, "error", fmt.Errorf("GoCB bucket does not implement CouchbaseServerVersion yet")
+}
