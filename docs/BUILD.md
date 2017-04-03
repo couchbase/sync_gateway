@@ -40,14 +40,19 @@ $ ./build.sh && ./test.sh
 
 If you run into a `gpg: Can't check signature: public key not found` error, see [issue 1654](https://github.com/couchbase/sync_gateway/issues/1654) for help.
 
-**Snap dependencies to manifest**
+**Bootstrap variations: start on a different commit**
 
-If you switch to a different Sync Gateway commit, for example after doing a `git pull` or a `git checkout branch`, you should re-pin (aka "snap") all of your dependencies to the versions specified in the [manifest.xml](https://github.com/couchbase/sync_gateway/blob/master/manifest/default.xml)
+To bootstrap and start with a different Sync Gateway commit:
 
-```bash
-$ ./snap-manifest.sh
+```
+$ ./bootstrap.sh -c commit-hash
 ```
 
+**Switch to a different sync gateway branch**
+
+```bash
+$ ./snap-manifest.sh sync-gateway-commit-or-branch
+```
 
 Build via go get w/ dependency pinning
 --------------------------------------

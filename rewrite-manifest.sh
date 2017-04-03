@@ -4,6 +4,8 @@
 # command with a *different* manifest, presumably before 'repo sync'
 # has been run.
 #
+# This is called from bootstrap.sh, but can also be used standalone.
+#
 # The purpose is to build from a manifest on a feature branch, for example
 # as part of validating a github pull request.
 #
