@@ -279,6 +279,10 @@ func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micr
 	return b.bucket.CouchbaseServerVersion()
 }
 
+func (b *LeakyBucket) UUID() (string, error) {
+		return b.bucket.UUID()
+}
+
 
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world

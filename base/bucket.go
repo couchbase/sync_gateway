@@ -411,6 +411,10 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 	return
 }
 
+func (bucket CouchbaseBucket) UUID() (string, error) {
+	return bucket.Bucket.UUID, nil
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket *CouchbaseBucket, err error) {
 	client, err := couchbase.ConnectWithAuth(spec.Server, spec.Auth)

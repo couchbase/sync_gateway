@@ -158,3 +158,7 @@ func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
 func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 	return b.bucket.CouchbaseServerVersion()
 }
+
+func (b *LoggingBucket) UUID() (string, error) {
+	return b.bucket.UUID()
+}

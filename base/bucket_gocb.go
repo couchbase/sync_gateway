@@ -1132,3 +1132,8 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	// https://github.com/couchbase/gocb/blob/master/bucket_crud.go#L90
 	return 0, 0, "error", fmt.Errorf("GoCB bucket does not implement CouchbaseServerVersion yet")
 }
+
+func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
+	// See https://github.com/couchbase/sync_gateway/issues/2418#issuecomment-289941131
+	return "error", fmt.Errorf("GoCB bucket does not expose UUID")
+}
