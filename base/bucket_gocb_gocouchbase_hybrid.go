@@ -71,3 +71,11 @@ func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) StartTapFeed(args sgbucket.Ta
 func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) Dump() {
 	bucket.GoCouchbaseBucket.Dump()
 }
+
+func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) UUID() (string, error) {
+	// Since the GoCB bucket doesn't have an implementation for UUID() yet, this needs to be
+	// forced to use the go-couchbase bucket
+	return bucket.GoCouchbaseBucket.UUID()
+}
+
+
