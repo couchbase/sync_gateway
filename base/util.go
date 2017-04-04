@@ -533,6 +533,10 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 		return *baseBucket.CouchbaseBucketGoCB, nil
 	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
 		return *baseBucket.CouchbaseBucketGoCB, nil
+	case *CouchbaseBucketGoCB:
+		return *baseBucket, nil
+	case CouchbaseBucketGoCB:
+		return baseBucket, nil
 	default:
 		return CouchbaseBucketGoCB{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
 	}
