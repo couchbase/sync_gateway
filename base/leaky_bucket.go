@@ -114,7 +114,7 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 }
 
 func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
-	return 1024, nil
+	return b.bucket.GetMaxVbno()
 }
 
 func (b *LeakyBucket) Refresh() error {
