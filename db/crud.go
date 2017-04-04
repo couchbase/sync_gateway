@@ -701,17 +701,11 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
 			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				cbb, errGetCbb := base.GetCouchbaseBucketFromBaseBucket(db.Bucket)
-				if errGetCbb == nil {
-					if major, _, _, err := cbb.CBSVersion(); err == nil && major >= 3 {
-						base.LogTo("CRUD+", "Optimizing write for Couchbase Server >= 3.0")
-					} else {
-						// make sure the write blocks till
-						// the new value is indexable, otherwise when a User/Role updates (using a view) it
-						// might not incorporate the effects of this change.
-						writeOpts |= sgbucket.Indexable
-					}
-				} else {
+				
+				major, _, _, err := db.Bucket.CouchbaseServerVersion()
+				if err == nil && major < 3 {
+					// If the couchbase server version is less than 3, then do an indexable write.
+					// Prior to couchbase 3, a stale=false query required an indexable write (due to race).
 					// If this update affects user/role access privileges, make sure the write blocks till
 					// the new value is indexable, otherwise when a User/Role updates (using a view) it
 					// might not incorporate the effects of this change.

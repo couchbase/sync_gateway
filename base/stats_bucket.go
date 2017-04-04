@@ -208,3 +208,15 @@ func (b *StatsBucket) Dump() {
 func (b *StatsBucket) VBHash(docID string) uint32 {
 	return b.bucket.VBHash(docID)
 }
+
+func (b *StatsBucket) GetMaxVbno() (uint16, error) {
+	return b.bucket.GetMaxVbno()
+}
+
+func (b *StatsBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+	return b.bucket.CouchbaseServerVersion()
+}
+
+func (b *StatsBucket) UUID() (string, error) {
+	return b.bucket.UUID()
+}

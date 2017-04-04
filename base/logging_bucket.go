@@ -150,3 +150,15 @@ func (b *LoggingBucket) VBHash(docID string) uint32 {
 	LogTo("Bucket", "VBHash()")
 	return b.bucket.VBHash(docID)
 }
+
+func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
+	return b.bucket.GetMaxVbno()
+}
+
+func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+	return b.bucket.CouchbaseServerVersion()
+}
+
+func (b *LoggingBucket) UUID() (string, error) {
+	return b.bucket.UUID()
+}

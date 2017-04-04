@@ -77,7 +77,10 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIn
 		return err
 	}
 
-	k.maxVbNo = base.GetMaxVbnoForBucket(k.indexReadBucket)
+	k.maxVbNo, err = k.indexReadBucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
 
 	// Make sure that the index bucket and data bucket have correct sequence parity
 	if err := k.verifyBucketSequenceParity(context); err != nil {

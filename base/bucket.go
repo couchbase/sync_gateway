@@ -377,7 +377,7 @@ func (bucket CouchbaseBucket) Dump() {
 	Warn("Dump not implemented for couchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro string, err error) {
+func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
 	if versionString == "" {
 		stats := bucket.Bucket.GetStats("")
@@ -409,6 +409,10 @@ func (bucket CouchbaseBucket) CBSVersion() (major uint64, minor uint64, micro st
 	micro = arr[2]
 
 	return
+}
+
+func (bucket CouchbaseBucket) UUID() (string, error) {
+	return bucket.Bucket.UUID, nil
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -591,34 +595,4 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 	return false
 }
 
-func GetMaxVbnoForBucket(bucket Bucket) uint16 {
 
-	// TODO: Move to sg-bucket interface (https://github.com/couchbase/sync_gateway/issues/2418)
-
-	var maxVbNo uint16 = 1024
-	var err error
-
-	switch bucket := bucket.(type) {
-	case CouchbaseBucketGoCB:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case *CouchbaseBucketGoCB:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case CouchbaseBucketGoCBGoCouchbaseHybrid:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case CouchbaseBucket:
-		maxVbNo, err = bucket.GetMaxVbno()
-	case *CouchbaseBucket:
-		maxVbNo, err = bucket.GetMaxVbno()
-	default:
-		Warn("Not a couchbase bucket - assuming walrus, setting maxVbNo=1024")
-	}
-
-	if err != nil {
-		Warn("Error trying to obtain vbucket count from cluster: %v Defaulting to 1024", err)
-	}
-
-	return maxVbNo
-
-}

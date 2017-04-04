@@ -113,6 +113,10 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
+func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
+	return b.bucket.GetMaxVbno()
+}
+
 func (b *LeakyBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
@@ -271,6 +275,15 @@ func (b *LeakyBucket) VBHash(docID string) uint32 {
 	}
 }
 
+func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+	return b.bucket.CouchbaseServerVersion()
+}
+
+func (b *LeakyBucket) UUID() (string, error) {
+		return b.bucket.UUID()
+}
+
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
@@ -335,3 +348,4 @@ func dedupeTapEvents(tapEvents []sgbucket.TapEvent) []sgbucket.TapEvent {
 func VBHash(key string, numVb int) uint32 {
 	return sgbucket.VBHash(key, uint16(numVb))
 }
+
