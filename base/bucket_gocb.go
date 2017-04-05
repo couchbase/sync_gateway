@@ -1105,6 +1105,8 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 }
 
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+	// See comments in CouchbaseBucketGoCBGoCouchbaseHybrid.StartTapFeed() for an explanation on why
+	// this is not implemented
 	LogPanic("Unimplemented method: StartTapFeed()")
 	return nil, nil
 }
