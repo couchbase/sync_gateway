@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/couchbaselabs/walrus"
 )
 
 const (
@@ -498,10 +500,10 @@ func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, baseBucket
 
 	bucket, err := GetCouchbaseBucketFromBaseBucket(baseBucket)
 	if err != nil {
-		Warn(fmt.Sprintf("Bucket is a %T not a base.CouchbaseBucket, skipping verifyBucketSequenceParity()\n", bucket))
+		Warn(fmt.Sprintf("Error type asserting base.Bucket -> CouchbaseBucket: %v.  "+
+			"Skipping VerifyBucketSequenceParity(), which checks for invalid index bucket state", err))
 		return nil
 	}
-
 	return VerifyBucketSequenceParityCouchbaseBucket(indexBucketStableClock, bucket)
 
 }
@@ -512,26 +514,27 @@ func GetCouchbaseBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucket
 		return baseBucket, nil
 	case *CouchbaseBucket:
 		return *baseBucket, nil
-	case CouchbaseBucketGoCBGoCouchbaseHybrid:
-		return *baseBucket.GoCouchbaseBucket, nil
-	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
-		return *baseBucket.GoCouchbaseBucket, nil
 	default:
-		return CouchbaseBucket{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucket.  Was type: %T", baseBucket, baseBucket)
+		return CouchbaseBucket{}, fmt.Errorf("baseBucket %v is not a CouchbaseBucket.  Was type: %T", baseBucket, baseBucket)
 	}
 }
 
 func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB, err error) {
 	switch baseBucket := baseBucket.(type) {
-	case CouchbaseBucketGoCBGoCouchbaseHybrid:
-		return *baseBucket.CouchbaseBucketGoCB, nil
-	case *CouchbaseBucketGoCBGoCouchbaseHybrid:
-		return *baseBucket.CouchbaseBucketGoCB, nil
 	case *CouchbaseBucketGoCB:
 		return *baseBucket, nil
 	case CouchbaseBucketGoCB:
 		return baseBucket, nil
 	default:
 		return CouchbaseBucketGoCB{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
+	}
+}
+
+func GetWalrusBucketFromBaseBucket(baseBucket Bucket) (bucket *walrus.Bucket, err error) {
+	switch baseBucket := baseBucket.(type) {
+	case *walrus.Bucket:
+		return baseBucket, nil
+	default:
+		return nil, fmt.Errorf("baseBucket %v was not a *Bucket.  Was type: %T", baseBucket, baseBucket)
 	}
 }

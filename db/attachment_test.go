@@ -34,7 +34,7 @@ func tojson(obj interface{}) string {
 }
 
 func TestAttachments(t *testing.T) {
-	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{}, nil)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)
@@ -104,7 +104,7 @@ func TestAttachments(t *testing.T) {
 }
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
-	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{}, nil)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)

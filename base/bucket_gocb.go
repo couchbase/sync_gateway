@@ -16,6 +16,8 @@ import (
 	"reflect"
 	"strings"
 
+	"strconv"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
@@ -26,6 +28,7 @@ var gocbExpvars *expvar.Map
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
 	MaxConcurrentBulkOps   = 35   // Max 35 concurrent bulk ops
+	MaxConcurrentViewOps   = 100  // Max concurrent view ops
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 
 	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
@@ -55,6 +58,7 @@ type CouchbaseBucketGoCB struct {
 	spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
 	singleOps    chan struct{} // Manages max concurrent single ops
 	bulkOps      chan struct{} // Manages max concurrent bulk ops
+	viewOps      chan struct{} // Manages max concurrent view ops
 }
 
 type GoCBLogger struct{}
@@ -109,10 +113,14 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, err
 	}
 
-	// initially this was using SGTranscoder for all GoCB buckets, but due to
-	// https://github.com/couchbase/sync_gateway/pull/2416#issuecomment-288882896
-	// it's only being set for hybrid buckets
-	// goCBBucket.SetTranscoder(SGTranscoder{})
+	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
+		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
+		// the proper doctype flag and then later read them as JSON, which fails because it gets back a []byte
+		// initially this was using SGTranscoder for all GoCB buckets, but due to
+		// https://github.com/couchbase/sync_gateway/pull/2416#issuecomment-288882896
+		// it's only being set for data buckets
+		goCBBucket.SetTranscoder(SGTranscoder{})
+	}
 
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
@@ -124,6 +132,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		spec,
 		make(chan struct{}, MaxConcurrentSingleOps),
 		make(chan struct{}, MaxConcurrentBulkOps),
+		make(chan struct{}, MaxConcurrentViewOps),
 	}
 
 	return bucket, err
@@ -533,10 +542,6 @@ func (bucket CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultA
 	}
 
 	return nil
-}
-
-func (bucket CouchbaseBucketGoCB) Close() {
-	bucket.Bucket.Close()
 }
 
 func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
@@ -1296,26 +1301,61 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 }
 
 func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
-	LogPanic("Unimplemented method: GetDDoc()")
+
+	bucketManager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	designDoc, err := bucketManager.GetDesignDocument(docname)
+
+	// TODO: this is of course sub-optimal to do an unnecessary marshal/unmarshal round trip.
+	// TODO: Looks like it might require changes to gocb or Sync Gateway code in order to avoid this round trip
+
+	// Serialize DesignDocument into []byte
+	designDocBytes, err := json.Marshal(designDoc)
+	if err != nil {
+		return err
+	}
+
+	// Deserialize []byte into "into" empty interface
+	if err := json.Unmarshal(designDocBytes, into); err != nil {
+		return err
+	}
+
 	return nil
+
 }
 
-func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
-
-	// NOTE: this doesn't seem to be identical in behavior with go-couchbase PutDDoc, since this returns an
-	// error if the design doc already exists, whereas go-couchbase PutDDoc handles it more gracefully.
-	// For this reason, the GoCBGoCouchbaseHybridBucket calls down into go-couchbase for it's DDoc operations.
+func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
 
 	// Get bucket manager.  Relies on existing auth settings for bucket.
 	username, password := bucket.GetBucketCredentials()
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
-		return fmt.Errorf("Unable to obtain manager for bucket %s - cannot PUT design doc %s", bucket.GetName(), docname)
+		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
 	}
 
-	sgDesignDoc, ok := value.(sgbucket.DesignDoc)
-	if !ok {
-		return fmt.Errorf("Unable to identify specified design document")
+	return manager, nil
+
+}
+
+func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
+
+	manager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	// Convert whatever we got in the value empty interface into a sgbucket.DesignDoc
+	var sgDesignDoc sgbucket.DesignDoc
+	switch typeValue := value.(type) {
+	case sgbucket.DesignDoc:
+		sgDesignDoc = typeValue
+	case *sgbucket.DesignDoc:
+		sgDesignDoc = *typeValue
+	default:
+		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
 	}
 
 	gocbDesignDoc := &gocb.DesignDocument{
@@ -1330,7 +1370,7 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 		gocbDesignDoc.Views[viewName] = gocbView
 	}
 
-	return manager.InsertDesignDocument(gocbDesignDoc)
+	return manager.UpsertDesignDocument(gocbDesignDoc)
 
 }
 
@@ -1339,28 +1379,188 @@ func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
-	LogPanic("Unimplemented method: DeleteDDoc()")
-	return nil
+
+	manager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	return manager.RemoveDesignDocument(docname)
+
 }
 
 func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-	LogPanic("Unimplemented method: View()")
-	return sgbucket.ViewResult{}, nil
+
+	// Block until there is an available concurrent view op, release on function exit
+	bucket.waitForAvailViewOp()
+	defer bucket.releaseViewOp()
+
+	viewResult := sgbucket.ViewResult{}
+	viewResult.Rows = sgbucket.ViewRows{}
+
+	viewQuery := gocb.NewViewQuery(ddoc, name)
+
+	// convert params map to these params
+	applyViewQueryOptions(viewQuery, params)
+
+	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+	if err != nil {
+		return viewResult, err
+	}
+
+	if goCbViewResult != nil {
+
+		viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
+		if gotTotalRows {
+			viewResult.TotalRows = viewResultMetrics.TotalRows()
+		} else {
+			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count may be inaccurate.")
+		}
+
+		for {
+
+			viewRow := sgbucket.ViewRow{}
+			if gotRow := goCbViewResult.Next(&viewRow); gotRow == false {
+				break
+			}
+
+			viewResult.Rows = append(viewResult.Rows, &viewRow)
+
+			// If goCbViewResult could not be type asserted to gocb.ViewResultMetrics, fallback to counting rows
+			if !gotTotalRows {
+				viewResult.TotalRows += 1
+			}
+
+		}
+
+		// Any error processing view results is returned on Close
+		err := goCbViewResult.Close()
+		if err != nil {
+			return viewResult, err
+		}
+	}
+
+	return viewResult, nil
+
 }
+
 
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-	LogPanic("Unimplemented method: ViewCustom()")
+
+	bucket.waitForAvailViewOp()
+	defer bucket.releaseViewOp()
+
+	viewQuery := gocb.NewViewQuery(ddoc, name)
+
+	// convert params map to these params
+	applyViewQueryOptions(viewQuery, params)
+
+	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+	if err != nil {
+		return err
+	}
+
+	// Define a struct to store the rows as raw bytes
+	viewResponse := struct {
+		TotalRows int               `json:"total_rows,omitempty"`
+		Rows      []json.RawMessage `json:"rows,omitempty"`
+	}{
+		TotalRows: 0,
+		Rows:      []json.RawMessage{},
+	}
+
+	if goCbViewResult != nil {
+
+		viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
+		if gotTotalRows {
+			viewResponse.TotalRows = viewResultMetrics.TotalRows()
+		} else {
+			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count may be inaccurate.")
+		}
+
+		// Loop over
+		for {
+			bytes := goCbViewResult.NextBytes()
+			if bytes == nil {
+				break
+			}
+			viewResponse.Rows = append(viewResponse.Rows, json.RawMessage(bytes))
+
+			// If goCbViewResult could not be type asserted to gocb.ViewResultMetrics, fallback to counting rows
+			if !gotTotalRows {
+				viewResponse.TotalRows += 1
+			}
+
+		}
+
+	}
+
+
+	// serialize the whole thing to a []byte
+	viewResponseBytes, err := json.Marshal(viewResponse)
+	if err != nil {
+		return err
+	}
+
+	// unmarshal into vres
+	if err := json.Unmarshal(viewResponseBytes, vres); err != nil {
+		return err
+	}
+
 	return nil
 }
 
+// This is a "better-than-nothing" version of Refresh().
+// See https://forums.couchbase.com/t/equivalent-of-go-couchbase-bucket-refresh/12498/2
 func (bucket CouchbaseBucketGoCB) Refresh() error {
-	LogPanic("Unimplemented method: Refresh()")
-	return nil
+
+	// If it's possible to call GetCouchbaseBucketGoCB without error, consider it "refreshed" and return a nil error which will cause the reconnect
+	// loop to stop.  otherwise, return an error which will cause it to keep retrying
+	// This fixes: https://github.com/couchbase/sync_gateway/issues/2423#issuecomment-294651245
+	_, err := GetCouchbaseBucketGoCB(bucket.spec)
+
+	return err
+
 }
 
+// TODO: Change to StartMutationFeed
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
-	LogPanic("Unimplemented method: StartTapFeed()")
-	return nil, nil
+	switch strings.ToLower(bucket.spec.FeedType) {
+	case DcpFeedType:
+		return StartDCP_CBDatasourceFeed(args, bucket.spec, bucket)
+
+	case DcpShardFeedType:
+
+		// TODO: refactor to share this common code or remove if not need
+
+		// CBGT initialization
+		LogTo("Feed", "Starting CBGT feed?%v", bucket.GetName())
+
+		// Create the TapEvent feed channel that will be passed back to the caller
+		eventFeed := make(chan sgbucket.TapEvent, 10)
+
+		//  - create a new SimpleFeed and pass in the eventFeed channel
+		feed := &SimpleFeed{
+			eventFeed: eventFeed,
+		}
+		return feed, nil
+
+	default:
+		return StartDCP_CBDatasourceFeed(args, bucket.spec, bucket) // TEMP Hack to default to DCP feed
+
+	}
+
+}
+
+func (bucket CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+
+	stats, seqErr := bucket.Stats("vbucket-seqno")
+	if seqErr != nil {
+		return
+	}
+
+	return GetStatsVbSeqno(stats, maxVbno, useAbsHighSeqNo)
+
 }
 
 func (bucket CouchbaseBucketGoCB) Dump() {
@@ -1388,6 +1588,146 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 }
 
 func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
+
+	// Temp workaround -- create a go-couchbase bucket just to get the UUID
 	// See https://github.com/couchbase/sync_gateway/issues/2418#issuecomment-289941131
-	return "error", fmt.Errorf("GoCB bucket does not expose UUID")
+	goCouchbaseBucket, err := GetCouchbaseBucket(bucket.spec, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return goCouchbaseBucket.UUID()
+
+}
+
+func (bucket CouchbaseBucketGoCB) Close() {
+	if err := bucket.Bucket.Close(); err != nil {
+		Warn("Error closing GoCB bucket: %v", err)
+	}
+
+}
+
+// Applies the viewquery options as specified in the params map to the viewQuery object,
+// for example stale=false, etc.
+func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) {
+
+	for optionName, optionValue := range params {
+		switch optionName {
+		case ViewQueryParamStale:
+			optionAsBool := asBool(optionValue)
+			if optionAsBool == false {
+				viewQuery.Stale(gocb.Before)
+			}
+		case ViewQueryParamReduce:
+			viewQuery.Reduce(asBool(optionValue))
+		case ViewQueryParamLimit:
+			uintVal, err := normalizeIntToUint(optionValue)
+			if err != nil {
+				Warn(fmt.Sprintf("%v", err))
+			}
+			viewQuery.Limit(uintVal)
+		case ViewQueryParamDescending:
+			if asBool(optionValue) == true {
+				viewQuery.Order(gocb.Descending)
+			}
+		case ViewQueryParamSkip:
+			uintVal, err := normalizeIntToUint(optionValue)
+			if err != nil {
+				Warn(fmt.Sprintf("%v", err))
+			}
+			viewQuery.Skip(uintVal)
+		case ViewQueryParamGroup:
+			viewQuery.Group(asBool(optionValue))
+		case ViewQueryParamGroupLevel:
+			uintVal, err := normalizeIntToUint(optionValue)
+			if err != nil {
+				Warn(fmt.Sprintf("%v", err))
+			}
+			viewQuery.GroupLevel(uintVal)
+		case ViewQueryParamKey:
+			viewQuery.Key(optionValue)
+		case ViewQueryParamKeys:
+			stringKeys := optionValue.([]string)
+			emptyInterfaceKeys := []interface{}{}
+			for _, key := range stringKeys {
+				emptyInterfaceKeys = append(emptyInterfaceKeys, key)
+			}
+			viewQuery.Keys(emptyInterfaceKeys)
+		}
+
+	}
+
+	// Range: startkey, endkey, inclusiveend
+	var startKey, endKey interface{}
+	if _, ok := params[ViewQueryParamStartKey]; ok {
+		startKey = params[ViewQueryParamStartKey]
+	}
+	if _, ok := params[ViewQueryParamEndKey]; ok {
+		endKey = params[ViewQueryParamEndKey]
+	}
+	inclusiveEnd := false
+	if _, ok := params[ViewQueryParamInclusiveEnd]; ok {
+		inclusiveEnd = asBool(params[ViewQueryParamInclusiveEnd])
+	}
+	viewQuery.Range(startKey, endKey, inclusiveEnd)
+
+	// IdRange: startKeyDocId, endKeyDocId
+	startKeyDocId := ""
+	endKeyDocId := ""
+	if _, ok := params[ViewQueryParamStartKeyDocId]; ok {
+		startKeyDocId = params[ViewQueryParamStartKeyDocId].(string)
+	}
+	if _, ok := params[ViewQueryParamEndKeyDocId]; ok {
+		endKeyDocId = params[ViewQueryParamEndKeyDocId].(string)
+	}
+	viewQuery.IdRange(startKeyDocId, endKeyDocId)
+
+}
+
+func normalizeIntToUint(value interface{}) (uint, error) {
+	switch typeValue := value.(type) {
+	case uint:
+		return typeValue, nil
+	case int:
+		return uint(typeValue), nil
+	case string:
+		i, err := strconv.Atoi(typeValue)
+		return uint(i), err
+	default:
+		return uint(0), fmt.Errorf("Unable to convert %v (%T) -> uint.", value, value)
+	}
+}
+
+func asBool(value interface{}) bool {
+	switch typeValue := value.(type) {
+	case string:
+		switch typeValue {
+		case "true":
+			return true
+		case "false":
+			return false
+		default:
+			Warn("asBool called with unknown value: %v.  defaulting to false", typeValue)
+			return false
+
+		}
+	case bool:
+		return typeValue
+	default:
+		Warn("asBool called with unknown type: %T.  defaulting to false", typeValue)
+		return false
+	}
+
+}
+
+// This prevents Sync Gateway from having too many outstanding concurrent view queries against Couchbase Server
+func (bucket CouchbaseBucketGoCB) waitForAvailViewOp() {
+	bucket.viewOps <- struct{}{}
+	gocbExpvars.Add("ViewOps", 1)
+}
+
+
+func (bucket CouchbaseBucketGoCB) releaseViewOp() {
+	<-bucket.viewOps
+	gocbExpvars.Add("ViewOps", -1)
 }

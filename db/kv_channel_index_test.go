@@ -15,7 +15,7 @@ func testPartitionMap() *base.IndexPartitions {
 }
 
 func testContextAndChannelIndex(channelName string) (*DatabaseContext, *KvChannelIndex) {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{}, nil)
 	// TODO: don't use the base bucket as the index bucket in tests
 	channelIndex := NewKvChannelIndex(channelName, context.Bucket, testPartitionMap(), testOnChange)
 	return context, channelIndex
@@ -24,7 +24,7 @@ func testContextAndChannelIndex(channelName string) (*DatabaseContext, *KvChanne
 func testIndexBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.DefaultDriverForBucketType[base.IndexBucket],
+		CouchbaseDriver: base.ChooseCouchbaseDriver(base.IndexBucket, base.DcpFeedType),
 		BucketName:      "index_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)

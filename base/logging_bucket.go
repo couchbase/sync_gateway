@@ -189,3 +189,7 @@ func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, mi
 func (b *LoggingBucket) UUID() (string, error) {
 	return b.bucket.UUID()
 }
+
+func (b *LoggingBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
+}

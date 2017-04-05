@@ -309,6 +309,10 @@ func (b *LeakyBucket) CloseAndDelete() error {
 	return nil
 }
 
+func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
+}
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.

@@ -32,7 +32,7 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 }
 
 func testBucketContext() *DatabaseContext {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{}, nil)
 	return context
 }
 

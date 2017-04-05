@@ -54,7 +54,7 @@ type restTester struct {
 
 func (rt *restTester) bucket() base.Bucket {
 	if rt._bucket == nil {
-		server := "walrus:"
+		server := base.UnitTestUrl()
 		bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
 		gBucketCounter++
 

@@ -87,9 +87,9 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 	maxRetries := kMaxIncrRetries
 
 	// type assertion to hybrid bucket
-	_, ok := s.bucket.(*base.CouchbaseBucketGoCBGoCouchbaseHybrid)
+	_, ok := s.bucket.(*base.CouchbaseBucketGoCB)
 	if ok {
-		// CouchbaseBucketGoCBGoCouchbaseHybrid already has it's own retry mechanism, so short-circuit
+		// CouchbaseBucketGoCB already has it's own retry mechanism, so short-circuit
 		// retry mechanism in incrWithRetry
 		maxRetries = 1
 	}
