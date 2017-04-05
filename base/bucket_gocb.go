@@ -1076,7 +1076,7 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 		gocbDesignDoc.Views[viewName] = gocbView
 	}
 
-	return manager.InsertDesignDocument(gocbDesignDoc)
+	return manager.UpsertDesignDocument(gocbDesignDoc)
 
 }
 
