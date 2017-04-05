@@ -2,7 +2,8 @@ package base
 
 import "github.com/couchbase/sg-bucket"
 
-// Defaults to gocb bucket, falls back to go-couchbase bucket
+// Defaults to gocb bucket, but uses a go-couchbase bucket for mutation feed functionality.
+// See comments on StartTapFeed for rationale
 type CouchbaseBucketGoCBGoCouchbaseHybrid struct {
 
 	// Embedded struct so that all calls will call down to GoCB bucket by default
