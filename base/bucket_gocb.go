@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
+	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -1048,6 +1049,8 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
 
+	log.Printf("gocb putDDoc called with docname: %v", docname)
+
 	// NOTE: this doesn't seem to be identical in behavior with go-couchbase PutDDoc, since this returns an
 	// error if the design doc already exists, whereas go-couchbase PutDDoc handles it more gracefully.
 	// For this reason, the GoCBGoCouchbaseHybridBucket calls down into go-couchbase for it's DDoc operations.
@@ -1090,12 +1093,152 @@ func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 }
 
 func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-	LogPanic("Unimplemented method: View()")
-	return sgbucket.ViewResult{}, nil
+
+	/*
+	// Result of a view query.
+type ViewResult struct {
+	TotalRows int         `json:"total_rows"`
+	Rows      ViewRows    `json:"rows"`
+	Errors    []ViewError `json:"errors,omitempty"`
+	Collator  JSONCollator
 }
 
+type ViewRows []*ViewRow
+
+// A single result row from a view query.
+type ViewRow struct {
+	ID    string       `json:"id"`
+	Key   interface{}  `json:"key"`
+	Value interface{}  `json:"value"`
+	Doc   *interface{} `json:"doc,omitempty"`
+}
+
+	 */
+
+	viewResult := sgbucket.ViewResult{}
+	viewResult.Rows = sgbucket.ViewRows{}
+
+	viewQuery := gocb.NewViewQuery(ddoc, name)
+
+	// convert params map to these params
+	applyViewQueryOptions(viewQuery, params)
+
+	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+	if err != nil {
+		return viewResult, err
+	}
+
+	if goCbViewResult != nil {
+		var vrow sgbucket.ViewRow
+		for goCbViewResult.Next(&vrow) {
+			viewResult.Rows = append(viewResult.Rows, &vrow)
+			viewResult.TotalRows += 1
+		}
+		// Any error processing view results is returned on Close
+		err := goCbViewResult.Close()
+		if err != nil {
+			return viewResult, err
+		}
+	}
+
+	return viewResult, nil
+
+}
+
+
+
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-	LogPanic("Unimplemented method: ViewCustom()")
+
+	/*
+	go-couchbase usage:
+
+	var vres struct {
+		Rows []struct {
+			Value channels.TimedSet
+		}
+	}
+
+	opts := map[string]interface{}{"stale": false, "key": key}
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
+		return nil, verr
+	}
+	channelSet := channels.TimedSet{}
+	for _, row := range vres.Rows {
+		channelSet.Add(row.Value)
+	}
+
+	 */
+
+
+	/*
+	go-couchbase implementation:
+
+	vres interface{}) (err error) {
+	if SlowServerCallWarningThreshold > 0 {
+		defer slowLog(time.Now(), "call to ViewCustom(%q, %q)", ddoc, name)
+	}
+
+	if ViewCallback != nil {
+		defer func(t time.Time) { ViewCallback(ddoc, name, t, err) }(time.Now())
+	}
+
+	u, err := b.ViewURL(ddoc, name, params)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return err
+	}
+	maybeAddAuth(req, b.authHandler())
+
+	res, err := doHTTPRequest(req)
+	if err != nil {
+		return fmt.Errorf("error starting view req at %v: %v", u, err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		bod := make([]byte, 512)
+		l, _ := res.Body.Read(bod)
+		return fmt.Errorf("error executing view req at %v: %v - %s",
+			u, res.Status, bod[:l])
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err := json.Unmarshal(body, vres); err != nil {
+		return nil
+	}
+
+	return nil
+
+	 */
+
+	viewQuery := gocb.NewViewQuery(ddoc, name)
+	results, err := bucket.ExecuteViewQuery(viewQuery)
+	if err != nil {
+		return err
+	}
+	log.Printf("results: %v", results)
+
+	// TODO
+	//if results != nil {
+	//	var vrow struct {
+	//		Value string
+	//	}
+	//	for results.Next(&vrow) {
+	//		channelNames = append(channelNames, vrow.Value)
+	//		rollbackViewRows.Add(int64(1))
+	//	}
+	//	// Any error processing view results is returned on Close
+	//	err := results.Close()
+	//	if err != nil {
+	//		return channelNames, err
+	//	}
+	//}
+
+
 	return nil
 }
 
@@ -1139,3 +1282,41 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 	// See https://github.com/couchbase/sync_gateway/issues/2418#issuecomment-289941131
 	return "error", fmt.Errorf("GoCB bucket does not expose UUID")
 }
+
+// Applies the viewquery options as specified in the params map to the viewQuery object,
+// for example stale=false, etc.
+func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) {
+
+	/*
+
+	Examples:
+
+	opts := Body{"stale": false, "reduce": reduce}
+
+	opts := Body{"stale": false}
+	if docType != "" {
+		opts["startkey"] = "_sync:" + docType + ":"
+		opts["endkey"] = "_sync:" + docType + "~"
+		opts["inclusive_end"] = false
+	}
+
+	TODO:
+
+	viewQuery.Range(startKey, endKey, true)
+
+	 */
+
+
+	for optionName, optionValue := range params {
+		switch optionName {
+		case "stale":
+			if optionValue == false {
+				viewQuery.Stale(gocb.Before)
+			}
+			// TODO: what should this do for stale=true or if the "stale" option name missing from params?
+		}
+
+	}
+
+}
+
