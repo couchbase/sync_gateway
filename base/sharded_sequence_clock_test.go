@@ -66,6 +66,13 @@ func TestShardedSequenceClock(t *testing.T) {
 func TestShardedSequenceClockCasError(t *testing.T) {
 
 	testBucket := testIndexBucket()
+
+	_, err := GetWalrusBucketFromBaseBucket(testBucket)
+	if err != nil {
+		t.Skip("TestShardedSequenceClockCasError only works against Walrus buckets")
+		return
+	}
+
 	indexPartitions := GenerateTestIndexPartitions(maxVbNo, numShards)
 	//defer testBucket.Close()
 	shardedClock1 := NewShardedClockWithPartitions("myClock", indexPartitions, testBucket)
