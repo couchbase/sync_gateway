@@ -413,7 +413,7 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 
 // Updates or creates a document.
 // The new body's "_rev" property must match the current revision's, if any.
-func (db *Database) Put(docid string, body Body) (string, error) {
+func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body["_rev"].(string)
 	generation, _ := ParseRevID(matchRev)
@@ -516,13 +516,13 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (string, error) {
+func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	var newRevID, parentRevID string
+	var parentRevID string
 	var doc *document
 	var body Body
 	var changedChannels base.Set
@@ -532,7 +532,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 	var oldBodyJSON string
 	var newAttachments AttachmentData
 
-	err := db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+	err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 			return
