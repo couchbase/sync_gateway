@@ -17,9 +17,9 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocbcore.v2"
 	"log"
 	"encoding/json"
+	"gopkg.in/couchbase/gocbcore.v5"
 )
 
 var gocbExpvars *expvar.Map

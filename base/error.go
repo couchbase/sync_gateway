@@ -16,7 +16,7 @@ import (
 
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocbcore.v2"
+	"gopkg.in/couchbase/gocbcore.v5"
 )
 
 // Simple error implementation wrapping an HTTP response status.
