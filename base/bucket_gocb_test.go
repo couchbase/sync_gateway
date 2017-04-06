@@ -15,9 +15,9 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbase/gocb"
 	"reflect"
 )
 
@@ -28,8 +28,8 @@ import (
 
 func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
-		Server:     UnitTestUrl(),
-		BucketName: "bucket-1",
+		Server:          UnitTestUrl(),
+		BucketName:      "bucket-1",
 		CouchbaseDriver: DefaultDriverForBucketType[DataBucket],
 	}
 	bucket, err := GetCouchbaseBucketGoCB(spec)
@@ -537,31 +537,42 @@ func TestCreateBatchesKeys(t *testing.T) {
 
 func TestApplyViewQueryOptions(t *testing.T) {
 
-	/*
+	// ------------------- Inline Helper functions ---------------------------
 
-Examples:
+	// Given a string "foo", return ""foo"" with an extra set of double quotes added
+	// This is to be in line with gocb's behavior of wrapping these startkey, endkey in an extra set of double quotes
+	wrapInDoubleQuotes := func(original string) string {
+		return fmt.Sprintf("\"%v\"", original)
+	}
 
-opts := Body{"stale": false, "reduce": reduce}
+	// The gocb viewquery options map is a url.Values map where each key points to a slice of values.
+	// This helper function makes it easier to get the first value out of that array for a given key
+	getStringFromReflectUrlValuesMap := func(key reflect.Value, reflectMap reflect.Value) string {
+		mapVal := reflectMap.MapIndex(key)
+		return mapVal.Index(0).String()
 
-opts := Body{"stale": false}
-if docType != "" {
-	opts["startkey"] = "_sync:" + docType + ":"
-	opts["endkey"] = "_sync:" + docType + "~"
-	opts["inclusive_end"] = false
-}
+	}
 
-TODO:
+	// Helper function to extract a particular reflection map key from a list of reflection map keys
+	findStringValue := func(values []reflect.Value, valueToFind string) (foundValue reflect.Value, found bool) {
+		for _, value := range values {
+			if value.Kind() == reflect.String {
+				if value.String() == valueToFind {
+					return value, true
+				}
+			}
+		}
+		return reflect.Value{}, false
+	}
 
-viewQuery.Range(startKey, endKey, true)
-
- */
+	// ------------------- Test Code ---------------------------
 
 	// View query params map (go-couchbase/walrus style)
 	params := map[string]interface{}{
-		ViewQueryParamStale: false,
-		ViewQueryParamReduce: true,
-		ViewQueryParamStartKey: "foo",
-		ViewQueryParamEndKey: "bar",
+		ViewQueryParamStale:        false,
+		ViewQueryParamReduce:       true,
+		ViewQueryParamStartKey:     "foo",
+		ViewQueryParamEndKey:       "bar",
 		ViewQueryParamInclusiveEnd: true,
 	}
 
@@ -582,58 +593,32 @@ viewQuery.Range(startKey, endKey, true)
 	staleMapKey, found := findStringValue(mapKeys, ViewQueryParamStale)
 	assert.True(t, found)
 	staleMapVal := getStringFromReflectUrlValuesMap(staleMapKey, optionsReflectedVal)
-	assert.Equals(t,staleMapVal, "false")
+	assert.Equals(t, staleMapVal, "false")
 
 	// Find the "reduce" key, and make sure it contains "true"
 	reduceMapKey, found := findStringValue(mapKeys, ViewQueryParamReduce)
 	assert.True(t, found)
 	reduceMapVal := getStringFromReflectUrlValuesMap(reduceMapKey, optionsReflectedVal)
-	assert.Equals(t,reduceMapVal, "true")
+	assert.Equals(t, reduceMapVal, "true")
 
 	// Find the "startkey" key, and make sure it contains "foo"
 	startKeyMapKey, found := findStringValue(mapKeys, ViewQueryParamStartKey)
 	assert.True(t, found)
 	startKeyMapVal := getStringFromReflectUrlValuesMap(startKeyMapKey, optionsReflectedVal)
-	assert.Equals(t,startKeyMapVal, wrapInDoubleQuotes("foo"))
+	assert.Equals(t, startKeyMapVal, wrapInDoubleQuotes("foo"))
 
 	// Find the "endkey" key, and make sure it contains "bar"
 	endKeyMapKey, found := findStringValue(mapKeys, ViewQueryParamEndKey)
 	assert.True(t, found)
 	endKeyMapVal := getStringFromReflectUrlValuesMap(endKeyMapKey, optionsReflectedVal)
-	assert.Equals(t,endKeyMapVal, wrapInDoubleQuotes("bar"))
+	assert.Equals(t, endKeyMapVal, wrapInDoubleQuotes("bar"))
 
 	// Find the "inclusive_end" key, and make sure it contains "bar"
 	inclusiveEndMapKey, found := findStringValue(mapKeys, ViewQueryParamInclusiveEnd)
 	assert.True(t, found)
 	inclusiveEndMapVal := getStringFromReflectUrlValuesMap(inclusiveEndMapKey, optionsReflectedVal)
-	assert.Equals(t,inclusiveEndMapVal, "true")
-
-
-
+	assert.Equals(t, inclusiveEndMapVal, "true")
 
 }
 
-func findStringValue(values []reflect.Value, valueToFind string) (foundValue reflect.Value, found bool) {
-	for _, value := range values {
-		if value.Kind() == reflect.String {
-			if value.String() == valueToFind {
-				return value, true
-			}
-		}
-	}
-	return reflect.Value{}, false
-}
 
-// The gocb viewquery options map is a url.Values map where each key points to a slice of values.
-// This helper function makes it easier to get the first value out of that array for a given key
-func getStringFromReflectUrlValuesMap(key reflect.Value, reflectMap reflect.Value) string {
-	mapVal := reflectMap.MapIndex(key)
-	return mapVal.Index(0).String()
-
-}
-
-// Given a string "foo", return ""foo"" with an extra set of double quotes added
-// This is to be in line with gocb's behavior of wrapping these startkey, endkey in an extra set of double quotes
-func wrapInDoubleQuotes(original string) string {
-	return fmt.Sprintf("\"%v\"", original)
-}
