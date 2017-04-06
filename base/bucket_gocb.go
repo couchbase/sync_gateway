@@ -19,6 +19,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
 	"log"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 var gocbExpvars *expvar.Map
@@ -1130,10 +1131,13 @@ type ViewRow struct {
 
 	if goCbViewResult != nil {
 		var vrow sgbucket.ViewRow
+
+		// Iterate over view results
 		for goCbViewResult.Next(&vrow) {
 			viewResult.Rows = append(viewResult.Rows, &vrow)
 			viewResult.TotalRows += 1
 		}
+
 		// Any error processing view results is returned on Close
 		err := goCbViewResult.Close()
 		if err != nil {
@@ -1146,6 +1150,31 @@ type ViewRow struct {
 }
 
 
+func CallViewCustom2 {
+
+	things := make(channels.TimedSet{}, rowCount)
+
+
+	ViewCustom2(..., things)
+
+
+
+}
+
+func vresRowFactory() interface{} {
+	return channels.TimedSet{}
+
+}
+
+func (bucket CouchbaseBucketGoCB) ViewCustom3(ddoc, name string, params map[string]interface{}, vresRowFactory) (viewResultRows []interface{}, error) {
+
+
+}
+
+func (bucket CouchbaseBucketGoCB) ViewCustom2(ddoc, name string, params map[string]interface{}, vres []interface{}) error {
+
+
+}
 
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 
