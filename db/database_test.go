@@ -890,18 +890,16 @@ func TestQueryAllDocs(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	viewResult, err := db.queryAllDocs(false)
 	assert.True(t, err == nil)
-	log.Printf("viewResult.TotalRows: %v", viewResult.TotalRows)
 	initialTotalRows := viewResult.TotalRows
 	assert.True(t, len(viewResult.Rows) == initialTotalRows)
 
 	// add some docs
 	docId := base.CreateUUID()
-	newRevId, err := db.Put(docId,  Body{"val": "one"} )
+	_, err = db.Put(docId,  Body{"val": "one"} )
 	if err != nil {
 		log.Printf("error putting doc: %v", err)
 	}
 	assert.True(t, err == nil)
-	log.Printf("newRevId: %+v", newRevId)
 
 	// Workaround race condition where queryAllDocs doesn't return the doc we just added
 	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
@@ -924,12 +922,11 @@ func TestViewCustom(t *testing.T) {
 
 	// add some docs
 	docId := base.CreateUUID()
-	newRevId, err := db.Put(docId,  Body{"val": "one"} )
+	_, err := db.Put(docId,  Body{"val": "one"} )
 	if err != nil {
 		log.Printf("error putting doc: %v", err)
 	}
 	assert.True(t, err == nil)
-	log.Printf("newRevId: %+v", newRevId)
 
 	// Workaround race condition where queryAllDocs doesn't return the doc we just added
 	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
@@ -937,12 +934,20 @@ func TestViewCustom(t *testing.T) {
 	// TODO: convert this to be event based when receiving an event over the mutation feed
 	time.Sleep(time.Second * 1)
 
-	// query all docs using ViewCustom query.  the doc added earlier should be in results
+	// query all docs using ViewCustom query.
 	opts := Body{"stale": false, "reduce": false}
 	viewResult := sgbucket.ViewResult{}
-	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, viewResult)
+	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, &viewResult)
 	assert.True(t, errViewCustom == nil)
-	log.Printf("viewResult: %+v", viewResult)
+
+	// assert that the doc added earlier is in the results
+	foundDoc := false
+	for _, viewRow := range viewResult.Rows {
+		if viewRow.ID == docId {
+			foundDoc = true
+		}
+	}
+	assert.True(t, foundDoc)
 
 }
 

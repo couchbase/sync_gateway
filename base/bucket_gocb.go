@@ -1183,6 +1183,9 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	for  {
 		bytes := goCbViewResult.NextBytes()
+		if bytes == nil {
+			break
+		}
 		viewResponse.Rows = append(viewResponse.Rows, json.RawMessage(bytes))
 		viewResponse.TotalRows += 1
 	}
