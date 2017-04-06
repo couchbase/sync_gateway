@@ -17,6 +17,8 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/gocb"
+	"reflect"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
@@ -531,4 +533,57 @@ func TestCreateBatchesKeys(t *testing.T) {
 	assert.Equals(t, batches[2][0], "five")
 	assert.Equals(t, batches[2][1], "six")
 	assert.Equals(t, batches[3][0], "seven")
+}
+
+func TestApplyViewQueryOptions(t *testing.T) {
+
+	// View query params map (go-couchbase/walrus style)
+	params := map[string]interface{}{ViewQueryParamStale: false, ViewQueryParamReduce: true}
+
+	// Create a new viewquery
+	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
+
+	// Call applyViewQueryOptions (method being tested) which modifies viewQuery according to params
+	applyViewQueryOptions(viewQuery, params)
+
+	// Use reflection to get a handle on the viewquery options (unexported)
+	viewQueryReflectedVal := reflect.ValueOf(*viewQuery)
+	optionsReflectedVal := viewQueryReflectedVal.FieldByName("options")
+
+	// Get all the view query option keys
+	mapKeys := optionsReflectedVal.MapKeys()
+
+	// Find the "stale" key, and make sure it contains "false"
+	staleMapKey, found := findStringValue(mapKeys, ViewQueryParamStale)
+	assert.True(t, found)
+	staleMapVal := getStringFromReflectUrlValuesMap(staleMapKey, optionsReflectedVal)
+	assert.Equals(t,staleMapVal, "false")
+
+	// Find the "reduce" key, and make sure it contains "true"
+	reduceMapKey, found := findStringValue(mapKeys, ViewQueryParamReduce)
+	assert.True(t, found)
+	reduceMapVal := getStringFromReflectUrlValuesMap(reduceMapKey, optionsReflectedVal)
+	assert.Equals(t,reduceMapVal, "true")
+
+
+
+}
+
+func findStringValue(values []reflect.Value, valueToFind string) (foundValue reflect.Value, found bool) {
+	for _, value := range values {
+		if value.Kind() == reflect.String {
+			if value.String() == valueToFind {
+				return value, true
+			}
+		}
+	}
+	return reflect.Value{}, false
+}
+
+// The gocb viewquery options map is a url.Values map where each key points to a slice of values.
+// This helper function makes it easier to get the first value out of that array for a given key
+func getStringFromReflectUrlValuesMap(key reflect.Value, reflectMap reflect.Value) string {
+	mapVal := reflectMap.MapIndex(key)
+	return mapVal.Index(0).String()
+
 }

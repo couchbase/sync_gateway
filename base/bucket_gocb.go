@@ -1095,27 +1095,6 @@ func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 
 func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
-	/*
-	// Result of a view query.
-type ViewResult struct {
-	TotalRows int         `json:"total_rows"`
-	Rows      ViewRows    `json:"rows"`
-	Errors    []ViewError `json:"errors,omitempty"`
-	Collator  JSONCollator
-}
-
-type ViewRows []*ViewRow
-
-// A single result row from a view query.
-type ViewRow struct {
-	ID    string       `json:"id"`
-	Key   interface{}  `json:"key"`
-	Value interface{}  `json:"value"`
-	Doc   *interface{} `json:"doc,omitempty"`
-}
-
-	 */
-
 	viewResult := sgbucket.ViewResult{}
 	viewResult.Rows = sgbucket.ViewRows{}
 
@@ -1278,11 +1257,14 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 
 	for optionName, optionValue := range params {
 		switch optionName {
-		case "stale":
-			if optionValue == false {
+		case ViewQueryParamStale:
+			if optionValue.(bool) == false {
 				viewQuery.Stale(gocb.Before)
 			}
 			// TODO: what should this do for stale=true or if the "stale" option name missing from params?
+			// TODO: viewquery.Range() for startKey, endKey
+		case ViewQueryParamReduce:
+			viewQuery.Reduce(optionValue.(bool))
 		}
 
 	}

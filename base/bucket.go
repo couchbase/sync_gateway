@@ -42,6 +42,11 @@ const (
 	IndexBucket
 )
 
+const (
+	ViewQueryParamStale = "stale"
+	ViewQueryParamReduce = "reduce"
+)
+
 var (
 	DefaultDriverForBucketType = map[CouchbaseBucketType]CouchbaseDriver{
 		DataBucket: GoCBGoCouchbaseHybrid,
