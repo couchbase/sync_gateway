@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto/underscore"
+	"github.com/couchbase/sg-bucket"
 )
 
 func init() {
@@ -914,8 +915,38 @@ func TestQueryAllDocs(t *testing.T) {
 	log.Printf("viewResult.TotalRows: %v", viewResult.TotalRows)
 	assert.True(t, viewResult.TotalRows == (initialTotalRows + 1))
 
+}
+
+func TestViewCustom(t *testing.T) {
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// add some docs
+	docId := base.CreateUUID()
+	newRevId, err := db.Put(docId,  Body{"val": "one"} )
+	if err != nil {
+		log.Printf("error putting doc: %v", err)
+	}
+	assert.True(t, err == nil)
+	log.Printf("newRevId: %+v", newRevId)
+
+	// Workaround race condition where queryAllDocs doesn't return the doc we just added
+	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
+	// TODO: is needed because there might be a race between the write and when it's indexed.
+	// TODO: convert this to be event based when receiving an event over the mutation feed
+	time.Sleep(time.Second * 1)
+
+	// query all docs using ViewCustom query.  the doc added earlier should be in results
+	opts := Body{"stale": false, "reduce": false}
+	viewResult := sgbucket.ViewResult{}
+	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, viewResult)
+	assert.True(t, errViewCustom == nil)
+	log.Printf("viewResult: %+v", viewResult)
 
 }
+
+
 
 //////// BENCHMARKS
 

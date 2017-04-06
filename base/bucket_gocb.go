@@ -19,7 +19,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v2"
 	"log"
-	"github.com/couchbase/sync_gateway/channels"
+	"encoding/json"
 )
 
 var gocbExpvars *expvar.Map
@@ -1150,33 +1150,55 @@ type ViewRow struct {
 }
 
 
-func CallViewCustom2 {
-
-	things := make(channels.TimedSet{}, rowCount)
-
-
-	ViewCustom2(..., things)
-
-
-
-}
-
-func vresRowFactory() interface{} {
-	return channels.TimedSet{}
-
-}
-
-func (bucket CouchbaseBucketGoCB) ViewCustom3(ddoc, name string, params map[string]interface{}, vresRowFactory) (viewResultRows []interface{}, error) {
-
-
-}
-
-func (bucket CouchbaseBucketGoCB) ViewCustom2(ddoc, name string, params map[string]interface{}, vres []interface{}) error {
-
-
-}
-
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
+
+	// Call gocb ExecuteViewQuery
+	// If error, return error
+	// Otherwise
+	// Create a struct:
+	//type viewResponse struct {
+	//	TotalRows int               `json:"total_rows,omitempty"`
+	//	Rows      []json.RawMessage `json:"rows,omitempty"`
+	//}
+	// serialize the whole thing to a []byte
+	// unmarshal into vres
+
+	viewQuery := gocb.NewViewQuery(ddoc, name)
+
+	// convert params map to these params
+	applyViewQueryOptions(viewQuery, params)
+
+	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+	if err != nil {
+		return err
+	}
+
+	viewResponse := struct {
+		TotalRows int               `json:"total_rows,omitempty"`
+		Rows      []json.RawMessage `json:"rows,omitempty"`
+	}{
+		TotalRows: 0,
+		Rows: []json.RawMessage{},
+	}
+
+	for  {
+		bytes := goCbViewResult.NextBytes()
+		viewResponse.Rows = append(viewResponse.Rows, json.RawMessage(bytes))
+		viewResponse.TotalRows += 1
+	}
+
+	// serialize the whole thing to a []byte
+	viewResponseBytes, err := json.Marshal(viewResponse)
+	if err != nil {
+		return err
+	}
+
+	// unmarshal into vres
+	if err := json.Unmarshal(viewResponseBytes, vres); err != nil {
+		return err
+	}
+
+	return nil
 
 	/*
 	go-couchbase usage:
@@ -1244,12 +1266,7 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	 */
 
-	viewQuery := gocb.NewViewQuery(ddoc, name)
-	results, err := bucket.ExecuteViewQuery(viewQuery)
-	if err != nil {
-		return err
-	}
-	log.Printf("results: %v", results)
+
 
 	// TODO
 	//if results != nil {
@@ -1312,8 +1329,16 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 	return "error", fmt.Errorf("GoCB bucket does not expose UUID")
 }
 
+func (bucket CouchbaseBucketGoCB) Close() {
+	if err := bucket.Bucket.Close(); err != nil {
+		Warn("Error closing GoCB bucket: %v", err)
+	}
+
+}
+
 // Applies the viewquery options as specified in the params map to the viewQuery object,
 // for example stale=false, etc.
+// TODO: comprehensive unit test
 func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) {
 
 	/*
