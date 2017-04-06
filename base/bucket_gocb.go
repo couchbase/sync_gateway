@@ -1135,6 +1135,10 @@ type ViewRow struct {
 		// Iterate over view results
 		for goCbViewResult.Next(&vrow) {
 			viewResult.Rows = append(viewResult.Rows, &vrow)
+
+			// TODO: according to the docs for totalRows() on https://developer.couchbase.com/documentation/server/4.0/sdks/java-2.2/querying-views.html
+			// "The total number of rows in the index can be greater than the number of rows() returned."
+			// So I believe this is incorrect.  See https://forums.couchbase.com/t/should-totalrows-be-exposed-in-viewresults/12398
 			viewResult.TotalRows += 1
 		}
 
@@ -1152,17 +1156,6 @@ type ViewRow struct {
 
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 
-	// Call gocb ExecuteViewQuery
-	// If error, return error
-	// Otherwise
-	// Create a struct:
-	//type viewResponse struct {
-	//	TotalRows int               `json:"total_rows,omitempty"`
-	//	Rows      []json.RawMessage `json:"rows,omitempty"`
-	//}
-	// serialize the whole thing to a []byte
-	// unmarshal into vres
-
 	viewQuery := gocb.NewViewQuery(ddoc, name)
 
 	// convert params map to these params
@@ -1173,6 +1166,7 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		return err
 	}
 
+	// Define a struct to store the rows as raw bytes
 	viewResponse := struct {
 		TotalRows int               `json:"total_rows,omitempty"`
 		Rows      []json.RawMessage `json:"rows,omitempty"`
@@ -1181,12 +1175,17 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		Rows: []json.RawMessage{},
 	}
 
+	// Loop over
 	for  {
 		bytes := goCbViewResult.NextBytes()
 		if bytes == nil {
 			break
 		}
 		viewResponse.Rows = append(viewResponse.Rows, json.RawMessage(bytes))
+
+		// TODO: according to the docs for totalRows() on https://developer.couchbase.com/documentation/server/4.0/sdks/java-2.2/querying-views.html
+		// "The total number of rows in the index can be greater than the number of rows() returned."
+		// So I believe this is incorrect.  See https://forums.couchbase.com/t/should-totalrows-be-exposed-in-viewresults/12398
 		viewResponse.TotalRows += 1
 	}
 
@@ -1200,93 +1199,6 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	if err := json.Unmarshal(viewResponseBytes, vres); err != nil {
 		return err
 	}
-
-	return nil
-
-	/*
-	go-couchbase usage:
-
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
-	}
-
-	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
-		return nil, verr
-	}
-	channelSet := channels.TimedSet{}
-	for _, row := range vres.Rows {
-		channelSet.Add(row.Value)
-	}
-
-	 */
-
-
-	/*
-	go-couchbase implementation:
-
-	vres interface{}) (err error) {
-	if SlowServerCallWarningThreshold > 0 {
-		defer slowLog(time.Now(), "call to ViewCustom(%q, %q)", ddoc, name)
-	}
-
-	if ViewCallback != nil {
-		defer func(t time.Time) { ViewCallback(ddoc, name, t, err) }(time.Now())
-	}
-
-	u, err := b.ViewURL(ddoc, name, params)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("GET", u, nil)
-	if err != nil {
-		return err
-	}
-	maybeAddAuth(req, b.authHandler())
-
-	res, err := doHTTPRequest(req)
-	if err != nil {
-		return fmt.Errorf("error starting view req at %v: %v", u, err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != 200 {
-		bod := make([]byte, 512)
-		l, _ := res.Body.Read(bod)
-		return fmt.Errorf("error executing view req at %v: %v - %s",
-			u, res.Status, bod[:l])
-	}
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err := json.Unmarshal(body, vres); err != nil {
-		return nil
-	}
-
-	return nil
-
-	 */
-
-
-
-	// TODO
-	//if results != nil {
-	//	var vrow struct {
-	//		Value string
-	//	}
-	//	for results.Next(&vrow) {
-	//		channelNames = append(channelNames, vrow.Value)
-	//		rollbackViewRows.Add(int64(1))
-	//	}
-	//	// Any error processing view results is returned on Close
-	//	err := results.Close()
-	//	if err != nil {
-	//		return channelNames, err
-	//	}
-	//}
-
 
 	return nil
 }
