@@ -537,8 +537,33 @@ func TestCreateBatchesKeys(t *testing.T) {
 
 func TestApplyViewQueryOptions(t *testing.T) {
 
+	/*
+
+Examples:
+
+opts := Body{"stale": false, "reduce": reduce}
+
+opts := Body{"stale": false}
+if docType != "" {
+	opts["startkey"] = "_sync:" + docType + ":"
+	opts["endkey"] = "_sync:" + docType + "~"
+	opts["inclusive_end"] = false
+}
+
+TODO:
+
+viewQuery.Range(startKey, endKey, true)
+
+ */
+
 	// View query params map (go-couchbase/walrus style)
-	params := map[string]interface{}{ViewQueryParamStale: false, ViewQueryParamReduce: true}
+	params := map[string]interface{}{
+		ViewQueryParamStale: false,
+		ViewQueryParamReduce: true,
+		ViewQueryParamStartKey: "foo",
+		ViewQueryParamEndKey: "bar",
+		ViewQueryParamInclusiveEnd: true,
+	}
 
 	// Create a new viewquery
 	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
@@ -565,6 +590,25 @@ func TestApplyViewQueryOptions(t *testing.T) {
 	reduceMapVal := getStringFromReflectUrlValuesMap(reduceMapKey, optionsReflectedVal)
 	assert.Equals(t,reduceMapVal, "true")
 
+	// Find the "startkey" key, and make sure it contains "foo"
+	startKeyMapKey, found := findStringValue(mapKeys, ViewQueryParamStartKey)
+	assert.True(t, found)
+	startKeyMapVal := getStringFromReflectUrlValuesMap(startKeyMapKey, optionsReflectedVal)
+	assert.Equals(t,startKeyMapVal, wrapInDoubleQuotes("foo"))
+
+	// Find the "endkey" key, and make sure it contains "bar"
+	endKeyMapKey, found := findStringValue(mapKeys, ViewQueryParamEndKey)
+	assert.True(t, found)
+	endKeyMapVal := getStringFromReflectUrlValuesMap(endKeyMapKey, optionsReflectedVal)
+	assert.Equals(t,endKeyMapVal, wrapInDoubleQuotes("bar"))
+
+	// Find the "inclusive_end" key, and make sure it contains "bar"
+	inclusiveEndMapKey, found := findStringValue(mapKeys, ViewQueryParamInclusiveEnd)
+	assert.True(t, found)
+	inclusiveEndMapVal := getStringFromReflectUrlValuesMap(inclusiveEndMapKey, optionsReflectedVal)
+	assert.Equals(t,inclusiveEndMapVal, "true")
+
+
 
 
 }
@@ -586,4 +630,10 @@ func getStringFromReflectUrlValuesMap(key reflect.Value, reflectMap reflect.Valu
 	mapVal := reflectMap.MapIndex(key)
 	return mapVal.Index(0).String()
 
+}
+
+// Given a string "foo", return ""foo"" with an extra set of double quotes added
+// This is to be in line with gocb's behavior of wrapping these startkey, endkey in an extra set of double quotes
+func wrapInDoubleQuotes(original string) string {
+	return fmt.Sprintf("\"%v\"", original)
 }

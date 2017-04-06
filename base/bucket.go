@@ -45,6 +45,9 @@ const (
 const (
 	ViewQueryParamStale = "stale"
 	ViewQueryParamReduce = "reduce"
+	ViewQueryParamStartKey = "startkey"
+	ViewQueryParamEndKey = "endkey"
+	ViewQueryParamInclusiveEnd = "inclusive_end"
 )
 
 var (

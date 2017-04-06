@@ -1235,26 +1235,6 @@ func (bucket CouchbaseBucketGoCB) Close() {
 // TODO: comprehensive unit test
 func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) {
 
-	/*
-
-	Examples:
-
-	opts := Body{"stale": false, "reduce": reduce}
-
-	opts := Body{"stale": false}
-	if docType != "" {
-		opts["startkey"] = "_sync:" + docType + ":"
-		opts["endkey"] = "_sync:" + docType + "~"
-		opts["inclusive_end"] = false
-	}
-
-	TODO:
-
-	viewQuery.Range(startKey, endKey, true)
-
-	 */
-
-
 	for optionName, optionValue := range params {
 		switch optionName {
 		case ViewQueryParamStale:
@@ -1265,6 +1245,11 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 			// TODO: viewquery.Range() for startKey, endKey
 		case ViewQueryParamReduce:
 			viewQuery.Reduce(optionValue.(bool))
+		case ViewQueryParamStartKey:
+			startKey := params[ViewQueryParamStartKey]
+			endKey := params[ViewQueryParamEndKey]
+			inclusiveEnd := params[ViewQueryParamInclusiveEnd].(bool)
+			viewQuery.Range(startKey, endKey, inclusiveEnd)
 		}
 
 	}
