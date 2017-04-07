@@ -76,9 +76,14 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 }
 
 func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte) (*document, error) {
+
+	// If no xattr data, unmarshal as standard doc
+	if xattrData == nil || len(xattrData) == 0 {
+		return unmarshalDocument(docid, data)
+	}
 	doc := newDocument(docid)
 	if len(data) > 0 {
-		if err := doc.UnmarshalWithXATTR(data, xattrData); err != nil {
+		if err := doc.UnmarshalWithXattr(data, xattrData); err != nil {
 			return nil, err
 		}
 	}
@@ -289,7 +294,7 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	return data, err
 }
 
-func (doc *document) UnmarshalWithXATTR(data []byte, xdata []byte) error {
+func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte) error {
 	if doc.ID == "" {
 		base.Warn("Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
@@ -304,7 +309,7 @@ func (doc *document) UnmarshalWithXATTR(data []byte, xdata []byte) error {
 	return doc.unmarshalBody(data)
 }
 
-func (doc *document) MarshalWithXATTR() (data []byte, xdata []byte, err error) {
+func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	body := doc.body
 	if body == nil {
 		body = Body{}

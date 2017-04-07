@@ -40,17 +40,28 @@ func realDocID(docid string) string {
 }
 
 // Lowest-level method that reads a document from the bucket.
-func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
+func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	dbExpvars.Add("document_gets", 1)
-	doc := newDocument(docid)
-	_, err := db.Bucket.Get(key, doc)
-	if err != nil {
-		return nil, err
-	} else if !doc.HasValidSyncData(db.writeSequences()) {
+	if db.UseXattrs() {
+		var rawDoc, rawXattr []byte
+		_, err = db.Bucket.GetWithXattr(key, KSyncXattr, &rawDoc, &rawXattr)
+		doc, err = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		doc = newDocument(docid)
+		_, err = db.Bucket.Get(key, doc)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if !doc.HasValidSyncData(db.writeSequences()) {
 		return nil, base.HTTPErrorf(404, "Not imported")
 	}
 	return doc, nil
@@ -531,12 +542,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 	var unusedSequences []uint64
 	var oldBodyJSON string
 	var newAttachments AttachmentData
+	var err error
 
-	err := db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
+	documentUpdateFunc := func(doc *document, docExists bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
-		if doc, err = unmarshalDocument(docid, currentValue); err != nil {
-			return
-		} else if !allowImport && currentValue != nil && !doc.HasValidSyncData(db.writeSequences()) {
+		if !allowImport && docExists && !doc.HasValidSyncData(db.writeSequences()) {
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
@@ -701,7 +712,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
 			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				
+
 				major, _, _, err := db.Bucket.CouchbaseServerVersion()
 				if err == nil && major < 3 {
 					// If the couchbase server version is less than 3, then do an indexable write.
@@ -728,12 +739,45 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 		// Now that the document has been successfully validated, we can store any new attachments
 		db.setAttachments(newAttachments)
+		return doc, writeOpts, err
+	}
 
-		// Return the new raw document value for the bucket to store.
-		raw, err = json.Marshal(doc)
-		base.LogTo("CRUD+", "SAVING #%d", doc.Sequence) //TEMP?
-		return
-	})
+	// Update the document
+	if db.UseXattrs() {
+		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattr, int(expiry), func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
+			// Be careful: this block can be invoked multiple times if there are races!
+			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr); err != nil {
+				return
+			}
+			var updatedDoc *document
+			updatedDoc, _, err = documentUpdateFunc(doc, currentValue != nil)
+			if err != nil {
+				return
+			}
+
+			// Return the new raw document value for the bucket to store.
+			raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
+			return raw, rawXattr, err
+		})
+	} else {
+		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+			// Be careful: this block can be invoked multiple times if there are races!
+			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
+				return
+			}
+			var updatedDoc *document
+			updatedDoc, writeOpts, err = documentUpdateFunc(doc, currentValue != nil)
+			if err != nil {
+				return
+			}
+
+			// Return the new raw document value for the bucket to store.
+			raw, err = json.Marshal(updatedDoc)
+			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
+			return raw, writeOpts, err
+		})
+	}
 
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
 	if err != nil && db.writeSequences() {

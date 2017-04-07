@@ -18,7 +18,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocbcore.v5"
+	"gopkg.in/couchbase/gocbcore.v6"
 )
 
 var gocbExpvars *expvar.Map
@@ -730,13 +730,16 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 	return err == nil, err
 }
 
+// GoCB AddRaw writes as BinaryDocument, which results in the document having the
+// binary doc common flag set.  Callers that want to write JSON documents as raw bytes should
+// pass v as []byte to the stanard bucket.Add
 func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("AddRaw", 1)
-	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+	_, err = bucket.Bucket.Insert(k, BinaryDocument(v), uint32(exp))
 
 	if err != nil && err == gocb.ErrKeyExists {
 		return false, nil
@@ -854,7 +857,6 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattr string, exp 
 	if cas == 0 {
 		// TODO: do this insert and update in a single op, when https://issues.couchbase.com/browse/MB-23522 is fixed.
 		// TODO: Once that's fixed, need to wrap w/ retry handling
-
 		gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
 		newCas, err := bucket.Bucket.Insert(k, &v, uint32(exp))
 		if err != nil {
@@ -907,33 +909,39 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interf
 
 		// TODO: Replace with single op that has built-in handling for accessDeleted for xattr retrieval.
 		gocbExpvars.Add("Get", 1)
-		casGoCB, err := bucket.Bucket.Get(k, rv)
+		casGoCB, docErr := bucket.Bucket.Get(k, rv)
+		cas = uint64(casGoCB)
 
-		// If key not found, attempt to retrieve the xattr only.  Otherwise standard error handling
-		if err != nil && err != gocbcore.ErrKeyNotFound {
-			shouldRetry = isRecoverableGoCBError(err)
-			return shouldRetry, err, uint64(casGoCB)
+		// If key not found, continue to attempt to retrieve the xattr only.  Otherwise standard error handling.
+		if docErr != nil && docErr != gocbcore.ErrKeyNotFound {
+			shouldRetry = isRecoverableGoCBError(docErr)
+			return shouldRetry, docErr, cas
 		}
 
 		// TODO: Replace with gocb flag definition when https://issues.couchbase.com/browse/GOCBC-178 is implemented
-		accessDeletedFlag := gocb.SubdocFlag(0x08)
-		res, err := bucket.Bucket.LookupIn(k).
-			GetEx(xattr, accessDeletedFlag|gocb.SubdocFlagXattr).
+		// TODO: When converted to single op, verify 'key not found' returned when doc and xattr are both not present.
+		res, xattrErr := bucket.Bucket.LookupIn(k).
+			GetEx(xattr, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
 			Execute()
-		if err != nil && err != gocbcore.ErrSubDocSuccessDeleted {
-			// Non-existent doc and xattr returns ErrSubDocBadMulti.  To simplify caller handling, return not found
-			if err == gocbcore.ErrSubDocBadMulti {
-				return false, gocb.ErrKeyNotFound, nil
+		if xattrErr != nil && xattrErr != gocbcore.ErrSubDocSuccessDeleted {
+			if xattrErr == gocbcore.ErrSubDocBadMulti {
+				if docErr == gocbcore.ErrKeyNotFound { // Doc not found, xattr not found.  Return KeyNotFound
+					return false, docErr, cas
+				} else { // Doc was retrieved ok, no xattr.  Return no error, but empty xv
+					return false, nil, cas
+				}
 			}
-			shouldRetry = isRecoverableGoCBError(err)
-			return shouldRetry, err, uint64(casGoCB)
+			shouldRetry = isRecoverableGoCBError(xattrErr)
+			return shouldRetry, xattrErr, uint64(casGoCB)
 		}
+
 		err = res.Content(xattr, xv)
 		if err != nil {
 			LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattr=%s: %v", k, xattr, err)
 			return false, err, nil
 		}
-		return false, nil, uint64(res.Cas())
+		cas = uint64(res.Cas())
+		return false, nil, cas
 	}
 
 	sleeper := CreateDoublingSleeperFunc(
@@ -959,7 +967,8 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interf
 
 }
 
-// Delete a document and it's associated named xattr
+// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS) tombstone when a document is deleted.
+// To remove the system xattr as well, an explicit subdoc delete operation is required.
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattr string) error {
 
 	bucket.singleOps <- struct{}{}
@@ -972,10 +981,8 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattr string) error 
 		return err
 	}
 
-	// TODO: Replace with gocb flag definition when https://issues.couchbase.com/browse/GOCBC-178 is implemented
-	accessDeletedFlag := gocb.SubdocFlag(0x08)
 	_, err = bucket.Bucket.MutateIn(k, removeCas, 0).
-		RemoveEx(xattr, accessDeletedFlag|gocb.SubdocFlagXattr).
+		RemoveEx(xattr, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
 		Execute()
 
 	if err != nil && err != gocbcore.ErrSubDocSuccessDeleted {
@@ -1171,6 +1178,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattr string, e
 		}
 
 		// CAS-safe write of the new value and xattr
+		LogTo("gocb", "Calling WriteCasWithXattr for key: %s cas: %d, value: %v, xattr:%v", k, cas, updatedValue, xattrMap)
 		_, err = bucket.WriteCasWithXattr(k, xattr, exp, cas, updatedValue, xattrMap)
 		// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
 		// WriteUpdate.

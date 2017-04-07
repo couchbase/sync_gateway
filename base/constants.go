@@ -6,8 +6,8 @@ const (
 	GuestUsername = "GUEST"
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
-	kTestURL = "http://localhost:8091"
-	//kTestURL = "walrus:"
+	//kTestURL = "http://localhost:8091"
+	kTestURL = "walrus:"
 )
 
 func UnitTestUrl() string {

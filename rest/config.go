@@ -126,7 +126,7 @@ type DbConfig struct {
 	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
 	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
 	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
-	Unsupported        *UnsupportedConfig             `json:"unsupported,omitempty"`          // Config for unsupported features
+	Unsupported        db.UnsupportedOptions          `json:"unsupported,omitempty"`          // Config for unsupported features
 	OIDCConfig         *auth.OIDCOptions              `json:"oidc,omitempty"`                 // Config properties for OpenID Connect authentication
 }
 
@@ -193,18 +193,8 @@ type SequenceHashConfig struct {
 	Frequency    *int    `json:"hash_frequency,omitempty"` // Frequency of sequence hashing in changes feeds
 }
 
-type UnsupportedConfig struct {
-	UserViews        *UserViewsConfig            `json:"user_views,omitempty"`         // Config settings for user views
-	Replicator2      bool                        `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
-	OidcTestProvider *db.OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
-}
-
 type UnsupportedServerConfig struct {
 	Http2Config *Http2Config `json:"http2,omitempty"` // Config settings for HTTP2
-}
-
-type UserViewsConfig struct {
-	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
 
 type Http2Config struct {

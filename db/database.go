@@ -46,6 +46,12 @@ var RunStateString = []string{
 	DBResyncing: "Resyncing",
 }
 
+const DefaultRevsLimit = 1000
+const DefaultUseXattrs = false        // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+const KSyncKeyPrefix = "_sync:"       // All special/internal documents the gateway creates have this prefix in their keys.
+const kSyncDataKey = "_sync:syncdata" // Key used to store sync function
+const KSyncXattr = "_sync"            // Name of XATTR used to store sync metadata
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -80,7 +86,7 @@ type DatabaseContextOptions struct {
 	SequenceHashOptions   *SequenceHashOptions
 	RevisionCacheCapacity uint32
 	AdminInterface        *string
-	UnsupportedOptions    *UnsupportedOptions
+	UnsupportedOptions    UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
 	OIDCOptions           *auth.OIDCOptions
 }
@@ -90,13 +96,15 @@ type OidcTestProviderOptions struct {
 	UnsignedIDToken bool `json:"unsigned_id_token,omitempty"` // Whether the internal test provider returns a signed ID token on a refresh request.  Used to simulate Azure behaviour
 }
 
-type UnsupportedOptions struct {
-	EnableXATTR      bool `json:"enable_extended_attributes"`
-	EnableUserViews  bool
-	OidcTestProvider OidcTestProviderOptions
+type UserViewsOptions struct {
+	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
-
-const DefaultRevsLimit = 1000
+type UnsupportedOptions struct {
+	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
+	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
+	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+	EnableXattr      *bool                   `json:"enable_extended_attributes"`   // Use xattr for _sync
+}
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -104,9 +112,6 @@ type Database struct {
 	*DatabaseContext
 	user auth.User
 }
-
-// All special/internal documents the gateway creates have this prefix in their keys.
-const KSyncKeyPrefix = "_sync:"
 
 var dbExpvars = expvar.NewMap("syncGateway_db")
 
@@ -418,14 +423,18 @@ func (db *Database) DocCount() int {
 }
 
 func installViews(bucket base.Bucket) error {
+
+	syncData := "doc._sync"
+
 	// View for finding every Couchbase doc (used when deleting a database)
 	// Key is docid; value is null
 	allbits_map := `function (doc, meta) {
                       emit(meta.id, null); }`
+
 	// View for _all_docs
 	// Key is docid; value is [revid, sequence]
 	alldocs_map := `function (doc, meta) {
-                     var sync = doc._sync;
+                     var sync = %s;
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
                      if ((sync.flags & 1) || sync.deleted)
@@ -437,16 +446,19 @@ func installViews(bucket base.Bucket) error {
                      		channelNames.push(ch);
                      }
                      emit(meta.id, {r:sync.rev, s:sync.sequence, c:channelNames}); }`
+	alldocs_map = fmt.Sprintf(alldocs_map, syncData)
+
 	// View for importing unknown docs
 	// Key is [existing?, docid] where 'existing?' is false for unknown docs
 	import_map := `function (doc, meta) {
                      if(meta.id.substring(0,6) != "_sync:") {
-                       var exists = (doc["_sync"] !== undefined);
+                       var exists = (%s !== undefined);
                        emit([exists, meta.id], null); } }`
+	import_map = fmt.Sprintf(import_map, syncData)
+
 	// View for compaction -- finds all revision docs
 	// Key and value are ignored.
 	oldrevs_map := `function (doc, meta) {
-                     var sync = doc._sync;
                      if (meta.id.substring(0,10) == "_sync:rev:")
 	                     emit("",null); }`
 
@@ -467,11 +479,12 @@ func installViews(bucket base.Bucket) error {
 			                     emit(meta.id.substring(%d), isUser); }`
 	principals_map = fmt.Sprintf(principals_map, auth.UserKeyPrefix, auth.RoleKeyPrefix,
 		len(auth.UserKeyPrefix))
+
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
 	// where flag is true for doc deletion, false for removed from channel, missing otherwise
 	channels_map := `function (doc, meta) {
-	                    var sync = doc._sync;
+	                    var sync = %s;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 						var sequence = sync.sequence;
@@ -498,12 +511,14 @@ func installViews(bucket base.Bucket) error {
 							}
 						}
 					}`
-	channels_map = fmt.Sprintf(channels_map, channels.Deleted, EnableStarChannelLog,
+
+	channels_map = fmt.Sprintf(channels_map, syncData, channels.Deleted, EnableStarChannelLog,
 		channels.Removed|channels.Deleted, channels.Removed)
+
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
-	                    var sync = doc._sync;
+	                    var sync = %s;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var access = sync.access;
@@ -513,12 +528,13 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
+	access_map = fmt.Sprintf(access_map, syncData)
 
 	// Vbucket sequence version of channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 
 	access_vbSeq_map := `function (doc, meta) {
-		                    var sync = doc._sync;
+		                    var sync = %s;
 		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 		                        return;
 		                    var access = sync.access;
@@ -537,11 +553,12 @@ func installViews(bucket base.Bucket) error {
 
 		                    }
 		               }`
+	access_vbSeq_map = fmt.Sprintf(access_vbSeq_map, syncData)
 
 	// Role access view, used by ComputeRolesForUser()
 	// Key is username; value is array of role names
 	roleAccess_map := `function (doc, meta) {
-	                    var sync = doc._sync;
+	                    var sync = %s;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var access = sync.role_access;
@@ -551,12 +568,13 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
+	roleAccess_map = fmt.Sprintf(roleAccess_map, syncData)
 
 	// Vbucket sequence version of role access view, used by ComputeRolesForUser()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 
 	roleAccess_vbSeq_map := `function (doc, meta) {
-		                    var sync = doc._sync;
+		                    var sync = %s;
 		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 		                        return;
 		                    var access = sync.role_access;
@@ -575,6 +593,7 @@ func installViews(bucket base.Bucket) error {
 
 		                    }
 		               }`
+	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData)
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
 
@@ -794,8 +813,6 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 
 //////// SYNC FUNCTION:
 
-const kSyncDataKey = "_sync:syncdata"
-
 // Sets the database context's sync function based on the JS code from config.
 // Returns a boolean indicating whether the function is different from the saved one.
 // If multiple gateway instances try to update the function at the same time (to the same new
@@ -875,31 +892,22 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		rowKey := row.Key.([]interface{})
 		docid := rowKey[1].(string)
 		key := realDocID(docid)
-		//base.Log("\tupdating %q", docid)
-		err := db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
-			// Be careful: this block can be invoked multiple times if there are races!
-			if currentValue == nil {
-				return nil, couchbase.UpdateCancel // someone deleted it?!
-			}
-			doc, err := unmarshalDocument(docid, currentValue)
-			if err != nil {
-				return nil, err
-			}
 
+		documentUpdateFunc := func(doc *document) (updatedDoc *document, shouldUpdate bool, err error) {
 			imported := false
 			if !doc.HasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore or import it:
 				if !doImportDocs {
-					return nil, couchbase.UpdateCancel
+					return nil, false, couchbase.UpdateCancel
 				}
 				imported = true
 				if err = db.initializeSyncData(doc); err != nil {
-					return nil, err
+					return nil, false, err
 				}
 				base.LogTo("CRUD", "\tImporting document %q --> rev %q", docid, doc.CurrentRev)
 			} else {
 				if !doCurrentDocs {
-					return nil, couchbase.UpdateCancel
+					return nil, false, couchbase.UpdateCancel
 				}
 				base.LogTo("CRUD", "\tRe-syncing document %q", docid)
 			}
@@ -923,14 +931,53 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 						len(doc.updateChannels(channels))
 				}
 			})
+			shouldUpdate = changed > 0 || imported
+			return doc, shouldUpdate, nil
+		}
+		var err error
+		if db.UseXattrs() {
+			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattr, 0, func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
+				if currentValue == nil || len(currentValue) == 0 {
+					return nil, nil, errors.New("Cancel update")
+				}
+				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr)
+				if err != nil {
+					return nil, nil, err
+				}
 
-			if changed > 0 || imported {
-				base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
-				return json.Marshal(doc)
-			} else {
-				return nil, couchbase.UpdateCancel
-			}
-		})
+				updatedDoc, shouldUpdate, err := documentUpdateFunc(doc)
+				if err != nil {
+					return nil, nil, err
+				}
+				if shouldUpdate {
+					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					return updatedDoc.MarshalWithXattr()
+				} else {
+					return nil, nil, errors.New("Cancel update")
+				}
+			})
+		} else {
+			err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+				// Be careful: this block can be invoked multiple times if there are races!
+				if currentValue == nil {
+					return nil, couchbase.UpdateCancel // someone deleted it?!
+				}
+				doc, err := unmarshalDocument(docid, currentValue)
+				if err != nil {
+					return nil, err
+				}
+				updatedDoc, shouldUpdate, err := documentUpdateFunc(doc)
+				if err != nil {
+					return nil, err
+				}
+				if shouldUpdate {
+					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					return json.Marshal(updatedDoc)
+				} else {
+					return nil, couchbase.UpdateCancel
+				}
+			})
+		}
 		if err == nil {
 			changeCount++
 		} else if err != couchbase.UpdateCancel {
@@ -998,21 +1045,22 @@ func (context *DatabaseContext) GetIndexBucket() base.Bucket {
 }
 
 func (context *DatabaseContext) GetUserViewsEnabled() bool {
-	if context.Options.UnsupportedOptions != nil {
-		return context.Options.UnsupportedOptions.EnableUserViews
+	if context.Options.UnsupportedOptions.UserViews.Enabled != nil {
+		return *context.Options.UnsupportedOptions.UserViews.Enabled
 	}
 	return false
 }
 
-func (context *DatabaseContext) UseXATTRs() bool {
-	if context.Options.UnsupportedOptions != nil {
-		return context.Options.UnsupportedOptions.EnableXATTR
+func (context *DatabaseContext) UseXattrs() bool {
+	if context.Options.UnsupportedOptions.EnableXattr != nil {
+		return *context.Options.UnsupportedOptions.EnableXattr
 	}
-	return false
+	return DefaultUseXattrs
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
-	context.Options.UnsupportedOptions.EnableUserViews = value
+
+	context.Options.UnsupportedOptions.UserViews.Enabled = &value
 }
 
 //////// SEQUENCE ALLOCATION:

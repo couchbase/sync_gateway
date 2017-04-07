@@ -3,8 +3,13 @@ package base
 import (
 	"encoding/json"
 
-	"gopkg.in/couchbase/gocbcore.v5"
+	"gopkg.in/couchbase/gocbcore.v6"
 )
+
+// BinaryDocument is type alias that allows SGTranscoder to differentiate between documents that are
+// intended to be written as binary docs, versus json documents that are being sent as raw bytes
+// Some additional context here: https://play.golang.org/p/p4fkKiZD59
+type BinaryDocument []byte
 
 type SGTranscoder struct {
 }
@@ -23,6 +28,9 @@ func (t SGTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 
 	flags := gocbcore.EncodeCommonFlags(gocbcore.JsonType, gocbcore.NoCompression)
 	switch value.(type) {
+	case BinaryDocument:
+		flags = gocbcore.EncodeCommonFlags(gocbcore.BinaryType, gocbcore.NoCompression)
+		bytes = value.([]byte)
 	case []byte:
 		bytes = value.([]byte)
 	case *[]byte:
@@ -42,7 +50,6 @@ func (t SGTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 	}
 
 	// No compression supported currently
-
 	return bytes, flags, nil
 }
 
@@ -60,66 +67,6 @@ func (t SGTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error 
 		}
 		return nil
 
-	}
-
-}
-
-type SGBinaryTranscoder struct {
-}
-
-// Encode applies the default Couchbase transcoding behaviour to encode a Go type, and sets the storage flag as binary.
-func (t SGBinaryTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
-
-	var bytes []byte
-	var flags uint32
-	var err error
-
-	flags = gocbcore.EncodeCommonFlags(gocbcore.BinaryType, gocbcore.NoCompression)
-	switch value.(type) {
-	case []byte:
-		bytes = value.([]byte)
-	case *[]byte:
-		bytes = *value.(*[]byte)
-	case string:
-		bytes = []byte(value.(string))
-	case *string:
-		bytes = []byte(*value.(*string))
-	case *interface{}:
-		// calls back into this
-		return t.Encode(*value.(*interface{}))
-	default:
-		bytes, err = json.Marshal(value)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-
-	// No compression supported currently
-
-	return bytes, flags, nil
-}
-
-// Decode applies the default Couchbase transcoding behaviour to decode into a Go type.
-func (t SGBinaryTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error {
-
-	valueType, _ := gocbcore.DecodeCommonFlags(flags)
-	if valueType != gocbcore.BinaryType {
-		Warn("Binary Transcoder used to process non-binary document")
-	}
-
-	switch typedOut := out.(type) {
-	case *[]byte:
-		*typedOut = bytes
-		return nil
-	case *interface{}:
-		*typedOut = bytes
-		return nil
-	default:
-		err := json.Unmarshal(bytes, &out)
-		if err != nil {
-			return err
-		}
-		return nil
 	}
 
 }
