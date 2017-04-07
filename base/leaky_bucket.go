@@ -271,6 +271,13 @@ func (b *LeakyBucket) VBHash(docID string) uint32 {
 	}
 }
 
+func (b *LeakyBucket) CloseAndDelete() error {
+	if bucket, ok := b.bucket.(sgbucket.DeleteableBucket); ok {
+		return bucket.CloseAndDelete()
+	}
+	return nil
+}
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
