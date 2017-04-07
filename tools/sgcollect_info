@@ -189,6 +189,9 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     return pprof_tasks
 
+def to_lower_case_keys_dict(original_dict):
+    return {k.lower():v for k,v in original_dict.items()}
+
 def extract_element_from_config(element, config):
     """ The config returned from /_config may not be fully formed json
         due to the fact that the sync function is inside backticks (`)
@@ -199,7 +202,12 @@ def extract_element_from_config(element, config):
     sync_regex = r'"Sync":(`.*`)'
     config = re.sub(sync_regex, '"Sync":""', config)
     try:
-        return json.loads(config)[element]
+        # convert dictionary keys to lower case
+        original_dict = json.loads(config)
+        lower_case_keys_dict = to_lower_case_keys_dict(original_dict)
+        
+        #lookup key after converting element name to lower case
+        return lower_case_keys_dict[element.lower()]
     except (ValueError, KeyError):
         # If we can't deserialise the json or find the key then return nothing
         return
@@ -211,7 +219,7 @@ def extract_element_from_default_logging_config(element, config):
             if logging_config:
                 default_logging_config = extract_element_from_config('default', json.dumps(logging_config))
                 if default_logging_config:
-                    guessed_log_path = extract_element_from_config('LogFilePath', json.dumps(default_logging_config))
+                    guessed_log_path = extract_element_from_config(element, json.dumps(default_logging_config))
                     if guessed_log_path:
                         return guessed_log_path
             return
