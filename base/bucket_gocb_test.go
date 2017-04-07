@@ -648,6 +648,8 @@ func TestApplyViewQueryOptions(t *testing.T) {
 	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKey), wrapInDoubleQuotes("hello"))
 
 	// "keys"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKeys), "[\"a\",\"b\"]")
+	assert.Equals(t,
+		findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKeys),
+		fmt.Sprintf("[%v,%v]", wrapInDoubleQuotes("a"), wrapInDoubleQuotes("b")))
 
 }
