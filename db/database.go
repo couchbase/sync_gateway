@@ -853,7 +853,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
 		options["endkey"] = []interface{}{true}
-		options["endkey_inclusive"] = false
+		options["endkey_inclusive"] = false  // TODO: is this valid?
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}

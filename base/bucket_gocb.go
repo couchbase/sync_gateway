@@ -1232,7 +1232,6 @@ func (bucket CouchbaseBucketGoCB) Close() {
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,
 // for example stale=false, etc.
-// TODO: comprehensive unit test
 func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) {
 
 	for optionName, optionValue := range params {
@@ -1241,18 +1240,82 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 			if optionValue.(bool) == false {
 				viewQuery.Stale(gocb.Before)
 			}
-			// TODO: what should this do for stale=true or if the "stale" option name missing from params?
-			// TODO: viewquery.Range() for startKey, endKey
 		case ViewQueryParamReduce:
 			viewQuery.Reduce(optionValue.(bool))
-		case ViewQueryParamStartKey:
-			startKey := params[ViewQueryParamStartKey]
-			endKey := params[ViewQueryParamEndKey]
-			inclusiveEnd := params[ViewQueryParamInclusiveEnd].(bool)
-			viewQuery.Range(startKey, endKey, inclusiveEnd)
+		case ViewQueryParamLimit:
+			uintVal, err := normalizeIntToUint(optionValue)
+			if err != nil {
+				Warn(fmt.Sprintf("%v", err))
+			}
+			viewQuery.Limit(uintVal)
+		case ViewQueryParamDescending:
+			if optionValue.(bool) == true {
+				viewQuery.Order(gocb.Descending)
+			}
+		case ViewQueryParamSkip:
+			uintVal, err := normalizeIntToUint(optionValue)
+			if err != nil {
+				Warn(fmt.Sprintf("%v", err))
+			}
+			viewQuery.Skip(uintVal)
+		case ViewQueryParamGroup:
+			viewQuery.Group(optionValue.(bool))
+		case ViewQueryParamGroupLevel:
+			uintVal, err := normalizeIntToUint(optionValue)
+			if err != nil {
+				Warn(fmt.Sprintf("%v", err))
+			}
+			viewQuery.GroupLevel(uintVal)
+		case ViewQueryParamKey:
+			viewQuery.Key(optionValue)
+		case ViewQueryParamKeys:
+			stringKeys := optionValue.([]string)
+			emptyInterfaceKeys := []interface{}{}
+			for _, key := range stringKeys {
+				emptyInterfaceKeys = append(emptyInterfaceKeys, key)
+			}
+			viewQuery.Keys(emptyInterfaceKeys)
 		}
 
 	}
 
+	// Range: startkey, endkey, inclusiveend
+	var startKey, endKey interface{}
+	if _, ok := params[ViewQueryParamStartKey]; ok {
+		startKey = params[ViewQueryParamStartKey]
+	}
+	if _, ok := params[ViewQueryParamEndKey]; ok {
+		endKey = params[ViewQueryParamEndKey]
+	}
+	inclusiveEnd := false
+	if _, ok := params[ViewQueryParamInclusiveEnd]; ok {
+		inclusiveEnd = params[ViewQueryParamInclusiveEnd].(bool)
+	}
+	viewQuery.Range(startKey, endKey, inclusiveEnd)
+
+	// IdRange: startKeyDocId, endKeyDocId
+	startKeyDocId := ""
+	endKeyDocId := ""
+	if _, ok := params[ViewQueryParamStartKeyDocId]; ok {
+		startKeyDocId = params[ViewQueryParamStartKeyDocId].(string)
+	}
+	if _, ok := params[ViewQueryParamEndKeyDocId]; ok {
+		endKeyDocId = params[ViewQueryParamEndKeyDocId].(string)
+	}
+	viewQuery.IdRange(startKeyDocId, endKeyDocId)
+
+
+
+
 }
 
+func normalizeIntToUint(value interface{}) (uint, error) {
+	switch typeValue := value.(type) {
+	case uint:
+		return typeValue, nil
+	case int:
+		return uint(typeValue), nil
+	default:
+		return uint(0), fmt.Errorf("Unable to convert %v (%T) -> uint.", value, value)
+	}
+}
