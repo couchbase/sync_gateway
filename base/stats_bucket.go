@@ -170,6 +170,28 @@ func (b *StatsBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpda
 func (b *StatsBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 	return b.bucket.Incr(k, amt, def, exp)
 }
+func (b *StatsBucket) WriteCasWithXattr(k string, xattr string, flags int, exp int, cas uint64, v interface{}, xv interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	if vBytes, ok := v.([]byte); ok {
+		defer b.docWrite(1, len(vBytes))
+	} else {
+		defer b.docWrite(1, -1)
+	}
+	return b.bucket.WriteCasWithXattr(k, xattr, flags, exp, cas, v, xv, opt)
+}
+func (b *StatsBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+	cas, err = b.bucket.GetWithXattr(k, xattr, rv, xv)
+	if vBytes, ok := rv.([]byte); ok {
+		defer b.docRead(1, len(vBytes))
+	} else if marshalledJSON, marshalErr := json.Marshal(rv); marshalErr == nil {
+		defer b.docRead(1, len(marshalledJSON))
+	} else {
+		defer b.docRead(1, -1)
+	}
+	return cas, err
+}
+func (b *StatsBucket) DeleteWithXattr(k string, xattr string) error {
+	return b.bucket.DeleteWithXattr(k, xattr)
+}
 func (b *StatsBucket) GetDDoc(docname string, value interface{}) error {
 	return b.bucket.GetDDoc(docname, value)
 }

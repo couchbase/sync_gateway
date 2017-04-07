@@ -92,6 +92,21 @@ func (b *LoggingBucket) Incr(k string, amt, def uint64, exp int) (uint64, error)
 	defer func() { LogTo("Bucket", "Incr(%q, %d, %d, %d) [%v]", k, amt, def, exp, time.Since(start)) }()
 	return b.bucket.Incr(k, amt, def, exp)
 }
+func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, flags int, exp int, cas uint64, v interface{}, xv interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "WriteCasWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
+	return b.bucket.WriteCasWithXattr(k, xattr, flags, exp, cas, v, xv, opt)
+}
+func (b *LoggingBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "GetWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
+	return b.bucket.GetWithXattr(k, xattr, rv, xv)
+}
+func (b *LoggingBucket) DeleteWithXattr(k string, xattr string) error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "DeleteWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
+	return b.bucket.DeleteWithXattr(k, xattr)
+}
 func (b *LoggingBucket) GetDDoc(docname string, value interface{}) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "GetDDoc(%q, ...) [%v]", docname, time.Since(start)) }()
@@ -125,11 +140,10 @@ func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	return b.bucket.SetBulk(entries)
 }
 
-
-func (b *LoggingBucket)  Refresh() error {
+func (b *LoggingBucket) Refresh() error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Refresh() [%v]", time.Since(start)) }()
-	return b.bucket.Refresh();
+	return b.bucket.Refresh()
 }
 
 func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {

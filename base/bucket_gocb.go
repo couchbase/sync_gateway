@@ -543,6 +543,10 @@ func (bucket CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultA
 	return nil
 }
 
+func (bucket CouchbaseBucketGoCB) Close() {
+	bucket.Bucket.Close()
+}
+
 func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
 	// boundary checking
 	if len(entries) == 0 {
@@ -833,6 +837,130 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 
 }
 
+// CAS-safe write of a document and it's associated named xattr
+func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattr string, flags int, exp int, cas uint64, v interface{}, xv interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+
+	if cas == 0 {
+		// Try to insert the value into the bucket
+		// TODO: do this insert and update in a single op, when https://issues.couchbase.com/browse/MB-23522 is fixed.
+		// TODO: Once that's fixed, need to wrap w/ retry handling
+
+		gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
+		newCas, err := bucket.Bucket.Insert(k, &v, uint32(exp))
+		if err != nil {
+			return 0, err
+		}
+
+		docFragment, err := bucket.Bucket.MutateIn(k, newCas, uint32(exp)).
+			UpsertEx(xattr, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+			Execute()
+
+		if err != nil {
+			return 0, err
+		}
+
+		return uint64(docFragment.Cas()), nil
+	}
+
+	// Otherwise, replace existing value
+	// TODO: As above, should be single operation
+	gocbExpvars.Add("WriteCas_Replace", 1)
+	newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+	if err != nil {
+		return 0, err
+	}
+	docFragment, err := bucket.Bucket.MutateIn(k, newCas, uint32(exp)).
+		UpsertEx(xattr, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+		Execute()
+
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(docFragment.Cas()), err
+
+}
+
+// Retrieve a document and it's associated named xattr
+func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+
+	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
+	defer func() {
+		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
+	}()
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		// TODO: Replace with single op.
+		gocbExpvars.Add("Get", 1)
+		casGoCB, err := bucket.Bucket.Get(k, rv)
+
+		// If key not found, attempt to retrieve the xattr only.  Otherwise standard error handling
+		if err != nil && err.Error() != gocbcore.ErrKeyNotFound.Error() {
+			shouldRetry = isRecoverableGoCBError(err)
+			return shouldRetry, err, uint64(casGoCB)
+		}
+
+		res, err := bucket.Bucket.LookupIn(k).
+			GetEx(xattr, gocb.SubdocFlagXattr).
+			Execute()
+		if err != nil {
+			shouldRetry = isRecoverableGoCBError(err)
+			return shouldRetry, err, uint64(casGoCB)
+		}
+		err = res.Content(xattr, xv)
+		if err != nil {
+			return false, err, nil
+		}
+		return false, nil, uint64(res.Cas())
+
+	}
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	description := fmt.Sprintf("Get %v", k)
+	err, result := RetryLoop(description, worker, sleeper)
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+	}
+
+	return cas, err
+
+}
+
+// Delete a document and it's associated named xattr
+func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattr string) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+	gocbExpvars.Add("Delete", 1)
+	removeCas, err := bucket.Bucket.Remove(k, 0)
+	if err != nil && err.Error() != gocbcore.ErrKeyNotFound.Error() {
+		return err
+	}
+
+	_, err = bucket.Bucket.MutateIn(k, removeCas, 0).
+		RemoveEx(xattr, gocb.SubdocFlagXattr).
+		Execute()
+
+	return err
+}
+
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 
 	bucket.singleOps <- struct{}{}
@@ -856,9 +984,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 				// Unexpected error, abort
 				return err
 			}
-			cas = 0  // Key not found error
+			cas = 0 // Key not found error
 		}
-
 
 		// Invoke callback to get updated value
 		value, err = callback(value)
@@ -905,7 +1032,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		<-bucket.singleOps
 	}()
 
-
 	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
 	// In our case, we only want to block until it's durable on the node we're writing to, so this is set to 0.
 	numNodesReplicateTo := uint(0)
@@ -929,7 +1055,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 				// Unexpected error, abort
 				return err
 			}
-			cas = 0  // Key not found error
+			cas = 0 // Key not found error
 		}
 
 		// Invoke callback to get updated value

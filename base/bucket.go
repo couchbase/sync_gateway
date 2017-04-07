@@ -138,6 +138,21 @@ func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err err
 	panic("SetBulk not implemented")
 }
 
+func (bucket CouchbaseBucket) WriteCasWithXattr(k string, xattr string, flags int, exp int, cas uint64, v interface{}, xv interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	Warn("WriteCasWithXattr not implemented by CouchbaseBucket")
+	return 0, errors.New("WriteCasWithXattr not implemented by CouchbaseBucket")
+}
+
+func (bucket CouchbaseBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+	Warn("GetWithXattr not implemented by CouchbaseBucket")
+	return 0, errors.New("GetWithXattr not implemented by CouchbaseBucket")
+}
+
+func (bucket CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
+	Warn("DeleteWithXattr not implemented by CouchbaseBucket")
+	return errors.New("DeleteWithXattr not implemented by CouchbaseBucket")
+}
+
 func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, err := callback(current)
