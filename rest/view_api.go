@@ -68,7 +68,7 @@ func (h *handler) handleView() error {
 	opts := db.Body{}
 
 	// Boolean options:
-	for _, name := range []string{"inclusive_end", "descending", "include_docs", "reduce", "group"} {
+	for _, name := range []string{"descending", "include_docs", "reduce", "group"} {
 		if val := h.getQuery(name); "" != val {
 			opts[name] = (val == "true")
 		}
