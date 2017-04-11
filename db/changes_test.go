@@ -19,6 +19,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"fmt"
+	"bytes"
 )
 
 // Unit test for bug #314
@@ -274,4 +276,97 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}})
 
 	printChanges(changes)
+}
+
+
+// Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
+func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
+
+	db := setupTestDB(b)
+	defer tearDownTestDB(b, db)
+
+	fieldVal := func(valSizeBytes int) string {
+		buffer := bytes.Buffer{}
+		for i := 0; i < valSizeBytes; i++ {
+			buffer.WriteString("a")
+		}
+		return buffer.String()
+	}
+
+	createDoc := func(numKeys, valSizeBytes int) Body {
+		doc := Body{}
+		for keyNum := 0; keyNum < numKeys; keyNum++ {
+			doc[fmt.Sprintf("%v", keyNum)] = fieldVal(valSizeBytes)
+		}
+		return doc
+	}
+
+	numDocs := 2000
+	numKeys := 1000
+	valSizeBytes := 1024
+
+	// Create 2k docs of size 50k, 1000 keys with branches, 1 parent + 2 child branches -- doesn't matter which API .. bucket api
+	for docNum := 0; docNum < numDocs; docNum++ {
+
+		// Create the parent rev
+		docid := base.CreateUUID()
+		docBody := createDoc(numKeys, valSizeBytes)
+		revId, err := db.Put(docid, docBody)
+		if err != nil {
+			b.Fatalf("Error creating doc: %v", err)
+		}
+
+		// Create child rev 1
+		docBody["child"] = "A"
+		err = db.PutExistingRev(docid, docBody, []string{"2-A", revId})
+		if err != nil {
+			b.Fatalf("Error creating child1 rev: %v", err)
+		}
+
+		// Create child rev 2
+		docBody["child"] = "B"
+		err = db.PutExistingRev(docid, docBody, []string{"2-B", revId})
+		if err != nil {
+			b.Fatalf("Error creating child2 rev: %v", err)
+		}
+
+		docBodyFetched, err := db.Get(docid)
+		if err != nil {
+			b.Fatalf("Error getting doc: %v", err)
+		}
+		//log.Printf("docBodyFetched: %v.  child: %v", docBodyFetched, docBodyFetched["child"])
+
+	}
+
+	// Start changes feed
+	var options ChangesOptions
+	options.Since = SequenceID{Seq: 0}
+
+	options.Continuous = true
+	options.Wait = true
+
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Changes params: POST /pm/_changes?feed=normal&heartbeat=30000&style=all_docs&active_only=true
+		// NOTE: TestContinuousChangesBackfill has sample usage of db.MultiChangesFeed directly
+		// Changes request of all docs (could also do GetDoc call, but misses other possible things). One shot, .. etc
+
+
+
+		options.Terminator = make(chan bool)
+		feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
+		if err != nil {
+			b.Fatalf("Error getting changes feed: %v", err)
+		}
+		for changeEntry := range feed {
+			// log.Printf("changeEntry: %v", changeEntry)
+			if changeEntry == nil {
+				break
+			}
+		}
+		close(options.Terminator)
+
+	}
+
 }
