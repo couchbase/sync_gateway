@@ -301,8 +301,8 @@ func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 		return doc
 	}
 
-	numDocs := 2000
-	numKeys := 1000
+	numDocs := 800
+	numKeys := 400
 	valSizeBytes := 1024
 
 	// Create 2k docs of size 50k, 1000 keys with branches, 1 parent + 2 child branches -- doesn't matter which API .. bucket api
@@ -330,12 +330,6 @@ func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}
 
-		docBodyFetched, err := db.Get(docid)
-		if err != nil {
-			b.Fatalf("Error getting doc: %v", err)
-		}
-		//log.Printf("docBodyFetched: %v.  child: %v", docBodyFetched, docBodyFetched["child"])
-
 	}
 
 	// Start changes feed
@@ -345,14 +339,12 @@ func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 	options.Continuous = true
 	options.Wait = true
 
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+
 		// Changes params: POST /pm/_changes?feed=normal&heartbeat=30000&style=all_docs&active_only=true
 		// NOTE: TestContinuousChangesBackfill has sample usage of db.MultiChangesFeed directly
 		// Changes request of all docs (could also do GetDoc call, but misses other possible things). One shot, .. etc
-
-
 
 		options.Terminator = make(chan bool)
 		feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -360,7 +352,7 @@ func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 			b.Fatalf("Error getting changes feed: %v", err)
 		}
 		for changeEntry := range feed {
-			// log.Printf("changeEntry: %v", changeEntry)
+			//log.Printf("changeEntry: %v", changeEntry)
 			if changeEntry == nil {
 				break
 			}
