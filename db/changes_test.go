@@ -301,8 +301,8 @@ func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 		return doc
 	}
 
-	numDocs := 800
-	numKeys := 400
+	numDocs := 400
+	numKeys := 200
 	valSizeBytes := 1024
 
 	// Create 2k docs of size 50k, 1000 keys with branches, 1 parent + 2 child branches -- doesn't matter which API .. bucket api
