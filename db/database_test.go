@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/couchbase/sg-bucket"
+	"strings"
 )
 
 func init() {
@@ -669,17 +670,27 @@ func TestUpdateDesignDoc(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	err := db.PutDesignDoc("official", DesignDoc{})
+	mapFunction := `function (doc, meta) { emit(); }`
+	err := db.PutDesignDoc("official", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"TestView":      sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
 	assertNoError(t, err, "add design doc as admin")
 
 	// Validate retrieval of the design doc by admin
-	var result DesignDoc
+	var result sgbucket.DesignDoc
 	err = db.GetDesignDoc("official", &result)
+	log.Printf("design doc: %+v", result)
 	assertNoError(t, err, "retrieve design doc as admin")
+	retrievedView, ok := result.Views["TestView"]
+	assert.True(t, ok)
+	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
+	assert.NotEquals(t, retrievedView.Map, mapFunction)  // SG should wrap the map function, so they shouldn't be equal
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	err = db.PutDesignDoc("_design/pwn3d", DesignDoc{})
+	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
 

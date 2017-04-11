@@ -15,10 +15,10 @@ import (
 	"reflect"
 	"strings"
 
+	"encoding/json"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"log"
-	"encoding/json"
 	"gopkg.in/couchbase/gocbcore.v5"
 )
 
@@ -858,9 +858,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 				// Unexpected error, abort
 				return err
 			}
-			cas = 0  // Key not found error
+			cas = 0 // Key not found error
 		}
-
 
 		// Invoke callback to get updated value
 		value, err = callback(value)
@@ -907,7 +906,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		<-bucket.singleOps
 	}()
 
-
 	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
 	// In our case, we only want to block until it's durable on the node we're writing to, so this is set to 0.
 	numNodesReplicateTo := uint(0)
@@ -931,7 +929,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 				// Unexpected error, abort
 				return err
 			}
-			cas = 0  // Key not found error
+			cas = 0 // Key not found error
 		}
 
 		// Invoke callback to get updated value
@@ -1044,28 +1042,76 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 }
 
 func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
-	LogPanic("Unimplemented method: GetDDoc()")
+
+	/**
+
+	Walrus:
+
+	2017-04-10 17:00:35.584588 I | design doc: {Language: Views:map[] Options:<nil>}
+
+	Go-couchbase:
+
+	2017-04-10 17:01:45.299076 I | design doc: {Language: Views:map[] Options:<nil>}
+
+
+
+
+	 */
+
+	bucketManager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	designDoc, err := bucketManager.GetDesignDocument(docname)
+
+	// TODO: this is of course sub-optimal to do an unnecessary marshal/unmarshal round trip.
+	// TODO: Looks like it might require changes to gocb or Sync Gateway code in order to avoid this round trip
+
+	// Serialize DesignDocument into []byte
+	designDocBytes, err := json.Marshal(designDoc)
+	if err != nil {
+		return err
+	}
+
+	// Deserialize []byte into "into" empty interface
+	if err := json.Unmarshal(designDocBytes, into); err != nil {
+		return err
+	}
+
 	return nil
+
 }
 
-func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
-
-	log.Printf("gocb putDDoc called with docname: %v", docname)
-
-	// NOTE: this doesn't seem to be identical in behavior with go-couchbase PutDDoc, since this returns an
-	// error if the design doc already exists, whereas go-couchbase PutDDoc handles it more gracefully.
-	// For this reason, the GoCBGoCouchbaseHybridBucket calls down into go-couchbase for it's DDoc operations.
+func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
 
 	// Get bucket manager.  Relies on existing auth settings for bucket.
 	username, password := bucket.GetBucketCredentials()
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
-		return fmt.Errorf("Unable to obtain manager for bucket %s - cannot PUT design doc %s", bucket.GetName(), docname)
+		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
 	}
 
-	sgDesignDoc, ok := value.(sgbucket.DesignDoc)
-	if !ok {
-		return fmt.Errorf("Unable to identify specified design document")
+	return manager, nil
+
+}
+
+func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
+
+	manager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	// Convert whatever we got in the value empty interface into a sgbucket.DesignDoc
+	var sgDesignDoc sgbucket.DesignDoc
+	switch typeValue := value.(type) {
+	case sgbucket.DesignDoc:
+		sgDesignDoc = typeValue
+	case *sgbucket.DesignDoc:
+		sgDesignDoc = *typeValue
+	default:
+		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
 	}
 
 	gocbDesignDoc := &gocb.DesignDocument{
@@ -1132,7 +1178,6 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 }
 
-
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 
 	viewQuery := gocb.NewViewQuery(ddoc, name)
@@ -1151,11 +1196,11 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		Rows      []json.RawMessage `json:"rows,omitempty"`
 	}{
 		TotalRows: 0,
-		Rows: []json.RawMessage{},
+		Rows:      []json.RawMessage{},
 	}
 
 	// Loop over
-	for  {
+	for {
 		bytes := goCbViewResult.NextBytes()
 		if bytes == nil {
 			break
@@ -1303,9 +1348,6 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		endKeyDocId = params[ViewQueryParamEndKeyDocId].(string)
 	}
 	viewQuery.IdRange(startKeyDocId, endKeyDocId)
-
-
-
 
 }
 
