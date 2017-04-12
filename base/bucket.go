@@ -18,11 +18,11 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
-	"gopkg.in/couchbase/gocbcore.v2"
 )
 
 const (
@@ -138,6 +138,21 @@ func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err err
 	panic("SetBulk not implemented")
 }
 
+func (bucket CouchbaseBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+	Warn("WriteCasWithXattr not implemented by CouchbaseBucket")
+	return 0, errors.New("WriteCasWithXattr not implemented by CouchbaseBucket")
+}
+
+func (bucket CouchbaseBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+	Warn("GetWithXattr not implemented by CouchbaseBucket")
+	return 0, errors.New("GetWithXattr not implemented by CouchbaseBucket")
+}
+
+func (bucket CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
+	Warn("DeleteWithXattr not implemented by CouchbaseBucket")
+	return errors.New("DeleteWithXattr not implemented by CouchbaseBucket")
+}
+
 func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, err := callback(current)
@@ -145,6 +160,11 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 		return
 	}
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
+}
+
+func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
+	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
+	return errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
 
 func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
@@ -558,7 +578,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 		return false
 	}
 
-	if err.Error() == gocbcore.ErrKeyNotFound.Error() {
+	if err == gocb.ErrKeyNotFound {
 		return true
 	}
 
@@ -583,7 +603,7 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 	}
 
 	// GoCB handling
-	if err.Error() == gocbcore.ErrKeyExists.Error() {
+	if err == gocb.ErrKeyExists {
 		return true
 	}
 
@@ -594,5 +614,3 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 
 	return false
 }
-
-

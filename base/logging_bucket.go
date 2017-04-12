@@ -87,10 +87,33 @@ func (b *LoggingBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUp
 	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
+
 func (b *LoggingBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Incr(%q, %d, %d, %d) [%v]", k, amt, def, exp, time.Since(start)) }()
 	return b.bucket.Incr(k, amt, def, exp)
+}
+func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "WriteCasWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
+	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
+}
+func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (err error) {
+	start := time.Now()
+	defer func() {
+		LogTo("Bucket", "WriteUpdateWithXattr(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start))
+	}()
+	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, callback)
+}
+func (b *LoggingBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "GetWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
+	return b.bucket.GetWithXattr(k, xattr, rv, xv)
+}
+func (b *LoggingBucket) DeleteWithXattr(k string, xattr string) error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "DeleteWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
+	return b.bucket.DeleteWithXattr(k, xattr)
 }
 func (b *LoggingBucket) GetDDoc(docname string, value interface{}) error {
 	start := time.Now()
@@ -125,11 +148,10 @@ func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	return b.bucket.SetBulk(entries)
 }
 
-
-func (b *LoggingBucket)  Refresh() error {
+func (b *LoggingBucket) Refresh() error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Refresh() [%v]", time.Since(start)) }()
-	return b.bucket.Refresh();
+	return b.bucket.Refresh()
 }
 
 func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
