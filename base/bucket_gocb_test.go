@@ -62,6 +62,25 @@ func GetBucketOrPanic() Bucket {
 	return bucket
 }
 
+func TestTranscoder(t *testing.T) {
+	transcoder := SGTranscoder{}
+
+	jsonBody := `{"a":1}`
+	jsonBytes := []byte(jsonBody)
+	binaryFlags := gocbcore.EncodeCommonFlags(gocbcore.BinaryType, gocbcore.NoCompression)
+	jsonFlags := gocbcore.EncodeCommonFlags(gocbcore.JsonType, gocbcore.NoCompression)
+
+	resultBytes, flags, err := transcoder.Encode([]byte(jsonBody))
+	assert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
+	assert.Equals(t, flags, jsonFlags)
+	assert.Equals(t, err, nil)
+
+	resultBytes, flags, err = transcoder.Encode(BinaryDocument(jsonBody))
+	assert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
+	assert.Equals(t, flags, binaryFlags)
+	assert.Equals(t, err, nil)
+}
+
 func CouchbaseTestSetGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()

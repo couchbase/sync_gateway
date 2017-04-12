@@ -851,7 +851,7 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 }
 
 // CAS-safe write of a document and it's associated named xattr
-func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 
 	// If cas=0, treat as insert
 	if cas == 0 {
@@ -863,7 +863,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattr string, exp 
 			return 0, err
 		}
 		docFragment, err := bucket.Bucket.MutateIn(k, newCas, uint32(exp)).
-			UpsertEx(xattr, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
 			Execute()
 		if err != nil {
 			return 0, err
@@ -885,7 +885,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattr string, exp 
 	if xv != nil {
 		accessDeletedFlag := gocb.SubdocFlag(0x08)
 		docFragment, err := bucket.Bucket.MutateIn(k, gocb.Cas(casOut), uint32(exp)).
-			UpsertEx(xattr, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|accessDeletedFlag).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|accessDeletedFlag).
 			Execute()
 		if err != nil {
 			return 0, err
@@ -897,7 +897,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattr string, exp 
 }
 
 // Retrieve a document and it's associated named xattr
-func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
@@ -921,7 +921,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interf
 		// TODO: Replace with gocb flag definition when https://issues.couchbase.com/browse/GOCBC-178 is implemented
 		// TODO: When converted to single op, verify 'key not found' returned when doc and xattr are both not present.
 		res, xattrErr := bucket.Bucket.LookupIn(k).
-			GetEx(xattr, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
+			GetEx(xattrKey, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
 			Execute()
 		if xattrErr != nil && xattrErr != gocbcore.ErrSubDocSuccessDeleted {
 			if xattrErr == gocbcore.ErrSubDocBadMulti {
@@ -935,9 +935,9 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interf
 			return shouldRetry, xattrErr, uint64(casGoCB)
 		}
 
-		err = res.Content(xattr, xv)
+		err = res.Content(xattrKey, xv)
 		if err != nil {
-			LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattr=%s: %v", k, xattr, err)
+			LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return false, err, nil
 		}
 		cas = uint64(res.Cas())
@@ -969,7 +969,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattr string, rv interf
 
 // Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS) tombstone when a document is deleted.
 // To remove the system xattr as well, an explicit subdoc delete operation is required.
-func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattr string) error {
+func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -982,7 +982,7 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattr string) error 
 	}
 
 	_, err = bucket.Bucket.MutateIn(k, removeCas, 0).
-		RemoveEx(xattr, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
+		RemoveEx(xattrKey, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
 		Execute()
 
 	if err != nil && err != gocbcore.ErrSubDocSuccessDeleted {
@@ -1051,8 +1051,6 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		}
 
 	}
-
-	return fmt.Errorf("Failed to update")
 
 }
 
@@ -1131,11 +1129,9 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 	}
 
-	return fmt.Errorf("Failed to update")
-
 }
 
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1150,11 +1146,11 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattr string, e
 
 		// Load the existing value.
 		gocbExpvars.Add("Update_GetWithXattr", 1)
-		cas, err = bucket.GetWithXattr(k, xattr, &value, &xattrValue)
+		cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, cancel writeupdate
-				LogTo("gocb", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattr=%s: %v", k, xattr, err)
+				LogTo("gocb", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 				return err
 			}
 			// Key not found - initialize cas and values
@@ -1166,7 +1162,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattr string, e
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, err := callback(value, xattrValue)
 		if err != nil {
-			LogTo("gocb", "Callback in WriteUpdateWithXattr returned error for key=%s, xattr=%s: %v", k, xattr, err)
+			LogTo("gocb", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return err
 		}
 
@@ -1179,7 +1175,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattr string, e
 
 		// CAS-safe write of the new value and xattr
 		LogTo("gocb", "Calling WriteCasWithXattr for key: %s cas: %d, value: %v, xattr:%v", k, cas, updatedValue, xattrMap)
-		_, err = bucket.WriteCasWithXattr(k, xattr, exp, cas, updatedValue, xattrMap)
+		_, err = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
 		// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
 		// WriteUpdate.
 		if err != nil && err != gocb.ErrKeyExists && !isRecoverableGoCBError(err) {
@@ -1192,8 +1188,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattr string, e
 			return nil
 		}
 	}
-
-	return fmt.Errorf("Failed to update")
 
 }
 

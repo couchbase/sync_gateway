@@ -27,10 +27,10 @@ func (t SGTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 	var err error
 
 	flags := gocbcore.EncodeCommonFlags(gocbcore.JsonType, gocbcore.NoCompression)
-	switch value.(type) {
+	switch typedValue := value.(type) {
 	case BinaryDocument:
 		flags = gocbcore.EncodeCommonFlags(gocbcore.BinaryType, gocbcore.NoCompression)
-		bytes = value.([]byte)
+		bytes = []byte(typedValue)
 	case []byte:
 		bytes = value.([]byte)
 	case *[]byte:
