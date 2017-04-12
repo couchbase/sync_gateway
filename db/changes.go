@@ -75,21 +75,43 @@ func (db *Database) AddDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptions) {
+
 	includeConflicts := options.Conflicts && entry.branched
 	if !options.IncludeDocs && !includeConflicts {
 		return
 	}
-	doc, err := db.GetDoc(entry.ID)
-	if err != nil {
-		base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
-		return
-	}
 
+
+	// The document, which may include just the syncMeta or may include syncMeta + Body, depending on circumstances
+	var doc *document
+	var err error
+
+	if options.IncludeDocs {
+		// load whole doc
+		doc, err = db.GetDoc(entry.ID)
+		if err != nil {
+			base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
+			return
+		}
+
+	} else {
+		// get doc metadata
+		doc = &document{}
+		doc.syncData, err = db.GetDocSyncData(entry.ID)
+		if err != nil {
+			base.Warn("Changes feed: error getting doc sync data %q: %v", entry.ID, err)
+			return
+		}
+
+	}
 	db.AddDocInstanceToChangeEntry(entry, doc, options)
+
+
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *document, options ChangesOptions) {
+
 	includeConflicts := options.Conflicts && entry.branched
 
 	revID := entry.Changes[0]["rev"]
@@ -106,6 +128,10 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 		})
 	}
 	if options.IncludeDocs {
+		if doc.body == nil {
+			base.Warn("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
+			return
+		}
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
 		if err != nil {
