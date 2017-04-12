@@ -56,8 +56,25 @@ func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
 	return doc, nil
 }
 
-func (db *DatabaseContext) GetDocSyncData(docid string) (*syncData, error) {
-	return nil, nil
+func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
+
+	key := realDocID(docid)
+	if key == "" {
+		return syncData{}, base.HTTPErrorf(400, "Invalid doc ID")
+	}
+	dbExpvars.Add("document_gets", 1)
+	rawDocBytes, _, err := db.Bucket.GetRaw(key)
+	if err != nil {
+		return syncData{}, err
+	}
+
+	docRoot := documentRoot{}
+	if err := json.Unmarshal(rawDocBytes, &docRoot); err != nil {
+		return syncData{}, err
+	}
+
+	return *docRoot.SyncData, nil
+
 }
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.

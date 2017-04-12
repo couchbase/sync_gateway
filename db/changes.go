@@ -18,7 +18,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"go/doc"
 )
 
 // Options for changes-feeds
@@ -83,66 +82,36 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	}
 
 
-	var doc Doc
-	//if includeConflicts {
-	//
-	//	// just load sync metadata
-	//
-	//
-	//
-	//}
+	// The document, which may include just the syncMeta or may include syncMeta + Body, depending on circumstances
+	var doc *document
+	var err error
 
 	if options.IncludeDocs {
 		// load whole doc
-	}
-	else {
-		// get doc metadata
-	}
-	db.AddDocInstanceToChangeEntry2(entry, doc, options)
-
-
-	// Old code
-	//doc, err := db.GetDoc(entry.ID)
-	//if err != nil {
-	//	base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
-	//	return
-	//}
-	//
-	//db.AddDocInstanceToChangeEntry(entry, doc, options)
-
-}
-
-func (db *Database) AddDocInstanceToChangeEntry2(entry *ChangeEntry, docWithOrWithoutBody *document, options ChangesOptions) {
-	includeConflicts := options.Conflicts && entry.branched
-
-	revID := entry.Changes[0]["rev"]
-	if includeConflicts {
-		doc.History.forEachLeaf(func(leaf *RevInfo) {
-			if leaf.ID != revID {
-				if !leaf.Deleted {
-					entry.Deleted = false
-				}
-				if !(options.ActiveOnly && leaf.Deleted) {
-					entry.Changes = append(entry.Changes, ChangeRev{"rev": leaf.ID})
-				}
-			}
-		})
-	}
-	if options.IncludeDocs {
-		if doc.Body == nil {
-			// warn + return
-		}
-		var err error
-		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
+		doc, err = db.GetDoc(entry.ID)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
+			base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
+			return
 		}
+
+	} else {
+		// get doc metadata
+		doc = &document{}
+		doc.syncData, err = db.GetDocSyncData(entry.ID)
+		if err != nil {
+			base.Warn("Changes feed: error getting doc sync data %q: %v", entry.ID, err)
+			return
+		}
+
 	}
+	db.AddDocInstanceToChangeEntry(entry, doc, options)
+
 
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
 func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *document, options ChangesOptions) {
+
 	includeConflicts := options.Conflicts && entry.branched
 
 	revID := entry.Changes[0]["rev"]
@@ -159,6 +128,10 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 		})
 	}
 	if options.IncludeDocs {
+		if doc.body == nil {
+			base.Warn("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
+			return
+		}
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
 		if err != nil {
