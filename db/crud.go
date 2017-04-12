@@ -56,6 +56,10 @@ func (db *DatabaseContext) GetDoc(docid string) (*document, error) {
 	return doc, nil
 }
 
+func (db *DatabaseContext) GetDocSyncData(docid string) (*syncData, error) {
+	return nil, nil
+}
+
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
 func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
