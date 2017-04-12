@@ -462,18 +462,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		revCacheSize = db.KDefaultRevisionCacheCapacity
 	}
 
-	unsupportedOptions := &db.UnsupportedOptions{}
-	if config.Unsupported != nil {
-		if config.Unsupported.UserViews != nil {
-			if config.Unsupported.UserViews.Enabled != nil {
-				unsupportedOptions.EnableUserViews = *config.Unsupported.UserViews.Enabled
-			}
-		}
-		if config.Unsupported.OidcTestProvider != nil {
-			unsupportedOptions.OidcTestProvider = *config.Unsupported.OidcTestProvider
-		}
-	}
-
 	// Enable doc tracking if needed for autoImport or shadowing
 	trackDocs := autoImport || config.Shadow != nil
 
@@ -483,7 +471,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
 		AdminInterface:        sc.config.AdminInterface,
-		UnsupportedOptions:    unsupportedOptions,
+		UnsupportedOptions:    config.Unsupported,
 		TrackDocs:             trackDocs,
 		OIDCOptions:           config.OIDCConfig,
 	}

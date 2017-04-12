@@ -10,6 +10,7 @@
 package base
 
 import (
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"reflect"
@@ -17,7 +18,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocbcore.v2"
+	"gopkg.in/couchbase/gocbcore.v6"
 )
 
 var gocbExpvars *expvar.Map
@@ -26,6 +27,15 @@ const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
 	MaxConcurrentBulkOps   = 35   // Max 35 concurrent bulk ops
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
+
+	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
+	// In our case, we only want to block until it's durable on the node we're writing to, so this is set to 0.
+	numNodesReplicateTo = uint(0)
+
+	// Causes the write op to block until the change has been persisted (made durable -- written to disk) on
+	// numNodesPersistTo.  In our case, we only want to block until it's durable on the node we're writing to,
+	// so this is set to 1
+	numNodesPersistTo = uint(1)
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -543,6 +553,10 @@ func (bucket CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultA
 	return nil
 }
 
+func (bucket CouchbaseBucketGoCB) Close() {
+	bucket.Bucket.Close()
+}
+
 func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
 	// boundary checking
 	if len(entries) == 0 {
@@ -710,21 +724,24 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 	gocbExpvars.Add("Add", 1)
 	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
 
-	if err != nil && err.Error() == gocbcore.ErrKeyExists.Error() {
+	if err != nil && err == gocb.ErrKeyExists {
 		return false, nil
 	}
 	return err == nil, err
 }
 
+// GoCB AddRaw writes as BinaryDocument, which results in the document having the
+// binary doc common flag set.  Callers that want to write JSON documents as raw bytes should
+// pass v as []byte to the stanard bucket.Add
 func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("AddRaw", 1)
-	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+	_, err = bucket.Bucket.Insert(k, BinaryDocument(v), uint32(exp))
 
-	if err != nil && err.Error() == gocbcore.ErrKeyExists.Error() {
+	if err != nil && err == gocb.ErrKeyExists {
 		return false, nil
 	}
 	return err == nil, err
@@ -833,6 +850,148 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 
 }
 
+// CAS-safe write of a document and it's associated named xattr
+func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+
+	// If cas=0, treat as insert
+	if cas == 0 {
+		// TODO: do this insert and update in a single op, when https://issues.couchbase.com/browse/MB-23522 is fixed.
+		// TODO: Once that's fixed, need to wrap w/ retry handling
+		gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
+		newCas, err := bucket.Bucket.Insert(k, &v, uint32(exp))
+		if err != nil {
+			return 0, err
+		}
+		docFragment, err := bucket.Bucket.MutateIn(k, newCas, uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+			Execute()
+		if err != nil {
+			return 0, err
+		}
+		return uint64(docFragment.Cas()), nil
+	}
+
+	casOut = 0
+	// Otherwise, replace existing value
+	// TODO: As above, should be single operation
+	gocbExpvars.Add("WriteCas_Replace", 1)
+	if v != nil {
+		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+		if err != nil {
+			return 0, err
+		}
+		casOut = uint64(newCas)
+	}
+	if xv != nil {
+		accessDeletedFlag := gocb.SubdocFlag(0x08)
+		docFragment, err := bucket.Bucket.MutateIn(k, gocb.Cas(casOut), uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|accessDeletedFlag).
+			Execute()
+		if err != nil {
+			return 0, err
+		}
+		casOut = uint64(docFragment.Cas())
+	}
+
+	return casOut, err
+}
+
+// Retrieve a document and it's associated named xattr
+func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
+
+	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
+	defer func() {
+		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
+	}()
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		// TODO: Replace with single op that has built-in handling for accessDeleted for xattr retrieval.
+		gocbExpvars.Add("Get", 1)
+		casGoCB, docErr := bucket.Bucket.Get(k, rv)
+		cas = uint64(casGoCB)
+
+		// If key not found, continue to attempt to retrieve the xattr only.  Otherwise standard error handling.
+		if docErr != nil && docErr != gocbcore.ErrKeyNotFound {
+			shouldRetry = isRecoverableGoCBError(docErr)
+			return shouldRetry, docErr, cas
+		}
+
+		// TODO: Replace with gocb flag definition when https://issues.couchbase.com/browse/GOCBC-178 is implemented
+		// TODO: When converted to single op, verify 'key not found' returned when doc and xattr are both not present.
+		res, xattrErr := bucket.Bucket.LookupIn(k).
+			GetEx(xattrKey, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
+			Execute()
+		if xattrErr != nil && xattrErr != gocbcore.ErrSubDocSuccessDeleted {
+			if xattrErr == gocbcore.ErrSubDocBadMulti {
+				if docErr == gocbcore.ErrKeyNotFound { // Doc not found, xattr not found.  Return KeyNotFound
+					return false, docErr, cas
+				} else { // Doc was retrieved ok, no xattr.  Return no error, but empty xv
+					return false, nil, cas
+				}
+			}
+			shouldRetry = isRecoverableGoCBError(xattrErr)
+			return shouldRetry, xattrErr, uint64(casGoCB)
+		}
+
+		err = res.Content(xattrKey, xv)
+		if err != nil {
+			LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+			return false, err, nil
+		}
+		cas = uint64(res.Cas())
+		return false, nil, cas
+	}
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop
+	description := fmt.Sprintf("Get %v", k)
+	err, result := RetryLoop(description, worker, sleeper)
+
+	if result == nil {
+		return 0, err
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+	}
+
+	return cas, err
+
+}
+
+// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS) tombstone when a document is deleted.
+// To remove the system xattr as well, an explicit subdoc delete operation is required.
+func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+	gocbExpvars.Add("Delete", 1)
+	removeCas, err := bucket.Bucket.Remove(k, 0)
+	if err != nil && err != gocb.ErrKeyNotFound {
+		return err
+	}
+
+	_, err = bucket.Bucket.MutateIn(k, removeCas, 0).
+		RemoveEx(xattrKey, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
+		Execute()
+
+	if err != nil && err != gocbcore.ErrSubDocSuccessDeleted {
+		return err
+	}
+
+	return nil
+}
+
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 
 	bucket.singleOps <- struct{}{}
@@ -856,9 +1015,8 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 				// Unexpected error, abort
 				return err
 			}
-			cas = 0  // Key not found error
+			cas = 0 // Key not found error
 		}
-
 
 		// Invoke callback to get updated value
 		value, err = callback(value)
@@ -894,8 +1052,6 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 
 	}
 
-	return fmt.Errorf("Failed to update")
-
 }
 
 func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
@@ -904,16 +1060,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	defer func() {
 		<-bucket.singleOps
 	}()
-
-
-	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
-	// In our case, we only want to block until it's durable on the node we're writing to, so this is set to 0.
-	numNodesReplicateTo := uint(0)
-
-	// Causes the write op to bock until the change has been persisted (made durable -- written to disk) on
-	// numNodesPersistTo.  In our case, we only want to block until it's durable on the node we're writing to,
-	// so this is set to 1
-	numNodesPersistTo := uint(1)
 
 	for {
 		var value []byte
@@ -929,7 +1075,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 				// Unexpected error, abort
 				return err
 			}
-			cas = 0  // Key not found error
+			cas = 0 // Key not found error
 		}
 
 		// Invoke callback to get updated value
@@ -983,7 +1129,65 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 	}
 
-	return fmt.Errorf("Failed to update")
+}
+
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+
+	for {
+		var value []byte
+		var xattrValue []byte
+		var err error
+		var cas uint64
+
+		// Load the existing value.
+		gocbExpvars.Add("Update_GetWithXattr", 1)
+		cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+		if err != nil {
+			if !bucket.IsKeyNotFoundError(err) {
+				// Unexpected error, cancel writeupdate
+				LogTo("gocb", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+				return err
+			}
+			// Key not found - initialize cas and values
+			cas = 0
+			value = nil
+			xattrValue = nil
+		}
+
+		// Invoke callback to get updated value
+		updatedValue, updatedXattrValue, err := callback(value, xattrValue)
+		if err != nil {
+			LogTo("gocb", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+			return err
+		}
+
+		// TODO: Avoid unmarshalling the raw xattr value here
+		var xattrMap map[string]interface{}
+		err = json.Unmarshal(updatedXattrValue, &xattrMap)
+		if err != nil {
+			return err
+		}
+
+		// CAS-safe write of the new value and xattr
+		LogTo("gocb", "Calling WriteCasWithXattr for key: %s cas: %d, value: %v, xattr:%v", k, cas, updatedValue, xattrMap)
+		_, err = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
+		// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
+		// WriteUpdate.
+		if err != nil && err != gocb.ErrKeyExists && !isRecoverableGoCBError(err) {
+			LogTo("gocb", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, err)
+			return err
+		}
+
+		// If there was no error, we're done
+		if err == nil {
+			return nil
+		}
+	}
 
 }
 
@@ -1081,7 +1285,7 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 }
 
 func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
-	return err.Error() == gocbcore.ErrKeyNotFound.Error()
+	return err == gocb.ErrKeyNotFound
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {

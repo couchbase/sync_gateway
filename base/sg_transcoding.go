@@ -1,24 +1,36 @@
 package base
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"gopkg.in/couchbase/gocbcore.v6"
+)
+
+// BinaryDocument is type alias that allows SGTranscoder to differentiate between documents that are
+// intended to be written as binary docs, versus json documents that are being sent as raw bytes
+// Some additional context here: https://play.golang.org/p/p4fkKiZD59
+type BinaryDocument []byte
 
 type SGTranscoder struct {
 }
 
-// This is needed because the default transcoding.go code in gocb is relying heavily on the
-// document flags (Binary/JSON,etc), however the Sync Gateway codebase is currently not "flags-aware",
-// and would require a decent amount of overhaul in order to use the default gocb transcoding.
-// It currently has parity with the existing go-couchbase library, namely to use the legacy json flag.
+// The default transcoding.go code in gocb makes assumptions about the document
+// type (binary, json) based on the incoming value (e.g. []byte as binary, interface{} as json).
+// Sync Gateway needs the ability to write json as raw bytes, so defines separate transcoders for storing
+// json and binary documents.
 
 // Encode applies the default Couchbase transcoding behaviour to encode a Go type.
-// Figures out how to convert the given struct into bytes and then figures out what to use for flags (uses 0 value, legacy JSON flag)
+// Figures out how to convert the given struct into bytes and then sets the json flag.
 func (t SGTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 
 	var bytes []byte
-	var flags uint32 // 0 value, which corresponds to gocb.lfJson
 	var err error
 
-	switch value.(type) {
+	flags := gocbcore.EncodeCommonFlags(gocbcore.JsonType, gocbcore.NoCompression)
+	switch typedValue := value.(type) {
+	case BinaryDocument:
+		flags = gocbcore.EncodeCommonFlags(gocbcore.BinaryType, gocbcore.NoCompression)
+		bytes = []byte(typedValue)
 	case []byte:
 		bytes = value.([]byte)
 	case *[]byte:
@@ -38,7 +50,6 @@ func (t SGTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 	}
 
 	// No compression supported currently
-
 	return bytes, flags, nil
 }
 
