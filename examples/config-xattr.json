@@ -3,8 +3,9 @@
     "db": {
       "server": "http://localhost:8091",
       "bucket": "default",
-      "unsupportedOptions": {
-         "enable_extended_attributes":true,
+      "password": "password",
+      "unsupported": {
+         "enable_extended_attributes":true
       }
     }
   }
