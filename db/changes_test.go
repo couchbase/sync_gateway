@@ -17,10 +17,10 @@ import (
 
 	"github.com/couchbaselabs/go.assert"
 
+	"bytes"
+	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"fmt"
-	"bytes"
 )
 
 // Unit test for bug #314
@@ -178,7 +178,6 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	history["parents"] = []int{-1, 0, 1}
 	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("B"), base.SetOf("B")}
 
-
 	//Marshall back to JSON
 	b, err := json.Marshal(x)
 
@@ -194,11 +193,11 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	assert.Equals(t, len(changes), 1)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 2},
-		ID:      "alpha",
-		Removed: base.SetOf("A"),
+		Seq:        SequenceID{Seq: 2},
+		ID:         "alpha",
+		Removed:    base.SetOf("A"),
 		allRemoved: true,
-		Changes: []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}})
+		Changes:    []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}})
 
 	printChanges(changes)
 }
@@ -278,7 +277,6 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	printChanges(changes)
 }
 
-
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 
@@ -334,16 +332,14 @@ func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 
 	// Start changes feed
 	var options ChangesOptions
+	options.Conflicts = true  // style=all_docs
+	options.ActiveOnly = true // active_only=true
 	options.Since = SequenceID{Seq: 0}
-
-	options.Continuous = true
-	options.Wait = true
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 
 		// Changes params: POST /pm/_changes?feed=normal&heartbeat=30000&style=all_docs&active_only=true
-		// NOTE: TestContinuousChangesBackfill has sample usage of db.MultiChangesFeed directly
 		// Changes request of all docs (could also do GetDoc call, but misses other possible things). One shot, .. etc
 
 		options.Terminator = make(chan bool)
