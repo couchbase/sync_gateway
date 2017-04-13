@@ -304,17 +304,17 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte) error {
 	if err := json.Unmarshal(xdata, &doc.syncData); err != nil {
 		return err
 	}
-	// Unmarshal document body
+	// Unmarshal document body, if present
 	if len(data) > 0 {
 		return doc.unmarshalBody(data)
-	} else {
-		// If there's an xattr but no body, set body as {"_deleted":true} to align with non-xattr handling
-		doc.body = Body{}
-		doc.body["_deleted"] = true
-		return nil
 	}
 
-	return doc.unmarshalBody(data)
+	// If there's no body, but there is an xattr, set body as {"_deleted":true} to align with non-xattr handling
+	if len(xdata) > 0 {
+		doc.body = Body{}
+		doc.body["_deleted"] = true
+	}
+	return nil
 }
 
 func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
