@@ -46,11 +46,13 @@ var RunStateString = []string{
 	DBResyncing: "Resyncing",
 }
 
-const DefaultRevsLimit = 1000
-const DefaultUseXattrs = false        // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
-const KSyncKeyPrefix = "_sync:"       // All special/internal documents the gateway creates have this prefix in their keys.
-const kSyncDataKey = "_sync:syncdata" // Key used to store sync function
-const KSyncXattr = "_sync"            // Name of XATTR used to store sync metadata
+const (
+	DefaultRevsLimit = 1000
+	DefaultUseXattrs = false            // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	KSyncKeyPrefix   = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
+	kSyncDataKey     = "_sync:syncdata" // Key used to store sync function
+	KSyncXattr       = "_sync"          // Name of XATTR used to store sync metadata
+)
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
