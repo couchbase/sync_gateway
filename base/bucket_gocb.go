@@ -1135,8 +1135,14 @@ func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
-	LogPanic("Unimplemented method: DeleteDDoc()")
-	return nil
+
+	manager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	return manager.RemoveDesignDocument(docname)
+
 }
 
 func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
