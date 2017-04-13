@@ -75,7 +75,8 @@ def prepare_repo_dir():
     """
     initial_directory = os.getcwd()
     os.chdir(".repo")
-    os.remove("manifest.xml")
+    if os.path.exists("manifest.xml"):
+        os.remove("manifest.xml")
     os.chdir("manifests")
     subprocess.call(['git', 'reset', '--hard'])
     os.chdir(initial_directory)
