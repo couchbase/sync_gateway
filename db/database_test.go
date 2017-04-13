@@ -50,7 +50,7 @@ func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	return leakyBucket
 }
 
-func setupTestDB(t *testing.T) *Database {
+func setupTestDB(t testing.TB) *Database {
 	return setupTestDBWithCacheOptions(t, CacheOptions{})
 }
 
@@ -65,7 +65,7 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 	return db
 }
 
-func setupTestDBWithCacheOptions(t *testing.T, options CacheOptions) *Database {
+func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
@@ -88,7 +88,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	return db
 }
 
-func tearDownTestDB(t *testing.T, db *Database) {
+func tearDownTestDB(t testing.TB, db *Database) {
 	db.Close()
 }
 
