@@ -81,8 +81,9 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
-	MaxNumRetries                          int // max number of retries before giving up
-	InitialRetrySleepTimeMS                int // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	MaxNumRetries                          int  // max number of retries before giving up
+	InitialRetrySleepTimeMS                int  // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	UseXattrs                              bool // Whether to use xattrs to store _sync metadata.  Used during view initialization
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server

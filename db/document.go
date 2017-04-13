@@ -82,11 +82,10 @@ func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte) (*d
 		return unmarshalDocument(docid, data)
 	}
 	doc := newDocument(docid)
-	if len(data) > 0 {
-		if err := doc.UnmarshalWithXattr(data, xattrData); err != nil {
-			return nil, err
-		}
+	if err := doc.UnmarshalWithXattr(data, xattrData); err != nil {
+		return nil, err
 	}
+
 	return doc, nil
 }
 
@@ -305,8 +304,17 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte) error {
 	if err := json.Unmarshal(xdata, &doc.syncData); err != nil {
 		return err
 	}
-	// Unmarshal document body
-	return doc.unmarshalBody(data)
+	// Unmarshal document body, if present
+	if len(data) > 0 {
+		return doc.unmarshalBody(data)
+	}
+
+	// If there's no body, but there is an xattr, set body as {"_deleted":true} to align with non-xattr handling
+	if len(xdata) > 0 {
+		doc.body = Body{}
+		doc.body["_deleted"] = true
+	}
+	return nil
 }
 
 func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {

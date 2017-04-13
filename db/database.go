@@ -46,11 +46,13 @@ var RunStateString = []string{
 	DBResyncing: "Resyncing",
 }
 
-const DefaultRevsLimit = 1000
-const DefaultUseXattrs = false        // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
-const KSyncKeyPrefix = "_sync:"       // All special/internal documents the gateway creates have this prefix in their keys.
-const kSyncDataKey = "_sync:syncdata" // Key used to store sync function
-const KSyncXattr = "_sync"            // Name of XATTR used to store sync metadata
+const (
+	DefaultRevsLimit = 1000
+	DefaultUseXattrs = false            // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	KSyncKeyPrefix   = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
+	kSyncDataKey     = "_sync:syncdata" // Key used to store sync function
+	KSyncXattr       = "_sync"          // Name of XATTR used to store sync metadata
+)
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
@@ -145,7 +147,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
 	} else {
 		bucket, _ := ibucket.(base.Bucket)
-		err = installViews(bucket)
+		err = installViews(bucket, spec.UseXattrs)
 	}
 	return
 }
@@ -422,9 +424,14 @@ func (db *Database) DocCount() int {
 	return int(vres.Rows[0].Value.(float64))
 }
 
-func installViews(bucket base.Bucket) error {
+func installViews(bucket base.Bucket, useXattrs bool) error {
 
+	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
+	// in the document body when xattrs disabled, in the mobile xattr when xattrs enabled.
 	syncData := "doc._sync"
+	if useXattrs {
+		syncData = fmt.Sprintf("meta.xattrs.%s", KSyncXattr)
+	}
 
 	// View for finding every Couchbase doc (used when deleting a database)
 	// Key is docid; value is null
