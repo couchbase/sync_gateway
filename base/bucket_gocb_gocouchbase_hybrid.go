@@ -41,25 +41,6 @@ func NewCouchbaseBucketGoCBGoCouchbaseHybrid(spec BucketSpec, callback sgbucket.
 
 }
 
-//func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) PutDDoc(docname string, value interface{}) error {
-//	return bucket.GoCouchbaseBucket.PutDDoc(docname, value)
-//}
-
-//func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) GetDDoc(docname string, into interface{}) error {
-//	return bucket.GoCouchbaseBucket.GetDDoc(docname, into)
-//}
-
-func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) DeleteDDoc(docname string) error {
-	return bucket.GoCouchbaseBucket.DeleteDDoc(docname)
-}
-
-//func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-//	return bucket.GoCouchbaseBucket.View(ddoc, name, params)
-//}
-//
-//func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-//	return bucket.GoCouchbaseBucket.ViewCustom(ddoc, name, params, vres)
-//}
 
 func (bucket CouchbaseBucketGoCBGoCouchbaseHybrid) Refresh() error {
 	return bucket.GoCouchbaseBucket.Refresh()
