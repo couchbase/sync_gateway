@@ -411,7 +411,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			BucketName:      indexBucketName,
 			CouchbaseDriver: base.DefaultDriverForBucketType[base.IndexBucket],
 		}
-		if config.ChannelIndex.Username != "" {
+		if config.ChannelIndex.Username != "" || config.ChannelIndex.Password != "" {
 			indexSpec.Auth = config.ChannelIndex
 		}
 
