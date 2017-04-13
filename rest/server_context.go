@@ -316,6 +316,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		FeedType:        feedType,
 		Auth:            config,
 		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		UseXattrs:       config.UseXattrs(),
 	}
 
 	// Set cache properties, if present
