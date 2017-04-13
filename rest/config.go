@@ -361,6 +361,13 @@ func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
 }
 
+func (dbConfig *DbConfig) UseXattrs() bool {
+	if dbConfig.Unsupported.EnableXattr != nil {
+		return *dbConfig.Unsupported.EnableXattr
+	}
+	return db.DefaultUseXattrs
+}
+
 // Implementation of AuthHandler interface for ShadowConfig
 func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket)

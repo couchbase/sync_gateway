@@ -145,7 +145,7 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
 	} else {
 		bucket, _ := ibucket.(base.Bucket)
-		err = installViews(bucket)
+		err = installViews(bucket, spec.UseXattrs)
 	}
 	return
 }
@@ -422,9 +422,14 @@ func (db *Database) DocCount() int {
 	return int(vres.Rows[0].Value.(float64))
 }
 
-func installViews(bucket base.Bucket) error {
+func installViews(bucket base.Bucket, useXattrs bool) error {
 
+	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
+	// in the document body when xattrs disabled, in the mobile xattr when xattrs enabled.
 	syncData := "doc._sync"
+	if useXattrs {
+		syncData = fmt.Sprintf("meta.xattrs.%s", KSyncXattr)
+	}
 
 	// View for finding every Couchbase doc (used when deleting a database)
 	// Key is docid; value is null

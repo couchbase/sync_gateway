@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -55,7 +56,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 		}
 	}
 	if wrap {
-		wrapViews(&ddoc, db.GetUserViewsEnabled())
+		wrapViews(&ddoc, db.GetUserViewsEnabled(), db.UseXattrs())
 	}
 	if err = db.checkDDocAccess(ddocName); err == nil {
 		err = db.Bucket.PutDDoc(ddocName, ddoc)
@@ -63,12 +64,20 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
 	return
 }
 
-func wrapViews(ddoc *DesignDoc, enableUserViews bool) {
-	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
-	// add channel filtering.
-	if enableUserViews {
-		for name, view := range ddoc.Views {
-			view.Map = `function(doc,meta) {
+const (
+	// viewWrapper_adminViews adds the rev to metadata, and strips the _sync property from the view result
+	viewWrapper_adminViews = `function(doc,meta) {
+	                    var sync = doc._sync;
+	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                      return;
+	                    if ((sync.flags & 1) || sync.deleted)
+	                      return;
+	                    delete doc._sync;
+	                    meta.rev = sync.rev;
+						(%s) (doc, meta);
+						doc._sync = sync;}`
+	// viewWrapper_userViews does the same work as viewWrapper_adminViews, and also includes channel information in the view results
+	viewWrapper_userViews = `function(doc,meta) {
 		                    var sync = doc._sync;
 		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 		                      return;
@@ -92,26 +101,69 @@ func wrapViews(ddoc *DesignDoc, enableUserViews bool) {
 			                    var emit = function(key,value) {
 			                    	_emit(key,[channels, value]);
 			                    };
-								(` + view.Map + `) (doc, meta);
+								(%s) (doc, meta);
 							}());
 							doc._sync = sync;
 						}`
-			ddoc.Views[name] = view // view is not a pointer, so have to copy it back
-		}
-	} else {
-		for name, view := range ddoc.Views {
-			view.Map = `function(doc,meta) {
-	                    var sync = doc._sync;
+	viewWrapper_adminViews_xattr = `function(doc,meta) {
+	                    var sync = meta.xattrs._sync;
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                      return;
 	                    if ((sync.flags & 1) || sync.deleted)
 	                      return;
-	                    delete doc._sync;
 	                    meta.rev = sync.rev;
-						(` + view.Map + `) (doc, meta);
-						doc._sync = sync;}`
-			ddoc.Views[name] = view // view is not a pointer, so have to copy it back
+						(%s) (doc, meta);}`
+	viewWrapper_userViews_xattr = `function(doc,meta) {
+		                    var sync = meta.xattrs._sync;
+		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+		                      return;
+		                    if ((sync.flags & 1) || sync.deleted)
+		                      return;
+		                    var channels = [];
+		                    var channelMap = sync.channels;
+							if (channelMap) {
+								for (var name in channelMap) {
+									removed = channelMap[name];
+									if (!removed)
+										channels.push(name);
+								}
+							}
+		                    meta.rev = sync.rev;
+		                    meta.channels = channels;
+
+		                    var _emit = emit;
+		                    (function(){
+			                    var emit = function(key,value) {
+			                    	_emit(key,[channels, value]);
+			                    };
+								(%s) (doc, meta);
+							}());
+						}`
+)
+
+func getViewWrapper(enableUserViews bool, useXattrs bool) string {
+	if enableUserViews {
+		if useXattrs {
+			return viewWrapper_userViews_xattr
+		} else {
+			return viewWrapper_userViews
 		}
+	} else {
+		if useXattrs {
+			return viewWrapper_adminViews_xattr
+		} else {
+			return viewWrapper_adminViews
+		}
+	}
+}
+
+func wrapViews(ddoc *DesignDoc, enableUserViews bool, useXattrs bool) {
+	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
+	// add channel filtering.
+	viewWrapper := getViewWrapper(enableUserViews, useXattrs)
+	for name, view := range ddoc.Views {
+		view.Map = fmt.Sprintf(viewWrapper, view.Map)
+		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
 }
 
