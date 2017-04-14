@@ -18,12 +18,7 @@
   
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" revision="3d39b57188c372649beedd5c13c9003156d5a055" />
   <project name="build" path="cbbuild" revision="388ec72a70fc0925823d726609a209201052567b">
-    <annotation name="RELEASE" value="1.4.0.2" />
-    <annotation name="VERSION" value="1.4.0.2" />
-    <annotation name="PRODUCT_BRANCH" value="master" />
-    <annotation name="PRODUCT" value="sync_gateway" />
-    <annotation name="BLD_NUM" value="@BLD_NUM@" />
-    <annotation name="RELEASE" value="@RELEASE@" />
+    <annotation name="VERSION" value="1.4.1" />
   </project>
   <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" revision="8e3ecd19340dabed7ad4fea9d9944ab97b5f916d" />
   <project groups="notdefault,sg-accel" name="cbauth" path="godeps/src/github.com/couchbase/cbauth" revision="1323b92ac2619c29d50e588e59d7a6b4839da629" />
