@@ -205,12 +205,6 @@ func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname st
 		password = ""
 	}
 
-	// If it's the default bucket, then set the username to "default"
-	// workaround for https://github.com/couchbaselabs/cbgt/issues/32#issuecomment-136481228
-	if inputBucketname == "" || inputBucketname == "default" {
-		username = "default"
-	}
-
 	return username, password, inputBucketname
 
 }
