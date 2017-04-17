@@ -309,7 +309,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
+func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16, dataType uint8) {
 	entryTime := time.Now()
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
@@ -329,7 +329,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		}
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
-		doc, err := UnmarshalDocumentSyncData(docJSON, false)
+		doc, err := UnmarshalDocumentSyncDataFromFeed(docJSON, dataType, false)
 		if err != nil || !doc.HasValidSyncData(c.context.writeSequences()) {
 			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
