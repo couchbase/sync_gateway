@@ -48,7 +48,7 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	dbExpvars.Add("document_gets", 1)
 	if db.UseXattrs() {
 		var rawDoc, rawXattr []byte
-		_, err = db.Bucket.GetWithXattr(key, KSyncXattr, &rawDoc, &rawXattr)
+		_, err = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
 		doc, err = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr)
 		if err != nil {
 			return nil, err
@@ -744,7 +744,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 	// Update the document
 	if db.UseXattrs() {
-		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattr, int(expiry), func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
+		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr); err != nil {
 				return

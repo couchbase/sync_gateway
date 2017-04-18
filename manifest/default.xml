@@ -57,7 +57,7 @@
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="b0f96cf430707aff15d3f63d8a76fcd0a7d43c94"/>
 
-  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="6575cf14363c4a840f4fafc01532b42c473472f8"/>
+  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="e324a422a750407f19950152cf6a7dd06460d48b"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d7249420369bcf410668a0954f4ed386ca6434c0"/>
 
@@ -67,9 +67,9 @@
 
   <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="f601f521a1ab1c99260c63441e1bbdbbc48b1bd9"/>
 
-  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="6172a8c61c821c420071fe9e20e74d8e24c8cbd5"/>
+  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="19e1a1d5fea2e65a51c2a3025102937fd9de2c1e"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="e3c4b39715123596b338aebf430b09e8ce9567cb"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="01f7c43b4c592cc6779f9cbe36a07854c50b278d"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="elazarl" revision="d5cac425555ca5cf00694df246e04f05e6a55150"/>
 
