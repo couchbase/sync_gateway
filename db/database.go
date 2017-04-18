@@ -51,7 +51,7 @@ const (
 	DefaultUseXattrs = false            // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	KSyncKeyPrefix   = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
 	kSyncDataKey     = "_sync:syncdata" // Key used to store sync function
-	KSyncXattr       = "_sync"          // Name of XATTR used to store sync metadata
+	KSyncXattrName   = "_sync"          // Name of XATTR used to store sync metadata
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -430,7 +430,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// in the document body when xattrs disabled, in the mobile xattr when xattrs enabled.
 	syncData := "doc._sync"
 	if useXattrs {
-		syncData = fmt.Sprintf("meta.xattrs.%s", KSyncXattr)
+		syncData = fmt.Sprintf("meta.xattrs.%s", KSyncXattrName)
 	}
 
 	// View for finding every Couchbase doc (used when deleting a database)
@@ -943,7 +943,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		}
 		var err error
 		if db.UseXattrs() {
-			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattr, 0, func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
+			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
 				if currentValue == nil || len(currentValue) == 0 {
 					return nil, nil, errors.New("Cancel update")
 				}

@@ -19,6 +19,14 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+// Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
+// used in MCRequest.DataType
+const (
+	MemcachedDataTypeJSON = 1 << iota
+	MemcachedDataTypeSnappy
+	MemcachedDataTypeXattr
+)
+
 type couchbaseDCPFeedImpl struct {
 	bds    cbdatasource.BucketDataSource
 	events chan sgbucket.TapEvent
@@ -142,6 +150,7 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 		Key:      rq.Key,
 		Value:    rq.Body,
 		Sequence: rq.Cas,
+		DataType: rq.DataType,
 	}
 	return event
 }

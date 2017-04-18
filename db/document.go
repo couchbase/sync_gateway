@@ -10,8 +10,11 @@
 package db
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -104,6 +107,103 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 		root.SyncData.Flags |= channels.Deleted // Backward compatibility with old Deleted property
 	}
 	return root.SyncData, nil
+}
+
+// Unmarshals sync metadata for a document arriving via DCP.  Includes handling for xattr content
+// being included in data.  If not present in either xattr or document body, returns nil but no error.
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, err error) {
+
+	var body []byte
+
+	// If attr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
+	// Note that there could be a non-sync xattr present
+	if dataType&base.MemcachedDataTypeXattr != 0 {
+		var syncXattr []byte
+		body, syncXattr, err = parseXattrStreamData(KSyncXattrName, data)
+		if err != nil {
+			return nil, err
+		}
+
+		// If the sync xattr is present, use that to build syncData
+		if syncXattr != nil && len(syncXattr) > 0 {
+			result = &syncData{}
+			if needHistory {
+				result.History = make(RevTree)
+			}
+			err = json.Unmarshal(syncXattr, result)
+			if err != nil {
+				return nil, err
+			}
+			return result, nil
+		}
+	} else {
+		// Xattr flag not set - data is just the document body
+		body = data
+	}
+
+	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
+	return UnmarshalDocumentSyncData(body, needHistory)
+
+}
+
+// parseXattrStreamData returns the raw bytes of the body and the requested xattr (when present) from the raw DCP data bytes.
+// Details on format (taken from https://docs.google.com/document/d/18UVa5j8KyufnLLy29VObbWRtoBn9vs8pcxttuMt6rz8/edit#heading=h.caqiui1pmmmb.):
+/*
+	When the XATTR bit is set the first uint32_t in the body contains the size of the entire XATTR section.
+
+
+	      Byte/     0       |       1       |       2       |       3       |
+	         /              |               |               |               |
+	        |0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|
+	        +---------------+---------------+---------------+---------------+
+	       0| Total xattr length in network byte order                      |
+	        +---------------+---------------+---------------+---------------+
+
+	Following the length you'll find an iovector-style encoding of all of the XATTR key-value pairs with the following encoding:
+
+	uint32_t length of next xattr pair (network order)
+	xattr key in modified UTF-8
+	0x00
+	xattr value in modified UTF-8
+	0x00
+
+	The 0x00 byte after the key saves us from storing a key length, and the trailing 0x00 is just for convenience to allow us to use string functions to search in them.
+*/
+
+func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []byte, err error) {
+
+	xattrsLen := binary.BigEndian.Uint32(data[0:4])
+	body = data[xattrsLen:]
+	if xattrsLen == 0 {
+		return body, nil, nil
+	}
+
+	// In the xattr key/value pairs, key and value are both terminated by 0x00 (byte(0)).  Use this as a separator to split the byte slice
+	separator := []byte("\x00")
+
+	// Iterate over xattr key/value pairs
+	pos := uint32(4)
+	for pos < xattrsLen {
+		pairLen := binary.BigEndian.Uint32(data[pos : pos+4])
+		if pairLen == 0 || int(pos+pairLen) > len(data) {
+			return nil, nil, fmt.Errorf("Unexpected xattr pair length (%d) - unable to parse xattrs", pairLen)
+		}
+		pos += 4
+		pairBytes := data[pos : pos+pairLen]
+		components := bytes.Split(pairBytes, separator)
+		// xattr pair has the format [key]0x00[value]0x00, and so should split into three components
+		if len(components) != 3 {
+			return nil, nil, fmt.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
+		}
+		xattrKey := string(components[0])
+		// If this is the xattr we're looking for , we're done
+		if xattrName == xattrKey {
+			return body, components[1], nil
+		}
+		pos += pairLen
+	}
+
+	return body, xattr, nil
 }
 
 func (doc *syncData) HasValidSyncData(requireSequence bool) bool {

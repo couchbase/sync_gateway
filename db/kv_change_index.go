@@ -174,7 +174,7 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 	}
 }
 
-func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16) {
+func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16, dataType uint8) {
 	// no-op for reader
 	base.Warn("DocChanged called in index reader for doc %s, will be ignored.", docID)
 }

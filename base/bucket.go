@@ -305,6 +305,12 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 	}
 	dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
 
+	var dataSourceOptions *cbdatasource.BucketDataSourceOptions
+	if bucket.spec.UseXattrs {
+		dataSourceOptions = cbdatasource.DefaultBucketDataSourceOptions
+		dataSourceOptions.IncludeXAttrs = true
+	}
+
 	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, bucket.spec.Auth)
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
@@ -314,7 +320,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 		vbucketIdsArr,
 		bucket.spec.Auth,
 		dcpReceiver,
-		nil,
+		dataSourceOptions,
 	)
 	if err != nil {
 		return nil, err
