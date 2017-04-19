@@ -14,6 +14,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -1059,6 +1060,7 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 }
 
 func (context *DatabaseContext) UseXattrs() bool {
+	log.Printf("Use Xattrs: %v", context.Options.UnsupportedOptions.EnableXattr)
 	if context.Options.UnsupportedOptions.EnableXattr != nil {
 		return *context.Options.UnsupportedOptions.EnableXattr
 	}

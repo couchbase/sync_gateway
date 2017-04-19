@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 
@@ -910,6 +911,8 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 		// TODO: Replace with single op that has built-in handling for accessDeleted for xattr retrieval.
 		gocbExpvars.Add("Get", 1)
 		casGoCB, docErr := bucket.Bucket.Get(k, rv)
+		log.Printf("Value on bucket.Bucket.Get: %v", rv)
+		log.Printf("Error on bucket.Bucket.Get: %v", docErr)
 		cas = uint64(casGoCB)
 
 		// If key not found, continue to attempt to retrieve the xattr only.  Otherwise standard error handling.
@@ -921,8 +924,10 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 		// TODO: Replace with gocb flag definition when https://issues.couchbase.com/browse/GOCBC-178 is implemented
 		// TODO: When converted to single op, verify 'key not found' returned when doc and xattr are both not present.
 		res, xattrErr := bucket.Bucket.LookupIn(k).
-			GetEx(xattrKey, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
+			GetEx(xattrKey, gocb.SubdocFlagXattr).
 			Execute()
+
+		log.Printf("Error on bucket.Bucket.LookupIn: %v", xattrErr)
 		if xattrErr != nil && xattrErr != gocbcore.ErrSubDocSuccessDeleted {
 			if xattrErr == gocbcore.ErrSubDocBadMulti {
 				if docErr == gocbcore.ErrKeyNotFound { // Doc not found, xattr not found.  Return KeyNotFound
@@ -936,6 +941,8 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 		}
 
 		err = res.Content(xattrKey, xv)
+
+		log.Printf("Error on res.Content: %v", err)
 		if err != nil {
 			LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return false, err, nil

@@ -577,7 +577,7 @@ func TestCreateBatchesKeys(t *testing.T) {
 }
 
 // TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
-func CouchbaseTestWriteCasXATTR(t *testing.T) {
+func TestWriteCasXATTR(t *testing.T) {
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -587,7 +587,7 @@ func CouchbaseTestWriteCasXATTR(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXATTR"
+	key := "TestWriteCasXATTR2"
 	xattrName := "_sync"
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
