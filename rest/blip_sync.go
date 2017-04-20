@@ -68,8 +68,8 @@ func (h *handler) handleBLIPSync() error {
 	ctx.blipContext.Logger = func(fmt string, params ...interface{}) {
 		base.LogTo("BLIP", fmt, params...)
 	}
-	ctx.blipContext.LogMessages = base.LogKeys["BLIP+"]
-	ctx.blipContext.LogFrames = base.LogKeys["BLIP++"]
+	ctx.blipContext.LogMessages = base.LogEnabledExcludingLogStar("BLIP+")
+	ctx.blipContext.LogFrames = base.LogEnabledExcludingLogStar("BLIP++")
 
 	// Start a WebSocket client and connect it to the BLIP handler:
 	wsHandler := func(conn *websocket.Conn) {
