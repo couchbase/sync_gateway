@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -47,7 +46,6 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	dbExpvars.Add("document_gets", 1)
-	log.Printf("Using Xattrs? %v", db.UseXattrs())
 	if db.UseXattrs() {
 		var rawDoc, rawXattr []byte
 		_, err = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
