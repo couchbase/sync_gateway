@@ -3,7 +3,7 @@ package base
 import (
 	"encoding/json"
 
-	"gopkg.in/couchbase/gocbcore.v6"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 // BinaryDocument is type alias that allows SGTranscoder to differentiate between documents that are
