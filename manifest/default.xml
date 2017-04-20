@@ -59,7 +59,7 @@
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="e324a422a750407f19950152cf6a7dd06460d48b"/>
 
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d7249420369bcf410668a0954f4ed386ca6434c0"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d5a64dd7982b3c07cb0675e995e249fa58cd92ff"/>
 
   <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="e665767ab56251f1b2e4f2cc1c15b12d303b9013"/>
 
