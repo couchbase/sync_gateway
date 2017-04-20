@@ -86,6 +86,11 @@ type BucketSpec struct {
 	UseXattrs                              bool // Whether to use xattrs to store _sync metadata.  Used during view initialization
 }
 
+// Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
+func (spec BucketSpec) RetrySleeper() RetrySleeper {
+	return CreateDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS)
+}
+
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
 	*couchbase.Bucket            // the underlying go-couchbase bucket
@@ -183,14 +188,9 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 		return shouldRetry, err, vres
 	}
 
-	sleeper := CreateDoublingSleeperFunc(
-		bucket.spec.MaxNumRetries,
-		bucket.spec.InitialRetrySleepTimeMS,
-	)
-
 	// Kick off retry loop
 	description := fmt.Sprintf("Query View: %v", name)
-	err, result := RetryLoop(description, worker, sleeper)
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
 
 	if err != nil {
 		return sgbucket.ViewResult{}, err

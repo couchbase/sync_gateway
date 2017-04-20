@@ -18,7 +18,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
-	"gopkg.in/couchbase/gocbcore.v6"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
@@ -577,7 +577,7 @@ func TestCreateBatchesKeys(t *testing.T) {
 }
 
 // TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
-func CouchbaseTestWriteCasXATTR(t *testing.T) {
+func CouchbaseTestWriteCasXattrSimple(t *testing.T) {
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -587,7 +587,7 @@ func CouchbaseTestWriteCasXATTR(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXATTR"
+	key := "TestWriteCasXATTRA"
 	xattrName := "_sync"
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -605,9 +605,7 @@ func CouchbaseTestWriteCasXATTR(t *testing.T) {
 
 	cas := uint64(0)
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
+	assertNoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
@@ -622,6 +620,75 @@ func CouchbaseTestWriteCasXATTR(t *testing.T) {
 	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
 	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
 	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+}
+
+// TestWriteCasXATTR.  Validates basic write of document with xattr,  retrieval of the same doc w/ xattr, update of the doc w/ xattr, retrieval of the doc w/ xattr.
+func CouchbaseTestWriteCasXattrUpsert(t *testing.T) {
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+	bucket.SetTranscoder(SGTranscoder{})
+
+	key := "TestWriteCasXATTRUpsert"
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = float64(123)
+	xattrVal["rev"] = "1-1234"
+
+	var existsVal map[string]interface{}
+	_, err := bucket.Get(key, existsVal)
+	if err == nil {
+		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
+		err = bucket.DeleteWithXattr(key, xattrName)
+	}
+
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	assertNoError(t, err, "WriteCasWithXattr error")
+	log.Printf("Post-write, cas is %d", cas)
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	getCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	// TODO: Cas check fails, pending xattr code to make it to gocb master
+	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
+	assert.Equals(t, getCas, cas)
+	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+
+	val2 := make(map[string]interface{})
+	val2["body_field"] = "5678"
+	xattrVal2 := make(map[string]interface{})
+	xattrVal2["seq"] = float64(124)
+	xattrVal2["rev"] = "2-5678"
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val2, xattrVal2)
+	assertNoError(t, err, "WriteCasWithXattr error")
+	log.Printf("Post-write, cas is %d", cas)
+
+	var retrievedVal2 map[string]interface{}
+	var retrievedXattr2 map[string]interface{}
+	getCas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal2, &retrievedXattr2)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	// TODO: Cas check fails, pending xattr code to make it to gocb master
+	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal2, retrievedXattr2)
+	assert.Equals(t, getCas, cas)
+	assert.Equals(t, retrievedVal2["body_field"], val2["body_field"])
+	assert.Equals(t, retrievedXattr2["seq"], xattrVal2["seq"])
+	assert.Equals(t, retrievedXattr2["rev"], xattrVal2["rev"])
+
 }
 
 // TestWriteCasXATTRRaw.  Validates basic write of document and xattr as raw bytes.
@@ -786,6 +853,7 @@ func CouchbaseTestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
+	log.Printf("Wrote document")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
@@ -794,6 +862,7 @@ func CouchbaseTestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
+	log.Printf("Retrieved document")
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assert.Equals(t, getCas, cas)
@@ -806,6 +875,7 @@ func CouchbaseTestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 		t.Errorf("Error doing Delete: %+v", err)
 	}
 
+	log.Printf("Deleted document")
 	// Update the xattr
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
@@ -815,20 +885,24 @@ func CouchbaseTestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
+	log.Printf("Updated tombstoned document")
 	// Verify retrieval
-	getCas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	var modifiedVal map[string]interface{}
+	var modifiedXattr map[string]interface{}
+	getCas, err = bucket.GetWithXattr(key, xattrName, &modifiedVal, &modifiedXattr)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
+	log.Printf("Retrieved tombstoned document")
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
-	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	log.Printf("TestWriteCasXATTR retrieved modified: %s, %s", modifiedVal, modifiedXattr)
+	assert.Equals(t, modifiedXattr["seq"], xattrVal["seq"])
+	assert.Equals(t, modifiedXattr["rev"], xattrVal["rev"])
 
 }
 
 // TestWriteUpdateXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
-func CouchbaseTestWriteUpdateXATTR(t *testing.T) {
+func CouchbaseTestWriteUpdateXattr(t *testing.T) {
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -838,7 +912,7 @@ func CouchbaseTestWriteUpdateXATTR(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteUpdateXATTR38"
+	key := "TestWriteUpdateXATTR"
 	xattrName := "_sync"
 	val := make(map[string]interface{})
 	val["counter"] = float64(1)
