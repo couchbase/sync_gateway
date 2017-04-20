@@ -13,13 +13,12 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocbcore.v6"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 var gocbExpvars *expvar.Map
@@ -854,17 +853,18 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 // CAS-safe write of a document and it's associated named xattr
 func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 
+	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
+	// This is the only use case for macro expansion today - if more cases turn up, should change the bucket API to handle this more generically.
+	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
+
 	// If cas=0, treat as insert
 	if cas == 0 {
-		// TODO: do this insert and update in a single op, when https://issues.couchbase.com/browse/MB-23522 is fixed.
 		// TODO: Once that's fixed, need to wrap w/ retry handling
 		gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
-		newCas, err := bucket.Bucket.Insert(k, &v, uint32(exp))
-		if err != nil {
-			return 0, err
-		}
-		docFragment, err := bucket.Bucket.MutateIn(k, newCas, uint32(exp)).
-			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
+		docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc, 0, uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).
+			UpsertEx("", v, gocb.SubdocFlagNone).
 			Execute()
 		if err != nil {
 			return 0, err
@@ -873,20 +873,24 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	}
 
 	casOut = 0
-	// Otherwise, replace existing value
-	// TODO: As above, should be single operation
+	// Otherwise, replace existing valu
 	gocbExpvars.Add("WriteCas_Replace", 1)
 	if v != nil {
-		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+		// Have value and xattr value - update both
+		docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).
+			UpsertEx("", v, gocb.SubdocFlagNone).
+			Execute()
 		if err != nil {
 			return 0, err
 		}
-		casOut = uint64(newCas)
-	}
-	if xv != nil {
-		accessDeletedFlag := gocb.SubdocFlag(0x08)
-		docFragment, err := bucket.Bucket.MutateIn(k, gocb.Cas(casOut), uint32(exp)).
-			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath|accessDeletedFlag).
+		casOut = uint64(docFragment.Cas())
+	} else {
+		// Update xattr only
+		docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).
 			Execute()
 		if err != nil {
 			return 0, err
@@ -908,47 +912,53 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 	}()
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		// TODO: Replace with single op that has built-in handling for accessDeleted for xattr retrieval.
 		gocbExpvars.Add("Get", 1)
-		casGoCB, docErr := bucket.Bucket.Get(k, rv)
-		log.Printf("Value on bucket.Bucket.Get: %v", rv)
-		log.Printf("Error on bucket.Bucket.Get: %v", docErr)
-		cas = uint64(casGoCB)
-
-		// If key not found, continue to attempt to retrieve the xattr only.  Otherwise standard error handling.
-		if docErr != nil && docErr != gocbcore.ErrKeyNotFound {
-			shouldRetry = isRecoverableGoCBError(docErr)
-			return shouldRetry, docErr, cas
-		}
-
-		// TODO: Replace with gocb flag definition when https://issues.couchbase.com/browse/GOCBC-178 is implemented
-		// TODO: When converted to single op, verify 'key not found' returned when doc and xattr are both not present.
-		res, xattrErr := bucket.Bucket.LookupIn(k).
+		// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
+		// to retrieve the full doc body, so need to retry that scenario below.
+		res, err := bucket.Bucket.LookupIn(k).
 			GetEx(xattrKey, gocb.SubdocFlagXattr).
+			GetEx("", gocb.SubdocFlagNone).
 			Execute()
 
-		log.Printf("Error on bucket.Bucket.LookupIn: %v", xattrErr)
-		if xattrErr != nil && xattrErr != gocbcore.ErrSubDocSuccessDeleted {
-			if xattrErr == gocbcore.ErrSubDocBadMulti {
-				if docErr == gocbcore.ErrKeyNotFound { // Doc not found, xattr not found.  Return KeyNotFound
-					return false, docErr, cas
-				} else { // Doc was retrieved ok, no xattr.  Return no error, but empty xv
-					return false, nil, cas
-				}
+		if err == nil {
+			// Successfully retrieved doc and xattr.  Copy the contents into rv, xv and return.
+			err = res.Content("", rv)
+			if err != nil {
+				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+				return false, err, nil
 			}
-			shouldRetry = isRecoverableGoCBError(xattrErr)
-			return shouldRetry, xattrErr, uint64(casGoCB)
-		}
+			err = res.Content(xattrKey, xv)
+			if err != nil {
+				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+				return false, err, nil
+			}
+			cas = uint64(res.Cas())
+			return false, nil, cas
 
-		err = res.Content(xattrKey, xv)
+		} else if err == gocb.ErrKeyNotFound {
+			// Doc not found - need to check whether this is a deleted doc with an xattr.
+			res, xattrOnlyErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
+				GetEx(xattrKey, gocb.SubdocFlagXattr).
+				Execute()
 
-		log.Printf("Error on res.Content: %v", err)
-		if err != nil {
-			LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-			return false, err, nil
+			if xattrOnlyErr != nil && xattrOnlyErr != gocbcore.ErrSubDocSuccessDeleted {
+				shouldRetry = isRecoverableGoCBError(xattrOnlyErr)
+				return shouldRetry, xattrOnlyErr, 0
+			}
+
+			// Successfully retrieved xattr only - return
+			err = res.Content(xattrKey, xv)
+			if err != nil {
+				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+				return false, err, nil
+			}
+			cas = uint64(res.Cas())
+			return false, nil, cas
+
+		} else {
+			shouldRetry = isRecoverableGoCBError(err)
+			return shouldRetry, err, 0
 		}
-		cas = uint64(res.Cas())
-		return false, nil, cas
 	}
 
 	sleeper := CreateDoublingSleeperFunc(
@@ -988,8 +998,8 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 		return err
 	}
 
-	_, err = bucket.Bucket.MutateIn(k, removeCas, 0).
-		RemoveEx(xattrKey, gocb.SubdocFlagAccessDeleted|gocb.SubdocFlagXattr).
+	_, err = bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, removeCas, 0).
+		RemoveEx(xattrKey, gocb.SubdocFlagXattr).
 		Execute()
 
 	if err != nil && err != gocbcore.ErrSubDocSuccessDeleted {
