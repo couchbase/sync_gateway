@@ -551,6 +551,7 @@ func NewLoggerWriter(logKey string, serialNumber uint64, req *http.Request) *Log
 func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
 		SetLogLevel(logConfig.LogLevel.sgLevel())
+		ParseLogFlags(logConfig.LogKeys)
 
 		if logConfig.LogFilePath == nil {
 			return
