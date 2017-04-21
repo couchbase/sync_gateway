@@ -914,18 +914,33 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 		switch err {
 		case nil:
-			// Successfully retrieved doc and xattr.  Copy the contents into rv, xv and return.
+			// Successfully retrieved doc and (optionally) xattr.  Copy the contents into rv, xv and return.
 			err = res.Content("", rv)
 			if err != nil {
-				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+				LogTo("gocb", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 				return false, err, nil
 			}
-			err = res.Content(xattrKey, xv)
-			if err != nil {
-				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return false, err, nil
+			if err != gocbcore.ErrSubDocBadMulti {
+				err = res.Content(xattrKey, xv)
+				if err != nil {
+					LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+					return false, err, nil
+				}
 			}
 			cas = uint64(res.Cas())
+			return false, nil, cas
+
+		case gocbcore.ErrSubDocBadMulti:
+			// TODO: LookupIn should handle all cases with a single op:
+			//     - doc and xattr
+			//     - no doc, no xattr
+			//     - doc, no xattr
+			//     - no doc, xattr
+			cas, docOnlyErr := bucket.Get(k, rv)
+			if docOnlyErr != nil {
+				shouldRetry = isRecoverableGoCBError(docOnlyErr)
+				return shouldRetry, docOnlyErr, 0
+			}
 			return false, nil, cas
 
 		case gocb.ErrKeyNotFound:
@@ -1166,7 +1181,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, err := callback(value, xattrValue)
+		updatedValue, updatedXattrValue, err := callback(value, xattrValue, cas)
 		if err != nil {
 			LogTo("gocb", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return err

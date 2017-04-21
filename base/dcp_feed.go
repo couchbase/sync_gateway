@@ -151,6 +151,7 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 		Value:    rq.Body,
 		Sequence: rq.Cas,
 		DataType: rq.DataType,
+		Cas:      rq.Cas,
 	}
 	return event
 }

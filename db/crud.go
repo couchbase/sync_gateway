@@ -48,8 +48,8 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	dbExpvars.Add("document_gets", 1)
 	if db.UseXattrs() {
 		var rawDoc, rawXattr []byte
-		_, err = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
-		doc, err = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr)
+		cas, err := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		doc, err = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr, cas)
 		if err != nil {
 			return nil, err
 		}
@@ -525,6 +525,44 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	return err
 }
 
+// Imports a document that was written by someone other than sync gateway.
+func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
+
+	base.LogTo("Import", "Importing %s %s", docid, value)
+	var body Body
+
+	err := json.Unmarshal(value, &body)
+	if err != nil {
+		base.LogTo("Import", "Unmarshal error during importDoc %v", err)
+		return err
+	}
+
+	_, err = db.updateDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
+		// Cancel update
+		if doc.IsSGWrite() {
+			base.LogTo("Import", "After update, identified as SG write.  Cancelling update")
+			return nil, nil, couchbase.UpdateCancel
+		}
+
+		// The active rev is the parent for an import
+		parentRev := doc.CurrentRev
+		generation, _ := ParseRevID(parentRev)
+		generation++
+		newRev := createRevID(generation, parentRev, body)
+		base.LogTo("Import", "Created new rev ID %v", newRev)
+		body["_rev"] = newRev
+		doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+
+		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
+		return body, nil, nil
+	})
+	if err != nil {
+		base.LogTo("Import", "Import updateDoc returned error: %v", err)
+	}
+	return err
+}
+
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (string, error) {
@@ -744,11 +782,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 	// Update the document
 	if db.UseXattrs() {
-		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
+		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
-			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr); err != nil {
+			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
 				return
 			}
+
 			var updatedDoc *document
 			updatedDoc, _, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {

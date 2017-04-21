@@ -943,11 +943,11 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		}
 		var err error
 		if db.UseXattrs() {
-			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte) (raw []byte, rawXattr []byte, err error) {
+			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, err error) {
 				if currentValue == nil || len(currentValue) == 0 {
 					return nil, nil, errors.New("Cancel update")
 				}
-				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr)
+				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas)
 				if err != nil {
 					return nil, nil, err
 				}

@@ -1,6 +1,7 @@
 package db
 
 import (
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -41,7 +42,7 @@ type ChangeIndex interface {
 	GetCachedChanges(channelName string, options ChangesOptions) (validFrom uint64, entries []*LogEntry)
 
 	// Called to add a document to the index
-	DocChanged(docID string, docJSON []byte, seq uint64, vbucket uint16, dataType uint8)
+	DocChanged(event sgbucket.TapEvent)
 
 	// Retrieves stable sequence for index
 	GetStableSequence(docID string) SequenceID

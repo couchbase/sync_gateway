@@ -491,7 +491,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	if importDocs {
+	// Support for legacy importDocs handling - if xattrs aren't enabled, support a backfill-style import on startup
+	if importDocs && !config.UseXattrs() {
 		db, _ := db.GetDatabase(dbcontext, nil)
 		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
 			return nil, err

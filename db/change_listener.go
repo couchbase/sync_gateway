@@ -26,7 +26,7 @@ type changeListener struct {
 	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
 }
 
-type DocChangedFunc func(docID string, jsonData []byte, seq uint64, vbNo uint16, dataType uint8)
+type DocChangedFunc func(event sgbucket.TapEvent)
 
 func (listener *changeListener) Init(name string) {
 	listener.bucketName = name
@@ -68,16 +68,16 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, bucket
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo, event.DataType)
+						listener.OnDocChanged(event)
 					}
 					listener.Notify(base.SetOf(key))
 				} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo, event.DataType)
+						listener.OnDocChanged(event)
 					}
 				} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) {
 					if listener.OnDocChanged != nil {
-						listener.OnDocChanged(key, event.Value, event.Sequence, event.VbNo, event.DataType)
+						listener.OnDocChanged(event)
 					}
 					if trackDocs {
 						listener.DocChannel <- event

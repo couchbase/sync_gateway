@@ -12,9 +12,11 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -37,6 +39,7 @@ type syncData struct {
 	Access          UserAccessMap       `json:"access,omitempty"`
 	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
 	Expiry          *time.Time          `json:"exp,omitempty"` // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas             string              `json:"cas"`           // String representation of a cas value, populated via macro expansion
 
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
@@ -56,6 +59,7 @@ type document struct {
 	syncData
 	body Body
 	ID   string `json:"-"`
+	Cas  uint64
 }
 
 // Returns a new empty document.
@@ -78,17 +82,19 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte) (*document, error) {
+func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas uint64) (doc *document, err error) {
 
-	// If no xattr data, unmarshal as standard doc
 	if xattrData == nil || len(xattrData) == 0 {
-		return unmarshalDocument(docid, data)
+		// If no xattr data, unmarshal as standard doc
+		doc, err = unmarshalDocument(docid, data)
+	} else {
+		doc = newDocument(docid)
+		err = doc.UnmarshalWithXattr(data, xattrData)
 	}
-	doc := newDocument(docid)
-	if err := doc.UnmarshalWithXattr(data, xattrData); err != nil {
+	if err != nil {
 		return nil, err
 	}
-
+	doc.Cas = cas
 	return doc, nil
 }
 
@@ -111,7 +117,8 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 
 // Unmarshals sync metadata for a document arriving via DCP.  Includes handling for xattr content
 // being included in data.  If not present in either xattr or document body, returns nil but no error.
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, err error) {
+// Returns the raw body, in case it's needed for import.
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, rawBody []byte, err error) {
 
 	var body []byte
 
@@ -121,7 +128,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 		var syncXattr []byte
 		body, syncXattr, err = parseXattrStreamData(KSyncXattrName, data)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// If the sync xattr is present, use that to build syncData
@@ -132,9 +139,9 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 			}
 			err = json.Unmarshal(syncXattr, result)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			return result, nil
+			return result, body, nil
 		}
 	} else {
 		// Xattr flag not set - data is just the document body
@@ -142,8 +149,8 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 	}
 
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
-	return UnmarshalDocumentSyncData(body, needHistory)
-
+	result, err = UnmarshalDocumentSyncData(body, needHistory)
+	return result, body, err
 }
 
 // parseXattrStreamData returns the raw bytes of the body and the requested xattr (when present) from the raw DCP data bytes.
@@ -173,7 +180,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []byte, err error) {
 
 	xattrsLen := binary.BigEndian.Uint32(data[0:4])
-	body = data[xattrsLen:]
+	body = data[xattrsLen+4:]
 	if xattrsLen == 0 {
 		return body, nil, nil
 	}
@@ -213,6 +220,31 @@ func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
 		base.LogTo("CRUD+", "Invalid sync metadata (may be expected):  Current rev: %s, Sequence: %v", doc.CurrentRev, doc.Sequence)
 	}
 	return valid
+}
+
+// Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value
+func (s *syncData) GetSyncCas() uint64 {
+
+	if s.Cas == "" {
+		return 0
+	}
+
+	casBytes, err := hex.DecodeString(strings.TrimPrefix(s.Cas, "0x"))
+	if err != nil || len(casBytes) != 8 {
+		// Invalid cas - return zero
+		return 0
+	}
+
+	return binary.LittleEndian.Uint64(casBytes[0:8])
+}
+
+// Checks whether the specified cas matches the cas value in the sync metadata.
+func (s *syncData) IsSGWrite(cas uint64) bool {
+	return cas == s.GetSyncCas()
+}
+
+func (doc *document) IsSGWrite() bool {
+	return doc.syncData.IsSGWrite(doc.Cas)
 }
 
 func (doc *document) hasFlag(flag uint8) bool {
