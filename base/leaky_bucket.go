@@ -282,14 +282,14 @@ func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micr
 func (b *LeakyBucket) UUID() (string, error) {
 		return b.bucket.UUID()
 }
-/*
+
 func (b *LeakyBucket) CloseAndDelete() error {
 	if bucket, ok := b.bucket.(sgbucket.DeleteableBucket); ok {
 		return bucket.CloseAndDelete()
 	}
 	return nil
 }
-*/
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
