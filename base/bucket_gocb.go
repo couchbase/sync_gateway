@@ -907,25 +907,23 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 		gocbExpvars.Add("Get", 1)
 		// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
 		// to retrieve the full doc body, so need to retry that scenario below.
-		res, err := bucket.Bucket.LookupIn(k).
+		res, lookupErr := bucket.Bucket.LookupIn(k).
 			GetEx(xattrKey, gocb.SubdocFlagXattr). // Get the xattr
 			GetEx("", gocb.SubdocFlagNone).        // Get the document body
 			Execute()
 
-		switch err {
+		switch lookupErr {
 		case nil:
 			// Successfully retrieved doc and (optionally) xattr.  Copy the contents into rv, xv and return.
-			err = res.Content("", rv)
-			if err != nil {
-				LogTo("gocb", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return false, err, nil
+			contentErr := res.Content("", rv)
+			if contentErr != nil {
+				LogTo("gocb", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				return false, contentErr, nil
 			}
-			if err != gocbcore.ErrSubDocBadMulti {
-				err = res.Content(xattrKey, xv)
-				if err != nil {
-					LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-					return false, err, nil
-				}
+			contentErr = res.Content(xattrKey, xv)
+			if contentErr != nil {
+				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				return false, contentErr, nil
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -955,10 +953,10 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			}
 
 			// Successfully retrieved xattr only - return
-			err = res.Content(xattrKey, xv)
-			if err != nil {
-				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return false, err, nil
+			contentErr := res.Content(xattrKey, xv)
+			if contentErr != nil {
+				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				return false, contentErr, nil
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
