@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -309,8 +310,11 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16, dataType uint8) {
+func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 	entryTime := time.Now()
+	docID := string(event.Key)
+	docJSON := event.Value
+
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	go func() {
 		// Is this a user/role doc?
@@ -329,7 +333,23 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		}
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
-		doc, err := UnmarshalDocumentSyncDataFromFeed(docJSON, dataType, false)
+		doc, rawBody, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
+
+		// Import handling.
+		if c.context.autoImport && c.context.UseXattrs() {
+			// If syncData is nil, or if this was not an SG write, attempt to import
+			if doc == nil || !doc.IsSGWrite(event.Cas) {
+				// import
+				if event.Opcode == sgbucket.TapDeletion {
+					rawBody = nil
+				}
+				base.LogTo("Import", "Importing %s", docID)
+				db := Database{DatabaseContext: c.context, user: nil}
+				db.ImportDoc(docID, rawBody, false)
+				return
+			}
+		}
+
 		if err != nil || !doc.HasValidSyncData(c.context.writeSequences()) {
 			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
 			return
@@ -405,6 +425,7 @@ func (c *changeCache) DocChanged(docID string, docJSON []byte, seq uint64, vbNo 
 		}
 	}()
 }
+
 func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
 
 	c.context.BucketLock.RLock()

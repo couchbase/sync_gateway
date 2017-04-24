@@ -38,8 +38,8 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 
 func GetBucketOrPanic() Bucket {
 
-	username := "bucket-1"
-	bucketname := "bucket-1"
+	username := "default"
+	bucketname := "default"
 	password := "password"
 
 	testAuth := TestAuthenticator{
@@ -587,7 +587,7 @@ func CouchbaseTestWriteCasXattrSimple(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXATTRA"
+	key := "TestWriteCasXATTRSimple"
 	xattrName := "_sync"
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -933,7 +933,7 @@ func CouchbaseTestWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Dummy write update function that increments 'counter' in the doc and 'seq' in the xattr
-	writeUpdateFunc := func(doc []byte, xattr []byte) (updatedDoc []byte, updatedXattr []byte, err error) {
+	writeUpdateFunc := func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, err error) {
 
 		var docMap map[string]interface{}
 		var xattrMap map[string]interface{}

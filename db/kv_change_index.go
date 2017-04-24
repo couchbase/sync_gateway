@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -174,9 +175,9 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 	}
 }
 
-func (k *kvChangeIndex) DocChanged(docID string, docJSON []byte, seq uint64, vbNo uint16, dataType uint8) {
+func (k *kvChangeIndex) DocChanged(event sgbucket.TapEvent) {
 	// no-op for reader
-	base.Warn("DocChanged called in index reader for doc %s, will be ignored.", docID)
+	base.Warn("DocChanged called in index reader for doc %s, will be ignored.", event.Key)
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
