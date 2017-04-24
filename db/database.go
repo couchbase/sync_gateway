@@ -428,9 +428,10 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 
 	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
 	// in the document body when xattrs disabled, in the mobile xattr when xattrs enabled.
-	syncData := "doc._sync"
+	syncData := "var sync = doc._sync;"
 	if useXattrs {
-		syncData = fmt.Sprintf("meta.xattrs.%s", KSyncXattrName)
+		syncData = fmt.Sprintf(`var sync = meta.xattrs.%s; 
+							var mb_24037 = doc.id;`, KSyncXattrName) // Workaround for https://issues.couchbase.com/browse/MB-24037
 	}
 
 	// View for finding every Couchbase doc (used when deleting a database)
@@ -441,7 +442,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// View for _all_docs
 	// Key is docid; value is [revid, sequence]
 	alldocs_map := `function (doc, meta) {
-                     var sync = %s;
+                     %s
                      if (sync === undefined || meta.id.substring(0,6) == "_sync:")
                        return;
                      if ((sync.flags & 1) || sync.deleted)
@@ -458,8 +459,9 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// View for importing unknown docs
 	// Key is [existing?, docid] where 'existing?' is false for unknown docs
 	import_map := `function (doc, meta) {
+					 %s
                      if(meta.id.substring(0,6) != "_sync:") {
-                       var exists = (%s !== undefined);
+                       var exists = (sync !== undefined);
                        emit([exists, meta.id], null); } }`
 	import_map = fmt.Sprintf(import_map, syncData)
 
@@ -491,7 +493,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
 	// where flag is true for doc deletion, false for removed from channel, missing otherwise
 	channels_map := `function (doc, meta) {
-	                    var sync = %s;
+	                    %s
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 						var sequence = sync.sequence;
@@ -525,7 +527,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
-	                    var sync = %s;
+	                    %s
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var access = sync.access;
@@ -541,7 +543,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 
 	access_vbSeq_map := `function (doc, meta) {
-		                    var sync = %s;
+		                    %s
 		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 		                        return;
 		                    var access = sync.access;
@@ -565,7 +567,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// Role access view, used by ComputeRolesForUser()
 	// Key is username; value is array of role names
 	roleAccess_map := `function (doc, meta) {
-	                    var sync = %s;
+	                    %s
 	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 	                        return;
 	                    var access = sync.role_access;
@@ -581,7 +583,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 
 	roleAccess_vbSeq_map := `function (doc, meta) {
-		                    var sync = %s;
+		                    %s
 		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
 		                        return;
 		                    var access = sync.role_access;
