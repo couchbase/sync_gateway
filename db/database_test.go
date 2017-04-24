@@ -34,7 +34,9 @@ func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
 		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
-		BucketName:      "sync_gateway_tests"}, nil)
+		BucketName:      "sync_gateway_tests",
+		Auth:            base.UnitTestAuthHandler(),
+		UseXattrs:       DefaultUseXattrs}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -879,6 +881,37 @@ func TestRecentSequenceHistory(t *testing.T) {
 	assert.True(t, err == nil)
 	log.Printf("Recent sequences: %v (shouldn't exceed %v)", len(doc.RecentSequences), kMaxRecentSequences)
 	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
+
+}
+
+func TestChannelView(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// Create doc
+	log.Printf("Create doc 1...")
+	body := Body{"key1": "value1", "key2": 1234}
+	rev1id, err := db.Put("doc1", body)
+	assertNoError(t, err, "Couldn't create document")
+	assert.Equals(t, rev1id, body["_rev"])
+	assert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
+
+	var entries LogEntries
+	// Query view (retry loop to wait for indexing)
+	for i := 0; i < 10; i++ {
+		var err error
+		entries, err = db.getChangesInChannelFromView("*", 0, ChangesOptions{})
+
+		assertNoError(t, err, "Couldn't create document")
+		if len(entries) >= 1 {
+			log.Printf("View query returned entry: %+v", entries[0])
+			break
+		}
+		log.Printf("No entries found - retrying (%d/10)", i+1)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	assert.True(t, len(entries) == 1)
 
 }
 
