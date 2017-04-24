@@ -896,18 +896,22 @@ func TestChannelView(t *testing.T) {
 	assert.Equals(t, rev1id, body["_rev"])
 	assert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
+	var entries LogEntries
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
-		entries, err := db.getChangesInChannelFromView("*", 0, ChangesOptions{})
+		var err error
+		entries, err = db.getChangesInChannelFromView("*", 0, ChangesOptions{})
 
 		assertNoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
-			log.Printf("got entry from view: %+v", entries[0])
+			log.Printf("View query returned entry: %+v", entries[0])
 			break
 		}
 		log.Printf("No entries found - retrying (%d/10)", i+1)
 		time.Sleep(500 * time.Millisecond)
 	}
+
+	assert.True(t, len(entries) == 1)
 
 }
 
