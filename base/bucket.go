@@ -316,7 +316,7 @@ func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.TapArguments) (sgbucket
 		dataSourceOptions.IncludeXAttrs = true
 	}
 
-	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, name:%s, auth:%s", urls, poolName, bucketName, bucket.spec.Auth)
+	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
 		poolName,

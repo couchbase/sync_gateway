@@ -93,9 +93,17 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	password := ""
 	if spec.Auth != nil {
-		_, password, _ = spec.Auth.GetCredentials()
+		user, pass, _ := spec.Auth.GetCredentials()
+		authErr := cluster.Authenticate(gocb.RbacAuthenticator{
+			Username: user,
+			Password: pass,
+		})
+		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
+		if authErr != nil {
+			Warn("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", spec.BucketName, user)
+			password = pass
+		}
 	}
-
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		return nil, err
