@@ -140,6 +140,11 @@ func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.Update
 	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
 }
 
+func (bucket CouchbaseBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
+	Warn("CouchbaseBucket doesn't support cas-safe removal - handling as simple delete")
+	return 0, bucket.Bucket.Delete(k)
+
+}
 func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	panic("SetBulk not implemented")
 }

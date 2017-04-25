@@ -258,7 +258,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	}
 
-	go context.watchDocChanges()
+	if !context.UseXattrs() {
+		go context.watchDocChanges()
+	}
+
 	return context, nil
 }
 
@@ -945,24 +948,26 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		}
 		var err error
 		if db.UseXattrs() {
-			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, err error) {
+			err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing, so deleteDoc is always returned as false.
 				if currentValue == nil || len(currentValue) == 0 {
-					return nil, nil, errors.New("Cancel update")
+					return nil, nil, deleteDoc, errors.New("Cancel update")
 				}
 				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, deleteDoc, err
 				}
 
 				updatedDoc, shouldUpdate, err := documentUpdateFunc(doc)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, deleteDoc, err
 				}
 				if shouldUpdate {
 					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
-					return updatedDoc.MarshalWithXattr()
+					raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+					return raw, rawXattr, deleteDoc, err
 				} else {
-					return nil, nil, errors.New("Cancel update")
+					return nil, nil, deleteDoc, errors.New("Cancel update")
 				}
 			})
 		} else {

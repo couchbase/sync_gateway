@@ -528,20 +528,24 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Imports a document that was written by someone other than sync gateway.
 func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 
-	base.LogTo("Import", "Importing %s %s", docid, value)
+	base.LogTo("Import", "Importing %s %s (delete=%v)", docid, value, isDelete)
 	var body Body
 
-	err := json.Unmarshal(value, &body)
-	if err != nil {
-		base.LogTo("Import", "Unmarshal error during importDoc %v", err)
-		return err
+	if isDelete {
+		body = Body{"_deleted": true}
+	} else {
+		err := json.Unmarshal(value, &body)
+		if err != nil {
+			base.LogTo("Import", "Unmarshal error during importDoc %v", err)
+			return err
+		}
 	}
 
-	_, err = db.updateDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+	_, err := db.updateDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel update
 		if doc.IsSGWrite() {
-			base.LogTo("Import", "After update, identified as SG write.  Cancelling update")
+			base.LogTo("Import", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
 			return nil, nil, couchbase.UpdateCancel
 		}
 
@@ -558,7 +562,7 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		return body, nil, nil
 	})
 	if err != nil {
-		base.LogTo("Import", "Import updateDoc returned error: %v", err)
+		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
 	}
 	return err
 }
@@ -645,12 +649,12 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
 		channelSet, access, roles, oldBody, err := db.getChannelsAndAccess(doc, body, newRevID)
-
-		//Assign old revision body to variable in method scope
-		oldBodyJSON = oldBody
 		if err != nil {
 			return
 		}
+
+		//Assign old revision body to variable in method scope
+		oldBodyJSON = oldBody
 
 		if len(channelSet) > 0 {
 			doc.History[newRevID].Channels = channelSet
@@ -782,7 +786,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 	// Update the document
 	if db.UseXattrs() {
-		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, err error) {
+		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
 				return
@@ -793,12 +797,16 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			if err != nil {
 				return
 			}
+			deleteDoc = updatedDoc.History[updatedDoc.CurrentRev].Deleted
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = updatedDoc.MarshalWithXattr()
 			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
-			return raw, rawXattr, err
+			return raw, rawXattr, deleteDoc, err
 		})
+		if err != nil {
+			base.LogTo("CRUD+", "Error updating document %q w/ xattr: %v", key, err)
+		}
 	} else {
 		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!

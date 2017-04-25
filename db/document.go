@@ -244,6 +244,7 @@ func (s *syncData) IsSGWrite(cas uint64) bool {
 }
 
 func (doc *document) IsSGWrite() bool {
+	base.LogTo("Import+", "Comparing cas to see if an update to doc %q was SG write:  cas: %x  syncCas: %s", doc.Cas, doc.syncData.Cas)
 	return doc.syncData.IsSGWrite(doc.Cas)
 }
 
@@ -450,13 +451,17 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte) error {
 }
 
 func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
+
 	body := doc.body
-	if body == nil {
-		body = Body{}
-	}
-	data, err = json.Marshal(body)
-	if err != nil {
-		return nil, nil, err
+	// If body is non-empty and non-deleted, unmarshal and return
+	if body != nil {
+		deleted, _ := body["_deleted"].(bool)
+		if !deleted {
+			data, err = json.Marshal(body)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 
 	xdata, err = json.Marshal(doc.syncData)

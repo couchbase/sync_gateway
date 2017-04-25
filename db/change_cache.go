@@ -339,13 +339,12 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		if c.context.autoImport && c.context.UseXattrs() {
 			// If syncData is nil, or if this was not an SG write, attempt to import
 			if doc == nil || !doc.IsSGWrite(event.Cas) {
-				// import
-				if event.Opcode == sgbucket.TapDeletion {
+				isDelete := event.Opcode == sgbucket.TapDeletion
+				if isDelete {
 					rawBody = nil
 				}
-				base.LogTo("Import", "Importing %s", docID)
 				db := Database{DatabaseContext: c.context, user: nil}
-				db.ImportDoc(docID, rawBody, false)
+				db.ImportDoc(docID, rawBody, isDelete)
 				return
 			}
 		}

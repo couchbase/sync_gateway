@@ -179,7 +179,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -673,7 +673,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return nil, 0, fmt.Errorf("Error doing type assertion of %v into a uint64", result)
+		return nil, 0, fmt.Errorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", result)
 	}
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
@@ -746,13 +746,19 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 
 func (bucket CouchbaseBucketGoCB) Delete(k string) error {
 
+	_, err := bucket.Remove(k, 0)
+	return err
+}
+
+func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, err error) {
+
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Delete", 1)
-	_, err := bucket.Bucket.Remove(k, 0)
-	return err
+	newCas, err := bucket.Bucket.Remove(k, gocb.Cas(cas))
+	return uint64(newCas), err
 }
 
 func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
@@ -807,7 +813,7 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -887,7 +893,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -917,13 +923,13 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// Successfully retrieved doc and (optionally) xattr.  Copy the contents into rv, xv and return.
 			contentErr := res.Content("", rv)
 			if contentErr != nil {
-				LogTo("gocb", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, nil
+				LogTo("CRUD", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				return false, contentErr, 0
 			}
 			contentErr = res.Content(xattrKey, xv)
 			if contentErr != nil {
-				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, nil
+				LogTo("CRUD", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				return false, contentErr, 0
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -955,8 +961,8 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// Successfully retrieved xattr only - return
 			contentErr := res.Content(xattrKey, xv)
 			if contentErr != nil {
-				LogTo("gocb", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, nil
+				LogTo("CRUD", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				return false, contentErr, 0
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -979,7 +985,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("GetWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -1140,14 +1146,11 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 			}
 		}
-
 		// If there was no error, we're done
 		if err == nil {
 			return nil
 		}
-
 	}
-
 }
 
 func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
@@ -1169,7 +1172,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, cancel writeupdate
-				LogTo("gocb", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+				LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 				return err
 			}
 			// Key not found - initialize cas and values
@@ -1179,9 +1182,9 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, err := callback(value, xattrValue, cas)
+		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
 		if err != nil {
-			LogTo("gocb", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+			LogTo("CRUD", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return err
 		}
 
@@ -1192,18 +1195,40 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			return err
 		}
 
-		// CAS-safe write of the new value and xattr
-		LogTo("gocb", "Calling WriteCasWithXattr for key: %s cas: %d, value: %v, xattr:%v", k, cas, updatedValue, xattrMap)
-		_, err = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
+		var writeErr error
+		// If this is a tombstone, we want to delete the document and update the xattr
+		if deleteDoc {
+			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
+			removeCas, removeErr := bucket.Remove(k, cas)
+			if removeErr != nil && !isRecoverableGoCBError(removeErr) {
+				LogTo("CRUD", "Remove of deleted doc during WriteUpdateWithXattr failed for key %s: %v", k, removeErr)
+				return removeErr
+			}
+			// update xattr only
+			_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, removeCas, nil, xattrMap)
+			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
+				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
+				return writeErr
+			}
+
+			// If there was no error, we're done
+			if writeErr == nil {
+				return nil
+			}
+		}
+
+		// Not a delete - update the body and xattr
+		_, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
+
 		// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
 		// WriteUpdate.
-		if err != nil && err != gocb.ErrKeyExists && !isRecoverableGoCBError(err) {
-			LogTo("gocb", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, err)
-			return err
+		if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
+			LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
+			return writeErr
 		}
 
 		// If there was no error, we're done
-		if err == nil {
+		if writeErr == nil {
 			return nil
 		}
 	}
@@ -1252,7 +1277,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
