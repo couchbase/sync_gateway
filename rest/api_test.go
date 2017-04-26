@@ -694,6 +694,52 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	assertStatus(t, response, 400)
 }
 
+func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+
+	response := rt.sendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
+	assertStatus(t, response, 404)
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["reason"], "no session")
+}
+
+func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+
+	// Set CORS to nil
+	sc := rt.ServerContext()
+	sc.config.CORS = nil
+
+	response := rt.sendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
+	assertStatus(t, response, 400)
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["reason"], "No CORS")
+}
+
+func TestNoCORSOriginOnSessionDelete(t *testing.T) {
+	var rt restTester
+	reqHeaders := map[string]string{
+		"Origin": "http://staging.example.com",
+	}
+
+	response := rt.sendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
+	assertStatus(t, response, 400)
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["reason"], "No CORS")
+}
+
 func TestManualAttachment(t *testing.T) {
 	var rt restTester
 
