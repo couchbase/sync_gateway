@@ -1215,21 +1215,22 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			if writeErr == nil {
 				return nil
 			}
-		}
+		} else {
 
-		// Not a delete - update the body and xattr
-		_, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
+			// Not a delete - update the body and xattr
+			_, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
 
-		// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
-		// WriteUpdate.
-		if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-			LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-			return writeErr
-		}
+			// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
+			// WriteUpdate.
+			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
+				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
+				return writeErr
+			}
 
-		// If there was no error, we're done
-		if writeErr == nil {
-			return nil
+			// If there was no error, we're done
+			if writeErr == nil {
+				return nil
+			}
 		}
 	}
 
