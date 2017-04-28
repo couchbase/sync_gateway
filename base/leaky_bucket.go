@@ -84,7 +84,7 @@ func (b *LeakyBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpda
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
-	panic("SetBulk not implemented")
+	return b.bucket.SetBulk(entries)
 }
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {

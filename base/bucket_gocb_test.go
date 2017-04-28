@@ -1126,6 +1126,8 @@ func CouchbaseTestDeleteDocumentUpdateXattr(t *testing.T) {
 	var postDeleteXattr map[string]interface{}
 	getCas2, err := bucket.GetWithXattr(key, xattrName, &postDeleteVal, &postDeleteXattr)
 	assertNoError(t, err, "Error getting document post-delete")
+	assert.Equals(t, postDeleteXattr["seq"], float64(2))
+	assert.Equals(t, len(postDeleteVal), 0)
 	log.Printf("Post-delete xattr (2): %s", postDeleteXattr)
 	log.Printf("Post-delete cas (2): %x", getCas2)
 
