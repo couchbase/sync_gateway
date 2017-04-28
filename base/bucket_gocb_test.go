@@ -1178,7 +1178,7 @@ func CouchbaseTestDeleteDocumentAndXATTR(t *testing.T) {
 
 }
 
-// TestDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Used during SG delete
+// TestDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
 func CouchbaseTestDeleteDocumentAndUpdateXATTR(t *testing.T) {
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1221,23 +1221,14 @@ func CouchbaseTestDeleteDocumentAndUpdateXATTR(t *testing.T) {
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	mutateCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	assert.Equals(t, len(retrievedVal), 0)
+	assert.Equals(t, retrievedXattr["seq"], float64(123))
 	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
 	log.Printf("MutateInEx cas: %v", mutateCas)
-	// Post-delete
 
-	/*
-		bucket.Bucket.Remove(key, gocb.Cas(mutateCas))
-
-		var delRetrievedVal map[string]interface{}
-		var delRetrievedXattr map[string]interface{}
-		deleteCas, err := bucket.GetWithXattr(key, xattrName, &delRetrievedVal, &delRetrievedXattr)
-		log.Printf("del value: %v, del xattr: %v", delRetrievedVal, delRetrievedXattr)
-
-		log.Printf("Post-delete cas: %v", deleteCas)
-	*/
 }
 
-// TestDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Used during SG delete
+// CouchbaseTestRetrieveDocumentAndXattr.  Pending https://issues.couchbase.com/browse/MB-24152
 func CouchbaseTestRetrieveDocumentAndXattr(t *testing.T) {
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
