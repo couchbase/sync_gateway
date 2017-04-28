@@ -143,6 +143,9 @@ func (b *StatsBucket) SetRaw(k string, exp int, v []byte) error {
 func (b *StatsBucket) Delete(k string) error {
 	return b.bucket.Delete(k)
 }
+func (b *StatsBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
+	return b.bucket.Remove(k, cas)
+}
 func (b *StatsBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
 	if vBytes, ok := v.([]byte); ok {
 		defer b.docWrite(1, len(vBytes))

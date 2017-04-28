@@ -68,6 +68,9 @@ func (b *LeakyBucket) SetRaw(k string, exp int, v []byte) error {
 func (b *LeakyBucket) Delete(k string) error {
 	return b.bucket.Delete(k)
 }
+func (b *LeakyBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
+	return b.bucket.Remove(k, cas)
+}
 func (b *LeakyBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
@@ -81,7 +84,7 @@ func (b *LeakyBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpda
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
-	panic("SetBulk not implemented")
+	return b.bucket.SetBulk(entries)
 }
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
@@ -296,7 +299,7 @@ func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micr
 }
 
 func (b *LeakyBucket) UUID() (string, error) {
-		return b.bucket.UUID()
+	return b.bucket.UUID()
 }
 
 func (b *LeakyBucket) CloseAndDelete() error {
@@ -305,6 +308,7 @@ func (b *LeakyBucket) CloseAndDelete() error {
 	}
 	return nil
 }
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
@@ -369,4 +373,3 @@ func dedupeTapEvents(tapEvents []sgbucket.TapEvent) []sgbucket.TapEvent {
 func VBHash(key string, numVb int) uint32 {
 	return sgbucket.VBHash(key, uint16(numVb))
 }
-

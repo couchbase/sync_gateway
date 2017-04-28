@@ -65,6 +65,11 @@ func (b *LoggingBucket) Delete(k string) error {
 	defer func() { LogTo("Bucket", "Delete(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.Delete(k)
 }
+func (b *LoggingBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "Remove(%q) [%v]", k, time.Since(start)) }()
+	return b.bucket.Remove(k, cas)
+}
 func (b *LoggingBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Write(%q, 0x%x, %d, ..., 0x%x) [%v]", k, flags, exp, opt, time.Since(start)) }()
