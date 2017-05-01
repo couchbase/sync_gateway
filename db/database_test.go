@@ -12,6 +12,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -913,6 +914,31 @@ func TestChannelView(t *testing.T) {
 
 	assert.True(t, len(entries) == 1)
 
+}
+
+//////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
+
+func CouchbaseTestConcurrentImport(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	base.EnableLogKey("Import+")
+
+	// Add doc to the underlying bucket:
+	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+
+	// Make sure they aren't visible thru the gateway:
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			doc, err := db.GetDoc("directWrite")
+			assert.True(t, doc != nil)
+			assertNoError(t, err, "Document retrieval error")
+			assert.Equals(t, doc.syncData.CurrentRev, "1-36fa688dc2a2c39a952ddce46ab53d12")
+		}()
+	}
+	wg.Wait()
 }
 
 //////// BENCHMARKS

@@ -344,7 +344,10 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 					rawBody = nil
 				}
 				db := Database{DatabaseContext: c.context, user: nil}
-				db.ImportDoc(docID, rawBody, isDelete)
+				err := db.ImportDoc(docID, rawBody, isDelete)
+				if err != nil {
+					base.Warn("Error importing doc %q: %v", docID, err)
+				}
 				return
 			}
 		}
