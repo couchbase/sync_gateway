@@ -120,7 +120,7 @@ func (r *DCPReceiver) GetOutput() chan sgbucket.TapEvent {
 }
 
 func (r *DCPReceiver) OnError(err error) {
-	Warn("Feed", "Error processing DCP stream: %v", err)
+	Warn("Error processing DCP stream: %v", err)
 
 	bucketName := "unknown" // this is currently ignored anyway
 	r.notify(bucketName, err)
