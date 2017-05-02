@@ -88,10 +88,18 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 
 // DELETE /_session logs out the current session
 func (h *handler) handleSessionDELETE() error {
-	if len(h.rq.Header["Origin"]) > 0 {
-		// CORS not allowed for login #115
-		return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+	// CORS not allowed for login #115 #762
+	originHeader := h.rq.Header["Origin"]
+	if len(originHeader) > 0 {
+		matched := ""
+		if h.server.config.CORS != nil {
+			matched = matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		}
+		if matched == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+		}
 	}
+
 	cookie := h.db.Authenticator().DeleteSessionForCookie(h.rq)
 	if cookie == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no session")
