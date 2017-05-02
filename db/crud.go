@@ -66,7 +66,7 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 
 			// Limit the number of import attempts for a given GET request, to guard against unexpected infinite looping
 			if importAttempts > 20 {
-				base.Warn("Unable to import non-SG write of document %s after 20 attempts", docid)
+				base.Warn("Unable to complete request-triggered import of document %s after 20 attempts.  Will be re-attempted by background import processing.", docid)
 				return nil, base.HTTPErrorf(404, "Not imported")
 			}
 

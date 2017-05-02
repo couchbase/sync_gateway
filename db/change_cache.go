@@ -346,7 +346,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 				db := Database{DatabaseContext: c.context, user: nil}
 				err := db.ImportDoc(docID, rawBody, isDelete)
 				if err != nil {
-					base.Warn("Error importing doc %q: %v", docID, err)
+					base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
 				}
 				return
 			}

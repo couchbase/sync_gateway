@@ -926,7 +926,7 @@ func CouchbaseTestConcurrentImport(t *testing.T) {
 	// Add doc to the underlying bucket:
 	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
 
-	// Make sure they aren't visible thru the gateway:
+	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
