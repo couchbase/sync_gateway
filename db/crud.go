@@ -48,10 +48,36 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	dbExpvars.Add("document_gets", 1)
 	if db.UseXattrs() {
 		var rawDoc, rawXattr []byte
-		cas, err := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
-		doc, err = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr, cas)
-		if err != nil {
-			return nil, err
+		importAttempts := 0
+		for {
+			cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+			if getErr != nil {
+				return nil, getErr
+			}
+			var unmarshalErr error
+			doc, unmarshalErr = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr, cas)
+			if unmarshalErr != nil {
+				return nil, unmarshalErr
+			}
+			// If this was an SG Write, return the doc.  Otherwise, attempt to import
+			if doc.IsSGWrite() {
+				break
+			}
+
+			// Limit the number of import attempts for a given GET request, to guard against unexpected infinite looping
+			if importAttempts > 20 {
+				base.Warn("Unable to complete request-triggered import of document %s after 20 attempts.  Will be re-attempted by background import processing.", docid)
+				return nil, base.HTTPErrorf(404, "Not imported")
+			}
+
+			// Attempt to import
+			isDelete := rawDoc == nil
+			db := Database{DatabaseContext: db, user: nil}
+			importErr := db.ImportDoc(docid, rawDoc, isDelete)
+			if importErr != nil {
+				return nil, importErr
+			}
+			importAttempts++
 		}
 	} else {
 		doc = newDocument(docid)
@@ -528,9 +554,8 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Imports a document that was written by someone other than sync gateway.
 func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 
-	base.LogTo("Import", "Importing %s %s (delete=%v)", docid, value, isDelete)
 	var body Body
-
+	var newRev string
 	if isDelete {
 		body = Body{"_deleted": true}
 	} else {
@@ -545,15 +570,15 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel update
 		if doc.IsSGWrite() {
-			base.LogTo("Import", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
-			return nil, nil, couchbase.UpdateCancel
+			base.LogTo("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
+			return nil, nil, base.ErrAlreadyImported
 		}
 
 		// The active rev is the parent for an import
 		parentRev := doc.CurrentRev
 		generation, _ := ParseRevID(parentRev)
 		generation++
-		newRev := createRevID(generation, parentRev, body)
+		newRev = createRevID(generation, parentRev, body)
 		base.LogTo("Import", "Created new rev ID %v", newRev)
 		body["_rev"] = newRev
 		doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
@@ -561,10 +586,15 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 		return body, nil, nil
 	})
-	if err != nil {
+	if err != nil && err != base.ErrAlreadyImported {
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
+		return err
 	}
-	return err
+	if err != base.ErrAlreadyImported {
+		base.LogTo("Import+", "Imported %s %s (delete=%v) as rev %s", docid, value, isDelete, newRev)
+	}
+
+	return nil
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
@@ -805,7 +835,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {
-			base.LogTo("CRUD+", "Error updating document %q w/ xattr: %v", key, err)
+			base.LogTo("CRUD+", "Failed to update document %q w/ xattr: %v", key, err)
 		}
 	} else {
 		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {

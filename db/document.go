@@ -244,8 +244,11 @@ func (s *syncData) IsSGWrite(cas uint64) bool {
 }
 
 func (doc *document) IsSGWrite() bool {
-	base.LogTo("Import+", "Comparing cas to see if an update to doc %q was SG write:  cas: %x  syncCas: %s", doc.Cas, doc.syncData.Cas)
-	return doc.syncData.IsSGWrite(doc.Cas)
+	result := doc.syncData.IsSGWrite(doc.Cas)
+	if result == false {
+		base.LogTo("Import+", "Update to doc %s was not an SG write, based on cas. cas:%x syncCas:%q", doc.ID, doc.Cas, doc.syncData.Cas)
+	}
+	return result
 }
 
 func (doc *document) hasFlag(flag uint8) bool {

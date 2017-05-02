@@ -1192,7 +1192,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
 		if err != nil {
-			LogTo("CRUD", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+			LogTo("CRUD+", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return err
 		}
 

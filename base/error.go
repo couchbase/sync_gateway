@@ -19,6 +19,29 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+type sgErrorCode uint16
+
+const (
+	alreadyImported = sgErrorCode(0x00)
+)
+
+type SGError struct {
+	code sgErrorCode
+}
+
+var (
+	ErrAlreadyImported = &SGError{alreadyImported}
+)
+
+func (e SGError) Error() string {
+	switch e.code {
+	case alreadyImported:
+		return "Document already imported"
+	default:
+		return "Unknown error"
+	}
+}
+
 // Simple error implementation wrapping an HTTP response status.
 type HTTPError struct {
 	Status  int
