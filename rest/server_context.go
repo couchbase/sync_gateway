@@ -463,8 +463,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		revCacheSize = db.KDefaultRevisionCacheCapacity
 	}
 
-	// Enable doc tracking if needed for autoImport or shadowing
-	trackDocs := autoImport || config.Shadow != nil
+	// Enable doc tracking if needed for autoImport or shadowing.  Only supported for non-xattr configurations
+	trackDocs := false
+	if !config.UseXattrs() {
+		trackDocs = autoImport || config.Shadow != nil
+	}
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:          &cacheOptions,
