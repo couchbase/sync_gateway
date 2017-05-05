@@ -16,7 +16,13 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
+	"time"
+	"math/rand"
 )
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+}
 
 // Simple Sync Gateway launcher tool.
 func main() {
