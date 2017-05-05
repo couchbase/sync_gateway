@@ -259,7 +259,7 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
 //////// HELPERS:
 
-func assertFailed(t *testing.T, message string) {
+func assertFailed(t testing.TB, message string) {
 	_, file, line, ok := runtime.Caller(2) // assertFailed + assertNoError + public function.
 	if ok {
 		// Truncate file name at last file name separator.
@@ -275,7 +275,7 @@ func assertFailed(t *testing.T, message string) {
 	t.Fatalf("%s:%d: %s", file, line, message)
 }
 
-func assertNoError(t *testing.T, err error, message string) {
+func assertNoError(t testing.TB, err error, message string) {
 	if err != nil {
 		assertFailed(t, fmt.Sprintf("%s: %v", message, err))
 	}
