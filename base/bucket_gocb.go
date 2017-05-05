@@ -1027,11 +1027,6 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 
-	bucket.singleOps <- struct{}{}
-	defer func() {
-		<-bucket.singleOps
-	}()
-
 	for {
 
 		var value []byte
@@ -1088,11 +1083,6 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 }
 
 func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
-
-	bucket.singleOps <- struct{}{}
-	defer func() {
-		<-bucket.singleOps
-	}()
 
 	for {
 		var value []byte
@@ -1162,11 +1152,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 }
 
 func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
-
-	bucket.singleOps <- struct{}{}
-	defer func() {
-		<-bucket.singleOps
-	}()
 
 	for {
 		var value []byte
