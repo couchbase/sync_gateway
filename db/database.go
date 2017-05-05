@@ -202,9 +202,17 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	context.tapListener.Init(bucket.GetName())
 
+	// TODO: Currently we're forcing the DCP feed to restart from zero if the node is importing xattrs, based on this flag.
+	//       Will be removed when https://github.com/couchbase/sync_gateway/issues/2484 is complete.  Requires DCP processing
+	//       to be synchronous per vbucket
+	xattrImportNode := false
+	if context.UseXattrs() && context.autoImport {
+		xattrImportNode = true
+	}
+
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
-		if err = context.tapListener.Start(bucket, options.TrackDocs, func(bucket string, err error) {
+		if err = context.tapListener.Start(bucket, options.TrackDocs, xattrImportNode, func(bucket string, err error) {
 			context.TakeDbOffline("Lost Mutation (TAP/DCP) Feed")
 		}); err != nil {
 			return nil, err
@@ -331,7 +339,11 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.tapListener.Init(context.Bucket.GetName())
-	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, nil); err != nil {
+	xattrImportNode := false
+	if context.UseXattrs() && context.autoImport {
+		xattrImportNode = true
+	}
+	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, xattrImportNode, nil); err != nil {
 		return err
 	}
 	return nil
