@@ -37,13 +37,19 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, xattrImport bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.TapArgs = sgbucket.TapArguments{
 		Backfill: sgbucket.TapNoBackfill,
 		Notify:   bucketStateNotify,
 	}
+
+	// TODO: for xattr import nodes, we're forcing full backfill.  Pending #2484
+	if xattrImport {
+		listener.TapArgs.Backfill = 0
+	}
+
 	tapFeed, err := bucket.StartTapFeed(listener.TapArgs)
 	if err != nil {
 		return err
