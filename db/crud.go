@@ -93,6 +93,31 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	return doc, nil
 }
 
+// This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons
+// TODO: we'll need to include some 'if db.UseXattrs' handling, similar to what we're doing in GetDoc
+func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
+
+	key := realDocID(docid)
+	if key == "" {
+		return syncData{}, base.HTTPErrorf(400, "Invalid doc ID")
+	}
+	dbExpvars.Add("document_gets", 1)
+	rawDocBytes, _, err := db.Bucket.GetRaw(key)
+	if err != nil {
+		return syncData{}, err
+	}
+
+	docRoot := documentRoot{
+		SyncData: &syncData{History: make(RevTree)},
+	}
+	if err := json.Unmarshal(rawDocBytes, &docRoot); err != nil {
+		return syncData{}, err
+	}
+
+	return *docRoot.SyncData, nil
+
+}
+
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
 func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
