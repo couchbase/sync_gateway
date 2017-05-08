@@ -1231,27 +1231,25 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
 
+	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
+	// attempt a simple get, which gocb will transcode to uint64.  The call to Get includes its own
+	// retry handling, so doesn't need redundant retry handling here.
+	if amt == 0 {
+		var result uint64
+		_, err := bucket.Get(k, &result)
+		if err != nil {
+			return uint64(0), err
+		}
+		return result, nil
+	}
+
+	// This is an actual incr, not just counter retrieval.
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
 	}()
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
-		// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
-		// attempt a simple get, which gocb will transcode to uint64
-		if amt == 0 {
-			var result uint64
-			_, err := bucket.Get(k, &result)
-			shouldRetry = isRecoverableGoCBError(err)
-			// don't return an error, since that will break calling code
-			if err != nil {
-				// but if there was an error, make sure to return a 0 result
-				return shouldRetry, nil, uint64(0)
-			}
-			return shouldRetry, nil, result
-
-		}
 
 		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
 		shouldRetry = isRecoverableGoCBError(err)
