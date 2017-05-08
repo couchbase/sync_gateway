@@ -592,6 +592,13 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 	}
 
 	_, err := db.updateDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+		// If this is a delete, and there is no xattr on the existing doc,
+		// we shouldn't import.  (SG purge arriving over DCP feed)
+		if isDelete && doc.CurrentRev == "" {
+			base.LogTo("Import+", "Import skipped for delete of doc with no existing SG xattr (SG purge): %s", docid)
+			return nil, nil, base.ErrImportCancelled
+		}
+
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel update
 		if doc.IsSGWrite() {
@@ -611,11 +618,11 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 		return body, nil, nil
 	})
-	if err != nil && err != base.ErrAlreadyImported {
+	if err != nil && err != base.ErrImportCancelled && err != base.ErrAlreadyImported {
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
 		return err
 	}
-	if err != base.ErrAlreadyImported {
+	if err == nil {
 		base.LogTo("Import+", "Imported %s %s (delete=%v) as rev %s", docid, value, isDelete, newRev)
 	}
 
@@ -991,6 +998,16 @@ func (db *Database) Post(body Body) (string, string, error) {
 func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 	body := Body{"_deleted": true, "_rev": revid}
 	return db.Put(docid, body)
+}
+
+// Purges a document from the bucket (no tombstone)
+func (db *Database) Purge(key string) error {
+
+	if db.UseXattrs() {
+		return db.Bucket.DeleteWithXattr(key, KSyncXattrName)
+	} else {
+		return db.Bucket.Delete(key)
+	}
 }
 
 //////// CHANNELS:

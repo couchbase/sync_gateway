@@ -332,6 +332,11 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 			return
 		}
 
+		// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
+		if event.Opcode == sgbucket.TapDeletion && len(docJSON) == 0 {
+			return
+		}
+
 		// First unmarshal the doc (just its metadata, to save time/memory):
 		doc, rawBody, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
 

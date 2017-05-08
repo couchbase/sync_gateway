@@ -218,7 +218,6 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 		}
 	}
 
-
 	sourceUrl, err := url.Parse(requestParams.Source)
 	if err != nil || requestParams.Source == "" {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.", requestParams.Source)
@@ -288,7 +287,6 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 			return
 		}
 	}
-
 
 	//If source and/or target are local DB names add local AdminInterface URL
 	localDbUrl := "http://" + adminInterface
@@ -588,7 +586,7 @@ func (h *handler) handlePurge() error {
 			}
 
 			//Attempt to delete document, if successful add to response, otherwise log warning
-			err = h.db.Bucket.Delete(key)
+			err = h.db.Purge(key)
 			if err == nil {
 
 				if first {
