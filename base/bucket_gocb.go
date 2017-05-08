@@ -1238,7 +1238,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 		var result uint64
 		_, err := bucket.Get(k, &result)
 		if err != nil {
-			return uint64(0), err
+			return uint64(0), nil
 		}
 		return result, nil
 	}
