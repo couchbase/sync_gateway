@@ -23,6 +23,7 @@ type sgErrorCode uint16
 
 const (
 	alreadyImported = sgErrorCode(0x00)
+	importCancelled = sgErrorCode(0x01)
 )
 
 type SGError struct {
@@ -31,12 +32,15 @@ type SGError struct {
 
 var (
 	ErrAlreadyImported = &SGError{alreadyImported}
+	ErrImportCancelled = &SGError{importCancelled}
 )
 
 func (e SGError) Error() string {
 	switch e.code {
 	case alreadyImported:
 		return "Document already imported"
+	case importCancelled:
+		return "Import cancelled"
 	default:
 		return "Unknown error"
 	}

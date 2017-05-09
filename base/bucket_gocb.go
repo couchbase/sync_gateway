@@ -961,6 +961,11 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 				GetEx(xattrKey, gocb.SubdocFlagXattr).
 				Execute()
 
+			// SubDocBadMulti means there's no xattr.  Since there's also no doc, return KeyNotFound
+			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti {
+				return false, gocb.ErrKeyNotFound, 0
+			}
+
 			if xattrOnlyErr != nil && xattrOnlyErr != gocbcore.ErrSubDocSuccessDeleted {
 				shouldRetry = isRecoverableGoCBError(xattrOnlyErr)
 				return shouldRetry, xattrOnlyErr, 0
@@ -1014,12 +1019,12 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 		return err
 	}
 
-	_, err = bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, removeCas, 0).
+	_, deleteXattrErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, removeCas, 0).
 		RemoveEx(xattrKey, gocb.SubdocFlagXattr).
 		Execute()
 
-	if err != nil && err != gocbcore.ErrSubDocSuccessDeleted {
-		return err
+	if deleteXattrErr != nil && deleteXattrErr != gocbcore.ErrSubDocSuccessDeleted {
+		return deleteXattrErr
 	}
 
 	return nil
@@ -1177,7 +1182,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
 		if err != nil {
-			LogTo("CRUD+", "Callback in WriteUpdateWithXattr returned error for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 			return err
 		}
 
