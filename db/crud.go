@@ -595,7 +595,7 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
-			base.LogTo("Import+", "Import skipped for delete of doc with no existing SG xattr (SG purge): %s", docid)
+			base.LogTo("Import+", "Import not required for delete mutation with no existing SG xattr (SG purge): %s", docid)
 			return nil, nil, base.ErrImportCancelled
 		}
 
