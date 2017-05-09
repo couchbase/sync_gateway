@@ -910,12 +910,15 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 // Retrieve a document and it's associated named xattr
 func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
 
-	bucket.singleOps <- struct{}{}
-	gocbExpvars.Add("SingleOps", 1)
-	defer func() {
-		<-bucket.singleOps
-		gocbExpvars.Add("SingleOps", -1)
-	}()
+	// Until we get a fix for https://issues.couchbase.com/browse/MB-23522, need to disable the singleOp handling because of the potential for a nested call to bucket.Get
+	/*
+		bucket.singleOps <- struct{}{}
+		gocbExpvars.Add("SingleOps", 1)
+		defer func() {
+			<-bucket.singleOps
+			gocbExpvars.Add("SingleOps", -1)
+		}()
+	*/
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		gocbExpvars.Add("Get", 1)
