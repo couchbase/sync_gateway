@@ -468,13 +468,15 @@ func HighSeqNosToSequenceClock(highSeqs map[uint16]uint64) (*SequenceClockImpl, 
 
 }
 
-func VerifyBucketSequenceParityCouchbaseBucket(indexBucketStableClock SequenceClock, cbBucket CouchbaseBucket) error {
+// Make sure that the index bucket and data bucket have correct sequence parity
+// See https://github.com/couchbase/sync_gateway/issues/1133 for more details
+func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, bucket Bucket) error {
 
-	maxVbNo, err := cbBucket.GetMaxVbno()
+	maxVbNo, err := bucket.GetMaxVbno()
 	if err != nil {
 		return err
 	}
-	_, highSeqnos, err := cbBucket.GetStatsVbSeqno(maxVbNo, false)
+	_, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbNo, false)
 	if err != nil {
 		return err
 	}
@@ -492,31 +494,6 @@ func VerifyBucketSequenceParityCouchbaseBucket(indexBucketStableClock SequenceCl
 
 	return nil
 
-}
-
-// Make sure that the index bucket and data bucket have correct sequence parity
-// https://github.com/couchbase/sync_gateway/issues/1133
-func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, baseBucket Bucket) error {
-
-	bucket, err := GetCouchbaseBucketFromBaseBucket(baseBucket)
-	if err != nil {
-		Warn(fmt.Sprintf("Error type asserting base.Bucket -> CouchbaseBucket: %v.  "+
-			"Skipping VerifyBucketSequenceParity(), which checks for invalid index bucket state", err))
-		return nil
-	}
-	return VerifyBucketSequenceParityCouchbaseBucket(indexBucketStableClock, bucket)
-
-}
-
-func GetCouchbaseBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucket, err error) {
-	switch baseBucket := baseBucket.(type) {
-	case CouchbaseBucket:
-		return baseBucket, nil
-	case *CouchbaseBucket:
-		return *baseBucket, nil
-	default:
-		return CouchbaseBucket{}, fmt.Errorf("baseBucket %v is not a CouchbaseBucket.  Was type: %T", baseBucket, baseBucket)
-	}
 }
 
 func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB, err error) {
