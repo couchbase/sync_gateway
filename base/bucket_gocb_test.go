@@ -57,10 +57,10 @@ func GetBucketOrPanic() Bucket {
 		Auth:            testAuth,
 	}
 	bucket, err := GetCouchbaseBucketGoCB(spec)
-	bucket.SetTranscoder(SGTranscoder{})
 	if err != nil {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
+	bucket.SetTranscoder(SGTranscoder{})
 	return bucket
 }
 
