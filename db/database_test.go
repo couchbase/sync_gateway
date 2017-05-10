@@ -22,6 +22,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto/underscore"
+	"os"
+	"strings"
 )
 
 func init() {
@@ -58,6 +60,7 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 	dbcOptions := DatabaseContextOptions{
 		TrackDocs: true,
 	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -70,6 +73,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -81,11 +85,24 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
 	return db
+}
+
+// If certain environemnt variables are set, for example to turn on XATTR support, then update
+// the DatabaseContextOptions accordingly
+func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions)  {
+
+	useXattrs := os.Getenv(base.TestEnvSyncGatewayUseXattrs)
+	switch {
+	case strings.ToLower(useXattrs) == strings.ToLower(base.TestEnvSyncGatewayTrue):
+		dbcOptions.UnsupportedOptions.EnableXattr = base.BooleanPointer(true)
+	}
+
 }
 
 func tearDownTestDB(t testing.TB, db *Database) {

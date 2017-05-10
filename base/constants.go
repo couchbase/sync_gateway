@@ -22,6 +22,10 @@ const (
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
+
+	// Don't use Xattrs by default, but provide the test runner to specify Xattr usage
+	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
+	TestEnvSyncGatewayTrue = "True"
 )
 
 func UnitTestUrl() string {
