@@ -40,24 +40,15 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 
 func GetBucketOrPanic() Bucket {
 
-	// Couchbase 5.x instructions:
-	//   1. Create an RBAC user with these credentials
-	//   2. Create a default bucket (if doesn't already exist)
-	// Couchbase 4.x instructions:
-	//   Err: Does this even work with Couchbase 4.x?   How do you assign a password on the default bucket
-	username := "default"
-	bucketname := "default"
-	password := "password"
-
 	testAuth := TestAuthenticator{
-		Username:   username,
-		Password:   password,
-		BucketName: bucketname,
+		Username:   DefaultTestUsername2,
+		Password:   DefaultTestPassword2,
+		BucketName: DefaultTestBucketname2,
 	}
 
 	spec := BucketSpec{
 		Server:          UnitTestUrl(),
-		BucketName:      bucketname,
+		BucketName:      DefaultTestBucketname2,
 		CouchbaseDriver: DefaultDriverForBucketType[DataBucket],
 		Auth:            testAuth,
 	}

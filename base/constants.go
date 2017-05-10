@@ -19,6 +19,16 @@ const (
 	DefaultTestPassword       = "password"
 	DefaultTestBucketname     = "sync_gateway_tests"
 
+	// Couchbase 5.x instructions:
+	//   1. Create an RBAC user with these credentials
+	//   2. Create a default bucket (if doesn't already exist)
+	// Couchbase 4.x instructions:
+	//   Err: Does this even work with Couchbase 4.x?   How do you assign a password on the default bucket
+	// TODO: is there any reason to have both DefaultTestUsername and DefaultTestUsername2?  Can they be consolidated?
+	DefaultTestUsername2   = "default"
+	DefaultTestBucketname2 = "default"
+	DefaultTestPassword2   = "password"
+
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
