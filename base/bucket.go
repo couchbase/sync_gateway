@@ -102,6 +102,10 @@ func (spec BucketSpec) RetrySleeper() RetrySleeper {
 	return CreateDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS)
 }
 
+func (spec BucketSpec) IsWalrusBucket() bool {
+	return strings.Contains(spec.Server, "walrus:")
+}
+
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
 	*couchbase.Bucket            // the underlying go-couchbase bucket

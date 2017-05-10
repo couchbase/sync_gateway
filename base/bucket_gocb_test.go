@@ -30,41 +30,6 @@ import (
 // them to remove the Couchbase* prefix, and then rename them back before checking into
 // Git.
 
-type TestAuthenticator struct {
-	Username   string
-	Password   string
-	BucketName string
-}
-
-func (t TestAuthenticator) GetCredentials() (username, password, bucketname string) {
-	return t.Username, t.Password, t.BucketName
-}
-
-func GetBucketOrPanic() Bucket {
-
-	username := "default"
-	bucketname := "default"
-	password := "password"
-
-	testAuth := TestAuthenticator{
-		Username:   username,
-		Password:   password,
-		BucketName: bucketname,
-	}
-
-	spec := BucketSpec{
-		Server:          UnitTestUrl(),
-		BucketName:      bucketname,
-		CouchbaseDriver: ChooseCouchbaseDriver(DataBucket),
-		Auth:            testAuth,
-	}
-	bucket, err := GetCouchbaseBucketGoCB(spec)
-	bucket.SetTranscoder(SGTranscoder{})
-	if err != nil {
-		panic(fmt.Sprintf("Could not open bucket: %v", err))
-	}
-	return bucket
-}
 
 func TestTranscoder(t *testing.T) {
 	transcoder := SGTranscoder{}
@@ -85,7 +50,7 @@ func TestTranscoder(t *testing.T) {
 	assert.Equals(t, err, nil)
 }
 
-func CouchbaseTestSetGetRaw(t *testing.T) {
+func TestSetGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -112,7 +77,7 @@ func CouchbaseTestSetGetRaw(t *testing.T) {
 	}
 }
 
-func CouchbaseTestAddRaw(t *testing.T) {
+func TestAddRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -149,7 +114,7 @@ func CouchbaseTestAddRaw(t *testing.T) {
 
 }
 
-func CouchbaseTestBulkGetRaw(t *testing.T) {
+func TestBulkGetRaw(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -221,7 +186,7 @@ func CouchbaseTestBulkGetRaw(t *testing.T) {
 
 }
 
-func CouchbaseTestWriteCasBasic(t *testing.T) {
+func TestWriteCasBasic(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -261,7 +226,7 @@ func CouchbaseTestWriteCasBasic(t *testing.T) {
 
 }
 
-func CouchbaseTestWriteCasAdvanced(t *testing.T) {
+func TestWriteCasAdvanced(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -298,7 +263,8 @@ func CouchbaseTestWriteCasAdvanced(t *testing.T) {
 }
 
 // When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
-func CouchbaseTestSetBulk(t *testing.T) {
+// TODO: investigate why this currently fails against both walrus and couchbase server bucket
+func FailingTestSetBulk(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -398,7 +364,7 @@ func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
 	return errorCount
 }
 
-func CouchbaseTestUpdate(t *testing.T) {
+func TestUpdate(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
 
@@ -446,9 +412,11 @@ func CouchbaseTestUpdate(t *testing.T) {
 
 }
 
-func CouchbaseTestIncrCounter(t *testing.T) {
+// TODO: under walrus, go-couchbase and gocb, this test fails with "Attempt to retrieve non-existent counter should return error"
+func FailingTestIncrCounter(t *testing.T) {
 
 	bucket := GetBucketOrPanic()
+
 	key := "TestIncr"
 
 	defer func() {
@@ -487,7 +455,7 @@ func CouchbaseTestIncrCounter(t *testing.T) {
 
 }
 
-func CouchbaseTestGetAndTouchRaw(t *testing.T) {
+func TestGetAndTouchRaw(t *testing.T) {
 
 	// There's no easy way to validate the expiry time of a doc (that I know of)
 	// so this is just a smoke test
@@ -515,14 +483,18 @@ func CouchbaseTestGetAndTouchRaw(t *testing.T) {
 	}
 
 	rv, _, err := bucket.GetRaw(key)
+	assert.True(t, err == nil)
 	if string(rv) != string(val) {
 		t.Errorf("%v != %v", string(rv), string(val))
 	}
 
 	rv, _, err = bucket.GetAndTouchRaw(key, 1)
+	if err != nil {
+		log.Printf("Error calling GetAndTouchRaw: %v", err)
+	}
 
-	assert.Equals(t, len(rv), len(val))
 	assert.True(t, err == nil)
+	assert.Equals(t, len(rv), len(val))
 
 }
 
@@ -580,16 +552,23 @@ func TestCreateBatchesKeys(t *testing.T) {
 	assert.Equals(t, batches[3][0], "seven")
 }
 
-// TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
-func CouchbaseTestWriteCasXattrSimple(t *testing.T) {
-
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
-	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
+func TemporarilySkipXattrTests(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+	} else { // Temporarily skip test when running against Couchbase Server
+		t.Skip(
+			"This test won't work against Couchbase Server by default, due to https://issues.couchbase.com/browse/GOCBC-200." +
+				"Which will cause the test to fail if the bucket does not exist.  To run this manually: 1. Comment out " +
+				"this code to skip the test.  2. Manually create the bucket.  3. Manually create an RBAC user.")
 	}
-	bucket.SetTranscoder(SGTranscoder{})
+}
+
+// TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
+func TestWriteCasXattrSimple(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
+
+	bucket := GetBucketOrPanic()
 
 	key := "TestWriteCasXATTRSimple"
 	xattrName := "_sync"
@@ -627,7 +606,9 @@ func CouchbaseTestWriteCasXattrSimple(t *testing.T) {
 }
 
 // TestWriteCasXATTR.  Validates basic write of document with xattr,  retrieval of the same doc w/ xattr, update of the doc w/ xattr, retrieval of the doc w/ xattr.
-func CouchbaseTestWriteCasXattrUpsert(t *testing.T) {
+func TestWriteCasXattrUpsert(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -696,7 +677,9 @@ func CouchbaseTestWriteCasXattrUpsert(t *testing.T) {
 }
 
 // TestWriteCasXATTRRaw.  Validates basic write of document and xattr as raw bytes.
-func CouchbaseTestWriteCasXattrRaw(t *testing.T) {
+func TestWriteCasXattrRaw(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -747,7 +730,9 @@ func CouchbaseTestWriteCasXattrRaw(t *testing.T) {
 // TestWriteCasTombstoneResurrect.  Verifies writing a new document body and xattr to a logically deleted document (xattr still exists)
 // TODO: This fails with key not found trying to do a CAS-safe rewrite of the doc.  Updating the doc via subdoc (with access_deleted) is
 // expected to work - need to retry when GOCBC-181 is available.
-func CouchbaseTestWriteCasXattrTombstoneResurrect(t *testing.T) {
+func TestWriteCasXattrTombstoneResurrect(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -825,7 +810,9 @@ func CouchbaseTestWriteCasXattrTombstoneResurrect(t *testing.T) {
 }
 
 // TestWriteCasXATTRDeleted.  Validates update of xattr on logically deleted document.
-func CouchbaseTestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
+func TestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -906,7 +893,9 @@ func CouchbaseTestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 }
 
 // TestWriteUpdateXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
-func CouchbaseTestWriteUpdateXattr(t *testing.T) {
+func TestWriteUpdateXattr(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1017,7 +1006,10 @@ func CouchbaseTestWriteUpdateXattr(t *testing.T) {
 }
 
 // TestDeleteDocumentHavingXATTR.  Delete document that has a system xattr.  System XATTR should be retained and retrievable.
-func CouchbaseTestDeleteDocumentHavingXattr(t *testing.T) {
+func TestDeleteDocumentHavingXattr(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
+
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -1067,7 +1059,10 @@ func CouchbaseTestDeleteDocumentHavingXattr(t *testing.T) {
 }
 
 // TestDeleteDocumentUpdateXATTR.  Delete document that has a system xattr along with an xattr update.
-func CouchbaseTestDeleteDocumentUpdateXattr(t *testing.T) {
+func TestDeleteDocumentUpdateXattr(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
+
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -1136,7 +1131,10 @@ func CouchbaseTestDeleteDocumentUpdateXattr(t *testing.T) {
 }
 
 // TestDeleteDocumentAndXATTR.  Delete document and XATTR, ensure it's not available
-func CouchbaseTestDeleteDocumentAndXATTR(t *testing.T) {
+func TestDeleteDocumentAndXATTR(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
+
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -1183,7 +1181,10 @@ func CouchbaseTestDeleteDocumentAndXATTR(t *testing.T) {
 }
 
 // TestDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
-func CouchbaseTestDeleteDocumentAndUpdateXATTR(t *testing.T) {
+func TestDeleteDocumentAndUpdateXATTR(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
+
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -1233,7 +1234,10 @@ func CouchbaseTestDeleteDocumentAndUpdateXATTR(t *testing.T) {
 }
 
 // CouchbaseTestRetrieveDocumentAndXattr.  Pending https://issues.couchbase.com/browse/MB-24152
-func CouchbaseTestRetrieveDocumentAndXattr(t *testing.T) {
+func TestRetrieveDocumentAndXattr(t *testing.T) {
+
+	TemporarilySkipXattrTests(t)
+
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
 	if !ok {

@@ -48,7 +48,6 @@ var RunStateString = []string{
 
 const (
 	DefaultRevsLimit = 1000
-	DefaultUseXattrs = false            // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	KSyncKeyPrefix   = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
 	kSyncDataKey     = "_sync:syncdata" // Key used to store sync function
 	KSyncXattrName   = "_sync"          // Name of XATTR used to store sync metadata
@@ -1129,7 +1128,7 @@ func (context *DatabaseContext) UseXattrs() bool {
 	if context.Options.UnsupportedOptions.EnableXattr != nil {
 		return *context.Options.UnsupportedOptions.EnableXattr
 	}
-	return DefaultUseXattrs
+	return base.DefaultUseXattrs
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {

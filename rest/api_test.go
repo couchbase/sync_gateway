@@ -17,7 +17,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,8 +53,13 @@ type restTester struct {
 
 func (rt *restTester) bucket() base.Bucket {
 	if rt._bucket == nil {
-		server := base.UnitTestUrl()
-		bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
+
+		base.GetBucketOrPanic() // side effect of creating/flushing bucket
+		spec := base.GetTestBucketSpec(base.DataBucket)
+
+		username, password, _ := spec.Auth.GetCredentials()
+
+		server := spec.Server
 		gBucketCounter++
 
 		var syncFnPtr *string
@@ -78,8 +82,12 @@ func (rt *restTester) bucket() base.Bucket {
 
 		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
 			BucketConfig: BucketConfig{
-				Server: &server,
-				Bucket: &bucketName},
+				Server:   &server,
+				Bucket:   &spec.BucketName,
+				Username: username,
+				Password: password,
+			},
+
 			Name:        "db",
 			Sync:        syncFnPtr,
 			CacheConfig: rt.cacheConfig,
@@ -93,10 +101,6 @@ func (rt *restTester) bucket() base.Bucket {
 			rt.setAdminParty(true)
 		}
 
-		runtime.SetFinalizer(rt, func(rt *restTester) {
-			log.Printf("Finalizing bucket %s", rt._bucket.GetName())
-			rt._sc.Close()
-		})
 	}
 	return rt._bucket
 }
@@ -171,6 +175,12 @@ func (rt *restTester) setAdminParty(partyTime bool) {
 	}
 	guest.SetExplicitChannels(chans)
 	a.Save(guest)
+}
+
+func (rt *restTester) Close() {
+	if rt._sc != nil {
+		rt._sc.Close()
+	}
 }
 
 type testResponse struct {
@@ -977,6 +987,8 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1473,6 +1485,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
 	rt := restTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1610,6 +1624,8 @@ func TestAccessOnTombstone(t *testing.T) {
 			 }
 			 channel(doc.channel)
 		 }`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1667,6 +1683,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes", "Changes+", "CRUD"})
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1779,6 +1797,8 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1828,6 +1848,8 @@ func TestRoleAccessChanges(t *testing.T) {
 	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1942,6 +1964,8 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	}
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -2077,6 +2101,8 @@ func TestOldDocHandling(t *testing.T) {
 				}
 			}
 		}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -2485,8 +2511,6 @@ func TestBulkGetRevPruning(t *testing.T) {
 	// Wait until all pruning bulk get goroutines finish
 	wg.Wait()
 
-
-
 }
 
 // TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
@@ -2581,6 +2605,8 @@ func DisabledTestLongpollWithWildcard(t *testing.T) {
 		Last_Seq db.SequenceID
 	}
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel);}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
 

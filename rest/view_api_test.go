@@ -208,6 +208,8 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 
 func TestUserViewQuery(t *testing.T) {
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	// Create a view:
@@ -261,6 +263,7 @@ func TestUserViewQuery(t *testing.T) {
 func TestAdminReduceViewQuery(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
 
 	// Create a view with a reduce:
 	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
@@ -307,6 +310,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 func TestAdminReduceSumQuery(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
 
 	// Create a view with a reduce:
 	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
@@ -338,6 +342,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
 
 	// Create a view with a reduce:
 	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
@@ -371,6 +376,7 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
 
 	// Create a view with a reduce:
 	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)

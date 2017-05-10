@@ -34,12 +34,13 @@ type channelIndexTest struct {
 	channelName   string      // Channel name
 }
 
+
 func NewChannelIndex(vbNum int, sequenceGap int, name string) *channelIndexTest {
 	lastSeqs := make([]uint64, vbNum)
 
 	index := &channelIndexTest{
 		numVbuckets:   vbNum,
-		indexBucket:   testIndexBucket(),
+		indexBucket:   base.GetIndexBucketOrPanic(),
 		sequenceGap:   sequenceGap,
 		lastSequences: lastSeqs,
 		r:             rand.New(rand.NewSource(42)),
@@ -359,7 +360,7 @@ func MultiChannelIndexSimpleGet(b *testing.B, numChannels int) {
 	// num vbuckets
 	vbCount := 1024
 
-	bucket := testIndexBucket()
+	bucket := base.GetIndexBucketOrPanic()
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 	b.ResetTimer()
 
@@ -415,7 +416,7 @@ func MultiChannelIndexBulkGet(b *testing.B, numChannels int) {
 	// num vbuckets
 	vbCount := 1024
 
-	bucket := testIndexBucket()
+	bucket := base.GetIndexBucketOrPanic()
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 
 	b.ResetTimer()
@@ -442,7 +443,7 @@ func TestChannelIndexBulkGet10(t *testing.T) {
 	// num vbuckets
 	vbCount := 1024
 	numChannels := 10
-	bucket := testIndexBucket()
+	bucket := base.GetIndexBucketOrPanic()
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 
 	startTime := time.Now()

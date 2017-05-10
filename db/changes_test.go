@@ -25,6 +25,11 @@ import (
 
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
+
+	//if !base.UnitTestUrlIsWalrus() {
+	//	t.Skip("This test is only working against Walrus currently.  Needs more investigation.")
+	//}
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	_testChangesAfterChannelAdded(t, db)
@@ -125,6 +130,7 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
+
 	base.EnableLogKey("*")
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)

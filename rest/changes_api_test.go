@@ -120,6 +120,8 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// base.LogKeys["Cache"] = true
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
+
 	a := rt.ServerContext().Database("db").Authenticator()
 
 	// Create user:
@@ -539,6 +541,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	}
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`, cacheConfig: shortWaitCache}
+	defer rt.Close()
+
 	testDb := rt.ServerContext().Database("db")
 
 	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
@@ -617,6 +621,7 @@ func _testConcurrentDelete(t *testing.T) {
 	rt := restTester{syncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
+	defer rt.Close()
 
 	// Create doc
 	response := rt.sendAdminRequest("PUT", "/db/doc1", `{"channel":"PBS"}`)
@@ -655,6 +660,7 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 	rt := restTester{syncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
+	defer rt.Close()
 
 	// Create doc
 	response := rt.sendAdminRequest("PUT", "/db/doc1", `{"channel":"PBS"}`)
@@ -692,6 +698,7 @@ func _testConcurrentUpdate(t *testing.T) {
 	rt := restTester{syncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
+	defer rt.Close()
 
 	// Create doc
 	response := rt.sendAdminRequest("PUT", "/db/doc1", `{"channel":"PBS"}`)
@@ -729,6 +736,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	rt := restTester{syncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
+	defer rt.Close()
 
 	// Create doc
 	response := rt.sendAdminRequest("PUT", "/db/doc1", `{"channel":"PBS"}`)
@@ -777,6 +785,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	base.UpdateLogKeys(logKeys, true)
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	defer rt.Close()
 
 	// Create user1
 	response := rt.sendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)

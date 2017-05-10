@@ -30,6 +30,7 @@ import (
 func TestUserAPI(t *testing.T) {
 	// PUT a user
 	var rt restTester
+	defer rt.Close()  
 
 	assertStatus(t, rt.sendAdminRequest("GET", "/db/_user/snej", ""), 404)
 	response := rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -104,6 +105,7 @@ func TestUserAPI(t *testing.T) {
 func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	var rt restTester
+	defer rt.Close()
 
 	response := rt.sendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
@@ -152,6 +154,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 	// PUT a user
 	var rt restTester
+	defer rt.Close()
 
 	rt.bucketAllowEmptyPassword()
 
@@ -227,6 +230,7 @@ function(doc, oldDoc) {
 
 `
 	rt := restTester{syncFn: syncFunction}
+	defer rt.Close()
 
 	response := rt.sendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
 
@@ -289,6 +293,7 @@ function(doc, oldDoc) {
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	rt := restTester{syncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+	defer rt.Close()
 
 	response := rt.sendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "Cache":true, "HTTP":true}`)
 
@@ -368,6 +373,8 @@ func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
 
 func TestRoleAPI(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	// PUT a role
 	assertStatus(t, rt.sendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 	response := rt.sendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
@@ -408,6 +415,8 @@ func TestGuestUser(t *testing.T) {
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
 
 	rt := restTester{noAdminParty: true}
+	defer rt.Close()
+
 	response := rt.sendAdminRequest("GET", guestUserEndpoint, "")
 	assertStatus(t, response, 200)
 	var body db.Body
@@ -436,6 +445,8 @@ func TestGuestUser(t *testing.T) {
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	user, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -485,6 +496,8 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 func TestSessionExtension(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	a := auth.NewAuthenticator(rt.bucket(), nil)
 	user, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -535,6 +548,7 @@ func TestSessionExtension(t *testing.T) {
 func TestSessionAPI(t *testing.T) {
 
 	var rt restTester
+	defer rt.Close()
 
 	// create session test users
 	response := rt.sendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
@@ -621,6 +635,8 @@ func TestSessionAPI(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	rt.createDoc(t, "doc1")
 	rt.createDoc(t, "doc2")
 	assertStatus(t, rt.sendRequest("GET", "/db/doc1", ""), 200)
@@ -639,6 +655,8 @@ func TestFlush(t *testing.T) {
 //Test a single call to take DB offline
 func TestDBOfflineSingle(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -658,6 +676,8 @@ func TestDBOfflineSingle(t *testing.T) {
 // when both calls return
 func TestDBOfflineConcurrent(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -696,6 +716,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 //Test that a DB can be created offline
 func TestStartDBOffline(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -714,6 +735,8 @@ func TestStartDBOffline(t *testing.T) {
 //fail with status 503
 func TestDBOffline503Response(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -734,6 +757,8 @@ func TestDBOffline503Response(t *testing.T) {
 //Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -754,6 +779,8 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 //Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -817,6 +844,8 @@ func RaceTestDBOfflineSingleResync(t *testing.T) {
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -847,6 +876,8 @@ func TestDBOnlineSingle(t *testing.T) {
 //once both goroutines return
 func TestDBOnlineConcurrent(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -893,6 +924,8 @@ func TestDBOnlineConcurrent(t *testing.T) {
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -929,6 +962,8 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -973,6 +1008,8 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 // there should be no errors
 func TestDBOnlineWithTwoDelays(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.sendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -1029,12 +1066,16 @@ func (rt *restTester) createSession(t *testing.T, username string) string {
 
 func TestPurgeWithBadJsonPayload(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	response := rt.sendAdminRequest("POST", "/db/_purge", "foo")
 	assertStatus(t, response, 400)
 }
 
 func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
 	assertStatus(t, response, 200)
 
@@ -1045,6 +1086,8 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
 	assertStatus(t, response, 200)
 
@@ -1055,6 +1098,8 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
 	assertStatus(t, response, 200)
 
@@ -1065,6 +1110,8 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	response := rt.sendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
 	assertStatus(t, response, 200)
 
@@ -1075,6 +1122,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 
 func TestPurgeWithStarRevision(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
 
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
@@ -1090,6 +1138,8 @@ func TestPurgeWithStarRevision(t *testing.T) {
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
@@ -1107,6 +1157,8 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 
 func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
+
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 	assertStatus(t, rt.sendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
@@ -1125,6 +1177,7 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 
 func TestReplicateErrorConditions(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
 
 	//Send empty JSON
 	assertStatus(t, rt.sendAdminRequest("POST", "/_replicate", ""), 400)
@@ -1170,6 +1223,7 @@ func TestReplicateErrorConditions(t *testing.T) {
 //These tests validate request parameters not actual replication
 func TestDocumentChangeReplicate(t *testing.T) {
 	var rt restTester
+	defer rt.Close()
 
 	time.Sleep(10 * time.Second)
 

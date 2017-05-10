@@ -12,17 +12,18 @@ package db
 import (
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/couchbaselabs/go.assert"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
+
 	"strings"
 )
 
@@ -33,17 +34,40 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-func testBucket() base.Bucket {
-	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
-		BucketName:      "sync_gateway_tests",
-		Auth:            base.UnitTestAuthHandler(),
-		UseXattrs:       DefaultUseXattrs}, nil)
-	if err != nil {
-		log.Fatalf("Couldn't connect to bucket: %v", err)
+type UnitTestAuth struct {
+	Username   string
+	Password   string
+	Bucketname string
+}
+
+func (u *UnitTestAuth) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(u.Username, u.Password, u.Bucketname)
+}
+
+func UnitTestAuthHandler() base.AuthHandler {
+	if !testUseAuthHandler() {
+		return nil
+	} else {
+		return &UnitTestAuth{
+			Username:   base.DefaultTestUsername,
+			Password:   base.DefaultTestPassword,
+			Bucketname: base.DefaultTestBucketname,
+		}
 	}
-	return bucket
+}
+
+// Should Sync Gateway use an auth handler when running unit tests?
+func testUseAuthHandler() bool {
+
+	// First check if the SG_TEST_USE_AUTH_HANDLER env variable is set
+	useAuthHandler := os.Getenv(base.TestEnvSyncGatewayUseAuthHandler)
+	switch {
+	case strings.ToLower(useAuthHandler) == strings.ToLower(base.TestEnvSyncGatewayTrue):
+		return true
+	}
+
+	// Otherwise fallback to hardcoded default
+	return base.DefaultTestUseAuthHandler
 }
 
 func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
@@ -60,6 +84,7 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 	dbcOptions := DatabaseContextOptions{
 		TrackDocs: true,
 	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -72,6 +97,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -79,10 +105,22 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 	return db
 }
 
+func testBucket() base.Bucket {
+
+	spec := base.GetTestBucketSpec(base.DataBucket)
+	bucket := base.GetBucketOrPanic()
+	err := installViews(bucket, spec.UseXattrs)
+	if err != nil {
+		log.Fatalf("Couldn't connect to bucket: %v", err)
+	}
+	return bucket
+}
+
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -90,7 +128,23 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	return db
 }
 
+// If certain environemnt variables are set, for example to turn on XATTR support, then update
+// the DatabaseContextOptions accordingly
+func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
+
+	if base.TestUseXattrs() {
+		dbcOptions.UnsupportedOptions.EnableXattr = base.BooleanPointer(true)
+	}
+
+}
+
 func tearDownTestDB(t testing.TB, db *Database) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		// When running against couchbase server buckets, this teardown is not needed, and
+		// enabling it results in errors in the logs such as: https://gist.github.com/tleyden/e00dcf75c873cf83100a2e3f317af15f
+		return
+	}
 	db.Close()
 }
 

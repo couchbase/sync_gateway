@@ -14,24 +14,6 @@ func testPartitionMap() *base.IndexPartitions {
 	return testPartitionMapWithShards(64)
 }
 
-func testContextAndChannelIndex(channelName string) (*DatabaseContext, *KvChannelIndex) {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
-	// TODO: don't use the base bucket as the index bucket in tests
-	channelIndex := NewKvChannelIndex(channelName, context.Bucket, testPartitionMap(), testOnChange)
-	return context, channelIndex
-}
-
-func testIndexBucket() base.Bucket {
-	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.IndexBucket),
-		BucketName:      "index_tests"}, nil)
-	if err != nil {
-		log.Fatalf("Couldn't connect to bucket: %v", err)
-	}
-	return bucket
-}
-
 func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
 
 	partitions := make(base.PartitionStorageSet, numShards)
@@ -56,7 +38,7 @@ func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
 }
 
 func testBitFlagStorage(channelName string) *BitFlagStorage {
-	return NewBitFlagStorage(testIndexBucket(), channelName, testPartitionMap())
+	return NewBitFlagStorage(base.GetIndexBucketOrPanic(), channelName, testPartitionMap())
 }
 
 func testStableSequence() (uint64, error) {
