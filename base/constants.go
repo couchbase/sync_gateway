@@ -14,18 +14,21 @@ const (
 	kTestCouchbaseServerURL = "http://localhost:8091"
 	kTestWalrusURL          = "walrus:"
 
-	kTestUseAuthHandler = false // Set to true if you are running CouchbaseTest* commented tests
-	kTestUsername       = "sync_gateway_tests"
-	kTestPassword       = "password"
-	kTestBucketname     = "sync_gateway_tests"
+	DefaultTestUseAuthHandler = false // Set to true if you are running CouchbaseTest* commented tests, or set env variable
+	DefaultTestUsername       = "sync_gateway_tests"
+	DefaultTestPassword       = "password"
+	DefaultTestBucketname     = "sync_gateway_tests"
 
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
 
-	// Don't use Xattrs by default, but provide the test runner to specify Xattr usage
+	// Don't use Xattrs by default, but provide the test runner a way to specify Xattr usage
 	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
 	TestEnvSyncGatewayTrue      = "True"
+
+	// Don't use an auth handler by default, but provide a way to override
+	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 )
 
 func UnitTestUrl() string {
@@ -36,26 +39,4 @@ func UnitTestUrl() string {
 	default:
 		return kTestWalrusURL
 	}
-}
-
-func UnitTestAuthHandler() AuthHandler {
-	if !kTestUseAuthHandler {
-		return nil
-	} else {
-		return &UnitTestAuth{
-			username:   kTestUsername,
-			password:   kTestPassword,
-			bucketname: kTestBucketname,
-		}
-	}
-}
-
-type UnitTestAuth struct {
-	username   string
-	password   string
-	bucketname string
-}
-
-func (u *UnitTestAuth) GetCredentials() (string, string, string) {
-	return TransformBucketCredentials(u.username, u.password, u.bucketname)
 }

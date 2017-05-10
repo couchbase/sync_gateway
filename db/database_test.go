@@ -34,17 +34,58 @@ func init() {
 }
 
 func testBucket() base.Bucket {
-	bucket, err := ConnectToBucket(base.BucketSpec{
+	spec := base.BucketSpec{
 		Server:          base.UnitTestUrl(),
 		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
 		BucketName:      "sync_gateway_tests",
-		Auth:            base.UnitTestAuthHandler(),
-		UseXattrs:       testUseXattrs()}, nil)
+		Auth:            UnitTestAuthHandler(),
+		UseXattrs:       testUseXattrs(),
+	}
+	bucket, err := ConnectToBucket(spec, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
 	return bucket
 }
+
+
+type UnitTestAuth struct {
+	Username   string
+	Password   string
+	Bucketname string
+}
+
+func (u *UnitTestAuth) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(u.Username, u.Password, u.Bucketname)
+}
+
+
+func UnitTestAuthHandler() base.AuthHandler {
+	if !testUseAuthHandler() {
+		return nil
+	} else {
+		return &UnitTestAuth{
+			Username:   base.DefaultTestUsername,
+			Password:   base.DefaultTestPassword,
+			Bucketname: base.DefaultTestBucketname,
+		}
+	}
+}
+
+// Should Sync Gateway use an auth handler when running unit tests?
+func testUseAuthHandler() bool {
+
+	// First check if the SG_TEST_USE_AUTH_HANDLER env variable is set
+	useAuthHandler := os.Getenv(base.TestEnvSyncGatewayUseAuthHandler)
+	switch {
+	case strings.ToLower(useAuthHandler) == strings.ToLower(base.TestEnvSyncGatewayTrue):
+		return true
+	}
+
+	// Otherwise fallback to hardcoded default
+	return base.DefaultTestUseAuthHandler
+}
+
 
 func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	testBucket := testBucket()
@@ -52,14 +93,17 @@ func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	return leakyBucket
 }
 
+// Should Sync Gateway use XATTRS functionality when running unit tests?
 func testUseXattrs() bool {
 
+	// First check if the SG_TEST_USE_XATTRS env variable is set
 	useXattrs := os.Getenv(base.TestEnvSyncGatewayUseXattrs)
 	switch {
 	case strings.ToLower(useXattrs) == strings.ToLower(base.TestEnvSyncGatewayTrue):
 		return true
 	}
 
+	// Otherwise fallback to hardcoded default
 	return DefaultUseXattrs
 }
 
