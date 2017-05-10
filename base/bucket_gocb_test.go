@@ -40,6 +40,11 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 
 func GetBucketOrPanic() Bucket {
 
+	// Couchbase 5.x instructions:
+	//   1. Create an RBAC user with these credentials
+	//   2. Create a default bucket (if doesn't already exist)
+	// Couchbase 4.x instructions:
+	//   Err: Does this even work with Couchbase 4.x?   How do you assign a password on the default bucket
 	username := "default"
 	bucketname := "default"
 	password := "password"
@@ -56,11 +61,12 @@ func GetBucketOrPanic() Bucket {
 		CouchbaseDriver: DefaultDriverForBucketType[DataBucket],
 		Auth:            testAuth,
 	}
-	bucket, err := GetCouchbaseBucketGoCB(spec)
+
+	bucket, err := GetBucket(spec, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
-	bucket.SetTranscoder(SGTranscoder{})
+
 	return bucket
 }
 
@@ -581,13 +587,7 @@ func TestCreateBatchesKeys(t *testing.T) {
 // TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func CouchbaseTestWriteCasXattrSimple(t *testing.T) {
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
-	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
-	}
-	bucket.SetTranscoder(SGTranscoder{})
+	bucket := GetBucketOrPanic()
 
 	key := "TestWriteCasXATTRSimple"
 	xattrName := "_sync"

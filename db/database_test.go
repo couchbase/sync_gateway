@@ -39,7 +39,7 @@ func testBucket() base.Bucket {
 		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
 		BucketName:      "sync_gateway_tests",
 		Auth:            base.UnitTestAuthHandler(),
-		UseXattrs:       DefaultUseXattrs}, nil)
+		UseXattrs:       testUseXattrs()}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -50,6 +50,17 @@ func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	testBucket := testBucket()
 	leakyBucket := base.NewLeakyBucket(testBucket, config)
 	return leakyBucket
+}
+
+func testUseXattrs() bool {
+
+	useXattrs := os.Getenv(base.TestEnvSyncGatewayUseXattrs)
+	switch {
+	case strings.ToLower(useXattrs) == strings.ToLower(base.TestEnvSyncGatewayTrue):
+		return true
+	}
+
+	return DefaultUseXattrs
 }
 
 func setupTestDB(t testing.TB) *Database {
@@ -97,9 +108,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions)  {
 
-	useXattrs := os.Getenv(base.TestEnvSyncGatewayUseXattrs)
-	switch {
-	case strings.ToLower(useXattrs) == strings.ToLower(base.TestEnvSyncGatewayTrue):
+	if testUseXattrs() {
 		dbcOptions.UnsupportedOptions.EnableXattr = base.BooleanPointer(true)
 	}
 

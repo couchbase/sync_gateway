@@ -14,7 +14,7 @@ const (
 	kTestCouchbaseServerURL = "http://localhost:8091"
 	kTestWalrusURL          = "walrus:"
 
-	kTestUseAuthHandler = false
+	kTestUseAuthHandler = false // Set to true if you are running CouchbaseTest* commented tests
 	kTestUsername       = "sync_gateway_tests"
 	kTestPassword       = "password"
 	kTestBucketname     = "sync_gateway_tests"
@@ -25,7 +25,7 @@ const (
 
 	// Don't use Xattrs by default, but provide the test runner to specify Xattr usage
 	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
-	TestEnvSyncGatewayTrue = "True"
+	TestEnvSyncGatewayTrue      = "True"
 )
 
 func UnitTestUrl() string {
