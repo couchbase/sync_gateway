@@ -1,22 +1,37 @@
 package base
 
+import (
+	"os"
+	"strings"
+)
+
 const (
 
 	// The username of the special "GUEST" user
 	GuestUsername = "GUEST"
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
-	//kTestURL = "http://localhost:8091"
-	kTestURL = "walrus:"
+	kTestCouchbaseServerURL = "http://localhost:8091"
+	kTestWalrusURL          = "walrus:"
 
 	kTestUseAuthHandler = false
 	kTestUsername       = "sync_gateway_tests"
 	kTestPassword       = "password"
 	kTestBucketname     = "sync_gateway_tests"
+
+	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
+	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
+	TestEnvBackingStoreCouchbase   = "Couchbase"
 )
 
 func UnitTestUrl() string {
-	return kTestURL
+	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
+	switch {
+	case strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase):
+		return kTestCouchbaseServerURL
+	default:
+		return kTestWalrusURL
+	}
 }
 
 func UnitTestAuthHandler() AuthHandler {
