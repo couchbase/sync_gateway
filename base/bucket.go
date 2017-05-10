@@ -44,26 +44,17 @@ const (
 
 func ChooseCouchbaseDriver(bucketType CouchbaseBucketType, feedType string) CouchbaseDriver {
 
-	feedType = strings.ToLower(feedType)
-	switch feedType {
-	case DcpShardFeedType:
-		// If this is a DCPSHARD feed, must use go-couchbase, since VerifyBucketSequenceParity() expects
-		// a base.CouchbaseBucket.  Ditto for code that interfaces w/ CBGT
-		return GoCouchbase
+	// Otherwise use the default driver for the bucket type
+	// return DefaultDriverForBucketType[bucketType]
+	switch bucketType {
+	case DataBucket:
+		return GoCBCustomSGTranscoder
+	case IndexBucket:
+		return GoCB
 	default:
-		// Otherwise use the default driver for the bucket type
-		// return DefaultDriverForBucketType[bucketType]
-		switch bucketType {
-		case DataBucket:
-			return GoCBCustomSGTranscoder
-		case IndexBucket:
-			return GoCB
-		default:
-			// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-			Warn("Unexpected bucket type: %v", bucketType)
-			return GoCB
-		}
-
+		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
+		Warn("Unexpected bucket type: %v", bucketType)
+		return GoCB
 	}
 
 }
