@@ -942,7 +942,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
 		options["endkey"] = []interface{}{true}
-		options["endkey_inclusive"] = false // TODO: is this valid?
+		options["endkey_inclusive"] = false // TODO: is this valid?  See https://forums.couchbase.com/t/is-the-endkey-inclusive-view-option-still-valid/12784
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}
