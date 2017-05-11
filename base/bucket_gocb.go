@@ -1521,7 +1521,8 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 	// If it's possible to call GetCouchbaseBucketGoCB without error, consider it "refreshed" and return a nil error which will cause the reconnect
 	// loop to stop.  otherwise, return an error which will cause it to keep retrying
 	// This fixes: https://github.com/couchbase/sync_gateway/issues/2423#issuecomment-294651245
-	_, err := GetCouchbaseBucketGoCB(bucket.spec)
+	bucketGoCb, err := GetCouchbaseBucketGoCB(bucket.spec)
+	bucketGoCb.Close()
 
 	return err
 
@@ -1599,6 +1600,7 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer goCouchbaseBucket.Close()
 
 	return goCouchbaseBucket.UUID()
 
