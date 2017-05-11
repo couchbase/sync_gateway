@@ -1426,12 +1426,7 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 	if goCbViewResult != nil {
 
-		viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
-		if !gotTotalRows {
-			// Should never happen
-			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
-		}
-		viewResult.TotalRows = viewResultMetrics.TotalRows()
+		viewResult.TotalRows = getTotalRows(goCbViewResult)
 
 		for {
 
@@ -1481,12 +1476,7 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	if goCbViewResult != nil {
 
-		viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
-		if !gotTotalRows {
-			// Should never happen
-			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
-		}
-		viewResponse.TotalRows = viewResultMetrics.TotalRows()
+		viewResponse.TotalRows = getTotalRows(goCbViewResult)
 
 		// Loop over
 		for {
@@ -1512,6 +1502,16 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	}
 
 	return nil
+}
+
+func getTotalRows(goCbViewResult gocb.ViewResults) int {
+	viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
+	if !gotTotalRows {
+		// Should never happen
+		Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
+		return -1
+	}
+	return viewResultMetrics.TotalRows()
 }
 
 // This is a "better-than-nothing" version of Refresh().
