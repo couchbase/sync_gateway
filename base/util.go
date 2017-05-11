@@ -507,11 +507,4 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
-func GetWalrusBucketFromBaseBucket(baseBucket Bucket) (bucket *walrus.Bucket, err error) {
-	switch baseBucket := baseBucket.(type) {
-	case *walrus.Bucket:
-		return baseBucket, nil
-	default:
-		return nil, fmt.Errorf("baseBucket %v was not a *Bucket.  Was type: %T", baseBucket, baseBucket)
-	}
-}
+
