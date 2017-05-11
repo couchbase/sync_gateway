@@ -1659,6 +1659,8 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 				emptyInterfaceKeys = append(emptyInterfaceKeys, key)
 			}
 			viewQuery.Keys(emptyInterfaceKeys)
+		default:
+			Warn(fmt.Sprintf("Unexpected view query param: %v.  This will be ignored", optionName))
 		}
 
 	}
