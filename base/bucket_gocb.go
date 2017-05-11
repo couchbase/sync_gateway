@@ -1417,7 +1417,9 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 	viewQuery := gocb.NewViewQuery(ddoc, name)
 
 	// convert params map to these params
-	applyViewQueryOptions(viewQuery, params)
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		return viewResult, err
+	}
 
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 	if err != nil {
@@ -1458,7 +1460,9 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	viewQuery := gocb.NewViewQuery(ddoc, name)
 
 	// convert params map to these params
-	applyViewQueryOptions(viewQuery, params)
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		return err
+	}
 
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 	if err != nil {
@@ -1615,7 +1619,7 @@ func (bucket CouchbaseBucketGoCB) Close() {
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,
 // for example stale=false, etc.
-func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) {
+func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) error {
 
 	for optionName, optionValue := range params {
 		switch optionName {
@@ -1659,8 +1663,12 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 				emptyInterfaceKeys = append(emptyInterfaceKeys, key)
 			}
 			viewQuery.Keys(emptyInterfaceKeys)
+		case ViewQueryParamStartKey, ViewQueryParamEndKey, ViewQueryParamInclusiveEnd, ViewQueryParamStartKeyDocId, ViewQueryParamEndKeyDocId:
+			// These are dealt with outside of this case statement to build ranges
+		case ViewQueryParamIncludeDocs:
+			// Ignored -- see https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 		default:
-			Warn(fmt.Sprintf("Unexpected view query param: %v.  This will be ignored", optionName))
+			return fmt.Errorf("Unexpected view query param: %v.  This will be ignored", optionName)
 		}
 
 	}
@@ -1689,6 +1697,8 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		endKeyDocId = params[ViewQueryParamEndKeyDocId].(string)
 	}
 	viewQuery.IdRange(startKeyDocId, endKeyDocId)
+
+	return nil
 
 }
 

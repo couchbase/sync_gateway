@@ -7,7 +7,7 @@ const (
 	ViewQueryParamEndKey        = "endkey"
 	ViewQueryParamInclusiveEnd  = "inclusive_end"
 	ViewQueryParamLimit         = "limit"
-	ViewQueryParamIncludeDocs   = "include_docs"
+	ViewQueryParamIncludeDocs   = "include_docs"  // Ignored -- see https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 	ViewQueryParamDescending    = "descending"
 	ViewQueryParamGroup         = "group"
 	ViewQueryParamSkip          = "skip"

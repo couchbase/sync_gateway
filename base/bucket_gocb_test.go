@@ -1384,7 +1384,9 @@ func TestApplyViewQueryOptions(t *testing.T) {
 	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
 
 	// Call applyViewQueryOptions (method being tested) which modifies viewQuery according to params
-	applyViewQueryOptions(viewQuery, params)
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
+	}
 
 	// Use reflection to get a handle on the viewquery options (unexported)
 	viewQueryReflectedVal := reflect.ValueOf(*viewQuery)
@@ -1465,7 +1467,9 @@ func TestApplyViewQueryOptionsWithStrings(t *testing.T) {
 	// Create a new viewquery
 	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
 
-	applyViewQueryOptions(viewQuery, params)
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
+	}
 
 	// if it doesn't blow up, test passes
 
