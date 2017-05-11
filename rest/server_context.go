@@ -481,6 +481,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		trackDocs = autoImport || config.Shadow != nil
 	}
 
+	// Create a callback function that will be invoked if the database goes offline and comes
+	// back online again
+	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
+		sc.TakeDbOnline(dbContext)
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:          &cacheOptions,
 		IndexOptions:          channelIndexOptions,
@@ -490,16 +496,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		UnsupportedOptions:    config.Unsupported,
 		TrackDocs:             trackDocs,
 		OIDCOptions:           config.OIDCConfig,
-	}
-
-	// Create a callback function that will be invoked if the database goes offline and comes
-	// back online again
-	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
-		sc.TakeDbOnline(dbContext)
+		DBOnlineCallback:      dbOnlineCallback,
 	}
 
 	// Create the DB Context
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions, dbOnlineCallback)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}

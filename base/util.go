@@ -26,8 +26,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/couchbaselabs/walrus"
 )
 
 const (
@@ -506,5 +504,3 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 		return CouchbaseBucketGoCB{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
 	}
 }
-
-

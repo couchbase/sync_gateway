@@ -91,6 +91,7 @@ type DatabaseContextOptions struct {
 	UnsupportedOptions    UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
 	OIDCOptions           *auth.OIDCOptions
+	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 }
 
 type OidcTestProviderOptions struct {
@@ -129,8 +130,6 @@ func ValidateDatabaseName(dbName string) error {
 // Helper function to open a Couchbase connection and return a specific bucket.
 func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bucket base.Bucket, err error) {
 
-
-
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
@@ -160,7 +159,7 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions, online DBOnlineCallback) (*DatabaseContext, error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -254,11 +253,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					timer := time.NewTimer(time.Duration(10) * time.Second)
 					<-timer.C
 
-					online(context)
+					options.DBOnlineCallback(context)
 
 				}
 			}
-
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
@@ -944,7 +942,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
 		options["endkey"] = []interface{}{true}
-		options["endkey_inclusive"] = false  // TODO: is this valid?
+		options["endkey_inclusive"] = false // TODO: is this valid?
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}

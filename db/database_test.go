@@ -60,7 +60,7 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 	dbcOptions := DatabaseContextOptions{
 		TrackDocs: true,
 	}
-	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions, nil)
+	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -72,7 +72,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
-	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions, nil)
+	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -83,7 +83,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
-	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions, nil)
+	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -1029,7 +1029,7 @@ func BenchmarkDatabase(b *testing.B) {
 			Server:          base.UnitTestUrl(),
 			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 			BucketName:      fmt.Sprintf("b-%d", i)}, nil)
-		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{}, nil)
+		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}

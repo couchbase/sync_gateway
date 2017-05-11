@@ -66,7 +66,7 @@ func TestShardedSequenceClock(t *testing.T) {
 func TestShardedSequenceClockCasError(t *testing.T) {
 
 	testBucket := testIndexBucket()
-	
+
 	indexPartitions := GenerateTestIndexPartitions(maxVbNo, numShards)
 	//defer testBucket.Close()
 	shardedClock1 := NewShardedClockWithPartitions("myClock", indexPartitions, testBucket)

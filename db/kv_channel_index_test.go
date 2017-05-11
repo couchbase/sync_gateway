@@ -15,7 +15,7 @@ func testPartitionMap() *base.IndexPartitions {
 }
 
 func testContextAndChannelIndex(channelName string) (*DatabaseContext, *KvChannelIndex) {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{}, nil)
+	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
 	// TODO: don't use the base bucket as the index bucket in tests
 	channelIndex := NewKvChannelIndex(channelName, context.Bucket, testPartitionMap(), testOnChange)
 	return context, channelIndex
