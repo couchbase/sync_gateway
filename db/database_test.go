@@ -685,6 +685,12 @@ func TestUpdateDesignDoc(t *testing.T) {
 	var result sgbucket.DesignDoc
 	err = db.GetDesignDoc("official", &result)
 	log.Printf("design doc: %+v", result)
+
+	// Try to retrieve it as an empty interface as well, and make sure no errors
+	var resultEmptyInterface interface{}
+	err = db.GetDesignDoc("official", &resultEmptyInterface)
+	assertNoError(t, err, "retrieve design doc (empty interface) as admin")
+
 	assertNoError(t, err, "retrieve design doc as admin")
 	retrievedView, ok := result.Views["TestView"]
 	assert.True(t, ok)

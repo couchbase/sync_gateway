@@ -1307,23 +1307,36 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 		return err
 	}
 
-	designDoc, err := bucketManager.GetDesignDocument(docname)
+	designDocPointer, err := bucketManager.GetDesignDocument(docname)
 	if err != nil {
 		return err
 	}
 
-	// TODO: this is of course sub-optimal to do an unnecessary marshal/unmarshal round trip.
-	// TODO: Looks like it might require changes to gocb or Sync Gateway code in order to avoid this round trip
+	switch into.(type) {
+	case *interface{}:
+		// Shortcut around the marshal/unmarshal round trip by type asserting
+		// this into a pointer to an empty interface (if that's what "into" is)
+		intoEmptyInterfacePointer := into.(*interface{})
 
-	// Serialize DesignDocument into []byte
-	designDocBytes, err := json.Marshal(designDoc)
-	if err != nil {
-		return err
-	}
+		// And then setting the value that intoEmptyInterfacePointer points to to whatever designDocPointer points to
+		*intoEmptyInterfacePointer = *designDocPointer
 
-	// Deserialize []byte into "into" empty interface
-	if err := json.Unmarshal(designDocBytes, into); err != nil {
-		return err
+	default:
+
+		// If "into" is anything other than an empty interface pointer, than just past the cost of the
+		// marshal/unmarshal round trip
+
+		// Serialize DesignDocument into []byte
+		designDocBytes, err := json.Marshal(designDocPointer)
+		if err != nil {
+			return err
+		}
+
+		// Deserialize []byte into "into" empty interface
+		if err := json.Unmarshal(designDocBytes, into); err != nil {
+			return err
+		}
+
 	}
 
 	return nil
@@ -1447,7 +1460,6 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 }
 
-
 func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 
 	bucket.waitForAvailViewOp()
@@ -1497,7 +1509,6 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		}
 
 	}
-
 
 	// serialize the whole thing to a []byte
 	viewResponseBytes, err := json.Marshal(viewResponse)
@@ -1728,7 +1739,6 @@ func (bucket CouchbaseBucketGoCB) waitForAvailViewOp() {
 	bucket.viewOps <- struct{}{}
 	gocbExpvars.Add("ViewOps", 1)
 }
-
 
 func (bucket CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
