@@ -308,7 +308,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	feedType := strings.ToLower(config.FeedType)
 
-	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket, feedType)
+	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
 
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
@@ -416,7 +416,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 
 		// Index buckets always use DCP feed type
-		couchbaseDriverIndexBucket := base.ChooseCouchbaseDriver(base.IndexBucket, base.DcpFeedType)
+		couchbaseDriverIndexBucket := base.ChooseCouchbaseDriver(base.IndexBucket)
 
 		indexSpec := base.BucketSpec{
 			Server:          indexServer,
@@ -706,7 +706,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		}
 	}
 
-	shadowBucketCouchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket, shadow.FeedType)
+	shadowBucketCouchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
 
 	spec := base.BucketSpec{
 		Server:          *shadow.Server,

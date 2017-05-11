@@ -42,7 +42,7 @@ const (
 	IndexBucket
 )
 
-func ChooseCouchbaseDriver(bucketType CouchbaseBucketType, feedType string) CouchbaseDriver {
+func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 
 	// Otherwise use the default driver for the bucket type
 	// return DefaultDriverForBucketType[bucketType]

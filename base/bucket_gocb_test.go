@@ -55,7 +55,7 @@ func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
 		Server:          UnitTestUrl(),
 		BucketName:      bucketname,
-		CouchbaseDriver: ChooseCouchbaseDriver(DataBucket, DcpFeedType),
+		CouchbaseDriver: ChooseCouchbaseDriver(DataBucket),
 		Auth:            testAuth,
 	}
 	bucket, err := GetCouchbaseBucketGoCB(spec)

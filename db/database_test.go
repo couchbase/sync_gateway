@@ -36,7 +36,7 @@ func init() {
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket, base.DcpFeedType),
+		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 		BucketName:      "sync_gateway_tests",
 		Auth:            base.UnitTestAuthHandler(),
 		UseXattrs:       DefaultUseXattrs}, nil)
@@ -1027,7 +1027,7 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),
-			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket, base.DcpFeedType),
+			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 			BucketName:      fmt.Sprintf("b-%d", i)}, nil)
 		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{}, nil)
 		db, _ := CreateDatabase(context)
