@@ -1527,7 +1527,7 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	switch strings.ToLower(bucket.spec.FeedType) {
 	case DcpFeedType:
-		return StartDCP_CBDatasourceFeed(args, bucket.spec, bucket)
+		return StartDCPFeed(args, bucket.spec, bucket)
 
 	case DcpShardFeedType:
 
@@ -1546,7 +1546,7 @@ func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbu
 		return feed, nil
 
 	default:
-		return StartDCP_CBDatasourceFeed(args, bucket.spec, bucket) // TEMP Hack to default to DCP feed
+		return StartDCPFeed(args, bucket.spec, bucket) // TEMP Hack to default to DCP feed
 
 	}
 

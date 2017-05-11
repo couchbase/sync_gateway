@@ -246,7 +246,7 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 
 	default:
 		LogTo("Feed", "Using DCP (cbdatasource) feed for bucket: %q based on feed_type specified in config file", bucket.GetName())
-		return StartDCP_CBDatasourceFeed(args, bucket.spec, bucket)
+		return StartDCPFeed(args, bucket.spec, bucket)
 
 	}
 
@@ -282,9 +282,9 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) 
 	return &tapFeed, nil
 }
 
-// This starts a DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
+// This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
-func StartDCP_CBDatasourceFeed(args sgbucket.TapArguments, spec BucketSpec, bucket Bucket) (sgbucket.TapFeed, error) {
+func StartDCPFeed(args sgbucket.TapArguments, spec BucketSpec, bucket Bucket) (sgbucket.TapFeed, error) {
 
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
