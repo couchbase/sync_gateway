@@ -222,6 +222,8 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 // TODO: change to StartMutationFeed
 func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 
+	LogTo("Feed", "StartTapFeed called with feed type: %v for bucket: %v", bucket.spec.FeedType, bucket.spec.BucketName)
+
 	// Uses DCP by default, unless TAP is explicitly specified
 	switch strings.ToLower(bucket.spec.FeedType) {
 
@@ -243,7 +245,7 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket
 		return feed, nil
 
 	default:
-		LogTo("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
+		LogTo("Feed", "Using DCP (cbdatasource) feed for bucket: %q based on feed_type specified in config file", bucket.GetName())
 		return StartDCP_CBDatasourceFeed(args, bucket.spec, bucket)
 
 	}
