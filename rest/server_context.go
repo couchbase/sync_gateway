@@ -383,7 +383,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				if err == nil {
 					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", dc.Name)
 
-					// TODO: why does this wait so long here?
+					// The 10 second wait was introduced because the bucket was not fully initialised
+					// after the return of the retry loop.
 					timer := time.NewTimer(time.Duration(10) * time.Second)
 					<-timer.C
 
