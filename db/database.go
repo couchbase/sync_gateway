@@ -219,6 +219,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
+		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
 		if err = context.tapListener.Start(bucket, options.TrackDocs, xattrImportNode, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v lost Mutation (TAP/DCP) feed due to error: %v, taking offline", bucket, err)
