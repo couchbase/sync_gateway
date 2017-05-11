@@ -310,7 +310,7 @@ func (b *LeakyBucket) CloseAndDelete() error {
 }
 
 func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
-	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
+	return b.bucket.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
 
 // An implementation of a sgbucket tap feed that wraps
