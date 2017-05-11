@@ -623,7 +623,7 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		return err
 	}
 	if err == nil {
-		base.LogTo("Import+", "Imported %s %s (delete=%v) as rev %s", docid, value, isDelete, newRev)
+		base.LogTo("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
 	}
 
 	return nil

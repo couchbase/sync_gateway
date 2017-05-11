@@ -853,7 +853,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 				Execute()
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
-				return shouldRetry, err, 0
+				return shouldRetry, err, uint64(0)
 			}
 			return false, nil, uint64(docFragment.Cas())
 		}
@@ -870,7 +870,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 				Execute()
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
-				return shouldRetry, err, 0
+				return shouldRetry, err, uint64(0)
 			}
 			casOut = uint64(docFragment.Cas())
 		} else {
@@ -881,7 +881,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 				Execute()
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
-				return shouldRetry, err, 0
+				return shouldRetry, err, uint64(0)
 			}
 			casOut = uint64(docFragment.Cas())
 		}
@@ -935,12 +935,12 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			contentErr := res.Content("", rv)
 			if contentErr != nil {
 				LogTo("CRUD", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, 0
+				return false, contentErr, uint64(0)
 			}
 			contentErr = res.Content(xattrKey, xv)
 			if contentErr != nil {
 				LogTo("CRUD", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, 0
+				return false, contentErr, uint64(0)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -954,7 +954,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			cas, docOnlyErr := bucket.Get(k, rv)
 			if docOnlyErr != nil {
 				shouldRetry = isRecoverableGoCBError(docOnlyErr)
-				return shouldRetry, docOnlyErr, 0
+				return shouldRetry, docOnlyErr, uint64(0)
 			}
 			return false, nil, cas
 
@@ -966,26 +966,26 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 			// SubDocBadMulti means there's no xattr.  Since there's also no doc, return KeyNotFound
 			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti {
-				return false, gocb.ErrKeyNotFound, 0
+				return false, gocb.ErrKeyNotFound, uint64(0)
 			}
 
 			if xattrOnlyErr != nil && xattrOnlyErr != gocbcore.ErrSubDocSuccessDeleted {
 				shouldRetry = isRecoverableGoCBError(xattrOnlyErr)
-				return shouldRetry, xattrOnlyErr, 0
+				return shouldRetry, xattrOnlyErr, uint64(0)
 			}
 
 			// Successfully retrieved xattr only - return
 			contentErr := res.Content(xattrKey, xv)
 			if contentErr != nil {
 				LogTo("CRUD", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, 0
+				return false, contentErr, uint64(0)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
 
 		default:
 			shouldRetry = isRecoverableGoCBError(err)
-			return shouldRetry, err, 0
+			return shouldRetry, err, uint64(0)
 		}
 
 	}
@@ -1001,7 +1001,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("GetWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", result, result, k)
 	}
 
 	return cas, err

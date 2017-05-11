@@ -315,8 +315,8 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 	docID := string(event.Key)
 	docJSON := event.Value
 
-	// ** This method does not directly access any state of c, so it doesn't lock.
-	go func() {
+	processDocChanged := func() {
+		// ** This method does not directly access any state of c, so it doesn't lock.
 		// Is this a user/role doc?
 		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
 			c.processPrincipalDoc(docID, docJSON, true)
@@ -430,7 +430,18 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		if c.onChange != nil && len(changedChannels) > 0 {
 			c.onChange(changedChannels)
 		}
-	}()
+	}
+	// TODO: Workaround to make import of SDK inserts blocking, until DCP processing is refactored.  Avoids initial
+	//       processing spike when initially importing an existing bucket.
+	//       If xattrs are enabled, and this node is doing import, and the incoming doc has no xattr (it's an SDK insert), run DocChanged as a
+	//       synchronous operation
+	hasXattr := event.DataType&base.MemcachedDataTypeXattr != 0
+	if c.context.UseXattrs() && c.context.autoImport && !hasXattr {
+		processDocChanged()
+	} else {
+		go processDocChanged()
+	}
+
 }
 
 func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
