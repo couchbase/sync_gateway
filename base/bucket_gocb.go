@@ -1308,6 +1308,9 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 	}
 
 	designDoc, err := bucketManager.GetDesignDocument(docname)
+	if err != nil {
+		return err
+	}
 
 	// TODO: this is of course sub-optimal to do an unnecessary marshal/unmarshal round trip.
 	// TODO: Looks like it might require changes to gocb or Sync Gateway code in order to avoid this round trip
