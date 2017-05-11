@@ -1427,11 +1427,11 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 	if goCbViewResult != nil {
 
 		viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
-		if gotTotalRows {
-			viewResult.TotalRows = viewResultMetrics.TotalRows()
-		} else {
-			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count may be inaccurate.")
+		if !gotTotalRows {
+			// Should never happen
+			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
 		}
+		viewResult.TotalRows = viewResultMetrics.TotalRows()
 
 		for {
 
@@ -1441,11 +1441,6 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 			}
 
 			viewResult.Rows = append(viewResult.Rows, &viewRow)
-
-			// If goCbViewResult could not be type asserted to gocb.ViewResultMetrics, fallback to counting rows
-			if !gotTotalRows {
-				viewResult.TotalRows += 1
-			}
 
 		}
 
@@ -1487,11 +1482,11 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	if goCbViewResult != nil {
 
 		viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
-		if gotTotalRows {
-			viewResponse.TotalRows = viewResultMetrics.TotalRows()
-		} else {
-			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count may be inaccurate.")
+		if !gotTotalRows {
+			// Should never happen
+			Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
 		}
+		viewResponse.TotalRows = viewResultMetrics.TotalRows()
 
 		// Loop over
 		for {
@@ -1500,11 +1495,6 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 				break
 			}
 			viewResponse.Rows = append(viewResponse.Rows, json.RawMessage(bytes))
-
-			// If goCbViewResult could not be type asserted to gocb.ViewResultMetrics, fallback to counting rows
-			if !gotTotalRows {
-				viewResponse.TotalRows += 1
-			}
 
 		}
 
