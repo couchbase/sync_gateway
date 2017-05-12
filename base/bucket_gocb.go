@@ -1200,12 +1200,21 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		if deleteDoc {
 			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
 			removeCas, removeErr := bucket.Remove(k, cas)
-			if removeErr != nil && !isRecoverableGoCBError(removeErr) {
-				LogTo("CRUD", "Remove of deleted doc during WriteUpdateWithXattr failed for key %s: %v", k, removeErr)
+			if removeErr == nil {
+				// Successful removal - update the cas for the xattr operation
+				cas = removeCas
+			} else if removeErr == gocb.ErrKeyNotFound {
+				// Document body has already been removed - continue to xattr processing w/ same cas
+			} else if isRecoverableGoCBError(removeErr) {
+				// Recoverable error - retry WriteUpdateWithXattr
+				continue
+			} else {
+				// Non-recoverable error - return
 				return removeErr
 			}
+
 			// update xattr only
-			_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, removeCas, nil, xattrMap)
+			_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, xattrMap)
 			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
 				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
 				return writeErr
