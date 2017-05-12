@@ -1715,18 +1715,15 @@ func normalizeIntToUint(value interface{}) (uint, error) {
 }
 
 func asBool(value interface{}) bool {
+
 	switch typeValue := value.(type) {
 	case string:
-		switch typeValue {
-		case "true":
-			return true
-		case "false":
-			return false
-		default:
+		parsedVal, err := strconv.ParseBool(typeValue)
+		if err != nil {
 			Warn("asBool called with unknown value: %v.  defaulting to false", typeValue)
 			return false
-
 		}
+		return parsedVal
 	case bool:
 		return typeValue
 	default:
