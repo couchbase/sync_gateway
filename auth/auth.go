@@ -213,11 +213,7 @@ func (auth *Authenticator) Save(p Principal) error {
 		return err
 	}
 
-	data, err := json.Marshal(p)
-	if err != nil {
-		return err
-	}
-	if err := auth.bucket.SetRaw(p.DocID(), 0, data); err != nil {
+	if err := auth.bucket.Set(p.DocID(), 0, p); err != nil {
 		return err
 	}
 	if user, ok := p.(User); ok {
@@ -230,7 +226,7 @@ func (auth *Authenticator) Save(p Principal) error {
 			//FIX: Unregister old email address if any
 		}
 	}
-	base.LogTo("Auth", "Saved %s: %s", p.DocID(), data)
+	base.LogTo("Auth", "Saved %s: %s", p.DocID(), p)
 	return nil
 }
 

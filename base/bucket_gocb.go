@@ -748,7 +748,8 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("SetRaw", 1)
-	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
+	LogTo("CRUD", "calling bucket Upsert with type %T", v)
+	_, err := bucket.Bucket.Upsert(k, BinaryDocument(v), uint32(exp))
 	return err
 }
 
