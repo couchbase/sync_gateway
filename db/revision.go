@@ -101,6 +101,9 @@ func (body Body) getExpiry() (uint32, error) {
 	return 0, nil
 }
 
+// nonJSONPrefix is used to ensure old revision bodies aren't hidden from N1QL/Views.
+const nonJSONPrefix = byte(1)
+
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
@@ -110,6 +113,10 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 		err = base.HTTPErrorf(404, "missing")
 	}
 	if data != nil {
+		// Strip out the non-JSON prefix
+		if len(data) > 0 && data[0] == nonJSONPrefix {
+			data = data[1:]
+		}
 		base.LogTo("CRUD+", "Got old revision %q / %q --> %d bytes", docid, revid, len(data))
 	}
 	return data, err
@@ -120,7 +127,15 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) 
 
 	// Set old revisions to expire after 5 minutes.  Future enhancement to make this a config
 	// setting might be appropriate.
-	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 300, body)
+
+	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
+	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
+	// Prepending using append/shift/set to reduce garbage.
+	body = append(body, byte(0))
+	copy(body[1:], body[0:])
+	body[0] = nonJSONPrefix
+
+	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 300, base.BinaryDocument(body))
 }
 
 //////// UTILITY FUNCTIONS:
