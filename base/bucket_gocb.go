@@ -934,12 +934,12 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// Successfully retrieved doc and (optionally) xattr.  Copy the contents into rv, xv and return.
 			contentErr := res.Content("", rv)
 			if contentErr != nil {
-				LogTo("CRUD", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				LogTo("CRUD+", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
 				return false, contentErr, uint64(0)
 			}
 			contentErr = res.Content(xattrKey, xv)
 			if contentErr != nil {
-				LogTo("CRUD", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
+				LogTo("CRUD+", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
 				return false, contentErr, uint64(0)
 			}
 			cas = uint64(res.Cas())
@@ -954,6 +954,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			cas, docOnlyErr := bucket.Get(k, rv)
 			if docOnlyErr != nil {
 				shouldRetry = isRecoverableGoCBError(docOnlyErr)
+				LogTo("CRUD+", "Error attempting to retrieve doc only: %s  %v", k, docOnlyErr)
 				return shouldRetry, docOnlyErr, uint64(0)
 			}
 			return false, nil, cas
@@ -966,6 +967,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 			// SubDocBadMulti means there's no xattr.  Since there's also no doc, return KeyNotFound
 			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti {
+				LogTo("CRUD+", "SubDocBadMulti when trying to retrieve xattr only - returning KeyNotFound", k, xattrOnlyErr)
 				return false, gocb.ErrKeyNotFound, uint64(0)
 			}
 
@@ -984,8 +986,8 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			return false, nil, cas
 
 		default:
-			shouldRetry = isRecoverableGoCBError(err)
-			return shouldRetry, err, uint64(0)
+			shouldRetry = isRecoverableGoCBError(lookupErr)
+			return shouldRetry, lookupErr, uint64(0)
 		}
 
 	}
