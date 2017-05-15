@@ -14,6 +14,7 @@ import (
 	"github.com/snej/go-blip"
 	"golang.org/x/net/websocket"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -25,7 +26,7 @@ type blipSyncContext struct {
 	blipContext        *blip.Context
 	sender             *blip.Sender
 	dbc                *db.DatabaseContext
-	username           string
+	user               auth.User
 	batchSize          int
 	continuous         bool
 	activeOnly         bool
@@ -58,7 +59,7 @@ func (h *handler) handleBLIPSync() error {
 	ctx := blipSyncContext{
 		blipContext: blip.NewContext(),
 		dbc:         h.db.DatabaseContext,
-		username:    h.user.Name(),
+		user:        h.user,
 	}
 	ctx.blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
@@ -95,15 +96,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 		ctx.sender = rq.Sender
 		base.LogTo("Sync", "%s %q", rq, profile)
 
-		// Look up the User from the name -- necessary because (a) the user's properties may have
-		// changed, and (b) User objects aren't thread-safe so each handler needs its own instance.
-		user, err := ctx.dbc.Authenticator().GetUser(ctx.username)
-		if err != nil {
-			// Apparently the user account was deleted?
-			base.LogTo("Sync", "%s    --> can't find user: %s", rq, err)
-			rq.Sender.Close()
-		}
-		db, _ := db.GetDatabase(ctx.dbc, user)
+		db, _ := db.GetDatabase(ctx.dbc, ctx.user)
 		handler := blipHandler{
 			blipSyncContext: ctx,
 			db:              db,
