@@ -77,6 +77,65 @@ func TestShadowerPull(t *testing.T) {
 	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
 }
 
+func TestShadowerPullWithNotifications (t *testing.T) {
+	//Create shadow bucket
+	bucket := makeExternalBucket()
+	defer bucket.Close()
+
+	//New docs should write notification events
+	bucket.Set("key1", 0, Body{"foo": 1})
+	bucket.Set("key2", 0, Body{"bar": -1})
+
+	db := setupTestDBForShadowing(t)
+
+	//Create an event manager and start it
+	em := db.EventMgr
+	em.Start(0, -1)
+	resultChannel := make(chan Body, 10)
+	//Setup test handler
+	testHandler := &TestingHandler{HandledEvent: DocumentChange}
+	testHandler.SetChannel(resultChannel)
+	em.RegisterEventHandler(testHandler, DocumentChange)
+
+	defer tearDownTestDB(t, db)
+
+	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
+	assertNoError(t, err, "NewShadower")
+	defer shadower.Stop()
+
+	base.Log("Waiting for shadower to catch up...")
+	waitFor(t, func() bool {
+		seq, _ := db.LastSequence()
+		return seq >= 2
+	})
+
+	//Write shadow doc with same body, should not generate an notification event
+	base.Log("Updating remote doc without any changes to body")
+	bucket.Set("key1", 0, Body{"foo": 1})
+
+	waitFor(t, func() bool {
+		seq, _ := db.LastSequence()
+		return seq >= 3
+	})
+
+	//Write shadow doc with different body, should generate an notification event
+	base.Log("Updating remote doc with changes to body")
+	bucket.Set("key2", 0, Body{"foo": 1})
+
+	waitFor(t, func() bool {
+		seq, _ := db.LastSequence()
+		return seq >= 4
+	})
+
+	// wait for Event Manager queue worker to process
+	time.Sleep(100 * time.Millisecond)
+
+	channelSize := len(resultChannel)
+
+	assert.True(t, channelSize == 3)
+
+}
+
 func TestShadowerPush(t *testing.T) {
 
 	var logKeys = map[string]bool{
@@ -151,6 +210,8 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	doc, _ := db.GetDoc("foo")
 	assert.Equals(t, len(doc.History), 1)
 }
+
+
 
 // Ensure that a new rev pushed from a shadow bucket update, wehre the UpstreamRev does not exist as a parent func init() {
 // the documents rev tree does not panic, it should generate a new conflicting branch instead.

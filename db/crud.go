@@ -649,7 +649,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 	var err error
 
 	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
-	documentUpdateFunc := func(doc *document, docExists bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, err error) {
+	documentUpdateFunc := func(doc *document, docExists bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, err error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if !allowImport && docExists && !doc.HasValidSyncData(db.writeSequences()) {
 			err = base.HTTPErrorf(409, "Not imported")
@@ -661,6 +661,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		if err != nil {
 			return
 		}
+
+		// Test for shadower echo here before UpstreamRev gets set to CurrentRev
+		shadowerEcho = doc.CurrentRev == doc.UpstreamRev
 
 		//Reject a body that contains the "_removed" property, this means that the user
 		//is trying to update a document they do not have read access to.
@@ -843,8 +846,10 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 		// Now that the document has been successfully validated, we can store any new attachments
 		db.setAttachments(newAttachments)
-		return doc, writeOpts, err
+		return doc, writeOpts, shadowerEcho, err
 	}
+
+	var shadowerEcho bool
 
 	// Update the document
 	if db.UseXattrs() {
@@ -855,7 +860,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			}
 
 			var updatedDoc *document
-			updatedDoc, _, err = documentUpdateFunc(doc, currentValue != nil)
+			updatedDoc, _, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {
 				return
 			}
@@ -876,7 +881,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 				return
 			}
 			var updatedDoc *document
-			updatedDoc, writeOpts, err = documentUpdateFunc(doc, currentValue != nil)
+			updatedDoc, writeOpts, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {
 				return
 			}
@@ -926,7 +931,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
 		// Raise event if this is not an echo from a shadow bucket
-		if newRevID != doc.UpstreamRev {
+		if !shadowerEcho {
 			if db.EventMgr.HasHandlerForEvent(DocumentChange) {
 				db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
 			}
