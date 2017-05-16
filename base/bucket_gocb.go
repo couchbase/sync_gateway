@@ -966,8 +966,9 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 				Execute()
 
 			// SubDocBadMulti means there's no xattr.  Since there's also no doc, return KeyNotFound
-			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti {
-				LogTo("CRUD+", "SubDocBadMulti when trying to retrieve xattr only - returning KeyNotFound", k, xattrOnlyErr)
+			// TODO: Workaround until gocbcore adds gocbcore.ErrSubDocBadMultiDeleted (https://issues.couchbase.com/browse/GOCBC-199)
+			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti || strings.Contains(xattrOnlyErr.Error(), "211") {
+				LogTo("CRUD+", "SubDocBadMulti when trying to retrieve xattr only - returning KeyNotFound for key %s.", k)
 				return false, gocb.ErrKeyNotFound, uint64(0)
 			}
 
