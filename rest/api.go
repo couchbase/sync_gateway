@@ -28,8 +28,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-const ServerName = "@PRODUCT_NAME@"                   // DO NOT CHANGE; clients check this
-const VersionNumber float64 = 1.4                    // API/feature level
+const ServerName = "@PRODUCT_NAME@"                  // DO NOT CHANGE; clients check this
+const VersionNumber float64 = 1.5                    // API/feature level
 const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
 const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
 
