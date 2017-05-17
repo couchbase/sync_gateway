@@ -526,7 +526,8 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 		}
 
 		sinceSeq := getChangesClock(options.Since).GetSequence(vbAddedAt)
-		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt
+		stableSeq := stableClock.GetSequence(vbAddedAt)
+		backfillRequired := vbSeqAddedAt.Sequence > 0 && sinceSeq < seqAddedAt && seqAddedAt <= stableSeq
 
 		// If backfill required and the triggering seq is after the stable sequence, skip this channel in this iteration
 		stableSeq := stableClock.GetSequence(vbAddedAt)
