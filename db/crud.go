@@ -662,8 +662,9 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			return
 		}
 
-		// Test for shadower echo here before UpstreamRev gets set to CurrentRev
-		shadowerEcho = doc.CurrentRev == doc.UpstreamRev
+		//Test for shadower echo here before UpstreamRev gets set to CurrentRev
+		//Ignore new docs (doc.CurrentRev == "")
+		shadowerEcho = doc.CurrentRev != "" && doc.CurrentRev == doc.UpstreamRev
 
 		//Reject a body that contains the "_removed" property, this means that the user
 		//is trying to update a document they do not have read access to.
