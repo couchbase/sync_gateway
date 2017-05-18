@@ -2700,3 +2700,23 @@ func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 		}
 	})
 }
+
+func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		prt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v",n), `{"prop":true}`)
+	}
+}
+
+func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
+
+	b.ResetTimer()
+
+	rt := restTester{syncFn: `function(doc){channel(doc.channels);}`}
+
+	for n := 0; n < b.N; n++ {
+		rt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v",n), `{"prop":true}`)
+	}
+}
