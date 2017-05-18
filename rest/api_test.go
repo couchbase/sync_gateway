@@ -2707,8 +2707,10 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 
 	b.ResetTimer()
 
+	rt := restTester{}
+
 	for n := 0; n < b.N; n++ {
-		prt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v",n), threekdoc)
+		rt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v",n), threekdoc)
 	}
 }
 
