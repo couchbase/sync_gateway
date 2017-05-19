@@ -659,7 +659,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 		gocbExpvars.Add("SingleOps", -1)
 	}()
 
-	var returnVal interface{}
+	var returnVal []byte
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		gocbExpvars.Add("GetAndTouchRaw", 1)
@@ -689,7 +689,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 		return nil, cas, err
 	}
 
-	return returnVal.([]byte), cas, err
+	return returnVal, cas, err
 
 }
 
