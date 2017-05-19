@@ -11,8 +11,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-type DesignDoc sgbucket.DesignDoc
-
 const (
 	DesignDocSyncGateway      = "sync_gateway"
 	DesignDocSyncHousekeeping = "sync_housekeeping"
@@ -48,7 +46,7 @@ func (db *Database) GetDesignDoc(ddocName string, result interface{}) (err error
 	return
 }
 
-func (db *Database) PutDesignDoc(ddocName string, ddoc DesignDoc) (err error) {
+func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err error) {
 	wrap := true
 	if opts := ddoc.Options; opts != nil {
 		if opts.Raw == true {
@@ -157,7 +155,7 @@ func getViewWrapper(enableUserViews bool, useXattrs bool) string {
 	}
 }
 
-func wrapViews(ddoc *DesignDoc, enableUserViews bool, useXattrs bool) {
+func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
 	// add channel filtering.
 	viewWrapper := getViewWrapper(enableUserViews, useXattrs)

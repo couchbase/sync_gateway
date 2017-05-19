@@ -36,7 +36,7 @@ func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPar
 func testIndexBucket() Bucket {
 	bucket, err := GetBucket(BucketSpec{
 		Server:          UnitTestUrl(),
-		CouchbaseDriver: DefaultDriverForBucketType[IndexBucket],
+		CouchbaseDriver: ChooseCouchbaseDriver(IndexBucket),
 		BucketName:      "index_tests"}, nil)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
@@ -66,6 +66,7 @@ func TestShardedSequenceClock(t *testing.T) {
 func TestShardedSequenceClockCasError(t *testing.T) {
 
 	testBucket := testIndexBucket()
+
 	indexPartitions := GenerateTestIndexPartitions(maxVbNo, numShards)
 	//defer testBucket.Close()
 	shardedClock1 := NewShardedClockWithPartitions("myClock", indexPartitions, testBucket)

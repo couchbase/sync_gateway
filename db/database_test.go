@@ -18,10 +18,12 @@ import (
 
 	"github.com/couchbaselabs/go.assert"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto/underscore"
+	"strings"
 )
 
 func init() {
@@ -34,7 +36,7 @@ func init() {
 func testBucket() base.Bucket {
 	bucket, err := ConnectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 		BucketName:      "sync_gateway_tests",
 		Auth:            base.UnitTestAuthHandler(),
 		UseXattrs:       DefaultUseXattrs}, nil)
@@ -671,17 +673,33 @@ func TestUpdateDesignDoc(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
-	err := db.PutDesignDoc("official", DesignDoc{})
+	mapFunction := `function (doc, meta) { emit(); }`
+	err := db.PutDesignDoc("official", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"TestView": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
 	assertNoError(t, err, "add design doc as admin")
 
 	// Validate retrieval of the design doc by admin
-	var result DesignDoc
+	var result sgbucket.DesignDoc
 	err = db.GetDesignDoc("official", &result)
+	log.Printf("design doc: %+v", result)
+
+	// Try to retrieve it as an empty interface as well, and make sure no errors
+	var resultEmptyInterface interface{}
+	err = db.GetDesignDoc("official", &resultEmptyInterface)
+	assertNoError(t, err, "retrieve design doc (empty interface) as admin")
+
 	assertNoError(t, err, "retrieve design doc as admin")
+	retrievedView, ok := result.Views["TestView"]
+	assert.True(t, ok)
+	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
+	assert.NotEquals(t, retrievedView.Map, mapFunction) // SG should wrap the map function, so they shouldn't be equal
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
-	err = db.PutDesignDoc("_design/pwn3d", DesignDoc{})
+	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
 
@@ -941,6 +959,73 @@ func CouchbaseTestConcurrentImport(t *testing.T) {
 	wg.Wait()
 }
 
+func TestQueryAllDocs(t *testing.T) {
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	viewResult, err := db.queryAllDocs(false)
+	assert.True(t, err == nil)
+	initialTotalRows := viewResult.TotalRows
+	assert.True(t, len(viewResult.Rows) == initialTotalRows)
+
+	// add some docs
+	docId := base.CreateUUID()
+	_, err = db.Put(docId, Body{"val": "one"})
+	if err != nil {
+		log.Printf("error putting doc: %v", err)
+	}
+	assert.True(t, err == nil)
+
+	// Workaround race condition where queryAllDocs doesn't return the doc we just added
+	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
+	// TODO: is needed because there might be a race between the write and when it's indexed.
+	// TODO: convert this to be event based when receiving an event over the mutation feed
+	time.Sleep(time.Second * 1)
+
+	// query all docs, should get one more doc
+	viewResult, err = db.queryAllDocs(false)
+	assert.True(t, err == nil)
+	log.Printf("viewResult.TotalRows: %v", viewResult.TotalRows)
+	assert.True(t, viewResult.TotalRows == (initialTotalRows+1))
+
+}
+
+func TestViewCustom(t *testing.T) {
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	// add some docs
+	docId := base.CreateUUID()
+	_, err := db.Put(docId, Body{"val": "one"})
+	if err != nil {
+		log.Printf("error putting doc: %v", err)
+	}
+	assert.True(t, err == nil)
+
+	// Workaround race condition where queryAllDocs doesn't return the doc we just added
+	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
+	// TODO: is needed because there might be a race between the write and when it's indexed.
+	// TODO: convert this to be event based when receiving an event over the mutation feed
+	time.Sleep(time.Second * 1)
+
+	// query all docs using ViewCustom query.
+	opts := Body{"stale": false, "reduce": false}
+	viewResult := sgbucket.ViewResult{}
+	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, &viewResult)
+	assert.True(t, errViewCustom == nil)
+
+	// assert that the doc added earlier is in the results
+	foundDoc := false
+	for _, viewRow := range viewResult.Rows {
+		if viewRow.ID == docId {
+			foundDoc = true
+		}
+	}
+	assert.True(t, foundDoc)
+
+}
+
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
@@ -948,7 +1033,7 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),
-			CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 			BucketName:      fmt.Sprintf("b-%d", i)}, nil)
 		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)

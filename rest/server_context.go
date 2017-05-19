@@ -210,7 +210,7 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 func (sc *ServerContext) numIndexWriters() (numIndexWriters, numIndexNonWriters int) {
 
 	for _, dbContext := range sc.databases_ {
-		if dbContext.BucketSpec.FeedType != base.DcpShardFeedType {
+		if strings.ToLower(dbContext.BucketSpec.FeedType) != base.DcpShardFeedType {
 			continue
 		}
 		if dbContext.Options.IndexOptions.Writer {
@@ -308,6 +308,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	feedType := strings.ToLower(config.FeedType)
 
+	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
+
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
 		Server:          server,
@@ -315,7 +317,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		BucketName:      bucketName,
 		FeedType:        feedType,
 		Auth:            config,
-		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		CouchbaseDriver: couchbaseDriver,
 		UseXattrs:       config.UseXattrs(),
 	}
 
@@ -349,10 +351,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
-		base.Warn("Lost TAP feed for bucket %s, with error: %v", bucket, err)
+
+		msg := fmt.Sprintf("%v lost Mutation (TAP/DCP) feed due to error: %v, taking offline", bucket, err)
+		base.Warn(msg)
 
 		if dc := sc.databases_[dbName]; dc != nil {
-			err := dc.TakeDbOffline("Lost TAP feed")
+
+			err := dc.TakeDbOffline(msg)
 			if err == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
@@ -372,13 +377,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 					5,  //InitialRetrySleepTimeMS
 				)
 
-				description := fmt.Sprintf("Attempt reconnect to lost TAP Feed for : %v", dc.Name)
+				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dc.Name)
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.LogTo("CRUD", "Connection to TAP feed for %v re-established, bringing DB back online", dc.Name)
+					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", dc.Name)
+
+					// The 10 second wait was introduced because the bucket was not fully initialised
+					// after the return of the retry loop.
 					timer := time.NewTimer(time.Duration(10) * time.Second)
 					<-timer.C
+
 					sc.TakeDbOnline(dc)
 				}
 			}
@@ -406,11 +415,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		if config.ChannelIndex.Bucket != nil {
 			indexBucketName = *config.ChannelIndex.Bucket
 		}
+
+		// Index buckets always use DCP feed type
+		couchbaseDriverIndexBucket := base.ChooseCouchbaseDriver(base.IndexBucket)
+
 		indexSpec := base.BucketSpec{
 			Server:          indexServer,
 			PoolName:        indexPool,
 			BucketName:      indexBucketName,
-			CouchbaseDriver: base.DefaultDriverForBucketType[base.IndexBucket],
+			CouchbaseDriver: couchbaseDriverIndexBucket,
 		}
 		if config.ChannelIndex.Username != "" || config.ChannelIndex.Password != "" {
 			indexSpec.Auth = config.ChannelIndex
@@ -469,6 +482,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		trackDocs = autoImport || config.Shadow != nil
 	}
 
+	// Create a callback function that will be invoked if the database goes offline and comes
+	// back online again
+	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
+		sc.TakeDbOnline(dbContext)
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:          &cacheOptions,
 		IndexOptions:          channelIndexOptions,
@@ -478,8 +497,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		UnsupportedOptions:    config.Unsupported,
 		TrackDocs:             trackDocs,
 		OIDCOptions:           config.OIDCConfig,
+		DBOnlineCallback:      dbOnlineCallback,
 	}
 
+	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
@@ -687,11 +708,13 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		}
 	}
 
+	shadowBucketCouchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
+
 	spec := base.BucketSpec{
 		Server:          *shadow.Server,
 		PoolName:        "default",
 		BucketName:      *shadow.Bucket,
-		CouchbaseDriver: base.DefaultDriverForBucketType[base.DataBucket],
+		CouchbaseDriver: shadowBucketCouchbaseDriver,
 		FeedType:        shadow.FeedType,
 	}
 	if shadow.Pool != nil {

@@ -61,7 +61,7 @@ type DatabaseContext struct {
 	Bucket             base.Bucket             // Storage
 	BucketSpec         base.BucketSpec         // The BucketSpec
 	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
-	tapListener        changeListener          // Listens on server Tap feed
+	tapListener        changeListener          // Listens on server Tap feed -- TODO: change to mutationListener
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime          time.Time               // Timestamp when context was instantiated
@@ -91,6 +91,7 @@ type DatabaseContextOptions struct {
 	UnsupportedOptions    UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
 	OIDCOptions           *auth.OIDCOptions
+	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 }
 
 type OidcTestProviderOptions struct {
@@ -127,7 +128,8 @@ func ValidateDatabaseName(dbName string) error {
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err error)) (bucket base.Bucket, err error) {
+func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bucket base.Bucket, err error) {
+
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
@@ -151,6 +153,10 @@ func ConnectToBucket(spec base.BucketSpec, callback func(bucket string, err erro
 	}
 	return
 }
+
+// Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
+// to come back online. A rest.ServerContext package cannot be passed since it would introduce a circular dependency
+type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
@@ -212,8 +218,49 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
+		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
 		if err = context.tapListener.Start(bucket, options.TrackDocs, xattrImportNode, func(bucket string, err error) {
-			context.TakeDbOffline("Lost Mutation (TAP/DCP) Feed")
+
+			msg := fmt.Sprintf("%v lost Mutation (TAP/DCP) feed due to error: %v, taking offline", bucket, err)
+			base.Warn(msg)
+			errTakeDbOffline := context.TakeDbOffline(msg)
+			if errTakeDbOffline == nil {
+
+				//start a retry loop to pick up tap feed again backing off double the delay each time
+				worker := func() (shouldRetry bool, err error, value interface{}) {
+					//If DB is going online via an admin request Bucket will be nil
+					if context.Bucket != nil {
+						err = context.Bucket.Refresh()
+					} else {
+						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
+						return false, err, nil
+					}
+					return err != nil, err, nil
+				}
+
+				sleeper := base.CreateDoublingSleeperFunc(
+					20, //MaxNumRetries
+					5,  //InitialRetrySleepTimeMS
+				)
+
+				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", context.Name)
+				err, _ := base.RetryLoop(description, worker, sleeper)
+
+				if err == nil {
+					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", context.Name)
+
+					// The 10 second wait was introduced because the bucket was not fully initialised
+					// after the return of the retry loop.
+					timer := time.NewTimer(time.Duration(10) * time.Second)
+					<-timer.C
+
+					options.DBOnlineCallback(context)
+
+				}
+			}
+
+			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
+
 		}); err != nil {
 			return nil, err
 		}
@@ -896,7 +943,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
 		options["endkey"] = []interface{}{true}
-		options["endkey_inclusive"] = false
+		options["endkey_inclusive"] = false // TODO: is this valid?  See https://forums.couchbase.com/t/is-the-endkey-inclusive-view-option-still-valid/12784
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}

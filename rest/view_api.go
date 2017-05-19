@@ -9,6 +9,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sg-bucket"
 )
 
 // HTTP handler for GET _design/$ddoc
@@ -38,7 +39,7 @@ func (h *handler) handleGetDesignDoc() error {
 // HTTP handler for PUT _design/$ddoc
 func (h *handler) handlePutDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	var ddoc db.DesignDoc
+	var ddoc sgbucket.DesignDoc
 	err := h.readJSONInto(&ddoc)
 	if err != nil {
 		return err
