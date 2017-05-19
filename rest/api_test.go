@@ -2707,20 +2707,24 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 
 	b.ResetTimer()
 
-	rt := restTester{}
-
-	for n := 0; n < b.N; n++ {
-		rt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v",n), threekdoc)
-	}
+	b.RunParallel(func(pb *testing.PB) {
+		//PUT a new document until test run has completed
+		for pb.Next() {
+			prt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+		}
+	})
 }
+
+var qrt = restTester{syncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 
 func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 
 	b.ResetTimer()
 
-	rt := restTester{syncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-
-	for n := 0; n < b.N; n++ {
-		rt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v",n), threekdoc)
-	}
+	b.RunParallel(func(pb *testing.PB) {
+		//PUT a new document until test run has completed
+		for pb.Next() {
+			qrt.sendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+		}
+	})
 }
