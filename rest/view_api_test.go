@@ -23,42 +23,42 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
-	var rt restTester
-	response := rt.sendRequest("GET", "/db/_design/foo", "")
+	var rt RestTester
+	response := rt.SendRequest("GET", "/db/_design/foo", "")
 	assertStatus(t, response, 403)
-	response = rt.sendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
+	response = rt.SendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
 	assertStatus(t, response, 403)
-	response = rt.sendRequest("DELETE", "/db/_design/foo", "")
+	response = rt.SendRequest("DELETE", "/db/_design/foo", "")
 	assertStatus(t, response, 403)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo", "")
+	response = rt.SendAdminRequest("GET", "/db/_design/foo", "")
 	assertStatus(t, response, 404)
-	response = rt.sendAdminRequest("PUT", "/db/_design/foo", `{"prop":true}`)
+	response = rt.SendAdminRequest("PUT", "/db/_design/foo", `{"prop":true}`)
 	assertStatus(t, response, 201)
-	response = rt.sendAdminRequest("GET", "/db/_design/foo", "")
+	response = rt.SendAdminRequest("GET", "/db/_design/foo", "")
 	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("GET", "/db/_design%2ffoo", "")
+	response = rt.SendAdminRequest("GET", "/db/_design%2ffoo", "")
 	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("GET", "/db/_design%2Ffoo", "")
+	response = rt.SendAdminRequest("GET", "/db/_design%2Ffoo", "")
 	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("DELETE", "/db/_design/foo", "")
+	response = rt.SendAdminRequest("DELETE", "/db/_design/foo", "")
 	assertStatus(t, response, 200)
-	response = rt.sendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
+	response = rt.SendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
 	assertStatus(t, response, 403)
-	response = rt.sendAdminRequest("GET", "/db/_design/sync_gateway", "")
+	response = rt.SendAdminRequest("GET", "/db/_design/sync_gateway", "")
 	assertStatus(t, response, 200)
 }
 
 func TestViewQuery(t *testing.T) {
-	var rt restTester
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
+	var rt RestTester
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc1", `{"key":10, "value":"ten"}`)
+	response = rt.SendRequest("PUT", "/db/doc1", `{"key":10, "value":"ten"}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven"}`)
+	response = rt.SendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven"}`)
 	assertStatus(t, response, 201)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -66,19 +66,19 @@ func TestViewQuery(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?limit=1", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?limit=1", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9&include_docs=true", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9&include_docs=true", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 1)
@@ -87,16 +87,16 @@ func TestViewQuery(t *testing.T) {
 
 //Tests #1109, where design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
-	var rt restTester
+	var rt RestTester
 	//Define three views
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, null); }"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, null); }"}}}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
+	response = rt.SendRequest("PUT", "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
+	response = rt.SendRequest("PUT", "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
 	assertStatus(t, response, 201)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -104,14 +104,14 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
@@ -120,20 +120,20 @@ func TestViewQueryMultipleViews(t *testing.T) {
 }
 
 func TestViewQueryUserAccess(t *testing.T) {
-	var rt restTester
+	var rt RestTester
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc1", `{"type":"type1", "state":"state1"}`)
+	response = rt.SendRequest("PUT", "/db/doc1", `{"type":"type1", "state":"state1"}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc2", `{"type":"type1", "state":"state2"}`)
+	response = rt.SendRequest("PUT", "/db/doc2", `{"type":"type1", "state":"state2"}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc3", `{"type":"type2", "state":"state2"}`)
+	response = rt.SendRequest("PUT", "/db/doc3", `{"type":"type2", "state":"state2"}`)
 	assertStatus(t, response, 201)
 
 	time.Sleep(5 * time.Second)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -141,7 +141,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
@@ -156,7 +156,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	var userResult sgbucket.ViewResult
 	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
 	request.SetBasicAuth("testUser", "123456")
-	userResponse := rt.send(request)
+	userResponse := rt.Send(request)
 	assertStatus(t, userResponse, 200)
 	json.Unmarshal(userResponse.Body.Bytes(), &userResult)
 	assert.Equals(t, len(result.Rows), 2)
@@ -167,23 +167,23 @@ func TestViewQueryUserAccess(t *testing.T) {
 	rt.ServerContext().Database("db").SetUserViewsEnabled(false)
 	request, _ = http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
 	request.SetBasicAuth("testUser", "123456")
-	userResponse = rt.send(request)
+	userResponse = rt.Send(request)
 	assertStatus(t, userResponse, 403)
 }
 
 //Waiting for a fix for couchbaselabs/Walrus #13
 //Currently fails against walrus bucket as '_sync' property will exist in doc object if it is emmitted in the map function
 func failingTestViewQueryMultipleViews(t *testing.T) {
-	var rt restTester
+	var rt RestTester
 	//Define three views
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, doc); }"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, doc); }"}}}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
+	response = rt.SendRequest("PUT", "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
+	response = rt.SendRequest("PUT", "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
 	assertStatus(t, response, 201)
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -191,14 +191,14 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
@@ -207,18 +207,18 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 }
 
 func TestUserViewQuery(t *testing.T) {
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	// Create a view:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
 	// Create docs:
-	response = rt.sendRequest("PUT", "/db/doc1", `{"key":10, "value":"ten", "channel":"W"}`)
+	response = rt.SendRequest("PUT", "/db/doc1", `{"key":10, "value":"ten", "channel":"W"}`)
 	assertStatus(t, response, 201)
-	response = rt.sendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven", "channel":"Q"}`)
+	response = rt.SendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven", "channel":"Q"}`)
 	assertStatus(t, response, 201)
 	// Create a user:
 	quinn, _ := a.NewUser("quinn", "123456", channels.SetOf("Q", "q"))
@@ -227,7 +227,7 @@ func TestUserViewQuery(t *testing.T) {
 	// Have the user query the view:
 	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?include_docs=true", nil)
 	request.SetBasicAuth("quinn", "123456")
-	response = rt.send(request)
+	response = rt.Send(request)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -239,7 +239,7 @@ func TestUserViewQuery(t *testing.T) {
 	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
 
 	// Admin should see both rows:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
@@ -255,33 +255,33 @@ func TestUserViewQuery(t *testing.T) {
 	// Make sure users are not allowed to query internal views:
 	request, _ = http.NewRequest("GET", "/db/_design/sync_gateway/_view/access", nil)
 	request.SetBasicAuth("quinn", "123456")
-	response = rt.send(request)
+	response = rt.Send(request)
 	assertStatus(t, response, 403)
 }
 
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
 
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
 	assertStatus(t, response, 201)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
-		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":0, "value":"0", "channel":"W"}`)
+		response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":0, "value":"0", "channel":"W"}`)
 		assertStatus(t, response, 201)
 
 	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
+	response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
 	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
 	assertStatus(t, response, 200)
 
 	json.Unmarshal(response.Body.Bytes(), &result)
@@ -309,26 +309,26 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 func TestAdminReduceSumQuery(t *testing.T) {
 
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
-		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
+		response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
 		assertStatus(t, response, 201)
 
 	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
+	response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
 	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
 
@@ -341,26 +341,26 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
-		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
+		response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
 		assertStatus(t, response, 201)
 
 	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
+	response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
 	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
 	assertStatus(t, response, 200)
 	// fmt.Println(response.Body)
 
@@ -375,26 +375,26 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
-	rt := restTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
-	response := rt.sendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
-		response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", i), fmt.Sprintf(`{"key":["A",{},%v], "value":1}`, i))
+		response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", i), fmt.Sprintf(`{"key":["A",{},%v], "value":1}`, i))
 		assertStatus(t, response, 201)
 
 	}
-	response = rt.sendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":["B",4,1], "value":99}`)
+	response = rt.SendRequest("PUT", fmt.Sprintf("/db/doc%v", 10), `{"key":["B",4,1], "value":99}`)
 	assertStatus(t, response, 201)
 
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group_level=2", ``)
+	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group_level=2", ``)
 	assertStatus(t, response, 200)
 	// fmt.Println(response.Body)
 

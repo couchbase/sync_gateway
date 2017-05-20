@@ -19,7 +19,7 @@ import (
 
 var gBucketCounter = 0
 
-type restTester struct {
+type RestTester struct {
 	_bucket          base.Bucket
 	_sc              *ServerContext
 	noAdminParty     bool         // Unless this is true, Admin Party is in full effect
@@ -28,7 +28,7 @@ type restTester struct {
 	cacheConfig      *CacheConfig // Cache options (optional)
 }
 
-func (rt *restTester) bucket() base.Bucket {
+func (rt *RestTester) Bucket() base.Bucket {
 	if rt._bucket == nil {
 
 		base.GetBucketOrPanic() // side effect of creating/flushing bucket
@@ -75,14 +75,14 @@ func (rt *restTester) bucket() base.Bucket {
 		rt._bucket = rt._sc.Database("db").Bucket
 
 		if !rt.noAdminParty {
-			rt.setAdminParty(true)
+			rt.SetAdminParty(true)
 		}
 
 	}
 	return rt._bucket
 }
 
-func (rt *restTester) bucketAllowEmptyPassword() base.Bucket {
+func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 
 	//Create test DB with "AllowEmptyPassword" true
 	server := "walrus:"
@@ -112,13 +112,13 @@ func (rt *restTester) bucketAllowEmptyPassword() base.Bucket {
 	return rt._bucket
 }
 
-func (rt *restTester) ServerContext() *ServerContext {
-	rt.bucket()
+func (rt *RestTester) ServerContext() *ServerContext {
+	rt.Bucket()
 	return rt._sc
 }
 
 // Returns first database found for server context.
-func (rt *restTester) getDatabase() *db.DatabaseContext {
+func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 	for _, database := range rt.ServerContext().AllDatabases() {
 		return database
@@ -126,23 +126,23 @@ func (rt *restTester) getDatabase() *db.DatabaseContext {
 	return nil
 }
 
-func (rt *restTester) waitForSequence(seq uint64) error {
-	database := rt.getDatabase()
+func (rt *RestTester) WaitForSequence(seq uint64) error {
+	database := rt.GetDatabase()
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
 	return database.WaitForSequence(seq)
 }
 
-func (rt *restTester) waitForPendingChanges() error {
-	database := rt.getDatabase()
+func (rt *RestTester) WaitForPendingChanges() error {
+	database := rt.GetDatabase()
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
 	return database.WaitForPendingChanges()
 }
 
-func (rt *restTester) setAdminParty(partyTime bool) {
+func (rt *RestTester) SetAdminParty(partyTime bool) {
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, _ := a.GetUser("")
 	guest.SetDisabled(!partyTime)
@@ -154,40 +154,40 @@ func (rt *restTester) setAdminParty(partyTime bool) {
 	a.Save(guest)
 }
 
-func (rt *restTester) Close() {
+func (rt *RestTester) Close() {
 	if rt._sc != nil {
 		rt._sc.Close()
 	}
 }
 
-func (rt *restTester) sendRequest(method, resource string, body string) *testResponse {
-	return rt.send(request(method, resource, body))
+func (rt *RestTester) SendRequest(method, resource string, body string) *testResponse {
+	return rt.Send(request(method, resource, body))
 }
 
-func (rt *restTester) sendRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
 	req := request(method, resource, body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return rt.send(req)
+	return rt.Send(req)
 }
 
-func (rt *restTester) sendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *testResponse {
+func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *testResponse {
 	req := request(method, resource, body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return rt.send(req)
+	return rt.Send(req)
 }
-func (rt *restTester) send(request *http.Request) *testResponse {
+func (rt *RestTester) Send(request *http.Request) *testResponse {
 	response := &testResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	CreatePublicHandler(rt.ServerContext()).ServeHTTP(response, request)
 	return response
 }
 
-func (rt *restTester) sendAdminRequest(method, resource string, body string) *testResponse {
+func (rt *RestTester) SendAdminRequest(method, resource string, body string) *testResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	response := &testResponse{httptest.NewRecorder(), request}
@@ -197,7 +197,7 @@ func (rt *restTester) sendAdminRequest(method, resource string, body string) *te
 	return response
 }
 
-func (rt *restTester) sendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	for k, v := range headers {
