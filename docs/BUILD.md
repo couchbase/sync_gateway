@@ -87,3 +87,21 @@ Build via go get w/ dependency pinning
 --------------------------------------
 
 See the [Build Extra](BUILD_EXTRA.md) for instructions on how to build via `go get` (as opposed to `repo`) with dependency pinning.
+
+Cross-compiling for Linux
+--------------------------
+
+**x86 Linux**
+
+```
+GOOS=linux GOARCH=amd64 ./build.sh
+```
+
+**ARM Linux**
+
+```
+GOOS=linux GOARCH=arm ./build.sh
+```
+
+The binaries will be saved to `godeps/bin/linux_amd64/` or `godeps/bin/linux_arm/`
+
