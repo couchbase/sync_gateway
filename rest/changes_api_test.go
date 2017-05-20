@@ -44,15 +44,15 @@ func initRestTester(sequenceType db.SequenceType, syncFn string) indexTester {
 func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 
 	it := indexTester{}
-	it.syncFn = syncFn
+	it.SyncFn = syncFn
 
-	it._sc = NewServerContext(&ServerConfig{
+	it.ServerContext = NewServerContext(&ServerConfig{
 		Facebook: &FacebookConfig{},
 	})
 
 	var syncFnPtr *string
-	if len(it.syncFn) > 0 {
-		syncFnPtr = &it.syncFn
+	if len(it.SyncFn) > 0 {
+		syncFnPtr = &it.SyncFn
 	}
 
 	serverName := "walrus:"
@@ -84,7 +84,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		dbConfig.ChannelIndex = channelIndexConfig
 	}
 
-	dbContext, err := it._sc.AddDatabaseFromConfig(dbConfig)
+	dbContext, err := it.ServerContext.AddDatabaseFromConfig(dbConfig)
 
 	if useBucketIndex {
 		_, err := base.SeedTestPartitionMap(dbContext.GetIndexBucket(), 64)
@@ -97,21 +97,21 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
 
-	it._bucket = it._sc.Database("db").Bucket
+	it.RestTesterBucket = it.ServerContext.Database("db").Bucket
 
 	if useBucketIndex {
-		it._indexBucket = it._sc.Database("db").GetIndexBucket()
+		it._indexBucket = it.ServerContext.Database("db").GetIndexBucket()
 	}
 
 	return it
 }
 
 func (it *indexTester) Close() {
-	it._sc.Close()
+	it.ServerContext.Close()
 }
 
 func (it *indexTester) ServerContext() *ServerContext {
-	return it._sc
+	return it.ServerContext
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {
@@ -119,7 +119,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// base.LogKeys["Changes"] = true
 	// base.LogKeys["Cache"] = true
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -540,7 +540,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		CacheSkippedSeqMaxWait: &skippedMaxWait,
 	}
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`, cacheConfig: shortWaitCache}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, CacheConfig: shortWaitCache}
 	defer rt.Close()
 
 	testDb := rt.ServerContext().Database("db")
@@ -618,7 +618,7 @@ func TestUnusedSequences(t *testing.T) {
 func _testConcurrentDelete(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
 
-	rt := RestTester{syncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
 	defer rt.Close()
@@ -657,7 +657,7 @@ func _testConcurrentDelete(t *testing.T) {
 func _testConcurrentPutAsDelete(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
 
-	rt := RestTester{syncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
 	defer rt.Close()
@@ -695,7 +695,7 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 func _testConcurrentUpdate(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
 
-	rt := RestTester{syncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
 	defer rt.Close()
@@ -733,7 +733,7 @@ func _testConcurrentUpdate(t *testing.T) {
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+", "HTTP", "HTTP+"})
 
-	rt := RestTester{syncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
 	defer rt.Close()
@@ -784,7 +784,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
 
 	// Create user1

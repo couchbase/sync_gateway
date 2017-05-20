@@ -207,7 +207,7 @@ func failingTestViewQueryMultipleViews(t *testing.T) {
 }
 
 func TestUserViewQuery(t *testing.T) {
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -262,7 +262,7 @@ func TestUserViewQuery(t *testing.T) {
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -309,7 +309,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 func TestAdminReduceSumQuery(t *testing.T) {
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -341,7 +341,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -375,7 +375,7 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:

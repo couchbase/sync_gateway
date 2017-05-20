@@ -20,16 +20,16 @@ import (
 var gBucketCounter = 0
 
 type RestTester struct {
-	_bucket          base.Bucket
-	_sc              *ServerContext
-	noAdminParty     bool         // Unless this is true, Admin Party is in full effect
-	distributedIndex bool         // Test with walrus-based index bucket
-	syncFn           string       // put the sync() function source in here (optional)
-	cacheConfig      *CacheConfig // Cache options (optional)
+	RestTesterBucket        base.Bucket
+	RestTesterServerContext *ServerContext
+	noAdminParty            bool         // Unless this is true, Admin Party is in full effect
+	distributedIndex        bool         // Test with walrus-based index bucket
+	SyncFn                  string       // put the sync() function source in here (optional)
+	CacheConfig             *CacheConfig // Cache options (optional)
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
-	if rt._bucket == nil {
+	if rt.RestTesterBucket == nil {
 
 		base.GetBucketOrPanic() // side effect of creating/flushing bucket
 		spec := base.GetTestBucketSpec(base.DataBucket)
@@ -40,8 +40,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		gBucketCounter++
 
 		var syncFnPtr *string
-		if len(rt.syncFn) > 0 {
-			syncFnPtr = &rt.syncFn
+		if len(rt.SyncFn) > 0 {
+			syncFnPtr = &rt.SyncFn
 		}
 
 		corsConfig := &CORSConfig{
@@ -51,13 +51,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 			MaxAge:      1728000,
 		}
 
-		rt._sc = NewServerContext(&ServerConfig{
+		rt.RestTesterServerContext = NewServerContext(&ServerConfig{
 			CORS:           corsConfig,
 			Facebook:       &FacebookConfig{},
 			AdminInterface: &DefaultAdminInterface,
 		})
 
-		_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
+		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 			BucketConfig: BucketConfig{
 				Server:   &server,
 				Bucket:   &spec.BucketName,
@@ -67,19 +67,19 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 			Name:        "db",
 			Sync:        syncFnPtr,
-			CacheConfig: rt.cacheConfig,
+			CacheConfig: rt.CacheConfig,
 		})
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 		}
-		rt._bucket = rt._sc.Database("db").Bucket
+		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
 		if !rt.noAdminParty {
 			rt.SetAdminParty(true)
 		}
 
 	}
-	return rt._bucket
+	return rt.RestTesterBucket
 }
 
 func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
@@ -89,32 +89,32 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 	bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
 	gBucketCounter++
 
-	rt._sc = NewServerContext(&ServerConfig{
+	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
 		CORS:           &CORSConfig{},
 		Facebook:       &FacebookConfig{},
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	_, err := rt._sc.AddDatabaseFromConfig(&DbConfig{
+	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server: &server,
 			Bucket: &bucketName},
 		Name:               "db",
 		AllowEmptyPassword: true,
-		CacheConfig:        rt.cacheConfig,
+		CacheConfig:        rt.CacheConfig,
 	})
 
 	if err != nil {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
-	rt._bucket = rt._sc.Database("db").Bucket
+	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
-	return rt._bucket
+	return rt.RestTesterBucket
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
 	rt.Bucket()
-	return rt._sc
+	return rt.RestTesterServerContext
 }
 
 // Returns first database found for server context.
@@ -155,16 +155,16 @@ func (rt *RestTester) SetAdminParty(partyTime bool) {
 }
 
 func (rt *RestTester) Close() {
-	if rt._sc != nil {
-		rt._sc.Close()
+	if rt.RestTesterServerContext != nil {
+		rt.RestTesterServerContext.Close()
 	}
 }
 
-func (rt *RestTester) SendRequest(method, resource string, body string) *testResponse {
+func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
 	return rt.Send(request(method, resource, body))
 }
 
-func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	req := request(method, resource, body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -172,7 +172,7 @@ func (rt *RestTester) SendRequestWithHeaders(method, resource string, body strin
 	return rt.Send(req)
 }
 
-func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *testResponse {
+func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *TestResponse {
 	req := request(method, resource, body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
@@ -180,42 +180,42 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	}
 	return rt.Send(req)
 }
-func (rt *RestTester) Send(request *http.Request) *testResponse {
-	response := &testResponse{httptest.NewRecorder(), request}
+func (rt *RestTester) Send(request *http.Request) *TestResponse {
+	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	CreatePublicHandler(rt.ServerContext()).ServeHTTP(response, request)
 	return response
 }
 
-func (rt *RestTester) SendAdminRequest(method, resource string, body string) *testResponse {
+func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
-	response := &testResponse{httptest.NewRecorder(), request}
+	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
 	return response
 }
 
-func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *testResponse {
+func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
-	response := &testResponse{httptest.NewRecorder(), request}
+	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
 	return response
 }
 
-type testResponse struct {
+type TestResponse struct {
 	*httptest.ResponseRecorder
-	rq *http.Request
+	Req *http.Request
 }
 
-func (r testResponse) DumpBody() {
+func (r TestResponse) DumpBody() {
 	log.Printf("%v", string(r.Body.Bytes()))
 }
 
@@ -235,9 +235,9 @@ func requestByUser(method, resource, body, username string) *http.Request {
 	return r
 }
 
-func assertStatus(t *testing.T, response *testResponse, expectedStatus int) {
+func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
 	if response.Code != expectedStatus {
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
-			response.Code, expectedStatus, response.rq.Method, response.rq.URL, response.Body)
+			response.Code, expectedStatus, response.Req.Method, response.Req.URL, response.Body)
 	}
 }

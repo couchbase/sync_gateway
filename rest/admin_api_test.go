@@ -229,7 +229,7 @@ function(doc, oldDoc) {
 }
 
 `
-	rt := RestTester{syncFn: syncFunction}
+	rt := RestTester{SyncFn: syncFunction}
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
@@ -292,7 +292,7 @@ function(doc, oldDoc) {
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "Cache":true, "HTTP":true}`)
@@ -343,7 +343,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 }
 
 // Reads continuous changes feed response into slice of ChangeEntry
-func readContinuousChanges(response *testResponse) ([]db.ChangeEntry, error) {
+func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
 	var change db.ChangeEntry
 	changes := make([]db.ChangeEntry, 0)
 	reader := bufio.NewReader(response.Body)
@@ -690,14 +690,14 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	var goroutineresponse1 *testResponse
+	var goroutineresponse1 *TestResponse
 	go func() {
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_offline", "")
 		assertStatus(t, goroutineresponse1, 200)
 		wg.Done()
 	}()
 
-	var goroutineresponse2 *testResponse
+	var goroutineresponse2 *TestResponse
 	go func() {
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_offline", "")
 		assertStatus(t, goroutineresponse2, 200)
@@ -895,14 +895,14 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	var goroutineresponse1 *testResponse
+	var goroutineresponse1 *TestResponse
 	go func(rt RestTester) {
 		defer wg.Done()
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse1, 200)
 	}(rt)
 
-	var goroutineresponse2 *testResponse
+	var goroutineresponse2 *TestResponse
 	go func(rt RestTester) {
 		defer wg.Done()
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_online", "")

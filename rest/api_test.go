@@ -760,7 +760,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	rt := RestTester{syncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
+	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1057,7 +1057,7 @@ func testAccessControl(t *testing.T, rt indexTester) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.Bucket(), nil)
+	a := auth.NewAuthenticator(rt.RestTesterBucket(), nil)
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
@@ -1258,7 +1258,7 @@ func testAccessControl(t *testing.T, rt indexTester) {
 func TestChannelAccessChanges(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
-	rt := RestTester{syncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1389,7 +1389,7 @@ func TestChannelAccessChanges(t *testing.T) {
 func TestAccessOnTombstone(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
-	rt := RestTester{syncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
 			 	access(doc.owner, doc.channel);
 			 }
@@ -1456,7 +1456,7 @@ func TestAccessOnTombstone(t *testing.T) {
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes", "Changes+", "CRUD"})
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1570,7 +1570,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	rt := RestTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1621,7 +1621,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	rt := RestTester{syncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1737,7 +1737,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 		Rows      []allDocsRow `json:"rows"`
 	}
 
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channels)}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1862,7 +1862,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 
 func TestOldDocHandling(t *testing.T) {
 
-	rt := RestTester{syncFn: `
+	rt := RestTester{SyncFn: `
 		function(doc,oldDoc){
 			log("doc id:"+doc._id);
 			if(oldDoc){
@@ -2378,7 +2378,7 @@ func DisabledTestLongpollWithWildcard(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq db.SequenceID
 	}
-	rt := RestTester{syncFn: `function(doc) {channel(doc.channel);}`}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel);}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
