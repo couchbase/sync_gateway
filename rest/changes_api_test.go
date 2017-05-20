@@ -46,7 +46,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 	it := indexTester{}
 	it.SyncFn = syncFn
 
-	it.ServerContext = NewServerContext(&ServerConfig{
+	it.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook: &FacebookConfig{},
 	})
 
@@ -84,7 +84,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		dbConfig.ChannelIndex = channelIndexConfig
 	}
 
-	dbContext, err := it.ServerContext.AddDatabaseFromConfig(dbConfig)
+	dbContext, err := it.RestTesterServerContext.AddDatabaseFromConfig(dbConfig)
 
 	if useBucketIndex {
 		_, err := base.SeedTestPartitionMap(dbContext.GetIndexBucket(), 64)
@@ -97,21 +97,21 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
 
-	it.RestTesterBucket = it.ServerContext.Database("db").Bucket
+	it.RestTesterBucket = it.RestTesterServerContext.Database("db").Bucket
 
 	if useBucketIndex {
-		it._indexBucket = it.ServerContext.Database("db").GetIndexBucket()
+		it._indexBucket = it.RestTesterServerContext.Database("db").GetIndexBucket()
 	}
 
 	return it
 }
 
 func (it *indexTester) Close() {
-	it.ServerContext.Close()
+	it.RestTesterServerContext.Close()
 }
 
 func (it *indexTester) ServerContext() *ServerContext {
-	return it.ServerContext
+	return it.RestTesterServerContext
 }
 
 func TestDocDeletionFromChannel(t *testing.T) {

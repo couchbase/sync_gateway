@@ -1057,7 +1057,7 @@ func testAccessControl(t *testing.T, rt indexTester) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.RestTesterBucket(), nil)
+	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
