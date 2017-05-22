@@ -253,7 +253,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					timer := time.NewTimer(time.Duration(10) * time.Second)
 					<-timer.C
 
-					options.DBOnlineCallback(context)
+					if options.DBOnlineCallback != nil {
+						options.DBOnlineCallback(context)
+					}
+
 
 				}
 			}
