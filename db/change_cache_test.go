@@ -550,7 +550,8 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	assertNoError(t, err, fmt.Sprintf("db.Authenticator() returned err: %v", err))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
