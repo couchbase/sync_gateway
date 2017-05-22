@@ -10,8 +10,6 @@
 * Provides access control and data routing
 * Provides HTTP longpoll changes stream of all database mutations
 
-![Diagram](http://images.cbauthx.com/mobile/1.3/20161004-093613/diagrams.001.png)
-
 ## Resources
 
 [**Official product home page**](http://www.couchbase.com/mobile)
