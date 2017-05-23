@@ -639,6 +639,11 @@ func TestSessionAPI(t *testing.T) {
 }
 
 func TestFlush(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 
