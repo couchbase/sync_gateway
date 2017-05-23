@@ -13,18 +13,8 @@ import (
 
 func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
 
-	hashBucket, err := ConnectToBucket(base.BucketSpec{
-		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
-		BucketName:      "hash_bucket"}, nil)
-	/*hashBucket, err := ConnectToBucket(base.BucketSpec{
-	Server:     "http://localhost:8091",
-	BucketName: "hash_bucket"})
-	*/
+	hashBucket := base.GetBucketOrPanic()
 
-	if err != nil {
-		return nil, err
-	}
 	options := &SequenceHashOptions{
 		Bucket: hashBucket,
 		Size:   size,
