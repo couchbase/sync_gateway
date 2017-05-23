@@ -12,9 +12,15 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"fmt"
 )
 
 func makeExternalBucket() base.Bucket {
+
+	// Call this for the side effect of emptying out the data bucket, in case it interferes
+	// with bucket shadowing tests by causing unwanted data to get pulled into shadow bucket
+	base.GetBucketOrPanic()
+
 	return base.GetShadowBucketOrPanic()
 }
 
@@ -292,9 +298,12 @@ func TestShadowerPattern(t *testing.T) {
 		seq, _ := db.LastSequence()
 		return seq >= 1
 	})
-	doc1, _ := db.GetDoc("key1")
+	doc1, err := db.GetDoc("key1")
+	assertNoError(t, err, fmt.Sprintf("Error getting key1: %v", err))
 	docI, _ := db.GetDoc("ignorekey")
-	doc2, _ := db.GetDoc("key2")
+	doc2, err := db.GetDoc("key2")
+	assertNoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
+
 	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
 	assert.True(t, docI == nil)
 	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
