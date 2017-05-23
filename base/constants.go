@@ -33,6 +33,10 @@ const (
 	DefaultTestBucketname2 = "testbucket"
 	DefaultTestPassword2   = "password"
 
+	DefaultTestShadowBucketname = "shadowbucket"
+	DefaultTestShadowUsername   = DefaultTestShadowBucketname
+	DefaultTestShadowPassword   = DefaultTestPassword2
+
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
@@ -44,7 +48,7 @@ const (
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
-	DefaultUseXattrs = false            // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	DefaultUseXattrs = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 
 )
 

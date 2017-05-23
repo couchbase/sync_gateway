@@ -48,17 +48,34 @@ func GetIndexBucketOrPanic() Bucket {
 
 }
 
+func GetShadowBucketOrPanic() Bucket {
+
+	return GetBucketOrPanicCommon(ShadowBucket)
+
+}
+
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
+	bucketName := DefaultTestBucketname2
+	username :=   DefaultTestUsername2
+	password :=   DefaultTestPassword2
+
+	// Use a different bucket name for shadow buckets to avoid interference
+	if bucketType == ShadowBucket {
+		bucketName = DefaultTestShadowBucketname
+		username =  DefaultTestShadowUsername
+		password =  DefaultTestShadowPassword
+	}
+
 	testAuth := TestAuthenticator{
-		Username:   DefaultTestUsername2,
-		Password:   DefaultTestPassword2,
-		BucketName: DefaultTestBucketname2,
+		Username:   username,
+		Password:   password,
+		BucketName: bucketName,
 	}
 
 	spec := BucketSpec{
 		Server:     UnitTestUrl(),
-		BucketName: DefaultTestBucketname2,
+		BucketName: bucketName,
 
 		CouchbaseDriver: ChooseCouchbaseDriver(bucketType),
 		Auth:            testAuth,

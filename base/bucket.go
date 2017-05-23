@@ -40,6 +40,7 @@ const (
 const (
 	DataBucket CouchbaseBucketType = iota
 	IndexBucket
+	ShadowBucket
 )
 
 func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
@@ -51,6 +52,8 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCBCustomSGTranscoder
 	case IndexBucket:
 		return GoCB
+	case ShadowBucket:
+		return GoCouchbase  // NOTE: probably works against GoCB, but has undergone less testing
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
 		Warn("Unexpected bucket type: %v", bucketType)

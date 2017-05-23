@@ -1,7 +1,6 @@
 package db
 
 import (
-	"log"
 	"regexp"
 	"sync/atomic"
 	"testing"
@@ -10,19 +9,13 @@ import (
 	"github.com/couchbaselabs/go.assert"
 
 	"encoding/json"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
 
 func makeExternalBucket() base.Bucket {
-	bucket, err := ConnectToBucket(base.BucketSpec{
-		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
-		BucketName:      "external_bucket"}, nil)
-	if err != nil {
-		log.Fatalf("Couldn't connect to bucket: %v", err)
-	}
-	return bucket
+	return base.GetShadowBucketOrPanic()
 }
 
 // Evaluates a condition every 100ms until it becomes true. If 3sec elapse, fails an assertion
@@ -77,7 +70,7 @@ func TestShadowerPull(t *testing.T) {
 	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
 }
 
-func TestShadowerPullWithNotifications (t *testing.T) {
+func TestShadowerPullWithNotifications(t *testing.T) {
 	//Create shadow bucket
 	bucket := makeExternalBucket()
 	defer bucket.Close()
@@ -210,8 +203,6 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	doc, _ := db.GetDoc("foo")
 	assert.Equals(t, len(doc.History), 1)
 }
-
-
 
 // Ensure that a new rev pushed from a shadow bucket update, wehre the UpstreamRev does not exist as a parent func init() {
 // the documents rev tree does not panic, it should generate a new conflicting branch instead.
