@@ -464,7 +464,7 @@ func TestConflicts(t *testing.T) {
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
 
-	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
+	time.Sleep(time.Second) // Wait for tap feed to catch up
 
 	log := db.GetChangeLog("all", 0)
 	assert.Equals(t, len(log), 1)
@@ -477,7 +477,7 @@ func TestConflicts(t *testing.T) {
 	body["channels"] = []string{"all", "2a"}
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
 
-	time.Sleep(50 * time.Millisecond) // Wait for tap feed to catch up
+	time.Sleep(time.Second) // Wait for tap feed to catch up
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
