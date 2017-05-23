@@ -55,6 +55,8 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		syncFnPtr = &it.SyncFn
 	}
 
+	// TODO: this should be able to use either a Walrus or a Couchbase bucket
+
 	serverName := "walrus:"
 	//serverName := "http://localhost:8091"
 	bucketName := "sg_bucket"
