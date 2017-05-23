@@ -472,7 +472,9 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
+	assertTrue(t, authenticator != nil, "db.Authenticator() returned nil")
+	user, err:= authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
+	assertNoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
