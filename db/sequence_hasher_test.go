@@ -181,8 +181,16 @@ func TestConcurrentHashStorage(t *testing.T) {
 	}
 }
 
-// Tests hash expiry.  Requires a real couchbase server bucket - walrus doesn't support expiry yet
-func CouchbaseOnlyTestHashExpiry(t *testing.T) {
+// Tests hash expiry.
+func TestHashExpiry(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires a real couchbase server bucket - walrus doesn't support expiry yet")
+	} else {
+		t.Skip("Not working against couchbase server buckets, even though it should.  Needs investigation")
+		// Logs: https://gist.github.com/tleyden/276ee2f891757a888e0f7ea844845808
+	}
+
 	// Create a hasher with a small range (0-256) and short expiry for testing
 	seqHasher, err := testSequenceHasher(8, 5)
 	defer seqHasher.bucket.Close()
