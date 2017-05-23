@@ -11,6 +11,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"runtime/debug"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -237,6 +238,7 @@ func requestByUser(method, resource, body, username string) *http.Request {
 
 func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
 	if response.Code != expectedStatus {
+		debug.PrintStack()
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
 			response.Code, expectedStatus, response.Req.Method, response.Req.URL, response.Body)
 	}
