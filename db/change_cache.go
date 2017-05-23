@@ -338,12 +338,17 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		}
 
 		// First unmarshal the doc (just its metadata, to save time/memory):
-		doc, rawBody, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
+		syncData, rawBody, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
+
+		if err != nil {
+			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+			return
+		}
 
 		// Import handling.
 		if c.context.autoImport && c.context.UseXattrs() {
 			// If syncData is nil, or if this was not an SG write, attempt to import
-			if doc == nil || !doc.IsSGWrite(event.Cas) {
+			if syncData == nil || !syncData.IsSGWrite(event.Cas) {
 				isDelete := event.Opcode == sgbucket.TapDeletion
 				if isDelete {
 					rawBody = nil
@@ -357,23 +362,23 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 			}
 		}
 
-		if err != nil || !doc.HasValidSyncData(c.context.writeSequences()) {
-			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		if !syncData.HasValidSyncData(c.context.writeSequences()) {
+			base.Warn("changeCache: Doc %q does not have valid sync data.", docID)
 			return
 		}
 
-		if doc.Sequence <= c.initialSequence {
+		if syncData.Sequence <= c.initialSequence {
 			return // Tap is sending us an old value from before I started up; ignore it
 		}
 
 		// Record a histogram of the Tap feed's lag:
-		tapLag := time.Since(doc.TimeSaved) - time.Since(entryTime)
+		tapLag := time.Since(syncData.TimeSaved) - time.Since(entryTime)
 		lagMs := int(tapLag/(100*time.Millisecond)) * 100
 		changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
 
 		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
-		for _, seq := range doc.UnusedSequences {
-			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+		for _, seq := range syncData.UnusedSequences {
+			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
 			change := &LogEntry{
 				Sequence:     seq,
 				TimeReceived: time.Now(),
@@ -386,16 +391,16 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		// so that they are included in sequence buffering.
 		// If one of these sequences represents a removal from a channel then set the LogEntry removed flag
 		// and the set of channels it was removed from
-		currentSequence := doc.Sequence
-		if len(doc.UnusedSequences) > 0 {
-			currentSequence = doc.UnusedSequences[0]
+		currentSequence := syncData.Sequence
+		if len(syncData.UnusedSequences) > 0 {
+			currentSequence = syncData.UnusedSequences[0]
 		}
 
-		if len(doc.RecentSequences) > 0 {
+		if len(syncData.RecentSequences) > 0 {
 			nextSeq := c.getNextSequence()
-			for _, seq := range doc.RecentSequences {
+			for _, seq := range syncData.RecentSequences {
 				if seq >= nextSeq && seq < currentSequence {
-					base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, doc.CurrentRev)
+					base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
 					change := &LogEntry{
 						Sequence:     seq,
 						TimeReceived: time.Now(),
@@ -403,7 +408,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 					//if the doc was removed from one or more channels at this sequence
 					// Set the removed flag and removed channel set on the LogEntry
-					if channelRemovals, atRevId := doc.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+					if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
 						change.DocID = docID
 						change.RevID = atRevId
 						change.Channels = channelRemovals
@@ -416,13 +421,13 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 		// Now add the entry for the new doc revision:
 		change := &LogEntry{
-			Sequence:     doc.Sequence,
+			Sequence:     syncData.Sequence,
 			DocID:        docID,
-			RevID:        doc.CurrentRev,
-			Flags:        doc.Flags,
+			RevID:        syncData.CurrentRev,
+			Flags:        syncData.Flags,
 			TimeReceived: time.Now(),
-			TimeSaved:    doc.TimeSaved,
-			Channels:     doc.Channels,
+			TimeSaved:    syncData.TimeSaved,
+			Channels:     syncData.Channels,
 		}
 		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 

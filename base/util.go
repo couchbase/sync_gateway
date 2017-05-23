@@ -205,6 +205,7 @@ func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname st
 		password = ""
 	}
 
+	log.Printf("using credentials: %s, %s, %s", username, password, inputBucketname)
 	return username, password, inputBucketname
 
 }
