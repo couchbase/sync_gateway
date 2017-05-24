@@ -17,7 +17,6 @@ import (
 	"expvar"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -244,7 +243,6 @@ func CbsExpiryToTime(expiry uint32) time.Time {
 	if expiry <= kMaxDeltaTtl {
 		return time.Now().Add(time.Duration(expiry) * time.Second)
 	} else {
-		log.Printf("expiry for %v becomes %v", expiry, time.Unix(int64(expiry), 0))
 		return time.Unix(int64(expiry), 0)
 	}
 }
