@@ -1291,6 +1291,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
 
+	// Artificial delay to let updates show up on changes feed
+	time.Sleep(time.Second)
+
 	// Check the _changes feed:
 	var changes struct {
 		Results []db.ChangeEntry
@@ -1319,6 +1322,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
+
+	// Artificial delay to let updates show up on changes feed
+	time.Sleep(time.Second)
 
 	// Look at alice's _changes feed:
 	changes.Results = nil
@@ -1367,6 +1373,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	changeCount, err := db.UpdateAllDocChannels(true, false)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, changeCount, 9)
+
+	// Artificial delay to let updates show up on changes feed
+	time.Sleep(time.Second)
 
 	changes.Results = nil
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
