@@ -60,11 +60,16 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 	username :=   DefaultTestUsername2
 	password :=   DefaultTestPassword2
 
-	// Use a different bucket name for shadow buckets to avoid interference
-	if bucketType == ShadowBucket {
+	// Use a different bucket name for index buckets or shadow buckets to avoid interference
+	switch bucketType {
+	case ShadowBucket:
 		bucketName = DefaultTestShadowBucketname
 		username =  DefaultTestShadowUsername
 		password =  DefaultTestShadowPassword
+	case IndexBucket:
+		bucketName = DefaultTestIndexBucketname
+		username =  DefaultTestIndexUsername
+		password =  DefaultTestIndexPassword
 	}
 
 	testAuth := TestAuthenticator{

@@ -29,13 +29,17 @@ const (
 	// Couchbase 4.x instructions:
 	//   Err: Does this even work with Couchbase 4.x?   How do you assign a password on the default bucket
 	// TODO: is there any reason to have both DefaultTestUsername and DefaultTestUsername2?  Can they be consolidated?
-	DefaultTestUsername2   = "testbucket"
-	DefaultTestBucketname2 = "testbucket"
+	DefaultTestBucketname2 = "test_data_bucket"
+	DefaultTestUsername2   = DefaultTestBucketname2
 	DefaultTestPassword2   = "password"
 
 	DefaultTestShadowBucketname = "shadowbucket"
 	DefaultTestShadowUsername   = DefaultTestShadowBucketname
 	DefaultTestShadowPassword   = DefaultTestPassword2
+
+	DefaultTestIndexBucketname = "test_indexbucket"
+	DefaultTestIndexUsername = DefaultTestIndexBucketname
+	DefaultTestIndexPassword = DefaultTestPassword2
 
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
