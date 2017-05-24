@@ -1,9 +1,17 @@
-set -x 
+
+# This is a test suite to run the SG and SG Accel unit tests against a live Couchbase Server
+# bucket (as opposed to walrus).  It works around the "interference" issues that seem to happen
+# when trying to run the full test suite (eg, running test.sh) as follows (maybe due to residual objects in Sync Gateway
+# memory like timer callbacks)
+#
+# Regarding maintenance, this might be a temporary script until the interference issues mentioned above
+# are solved.  However, if it does become a permanent script, then it should probably be upgraded to
+# leverage a tool like https://github.com/ungerik/pkgreflect to discover the list of tests.
+
+set -x
 set -e 
 
-export GOPATH=`pwd`/godeps
-
-export SG_TEST_BACKING_STORE=Couchbase
+# --------------------------------- Sync Gateway tests -----------------------------------------
 
 declare -a arr=(
     "TestValidateGuestUser" 
@@ -345,7 +353,76 @@ declare -a arr=(
     "TestSanitizeURL"
     "TestVerifyHTTPSSupport")
 
+
+# --------------------------------- SG Accel tests -----------------------------------------
+
+declare -a arr_sgaccel=(
+    "TestChannelWriterOnly"
+    "TestChannelWriterAddSet"
+    "TestChannelWriterAddSetMultiBlock"
+    "TestChannelWriterClock"
+    "TestPartitionStorage"
+    "TestChannelStorageCorrectness_BitFlag"
+    "TestChannelStorageCorrectness_Dense"
+    "TestChannelStorage_Write_Ops_BitFlag"
+    "TestChannelStorage_Write_Ops_Dense"
+    "TestChannelStorage_Read_Ops_BitFlag"
+    "TestChannelStorage_Read_Ops_Dense"
+    "TestChangeIndexAddEntry"
+    "TestChangeIndexGetChanges"
+    "TestChangeIndexConcurrentWriters"
+    "TestChangeIndexConcurrentWriterHandover"
+    "TestChangeIndexAddSet"
+    "TestDocDeletionFromChannel"
+    "TestPostChangesClockBasic"
+    "TestPostBlockListRotate"
+    "TestPostChangesClockAdmin"
+    "TestPostChangesSameVbucket"
+    "TestPostChangesSinceClock"
+    "TestPostChangesChannelFilterClock"
+    "TestMultiChannelUserAndDocs"
+    "TestDocDeduplication"
+    "TestIndexChangesMultipleRevisions"
+    "TestPostChangesAdminChannelGrantClock"
+    "TestChangesLoopingWhenLowSequence"
+    "TestChangesActiveOnlyClock"
+    "TestChangesAccessNotifyClock"
+    "TestChangesAccessWithLongpoll"
+    "TestStorageReaderCache"
+    "TestStorageReaderCacheUpdates"
+    "TestStorageReaderCacheSingleDocUpdate"
+    "TestIndexWriterRollback"
+    "TestChangesBackfillOneshot"
+    "TestChangesOneshotLimitSyncGrantMixedBackfill"
+    "TestChangesOneshotLimitSyncGrantNoBackfill"
+    "TestChangesOneshotLimitAdminGrant"
+    "TestInterruptedBackfillWithWritesOnly"
+    "TestInterruptedBackfillWithWritesAndHistory"
+    "TestInterruptedBackfillWithWritesAndGrantVisibility"
+    "TestChangesOneshotLimitRoleGrant"
+    "TestChangesLongpollLimitSyncRoleChannelGrant"
+    "TestChangesLongpollLimitSyncRoleGrant"
+    "TestChangesOneshotLimitRoleAdminGrant"
+)
+
+# Set the $GOPATH
+export GOPATH=`pwd`/godeps
+
+# This env variable causes the unit tests to run against Couchbase Server running on localhost.
+# The tests will create any buckets they need on their own.
+export SG_TEST_BACKING_STORE=Couchbase
+
+# Run Sync Gateway Tests
 for i in "${arr[@]}"
 do
     go test -v -run ^"$i"$ github.com/couchbase/sync_gateway/...
 done
+
+# Run Sync Gateway Accel tests
+for i in "${arr_sgaccel[@]}"
+do
+    go test -v -run ^"$i"$ github.com/couchbaselabs/sync-gateway-accel/...
+done
+
+
+
