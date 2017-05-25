@@ -679,7 +679,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 //////// CHANGE ACCESS:
 
 func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
-	if c.stopped {
+	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.getChannelCache(channelName).GetChanges(options)
