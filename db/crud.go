@@ -48,37 +48,26 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	dbExpvars.Add("document_gets", 1)
 	if db.UseXattrs() {
 		var rawDoc, rawXattr []byte
-		importAttempts := 0
-		for {
-			cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
-			if getErr != nil {
-				return nil, getErr
-			}
-			var unmarshalErr error
-			doc, unmarshalErr = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr, cas)
-			if unmarshalErr != nil {
-				return nil, unmarshalErr
-			}
-			// If this was an SG Write, return the doc.  Otherwise, attempt to import
-			if doc.IsSGWrite() {
-				break
-			}
-
-			// Limit the number of import attempts for a given GET request, to guard against unexpected infinite looping
-			if importAttempts > 20 {
-				base.Warn("Unable to complete request-triggered import of document %s after 20 attempts.  Will be re-attempted by background import processing.", docid)
-				return nil, base.HTTPErrorf(404, "Not imported")
-			}
-
-			// Attempt to import
+		cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		if getErr != nil {
+			return nil, getErr
+		}
+		var unmarshalErr error
+		doc, unmarshalErr = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr, cas)
+		if unmarshalErr != nil {
+			return nil, unmarshalErr
+		}
+		// If this wasn't an SG Write, import the doc.
+		if !doc.IsSGWrite() {
 			isDelete := rawDoc == nil
 			db := Database{DatabaseContext: db, user: nil}
-			importErr := db.ImportDoc(docid, rawDoc, isDelete)
+			var importErr error
+			doc, importErr = db.ImportRawDoc(docid, rawDoc, isDelete)
 			if importErr != nil {
 				return nil, importErr
 			}
-			importAttempts++
 		}
+
 	} else {
 		doc = newDocument(docid)
 		_, err = db.Bucket.Get(key, doc)
@@ -490,7 +479,20 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	return db.updateDoc(docid, false, expiry, func(doc *document) (Body, AttachmentData, error) {
+	return db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+
+		// If doc isn't an SG write, import it before updating.
+		if doc != nil && !doc.IsSGWrite() {
+			isDelete := doc.body == nil
+			// Use an admin-scoped database for import
+			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
+			var importErr error
+			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete)
+			if importErr != nil {
+				return nil, nil, importErr
+			}
+		}
+
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
@@ -538,7 +540,20 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	_, err = db.updateDoc(docid, false, expiry, func(doc *document) (Body, AttachmentData, error) {
+	_, err = db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+
+		// If doc isn't an SG write, import it before updating.
+		if doc != nil && !doc.IsSGWrite() {
+			isDelete := doc.body == nil
+			// Use an admin-scoped database for import
+			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
+			var importErr error
+			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete)
+			if importErr != nil {
+				return nil, nil, importErr
+			}
+		}
+
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
@@ -577,21 +592,27 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 }
 
 // Imports a document that was written by someone other than sync gateway.
-func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
+func (db *Database) ImportRawDoc(docid string, value []byte, isDelete bool) (docOut *document, err error) {
 
 	var body Body
-	var newRev string
 	if isDelete {
 		body = Body{"_deleted": true}
 	} else {
 		err := json.Unmarshal(value, &body)
 		if err != nil {
 			base.LogTo("Import", "Unmarshal error during importDoc %v", err)
-			return err
+			return nil, err
 		}
 	}
 
-	_, err := db.updateDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+	return db.ImportDoc(docid, body, isDelete)
+}
+
+func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *document, err error) {
+
+	base.LogTo("Import", "Attempting to import doc %q...", docid)
+	var newRev string
+	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
@@ -618,23 +639,29 @@ func (db *Database) ImportDoc(docid string, value []byte, isDelete bool) error {
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 		return body, nil, nil
 	})
+
 	if err != nil && err != base.ErrImportCancelled && err != base.ErrAlreadyImported {
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
-		return err
+		return nil, err
 	}
 	if err == nil {
 		base.LogTo("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
 	}
 
-	return nil
+	return docOut, nil
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (newRevID string, err error) {
+	_, newRevID, err = db.updateAndReturnDoc(docid, allowImport, expiry, callback)
+	return newRevID, err
+}
+
+func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (docOut *document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
-		return "", base.HTTPErrorf(400, "Invalid doc ID")
+		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	var parentRevID string
@@ -854,26 +881,28 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 	// Update the document
 	if db.UseXattrs() {
-		err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+		var casOut uint64
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
 				return
 			}
 
-			var updatedDoc *document
-			updatedDoc, _, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
+			docOut, _, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {
 				return
 			}
-			deleteDoc = updatedDoc.History[updatedDoc.CurrentRev].Deleted
+			deleteDoc = docOut.History[docOut.CurrentRev].Deleted
 
 			// Return the new raw document value for the bucket to store.
-			raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+			raw, rawXattr, err = docOut.MarshalWithXattr()
 			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {
 			base.LogTo("CRUD+", "Failed to update document %q w/ xattr: %v", key, err)
+		} else if docOut != nil {
+			docOut.Cas = casOut
 		}
 	} else {
 		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
@@ -881,14 +910,13 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
-			var updatedDoc *document
-			updatedDoc, writeOpts, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
+			docOut, writeOpts, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {
 				return
 			}
 
 			// Return the new raw document value for the bucket to store.
-			raw, err = json.Marshal(updatedDoc)
+			raw, err = json.Marshal(docOut)
 			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
 			return raw, writeOpts, err
 		})
@@ -910,13 +938,13 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 	}
 
 	if err == couchbase.UpdateCancel {
-		return "", nil
+		return nil, "", nil
 	} else if err == couchbase.ErrOverwritten {
 		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
 		base.LogTo("CRUD+", "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
 			docid, newRevID)
 	} else if err != nil {
-		return "", err
+		return nil, "", err
 	}
 
 	dbExpvars.Add("revs_added", 1)
@@ -978,7 +1006,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 		}
 	}
 
-	return newRevID, nil
+	return docOut, newRevID, nil
 }
 
 // Creates a new document, assigning it a random doc ID.
