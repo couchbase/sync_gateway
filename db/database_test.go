@@ -12,7 +12,6 @@ package db
 import (
 	"fmt"
 	"log"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -42,32 +41,6 @@ type UnitTestAuth struct {
 
 func (u *UnitTestAuth) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(u.Username, u.Password, u.Bucketname)
-}
-
-func UnitTestAuthHandler() base.AuthHandler {
-	if !testUseAuthHandler() {
-		return nil
-	} else {
-		return &UnitTestAuth{
-			Username:   base.DefaultTestUsername,
-			Password:   base.DefaultTestPassword,
-			Bucketname: base.DefaultTestBucketname,
-		}
-	}
-}
-
-// Should Sync Gateway use an auth handler when running unit tests?
-func testUseAuthHandler() bool {
-
-	// First check if the SG_TEST_USE_AUTH_HANDLER env variable is set
-	useAuthHandler := os.Getenv(base.TestEnvSyncGatewayUseAuthHandler)
-	switch {
-	case strings.ToLower(useAuthHandler) == strings.ToLower(base.TestEnvSyncGatewayTrue):
-		return true
-	}
-
-	// Otherwise fallback to hardcoded default
-	return base.DefaultTestUseAuthHandler
 }
 
 func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {

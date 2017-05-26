@@ -56,9 +56,9 @@ func GetShadowBucketOrPanic() Bucket {
 
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
-	bucketName := DefaultTestBucketname2
-	username :=   DefaultTestUsername2
-	password :=   DefaultTestPassword2
+	bucketName := DefaultTestBucketname
+	username := DefaultTestUsername
+	password := DefaultTestPassword
 
 	// Use a different bucket name for index buckets or shadow buckets to avoid interference
 	switch bucketType {

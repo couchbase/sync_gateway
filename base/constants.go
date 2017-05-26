@@ -14,11 +14,6 @@ const (
 	kTestCouchbaseServerURL = "http://localhost:8091"
 	kTestWalrusURL          = "walrus:"
 
-	DefaultTestUseAuthHandler = false // Set to true if you are running CouchbaseTest* commented tests, or set env variable
-	DefaultTestUsername       = "sync_gateway_tests"
-	DefaultTestPassword       = "password"
-	DefaultTestBucketname     = "sync_gateway_tests"
-
 	// These settings are used when running unit tests against a live Couchbase Server to create/flush buckets
 	DefaultCouchbaseAdministrator = "Administrator"
 	DefaultCouchbasePassword      = "password"
@@ -28,18 +23,17 @@ const (
 	//   2. Create a default bucket (if doesn't already exist)
 	// Couchbase 4.x instructions:
 	//   Err: Does this even work with Couchbase 4.x?   How do you assign a password on the default bucket
-	// TODO: is there any reason to have both DefaultTestUsername and DefaultTestUsername2?  Can they be consolidated?
-	DefaultTestBucketname2 = "test_data_bucket"
-	DefaultTestUsername2   = DefaultTestBucketname2
-	DefaultTestPassword2   = "password"
+	DefaultTestBucketname = "test_data_bucket"
+	DefaultTestUsername   = DefaultTestBucketname
+	DefaultTestPassword   = "password"
 
 	DefaultTestShadowBucketname = "shadowbucket"
 	DefaultTestShadowUsername   = DefaultTestShadowBucketname
-	DefaultTestShadowPassword   = DefaultTestPassword2
+	DefaultTestShadowPassword   = DefaultTestPassword
 
 	DefaultTestIndexBucketname = "test_indexbucket"
 	DefaultTestIndexUsername = DefaultTestIndexBucketname
-	DefaultTestIndexPassword = DefaultTestPassword2
+	DefaultTestIndexPassword = DefaultTestPassword
 
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
