@@ -731,30 +731,30 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	//We want a sync function that will reject some docs
 	rt := restTester{syncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
 
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "_local/bulk3", "n": 3}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
 	doc1Rev, _ := rt.getDatabase().GetDocSyncData("bulk1")
-	assert.Equals(t, doc1Rev, 1)
+	assert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	doc3Rev, _ := rt.getDatabase().GetDocSyncData("bulk3")
-	assert.Equals(t, doc3Rev, 3)
+	assert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 
 	//send another _bulk_docs and validate the sequences used
-	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "_local/bulk23", "n": 23}]}`
+	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}]}`
 	response = rt.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
 	doc21Rev, _ := rt.getDatabase().GetDocSyncData("bulk21")
-	assert.Equals(t, doc21Rev, 4)
+	assert.Equals(t, doc21Rev.Sequence, uint64(3))
 
 	doc22Rev, _ := rt.getDatabase().GetDocSyncData("bulk22")
-	assert.Equals(t, doc22Rev, 5)
+	assert.Equals(t, doc22Rev.Sequence, uint64(4))
 
 	doc23Rev, _ := rt.getDatabase().GetDocSyncData("bulk23")
-	assert.Equals(t, doc23Rev, 6)
+	assert.Equals(t, doc23Rev.Sequence, uint64(5))
 
 }
 
