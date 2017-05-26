@@ -27,7 +27,7 @@ const (
 	DefaultTestUsername   = DefaultTestBucketname
 	DefaultTestPassword   = "password"
 
-	DefaultTestShadowBucketname = "shadowbucket"
+	DefaultTestShadowBucketname = "test_shadowbucket"
 	DefaultTestShadowUsername   = DefaultTestShadowBucketname
 	DefaultTestShadowPassword   = DefaultTestPassword
 
