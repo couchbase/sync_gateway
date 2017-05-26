@@ -264,7 +264,11 @@ func TestWriteCasAdvanced(t *testing.T) {
 
 // When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
 func TestSetBulk(t *testing.T) {
-	
+
+
+	// Might be failing due to something related to this comment:
+	//    When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
+	// However, there's no commented code in isRecoverableGoCBError()
 	t.Skip("TestSetBulk is currently failing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
 
 	bucket := GetBucketOrPanic()
