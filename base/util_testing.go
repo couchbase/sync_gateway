@@ -27,7 +27,7 @@ const (
 	RecreateBetweenTests
 )
 
-var FlushOrRecreateTestBucket = RecreateBetweenTests
+var FlushOrRecreateTestBucket = FlushBetweenTests
 
 func init() {
 	// Prevent https://issues.couchbase.com/browse/MB-24237
@@ -263,6 +263,8 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	if err := tbm.BucketManager.Flush(); err != nil {
 		return err
 	}
+
+
 
 	for {
 
