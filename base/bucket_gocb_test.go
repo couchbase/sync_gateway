@@ -263,8 +263,9 @@ func TestWriteCasAdvanced(t *testing.T) {
 }
 
 // When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
-// TODO: investigate why this currently fails against both walrus and couchbase server bucket
-func FailingTestSetBulk(t *testing.T) {
+func TestSetBulk(t *testing.T) {
+	
+	t.Skip("TestSetBulk is currently failing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
 
 	bucket := GetBucketOrPanic()
 
