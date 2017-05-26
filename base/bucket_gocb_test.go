@@ -417,8 +417,9 @@ func TestUpdate(t *testing.T) {
 
 }
 
-// TODO: under walrus, go-couchbase and gocb, this test fails with "Attempt to retrieve non-existent counter should return error"
-func FailingTestIncrCounter(t *testing.T) {
+func TestIncrCounter(t *testing.T) {
+
+	t.Skip("Currently failing: under walrus, go-couchbase and gocb, this test fails with: Attempt to retrieve non-existent counter should return error")
 
 	bucket := GetBucketOrPanic()
 
