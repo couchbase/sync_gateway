@@ -53,7 +53,7 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 	case IndexBucket:
 		return GoCB
 	case ShadowBucket:
-		return GoCouchbase  // NOTE: probably works against GoCB, but has undergone less testing
+		return GoCB  // NOTE: should work against against both GoCouchbase and GoCB
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
 		Warn("Unexpected bucket type: %v", bucketType)
