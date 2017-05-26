@@ -187,10 +187,6 @@ func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
 
 func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
-	// This is fairly noisy logging, but it might make sense to leave this on for unit tests
-	// when run against a live couchbase bucket, especially since they only run locally at this point
-	gocb.SetLogger(gocb.VerboseStdioLogger())
-
 	cluster, err := gocb.Connect(tbm.BucketSpec.Server)
 	if err != nil {
 		return false, err
@@ -216,6 +212,10 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 }
 
+// GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
+// to Couchbase Server REST API.
+// See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
+// for GOCB discussion.
 func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 
 	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", tbm.BucketSpec.Server, tbm.BucketSpec.BucketName)
