@@ -610,8 +610,9 @@ func (db *Database) ImportRawDoc(docid string, value []byte, isDelete bool) (doc
 
 func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *document, err error) {
 
-	base.LogTo("Import", "Attempting to import doc %q...", docid)
+	base.LogTo("Import+", "Attempting to import doc %q...", docid)
 	var newRev string
+	var alreadyImportedDoc *document
 	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
@@ -624,6 +625,7 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 		// Cancel update
 		if doc.IsSGWrite() {
 			base.LogTo("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
+			alreadyImportedDoc = doc
 			return nil, nil, base.ErrAlreadyImported
 		}
 
@@ -640,12 +642,18 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 		return body, nil, nil
 	})
 
-	if err != nil && err != base.ErrImportCancelled && err != base.ErrAlreadyImported {
+	switch err {
+	case base.ErrAlreadyImported:
+		// If the doc was already imported, we want to return the imported version
+		docOut = alreadyImportedDoc
+	case nil:
+		base.LogTo("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
+	case base.ErrImportCancelled:
+		// Import was cancelled (SG purge) - don't return error.
+	default:
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
 		return nil, err
-	}
-	if err == nil {
-		base.LogTo("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
+
 	}
 
 	return docOut, nil
