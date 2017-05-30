@@ -561,11 +561,6 @@ func TestCreateBatchesKeys(t *testing.T) {
 func TemporarilySkipXattrTests(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	} else { // Temporarily skip test when running against Couchbase Server
-		t.Skip(
-			"This test won't work against Couchbase Server by default, due to https://issues.couchbase.com/browse/GOCBC-200." +
-				"Which will cause the test to fail if the bucket does not exist.  To run this manually: 1. Comment out " +
-				"this code to skip the test.  2. Manually create the bucket.  3. Manually create an RBAC user.")
 	}
 }
 
