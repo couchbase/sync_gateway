@@ -19,6 +19,7 @@ import (
 // util_test.go, which is only accessible from the base package.
 
 type FlushOrRecreateStrategy int
+
 const (
 	// Flush the bucket between every unit test when testing against Couchbase buckets
 	FlushBetweenTests = FlushOrRecreateStrategy(iota)
@@ -64,12 +65,12 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 	switch bucketType {
 	case ShadowBucket:
 		bucketName = DefaultTestShadowBucketname
-		username =  DefaultTestShadowUsername
-		password =  DefaultTestShadowPassword
+		username = DefaultTestShadowUsername
+		password = DefaultTestShadowPassword
 	case IndexBucket:
 		bucketName = DefaultTestIndexBucketname
-		username =  DefaultTestIndexUsername
-		password =  DefaultTestIndexPassword
+		username = DefaultTestIndexUsername
+		password = DefaultTestIndexPassword
 	}
 
 	testAuth := TestAuthenticator{
@@ -309,7 +310,6 @@ func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
 			return err
 		}
 
-
 	default:
 		panic(fmt.Sprintf("Unrecognized option: %v", FlushOrRecreateTestBucket))
 	}
@@ -329,9 +329,9 @@ func (tbm *TestBucketManager) DeleteTestBucket() error {
 
 func (tbm *TestBucketManager) CreateTestBucket() error {
 
-	_, password, _ := tbm.BucketSpec.Auth.GetCredentials()
+	username, password, _ := tbm.BucketSpec.Auth.GetCredentials()
 
-	log.Printf("Create bucket with password; %v", password)
+	log.Printf("Create bucket with username: %v password: %v", username, password)
 
 	ramQuotaMB := 100
 
@@ -350,9 +350,33 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 		return err
 	}
 
+	// Add an RBAC user
+	// TODO: This isn't working, filed a question here: https://forums.couchbase.com/t/creating-rbac-user-via-go-sdk-against-couchbase-server-5-0-0-build-2958/12983
+	// TODO: This is only needed if server is 5.0 or later, but not sure how to check couchbase server version
+	//roles := []gocb.UserRole{
+	//	gocb.UserRole{
+	//		Role:       "admin",
+	//		// BucketName: tbm.BucketSpec.BucketName,
+	//		BucketName: "test_data_bucket",
+	//	},
+	//}
+	//userSettings := &gocb.UserSettings{
+	//	// Name:     username,
+	//	// Password: password,
+	//	Name: "test_data_bucket",
+	//	Password: "password",
+	//	Roles:    roles,
+	//}
+	//err = tbm.ClusterManager.UpsertUser(username, userSettings)
+	//if err != nil {
+	//	log.Printf("Error UpsertUser: %v", err)
+	//	return err
+	//}
+
 	numTries := 0
 	maxTries := 20
 	for {
+
 		_, errOpen := GetBucket(tbm.BucketSpec, nil)
 		if errOpen == nil {
 			// We were able to open the bucket, so it worked and we're done
