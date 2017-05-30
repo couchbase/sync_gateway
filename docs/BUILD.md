@@ -115,6 +115,7 @@ Unit Testing options
 | Name  | Description |
 | ------------- | ------------- |
 | SG_TEST_BACKING_STORE  | Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091  |
+| SG_TEST_COUCHBASE_SERVER_URL  | Uses http://localhost:8091 by default, but you can set this to any valid Couchbase Server URL  |
 | SG_TEST_USE_XATTRS  | Don't use Xattrs by default, but provide the test runner to specify Xattr usage  |
 | SG_TEST_USE_AUTH_HANDLER  | Don't use an auth handler by default, but provide a way to override  |
 

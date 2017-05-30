@@ -36,6 +36,9 @@ const (
 	DefaultTestIndexUsername = DefaultTestIndexBucketname
 	DefaultTestIndexPassword = DefaultTestPassword
 
+	// Env variable to enable user to override the Couchbase Server URL used in tests
+	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
+
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
@@ -55,6 +58,12 @@ func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	switch {
 	case strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase):
+		testCouchbaseServerUrl := os.Getenv(TestEnvCouchbaseServerUrl)
+		if testCouchbaseServerUrl != "" {
+			// If user explicitly set a Test Couchbase Server URL, use that
+			return testCouchbaseServerUrl
+		}
+		// Otherwise fallback to hardcoded default
 		return kTestCouchbaseServerURL
 	default:
 		return kTestWalrusURL
