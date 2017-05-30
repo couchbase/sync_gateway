@@ -264,8 +264,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		return err
 	}
 
-
-
 	for {
 
 		itemCount, err := tbm.BucketItemCount()
@@ -280,7 +278,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 		// Still items left, wait a little bit and try again
 		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Millisecond * 500)
 
 	}
 }
@@ -353,7 +351,7 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 	}
 
 	numTries := 0
-	maxTries := 5
+	maxTries := 20
 	for {
 		_, errOpen := GetBucket(tbm.BucketSpec, nil)
 		if errOpen == nil {
@@ -367,7 +365,7 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 
 		// Maybe it's not ready yet, wait a little bit and retry
 		numTries += 1
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Millisecond * 500)
 
 	}
 
