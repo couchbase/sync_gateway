@@ -985,7 +985,7 @@ func CouchbaseTestWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Insert
-	err = bucket.WriteUpdateWithXattr(key, xattrName, 0, writeUpdateFunc)
+	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
@@ -1001,7 +1001,7 @@ func CouchbaseTestWriteUpdateXattr(t *testing.T) {
 	assert.Equals(t, retrievedXattr["seq"], float64(1))
 
 	// Update
-	err = bucket.WriteUpdateWithXattr(key, xattrName, 0, writeUpdateFunc)
+	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}

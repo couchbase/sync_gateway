@@ -1167,13 +1167,14 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	}
 }
 
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	for {
 		var value []byte
 		var xattrValue []byte
 		var err error
 		var cas uint64
+		emptyCas := uint64(0)
 
 		// Load the existing value.
 		gocbExpvars.Add("Update_GetWithXattr", 1)
@@ -1182,7 +1183,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, cancel writeupdate
 				LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return err
+				return emptyCas, err
 			}
 			// Key not found - initialize cas and values
 			cas = 0
@@ -1193,14 +1194,14 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
 		if err != nil {
-			return err
+			return emptyCas, err
 		}
 
 		// TODO: Avoid unmarshalling the raw xattr value here
 		var xattrMap map[string]interface{}
 		err = json.Unmarshal(updatedXattrValue, &xattrMap)
 		if err != nil {
-			return err
+			return emptyCas, err
 		}
 
 		var writeErr error
@@ -1218,35 +1219,35 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				continue
 			} else {
 				// Non-recoverable error - return
-				return removeErr
+				return emptyCas, removeErr
 			}
 
 			// update xattr only
-			_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, xattrMap)
+			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, xattrMap)
 			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
 				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return writeErr
+				return emptyCas, writeErr
 			}
 
 			// If there was no error, we're done
 			if writeErr == nil {
-				return nil
+				return casOut, nil
 			}
 		} else {
 
 			// Not a delete - update the body and xattr
-			_, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
+			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
 
 			// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
 			// WriteUpdate.
 			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
 				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return writeErr
+				return emptyCas, writeErr
 			}
 
 			// If there was no error, we're done
 			if writeErr == nil {
-				return nil
+				return casOut, nil
 			}
 		}
 	}

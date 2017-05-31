@@ -346,17 +346,20 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		}
 
 		// Import handling.
-		if c.context.autoImport && c.context.UseXattrs() {
-			// If syncData is nil, or if this was not an SG write, attempt to import
+		if c.context.UseXattrs() {
+			// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
 			if syncData == nil || !syncData.IsSGWrite(event.Cas) {
-				isDelete := event.Opcode == sgbucket.TapDeletion
-				if isDelete {
-					rawBody = nil
-				}
-				db := Database{DatabaseContext: c.context, user: nil}
-				err := db.ImportDoc(docID, rawBody, isDelete)
-				if err != nil {
-					base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+				if c.context.autoImport {
+					// If syncData is nil, or if this was not an SG write, attempt to import
+					isDelete := event.Opcode == sgbucket.TapDeletion
+					if isDelete {
+						rawBody = nil
+					}
+					db := Database{DatabaseContext: c.context, user: nil}
+					_, err := db.ImportRawDoc(docID, rawBody, isDelete)
+					if err != nil {
+						base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+					}
 				}
 				return
 			}

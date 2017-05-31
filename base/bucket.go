@@ -184,9 +184,9 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
-func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) error {
+func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
-	return errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
+	return 0, errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
 
 func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
