@@ -561,7 +561,7 @@ func TestCreateBatchesKeys(t *testing.T) {
 func SkipXattrTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
-		t.Skip("XATTR based tests not enable.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
 
 	if UnitTestUrlIsWalrus() {
