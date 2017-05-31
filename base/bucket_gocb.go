@@ -1183,7 +1183,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, cancel writeupdate
 				LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return casOut, err
+				return emptyCas, err
 			}
 			// Key not found - initialize cas and values
 			cas = 0

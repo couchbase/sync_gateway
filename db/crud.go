@@ -896,7 +896,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 
-			docOut, _, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
+			docOut, _, _, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {
 				return
 			}
