@@ -28,7 +28,7 @@ func makeExternalBucket() base.Bucket {
 func waitFor(t *testing.T, condition func() bool) bool {
 	var start = time.Now()
 	for !condition() {
-		if time.Since(start) >= 3*time.Second {
+		if time.Since(start) >= 15*time.Second {
 			assertFailed(t, "Timeout!")
 			return false
 		}
