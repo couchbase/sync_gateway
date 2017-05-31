@@ -1712,6 +1712,8 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 
 func normalizeIntToUint(value interface{}) (uint, error) {
 	switch typeValue := value.(type) {
+	case int:
+		return uint(typeValue), nil
 	case uint64:
 		return uint(typeValue), nil
 	case string:
