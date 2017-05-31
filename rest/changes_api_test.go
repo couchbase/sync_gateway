@@ -609,7 +609,15 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 }
 
 func TestUnusedSequences(t *testing.T) {
-	for i := 0; i < 10; i++ {
+
+	// Only do 10 iterations if running against walrus.  If against a live couchbase server,
+	// just do single iteration.  (Takes approx 30s)
+	numIterations := 10
+	if !base.UnitTestUrlIsWalrus() {
+		numIterations = 1
+	}
+
+	for i := 0; i < numIterations; i++ {
 		_testConcurrentDelete(t)
 		_testConcurrentPutAsDelete(t)
 		_testConcurrentUpdate(t)
