@@ -38,8 +38,9 @@ type syncData struct {
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
 	Access          UserAccessMap       `json:"access,omitempty"`
 	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
-	Expiry          *time.Time          `json:"exp,omitempty"` // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas             string              `json:"cas"`           // String representation of a cas value, populated via macro expansion
+	Expiry          *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas             string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
+	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
 
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc

@@ -724,6 +724,13 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		doc.setFlag(channels.Conflict, inConflict)
 		doc.setFlag(channels.Branched, branched)
 
+		// If tombstone, write tombstone time
+		if doc.hasFlag(channels.Deleted) {
+			doc.syncData.TombstonedAt = time.Now().Unix()
+		} else {
+			doc.syncData.TombstonedAt = 0
+		}
+
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
 			bodyJSON, _ := json.Marshal(doc.body)
@@ -780,7 +787,15 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				if docSequence, err = db.sequences.nextSequence(); err != nil {
 					return
 				}
+				// If the newly allocated sequence is less than the existing sequence, release it and get a new one
+				if docSequence <= doc.Sequence {
+					// loop through db.sequences.nextSequence(), releasing until you get a valid sequence
+					// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
+					//  - sequence allocator is responsible for releasing unused sequences, could optimize
+
+				}
 			}
+
 			doc.Sequence = docSequence
 			doc.UnusedSequences = unusedSequences
 

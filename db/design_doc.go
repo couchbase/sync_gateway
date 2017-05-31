@@ -25,6 +25,7 @@ const (
 	ViewImport                = "import"
 	ViewOldRevs               = "old_revs"
 	ViewSessions              = "sessions"
+	ViewTombstones            = "tombstones"
 )
 
 func isInternalDDoc(ddocName string) bool {

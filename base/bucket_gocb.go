@@ -11,8 +11,10 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 
@@ -39,6 +41,9 @@ const (
 	// numNodesPersistTo.  In our case, we only want to block until it's durable on the node we're writing to,
 	// so this is set to 1
 	numNodesPersistTo = uint(1)
+
+	// Default metadata purge interval, used when unable to retrieve the server value
+	DefaultMetadataPurgeInterval = 72 // Default metadata purge interval, in hours
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -145,6 +150,72 @@ func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password str
 		_, password, _ = bucket.spec.Auth.GetCredentials()
 	}
 	return bucket.spec.BucketName, password
+}
+
+func (bucket CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
+
+	var err error
+
+	// Check for Bucket-specific setting first
+	bucketReqUri := fmt.Sprintf("%s/pools/default/buckets/%s", bucket.spec.Server, bucket.spec.BucketName)
+
+	bucketPurgeInterval, err := bucket.RetrievePurgeInterval(bucketReqUri)
+	if bucketPurgeInterval > 0 || err != nil {
+		return bucketPurgeInterval, err
+	}
+
+	// Cluster-wide settings
+	clusterReqUri := fmt.Sprintf("%s/settings/autoCompaction", bucket.spec.Server)
+	clusterPurgeInterval, err := bucket.RetrievePurgeInterval(clusterReqUri)
+	if clusterPurgeInterval > 0 || err != nil {
+		return clusterPurgeInterval, err
+	}
+
+	return 0, nil
+
+}
+
+// Retrieves Metadata Purge Interval from server and converts to hours.  Uses bucket purge interval
+// if specified - otherwise uses cluster purge interval.
+func (bucket CouchbaseBucketGoCB) RetrievePurgeInterval(uri string) (int, error) {
+
+	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
+	var purgeResponse struct {
+		PurgeInterval float64 `json:"purgeInterval,omitempty"`
+	}
+
+	req, err := http.NewRequest("GET", uri, nil)
+	if err != nil {
+		return 0, err
+	}
+	username, password, _ := bucket.spec.Auth.GetCredentials()
+	req.SetBasicAuth(username, password)
+
+	client := bucket.Bucket.IoRouter()
+	resp, err := client.HttpClient().Do(req)
+	if err != nil {
+		return 0, err
+	}
+
+	jsonDec := json.NewDecoder(resp.Body)
+	defer resp.Body.Close()
+	err = jsonDec.Decode(&purgeResponse)
+	if err != nil {
+		return 0, err
+	}
+
+	if resp.StatusCode == http.StatusForbidden {
+		Warn("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", uri)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, errors.New(resp.Status)
+	}
+
+	// Server purge interval is a float value, in days.  Round up to hours
+	purgeIntervalHours := int(purgeResponse.PurgeInterval*24 + 0.5)
+
+	return purgeIntervalHours, nil
 }
 
 func (bucket CouchbaseBucketGoCB) GetName() string {
@@ -1197,13 +1268,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			return emptyCas, err
 		}
 
-		// TODO: Avoid unmarshalling the raw xattr value here
-		var xattrMap map[string]interface{}
-		err = json.Unmarshal(updatedXattrValue, &xattrMap)
-		if err != nil {
-			return emptyCas, err
-		}
-
 		var writeErr error
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
@@ -1223,7 +1287,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			}
 
 			// update xattr only
-			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, xattrMap)
+			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
 			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
 				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
 				return emptyCas, writeErr
@@ -1236,7 +1300,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		} else {
 
 			// Not a delete - update the body and xattr
-			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, xattrMap)
+			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
 
 			// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
 			// WriteUpdate.
@@ -1632,10 +1696,8 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 	for optionName, optionValue := range params {
 		switch optionName {
 		case ViewQueryParamStale:
-			optionAsBool := asBool(optionValue)
-			if optionAsBool == false {
-				viewQuery.Stale(gocb.Before)
-			}
+			optionAsStale := asStale(optionValue)
+			viewQuery.Stale(optionAsStale)
 		case ViewQueryParamReduce:
 			viewQuery.Reduce(asBool(optionValue))
 		case ViewQueryParamLimit:
@@ -1737,6 +1799,39 @@ func asBool(value interface{}) bool {
 	default:
 		Warn("asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return false
+	}
+
+}
+
+func asStale(value interface{}) gocb.StaleMode {
+
+	switch typeValue := value.(type) {
+	case string:
+		if typeValue == "ok" {
+			return gocb.None
+		}
+		if typeValue == "update_after" {
+			return gocb.After
+		}
+		parsedVal, err := strconv.ParseBool(typeValue)
+		if err != nil {
+			Warn("asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
+			return gocb.Before
+		}
+		if parsedVal {
+			return gocb.None
+		} else {
+			return gocb.Before
+		}
+	case bool:
+		if typeValue {
+			return gocb.None
+		} else {
+			return gocb.Before
+		}
+	default:
+		Warn("asBool called with unknown type: %T.  defaulting to false", typeValue)
+		return gocb.Before
 	}
 
 }
