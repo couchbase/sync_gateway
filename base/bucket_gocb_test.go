@@ -738,6 +738,8 @@ func TestWriteCasXattrRaw(t *testing.T) {
 // expected to work - need to retry when GOCBC-181 is available.
 func TestWriteCasXattrTombstoneResurrect(t *testing.T) {
 
+	t.Skip("Test fails with errors: https://gist.github.com/tleyden/c64bc7c473c74e241a2a05f138c8be6e.  Needs investigation")
+
 	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
