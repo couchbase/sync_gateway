@@ -355,7 +355,7 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 	// TODO: This is only needed if server is 5.0 or later, but not sure how to check couchbase server version
 	//roles := []gocb.UserRole{
 	//	gocb.UserRole{
-	//		Role:       "admin",
+	//		Role:       "bucket_admin",
 	//		// BucketName: tbm.BucketSpec.BucketName,
 	//		BucketName: "test_data_bucket",
 	//	},
