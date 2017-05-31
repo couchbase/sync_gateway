@@ -741,12 +741,16 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	doc3Rev, _ := rt.getDatabase().GetDocSyncData("bulk3")
 	assert.Equals(t, doc3Rev.Sequence, uint64(2))
 
+	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
+	lastSequence, _ := rt.getDatabase().LastSequence()
+	assert.Equals(t, lastSequence, uint64(3))
 
 	//send another _bulk_docs and validate the sequences used
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}]}`
 	response = rt.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
+	//Sequence 3 get used here
 	doc21Rev, _ := rt.getDatabase().GetDocSyncData("bulk21")
 	assert.Equals(t, doc21Rev.Sequence, uint64(3))
 
@@ -756,6 +760,9 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	doc23Rev, _ := rt.getDatabase().GetDocSyncData("bulk23")
 	assert.Equals(t, doc23Rev.Sequence, uint64(5))
 
+	//Get current sequence number
+	lastSequence, _ = rt.getDatabase().LastSequence()
+	assert.Equals(t, lastSequence, uint64(5))
 }
 
 func TestBulkDocsEmptyDocs(t *testing.T) {
