@@ -558,7 +558,12 @@ func TestCreateBatchesKeys(t *testing.T) {
 	assert.Equals(t, batches[3][0], "seven")
 }
 
-func TemporarilySkipXattrTests(t *testing.T) {
+func SkipXattrTestsIfNotEnabled(t *testing.T) {
+
+	if !TestUseXattrs() {
+		t.Skip("XATTR based tests not enable.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
@@ -567,7 +572,7 @@ func TemporarilySkipXattrTests(t *testing.T) {
 // TestWriteCasXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func TestWriteCasXattrSimple(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	bucket := GetBucketOrPanic()
 
@@ -609,7 +614,7 @@ func TestWriteCasXattrSimple(t *testing.T) {
 // TestWriteCasXATTR.  Validates basic write of document with xattr,  retrieval of the same doc w/ xattr, update of the doc w/ xattr, retrieval of the doc w/ xattr.
 func TestWriteCasXattrUpsert(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -680,7 +685,7 @@ func TestWriteCasXattrUpsert(t *testing.T) {
 // TestWriteCasXATTRRaw.  Validates basic write of document and xattr as raw bytes.
 func TestWriteCasXattrRaw(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -733,7 +738,7 @@ func TestWriteCasXattrRaw(t *testing.T) {
 // expected to work - need to retry when GOCBC-181 is available.
 func TestWriteCasXattrTombstoneResurrect(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -813,7 +818,7 @@ func TestWriteCasXattrTombstoneResurrect(t *testing.T) {
 // TestWriteCasXATTRDeleted.  Validates update of xattr on logically deleted document.
 func TestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -896,7 +901,7 @@ func TestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 // TestWriteUpdateXATTR.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func TestWriteUpdateXattr(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1009,7 +1014,7 @@ func TestWriteUpdateXattr(t *testing.T) {
 // TestDeleteDocumentHavingXATTR.  Delete document that has a system xattr.  System XATTR should be retained and retrievable.
 func TestDeleteDocumentHavingXattr(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1062,7 +1067,7 @@ func TestDeleteDocumentHavingXattr(t *testing.T) {
 // TestDeleteDocumentUpdateXATTR.  Delete document that has a system xattr along with an xattr update.
 func TestDeleteDocumentUpdateXattr(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1134,7 +1139,7 @@ func TestDeleteDocumentUpdateXattr(t *testing.T) {
 // TestDeleteDocumentAndXATTR.  Delete document and XATTR, ensure it's not available
 func TestDeleteDocumentAndXATTR(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1184,7 +1189,7 @@ func TestDeleteDocumentAndXATTR(t *testing.T) {
 // TestDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
 func TestDeleteDocumentAndUpdateXATTR(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1237,7 +1242,7 @@ func TestDeleteDocumentAndUpdateXATTR(t *testing.T) {
 // CouchbaseTestRetrieveDocumentAndXattr.  Pending https://issues.couchbase.com/browse/MB-24152
 func TestRetrieveDocumentAndXattr(t *testing.T) {
 
-	TemporarilySkipXattrTests(t)
+	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
