@@ -127,6 +127,10 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
+		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
+	}
+
 	base.EnableLogKey("*")
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
