@@ -160,7 +160,7 @@ declare -a arr=(
     "TestLowSequenceHandlingWithAccessGrant"
     "TestSkippedViewRetrieval"
     "TestStopChangeCache"
-    # "TestChannelCacheSize"  Failing, see https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305353813
+    "TestChannelCacheSize"
     "TestChangesAfterChannelAdded"
     "TestDocDeletionFromChannelCoalescedRemoved"
     "TestDocDeletionFromChannelCoalesced"
