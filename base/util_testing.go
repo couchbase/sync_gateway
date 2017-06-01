@@ -145,9 +145,11 @@ func TestUseXattrs() bool {
 	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
 	switch {
 	case strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue):
+		log.Printf("Using xattrs: strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue).  |%v| == |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
 		return true
+	default:
+		log.Printf("NOT Using xattrs: strings.ToLower(useXattrs) != strings.ToLower(TestEnvSyncGatewayTrue).  |%v| != |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
 	}
-
 	// Otherwise fallback to hardcoded default
 	return DefaultUseXattrs
 }
