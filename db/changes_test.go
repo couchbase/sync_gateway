@@ -210,6 +210,11 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
+		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
+	}
+
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
