@@ -873,8 +873,6 @@ func TestChannelCacheSize(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305353813")
-	} else {
-		log.Printf("Running TestChannelCacheSize.  base.UnitTestUrlIsWalrus(): %v,  base.TestUseXattrs(): %v", base.UnitTestUrlIsWalrus(), base.TestUseXattrs())
 	}
 
 	base.EnableLogKey("Cache")
