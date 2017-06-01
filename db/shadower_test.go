@@ -10,10 +10,10 @@ import (
 
 	"encoding/json"
 
+	"fmt"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"fmt"
-	"log"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -43,7 +43,6 @@ func TestShadowerPull(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
-
 
 	bucket := makeExternalBucket()
 	defer bucket.Close()
@@ -154,7 +153,6 @@ func TestShadowerPush(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
-
 
 	var logKeys = map[string]bool{
 		"Shadow": true,
