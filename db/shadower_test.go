@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"fmt"
+	"log"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -323,7 +324,7 @@ func TestShadowerPattern(t *testing.T) {
 	base.Log("Waiting for shadower to catch up...")
 	waitFor(t, func() bool {
 		seq, _ := db.LastSequence()
-		return seq >= 1
+		return seq >= 2
 	})
 	doc1, err := db.GetDoc("key1")
 	assertNoError(t, err, fmt.Sprintf("Error getting key1: %v", err))
