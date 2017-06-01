@@ -56,9 +56,7 @@ func TestShadowerPull(t *testing.T) {
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
-
-	time.Sleep(time.Second * 5)
-
+	
 	base.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 *document
 	waitFor(t, func() bool {
