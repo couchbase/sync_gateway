@@ -110,6 +110,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
+		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
 		return nil, err
 	}
 
@@ -1712,6 +1713,8 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 
 func normalizeIntToUint(value interface{}) (uint, error) {
 	switch typeValue := value.(type) {
+	case int:
+		return uint(typeValue), nil
 	case uint64:
 		return uint(typeValue), nil
 	case string:
