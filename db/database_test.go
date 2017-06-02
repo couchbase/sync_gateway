@@ -217,10 +217,6 @@ func TestDatabase(t *testing.T) {
 	assertNoError(t, err, "Couldn't get document")
 	assert.DeepEquals(t, gotbody, body)
 
-	// Compact and check how many obsolete revs were deleted:
-	revsDeleted, err := db.Compact()
-	assertNoError(t, err, "Compact failed")
-	assert.Equals(t, revsDeleted, 2)
 }
 
 func TestGetDeleted(t *testing.T) {

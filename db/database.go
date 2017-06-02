@@ -47,11 +47,11 @@ var RunStateString = []string{
 }
 
 const (
-	DefaultRevsLimit = 1000
-	DefaultPurgeInterval = 30           // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-	KSyncKeyPrefix   = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
-	kSyncDataKey     = "_sync:syncdata" // Key used to store sync function
-	KSyncXattrName   = "_sync"          // Name of XATTR used to store sync metadata
+	DefaultRevsLimit     = 1000
+	DefaultPurgeInterval = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
+	KSyncKeyPrefix       = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
+	kSyncDataKey         = "_sync:syncdata" // Key used to store sync function
+	KSyncXattrName       = "_sync"          // Name of XATTR used to store sync metadata
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -258,8 +258,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					if options.DBOnlineCallback != nil {
 						options.DBOnlineCallback(context)
 					}
-
-
 				}
 			}
 
