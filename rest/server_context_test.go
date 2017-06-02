@@ -31,7 +31,7 @@ func TestConfigServer(t *testing.T) {
 			"server": "walrus:/fake"
 		}`))
 
-	var rt restTester
+	var rt RestTester
 	sc := rt.ServerContext()
 	sc.HTTPClient = mockClient.Client
 	sc.config.ConfigServer = &fakeConfigURL
@@ -45,7 +45,7 @@ func TestConfigServer(t *testing.T) {
 	assert.Equals(t, dbc.Name, "db2")
 	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
-	rt.bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
+	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 }
 
 // Tests the ConfigServer feature.
@@ -80,7 +80,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	mockClient := NewMockClient()
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
 
-	var rt restTester
+	var rt RestTester
 	sc := rt.ServerContext()
 	sc.HTTPClient = mockClient.Client
 	sc.config.ConfigServer = &fakeConfigURL
@@ -94,7 +94,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	assert.Equals(t, dbc.Name, "db2")
 	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
-	rt.bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
+	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 
 }
 

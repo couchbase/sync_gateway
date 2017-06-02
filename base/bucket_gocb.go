@@ -98,7 +98,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	password := ""
 	if spec.Auth != nil {
 		user, pass, _ := spec.Auth.GetCredentials()
-		authErr := cluster.Authenticate(gocb.RbacAuthenticator{
+		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
 			Username: user,
 			Password: pass,
 		})

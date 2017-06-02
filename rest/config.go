@@ -369,7 +369,7 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 	if dbConfig.Unsupported.EnableXattr != nil {
 		return *dbConfig.Unsupported.EnableXattr
 	}
-	return db.DefaultUseXattrs
+	return base.DefaultUseXattrs
 }
 
 // Implementation of AuthHandler interface for ShadowConfig

@@ -31,7 +31,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
 	defer it.Close()
 
-	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
+	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
 	assert.True(t, response != nil)
 
 	// Create user:
@@ -41,11 +41,11 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	a.Save(bernard)
 
 	// Put several documents in channel PBS
-	response = it.sendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.sendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.sendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Start longpoll changes request
@@ -58,7 +58,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := it.send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		changesResponse := it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equals(t, len(changes.Results), 3)
 	}()
@@ -67,7 +67,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Put document that triggers access grant for user, PBS
-	response = it.sendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	wg.Wait()
@@ -82,16 +82,16 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
-	response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "Wait":true}`)
+	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "Wait":true}`)
 	assert.True(t, response != nil)
 
 	// Create user:
-	userResponse := it.sendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
+	userResponse := it.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
 	assertStatus(t, userResponse, 201)
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
 	// will still be higher than the latest change count.
-	userResponse = it.sendAdminRequest("GET", "/db/_user/bernard", "")
+	userResponse = it.SendAdminRequest("GET", "/db/_user/bernard", "")
 	assertStatus(t, userResponse, 200)
 
 	/*
@@ -102,11 +102,11 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	*/
 
 	// Put several documents in channel PBS
-	response = it.sendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.sendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.sendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
@@ -122,7 +122,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 					 "filter":"sync_gateway/bychannel",
 					 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
-	changesResponse := it.send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
+	changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &initialChanges)
 	lastSeq := initialChanges.Last_Seq.String()
 	assert.Equals(t, lastSeq, "1")
@@ -137,7 +137,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
-		changesResponse := it.send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
+		changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equals(t, len(changes.Results), 1)
 	}()
@@ -146,7 +146,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Put public document that triggers termination of the longpoll
-	response = it.sendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
+	response = it.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
 	assertStatus(t, response, 201)
 	wg.Wait()
 }

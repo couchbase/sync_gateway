@@ -88,6 +88,7 @@ Build via go get w/ dependency pinning
 
 See the [Build Extra](BUILD_EXTRA.md) for instructions on how to build via `go get` (as opposed to `repo`) with dependency pinning.
 
+
 Cross-compiling for Linux
 --------------------------
 
@@ -104,4 +105,45 @@ GOOS=linux GOARCH=arm ./build.sh
 ```
 
 The binaries will be saved to `godeps/bin/linux_amd64/` or `godeps/bin/linux_arm/`
+
+Unit Testing options
+--------------------
+
+
+### Environment variables
+
+| Name  | Description |
+| ------------- | ------------- |
+| SG_TEST_BACKING_STORE  | Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091  |
+| SG_TEST_COUCHBASE_SERVER_URL  | Uses http://localhost:8091 by default, but you can set this to any valid Couchbase Server URL  |
+| SG_TEST_USE_XATTRS  | Don't use Xattrs by default, but provide the test runner to specify Xattr usage  |
+| SG_TEST_USE_AUTH_HANDLER  | Don't use an auth handler by default, but provide a way to override  |
+
+
+### Running a single unit test against Walrus and Couchbase Server
+
+**Walrus**
+
+```
+$ export GOPATH=`pwd`/godeps
+$ go test -v -run ^TestChangesAfterChannelAdded$ github.com/couchbase/sync_gateway/...
+```
+
+**Couchbase Server**
+
+Install Couchbase Server locally and set the Administrator username / password to match the values in `base/constants.go` for `DefaultCouchbaseAdministrator` and `DefaultCouchbasePassword`
+
+```
+$ export GOPATH=`pwd`/godeps
+$ SG_TEST_BACKING_STORE=Couchbase go test -v -run ^TestChangesAfterChannelAdded$ github.com/couchbase/sync_gateway/...
+```
+
+### Running full set of unit tests against Couchbase Server
+
+Install Couchbase Server locally and set the Administrator username / password to match the values in `base/constants.go` for `DefaultCouchbaseAdministrator` and `DefaultCouchbasePassword`
+
+```
+$ ./test_integration.sh
+```
+
 

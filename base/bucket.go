@@ -40,6 +40,7 @@ const (
 const (
 	DataBucket CouchbaseBucketType = iota
 	IndexBucket
+	ShadowBucket
 )
 
 func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
@@ -51,6 +52,8 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCBCustomSGTranscoder
 	case IndexBucket:
 		return GoCB
+	case ShadowBucket:
+		return GoCB  // NOTE: should work against against both GoCouchbase and GoCB
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
 		Warn("Unexpected bucket type: %v", bucketType)
@@ -100,6 +103,10 @@ type BucketSpec struct {
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
 func (spec BucketSpec) RetrySleeper() RetrySleeper {
 	return CreateDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS)
+}
+
+func (spec BucketSpec) IsWalrusBucket() bool {
+	return strings.Contains(spec.Server, "walrus:")
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server

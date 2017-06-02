@@ -120,6 +120,12 @@ downloadHelperScripts () {
 	chmod +x test.sh
     fi
 
+    if [ ! -f test_integration.sh ]; then
+	echo "Downloading test_integration.sh"
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/test_integration.sh" > test_integration.sh
+	chmod +x test_integration.sh
+    fi
+
     if [ ! -f bench.sh ]; then
 	echo "Downloading bench.sh"
 	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/bench.sh" > bench.sh

@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
+	"runtime/debug"
 )
 
 func TestSetFromArray(t *testing.T) {
@@ -109,12 +110,14 @@ func TestSetUnmarshal(t *testing.T) {
 
 func assertNoError(t *testing.T, err error, message string) {
 	if err != nil {
+		debug.PrintStack()
 		t.Fatalf("%s: %v", message, err)
 	}
 }
 
 func assertTrue(t *testing.T, success bool, message string) {
 	if !success {
+		debug.PrintStack()
 		t.Fatalf("%s", message)
 	}
 }

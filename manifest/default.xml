@@ -33,9 +33,8 @@
 
   
   <!-- Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="f340ef747c4010ea76e579ca23f8a11cec54d613"/>
+  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="9ff4edc65ca879f404421978fd375a3439401133"/>
 
-  
   <!-- Dependencies specific to Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="4aaaca921a7ef64900f3b569c33ad87e9e8df065"/>
   
@@ -59,9 +58,9 @@
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="98e48116286caa5c3ba06d9bb197f94498c97e89"/>
 
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d5a64dd7982b3c07cb0675e995e249fa58cd92ff"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="bf740f17ea6cd6a1bbd5ca3583266c8f74692524"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="e665767ab56251f1b2e4f2cc1c15b12d303b9013"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="0dfef9335fa13e903afb34eec66471f1ba48fce2"/>
 
   <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
