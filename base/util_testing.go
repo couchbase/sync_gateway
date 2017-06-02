@@ -138,6 +138,15 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 
 }
 
+// Convenience function that will cause a bucket to be created if it doesn't already exist.
+func InitializeBucketOrPanic(bucketType CouchbaseBucketType) {
+
+	// Create
+	tempBucket := GetBucketOrPanicCommon(bucketType)
+	tempBucket.Close()
+
+}
+
 // Should Sync Gateway use XATTRS functionality when running unit tests?
 func TestUseXattrs() bool {
 
