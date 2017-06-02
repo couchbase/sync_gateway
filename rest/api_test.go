@@ -771,7 +771,6 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	rt1 := restTester{syncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
 
 
-
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt1.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
@@ -839,6 +838,95 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	doc33Rev, _ := rt1.getDatabase().GetDocSyncData("bulk33")
 	assert.Equals(t, doc33Rev.Sequence, uint64(8))
+
+}
+
+func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
+
+	//We want a sync function that will reject some docs, create two to simulate two SG instances
+	rt1 := restTester{syncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+
+	//add new docs, doc2 will be rejected by sync function
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
+	response := rt1.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 201)
+
+	doc1Rev, _ := rt1.getDatabase().GetDocSyncData("bulk1")
+	assert.Equals(t, doc1Rev.Sequence, uint64(1))
+
+	//Get the revID for doc "bulk1"
+	doc1RevID := doc1Rev.CurrentRev
+
+
+		doc3Rev, _ := rt1.getDatabase().GetDocSyncData("bulk3")
+	assert.Equals(t, doc3Rev.Sequence, uint64(2))
+
+	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
+	lastSequence, _ := rt1.getDatabase().LastSequence()
+	assert.Equals(t, lastSequence, uint64(3))
+
+
+	rt2 := restTester{_bucket: rt1._bucket, syncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+
+	rt2._sc = NewServerContext(&ServerConfig{
+		Facebook:       &FacebookConfig{},
+		AdminInterface: &DefaultAdminInterface,
+	})
+
+	server := base.UnitTestUrl()
+	bucketName := rt1._bucket.GetName()
+
+	_, err := rt2._sc.AddDatabaseFromConfig(&DbConfig{
+		BucketConfig: BucketConfig{
+			Server: &server,
+			Bucket: &bucketName},
+		Name:        "db",
+		CacheConfig: rt2.cacheConfig,
+	})
+
+	assertNoError(t, err,"Failed to add database to rest tester")
+
+	//send another _bulk_docs to rt2, including an update to doc "bulk1" and validate the sequences used
+	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}, {"_id": "bulk1", "_rev": "`+doc1RevID+`", "n": 2}]}`
+	response = rt2.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 201)
+
+	//Sequence 3 does not get used here as its using a different sequence allocator
+	doc21Rev, _ := rt2.getDatabase().GetDocSyncData("bulk21")
+	assert.Equals(t, doc21Rev.Sequence, uint64(4))
+
+	doc22Rev, _ := rt2.getDatabase().GetDocSyncData("bulk22")
+	assert.Equals(t, doc22Rev.Sequence, uint64(5))
+
+	doc23Rev, _ := rt2.getDatabase().GetDocSyncData("bulk23")
+	assert.Equals(t, doc23Rev.Sequence, uint64(6))
+
+	//Validate rev2 of doc "bulk1" has a new revision
+	doc1Rev2, _ := rt2.getDatabase().GetDocSyncData("bulk1")
+	assert.Equals(t, doc1Rev2.Sequence, uint64(7))
+
+	//Get the revID for doc "bulk1"
+	doc1RevID2 := doc1Rev2.CurrentRev
+
+	//Get current sequence number
+	lastSequence, _ = rt2.getDatabase().LastSequence()
+	assert.Equals(t, lastSequence, uint64(7))
+
+	//Now send a bulk_doc to rt1 to update doc bulk1 again
+	input = `{"docs": [{"_id": "bulk1", "_rev": "`+doc1RevID2+`", "n": 2}]}`
+	response = rt1.sendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 201)
+
+	//Sequence 3 gets used here as its using first sequence allocator
+	doc1Rev3, _ := rt1.getDatabase().GetDocSyncData("bulk1")
+	assert.Equals(t, doc1Rev3.Sequence, uint64(3))
+
+	//validate the doc _sync metadata, should see last sequence lower than previous sequence
+	rs := doc1Rev3.RecentSequences
+	assert.Equals(t, len(rs), 3)
+	assert.Equals(t, rs[0], uint64(1))
+	assert.Equals(t, rs[1], uint64(7))
+	assert.Equals(t, rs[2], uint64(3))
 
 }
 
