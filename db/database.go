@@ -887,6 +887,11 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // the document to accomplish the same result.
 func (db *Database) Compact() (int, error) {
 
+	// Compact should be a no-op if not running w/ xattrs
+	if !db.UseXattrs() {
+		return 0, nil
+	}
+
 	// Trigger view compaction for all tombstoned documents older than the purge interval
 	opts := Body{}
 	opts["stale"] = "ok"
