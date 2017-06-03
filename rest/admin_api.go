@@ -173,7 +173,7 @@ type ReplicationConfig struct {
 	QueryParams      interface{} `json:"query_params"`
 	Cancel           bool        `json:"cancel"`
 	Async            bool        `json:"async"`
-	ChangesFeedLimit int         `json:"changes_feed_limit"`
+	ChangesFeedLimit *int        `json:"changes_feed_limit"`
 	ReplicationId    string      `json:"replication_id"`
 }
 
@@ -246,7 +246,12 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	}
 
 	params.Async = requestParams.Async
-	params.ChangesFeedLimit = requestParams.ChangesFeedLimit
+	if (requestParams.ChangesFeedLimit != nil) {
+		params.ChangesFeedLimit = *requestParams.ChangesFeedLimit
+	} else {
+		params.ChangesFeedLimit = sgreplicate.DefaultChangesFeedLimit
+	}
+
 
 	if requestParams.Filter != "" {
 		if requestParams.Filter == "sync_gateway/bychannel" {
