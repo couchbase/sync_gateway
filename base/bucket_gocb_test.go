@@ -30,7 +30,6 @@ import (
 // them to remove the Couchbase* prefix, and then rename them back before checking into
 // Git.
 
-
 func TestTranscoder(t *testing.T) {
 	transcoder := SGTranscoder{}
 
@@ -264,7 +263,6 @@ func TestWriteCasAdvanced(t *testing.T) {
 
 // When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
 func TestSetBulk(t *testing.T) {
-
 
 	// Might be failing due to something related to this comment:
 	//    When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
@@ -821,7 +819,6 @@ func TestWriteCasXattrTombstoneResurrect(t *testing.T) {
 func TestWriteCasXattrTombstoneXattrUpdate(t *testing.T) {
 
 	t.Skip("Test fails with errors: https://gist.github.com/tleyden/d261fe2b92bdaaa6e78f9f1c00fdfd58.  Needs investigation")
-
 
 	SkipXattrTestsIfNotEnabled(t)
 
@@ -1489,5 +1486,34 @@ func TestApplyViewQueryOptionsWithStrings(t *testing.T) {
 	}
 
 	// if it doesn't blow up, test passes
+
+}
+
+// Validate non-bool stale handling
+func TestApplyViewQueryStaleOptions(t *testing.T) {
+
+	// View query params map (go-couchbase/walrus style)
+	params := map[string]interface{}{
+		ViewQueryParamStale: "false",
+	}
+
+	// Create a new viewquery
+	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
+
+	// if it doesn't blow up, test passes
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
+	}
+
+	params = map[string]interface{}{
+		ViewQueryParamStale: "ok",
+	}
+
+	// Create a new viewquery
+	viewQuery = gocb.NewViewQuery("ddoc", "viewname")
+
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
+	}
 
 }

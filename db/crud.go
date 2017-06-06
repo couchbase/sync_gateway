@@ -724,6 +724,13 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		doc.setFlag(channels.Conflict, inConflict)
 		doc.setFlag(channels.Branched, branched)
 
+		// If tombstone, write tombstone time
+		if doc.hasFlag(channels.Deleted) {
+			doc.syncData.TombstonedAt = time.Now().Unix()
+		} else {
+			doc.syncData.TombstonedAt = 0
+		}
+
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
 			bodyJSON, _ := json.Marshal(doc.body)
