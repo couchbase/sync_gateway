@@ -787,15 +787,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				if docSequence, err = db.sequences.nextSequence(); err != nil {
 					return
 				}
-				// If the newly allocated sequence is less than the existing sequence, release it and get a new one
-				if docSequence <= doc.Sequence {
-					// loop through db.sequences.nextSequence(), releasing until you get a valid sequence
-					// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
-					//  - sequence allocator is responsible for releasing unused sequences, could optimize
-
-				}
 			}
-
 			doc.Sequence = docSequence
 			doc.UnusedSequences = unusedSequences
 
