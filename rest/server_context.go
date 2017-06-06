@@ -90,14 +90,9 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		for _, replicationConfig := range config.Replications {
 
 			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
-			
+
 			if err != nil {
 				base.LogError(err)
-				continue
-			}
-
-			if params.Disabled {
-				base.LogTo("Replicate", "Skipping disabled replication: %v", params.ReplicationId)
 				continue
 			}
 

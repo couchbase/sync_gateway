@@ -175,7 +175,6 @@ type ReplicationConfig struct {
 	Async            bool        `json:"async"`
 	ChangesFeedLimit *int        `json:"changes_feed_limit"`
 	ReplicationId    string      `json:"replication_id"`
-	Disabled         bool        `json:"disabled"`
 }
 
 func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
@@ -247,13 +246,12 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	}
 
 	params.Async = requestParams.Async
-	params.Disabled = requestParams.Disabled
-
-	if requestParams.ChangesFeedLimit != nil {
+	if (requestParams.ChangesFeedLimit != nil) {
 		params.ChangesFeedLimit = *requestParams.ChangesFeedLimit
 	} else {
 		params.ChangesFeedLimit = sgreplicate.DefaultChangesFeedLimit
 	}
+
 
 	if requestParams.Filter != "" {
 		if requestParams.Filter == "sync_gateway/bychannel" {
