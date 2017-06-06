@@ -41,9 +41,6 @@ const (
 	// numNodesPersistTo.  In our case, we only want to block until it's durable on the node we're writing to,
 	// so this is set to 1
 	numNodesPersistTo = uint(1)
-
-	// Default metadata purge interval, used when unable to retrieve the server value
-	DefaultMetadataPurgeInterval = 72 // Default metadata purge interval, in hours
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -152,6 +149,8 @@ func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password str
 	return bucket.spec.BucketName, password
 }
 
+// Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
+// found, retrieves the cluster-wide value.
 func (bucket CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 	var err error
@@ -159,14 +158,14 @@ func (bucket CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 	// Check for Bucket-specific setting first
 	bucketReqUri := fmt.Sprintf("%s/pools/default/buckets/%s", bucket.spec.Server, bucket.spec.BucketName)
 
-	bucketPurgeInterval, err := bucket.RetrievePurgeInterval(bucketReqUri)
+	bucketPurgeInterval, err := bucket.retrievePurgeInterval(bucketReqUri)
 	if bucketPurgeInterval > 0 || err != nil {
 		return bucketPurgeInterval, err
 	}
 
 	// Cluster-wide settings
 	clusterReqUri := fmt.Sprintf("%s/settings/autoCompaction", bucket.spec.Server)
-	clusterPurgeInterval, err := bucket.RetrievePurgeInterval(clusterReqUri)
+	clusterPurgeInterval, err := bucket.retrievePurgeInterval(clusterReqUri)
 	if clusterPurgeInterval > 0 || err != nil {
 		return clusterPurgeInterval, err
 	}
@@ -175,9 +174,10 @@ func (bucket CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 }
 
-// Retrieves Metadata Purge Interval from server and converts to hours.  Uses bucket purge interval
-// if specified - otherwise uses cluster purge interval.
-func (bucket CouchbaseBucketGoCB) RetrievePurgeInterval(uri string) (int, error) {
+// Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
+// that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
+// bucket and server purge intervals).
+func (bucket CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
