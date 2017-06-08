@@ -25,7 +25,7 @@ import (
 type ChangeIndex interface {
 
 	// Initialize the index
-	Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChangeIndexOptions) error
+	Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChannelIndexOptions) error
 
 	// Stop the index
 	Stop()
@@ -72,14 +72,15 @@ const (
 	MemoryCache
 )
 
-type ChangeIndexOptions struct {
-	Type          IndexType       // Index type
-	Spec          base.BucketSpec // Indexing bucket spec
-	Bucket        base.Bucket     // Indexing bucket
-	Writer        bool            // Cache Writer
-	Options       CacheOptions    // Caching options
-	NumShards     uint16          // The number of CBGT shards to use]
-	HashFrequency uint16          // Hash frequency for changes feeds
+type ChannelIndexOptions struct {
+	Type                      IndexType       // Index type
+	Spec                      base.BucketSpec // Indexing bucket spec
+	Bucket                    base.Bucket     // Indexing bucket
+	Writer                    bool            // Cache Writer
+	Options                   CacheOptions    // Caching options
+	NumShards                 uint16          // The number of CBGT shards
+	HashFrequency             uint16          // Hash frequency for changes feeds (in changes entries)
+	TombstoneCompactFrequency *int            // Tombstone Compaction frequency (in hours)
 }
 
 type SequenceHashOptions struct {
@@ -107,7 +108,7 @@ func (entry *LogEntry) SetRemoved() {
 	entry.Flags |= channels.Removed
 }
 
-func (c ChangeIndexOptions) ValidateOrPanic() {
+func (c ChannelIndexOptions) ValidateOrPanic() {
 	if c.NumShards == 0 {
 		base.LogPanic("The number of shards must be greater than 0")
 	}

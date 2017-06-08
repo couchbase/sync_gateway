@@ -60,7 +60,7 @@ func init() {
 	base.StatsExpvars.Set("indexReader.getChanges.UseIndexed", &indexReaderGetChangesUseIndexed)
 }
 
-func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChangeIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc, context *DatabaseContext) (err error) {
+func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChannelIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc, context *DatabaseContext) (err error) {
 
 	k.channelIndexReaders = make(map[string]*KvChannelIndex)
 	k.indexPartitionsCallback = indexPartitionsCallback

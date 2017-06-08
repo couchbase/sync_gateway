@@ -1094,34 +1094,6 @@ func assertTrue(t *testing.T, success bool, message string) {
 	}
 }
 
-/*
-// Index partitions for testing
-func SeedPartitionMap(bucket base.Bucket, numPartitions uint16) error {
-	maxVbNo := uint16(1024)
-	partitionDefs := make(base.PartitionStorageSet, numPartitions)
-	vbPerPartition := maxVbNo / numPartitions
-	for partition := uint16(0); partition < numPartitions; partition++ {
-		storage := base.PartitionStorage{
-			Index: partition,
-			VbNos: make([]uint16, vbPerPartition),
-		}
-		for index := uint16(0); index < vbPerPartition; index++ {
-			vb := partition*vbPerPartition + index
-			storage.VbNos[index] = append(storage.VbNos, vb)
-		}
-		partitionDefs[partition] = storage
-	}
-
-	// Persist to bucket
-	value, err := json.Marshal(partitionDefs)
-	if err != nil {
-		return err
-	}
-	bucket.SetRaw(base.KIndexPartitionKey, 0, value)
-	return nil
-}
-*/
-
 func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uint64) {
 	docId := fmt.Sprintf("doc-%v", sequence)
 	WriteDirectWithKey(testDb, docId, channelArray, sequence)

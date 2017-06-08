@@ -83,7 +83,6 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 	// Identify what's changed:
 	//  changedVbuckets: ordered list of vbuckets that have changes, based on the clock comparison
 	//  partitionRanges: array of PartitionRange, indexed by partitionNo
-
 	changedVbuckets, partitionRanges := ds.calculateChanged(sinceClock, toClock)
 
 	// changed partitions is a cache of changes for a partition, for reuse by multiple vbs

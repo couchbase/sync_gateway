@@ -182,9 +182,10 @@ type CacheConfig struct {
 
 type ChannelIndexConfig struct {
 	BucketConfig
-	IndexWriter        bool                `json:"writer,omitempty"`      // Whether SG node is a channel index writer
-	NumShards          uint16              `json:"num_shards,omitempty"`  // Number of partitions in the channel index
-	SequenceHashConfig *SequenceHashConfig `json:"seq_hashing,omitempty"` // Sequence hash configuration
+	IndexWriter               bool                `json:"writer,omitempty"`       // Whether SG node is a channel index writer
+	NumShards                 uint16              `json:"num_shards,omitempty"`   // Number of partitions in the channel index
+	SequenceHashConfig        *SequenceHashConfig `json:"seq_hashing,omitempty"`  // Sequence hash configuration
+	TombstoneCompactFrequency *int                `json:"tombstone_compact_freq"` // How often sg-accel attempts to compact purged tombstones
 }
 
 type SequenceHashConfig struct {

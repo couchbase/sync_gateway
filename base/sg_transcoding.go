@@ -2,6 +2,7 @@ package base
 
 import (
 	"encoding/json"
+	"github.com/couchbase/gocb"
 
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -61,11 +62,8 @@ func (t SGTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error 
 		*typedOut = bytes
 		return nil
 	default:
-		err := json.Unmarshal(bytes, &out)
-		if err != nil {
-			return err
-		}
-		return nil
+		defaultTranscoder := gocb.DefaultTranscoder{}
+		return defaultTranscoder.Decode(bytes, flags, out)
 
 	}
 
