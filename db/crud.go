@@ -329,7 +329,7 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 			return nil, base.HTTPErrorf(404, "missing")
 		} else if data, err := db.getOldRevisionJSON(doc.ID, revid); data == nil {
 			return nil, err
-		} else if err = json.Unmarshal(data, &body); err != nil {
+		} else if err = body.Unmarshal(data); err != nil {
 			return nil, err
 		}
 	}
@@ -598,7 +598,7 @@ func (db *Database) ImportRawDoc(docid string, value []byte, isDelete bool) (doc
 	if isDelete {
 		body = Body{"_deleted": true}
 	} else {
-		err := json.Unmarshal(value, &body)
+		err := body.Unmarshal(value)
 		if err != nil {
 			base.LogTo("Import", "Unmarshal error during importDoc %v", err)
 			return nil, err

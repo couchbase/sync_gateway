@@ -12,6 +12,7 @@ package db
 import (
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -22,6 +23,17 @@ import (
 
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
+
+func (b *Body) Unmarshal(data []byte) error {
+
+	if err := json.Unmarshal(data, &b); err != nil {
+		return err
+	}
+	if b == nil {
+		return errors.New("Unable to unmarshal null document as Body")
+	}
+	return nil
+}
 
 func (body Body) ShallowCopy() Body {
 	copied := make(Body, len(body))

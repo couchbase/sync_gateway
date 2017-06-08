@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -97,7 +96,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 	if isDeletion {
 		body = Body{"_deleted": true}
 	} else {
-		if err := json.Unmarshal(value, &body); err != nil {
+		if err := body.Unmarshal(value); err != nil {
 			base.LogTo("Shadow", "Doc %q is not JSON; skipping", key)
 			return nil
 		}
