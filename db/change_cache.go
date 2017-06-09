@@ -232,6 +232,8 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		return found, deletes
 	}()
 
+	changedChannelsCombined := base.Set{}
+
 	// Add found entries
 	for _, entry := range foundEntries {
 		entry.Skipped = true
@@ -244,12 +246,14 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		}
 		entry.Channels = doc.Channels
 
-		// TODO: just directly notify change listeners here
-		// (union up and do outside the loop)
-		// if c.onChange != nil && len(changedChannels) > 0 {
-		//    c.onChange(changedChannels)
-		// }
-		channels := c.processEntry(entry)
+		changedChannels := c.processEntry(entry)
+		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+	}
+
+	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
+	// to notify any change listeners that are working changes feeds for these channels
+	if c.onChange != nil && len(changedChannelsCombined) > 0 {
+	    c.onChange(changedChannelsCombined)
 	}
 
 	// Purge pending deletes
@@ -320,6 +324,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 	entryTime := time.Now()
 	docID := string(event.Key)
 	docJSON := event.Value
+	changedChannelsCombined := base.Set{}
 
 	processDocChanged := func() {
 		// ** This method does not directly access any state of c, so it doesn't lock.
@@ -334,7 +339,6 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 		// Is this an unused sequence notification?
 		if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
-			// TODO: union into changed
 			c.processUnusedSequence(docID)
 			return
 		}
@@ -393,9 +397,10 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 				Sequence:     seq,
 				TimeReceived: time.Now(),
 			}
-			// TODO: union into ChangedChannels
-			channels := c.processEntry(change)
+			changedChannels := c.processEntry(change)
+			changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 		}
+
 
 		// If the recent sequence history includes any sequences earlier than the current sequence, and
 		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
@@ -425,8 +430,8 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 						change.Channels = channelRemovals
 					}
 
-					// TODO: union into ChangedChannels
-					c.processEntry(change)
+					changedChannels := c.processEntry(change)
+					changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 				}
 			}
 		}
@@ -443,10 +448,12 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		}
 		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
-		// TODO: create at the top of routine, union into it everywhere else
 		changedChannels := c.processEntry(change)
-		if c.onChange != nil && len(changedChannels) > 0 {
-			c.onChange(changedChannels)
+		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+
+		// Notify change listeners for all of the changed channels
+		if c.onChange != nil && len(changedChannelsCombined) > 0 {
+			c.onChange(changedChannelsCombined)
 		}
 	}
 	// TODO: Workaround to make import of SDK inserts blocking, until DCP processing is refactored.  Avoids initial
@@ -486,12 +493,14 @@ func (c *changeCache) processUnusedSequence(docID string)  {
 		TimeReceived: time.Now(),
 	}
 	base.LogTo("Cache", "Received #%d (unused sequence)", sequence)
-	// TODO:
-	// changedChannels := c.processEntry(change)
-	//if c.onChange != nil && len(changedChannels) > 0 {
-	//	c.onChange(changedChannels)
-	//}
-	c.processEntry(change)
+
+	// Since processEntry may unblock pending sequences, if there were any changed channels we need
+	// to notify any change listeners that are working changes feeds for these channels
+	changedChannels := c.processEntry(change)
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
+	}
+
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
