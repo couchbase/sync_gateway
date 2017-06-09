@@ -735,7 +735,7 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	}
 }
 
-//////// LOG PRIORITY QUEUE
+//////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
 
 func (h LogPriorityQueue) Len() int           { return len(h) }
 func (h LogPriorityQueue) Less(i, j int) bool { return h[i].Sequence < h[j].Sequence }
