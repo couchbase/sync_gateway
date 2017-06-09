@@ -243,7 +243,13 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 			continue
 		}
 		entry.Channels = doc.Channels
-		c.processEntry(entry)
+
+		// TODO: just directly notify change listeners here
+		// (union up and do outside the loop)
+		// if c.onChange != nil && len(changedChannels) > 0 {
+		//    c.onChange(changedChannels)
+		// }
+		channels := c.processEntry(entry)
 	}
 
 	// Purge pending deletes
@@ -328,6 +334,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 		// Is this an unused sequence notification?
 		if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
+			// TODO: union into changed
 			c.processUnusedSequence(docID)
 			return
 		}
@@ -386,7 +393,8 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 				Sequence:     seq,
 				TimeReceived: time.Now(),
 			}
-			c.processEntry(change)
+			// TODO: union into ChangedChannels
+			channels := c.processEntry(change)
 		}
 
 		// If the recent sequence history includes any sequences earlier than the current sequence, and
@@ -417,6 +425,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 						change.Channels = channelRemovals
 					}
 
+					// TODO: union into ChangedChannels
 					c.processEntry(change)
 				}
 			}
@@ -434,6 +443,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		}
 		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
+		// TODO: create at the top of routine, union into it everywhere else
 		changedChannels := c.processEntry(change)
 		if c.onChange != nil && len(changedChannels) > 0 {
 			c.onChange(changedChannels)
@@ -464,7 +474,7 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
-func (c *changeCache) processUnusedSequence(docID string) {
+func (c *changeCache) processUnusedSequence(docID string)  {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
@@ -476,6 +486,11 @@ func (c *changeCache) processUnusedSequence(docID string) {
 		TimeReceived: time.Now(),
 	}
 	base.LogTo("Cache", "Received #%d (unused sequence)", sequence)
+	// TODO:
+	// changedChannels := c.processEntry(change)
+	//if c.onChange != nil && len(changedChannels) > 0 {
+	//	c.onChange(changedChannels)
+	//}
 	c.processEntry(change)
 }
 
