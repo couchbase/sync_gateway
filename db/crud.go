@@ -784,8 +784,20 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 					base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
 					unusedSequences = append(unusedSequences, docSequence)
 				}
-				if docSequence, err = db.sequences.nextSequence(); err != nil {
-					return
+
+				for {
+					if docSequence, err = db.sequences.nextSequence(); err != nil {
+						return
+					}
+
+					if docSequence > doc.Sequence {
+						break
+					} else {
+						db.sequences.releaseSequence(docSequence)
+					}
+					// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
+					//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
+
 				}
 			}
 			doc.Sequence = docSequence

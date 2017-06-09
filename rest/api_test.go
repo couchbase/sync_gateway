@@ -917,16 +917,16 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	response = rt1.sendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
-	//Sequence 3 gets used here as its using first sequence allocator
+	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
 	doc1Rev3, _ := rt1.getDatabase().GetDocSyncData("bulk1")
-	assert.Equals(t, doc1Rev3.Sequence, uint64(3))
+	assert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
 	rs := doc1Rev3.RecentSequences
 	assert.Equals(t, len(rs), 3)
 	assert.Equals(t, rs[0], uint64(1))
 	assert.Equals(t, rs[1], uint64(7))
-	assert.Equals(t, rs[2], uint64(3))
+	assert.Equals(t, rs[2], uint64(8))
 
 }
 
