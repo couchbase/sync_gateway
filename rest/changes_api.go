@@ -225,8 +225,8 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
-		base.LogTo("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, channels: %v, docIds: %v",
-			h.rq.URL, feed, options, filter, channelsArray, docIdsArray)
+
+
 		if err != nil {
 			return err
 		}
@@ -234,6 +234,15 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
+
+		to := ""
+		if h.user != nil && h.user.Name() != "" {
+			to = fmt.Sprintf("  (to %s)", h.user.Name())
+		}
+
+		base.LogTo("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
+			h.rq.URL, feed, options, filter, channelsArray, docIdsArray, to)
+
 
 	}
 
