@@ -145,9 +145,9 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
 
 	if bucket.spec.Auth != nil {
-		_, password, _ = bucket.spec.Auth.GetCredentials()
+		username, password, _ = bucket.spec.Auth.GetCredentials()
 	}
-	return bucket.spec.BucketName, password
+	return username, password
 }
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
