@@ -911,7 +911,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
-			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
+			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {
@@ -932,7 +932,8 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 			// Return the new raw document value for the bucket to store.
 			raw, err = json.Marshal(docOut)
-			base.LogTo("CRUD+", "SAVING #%d", doc.Sequence)
+			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
+
 			return raw, writeOpts, err
 		})
 	}

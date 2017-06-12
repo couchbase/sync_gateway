@@ -332,7 +332,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 	}
 
-	base.LogTo("Changes", "MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+	base.LogTo("Changes", "MultiChangesFeed(channels: %s, options: %+v) ... %s", chans, options, to)
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {

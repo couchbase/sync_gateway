@@ -159,7 +159,7 @@ func (listener *changeListener) notifyStopping() {
 func (listener *changeListener) Wait(keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	base.LogTo("Changes+", "Waiting for %q's count to pass %d",
+	base.LogTo("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		listener.bucketName, counter)
 	for {
 		curCounter := listener._currentCount(keys)

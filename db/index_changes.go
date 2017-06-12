@@ -30,7 +30,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 		userVbNo = uint16(db.Bucket.VBHash(db.user.DocID()))
 	}
-	base.LogTo("Changes+", "Vector MultiChangesFeed(%s, %+v) ... %s", chans, options, to)
+	base.LogTo("Changes+", "Vector MultiChangesFeed(channels: %s, options: %+v) ... %s", chans, options, to)
 
 	output := make(chan *ChangeEntry, 50)
 
