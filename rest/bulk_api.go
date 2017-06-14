@@ -506,9 +506,13 @@ func (h *handler) handleBulkDocs() error {
 		result = append(result, status)
 	}
 
-	if base.LogEnabled("HTTPStats") {
+	if base.LogEnabledExcludingLogStar("HTTPStats") {
 
-		bodyBytes, _ := json.Marshal(body)
+		var bodyBytes []byte
+
+		if base.LogEnabledExcludingLogStar("HTTPStats+") {
+			bodyBytes, _ = json.Marshal(body)
+		}
 
 		base.LogTo(
 			"HTTPStats",
