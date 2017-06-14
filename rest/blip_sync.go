@@ -221,7 +221,11 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 	}
 	defer close(options.Terminator)
 
-	channelSet := channels.SetOf(channels.AllChannelWildcard)
+	channelSet := bh.channels
+	if channelSet == nil {
+		channelSet = channels.SetOf(channels.AllChannelWildcard)
+	}
+
 	caughtUp := false
 	pendingChanges := make([][]interface{}, 0, bh.batchSize)
 	sendPendingChangesAt := func(minChanges int) {
