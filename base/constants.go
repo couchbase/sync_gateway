@@ -54,6 +54,13 @@ const (
 
 )
 
+
+const (
+
+	LogKeyHttpStats = "HTTPStats"
+
+)
+
 func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	switch {

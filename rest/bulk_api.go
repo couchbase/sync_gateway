@@ -393,6 +393,8 @@ func (h *handler) handleBulkGet() error {
 // HTTP handler for a POST to _bulk_docs
 func (h *handler) handleBulkDocs() error {
 
+	numErrors := 0
+
 	handleBulkDocsStartedAt := time.Now()
 	defer bulkApiBulkDocsRollingMean.AddSince(handleBulkDocsStartedAt)
 
@@ -464,6 +466,7 @@ func (h *handler) handleBulkDocs() error {
 			status["id"] = docid
 		}
 		if err != nil {
+			numErrors += 1
 			code, msg := base.ErrorAsHTTPStatus(err)
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
@@ -490,6 +493,7 @@ func (h *handler) handleBulkDocs() error {
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {
+			numErrors += 1
 			code, msg := base.ErrorAsHTTPStatus(err)
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
@@ -501,6 +505,15 @@ func (h *handler) handleBulkDocs() error {
 		}
 		result = append(result, status)
 	}
+
+	base.LogTo(
+		base.LogKeyHttpStats,
+		"Endpoint: [%s] NumDocsTotal: [%d] NumBytesTotal: [%d] NumErrors: [%d]",
+		"_bulk_docs",
+		len(result),
+		0,
+		numErrors,
+	)
 
 	h.writeJSONStatus(http.StatusCreated, result)
 	return nil
