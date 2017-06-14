@@ -506,14 +506,20 @@ func (h *handler) handleBulkDocs() error {
 		result = append(result, status)
 	}
 
-	base.LogTo(
-		base.LogKeyHttpStats,
-		"Endpoint: [%s] NumDocsTotal: [%d] NumBytesTotal: [%d] NumErrors: [%d]",
-		"_bulk_docs",
-		len(result),
-		0,
-		numErrors,
-	)
+	if base.LogEnabled("HTTPStats") {
+
+		bodyBytes, _ := json.Marshal(body)
+
+		base.LogTo(
+			"HTTPStats",
+			"Endpoint: [%s] NumDocsTotal: [%d] NumBytesTotal: [%d] NumErrors: [%d]",
+			"_bulk_docs",
+			len(result),
+			len(bodyBytes),
+			numErrors,
+		)
+
+	}
 
 	h.writeJSONStatus(http.StatusCreated, result)
 	return nil
