@@ -282,6 +282,21 @@ func (h *handler) handlePutDoc() error {
 		newRev = body["_rev"].(string)
 	}
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
+
+
+	if base.LogEnabledExcludingLogStar("HTTPStats") {
+		var bodyBytes []byte
+		if base.LogEnabledExcludingLogStar("HTTPStats+") {
+			bodyBytes, _ = json.Marshal(body)
+		}
+		base.LogTo(
+			"HTTPStats",
+			"Endpoint: [%s] NumBytesTotal: [%d]",
+			"PUT doc",
+			len(bodyBytes),
+		)
+	}
+
 	return nil
 }
 

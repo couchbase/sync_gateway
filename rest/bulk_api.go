@@ -226,6 +226,16 @@ func (h *handler) handleAllDocs() error {
 
 	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
 		totalRows, lastSeq)))
+
+	if base.LogEnabledExcludingLogStar("HTTPStats") {
+		base.LogTo(
+			"HTTPStats",
+			"Endpoint: [%s] NumDocsTotal: [%d]",
+			"_all_docs",
+			totalRows,
+		)
+	}
+
 	return nil
 }
 
@@ -337,7 +347,6 @@ func (h *handler) handleBulkGet() error {
 
 	defer bulkApiBulkGetPerDocRollingMean.AddSincePerItem(handleBulkGetStartedAt, len(docs))
 
-
 	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range docs {
 			var body db.Body
@@ -386,6 +395,15 @@ func (h *handler) handleBulkGet() error {
 		}
 		return nil
 	})
+
+	if base.LogEnabledExcludingLogStar("HTTPStats") {
+		base.LogTo(
+			"HTTPStats",
+			"Endpoint: [%s] NumDocsTotal: [%d]",
+			"_bulk_get",
+			len(docs),
+		)
+	}
 
 	return err
 }

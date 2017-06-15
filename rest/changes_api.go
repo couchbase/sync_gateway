@@ -63,6 +63,16 @@ func (h *handler) handleRevsDiff() error {
 		}
 	}
 	h.response.Write([]byte("}"))
+
+	if base.LogEnabledExcludingLogStar("HTTPStats") {
+		base.LogTo(
+			"HTTPStats",
+			"Endpoint: [%s] NumDocsTotal: [%d]",
+			"_revs_diff",
+			len(input),
+		)
+	}
+
 	return nil
 }
 
