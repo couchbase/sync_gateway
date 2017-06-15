@@ -692,13 +692,38 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
 
-	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
+	designDocMap[DesignDocSyncGatewayPrincipals] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
-			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:          sgbucket.ViewDef{Map: access_map},
-			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
+			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayChannels] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			ViewChannels: sgbucket.ViewDef{Map: channels_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayAccess] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			ViewAccess: sgbucket.ViewDef{Map: access_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayAccessVbSeq] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			ViewAccessVbSeq: sgbucket.ViewDef{Map: access_vbSeq_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayRoleAccess] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
+		},
+	}
+
+	designDocMap[DesignDocSyncGatewayRoleAccessVbSeq] = sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
 			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
 		},
 	}
@@ -718,6 +743,9 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 		11, //MaxNumRetries approx 10 seconds total retry duration
 		5,  //InitialRetrySleepTimeMS
 	)
+
+	// Remove legacy sync gateway design doc, if present
+	bucket.DeleteDDoc(DesignDocSyncGateway)
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
@@ -803,7 +831,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncGatewayPrincipals, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}

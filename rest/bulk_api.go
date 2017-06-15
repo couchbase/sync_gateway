@@ -36,7 +36,6 @@ func init() {
 	base.StatsExpvars.Set("bulkApi.BulkDocsPerDocRollingMean", &bulkApiBulkDocsPerDocRollingMean)
 }
 
-
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
@@ -234,7 +233,11 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.LogTo("HTTP", "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
-	result, err := h.db.Bucket.View(db.DesignDocSyncGateway, viewName, opts)
+	designDocName := db.GetDesignDocForView(viewName)
+	if designDocName == "" {
+		return fmt.Errorf("Unknown view name: %s", viewName)
+	}
+	result, err := h.db.Bucket.View(designDocName, viewName, opts)
 	if err != nil {
 		return err
 	}
@@ -336,7 +339,6 @@ func (h *handler) handleBulkGet() error {
 	}
 
 	defer bulkApiBulkGetPerDocRollingMean.AddSincePerItem(handleBulkGetStartedAt, len(docs))
-
 
 	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range docs {
