@@ -16,9 +16,8 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
-
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1045,7 +1044,6 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// SubDocBadMulti means there's no xattr.  Since there's also no doc, return KeyNotFound
 			// TODO: Workaround until gocbcore adds gocbcore.ErrSubDocBadMultiDeleted (https://issues.couchbase.com/browse/GOCBC-199)
 			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti || strings.Contains(xattrOnlyErr.Error(), "211") {
-				LogTo("CRUD+", "SubDocBadMulti when trying to retrieve xattr only - returning KeyNotFound for key %s.", k)
 				return false, gocb.ErrKeyNotFound, uint64(0)
 			}
 
@@ -1299,7 +1297,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				return casOut, nil
 			}
 		} else {
-
 			// Not a delete - update the body and xattr
 			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
 

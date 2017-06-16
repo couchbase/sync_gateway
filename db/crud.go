@@ -614,6 +614,13 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 	var newRev string
 	var alreadyImportedDoc *document
 	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+
+		// Check if the doc has been deleted
+		if doc.Cas == 0 {
+			base.LogTo("Import+", "Document has been removed from the bucket before it could be imported - cancelling import.")
+			return nil, nil, base.ErrImportCancelled
+		}
+
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
@@ -927,7 +934,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {
-			base.LogTo("CRUD+", "Failed to update document %q w/ xattr: %v", key, err)
+			base.LogTo("CRUD+", "Did not update document %q w/ xattr: %v", key, err)
 		} else if docOut != nil {
 			docOut.Cas = casOut
 		}

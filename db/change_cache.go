@@ -253,7 +253,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	if c.onChange != nil && len(changedChannelsCombined) > 0 {
-	    c.onChange(changedChannelsCombined)
+		c.onChange(changedChannelsCombined)
 	}
 
 	// Purge pending deletes
@@ -345,6 +345,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 		// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 		if event.Opcode == sgbucket.TapDeletion && len(docJSON) == 0 {
+			base.LogTo("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
 			return
 		}
 
@@ -400,7 +401,6 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 			changedChannels := c.processEntry(change)
 			changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 		}
-
 
 		// If the recent sequence history includes any sequences earlier than the current sequence, and
 		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
@@ -481,7 +481,7 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
-func (c *changeCache) processUnusedSequence(docID string)  {
+func (c *changeCache) processUnusedSequence(docID string) {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
