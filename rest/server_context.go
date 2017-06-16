@@ -925,7 +925,6 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 	}
 
 	numUsersInDb := 0
-
 	// If no users defined in config, and no users were returned from the view, add warning.
 	// NOTE: currently ignoring the fact that the config could contain only disabled=true users.
 	if len(config.Users) == 0 {

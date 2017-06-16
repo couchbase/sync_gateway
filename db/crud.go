@@ -11,6 +11,7 @@ package db
 
 import (
 	"encoding/json"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -616,6 +617,7 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
+		log.Printf("Delete check: %v, %q", isDelete, doc.CurrentRev)
 		if isDelete && doc.CurrentRev == "" {
 			base.LogTo("Import+", "Import not required for delete mutation with no existing SG xattr (SG purge): %s", docid)
 			return nil, nil, base.ErrImportCancelled

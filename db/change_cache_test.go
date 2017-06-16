@@ -473,7 +473,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	assertTrue(t, authenticator != nil, "db.Authenticator() returned nil")
-	user, err:= authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
 	assertNoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	authenticator.Save(user)
 
@@ -604,10 +604,9 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation. " +
-		"Fails with logs: https://gist.github.com/tleyden/98f0415a454256d86b87d6477c1aa5fa" )
+			"Fails with logs: https://gist.github.com/tleyden/98f0415a454256d86b87d6477c1aa5fa")
 	}
 
 	var logKeys = map[string]bool{
@@ -915,9 +914,6 @@ func TestChannelCacheSize(t *testing.T) {
 	assertTrue(t, ok, "Testing skipped sequences without a change cache")
 	abcCache := changeCache.channelCaches["ABC"]
 	assert.Equals(t, len(abcCache.logs), 600)
-
-
-
 }
 
 func shortWaitCache() CacheOptions {

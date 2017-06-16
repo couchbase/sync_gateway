@@ -5,6 +5,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -253,7 +254,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	if c.onChange != nil && len(changedChannelsCombined) > 0 {
-	    c.onChange(changedChannelsCombined)
+		c.onChange(changedChannelsCombined)
 	}
 
 	// Purge pending deletes
@@ -359,6 +360,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		// Import handling.
 		if c.context.UseXattrs() {
 			// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
+			log.Printf("Checking for import handling for server mutation.  Op:%v Key:%s Value:%s", event.Opcode, event.Key, event.Value)
 			if syncData == nil || !syncData.IsSGWrite(event.Cas) {
 				if c.context.autoImport {
 					// If syncData is nil, or if this was not an SG write, attempt to import
@@ -400,7 +402,6 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 			changedChannels := c.processEntry(change)
 			changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 		}
-
 
 		// If the recent sequence history includes any sequences earlier than the current sequence, and
 		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
@@ -481,7 +482,7 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
-func (c *changeCache) processUnusedSequence(docID string)  {
+func (c *changeCache) processUnusedSequence(docID string) {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
