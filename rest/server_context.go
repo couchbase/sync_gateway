@@ -935,7 +935,6 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 		// find out if there is at least one user (or role) defined, so set stale=ok and limit == 1 to minimize
 		// performance hit of query.
 		viewOptions := db.Body{
-			"stale": "ok",
 			"limit": 1,
 		}
 		vres, err := currentDb.Bucket.View(db.DesignDocSyncGatewayPrincipals, db.ViewPrincipals, viewOptions)
