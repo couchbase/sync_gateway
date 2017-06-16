@@ -5,7 +5,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -346,6 +345,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 		// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 		if event.Opcode == sgbucket.TapDeletion && len(docJSON) == 0 {
+			base.LogTo("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
 			return
 		}
 
@@ -360,7 +360,6 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		// Import handling.
 		if c.context.UseXattrs() {
 			// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
-			log.Printf("Checking for import handling for server mutation.  Op:%v Key:%s Value:%s", event.Opcode, event.Key, event.Value)
 			if syncData == nil || !syncData.IsSGWrite(event.Cas) {
 				if c.context.autoImport {
 					// If syncData is nil, or if this was not an SG write, attempt to import

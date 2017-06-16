@@ -16,9 +16,8 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
-
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1298,7 +1297,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				return casOut, nil
 			}
 		} else {
-
 			// Not a delete - update the body and xattr
 			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
 

@@ -226,13 +226,13 @@ func TestCollectAccessWarningsUsersInDb(t *testing.T) {
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
 		BucketConfig: BucketConfig{Server: &dbServer},
-		Name:         "db2",
+		Name:         "db",
 	}
 	_, err := sc.AddDatabaseFromConfig(dbConfig)
 	if err != nil {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
-	dbContext := sc.Database("db2")
+	dbContext := sc.Database("db")
 
 	// create user
 	spec := map[string]*db.PrincipalConfig{
