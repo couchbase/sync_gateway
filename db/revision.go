@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"strings"
 )
 
 // The body of a CouchDB document/revision as decoded from JSON.
@@ -191,14 +192,31 @@ func ParseRevID(revid string) (int, string) {
 	if revid == "" {
 		return 0, ""
 	}
-	var generation int
-	var id string
-	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
-	if n < 1 || generation < 1 {
+
+	//var generation int
+	//var id string
+	//n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
+	//if n < 1 || generation < 1 {
+	//	base.Warn("parseRevID failed on %q", revid)
+	//	return -1, ""
+	//}
+	//return generation, id
+
+	components := strings.Split(revid, "-")
+	generationStr := components[0]
+	digestStr := components[1]
+	generation, err := strconv.ParseInt(generationStr, 16, 64)
+	if err != nil {
 		base.Warn("parseRevID failed on %q", revid)
 		return -1, ""
 	}
-	return generation, id
+	if generation < 1 {
+		base.Warn("parseRevID failed on %q", revid)
+		return -1, ""
+	}
+
+	return int(generation), digestStr
+
 }
 
 func compareRevIDs(id1, id2 string) int {
