@@ -47,7 +47,11 @@ import password_remover
 # - Startup and running SG config
 #
 # See https://github.com/couchbase/sync_gateway/issues/1640
-
+#
+# Python version compatibility:
+# 
+# Until the libc / centos6 issues are resolved, this should remain python 2.6 compatible.  
+# One common incompatibility is the formatting syntax, as discussed here: http://bit.ly/2rIH8wg
 USAGE = """usage: %prog [options] output_file.zip
 
 - Linux/Windows/OSX:
