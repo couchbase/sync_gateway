@@ -84,6 +84,12 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	} else if create {
 		value = &revCacheValue{key: key}
 		rc.cache[key] = rc.lruList.PushFront(value)
+		if len(rc.cache) > rc.capacity {
+			base.LogTo("CACHE+", "Going to purge oldest revcache value")
+
+		} else  {
+			base.LogTo("CACHE+", "Not purging oldest revcache value.  Cache size %d.  Capacity: %d", len(rc.cache), rc.capacity)
+		}
 		for len(rc.cache) > rc.capacity {
 			rc.purgeOldest_()
 		}
@@ -102,7 +108,9 @@ func (rc *RevisionCache) removeValue(value *revCacheValue) {
 
 func (rc *RevisionCache) purgeOldest_() {
 	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
+	oldSize := len(rc.cache)
 	delete(rc.cache, value.key)
+	base.LogTo("CACHE+", "Purging oldest revcache value.  Cache size %d -> %d.  Capacity: %d", oldSize, len(rc.cache), rc.capacity)
 }
 
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
