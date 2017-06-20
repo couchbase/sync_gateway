@@ -202,7 +202,7 @@ func ParseRevID(revid string) (int, string) {
 	//}
 	//return generation, id
 
-	components := strings.Split(revid, "-")
+	components := strings.SplitN(revid, "-", 1)
 	generationStr := components[0]
 	digestStr := components[1]
 	generation, err := strconv.ParseInt(generationStr, 16, 64)
