@@ -208,8 +208,8 @@ func ParseRevID(revid string) (int, string) {
 
 	startDigestIndex := separatorIndex + 1
 	if len(revid) <= startDigestIndex {
-		base.Warn("parseRevID failed on %q", revid)
-		return -1, ""
+		// There's no digest, so return empty string for digest
+		return int(generation), ""
 	}
 
 	digestStr := revid[startDigestIndex:]
