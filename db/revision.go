@@ -193,31 +193,26 @@ func ParseRevID(revid string) (int, string) {
 		return 0, ""
 	}
 
-	//var generation int
-	//var id string
-	//n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
-	//if n < 1 || generation < 1 {
-	//	base.Warn("parseRevID failed on %q", revid)
-	//	return -1, ""
-	//}
-	//return generation, id
-
-	components := strings.SplitN(revid, "-", 1)
-	if len(components) < 2 {
+	separatorIndex := strings.Index(revid, "-")
+	if separatorIndex == -1 {
 		base.Warn("parseRevID failed on %q", revid)
 		return -1, ""
 	}
-	generationStr := components[0]
-	digestStr := components[1]
-	generation, err := strconv.ParseInt(generationStr, 16, 64)
+
+	generationStr := revid[:separatorIndex]
+	generation, err := strconv.ParseInt(generationStr, 10, 64)
 	if err != nil {
 		base.Warn("parseRevID failed on %q", revid)
 		return -1, ""
 	}
-	if generation < 1 {
+
+	startDigestIndex := separatorIndex + 1
+	if len(revid) <= startDigestIndex {
 		base.Warn("parseRevID failed on %q", revid)
 		return -1, ""
 	}
+
+	digestStr := revid[startDigestIndex:]
 
 	return int(generation), digestStr
 
