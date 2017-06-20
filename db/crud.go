@@ -993,10 +993,9 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 		revChannels := doc.History[newRevID].Channels
 
-		revisionList := encodeRevisions(history)
-		base.LogTo("Cache", "Adding doc to revision cache with %d revisions", len(revisionList))
+		base.LogTo("Cache", "Adding doc to revision cache with %d revisions", len(history))
 
-		db.revisionCache.Put(body, revisionList, revChannels)
+		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
 		// Raise event if this is not an echo from a shadow bucket
 		if !shadowerEcho {
