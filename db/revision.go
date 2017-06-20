@@ -203,6 +203,10 @@ func ParseRevID(revid string) (int, string) {
 	//return generation, id
 
 	components := strings.SplitN(revid, "-", 1)
+	if len(components) < 2 {
+		base.Warn("parseRevID failed on %q", revid)
+		return -1, ""
+	}
 	generationStr := components[0]
 	digestStr := components[1]
 	generation, err := strconv.ParseInt(generationStr, 16, 64)
