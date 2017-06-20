@@ -62,7 +62,7 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 			isDelete := rawDoc == nil
 			db := Database{DatabaseContext: db, user: nil}
 			var importErr error
-			doc, importErr = db.ImportRawDoc(docid, rawDoc, isDelete)
+			doc, importErr = db.ImportDocRaw(docid, rawDoc, isDelete)
 			if importErr != nil {
 				return nil, importErr
 			}
@@ -83,7 +83,6 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 }
 
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons
-// TODO: we'll need to include some 'if db.UseXattrs' handling, similar to what we're doing in GetDoc
 func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
 	key := realDocID(docid)
@@ -592,7 +591,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 }
 
 // Imports a document that was written by someone other than sync gateway.
-func (db *Database) ImportRawDoc(docid string, value []byte, isDelete bool) (docOut *document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool) (docOut *document, err error) {
 
 	var body Body
 	if isDelete {
@@ -645,7 +644,11 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 		body["_rev"] = newRev
 		doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 
+		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
+		doc.body = nil
+
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
+
 		return body, nil, nil
 	})
 
