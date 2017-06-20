@@ -159,6 +159,9 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
 		body, revisions, inChannels, err = db.revisionCache.Get(docid, revid)
+
+		// TODO2: notify this code that it's not full history
+
 		if body == nil {
 			if err == nil {
 				err = base.HTTPErrorf(404, "missing")
@@ -187,6 +190,8 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 	}
 
 	if revisions != nil {
+		// TODO2: maybe need to get the full history
+
 		_, revisions = trimEncodedRevisionsToAncestor(revisions, historyFrom, maxHistory)
 	}
 
@@ -699,6 +704,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
+		// TODO: (possible) in callback, return the byte count
 		body, newAttachments, err = callback(doc)
 		if err != nil {
 			return
@@ -995,6 +1001,9 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 		base.LogTo("Cache", "Adding doc to revision cache with %d revisions", len(history))
 
+		// TODO: send byte count
+		// TODO: store byte count with each entry so when we throw things away we know how much to throw away
+		// TODO2: encodePrunedRevisions() -- rev cache has abbreviated history
 		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
 
 		// Raise event if this is not an echo from a shadow bucket

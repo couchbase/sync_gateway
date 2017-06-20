@@ -391,6 +391,7 @@ func splitRevisionList(revisions Body) (int, []string) {
 
 // Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
 // the "ids" property, and the first (largest) generation number in the "start" property.
+// TODO: possibly (return byte count, approximating on string length)
 func encodeRevisions(revs []string) Body {
 	ids := make([]string, len(revs))
 	var start int
