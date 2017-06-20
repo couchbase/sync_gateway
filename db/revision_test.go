@@ -27,7 +27,8 @@ func TestParseRevID(t *testing.T) {
 
 	generation, digest = ParseRevID("2222-")
 	log.Printf("generation: %v, digest: %v", generation, digest)
-	assertTrue(t, generation == -1, "Expected invalid generation")
+	assertTrue(t, generation == 2222, "Expected invalid generation")
+	assertTrue(t, digest == "", "Unexpected digest")
 
 	generation, digest = ParseRevID("333-a")
 	log.Printf("generation: %v, digest: %v", generation, digest)
