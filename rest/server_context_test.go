@@ -13,8 +13,10 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -151,6 +153,7 @@ func (client *MockClient) RespondToGET(url string, response *http.Response) {
 func TestCollectAccessWarningsNoUsers(t *testing.T) {
 
 	sc := NewServerContext(&ServerConfig{})
+	defer sc.Close()
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
@@ -171,6 +174,7 @@ func TestCollectAccessWarningsNoUsers(t *testing.T) {
 func TestCollectAccessWarningsGuestNoChans(t *testing.T) {
 
 	sc := NewServerContext(&ServerConfig{})
+	defer sc.Close()
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
@@ -196,6 +200,7 @@ func TestCollectAccessWarningsGuestNoChans(t *testing.T) {
 func TestCollectAccessWarningsGuestWithChans(t *testing.T) {
 
 	sc := NewServerContext(&ServerConfig{})
+	defer sc.Close()
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
@@ -222,6 +227,7 @@ func TestCollectAccessWarningsGuestWithChans(t *testing.T) {
 func TestCollectAccessWarningsUsersInDb(t *testing.T) {
 
 	sc := NewServerContext(&ServerConfig{})
+	defer sc.Close()
 
 	dbServer := "walrus:"
 	dbConfig := &DbConfig{
@@ -234,18 +240,29 @@ func TestCollectAccessWarningsUsersInDb(t *testing.T) {
 	}
 	dbContext := sc.Database("db")
 
+	password := "bar"
 	// create user
 	spec := map[string]*db.PrincipalConfig{
 		"foo": {
+			Password:         &password,
 			Disabled:         false,
 			ExplicitChannels: base.SetFromArray([]string{"*"}),
 		},
 	}
 
 	// add a user to the db
-	sc.installPrincipals(dbContext, spec, "user")
+	err = sc.installPrincipals(dbContext, spec, "user")
+	assertNoError(t, err, "Error installing principal")
 
-	warnings := collectAccessRelatedWarnings(dbConfig, dbContext)
+	var warnings []string
+	for i := 1; i <= 10; i++ {
+		log.Printf("View attempt %d/10", i)
+		warnings = collectAccessRelatedWarnings(dbConfig, dbContext)
+		if len(warnings) == 0 {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	assert.Equals(t, len(warnings), 0)
 
 }
