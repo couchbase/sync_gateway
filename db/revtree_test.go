@@ -345,8 +345,57 @@ func TestPruneRevisions(t *testing.T) {
 
 }
 
+
+func TestPruneRevisionsPostIssue2651SingleBranch(t *testing.T) {
+
+	numRevs := 100
+
+	revTree := getMultiBranchTestRevtree1(numRevs, 0, []BranchSpec{})
+	// dot := revTree.RenderGraphvizDot()
+	// fmt.Printf("dot: %v", dot)
+
+	maxDepth := uint32(20)
+	expectedNumPruned := numRevs - int(maxDepth)
+
+	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	assert.Equals(t, numPruned, expectedNumPruned)
+
+}
+
+func TestMinGenerationNonDeletedLeaf(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 4,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 2,
+			Digest:                  "non-winning tombstoned",
+			LastRevisionIsTombstone: true,
+		},
+	}
+
+	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
+
+	minGenerationNonDeletedLeaf := revTree.MinGenerationNonDeletedLeaf()
+
+	// The "non-winning unresolved" branch has 7 revisions due to:
+	// 3 unconflictedBranchNumRevs
+	// +
+	// 4 from it's BranchSpec
+	// Since the "non-winning tombstoned" is a deleted branch, it will be ignored by MinGenerationNonDeletedLeaf()
+	// Also, the winning branch has more revisions (10 total), and so will be ignored too
+	expectedMinGenerationNonDeletedLeaf := 7
+
+	assert.Equals(t, minGenerationNonDeletedLeaf, expectedMinGenerationNonDeletedLeaf)
+
+}
+
+
 // Tests for updated pruning algorithm, post https://github.com/couchbase/sync_gateway/issues/2651
-func TestPruneRevisionsPostIssue2651(t *testing.T) {
+func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 
 	// Try large rev tree with multiple branches
 	branchSpecs := []BranchSpec{
@@ -364,7 +413,7 @@ func TestPruneRevisionsPostIssue2651(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 
 	maxDepth := uint32(50)
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
 	fmt.Printf("numPruned: %v", numPruned)
 	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 

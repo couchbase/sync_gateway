@@ -443,6 +443,37 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	return
 }
 
+//
+func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string) (pruned int) {
+
+	if len(tree) <= int(maxDepth) {
+		return 0
+	}
+
+	minLeafGen := tree.MinGenerationNonDeletedLeaf()
+	fmt.Printf("minLeafGen: %v", minLeafGen)
+
+	return 0
+}
+
+// Find the minimum generation that has a non-deleted leaf:
+func (tree RevTree) MinGenerationNonDeletedLeaf() int {
+
+	minLeafGen := math.MaxInt32
+	maxDeletedLeafGen := 0
+	for _, revid := range tree.GetLeaves() {
+		gen := genOfRevID(revid)
+		if tree[revid].Deleted {
+			if gen > maxDeletedLeafGen {
+				maxDeletedLeafGen = gen
+			}
+		} else if gen > 0 && gen < minLeafGen {
+			minLeafGen = gen
+		}
+	}
+	return minLeafGen
+}
+
 
 // Find the length of the longest branch
 func (tree RevTree) LongestBranch() int {
