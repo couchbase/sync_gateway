@@ -35,33 +35,56 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"1-one":  {ID: "1-one"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
-
 //            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
 // 1-a -- 2-a
 //            \ 3-b -- 4-b ... etc (losing branch)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
-func getLargeTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
+func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 losingBranchNumRevs,
+			Digest:                  "b",
+			LastRevisionIsTombstone: tombstoneLosingBranch,
+		},
+	}
+
+	return getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+
+}
+
+type BranchSpec struct {
+	NumRevs                 int
+	LastRevisionIsTombstone bool
+	Digest                  string
+}
+
+//            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
+// 1-a -- 2-a
+//            \ 3-b -- 4-b ... etc (losing branch #1)
+//            \ 3-c -- 4-c ... etc (losing branch #2)
+//
+// NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
+func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
 
 	if unconflictedBranchNumRevs < 1 {
 		panic(fmt.Sprintf("Must have at least 1 unconflictedBranchNumRevs"))
 	}
 
 	winningBranchDigest := "a"
-	losingBranchDigest := "b"
-
 
 	const testJSON = `{
-   "revs":[
-      "1-a"
-   ],
-   "parents":[
-      -1
-   ],
-   "channels":[
-      null
-   ]
-}`
+		   "revs":[
+			  "1-a"
+		   ],
+		   "parents":[
+			  -1
+		   ],
+		   "channels":[
+			  null
+		   ]
+		}`
 
 	revTree := RevTree{}
 	if err := json.Unmarshal([]byte(testJSON), &revTree); err != nil {
@@ -73,7 +96,7 @@ func getLargeTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losin
 		addRevs(
 			revTree,
 			"1-a",
-			unconflictedBranchNumRevs - 1,
+			unconflictedBranchNumRevs-1,
 			winningBranchDigest,
 		)
 	}
@@ -82,7 +105,6 @@ func getLargeTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losin
 
 		// Figure out which generation the conflicting branches will start at
 		generation := unconflictedBranchNumRevs
-
 
 		// Figure out the starting revision id on winning and losing branches
 		winningBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)
@@ -95,45 +117,44 @@ func getLargeTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losin
 			winningBranchDigest,
 		)
 
-
 	}
 
-	if losingBranchNumRevs > 0 {
+	for _, losingBranchSpec := range losingBranches {
 
-		// Figure out which generation the conflicting branches will start at
-		generation := unconflictedBranchNumRevs
+		if losingBranchSpec.NumRevs > 0 {
 
-		losingBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)  // Start on last revision of the non-conflicting branch
+			// Figure out which generation the conflicting branches will start at
+			generation := unconflictedBranchNumRevs
 
-		// Add revs to losing branch
-		addRevs(
-			revTree,
-			losingBranchStartRev,
-			losingBranchNumRevs,  // Subtract 1 since we already added initial
-			losingBranchDigest,
-		)
+			losingBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest) // Start on last revision of the non-conflicting branch
 
-		generation += losingBranchNumRevs
+			// Add revs to losing branch
+			addRevs(
+				revTree,
+				losingBranchStartRev,
+				losingBranchSpec.NumRevs, // Subtract 1 since we already added initial
+				losingBranchSpec.Digest,
+			)
 
-		if tombstoneLosingBranch {
+			generation += losingBranchSpec.NumRevs
 
-			newRevId := fmt.Sprintf("%v-%v", generation+1, losingBranchDigest)
-			parentRevId := fmt.Sprintf("%v-%v", generation, losingBranchDigest)
+			if losingBranchSpec.LastRevisionIsTombstone {
 
-			revInfo := RevInfo{
-				ID:       newRevId,
-				Parent:   parentRevId,
-				Deleted:  true,
+				newRevId := fmt.Sprintf("%v-%v", generation+1, losingBranchSpec.Digest)
+				parentRevId := fmt.Sprintf("%v-%v", generation, losingBranchSpec.Digest)
+
+				revInfo := RevInfo{
+					ID:      newRevId,
+					Parent:  parentRevId,
+					Deleted: true,
+				}
+				revTree.addRevision(revInfo)
+
 			}
-			revTree.addRevision(revInfo)
 
 		}
 
 	}
-
-
-
-
 
 	return revTree
 
@@ -147,7 +168,7 @@ func testUnmarshal(t *testing.T, jsonString string) RevTree {
 }
 
 func TestRevTreeMarshal2(t *testing.T) {
-	bytes, _ := json.Marshal(getLargeTestRevtree1(3, 3, 2, true))
+	bytes, _ := json.Marshal(getTwoBranchTestRevtree1(3, 3, 2, true))
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 }
 
@@ -369,7 +390,7 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
 func BenchmarkRevTreePruning(b *testing.B) {
 
-	revTree := getLargeTestRevtree1(3, 100, 90, true)
+	revTree := getTwoBranchTestRevtree1(3, 100, 90, true)
 	maxDepth := uint32(20)
 	keepRev := ""
 
