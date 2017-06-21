@@ -239,6 +239,29 @@ func TestRevTreeMarshal4(t *testing.T) {
 
 }
 
+func TestRevTreeMarshal5(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 4,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 2,
+			Digest:                  "non-winning tombstoned",
+			LastRevisionIsTombstone: true,
+		},
+
+	}
+
+	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
+
+	dotFile := revTree.RenderGraphvizDot()
+	fmt.Printf("dotFile: %v\n", dotFile)
+
+}
+
 
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`

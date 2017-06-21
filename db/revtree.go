@@ -192,11 +192,33 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 	// Helper func to get the graphviz dot representation of a node
 	dotRepresentation := func(node *RevInfo) string {
-		return fmt.Sprintf(
-			"%s -> %s; ",
-			surroundWithDoubleQuotes(node.Parent),
-			surroundWithDoubleQuotes(node.ID),
-		)
+		switch node.Deleted {
+		case false:
+			return fmt.Sprintf(
+				"%s -> %s; ",
+				surroundWithDoubleQuotes(node.Parent),
+				surroundWithDoubleQuotes(node.ID),
+			)
+		default:
+			multilineResult := bytes.Buffer{}
+			multilineResult.WriteString(
+				fmt.Sprintf(
+					`%s [fontcolor=red];`,
+					surroundWithDoubleQuotes(node.ID),
+				),
+			)
+			multilineResult.WriteString(
+				fmt.Sprintf(
+					`%s -> %s [label="Tombstone", fontcolor=red];`,
+					surroundWithDoubleQuotes(node.Parent),
+					surroundWithDoubleQuotes(node.ID),
+				),
+			)
+
+			return multilineResult.String()
+		}
+
+
 	}
 
 	// Helper func to append node to result: parent -> child;
@@ -206,9 +228,6 @@ func (tree RevTree) RenderGraphvizDot() string {
 		if dupes.Contains(nodeAsDotText) {
 			return
 		} else {
-			//newSetToAdd := base.Set{}
-			//newSetToAdd[nodeAsDotText] = struct{}{}
-			//dupes = dupes.Union(newSetToAdd)
 			dupes[nodeAsDotText] = struct{}{}
 		}
 		resultBuffer.WriteString(nodeAsDotText)
