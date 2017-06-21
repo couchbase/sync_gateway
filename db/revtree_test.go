@@ -74,11 +74,11 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 		panic(fmt.Sprintf("Must have at least 1 unconflictedBranchNumRevs"))
 	}
 
-	winningBranchDigest := "a"
+	winningBranchDigest := "winning"
 
 	const testJSON = `{
 		   "revs":[
-			  "1-a"
+			  "1-winning"
 		   ],
 		   "parents":[
 			  -1
@@ -97,7 +97,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 		// Add revs to unconflicted branch
 		addRevs(
 			revTree,
-			"1-a",
+			"1-winning",
 			unconflictedBranchNumRevs-1,
 			winningBranchDigest,
 		)
@@ -204,12 +204,12 @@ func TestRevTreeMarshal3(t *testing.T) {
 	branchSpecs := []BranchSpec{
 		{
 			NumRevs:                 60,
-			Digest:                  "left",
+			Digest:                  "non-winning unresolved",
 			LastRevisionIsTombstone: false,
 		},
 		{
 			NumRevs:                 25,
-			Digest:                  "right",
+			Digest:                  "non-winning tombstoned",
 			LastRevisionIsTombstone: true,
 		},
 
