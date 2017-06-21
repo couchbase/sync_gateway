@@ -17,9 +17,9 @@ import (
 
 	"errors"
 
-	"github.com/couchbase/sync_gateway/base"
-	"log"
 	"bytes"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 type RevKey string
@@ -183,26 +183,48 @@ func (tree RevTree) GetLeaves() []string {
 
 func (tree RevTree) RenderGraphvizDot() string {
 
+	resultBuffer := bytes.Buffer{}
+
+	// Helper func to surround graph node w/ double quotes
 	surroundWithDoubleQuotes := func(orig string) string {
 		return fmt.Sprintf(`"%s"`, orig)
 	}
 
-	resultBuffer := bytes.Buffer{}
+	// Helper func to get the graphviz dot representation of a node
+	dotRepresentation := func(node *RevInfo) string {
+		return fmt.Sprintf(
+			"%s -> %s; ",
+			surroundWithDoubleQuotes(node.Parent),
+			surroundWithDoubleQuotes(node.ID),
+		)
+	}
+
+	// Helper func to append node to result: parent -> child;
+	dupes := base.Set{}
+	appendNodeToResult := func(node *RevInfo) {
+		nodeAsDotText := dotRepresentation(node)
+		if dupes.Contains(nodeAsDotText) {
+			return
+		} else {
+			//newSetToAdd := base.Set{}
+			//newSetToAdd[nodeAsDotText] = struct{}{}
+			//dupes = dupes.Union(newSetToAdd)
+			dupes[nodeAsDotText] = struct{}{}
+		}
+		resultBuffer.WriteString(nodeAsDotText)
+	}
+
+	// Start graphviz dot file
 	resultBuffer.WriteString("digraph graphname{")
 
+	// This function will be called back for every leaf node in tree
 	leafProcessor := func(leaf *RevInfo) {
 
-		log.Printf("leaf id: %v parent: %v", leaf.ID, leaf.Parent)
-		resultBuffer.WriteString(
-			fmt.Sprintf(
-				"%s -> %s; ",
-				surroundWithDoubleQuotes(leaf.Parent),
-				surroundWithDoubleQuotes(leaf.ID),
-			),
-		)
+		// Append the leaf to the output
+		appendNodeToResult(leaf)
 
+		// Walk up the tree until we find a root, and append each node
 		node := leaf
-
 		for {
 			// Reached a root, we're done
 			if node.IsRoot() {
@@ -210,20 +232,14 @@ func (tree RevTree) RenderGraphvizDot() string {
 			}
 
 			node = tree[node.Parent]
-			resultBuffer.WriteString(
-				fmt.Sprintf(
-					"%s -> %s; ",
-					surroundWithDoubleQuotes(node.Parent),
-					surroundWithDoubleQuotes(node.ID),
-				),
-			)
-
-
+			appendNodeToResult(node)
 		}
-
 	}
+
+	// Iterate over leaves
 	tree.forEachLeaf(leafProcessor)
 
+	// Finish graphviz dot file
 	resultBuffer.WriteString("}")
 
 	return resultBuffer.String()
@@ -492,4 +508,3 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 	return true, trimmedRevs
 
 }
-
