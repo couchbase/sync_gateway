@@ -19,7 +19,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"log"
 )
 
 var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
@@ -37,8 +36,7 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 // 1-one -- 2-two
 //               \ 3-drei
 
-
-func getLargeTestRevtree1() RevTree {
+func getLargeTestRevtree1(longBranchNumRevs int) RevTree {
 
 	const testJSON = `{
    "revs":[
@@ -69,16 +67,13 @@ func getLargeTestRevtree1() RevTree {
 	addRevs(
 		revTree,
 		"3-a",
-		500,
+		longBranchNumRevs,
 		"a",
 	)
 
 	return revTree
 
 }
-
-
-
 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
@@ -104,14 +99,6 @@ func TestRevTreeMarshal(t *testing.T) {
 	assertNoError(t, err, "Couldn't write RevTree to JSON")
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 	testUnmarshal(t, string(bytes))
-}
-
-func TestRevTreeMarshal2(t *testing.T) {
-	bytes, _ := json.Marshal(getLargeTestRevtree1())
-	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
-	gotmap := RevTree{}
-	json.Unmarshal(bytes, &gotmap)
-	log.Printf("result: %+v", gotmap)
 }
 
 func TestRevTreeAccess(t *testing.T) {
@@ -289,7 +276,7 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	assert.True(t, result)
 	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
 
-	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs,  []string{"3-walter", "3-louie", "1-fooey"}, 3)
+	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 3)
 	assert.True(t, result)
 	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
 
@@ -307,6 +294,22 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, nil, 2)
 	assert.True(t, result)
 	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey"}})
+}
+
+//////// BENCHMARK:
+
+func BenchmarkRevTreePruning(b *testing.B) {
+
+	revTree := getLargeTestRevtree1(1000)
+	maxDepth := uint32(20)
+	keepRev := ""
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		revTree.pruneRevisions(maxDepth, keepRev)
+	}
+
 }
 
 //////// HELPERS:
@@ -363,10 +366,10 @@ func addRevs(revTree RevTree, startingRev string, numRevs int, revDigest string)
 		parentRevId := fmt.Sprintf("%v-%v", generation, revDigest)
 
 		revInfo := RevInfo{
-			ID: newRevId,
-			Parent: parentRevId,
-			Body: bodyBytes,
-			Deleted: false,
+			ID:       newRevId,
+			Parent:   parentRevId,
+			Body:     bodyBytes,
+			Deleted:  false,
 			Channels: channels,
 		}
 		revTree.addRevision(revInfo)
