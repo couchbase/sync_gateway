@@ -19,7 +19,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"log"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -35,10 +34,9 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"1-one":  {ID: "1-one"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
-
 var multiroot = RevTree{"3-a": {ID: "3-a", Parent: "2-a"},
-	"2-a":  {ID: "2-a", Parent: "1-a"},
-	"1-a":  {ID: "1-a"},
+	"2-a": {ID: "2-a", Parent: "1-a"},
+	"1-a": {ID: "1-a"},
 	"7-b": {ID: "7-b", Parent: "6-b"},
 	"6-b": {ID: "6-b"},
 }
@@ -191,7 +189,6 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 			Digest:                  "right",
 			LastRevisionIsTombstone: true,
 		},
-
 	}
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 	leaves := revTree.GetLeaves()
@@ -204,7 +201,6 @@ func TestRevTreeMarshal2(t *testing.T) {
 	bytes, _ := json.Marshal(getTwoBranchTestRevtree1(3, 3, 2, true))
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 }
-
 
 func TestRevTreeMarshal3(t *testing.T) {
 
@@ -219,7 +215,6 @@ func TestRevTreeMarshal3(t *testing.T) {
 			Digest:                  "non-winning tombstoned",
 			LastRevisionIsTombstone: true,
 		},
-
 	}
 
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
@@ -259,7 +254,6 @@ func TestRevTreeMarshal5(t *testing.T) {
 			Digest:                  "non-winning tombstoned",
 			LastRevisionIsTombstone: true,
 		},
-
 	}
 
 	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
@@ -421,6 +415,30 @@ func TestPruneRevisions(t *testing.T) {
 	//               \ [3-drei]
 	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
 	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
+
+	// Try large rev tree with multiple branches
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 60,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 25,
+			Digest:                  "non-winning tombstoned",
+			LastRevisionIsTombstone: true,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+
+	dotFile := revTree.RenderGraphvizDot()
+	fmt.Printf("dotFile before pruning: %v\n", dotFile)
+
+	numPruned := revTree.pruneRevisions(50, "")
+
+	dotFile = revTree.RenderGraphvizDot()
+	fmt.Printf("dotFile after pruning %d revisions: %v\n", numPruned, dotFile)
+
 }
 
 func TestParseRevisions(t *testing.T) {
@@ -494,15 +512,29 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
 func BenchmarkRevTreePruning(b *testing.B) {
 
-	revTree := getTwoBranchTestRevtree1(3, 100, 90, true)
-	maxDepth := uint32(20)
-	keepRev := ""
+	// Try large rev tree with multiple branches
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 60,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 25,
+			Digest:                  "non-winning tombstoned",
+			LastRevisionIsTombstone: true,
+		},
+	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		numPruned := revTree.pruneRevisions(maxDepth, keepRev)
-		log.Printf("numPruned: %v", numPruned)
+
+		b.StopTimer()
+		revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+		b.StartTimer()
+
+		revTree.pruneRevisions(50, "")
 	}
 
 }
