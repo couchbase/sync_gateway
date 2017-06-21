@@ -343,6 +343,11 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
 	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
 
+}
+
+// Tests for updated pruning algorithm, post https://github.com/couchbase/sync_gateway/issues/2651
+func TestPruneRevisionsPostIssue2651(t *testing.T) {
+
 	// Try large rev tree with multiple branches
 	branchSpecs := []BranchSpec{
 		{
@@ -358,13 +363,38 @@ func TestPruneRevisions(t *testing.T) {
 	}
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 
-	dotFile := revTree.RenderGraphvizDot()
-	fmt.Printf("dotFile before pruning: %v\n", dotFile)
+	maxDepth := uint32(50)
+	numPruned := revTree.pruneRevisions(maxDepth, "")
+	fmt.Printf("numPruned: %v", numPruned)
+	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 
-	numPruned := revTree.pruneRevisions(50, "")
+	assert.True(t, uint32(revTree.LongestBranch()) == maxDepth)
 
-	dotFile = revTree.RenderGraphvizDot()
-	fmt.Printf("dotFile after pruning %d revisions: %v\n", numPruned, dotFile)
+}
+
+func TestLongestBranch1(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 60,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 25,
+			Digest:                  "non-winning tombstoned",
+			LastRevisionIsTombstone: true,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+
+	assert.True(t, revTree.LongestBranch() == 150)
+
+}
+
+func TestLongestBranch2(t *testing.T) {
+
+	assert.True(t, multiroot.LongestBranch() == 3)
 
 }
 

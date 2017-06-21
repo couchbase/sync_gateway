@@ -443,6 +443,44 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	return
 }
 
+
+// Find the length of the longest branch
+func (tree RevTree) LongestBranch() int {
+
+	longestBranch := 0
+
+	leafProcessor := func(leaf *RevInfo) {
+
+		lengthOfBranch := 0
+
+		// Walk up the tree until we find a root, and append each node
+		node := leaf
+		for {
+
+			// Increment length of branch
+			lengthOfBranch += 1
+
+			// Reached a root, we're done -- if this branch is longer than the
+			// current longest branch, record branch length as longestBranch
+			if node.IsRoot() {
+				if lengthOfBranch > longestBranch {
+					longestBranch = lengthOfBranch
+				}
+				break
+			}
+
+			// Walk up the branch to the parent node
+			node = tree[node.Parent]
+
+		}
+	}
+
+	tree.forEachLeaf(leafProcessor)
+
+	return longestBranch
+
+}
+
 //////// ENCODED REVISION LISTS (_revisions):
 
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
