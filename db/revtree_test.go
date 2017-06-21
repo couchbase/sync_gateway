@@ -19,6 +19,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"log"
 )
 
 var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
@@ -35,6 +36,49 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 //               / 3-three
 // 1-one -- 2-two
 //               \ 3-drei
+
+
+func getLargeTestRevtree1() RevTree {
+
+	const testJSON = `{
+   "revs":[
+      "3-a",
+      "2-a",
+      "1-a",
+      "3-b"
+   ],
+   "parents":[
+      1,
+      2,
+      -1,
+      1
+   ],
+   "channels":[
+      null,
+      ["ABC", "CBS"],
+      ["ABC"],
+      null
+   ]
+}`
+
+	revTree := RevTree{}
+	if err := json.Unmarshal([]byte(testJSON), &revTree); err != nil {
+		panic(fmt.Sprintf("Error: %v", err))
+	}
+
+	addRevs(
+		revTree,
+		"3-a",
+		500,
+		"a",
+	)
+
+	return revTree
+
+}
+
+
+
 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
@@ -60,6 +104,14 @@ func TestRevTreeMarshal(t *testing.T) {
 	assertNoError(t, err, "Couldn't write RevTree to JSON")
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 	testUnmarshal(t, string(bytes))
+}
+
+func TestRevTreeMarshal2(t *testing.T) {
+	bytes, _ := json.Marshal(getLargeTestRevtree1())
+	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
+	gotmap := RevTree{}
+	json.Unmarshal(bytes, &gotmap)
+	log.Printf("result: %+v", gotmap)
 }
 
 func TestRevTreeAccess(t *testing.T) {
@@ -291,4 +343,48 @@ func assertFalse(t *testing.T, failure bool, message string) {
 	if failure {
 		assertFailed(t, message)
 	}
+}
+
+func addRevs(revTree RevTree, startingRev string, numRevs int, revDigest string) {
+
+	body := createBodyContentAsMapWithSize(1024 * 5)
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		panic(fmt.Sprintf("Error: %v", err))
+	}
+
+	channels := base.SetOf("ABC", "CBS")
+
+	generation, _ := ParseRevID(startingRev)
+
+	for i := 0; i < numRevs; i++ {
+
+		newRevId := fmt.Sprintf("%v-%v", generation+1, revDigest)
+		parentRevId := fmt.Sprintf("%v-%v", generation, revDigest)
+
+		revInfo := RevInfo{
+			ID: newRevId,
+			Parent: parentRevId,
+			Body: bodyBytes,
+			Deleted: false,
+			Channels: channels,
+		}
+		revTree.addRevision(revInfo)
+
+		generation += 1
+
+	}
+
+}
+
+// Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
+func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
+
+	numEntries := int(docSizeBytes/100) + 1
+	body := make(map[string]string, numEntries)
+	for i := 0; i < numEntries; i++ {
+		key := fmt.Sprintf("field_%d", i)
+		body[key] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	}
+	return body
 }
