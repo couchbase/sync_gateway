@@ -36,6 +36,13 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
 
+var multiroot = RevTree{"3-a": {ID: "3-a", Parent: "2-a"},
+	"2-a":  {ID: "2-a", Parent: "1-a"},
+	"1-a":  {ID: "1-a"},
+	"7-b": {ID: "7-b", Parent: "6-b"},
+	"6-b": {ID: "6-b"},
+}
+
 type BranchSpec struct {
 	NumRevs                 int
 	LastRevisionIsTombstone bool
@@ -262,6 +269,12 @@ func TestRevTreeMarshal5(t *testing.T) {
 
 }
 
+func TestRevTreeMarshal6(t *testing.T) {
+
+	dotFile := multiroot.RenderGraphvizDot()
+	fmt.Printf("dotFile: %v\n", dotFile)
+
+}
 
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`

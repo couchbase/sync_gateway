@@ -245,12 +245,17 @@ func (tree RevTree) RenderGraphvizDot() string {
 		// Walk up the tree until we find a root, and append each node
 		node := leaf
 		for {
-			// Reached a root, we're done
+
+			node = tree[node.Parent]
+
+			// Reached a root, we're done -- there's no need
+			// to call appendNodeToResult() on the root, since
+			// the child of the root will have already added a node
+			// pointing to the root.
 			if node.IsRoot() {
 				break
 			}
 
-			node = tree[node.Parent]
 			appendNodeToResult(node)
 		}
 	}
