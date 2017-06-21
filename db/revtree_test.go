@@ -19,24 +19,32 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"log"
 )
 
+// 1-one -- 2-two -- 3-three
 var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
 	"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
 	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
 
-// 1-one -- 2-two -- 3-three
-
+//               / 3-three
+// 1-one -- 2-two
+//               \ 3-drei
 var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"2-two":  {ID: "2-two", Parent: "1-one"},
 	"1-one":  {ID: "1-one"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
-//               / 3-three
-// 1-one -- 2-two
-//               \ 3-drei
 
-func getLargeTestRevtree1(longBranchNumRevs int) RevTree {
+//            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
+// 1-a -- 2-a
+//            \ 3-b -- 4-b ... etc (losing branch)
+func getLargeTestRevtree1(winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
+
+	winningBranchDigest := "a"
+	losingBranchDigest := "b"
+	winningBranch := fmt.Sprintf("3-%s", winningBranchDigest)
+	losingBranch := fmt.Sprintf("3-%s", losingBranchDigest)
 
 	const testJSON = `{
    "revs":[
@@ -64,12 +72,37 @@ func getLargeTestRevtree1(longBranchNumRevs int) RevTree {
 		panic(fmt.Sprintf("Error: %v", err))
 	}
 
+	// Add revs to winning branch
 	addRevs(
 		revTree,
-		"3-a",
-		longBranchNumRevs,
-		"a",
+		winningBranch,
+		winningBranchNumRevs,
+		winningBranchDigest,
 	)
+
+	// Add revs to losing branch
+	addRevs(
+		revTree,
+		losingBranch,
+		losingBranchNumRevs,
+		losingBranchDigest,
+	)
+
+	if tombstoneLosingBranch {
+
+		curLosingBranchGeneration := 3 + losingBranchNumRevs
+
+		newRevId := fmt.Sprintf("%v-%v", curLosingBranchGeneration+1, losingBranchDigest)
+		parentRevId := fmt.Sprintf("%v-%v", curLosingBranchGeneration, losingBranchDigest)
+
+		revInfo := RevInfo{
+			ID:       newRevId,
+			Parent:   parentRevId,
+			Deleted:  true,
+		}
+		revTree.addRevision(revInfo)
+
+	}
 
 	return revTree
 
@@ -80,6 +113,11 @@ func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
 	assert.DeepEquals(t, gotmap, testmap)
 	return gotmap
+}
+
+func TestRevTreeMarshal2(t *testing.T) {
+	bytes, _ := json.Marshal(getLargeTestRevtree1(3, 3, false))
+	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 }
 
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
@@ -300,14 +338,15 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
 func BenchmarkRevTreePruning(b *testing.B) {
 
-	revTree := getLargeTestRevtree1(1000)
+	revTree := getLargeTestRevtree1(100, 90, true)
 	maxDepth := uint32(20)
 	keepRev := ""
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		revTree.pruneRevisions(maxDepth, keepRev)
+		numPruned := revTree.pruneRevisions(maxDepth, keepRev)
+		log.Printf("numPruned: %v", numPruned)
 	}
 
 }
@@ -350,7 +389,8 @@ func assertFalse(t *testing.T, failure bool, message string) {
 
 func addRevs(revTree RevTree, startingRev string, numRevs int, revDigest string) {
 
-	body := createBodyContentAsMapWithSize(1024 * 5)
+	docSizeBytes := 1024 * 5
+	body := createBodyContentAsMapWithSize(docSizeBytes)
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		panic(fmt.Sprintf("Error: %v", err))
