@@ -216,9 +216,9 @@ func TestRevTreeMarshal3(t *testing.T) {
 	}
 
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
-	fmt.Printf("revTree: %+v\n", revTree)
-	leaves := revTree.GetLeaves()
-	fmt.Printf("leaves: %v\n", leaves)
+
+	dotFile := revTree.RenderGraphvizDot()
+	fmt.Printf("dotFile: %v\n", dotFile)
 
 }
 

@@ -18,6 +18,8 @@ import (
 	"errors"
 
 	"github.com/couchbase/sync_gateway/base"
+	"log"
+	"bytes"
 )
 
 type RevKey string
@@ -29,6 +31,10 @@ type RevInfo struct {
 	Deleted  bool
 	Body     []byte
 	Channels base.Set
+}
+
+func (rev RevInfo) IsRoot() bool {
+	return rev.Parent == ""
 }
 
 //  A revision tree maps each revision ID to its RevInfo.
@@ -173,6 +179,55 @@ func (tree RevTree) GetLeaves() []string {
 		}
 	}
 	return leaves
+}
+
+func (tree RevTree) RenderGraphvizDot() string {
+
+	surroundWithDoubleQuotes := func(orig string) string {
+		return fmt.Sprintf(`"%s"`, orig)
+	}
+
+	resultBuffer := bytes.Buffer{}
+	resultBuffer.WriteString("digraph graphname{")
+
+	leafProcessor := func(leaf *RevInfo) {
+
+		log.Printf("leaf id: %v parent: %v", leaf.ID, leaf.Parent)
+		resultBuffer.WriteString(
+			fmt.Sprintf(
+				"%s -> %s; ",
+				surroundWithDoubleQuotes(leaf.Parent),
+				surroundWithDoubleQuotes(leaf.ID),
+			),
+		)
+
+		node := leaf
+
+		for {
+			// Reached a root, we're done
+			if node.IsRoot() {
+				break
+			}
+
+			node = tree[node.Parent]
+			resultBuffer.WriteString(
+				fmt.Sprintf(
+					"%s -> %s; ",
+					surroundWithDoubleQuotes(node.Parent),
+					surroundWithDoubleQuotes(node.ID),
+				),
+			)
+
+
+		}
+
+	}
+	tree.forEachLeaf(leafProcessor)
+
+	resultBuffer.WriteString("}")
+
+	return resultBuffer.String()
+
 }
 
 func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
