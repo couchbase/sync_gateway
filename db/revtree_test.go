@@ -35,6 +35,13 @@ var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"1-one":  {ID: "1-one"},
 	"3-drei": {ID: "3-drei", Parent: "2-two"}}
 
+
+type BranchSpec struct {
+	NumRevs                 int
+	LastRevisionIsTombstone bool
+	Digest                  string
+}
+
 //            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
 // 1-a -- 2-a
 //            \ 3-b -- 4-b ... etc (losing branch)
@@ -54,16 +61,11 @@ func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, l
 
 }
 
-type BranchSpec struct {
-	NumRevs                 int
-	LastRevisionIsTombstone bool
-	Digest                  string
-}
-
 //            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
 // 1-a -- 2-a
 //            \ 3-b -- 4-b ... etc (losing branch #1)
 //            \ 3-c -- 4-c ... etc (losing branch #2)
+//            \ 3-d -- 4-d ... etc (losing branch #n)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
 func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
@@ -167,10 +169,76 @@ func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	return gotmap
 }
 
+// Make sure that the getMultiBranchTestRevtree1() helper works as expected
+// (added in reaction to bug where it created broken trees/forests)
+func TestGetMultiBranchTestRevtree(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 60,
+			Digest:                  "left",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 25,
+			Digest:                  "right",
+			LastRevisionIsTombstone: true,
+		},
+
+	}
+	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	leaves := revTree.GetLeaves()
+	sort.Strings(leaves)
+	assert.DeepEquals(t, leaves, []string{"110-left", "150-a", "76-right"})
+
+}
+
 func TestRevTreeMarshal2(t *testing.T) {
 	bytes, _ := json.Marshal(getTwoBranchTestRevtree1(3, 3, 2, true))
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 }
+
+
+func TestRevTreeMarshal3(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 60,
+			Digest:                  "left",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 25,
+			Digest:                  "right",
+			LastRevisionIsTombstone: true,
+		},
+
+	}
+
+	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	fmt.Printf("revTree: %+v\n", revTree)
+	leaves := revTree.GetLeaves()
+	fmt.Printf("leaves: %v\n", leaves)
+
+}
+
+func TestRevTreeMarshal4(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 1,
+			Digest:                  "b",
+			LastRevisionIsTombstone: false,
+		},
+	}
+
+	revTree := getMultiBranchTestRevtree1(2, 2, branchSpecs)
+	fmt.Printf("revTree: %+v\n", revTree)
+	leaves := revTree.GetLeaves()
+	fmt.Printf("leaves: %v\n", leaves)
+
+}
+
 
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
@@ -439,7 +507,7 @@ func assertFalse(t *testing.T, failure bool, message string) {
 	}
 }
 
-func addRevs(revTree RevTree, parentRevId string, numRevs int, revDigest string) {
+func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {
 
 	docSizeBytes := 1024 * 5
 	body := createBodyContentAsMapWithSize(docSizeBytes)
@@ -450,11 +518,17 @@ func addRevs(revTree RevTree, parentRevId string, numRevs int, revDigest string)
 
 	channels := base.SetOf("ABC", "CBS")
 
-	generation, _ := ParseRevID(parentRevId)
+	generation, _ := ParseRevID(startingParentRevId)
 
 	for i := 0; i < numRevs; i++ {
 
 		newRevId := fmt.Sprintf("%v-%v", generation+1, revDigest)
+		parentRevId := ""
+		if i == 0 {
+			parentRevId = startingParentRevId
+		} else {
+			parentRevId = fmt.Sprintf("%v-%v", generation, revDigest)
+		}
 
 		revInfo := RevInfo{
 			ID:       newRevId,
