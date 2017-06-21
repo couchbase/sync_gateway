@@ -78,38 +78,22 @@ func getLargeTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losin
 		)
 	}
 
-
-
 	if winningBranchNumRevs > 0 {
 
 		// Figure out which generation the conflicting branches will start at
 		generation := unconflictedBranchNumRevs
 
-		// Create initial revision on winning branch
-		revInfo := RevInfo{
-			ID:       fmt.Sprintf("%v-%v", generation+1, winningBranchDigest),
-			Parent:   fmt.Sprintf("%v-%v", generation, winningBranchDigest),
-		}
-		revTree.addRevision(revInfo)
 
-		// Create the rest of the revsions on that branch
-		if winningBranchNumRevs > 1 {
+		// Figure out the starting revision id on winning and losing branches
+		winningBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)
 
-			generation += 1
-
-			// Figure out the starting revision id on winning and losing branches
-			winningBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)
-
-			// Add revs to winning branch
-			addRevs(
-				revTree,
-				winningBranchStartRev,
-				winningBranchNumRevs - 1,  // Subtract 1 since we already added initial
-				winningBranchDigest,
-			)
-
-		}
-
+		// Add revs to winning branch
+		addRevs(
+			revTree,
+			winningBranchStartRev,
+			winningBranchNumRevs,
+			winningBranchDigest,
+		)
 
 
 	}
@@ -119,31 +103,17 @@ func getLargeTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losin
 		// Figure out which generation the conflicting branches will start at
 		generation := unconflictedBranchNumRevs
 
-		// Create initial revision on losing branch
-		revInfo := RevInfo{
-			ID:       fmt.Sprintf("%v-%v", generation+1, losingBranchDigest),
-			Parent:   fmt.Sprintf("%v-%v", generation, winningBranchDigest),  // Use winning branch digest, since parent on unconflicted (winning) branch
-		}
-		revTree.addRevision(revInfo)
+		losingBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)  // Start on last revision of the non-conflicting branch
 
-		if losingBranchNumRevs > 1 {
+		// Add revs to losing branch
+		addRevs(
+			revTree,
+			losingBranchStartRev,
+			losingBranchNumRevs,  // Subtract 1 since we already added initial
+			losingBranchDigest,
+		)
 
-			generation += 1
-
-			losingBranchStartRev := fmt.Sprintf("%d-%s", generation, losingBranchDigest)
-
-			// Add revs to losing branch
-			addRevs(
-				revTree,
-				losingBranchStartRev,
-				losingBranchNumRevs - 1,  // Subtract 1 since we already added initial
-				losingBranchDigest,
-			)
-
-			generation += (losingBranchNumRevs - 1)
-
-
-		}
+		generation += losingBranchNumRevs
 
 		if tombstoneLosingBranch {
 
@@ -448,7 +418,7 @@ func assertFalse(t *testing.T, failure bool, message string) {
 	}
 }
 
-func addRevs(revTree RevTree, startingRev string, numRevs int, revDigest string) {
+func addRevs(revTree RevTree, parentRevId string, numRevs int, revDigest string) {
 
 	docSizeBytes := 1024 * 5
 	body := createBodyContentAsMapWithSize(docSizeBytes)
@@ -459,12 +429,11 @@ func addRevs(revTree RevTree, startingRev string, numRevs int, revDigest string)
 
 	channels := base.SetOf("ABC", "CBS")
 
-	generation, _ := ParseRevID(startingRev)
+	generation, _ := ParseRevID(parentRevId)
 
 	for i := 0; i < numRevs; i++ {
 
 		newRevId := fmt.Sprintf("%v-%v", generation+1, revDigest)
-		parentRevId := fmt.Sprintf("%v-%v", generation, revDigest)
 
 		revInfo := RevInfo{
 			ID:       newRevId,
