@@ -453,48 +453,127 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 	}
 
 	leaves := tree.GetLeaves()
-	minLeafGen := tree.MinGenerationNonDeletedLeafFromLeaves(leaves)
 
-	fmt.Printf("minLeafGen: %v", minLeafGen)
+	genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranchFromLeaves(leaves)
 
-	return 0
+	// ignore tombstones that have a generation less than or equal to this threshold (older than this threshold)
+	// tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
+
+
+	minGenToKeep := int(genShortestNonTSBranch) - int(maxDepth) + 1
+
+	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
+		// Make sure keepRev's generation isn't pruned
+		minGenToKeep = gen
+	}
+
+	// Delete nodes whose generation is less than minGenToKeep:
+	if minGenToKeep > 1 {
+		for revid, node := range tree {
+			if gen := genOfRevID(revid); gen < minGenToKeep {
+				delete(tree, revid)
+				pruned++
+			} else if gen == minGenToKeep {
+				node.Parent = ""
+			}
+		}
+	}
+
+
+	return pruned
 }
+
+
+//func (tree RevTree) computeDepthsOLD() (maxDepth uint32) {
+//	// TODO: Should deleted leaves be penalized since they're not very useful?
+//	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
+//	for _, info := range tree {
+//		info.depth = math.MaxUint32
+//	}
+//	// Walk from each leaf to its root, assigning ancestors consecutive depths,
+//	// but stopping if we'd increase an already-visited ancestor's depth:
+//	for _, revid := range tree.GetLeaves() {
+//		var depth uint32 = 1
+//		for node := tree[revid]; node != nil; node = tree[node.Parent] {
+//			if node.depth <= depth {
+//				break // This hierarchy already has a shorter path to another leaf
+//			}
+//			node.depth = depth
+//			if depth > maxDepth {
+//				maxDepth = depth
+//			}
+//			depth++
+//		}
+//	}
+//	return
+//}
+//
+//// Removes older ancestor nodes from the tree so that no node's depth is greater than maxDepth.
+//// Returns the number of nodes pruned.
+//func (tree RevTree) pruneRevisionsOLD(maxDepth uint32) (pruned int) {
+//	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
+//		return
+//	}
+//
+//	// Delete nodes whose depth is greater than maxDepth:
+//	for revid, node := range tree {
+//		if node.depth > maxDepth {
+//			delete(tree, revid)
+//			pruned++
+//		}
+//	}
+//
+//	// Finally, snip dangling Parent links:
+//	if pruned > 0 {
+//		for _, node := range tree {
+//			if node.Parent != "" {
+//				if _, found := tree[node.Parent]; !found {
+//					node.Parent = ""
+//				}
+//			}
+//		}
+//	}
+//	return
+//}
+
 
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
-func (tree RevTree) MinGenerationNonDeletedLeaf() int {
-	return tree.MinGenerationNonDeletedLeafFromLeaves(tree.GetLeaves())
+func (tree RevTree) GenerationShortestNonTombstonedBranch() int {
+	return tree.GenerationShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) MinGenerationNonDeletedLeafFromLeaves(leaves []string) int {
+func (tree RevTree) GenerationShortestNonTombstonedBranchFromLeaves(leaves []string) int {
 
-	minLeafGen := math.MaxInt32
+	genShortestNonTSBranch := math.MaxInt32
 	for _, revid := range leaves {
 		gen := genOfRevID(revid)
-		if gen > 0 && gen < minLeafGen {
-			minLeafGen = gen
+		if gen > 0 && gen < genShortestNonTSBranch {
+			genShortestNonTSBranch = gen
 		}
 	}
-	return minLeafGen
+	return genShortestNonTSBranch
 }
 
-
-func (tree RevTree) MaxGenerationDeletedLeaf() int {
-	return tree.MaxGenerationDeletedLeafFromLeaves(tree.GetLeaves())
+// Find the generation of the longest deleted branch.  For example in this rev tree:
+//   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/four_branches_two_tombstoned.png
+// The longest deleted branch has a generation of
+func (tree RevTree) GenerationLongestTombstonedBranch() int {
+	return tree.GenerationLongestTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) MaxGenerationDeletedLeafFromLeaves(leaves []string) int {
-	maxDeletedLeafGen := 0
+func (tree RevTree) GenerationLongestTombstonedBranchFromLeaves(leaves []string) int {
+	genLongestTSBranch := 0
 	for _, revid := range leaves {
 		gen := genOfRevID(revid)
 		if tree[revid].Deleted {
-			if gen > maxDeletedLeafGen {
-				maxDeletedLeafGen = gen
+			if gen > genLongestTSBranch {
+				genLongestTSBranch = gen
 			}
 		}
 	}
-	return maxDeletedLeafGen
+	return genLongestTSBranch
 }
 
 

@@ -362,7 +362,7 @@ func TestPruneRevisionsPostIssue2651SingleBranch(t *testing.T) {
 
 }
 
-func TestMinGenerationNonDeletedLeaf(t *testing.T) {
+func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -379,22 +379,22 @@ func TestMinGenerationNonDeletedLeaf(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
 
-	minGenerationNonDeletedLeaf := revTree.MinGenerationNonDeletedLeaf()
+	generationShortestNonTombstonedBranch := revTree.GenerationShortestNonTombstonedBranch()
 
 	// The "non-winning unresolved" branch has 7 revisions due to:
 	// 3 unconflictedBranchNumRevs
 	// +
 	// 4 from it's BranchSpec
-	// Since the "non-winning tombstoned" is a deleted branch, it will be ignored by MinGenerationNonDeletedLeaf()
+	// Since the "non-winning tombstoned" is a deleted branch, it will be ignored by GenerationShortestNonTombstonedBranch()
 	// Also, the winning branch has more revisions (10 total), and so will be ignored too
-	expectedMinGenerationNonDeletedLeaf := 7
+	expectedGenerationShortestNonTombstonedBranch := 7
 
-	assert.Equals(t, minGenerationNonDeletedLeaf, expectedMinGenerationNonDeletedLeaf)
+	assert.Equals(t, generationShortestNonTombstonedBranch, expectedGenerationShortestNonTombstonedBranch)
 
 }
 
 
-func TestMaxGenerationDeletedLeaf(t *testing.T) {
+func TestGenerationLongestTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -415,7 +415,7 @@ func TestMaxGenerationDeletedLeaf(t *testing.T) {
 	}
 
 	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
-	maxGenerationDeletedLeaf := revTree.MaxGenerationDeletedLeaf()
+	generationLongestTombstonedBranch := revTree.GenerationLongestTombstonedBranch()
 
 	dotFile := revTree.RenderGraphvizDot()
 	fmt.Printf("dotFile: %v", dotFile)
@@ -426,9 +426,9 @@ func TestMaxGenerationDeletedLeaf(t *testing.T) {
 	// 100 revs in branchspec
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
-	expectedMaxGenerationDeletedLeaf :=  3 + 100 + 1
+	expectedGenerationLongestTombstonedBranch :=  3 + 100 + 1
 
-	assert.Equals(t, maxGenerationDeletedLeaf, expectedMaxGenerationDeletedLeaf)
+	assert.Equals(t, generationLongestTombstonedBranch, expectedGenerationLongestTombstonedBranch)
 
 
 }
