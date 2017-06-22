@@ -422,6 +422,8 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		// If there are no non-deleted leaves, use the deepest leaf's generation
 		minLeafGen = maxDeletedLeafGen
 	}
+
+
 	minGenToKeep := int(minLeafGen) - int(maxDepth) + 1
 
 	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
@@ -450,28 +452,49 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 		return 0
 	}
 
-	minLeafGen := tree.MinGenerationNonDeletedLeaf()
+	leaves := tree.GetLeaves()
+	minLeafGen := tree.MinGenerationNonDeletedLeafFromLeaves(leaves)
+
 	fmt.Printf("minLeafGen: %v", minLeafGen)
 
 	return 0
 }
 
-// Find the minimum generation that has a non-deleted leaf:
+// Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
+//   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
+// The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
 func (tree RevTree) MinGenerationNonDeletedLeaf() int {
+	return tree.MinGenerationNonDeletedLeafFromLeaves(tree.GetLeaves())
+}
+
+func (tree RevTree) MinGenerationNonDeletedLeafFromLeaves(leaves []string) int {
 
 	minLeafGen := math.MaxInt32
+	for _, revid := range leaves {
+		gen := genOfRevID(revid)
+		if gen > 0 && gen < minLeafGen {
+			minLeafGen = gen
+		}
+	}
+	return minLeafGen
+}
+
+
+func (tree RevTree) MaxGenerationDeletedLeaf() int {
+	return tree.MaxGenerationDeletedLeafFromLeaves(tree.GetLeaves())
+}
+
+func (tree RevTree) MaxGenerationDeletedLeafFromLeaves(leaves []string) int {
 	maxDeletedLeafGen := 0
-	for _, revid := range tree.GetLeaves() {
+	for _, revid := range leaves {
 		gen := genOfRevID(revid)
 		if tree[revid].Deleted {
 			if gen > maxDeletedLeafGen {
 				maxDeletedLeafGen = gen
 			}
-		} else if gen > 0 && gen < minLeafGen {
-			minLeafGen = gen
 		}
 	}
-	return minLeafGen
+	return maxDeletedLeafGen
 }
 
 

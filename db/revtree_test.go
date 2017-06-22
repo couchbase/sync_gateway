@@ -394,6 +394,46 @@ func TestMinGenerationNonDeletedLeaf(t *testing.T) {
 }
 
 
+func TestMaxGenerationDeletedLeaf(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 4,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+		{
+			NumRevs:                 2,
+			Digest:                  "non-winning tombstoned #1",
+			LastRevisionIsTombstone: true,
+		},
+		{
+			NumRevs:                 100,
+			Digest:                  "non-winning tombstoned #2",
+			LastRevisionIsTombstone: true,
+		},
+	}
+
+	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
+	maxGenerationDeletedLeaf := revTree.MaxGenerationDeletedLeaf()
+
+	dotFile := revTree.RenderGraphvizDot()
+	fmt.Printf("dotFile: %v", dotFile)
+
+	// The generation of the longest deleted branch is:
+	// 3 unconflictedBranchNumRevs
+	// +
+	// 100 revs in branchspec
+	// +
+	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
+	expectedMaxGenerationDeletedLeaf :=  3 + 100 + 1
+
+	assert.Equals(t, maxGenerationDeletedLeaf, expectedMaxGenerationDeletedLeaf)
+
+
+}
+
+
 // Tests for updated pruning algorithm, post https://github.com/couchbase/sync_gateway/issues/2651
 func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 
