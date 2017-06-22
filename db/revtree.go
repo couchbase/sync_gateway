@@ -269,6 +269,11 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 			node = tree[node.Parent]
 
+			// Not sure how this can happen, but in any case .. probably nothing left to do for this branch
+			if node == nil {
+				break
+			}
+
 			// Reached a root, we're done -- there's no need
 			// to call appendNodeToResult() on the root, since
 			// the child of the root will have already added a node
