@@ -422,56 +422,17 @@ func (tree RevTree) copy() RevTree {
 	return result
 }
 
-// Removes older ancestor nodes from the tree; if there are no conflicts, the tree's depth will be
-// <= maxDepth. The revision named by `keepRev` will not be pruned (unless `keepRev` is empty.)
-// Returns the number of nodes pruned.
-func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
-	if len(tree) <= int(maxDepth) {
-		return 0
-	}
-
-	// Find the minimum generation that has a non-deleted leaf:
-	minLeafGen := math.MaxInt32
-	maxDeletedLeafGen := 0
-	for _, revid := range tree.GetLeaves() {
-		gen := genOfRevID(revid)
-		if tree[revid].Deleted {
-			if gen > maxDeletedLeafGen {
-				maxDeletedLeafGen = gen
-			}
-		} else if gen > 0 && gen < minLeafGen {
-			minLeafGen = gen
-		}
-	}
-
-	if minLeafGen == math.MaxInt32 {
-		// If there are no non-deleted leaves, use the deepest leaf's generation
-		minLeafGen = maxDeletedLeafGen
-	}
-
-	minGenToKeep := int(minLeafGen) - int(maxDepth) + 1
-
-	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
-		// Make sure keepRev's generation isn't pruned
-		minGenToKeep = gen
-	}
-
-	// Delete nodes whose generation is less than minGenToKeep:
-	if minGenToKeep > 1 {
-		for revid, node := range tree {
-			if gen := genOfRevID(revid); gen < minGenToKeep {
-				delete(tree, revid)
-				pruned++
-			} else if gen == minGenToKeep {
-				node.Parent = ""
-			}
-		}
-	}
-	return
-}
-
+// Prune all branches so that they have a maximum depth of maxdepth.
+// There is one exception to that, which is tombstoned (deleted) branches that have been deemed "too old"
+// to keep around.  The criteria for "too old" is as follows:
 //
-func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string) (pruned int) {
+// - Find the generation of the shortest non-tombstoned branch (eg, 100)
+// - Calculate the tombstone generation threshold based on this formula:
+//      tombstoneGenerationThreshold = genShortestNonTSBranch - maxDepth
+//      Ex: if maxDepth is 20, and tombstoneGenerationThreshold is 100, then tombstoneGenerationThreshold will be 80
+// - Check each tombstoned branch, and if the leaf node on that branch has a generation older (less) than
+//   tombstoneGenerationThreshold, then remove all nodes on that branch up to the root of the branch.
+func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
 
 	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
 		return

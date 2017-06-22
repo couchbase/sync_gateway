@@ -294,11 +294,29 @@ func TestRevTreeWinningRev(t *testing.T) {
 }
 
 func TestPruneRevisions(t *testing.T) {
-	tempmap := branchymap.copy()
+
+	tempmap := testmap.copy()
+	tempmap.computeDepths()
+	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+
+	tempmap = branchymap.copy()
+	tempmap.computeDepths()
+	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	assert.Equals(t, tempmap["3-drei"].depth, uint32(1))
+	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+
 	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei"}
-	//               / 3-three
-	// 1-one -- 2-two
-	//               \ 3-drei -- 4-vier
+	tempmap.computeDepths()
+	assert.Equals(t, tempmap["4-vier"].depth, uint32(1))
+	assert.Equals(t, tempmap["3-drei"].depth, uint32(2))
+	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+
+	// Prune:
 	assert.Equals(t, tempmap.pruneRevisions(1000, ""), 0)
 	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
 	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
@@ -306,47 +324,19 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
 	assert.Equals(t, tempmap["2-two"].Parent, "")
 
-	// Make sure leaves are never pruned: (note: by now 1-one is already gone)
-	assert.Equals(t, tempmap.pruneRevisions(1, ""), 1)
-	assert.Equals(t, len(tempmap), 3)
+	// Make sure leaves are never pruned:
+	assert.Equals(t, tempmap.pruneRevisions(1, ""), 2)
+	assert.Equals(t, len(tempmap), 2)
 	assert.True(t, tempmap["3-three"] != nil)
 	assert.Equals(t, tempmap["3-three"].Parent, "")
 	assert.True(t, tempmap["4-vier"] != nil)
-	assert.Equals(t, tempmap["4-vier"].Parent, "3-drei")
-	assert.Equals(t, tempmap["3-drei"].Parent, "")
+	assert.Equals(t, tempmap["4-vier"].Parent, "")
 
-	// Make sure old merged conflicts don't prevent pruning:
-	tempmap = branchymap.copy()
-	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei", Deleted: true}
-	tempmap["4-four"] = &RevInfo{ID: "4-four", Parent: "3-three"}
-	tempmap["5-five"] = &RevInfo{ID: "5-five", Parent: "4-four"}
-	tempmap["6-six"] = &RevInfo{ID: "6-six", Parent: "5-five"}
-	//               / 3-three -- 4-four -- 5-five -- 6-six
-	// 1-one -- 2-two
-	//               \ 3-drei -- [4-vier]
-	assert.Equals(t, tempmap.pruneRevisions(3, "1-one"), 0)
-	assert.Equals(t, tempmap.pruneRevisions(3, "2-two"), 1)
-	assert.Equals(t, tempmap.pruneRevisions(3, ""), 3)
-	assert.Equals(t, len(tempmap), 4)
-	assert.Equals(t, tempmap.pruneRevisions(2, ""), 2)
-	assert.Equals(t, len(tempmap), 2)
-	assert.Equals(t, tempmap["5-five"].Parent, "")
-	assert.Equals(t, tempmap["6-six"].Parent, "5-five")
-
-	// Check what happens when all revs are deleted:
-	tempmap = branchymap.copy()
-	tempmap["3-three"].Deleted = true
-	tempmap["3-drei"].Deleted = true
-	//               / [3-three]
-	// 1-one -- 2-two
-	//               \ [3-drei]
-	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
-	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
 
 }
 
 
-func TestPruneRevisionsPostIssue2651SingleBranch(t *testing.T) {
+func TestPruneRevsSingleBranch(t *testing.T) {
 
 	numRevs := 100
 
@@ -357,12 +347,12 @@ func TestPruneRevisionsPostIssue2651SingleBranch(t *testing.T) {
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevs - int(maxDepth)
 
-	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	numPruned := revTree.pruneRevisions(maxDepth, "")
 	assert.Equals(t, numPruned, expectedNumPruned)
 
 }
 
-func TestPruneRevisionsPostIssue2651OneWinningOneNonwinningBranch(t *testing.T) {
+func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -380,7 +370,7 @@ func TestPruneRevisionsPostIssue2651OneWinningOneNonwinningBranch(t *testing.T) 
 
 	maxDepth := uint32(2)
 
-	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	numPruned := revTree.pruneRevisions(maxDepth, "")
 	fmt.Printf("revtree after %d pruned: %v\n", numPruned, revTree.RenderGraphvizDot())
 
 
@@ -389,7 +379,7 @@ func TestPruneRevisionsPostIssue2651OneWinningOneNonwinningBranch(t *testing.T) 
 
 }
 
-func TestPruneRevisionsPostIssue2651OneWinningOneOldTombstonedBranch(t *testing.T) {
+func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -407,7 +397,7 @@ func TestPruneRevisionsPostIssue2651OneWinningOneOldTombstonedBranch(t *testing.
 
 	maxDepth := uint32(2)
 
-	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	numPruned := revTree.pruneRevisions(maxDepth, "")
 	fmt.Printf("revtree after %d pruned: %v\n", numPruned, revTree.RenderGraphvizDot())
 
 	assert.True(t, revTree.LongestBranch() == int(maxDepth))
@@ -419,7 +409,7 @@ func TestPruneRevisionsPostIssue2651OneWinningOneOldTombstonedBranch(t *testing.
 
 }
 
-func TestPruneRevisionsPostIssue2651OneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
+func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -442,7 +432,7 @@ func TestPruneRevisionsPostIssue2651OneWinningOneOldAndOneRecentTombstonedBranch
 
 	maxDepth := uint32(2)
 
-	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	numPruned := revTree.pruneRevisions(maxDepth, "")
 	fmt.Printf("revtree after %d pruned: %v\n", numPruned, revTree.RenderGraphvizDot())
 
 	assert.True(t, revTree.LongestBranch() == int(maxDepth))
@@ -559,7 +549,7 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 
 	maxDepth := uint32(50)
-	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	numPruned := revTree.pruneRevisions(maxDepth, "")
 	fmt.Printf("numPruned: %v", numPruned)
 	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 
@@ -686,7 +676,7 @@ func BenchmarkRevTreePruning(b *testing.B) {
 		revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 		b.StartTimer()
 
-		revTree.pruneRevisionsPostIssue2651(50, "")
+		revTree.pruneRevisions(50, "")
 	}
 
 }
