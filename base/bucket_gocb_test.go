@@ -14,9 +14,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"testing"
-
 	"reflect"
+	"testing"
+	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -726,6 +726,50 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assert.Equals(t, getCas, cas)
 	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+}
+
+// TestXattrWriteCasExpiry.  Validates setting expiry when writing xattr.
+func TestXattrWriteCasExpiry(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestWriteCasXATTRExpiry"
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = float64(123)
+	xattrVal["rev"] = "1-1234"
+
+	var existsVal map[string]interface{}
+	_, err := bucket.Get(key, existsVal)
+	if err == nil {
+		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
+		err = bucket.DeleteWithXattr(key, xattrName)
+	}
+
+	cas := uint64(0)
+	exp := 5
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, exp, cas, val, xattrVal)
+	assertNoError(t, err, "WriteCasWithXattr error")
+	log.Printf("Post-write, cas is %d", cas)
+
+	time.Sleep(10 * time.Second)
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	// TODO: Cas check fails, pending xattr code to make it to gocb master
+	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
+	assertTrue(t, retrievedVal == nil, "No body expected for expired document")
 	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
 	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 }
