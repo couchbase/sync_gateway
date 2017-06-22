@@ -428,19 +428,19 @@ func TestPruneRevisionsPostIssue2651OneWinningOneOldAndOneRecentTombstonedBranch
 			LastRevisionIsTombstone: true,
 		},
 		{
-			NumRevs:                 95,
+			NumRevs:                 4,
 			Digest:                  "non-winning high-gen tombstoned",
 			LastRevisionIsTombstone: true,
 		},
 	}
 
 	unconflictedBranchNumRevs := 1
-	winningBranchNumRevs := 100
+	winningBranchNumRevs := 5
 
 	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 	fmt.Printf("revtree before prune: %v\n", revTree.RenderGraphvizDot())
 
-	maxDepth := uint32(20)
+	maxDepth := uint32(2)
 
 	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
 	fmt.Printf("revtree after %d pruned: %v\n", numPruned, revTree.RenderGraphvizDot())
@@ -458,10 +458,10 @@ func TestPruneRevisionsPostIssue2651OneWinningOneOldAndOneRecentTombstonedBranch
 	// The generation of the longest deleted branch is 97:
 	// 1 unconflictedBranchNumRevs
 	// +
-	// 95 revs in branchspec
+	// 4 revs in branchspec
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
-	expectedGenLongestTSd := 97
+	expectedGenLongestTSd := 6
 	assert.Equals(t, revTree.GenerationLongestTombstonedBranch(), expectedGenLongestTSd)
 
 }
