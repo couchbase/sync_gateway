@@ -366,19 +366,19 @@ func TestPruneRevisionsPostIssue2651OneWinningOneNonwinningBranch(t *testing.T) 
 
 	branchSpecs := []BranchSpec{
 		{
-			NumRevs:                 5,
+			NumRevs:                 1,
 			Digest:                  "non-winning unresolved",
 			LastRevisionIsTombstone: false,
 		},
 	}
 
-	unconflictedBranchNumRevs := 10
-	winningBranchNumRevs := 20
+	unconflictedBranchNumRevs := 2
+	winningBranchNumRevs := 4
 
 	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 	fmt.Printf("revtree before prune: %v\n", revTree.RenderGraphvizDot())
 
-	maxDepth := uint32(10)
+	maxDepth := uint32(2)
 
 	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
 	fmt.Printf("revtree after %d pruned: %v\n", numPruned, revTree.RenderGraphvizDot())
