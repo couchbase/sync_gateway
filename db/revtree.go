@@ -169,6 +169,23 @@ func (tree RevTree) getHistory(revid string) []string {
 
 // Returns the leaf revision IDs (those that have no children.)
 func (tree RevTree) GetLeaves() []string {
+	acceptAllLeavesFilter := func(revId string) bool {
+		return true
+	}
+	return tree.GetLeavesFiltered(acceptAllLeavesFilter)
+}
+
+func (tree RevTree) GetTombstonedLeaves() []string {
+	onlyTombstonedLeavesFilter := func(revId string) bool {
+		revInfo := tree[revId]
+		return revInfo.Deleted
+	}
+	return tree.GetLeavesFiltered(onlyTombstonedLeavesFilter)
+
+}
+
+func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
+
 	isParent := map[string]bool{}
 	for _, info := range tree {
 		isParent[info.Parent] = true
@@ -176,11 +193,15 @@ func (tree RevTree) GetLeaves() []string {
 	leaves := make([]string, 0, len(tree)-len(isParent)+1)
 	for revid := range tree {
 		if !isParent[revid] {
-			leaves = append(leaves, revid)
+			if filter(revid) {
+				leaves = append(leaves, revid)
+			}
 		}
 	}
 	return leaves
+
 }
+
 
 func (tree RevTree) RenderGraphvizDot() string {
 
@@ -497,10 +518,8 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 func (tree RevTree) DeleteBranch(node *RevInfo) (pruned int) {
 
 	revId := node.ID
-	fmt.Printf("DeleteBranch() called for revId: %v", revId)
 
 	for node := tree[revId]; node != nil; node = tree[node.Parent] {
-		fmt.Printf("DeleteBranch() deleting node %v", node.ID)
 		delete(tree, node.ID)
 		pruned++
 	}
@@ -533,59 +552,6 @@ func (tree RevTree) computeDepths() (maxDepth uint32) {
 	return
 
 }
-
-//func (tree RevTree) computeDepthsOLD() (maxDepth uint32) {
-//	// TODO: Should deleted leaves be penalized since they're not very useful?
-//	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
-//	for _, info := range tree {
-//		info.depth = math.MaxUint32
-//	}
-//	// Walk from each leaf to its root, assigning ancestors consecutive depths,
-//	// but stopping if we'd increase an already-visited ancestor's depth:
-//	for _, revid := range tree.GetLeaves() {
-//		var depth uint32 = 1
-//		for node := tree[revid]; node != nil; node = tree[node.Parent] {
-//			if node.depth <= depth {
-//				break // This hierarchy already has a shorter path to another leaf
-//			}
-//			node.depth = depth
-//			if depth > maxDepth {
-//				maxDepth = depth
-//			}
-//			depth++
-//		}
-//	}
-//	return
-
-//}
-//
-//// Removes older ancestor nodes from the tree so that no node's depth is greater than maxDepth.
-//// Returns the number of nodes pruned.
-//func (tree RevTree) pruneRevisionsOLD(maxDepth uint32) (pruned int) {
-//	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
-//		return
-//	}
-//
-//	// Delete nodes whose depth is greater than maxDepth:
-//	for revid, node := range tree {
-//		if node.depth > maxDepth {
-//			delete(tree, revid)
-//			pruned++
-//		}
-//	}
-//
-//	// Finally, snip dangling Parent links:
-//	if pruned > 0 {
-//		for _, node := range tree {
-//			if node.Parent != "" {
-//				if _, found := tree[node.Parent]; !found {
-//					node.Parent = ""
-//				}
-//			}
-//		}
-//	}
-//	return
-//}
 
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
