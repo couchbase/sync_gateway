@@ -754,11 +754,11 @@ func TestXattrWriteCasExpiry(t *testing.T) {
 	}
 
 	cas := uint64(0)
-	exp := 5
+	exp := 5 // 5 seconds
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, exp, cas, val, xattrVal)
 	assertNoError(t, err, "WriteCasWithXattr error")
-	log.Printf("Post-write, cas is %d", cas)
 
+	// Wait for expiry
 	time.Sleep(10 * time.Second)
 
 	var retrievedVal map[string]interface{}
@@ -767,7 +767,6 @@ func TestXattrWriteCasExpiry(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
-	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assertTrue(t, retrievedVal == nil, "No body expected for expired document")
 	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
