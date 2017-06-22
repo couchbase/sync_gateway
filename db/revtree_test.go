@@ -638,7 +638,7 @@ func BenchmarkRevTreePruning(b *testing.B) {
 		revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 		b.StartTimer()
 
-		revTree.pruneRevisions(50, "")
+		revTree.pruneRevisionsPostIssue2651(50, "")
 	}
 
 }

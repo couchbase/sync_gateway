@@ -447,29 +447,13 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 //
 func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string) (pruned int) {
 
-	//if len(tree) <= int(maxDepth) {
-	//	return 0
-	//}
-	//
-	//leaves := tree.GetLeaves()
-	//
-	//genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranchFromLeaves(leaves)
-	//
-	//// ignore tombstones that have a generation less than or equal to this threshold (older than this threshold)
-	//tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
-	//
-	//return pruned
-
 	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
 		return
 	}
 
 	// Calculate tombstoneGenerationThreshold
 	genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranch()
-	fmt.Printf("genShortestNonTSBranch: %v\n", genShortestNonTSBranch)
 	tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
-	fmt.Printf("tombstoneGenerationThreshold: %v\n", tombstoneGenerationThreshold)
-
 
 	// Delete nodes whose depth is greater than maxDepth:
 	for revid, node := range tree {
@@ -500,11 +484,7 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 		}
 		leafGeneration, _ := ParseRevID(leaf.ID)
 		if leafGeneration < tombstoneGenerationThreshold {
-			fmt.Printf("leafGeneration < tombstoneGenerationThreshold for leaf: %v, calling DeleteBranch\n", leaf.ID)
 			pruned += tree.DeleteBranch(leaf)
-		} else {
-			fmt.Printf("leafGeneration %d > tombstoneGenerationThreshold %d, not calling DeleteBranch\n", leafGeneration, tombstoneGenerationThreshold)
-
 		}
 	}
 
@@ -548,7 +528,6 @@ func (tree RevTree) computeDepths() (maxDepth uint32) {
 				maxDepth = depth
 			}
 			depth++
-			fmt.Printf("depth of node %s is %d\n", node.ID, node.depth)
 		}
 	}
 	return
