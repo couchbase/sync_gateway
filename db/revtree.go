@@ -500,7 +500,7 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 		}
 		leafGeneration, _ := ParseRevID(leaf.ID)
 		if leafGeneration < tombstoneGenerationThreshold {
-			fmt.Printf("leafGeneration < tombstoneGenerationThreshold, calling DeleteBranch\n")
+			fmt.Printf("leafGeneration < tombstoneGenerationThreshold for leaf: %v, calling DeleteBranch\n", leaf.ID)
 			pruned += tree.DeleteBranch(leaf)
 		} else {
 			fmt.Printf("leafGeneration %d > tombstoneGenerationThreshold %d, not calling DeleteBranch\n", leafGeneration, tombstoneGenerationThreshold)
@@ -517,9 +517,11 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 func (tree RevTree) DeleteBranch(node *RevInfo) (pruned int) {
 
 	revId := node.ID
+	fmt.Printf("DeleteBranch() called for revId: %v", revId)
 
 	for node := tree[revId]; node != nil; node = tree[node.Parent] {
-		delete(tree, revId)
+		fmt.Printf("DeleteBranch() deleting node %v", node.ID)
+		delete(tree, node.ID)
 		pruned++
 	}
 
