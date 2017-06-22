@@ -705,13 +705,6 @@ func isRecoverableGoCBError(err error) bool {
 	return ok
 }
 
-func isCasFailure(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "Key already exists")
-}
-
 func containsElement(items []string, itemToCheck string) bool {
 	for _, item := range items {
 		if item == itemToCheck {
@@ -908,7 +901,7 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
-	// This is the only use case for macro expansion today - if more cases turn up, should change the bucket API to handle this more generically.
+	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 
 	bucket.singleOps <- struct{}{}
@@ -918,7 +911,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		// If cas=0, treat as insert
+		// cas=0 specifies an insert
 		if cas == 0 {
 			// TODO: Once that's fixed, need to wrap w/ retry handling
 			gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
@@ -939,7 +932,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 		gocbExpvars.Add("WriteCas_Replace", 1)
 		if v != nil {
 			// Have value and xattr value - update both
-			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(exp)).
+			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), uint32(exp)).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				UpsertEx("", v, gocb.SubdocFlagNone).                                                         // Update the document body
@@ -1000,63 +993,35 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 		gocbExpvars.Add("Get", 1)
 		// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
 		// to retrieve the full doc body, so need to retry that scenario below.
-		res, lookupErr := bucket.Bucket.LookupIn(k).
+		res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
 			GetEx(xattrKey, gocb.SubdocFlagXattr). // Get the xattr
 			GetEx("", gocb.SubdocFlagNone).        // Get the document body
 			Execute()
 
+		// There are two 'partial success' error codes:
+		//   ErrSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
+		//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr exists but doc is deleted (tombstone)
 		switch lookupErr {
-		case nil:
-			// Successfully retrieved doc and (optionally) xattr.  Copy the contents into rv, xv and return.
-			contentErr := res.Content("", rv)
-			if contentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, uint64(0)
+		case nil, gocbcore.ErrSubDocBadMulti:
+			// Attempt to retrieve the document body, if present
+			docContentErr := res.Content("", rv)
+			if docContentErr != nil {
+				LogTo("CRUD+", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
 			}
-			contentErr = res.Content(xattrKey, xv)
-			if contentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, uint64(0)
+			// Attempt to retrieve the xattr, if present
+			xattrContentErr := res.Content(xattrKey, xv)
+			if xattrContentErr != nil {
+				LogTo("CRUD+", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
 
-		case gocbcore.ErrSubDocBadMulti:
-			// TODO: LookupIn should handle all cases with a single op:
-			//     - doc and xattr
-			//     - no doc, no xattr
-			//     - doc, no xattr
-			//     - no doc, xattr
-			cas, docOnlyErr := bucket.Get(k, rv)
-			if docOnlyErr != nil {
-				shouldRetry = isRecoverableGoCBError(docOnlyErr)
-				LogTo("CRUD+", "Error attempting to retrieve doc only: %s  %v", k, docOnlyErr)
-				return shouldRetry, docOnlyErr, uint64(0)
-			}
-			return false, nil, cas
-
-		case gocb.ErrKeyNotFound:
-			// Doc not found - need to check whether this is a deleted doc with an xattr.
-			res, xattrOnlyErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
-				GetEx(xattrKey, gocb.SubdocFlagXattr).
-				Execute()
-
-			// SubDocBadMulti means there's no xattr.  Since there's also no doc, return KeyNotFound
-			// TODO: Workaround until gocbcore adds gocbcore.ErrSubDocBadMultiDeleted (https://issues.couchbase.com/browse/GOCBC-199)
-			if xattrOnlyErr == gocbcore.ErrSubDocBadMulti || strings.Contains(xattrOnlyErr.Error(), "211") {
+		case gocbcore.ErrSubDocMultiPathFailureDeleted:
+			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
+			xattrContentErr := res.Content(xattrKey, xv)
+			if xattrContentErr != nil {
+				// No doc, no xattr means the doc isn't found
 				return false, gocb.ErrKeyNotFound, uint64(0)
-			}
-
-			if xattrOnlyErr != nil && xattrOnlyErr != gocbcore.ErrSubDocSuccessDeleted {
-				shouldRetry = isRecoverableGoCBError(xattrOnlyErr)
-				return shouldRetry, xattrOnlyErr, uint64(0)
-			}
-
-			// Successfully retrieved xattr only - return
-			contentErr := res.Content(xattrKey, xv)
-			if contentErr != nil {
-				LogTo("CRUD", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, contentErr)
-				return false, contentErr, uint64(0)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas

@@ -31,7 +31,7 @@ type RestTester struct {
 
 func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterBucket == nil {
-
+		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
 		base.GetBucketOrPanic() // side effect of creating/flushing bucket
 		spec := base.GetTestBucketSpec(base.DataBucket)
 
@@ -58,7 +58,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			AdminInterface: &DefaultAdminInterface,
 		})
 
-		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
+		useXattrs := base.TestUseXattrs()
+		dbConfig := &DbConfig{
 			BucketConfig: BucketConfig{
 				Server:   &server,
 				Bucket:   &spec.BucketName,
@@ -69,7 +70,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 			Name:        "db",
 			Sync:        syncFnPtr,
 			CacheConfig: rt.CacheConfig,
-		})
+			Unsupported: db.UnsupportedOptions{
+				EnableXattr: &useXattrs,
+			},
+		}
+
+		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(dbConfig)
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 		}
