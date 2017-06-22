@@ -193,7 +193,7 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 	leaves := revTree.GetLeaves()
 	sort.Strings(leaves)
-	assert.DeepEquals(t, leaves, []string{"110-left", "150-a", "76-right"})
+	assert.DeepEquals(t, leaves, []string{"110-left", "150-winning", "76-right"})
 
 }
 
