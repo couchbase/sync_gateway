@@ -464,6 +464,13 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 		return
 	}
 
+	// Calculate tombstoneGenerationThreshold
+	genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranch()
+	fmt.Printf("genShortestNonTSBranch: %v\n", genShortestNonTSBranch)
+	tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
+	fmt.Printf("tombstoneGenerationThreshold: %v\n", tombstoneGenerationThreshold)
+
+
 	// Delete nodes whose depth is greater than maxDepth:
 	for revid, node := range tree {
 		if node.depth > maxDepth {
@@ -472,7 +479,7 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 		}
 	}
 
-	// Finally, snip dangling Parent links:
+	// Snip dangling Parent links:
 	if pruned > 0 {
 		for _, node := range tree {
 			if node.Parent != "" {
@@ -482,8 +489,41 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 			}
 		}
 	}
+
+
+	// Delete any tombstoned branches that are too old
+	leaves := tree.GetLeaves()
+	for _, leafRevId := range leaves {
+		leaf := tree[leafRevId]
+		if !leaf.Deleted {  // Ignore non-tombstoned leaves
+			continue
+		}
+		leafGeneration, _ := ParseRevID(leaf.ID)
+		if leafGeneration < tombstoneGenerationThreshold {
+			fmt.Printf("leafGeneration < tombstoneGenerationThreshold, calling DeleteBranch\n")
+			pruned += tree.DeleteBranch(leaf)
+		} else {
+			fmt.Printf("leafGeneration %d > tombstoneGenerationThreshold %d, not calling DeleteBranch\n", leafGeneration, tombstoneGenerationThreshold)
+
+		}
+	}
+
+
 	return
 
+
+}
+
+func (tree RevTree) DeleteBranch(node *RevInfo) (pruned int) {
+
+	revId := node.ID
+
+	for node := tree[revId]; node != nil; node = tree[node.Parent] {
+		delete(tree, revId)
+		pruned++
+	}
+
+	return pruned
 
 }
 
@@ -506,6 +546,7 @@ func (tree RevTree) computeDepths() (maxDepth uint32) {
 				maxDepth = depth
 			}
 			depth++
+			fmt.Printf("depth of node %s is %d\n", node.ID, node.depth)
 		}
 	}
 	return
@@ -576,6 +617,12 @@ func (tree RevTree) GenerationShortestNonTombstonedBranchFromLeaves(leaves []str
 
 	genShortestNonTSBranch := math.MaxInt32
 	for _, revid := range leaves {
+
+		revInfo := tree[revid]
+		if revInfo.Deleted {
+			// This is a tombstoned branch, skip it
+			continue
+		}
 		gen := genOfRevID(revid)
 		if gen > 0 && gen < genShortestNonTSBranch {
 			genShortestNonTSBranch = gen
