@@ -579,6 +579,29 @@ func (h *handler) writeJSON(value interface{}) {
 	h.writeJSONStatus(http.StatusOK, value)
 }
 
+func (h *handler) writeText(value []byte) {
+	h.writeTextStatus(http.StatusOK, value)
+}
+
+func (h *handler) writeTextStatus(status int, value []byte) {
+	if !h.requestAccepts("text/plain") {
+		base.Warn("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
+		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
+		return
+	}
+
+	h.setHeader("Content-Type", "text/plain charset=utf-8")
+	h.setHeader("Content-Length", fmt.Sprintf("%d", len(value)))
+	if status > 0 {
+		h.response.WriteHeader(status)
+		h.setStatus(status, "")
+	}
+	h.response.Write(value)
+
+}
+
+
+
 func (h *handler) addJSON(value interface{}) {
 	encoder := json.NewEncoder(h.response)
 	err := encoder.Encode(value)

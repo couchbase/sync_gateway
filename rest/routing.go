@@ -165,6 +165,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_raw/{docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
+	dbr.Handle("/_revtree/{docid:"+docRegex+"}",
+		makeHandler(sc, adminPrivs, (*handler).handleGetRevTree)).Methods("GET")
+
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, (*handler).getUsers)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/",

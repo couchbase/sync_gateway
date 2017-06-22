@@ -325,6 +325,18 @@ func (h *handler) handleGetRawDoc() error {
 	return err
 }
 
+func (h *handler) handleGetRevTree() error {
+	h.assertAdminOnly()
+	docid := h.PathVar("docid")
+	doc, err := h.db.GetDoc(docid)
+
+	if doc != nil {
+		h.writeText([]byte(doc.History.RenderGraphvizDot()))
+	}
+	return err
+}
+
+
 func (h *handler) handleGetLogging() error {
 	h.writeJSON(base.GetLogKeys())
 	return nil
