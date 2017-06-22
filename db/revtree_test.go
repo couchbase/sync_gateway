@@ -362,6 +362,30 @@ func TestPruneRevisionsPostIssue2651SingleBranch(t *testing.T) {
 
 }
 
+func TestPruneRevisionsPostIssue2651OneWinningOneNonwinningBranch(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 5,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+	}
+
+	unconflictedBranchNumRevs := 10
+	winningBranchNumRevs := 20
+
+	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	fmt.Printf("revtree before prune: %v\n", revTree.RenderGraphvizDot())
+
+	maxDepth := uint32(10)
+
+	numPruned := revTree.pruneRevisionsPostIssue2651(maxDepth, "")
+	// numPruned := revTree.pruneRevisions(maxDepth, "")
+	fmt.Printf("revtree after %d pruned: %v\n", numPruned, revTree.RenderGraphvizDot())
+
+}
+
 func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{

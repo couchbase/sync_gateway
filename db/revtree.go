@@ -31,6 +31,7 @@ type RevInfo struct {
 	Deleted  bool
 	Body     []byte
 	Channels base.Set
+	depth    uint32
 }
 
 func (rev RevInfo) IsRoot() bool {
@@ -217,7 +218,6 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 			return multilineResult.String()
 		}
-
 
 	}
 
@@ -423,7 +423,6 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		minLeafGen = maxDeletedLeafGen
 	}
 
-
 	minGenToKeep := int(minLeafGen) - int(maxDepth) + 1
 
 	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
@@ -448,41 +447,70 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 //
 func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string) (pruned int) {
 
-	if len(tree) <= int(maxDepth) {
-		return 0
+	//if len(tree) <= int(maxDepth) {
+	//	return 0
+	//}
+	//
+	//leaves := tree.GetLeaves()
+	//
+	//genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranchFromLeaves(leaves)
+	//
+	//// ignore tombstones that have a generation less than or equal to this threshold (older than this threshold)
+	//tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
+	//
+	//return pruned
+
+	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
+		return
 	}
 
-	leaves := tree.GetLeaves()
-
-	genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranchFromLeaves(leaves)
-
-	// ignore tombstones that have a generation less than or equal to this threshold (older than this threshold)
-	// tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
-
-
-	minGenToKeep := int(genShortestNonTSBranch) - int(maxDepth) + 1
-
-	if gen := genOfRevID(keepRev); gen > 0 && gen < minGenToKeep {
-		// Make sure keepRev's generation isn't pruned
-		minGenToKeep = gen
-	}
-
-	// Delete nodes whose generation is less than minGenToKeep:
-	if minGenToKeep > 1 {
-		for revid, node := range tree {
-			if gen := genOfRevID(revid); gen < minGenToKeep {
-				delete(tree, revid)
-				pruned++
-			} else if gen == minGenToKeep {
-				node.Parent = ""
-			}
+	// Delete nodes whose depth is greater than maxDepth:
+	for revid, node := range tree {
+		if node.depth > maxDepth {
+			delete(tree, revid)
+			pruned++
 		}
 	}
 
+	// Finally, snip dangling Parent links:
+	if pruned > 0 {
+		for _, node := range tree {
+			if node.Parent != "" {
+				if _, found := tree[node.Parent]; !found {
+					node.Parent = ""
+				}
+			}
+		}
+	}
+	return
 
-	return pruned
+
 }
 
+func (tree RevTree) computeDepths() (maxDepth uint32) {
+
+	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
+	for _, info := range tree {
+		info.depth = math.MaxUint32
+	}
+	// Walk from each leaf to its root, assigning ancestors consecutive depths,
+	// but stopping if we'd increase an already-visited ancestor's depth:
+	for _, revid := range tree.GetLeaves() {
+		var depth uint32 = 1
+		for node := tree[revid]; node != nil; node = tree[node.Parent] {
+			if node.depth <= depth {
+				break // This hierarchy already has a shorter path to another leaf
+			}
+			node.depth = depth
+			if depth > maxDepth {
+				maxDepth = depth
+			}
+			depth++
+		}
+	}
+	return
+
+}
 
 //func (tree RevTree) computeDepthsOLD() (maxDepth uint32) {
 //	// TODO: Should deleted leaves be penalized since they're not very useful?
@@ -506,6 +534,7 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 //		}
 //	}
 //	return
+
 //}
 //
 //// Removes older ancestor nodes from the tree so that no node's depth is greater than maxDepth.
@@ -535,7 +564,6 @@ func (tree RevTree) pruneRevisionsPostIssue2651(maxDepth uint32, keepRev string)
 //	}
 //	return
 //}
-
 
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
@@ -575,7 +603,6 @@ func (tree RevTree) GenerationLongestTombstonedBranchFromLeaves(leaves []string)
 	}
 	return genLongestTSBranch
 }
-
 
 // Find the length of the longest branch
 func (tree RevTree) LongestBranch() int {
