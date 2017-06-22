@@ -246,13 +246,10 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		gocbExpvars.Add("SingleOps", -1)
 	}()
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
 		gocbExpvars.Add("Get", 1)
 		casGoCB, err := bucket.Bucket.Get(k, rv)
 		shouldRetry = isRecoverableGoCBError(err)
-
 		return shouldRetry, err, uint64(casGoCB)
-
 	}
 
 	// Kick off retry loop
@@ -785,7 +782,7 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("AddRaw", 1)
-	_, err = bucket.Bucket.Insert(k, BinaryDocument(v), uint32(exp))
+	_, err = bucket.Bucket.Insert(k, bucket.FormatBinaryDocument(v), uint32(exp))
 
 	if err != nil && err == gocb.ErrKeyExists {
 		return false, nil
@@ -794,8 +791,8 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 }
 
 func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {
-	LogPanic("Unimplemented method: Append()")
-	return nil
+	_, err := bucket.Bucket.Append(k, string(data))
+	return err
 }
 
 func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
@@ -817,7 +814,9 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("SetRaw", 1)
-	_, err := bucket.Bucket.Upsert(k, BinaryDocument(v), uint32(exp))
+
+	var err error
+	_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
 	return err
 }
 
@@ -1371,17 +1370,14 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 }
 
+// Get bucket manager.  Relies on existing auth settings for bucket.
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
-
-	// Get bucket manager.  Relies on existing auth settings for bucket.
 	username, password := bucket.GetBucketCredentials()
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
 	}
-
 	return manager, nil
-
 }
 
 func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
@@ -1650,6 +1646,18 @@ func (bucket CouchbaseBucketGoCB) Close() {
 		Warn("Error closing GoCB bucket: %v", err)
 	}
 
+}
+
+// Formats binary document to the style expected by the transcoder.  GoCBCustomSGTranscoder
+// expects binary documents to be wrapped in BinaryDocument (this supports writing JSON as raw bytes).
+// The default goCB transcoder doesn't require additional formatting (assumes all incoming []byte should
+// be stored as binary docs.)
+func (bucket CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{} {
+	if bucket.spec.CouchbaseDriver == GoCBCustomSGTranscoder {
+		return BinaryDocument(input)
+	} else {
+		return input
+	}
 }
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,

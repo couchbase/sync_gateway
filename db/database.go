@@ -85,7 +85,7 @@ type DatabaseContext struct {
 
 type DatabaseContextOptions struct {
 	CacheOptions          *CacheOptions
-	IndexOptions          *ChangeIndexOptions
+	IndexOptions          *ChannelIndexOptions
 	SequenceHashOptions   *SequenceHashOptions
 	RevisionCacheCapacity uint32
 	AdminInterface        *string

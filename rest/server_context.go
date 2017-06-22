@@ -399,7 +399,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// Channel index definition, if present
-	channelIndexOptions := &db.ChangeIndexOptions{} // TODO: this is confusing!  why is it called both a "change index" and a "channel index"?
+	channelIndexOptions := &db.ChannelIndexOptions{}
 	sequenceHashOptions := &db.SequenceHashOptions{}
 	if config.ChannelIndex != nil {
 		indexServer := "http://localhost:8091"
@@ -439,6 +439,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 		channelIndexOptions.Spec = indexSpec
 		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
+		channelIndexOptions.TombstoneCompactFrequency = config.ChannelIndex.TombstoneCompactFrequency
 
 		// Hash bucket defaults to index bucket, but can be customized.
 		sequenceHashOptions.Size = 32

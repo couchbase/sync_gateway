@@ -46,7 +46,7 @@ func init() {
 	IndexExpvars = expvar.NewMap("syncGateway_index")
 }
 
-func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChangeIndexOptions) (err error) {
+func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) (err error) {
 
 	k.context = context
 	k.reader = &kvChangeIndexReader{}

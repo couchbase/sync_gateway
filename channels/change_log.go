@@ -16,6 +16,7 @@ const (
 	LogEntryPrincipal
 	LogEntryCheckpoint
 	LogEntryRollback
+	LogEntryPurge
 )
 
 type LogEntry struct {
@@ -79,6 +80,16 @@ func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, 
 		}
 	}
 	return channelsRemoved, revIdRemoved
+}
+
+func (channelMap ChannelMap) KeySet() []string {
+	result := make([]string, len(channelMap))
+	i := 0
+	for key, _ := range channelMap {
+		result[i] = key
+		i++
+	}
+	return result
 }
 
 func (cp *ChangeLog) LastSequence() uint64 {
