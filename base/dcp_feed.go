@@ -120,10 +120,20 @@ func (r *DCPReceiver) GetOutput() chan sgbucket.TapEvent {
 }
 
 func (r *DCPReceiver) OnError(err error) {
-	Warn("Error processing DCP stream: %v", err)
+	Warn("Error processing DCP stream - will attempt to restart/reconnect: %v", err)
 
-	bucketName := "unknown" // this is currently ignored anyway
-	r.notify(bucketName, err)
+	// From cbdatasource:
+	//  Invoked in advisory fashion by the BucketDataSource when it
+	//  encounters an error.  The BucketDataSource will continue to try
+	//  to "heal" and restart connections, etc, as necessary.  The
+	//  Receiver has a recourse during these error notifications of
+	//  simply Close()'ing the BucketDataSource.
+
+	// Given this, we don't need to restart the feed/take the
+	// database offline, particularly since this only represents an error for a single
+	// vbucket stream, not the entire feed.
+	// bucketName := "unknown" // this is currently ignored anyway
+	// r.notify(bucketName, err)
 
 }
 

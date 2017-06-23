@@ -222,7 +222,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
 		if err = context.tapListener.Start(bucket, options.TrackDocs, xattrImportNode, func(bucket string, err error) {
 
-			msg := fmt.Sprintf("%v lost Mutation (TAP/DCP) feed due to error: %v, taking offline", bucket, err)
+			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
 			base.Warn(msg)
 			errTakeDbOffline := context.TakeDbOffline(msg)
 			if errTakeDbOffline == nil {
