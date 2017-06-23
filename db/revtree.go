@@ -173,14 +173,8 @@ func (tree RevTree) GetLeaves() []string {
 	return tree.GetLeavesFiltered(acceptAllLeavesFilter)
 }
 
-func (tree RevTree) GetTombstonedLeaves() []string {
-	onlyTombstonedLeavesFilter := func(revId string) bool {
-		revInfo := tree[revId]
-		return revInfo.Deleted
-	}
-	return tree.GetLeavesFiltered(onlyTombstonedLeavesFilter)
 
-}
+
 
 func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 
@@ -348,7 +342,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	}
 
 	// Calculate tombstoneGenerationThreshold
-	genShortestNonTSBranch := tree.GenerationShortestNonTombstonedBranch()
+	genShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
 	tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
 
 	// Delete nodes whose depth is greater than maxDepth:
@@ -430,11 +424,11 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
-func (tree RevTree) GenerationShortestNonTombstonedBranch() int {
-	return tree.GenerationShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
+func (tree RevTree) FindShortestNonTombstonedBranch() (generation int) {
+	return tree.FindShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) GenerationShortestNonTombstonedBranchFromLeaves(leaves []string) int {
+func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int) {
 
 	genShortestNonTSBranch := math.MaxInt32
 	for _, revid := range leaves {
@@ -455,11 +449,11 @@ func (tree RevTree) GenerationShortestNonTombstonedBranchFromLeaves(leaves []str
 // Find the generation of the longest deleted branch.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/four_branches_two_tombstoned.png
 // The longest deleted branch has a generation of 10
-func (tree RevTree) GenerationLongestTombstonedBranch() int {
-	return tree.GenerationLongestTombstonedBranchFromLeaves(tree.GetLeaves())
+func (tree RevTree) FindLongestTombstonedBranch() (generation int) {
+	return tree.FindLongestTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) GenerationLongestTombstonedBranchFromLeaves(leaves []string) int {
+func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (generation int) {
 	genLongestTSBranch := 0
 	for _, revid := range leaves {
 		gen := genOfRevID(revid)
@@ -470,43 +464,6 @@ func (tree RevTree) GenerationLongestTombstonedBranchFromLeaves(leaves []string)
 		}
 	}
 	return genLongestTSBranch
-}
-
-// Find the length of the longest branch
-func (tree RevTree) LongestBranch() int {
-
-	longestBranch := 0
-
-	leafProcessor := func(leaf *RevInfo) {
-
-		lengthOfBranch := 0
-
-		// Walk up the tree until we find a root, and append each node
-		node := leaf
-		for {
-
-			// Increment length of branch
-			lengthOfBranch += 1
-
-			// Reached a root, we're done -- if this branch is longer than the
-			// current longest branch, record branch length as longestBranch
-			if node.IsRoot() {
-				if lengthOfBranch > longestBranch {
-					longestBranch = lengthOfBranch
-				}
-				break
-			}
-
-			// Walk up the branch to the parent node
-			node = tree[node.Parent]
-
-		}
-	}
-
-	tree.forEachLeaf(leafProcessor)
-
-	return longestBranch
-
 }
 
 //////// ENCODED REVISION LISTS (_revisions):

@@ -397,7 +397,7 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 
 	// we shouldn't have any tombstoned branches, since the tombstoned branch was so old
 	// it should have been pruned away
-	assert.Equals(t, revTree.GenerationLongestTombstonedBranch(), 0)
+	assert.Equals(t, revTree.FindLongestTombstonedBranch(), 0)
 
 
 }
@@ -443,7 +443,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
 	expectedGenLongestTSd := 6
-	assert.Equals(t, revTree.GenerationLongestTombstonedBranch(), expectedGenLongestTSd)
+	assert.Equals(t, revTree.FindLongestTombstonedBranch(), expectedGenLongestTSd)
 
 }
 
@@ -466,7 +466,7 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
 
-	generationShortestNonTombstonedBranch := revTree.GenerationShortestNonTombstonedBranch()
+	generationShortestNonTombstonedBranch := revTree.FindShortestNonTombstonedBranch()
 
 	// The "non-winning unresolved" branch has 7 revisions due to:
 	// 3 unconflictedBranchNumRevs
@@ -502,7 +502,7 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 	}
 
 	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
-	generationLongestTombstonedBranch := revTree.GenerationLongestTombstonedBranch()
+	generationLongestTombstonedBranch := revTree.FindLongestTombstonedBranch()
 
 	// The generation of the longest deleted branch is:
 	// 3 unconflictedBranchNumRevs
@@ -742,6 +742,53 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 	}
 
 }
+
+func (tree RevTree) GetTombstonedLeaves() []string {
+	onlyTombstonedLeavesFilter := func(revId string) bool {
+		revInfo := tree[revId]
+		return revInfo.Deleted
+	}
+	return tree.GetLeavesFiltered(onlyTombstonedLeavesFilter)
+
+}
+
+// Find the length of the longest branch
+func (tree RevTree) LongestBranch() int {
+
+	longestBranch := 0
+
+	leafProcessor := func(leaf *RevInfo) {
+
+		lengthOfBranch := 0
+
+		// Walk up the tree until we find a root, and append each node
+		node := leaf
+		for {
+
+			// Increment length of branch
+			lengthOfBranch += 1
+
+			// Reached a root, we're done -- if this branch is longer than the
+			// current longest branch, record branch length as longestBranch
+			if node.IsRoot() {
+				if lengthOfBranch > longestBranch {
+					longestBranch = lengthOfBranch
+				}
+				break
+			}
+
+			// Walk up the branch to the parent node
+			node = tree[node.Parent]
+
+		}
+	}
+
+	tree.forEachLeaf(leafProcessor)
+
+	return longestBranch
+
+}
+
 
 // Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
 func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
