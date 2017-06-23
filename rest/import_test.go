@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -112,6 +114,68 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	assertTrue(t, hasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
 	assertTrue(t, hasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+
+}
+
+// Test cas failure during WriteUpdate, triggering import of SDK write.
+// Disabled, as test depends on artificial latency in PutDoc to reliably hit the CAS failure on the SG write.  Scenario fully covered
+// by functional test.
+func DisableTestXattrImportOnCasFailure(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	rt.SendAdminRequest("PUT", "/_logging", `{"ImportCas":true}`)
+
+	// 1. SG Write
+	key := "TestCasFailureImport"
+	docBody := make(map[string]interface{})
+	docBody["test"] = "TestCasFailureImport"
+	docBody["SG_write_count"] = "1"
+
+	response := rt.SendAdminRequest("PUT", "/db/TestCasFailureImport", `{"test":"TestCasFailureImport", "write_type":"SG_1"}`)
+	assert.Equals(t, response.Code, 201)
+	log.Printf("insert response: %s", response.Body.Bytes())
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["rev"], "1-111c27be37c17f18ae8fe9faa3bb4e0e")
+	revId := body["rev"].(string)
+
+	// Attempt a second SG write, to be interrupted by an SDK update.  Should return a conflict
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", key, revId), `{"write_type":"SG_2"}`)
+		assert.Equals(t, response.Code, 409)
+		log.Printf("SG CAS failure write response: %s", response.Body.Bytes())
+		wg.Done()
+	}()
+
+	// Concurrent SDK writes for 10 seconds, one per second
+	for i := 0; i < 10; i++ {
+		time.Sleep(1 * time.Second)
+		sdkBody := make(map[string]interface{})
+		sdkBody["test"] = "TestCasFailureImport"
+		sdkBody["SDK_write_count"] = i
+		err := bucket.Set(key, 0, sdkBody)
+		assertNoError(t, err, "Unexpected error doing SDK write")
+	}
+
+	// wait for SG write to happen
+	wg.Wait()
+
+	// Get to see where we ended up
+	response = rt.SendAdminRequest("GET", "/db/TestCasFailureImport", "")
+	assert.Equals(t, response.Code, 200)
+	log.Printf("Final get: %s", response.Body.Bytes())
+
+	// Get raw to see where the rev tree ended up
+	response = rt.SendAdminRequest("GET", "/db/_raw/TestCasFailureImport", "")
+	assert.Equals(t, response.Code, 200)
+	log.Printf("Final get raw: %s", response.Body.Bytes())
 
 }
 

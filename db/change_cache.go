@@ -368,9 +368,13 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 						rawBody = nil
 					}
 					db := Database{DatabaseContext: c.context, user: nil}
-					_, err := db.ImportDocRaw(docID, rawBody, isDelete)
+					_, err := db.ImportDocRaw(docID, rawBody, isDelete, event.Cas, ImportFromFeed)
 					if err != nil {
-						base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+						if err == base.ErrImportCasFailure {
+							base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
+						} else {
+							base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+						}
 					}
 				}
 				return
