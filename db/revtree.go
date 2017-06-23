@@ -37,10 +37,6 @@ func (rev RevInfo) IsRoot() bool {
 	return rev.Parent == ""
 }
 
-func (rev RevInfo) IsRoot() bool {
-	return rev.Parent == ""
-}
-
 //  A revision tree maps each revision ID to its RevInfo.
 type RevTree map[string]*RevInfo
 
