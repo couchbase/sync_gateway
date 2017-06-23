@@ -642,7 +642,8 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas 
 			return nil, nil, base.ErrAlreadyImported
 		}
 
-		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode
+		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  This is an SDK write (since we checked
+		// for SG write above).  How to handle depends on import mode.
 		if doc.Cas != importCas {
 			// If this is a feed import, cancel on cas failure (doc has been updated )
 			if mode == ImportFromFeed {
