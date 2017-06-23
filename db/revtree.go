@@ -338,7 +338,12 @@ func (tree RevTree) copy() RevTree {
 //   tombstoneGenerationThreshold, then remove all nodes on that branch up to the root of the branch.
 func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
 
-	if len(tree) <= int(maxDepth) || tree.computeDepths() <= maxDepth {
+	if len(tree) <= int(maxDepth) {
+		return
+	}
+
+	computedMaxDepth, leaves := tree.computeDepthsAndFindLeaves()
+	if computedMaxDepth <= maxDepth {
 		return
 	}
 
@@ -366,7 +371,6 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	}
 
 	// Delete any tombstoned branches that are too old
-	leaves := tree.GetLeaves()
 	for _, leafRevId := range leaves {
 		leaf := tree[leafRevId]
 		if !leaf.Deleted { // Ignore non-tombstoned leaves
@@ -395,15 +399,18 @@ func (tree RevTree) DeleteBranch(node *RevInfo) (pruned int) {
 
 }
 
-func (tree RevTree) computeDepths() (maxDepth uint32) {
+func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []string) {
 
 	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
 	for _, info := range tree {
 		info.depth = math.MaxUint32
 	}
+
 	// Walk from each leaf to its root, assigning ancestors consecutive depths,
 	// but stopping if we'd increase an already-visited ancestor's depth:
-	for _, revid := range tree.GetLeaves() {
+	leaves = tree.GetLeaves()
+	for _, revid := range leaves {
+
 		var depth uint32 = 1
 		for node := tree[revid]; node != nil; node = tree[node.Parent] {
 			if node.depth <= depth {
@@ -416,7 +423,7 @@ func (tree RevTree) computeDepths() (maxDepth uint32) {
 			depth++
 		}
 	}
-	return
+	return maxDepth, leaves
 
 }
 

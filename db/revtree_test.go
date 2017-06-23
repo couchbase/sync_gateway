@@ -296,20 +296,20 @@ func TestRevTreeWinningRev(t *testing.T) {
 func TestPruneRevisions(t *testing.T) {
 
 	tempmap := testmap.copy()
-	tempmap.computeDepths()
+	tempmap.computeDepthsAndFindLeaves()
 	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
 	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
 	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	tempmap = branchymap.copy()
-	tempmap.computeDepths()
+	tempmap.computeDepthsAndFindLeaves()
 	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
 	assert.Equals(t, tempmap["3-drei"].depth, uint32(1))
 	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
 	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei"}
-	tempmap.computeDepths()
+	tempmap.computeDepthsAndFindLeaves()
 	assert.Equals(t, tempmap["4-vier"].depth, uint32(1))
 	assert.Equals(t, tempmap["3-drei"].depth, uint32(2))
 	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
