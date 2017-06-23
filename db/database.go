@@ -692,15 +692,12 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
 
-	designDocMap[DesignDocSyncGatewayPrincipals] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
-		},
-	}
-
 	designDocMap[DesignDocSyncGatewayChannels] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			ViewChannels: sgbucket.ViewDef{Map: channels_map},
+		},
+		Options: &sgbucket.DesignDocOptions{
+			IndexXattrOnTombstones: true,
 		},
 	}
 
@@ -736,6 +733,10 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 			ViewOldRevs:    sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
 			ViewSessions:   sgbucket.ViewDef{Map: sessions_map},
 			ViewTombstones: sgbucket.ViewDef{Map: tombstones_map},
+			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
+		},
+		Options: &sgbucket.DesignDocOptions{
+			IndexXattrOnTombstones: true, // For ViewTombstones
 		},
 	}
 
@@ -831,7 +832,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncGatewayPrincipals, ViewPrincipals, Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}

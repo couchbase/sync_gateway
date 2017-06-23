@@ -14,7 +14,6 @@ import (
 const (
 	DesignDocSyncGateway                = "sync_gateway" // Legacy design doc, obsolete in SG 1.5 and later.  Used to remove if present during view installation
 	DesignDocSyncGatewayChannels        = "sync_gateway_channels"
-	DesignDocSyncGatewayPrincipals      = "sync_gateway_principals"
 	DesignDocSyncGatewayAccess          = "sync_gateway_access"
 	DesignDocSyncGatewayAccessVbSeq     = "sync_gateway_access_vbseq"
 	DesignDocSyncGatewayRoleAccess      = "sync_gateway_role_access"
@@ -37,7 +36,7 @@ const (
 func GetDesignDocForView(viewName string) (designDocName string) {
 	switch viewName {
 	case ViewPrincipals:
-		return DesignDocSyncGatewayPrincipals
+		return DesignDocSyncHousekeeping
 	case ViewChannels:
 		return DesignDocSyncGatewayChannels
 	case ViewAccess:

@@ -10,10 +10,13 @@
 package base
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -1382,11 +1385,6 @@ func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error
 
 func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
 
-	manager, err := bucket.getBucketManager()
-	if err != nil {
-		return err
-	}
-
 	// Convert whatever we got in the value empty interface into a sgbucket.DesignDoc
 	var sgDesignDoc sgbucket.DesignDoc
 	switch typeValue := value.(type) {
@@ -1396,6 +1394,11 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 		sgDesignDoc = *typeValue
 	default:
 		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
+	}
+
+	manager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
 	}
 
 	gocbDesignDoc := &gocb.DesignDocument{
@@ -1410,7 +1413,72 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 		gocbDesignDoc.Views[viewName] = gocbView
 	}
 
+	if sgDesignDoc.Options != nil && sgDesignDoc.Options.IndexXattrOnTombstones {
+		return bucket.putDDocForTombstones(gocbDesignDoc)
+	}
+
 	return manager.UpsertDesignDocument(gocbDesignDoc)
+
+}
+
+type XattrEnabledDesignDoc struct {
+	*gocb.DesignDocument
+	IndexXattrOnTombstones bool `json:"index_xattr_on_deleted_docs, omitempty"`
+}
+
+// For the view engine to index tombstones, we need to set an explicit property in the design doc.
+//      see https://issues.couchbase.com/browse/MB-24616
+// This design doc property isn't exposed via the SDK (it's an internal-only property), so we need to
+// jump through some hoops to created the design doc.  Follows same approach used internally by gocb.
+func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
+
+	xattrEnabledDesignDoc := XattrEnabledDesignDoc{
+		DesignDocument:         ddoc,
+		IndexXattrOnTombstones: true,
+	}
+	data, err := json.Marshal(&xattrEnabledDesignDoc)
+	if err != nil {
+		return err
+	}
+
+	// Based on implementation in gocb.BucketManager.UpsertDesignDocument
+	uri := fmt.Sprintf("/_design/%s", ddoc.Name)
+	body := bytes.NewReader(data)
+
+	goCBClient := bucket.Bucket.IoRouter()
+
+	// From gocb.Bucket.getViewEp() - look up the view node endpoints and pick one at random
+	capiEps := goCBClient.CapiEps()
+	if len(capiEps) == 0 {
+		return errors.New("No available view nodes.")
+	}
+	viewEp := capiEps[rand.Intn(len(capiEps))]
+
+	// Build the HTTP request
+	req, err := http.NewRequest("PUT", viewEp+uri, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Content-Type", "application/json")
+	username, password := bucket.GetBucketCredentials()
+	req.SetBasicAuth(username, password)
+
+	// Use the bucket's HTTP client to make the request
+	resp, err := goCBClient.HttpClient().Do(req)
+
+	if resp.StatusCode != 201 {
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			LogFatal("Failed to close socket (%s)", err)
+		}
+		return fmt.Errorf("Client error: %s", string(data))
+	}
+
+	return nil
 
 }
 
