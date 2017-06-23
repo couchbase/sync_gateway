@@ -670,12 +670,77 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
-	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal2, retrievedXattr2)
 	assert.Equals(t, getCas, cas)
 	assert.Equals(t, retrievedVal2["body_field"], val2["body_field"])
 	assert.Equals(t, retrievedXattr2["seq"], xattrVal2["seq"])
 	assert.Equals(t, retrievedXattr2["rev"], xattrVal2["rev"])
+
+}
+
+// TestXattrWriteCasWithXattrCasFailure.  Validates cas check when using WriteCasWithXattr
+func TestXattrWriteCasWithXattrCasFailure(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	bucket := GetBucketOrPanic()
+
+	key := "TestWriteCasXATTRSimple"
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["sg_field"] = "sg_value"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = float64(123)
+	xattrVal["rev"] = "1-1234"
+
+	var existsVal map[string]interface{}
+	_, err := bucket.Get(key, existsVal)
+	if err == nil {
+		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
+		err = bucket.DeleteWithXattr(key, xattrName)
+	}
+
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	assertNoError(t, err, "WriteCasWithXattr error")
+	log.Printf("Post-write, cas is %d", cas)
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	getCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
+	assert.Equals(t, getCas, cas)
+	assert.Equals(t, retrievedVal["sg_field"], val["sg_field"])
+	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+
+	// Simulate an SDK update
+	updatedVal := make(map[string]interface{})
+	updatedVal["sdk_field"] = "abc"
+	bucket.Set(key, 0, updatedVal)
+
+	// Attempt to update with the previous CAS
+	val["sg_field"] = "sg_value_mod"
+	xattrVal["rev"] = "2-1234"
+	_, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val, xattrVal)
+	assert.Equals(t, err, gocb.ErrKeyExists)
+
+	// Retrieve again, ensure we get the SDK value, SG xattr
+	retrievedVal = nil
+	retrievedXattr = nil
+	_, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
+	assert.Equals(t, retrievedVal["sg_field"], nil)
+	assert.Equals(t, retrievedVal["sdk_field"], updatedVal["sdk_field"])
+	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	assert.Equals(t, retrievedXattr["rev"], "1-1234")
 
 }
 

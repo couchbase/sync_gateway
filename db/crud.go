@@ -62,7 +62,7 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 			isDelete := rawDoc == nil
 			db := Database{DatabaseContext: db, user: nil}
 			var importErr error
-			doc, importErr = db.ImportDocRaw(docid, rawDoc, isDelete)
+			doc, importErr = db.ImportDocRaw(docid, rawDoc, isDelete, cas, ImportOnDemand)
 			if importErr != nil {
 				return nil, importErr
 			}
@@ -486,7 +486,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			// Use an admin-scoped database for import
 			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 			var importErr error
-			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete)
+			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -547,7 +547,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			// Use an admin-scoped database for import
 			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 			var importErr error
-			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete)
+			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -590,8 +590,15 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	return err
 }
 
+type ImportMode uint8
+
+const (
+	ImportFromFeed = ImportMode(iota) // Feed-based import.  Attempt to import once - cancels import on cas write failure of the imported doc.
+	ImportOnDemand                    // On-demand import. Reattempt import on cas write failure of the imported doc until either the import succeeds, or existing doc is an SG write.
+)
+
 // Imports a document that was written by someone other than sync gateway.
-func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool) (docOut *document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool, cas uint64, mode ImportMode) (docOut *document, err error) {
 
 	var body Body
 	if isDelete {
@@ -604,10 +611,10 @@ func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool) (doc
 		}
 	}
 
-	return db.ImportDoc(docid, body, isDelete)
+	return db.ImportDoc(docid, body, isDelete, cas, mode)
 }
 
-func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *document, err error) {
+func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas uint64, mode ImportMode) (docOut *document, err error) {
 
 	base.LogTo("Import+", "Attempting to import doc %q...", docid)
 	var newRev string
@@ -635,6 +642,19 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 			return nil, nil, base.ErrAlreadyImported
 		}
 
+		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  This is an SDK write (since we checked
+		// for SG write above).  How to handle depends on import mode.
+		if doc.Cas != importCas {
+			// If this is a feed import, cancel on cas failure (doc has been updated )
+			if mode == ImportFromFeed {
+				return nil, nil, base.ErrImportCasFailure
+			}
+			// If this is an on-demand import, we want to switch to importing the current version doc
+			if mode == ImportOnDemand {
+				body = doc.body
+			}
+		}
+
 		// The active rev is the parent for an import
 		parentRev := doc.CurrentRev
 		generation, _ := ParseRevID(parentRev)
@@ -660,6 +680,9 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool) (docOut *d
 		base.LogTo("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
+	case base.ErrImportCasFailure:
+		// Import was cancelled due to CAS failure.
+		return nil, err
 	default:
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
 		return nil, err

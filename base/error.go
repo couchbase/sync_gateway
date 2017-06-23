@@ -22,8 +22,9 @@ import (
 type sgErrorCode uint16
 
 const (
-	alreadyImported = sgErrorCode(0x00)
-	importCancelled = sgErrorCode(0x01)
+	alreadyImported  = sgErrorCode(0x00)
+	importCancelled  = sgErrorCode(0x01)
+	importCasFailure = sgErrorCode(0x02)
 )
 
 type SGError struct {
@@ -31,8 +32,9 @@ type SGError struct {
 }
 
 var (
-	ErrAlreadyImported = &SGError{alreadyImported}
-	ErrImportCancelled = &SGError{importCancelled}
+	ErrImportCancelled  = &SGError{importCancelled}
+	ErrAlreadyImported  = &SGError{alreadyImported}
+	ErrImportCasFailure = &SGError{importCasFailure}
 )
 
 func (e SGError) Error() string {
@@ -41,6 +43,8 @@ func (e SGError) Error() string {
 		return "Document already imported"
 	case importCancelled:
 		return "Import cancelled"
+	case importCasFailure:
+		return "CAS failure during import"
 	default:
 		return "Unknown error"
 	}
