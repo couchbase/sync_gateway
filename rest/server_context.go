@@ -352,7 +352,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
-		msg := fmt.Sprintf("%v lost Mutation (TAP/DCP) feed due to error: %v, taking offline", bucket, err)
+		msg := fmt.Sprintf("%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
 		base.Warn(msg)
 
 		if dc := sc.databases_[dbName]; dc != nil {
