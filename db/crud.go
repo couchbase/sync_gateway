@@ -482,7 +482,17 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 		// If doc isn't an SG write, import it before updating.
 		if doc != nil && !doc.IsSGWrite() {
-			isDelete := doc.body == nil
+			// Check whether the doc requiring import is an SDK delete
+			isDelete := false
+			if doc.body == nil {
+				isDelete = true
+			} else {
+				deletedInBody, ok := body["_deleted"].(bool)
+				if ok {
+					isDelete = deletedInBody
+				}
+			}
+
 			// Use an admin-scoped database for import
 			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 			var importErr error

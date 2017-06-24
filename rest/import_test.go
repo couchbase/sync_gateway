@@ -318,12 +318,16 @@ func TestXattrDoubleDelete(t *testing.T) {
 	revId := body["rev"].(string)
 
 	// 2. Delete the doc through the SDK
+	log.Printf("...............Delete through SDK.....................................")
 	deleteErr := bucket.Delete(key)
 	assertNoError(t, deleteErr, "Couldn't delete via SDK")
 
-	// 3. Delete the doc through SG
+	log.Printf("...............Delete through SG.......................................")
+
+	// 3. Delete the doc through SG.  Expect a conflict, as the import of the SDK delete will create a new
+	//    tombstone revision
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
-	assert.Equals(t, response.Code, 200)
+	assert.Equals(t, response.Code, 409)
 	log.Printf("delete response: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["ok"], true)
