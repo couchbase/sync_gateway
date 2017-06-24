@@ -287,3 +287,50 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	assertTrue(t, ok, "Didn't find expected channel (HBO) on resurrected doc")
 
 }
+
+// Attempt to delete a document that's already been deleted via the SDK
+func TestXattrDoubleDelete(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{SyncFn: `
+		function(doc, oldDoc) { channel(doc.channels) }`}
+	defer rt.Close()
+
+	log.Printf("Starting get bucket....")
+
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create and import doc
+	key := "TestDoubleDelete"
+	docBody := make(map[string]interface{})
+	docBody["test"] = key
+	docBody["channels"] = "ABC"
+
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), `{"channels":"ABC"}`)
+	assert.Equals(t, response.Code, 201)
+	log.Printf("insert response: %s", response.Body.Bytes())
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId := body["rev"].(string)
+
+	// 2. Delete the doc through the SDK
+	log.Printf("...............Delete through SDK.....................................")
+	deleteErr := bucket.Delete(key)
+	assertNoError(t, deleteErr, "Couldn't delete via SDK")
+
+	log.Printf("...............Delete through SG.......................................")
+
+	// 3. Delete the doc through SG.  Expect a conflict, as the import of the SDK delete will create a new
+	//    tombstone revision
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
+	assert.Equals(t, response.Code, 409)
+	log.Printf("delete response: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId = body["rev"].(string)
+
+}
