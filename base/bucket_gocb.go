@@ -978,6 +978,45 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	return cas, err
 }
 
+// CAS-safe delete of a document, and update of it's corresponding xattr
+func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}) (casOut uint64, err error) {
+
+	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
+	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
+	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+			RemoveEx("", gocb.SubdocFlagNone).                                                            // Delete the document body
+			Execute()
+
+		if removeErr != nil {
+			shouldRetry = isRecoverableGoCBError(removeErr)
+			return shouldRetry, err, uint64(0)
+		}
+		return false, nil, uint64(docFragment.Cas())
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("DeleteAndUpdateXattr with key %v", k)
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, fmt.Errorf("DeleteAndUpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+	}
+
+	return cas, err
+}
+
 // Retrieve a document and it's associated named xattr
 func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
 
@@ -1062,6 +1101,7 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Delete", 1)
+
 	removeCas, err := bucket.Bucket.Remove(k, 0)
 	if err != nil && err != gocb.ErrKeyNotFound {
 		return err
@@ -1237,32 +1277,18 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		var writeErr error
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
-			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
-			removeCas, removeErr := bucket.Remove(k, cas)
-			if removeErr == nil {
-				// Successful removal - update the cas for the xattr operation
-				cas = removeCas
-			} else if removeErr == gocb.ErrKeyNotFound {
-				// Document body has already been removed - continue to xattr processing w/ same cas
-			} else if isRecoverableGoCBError(removeErr) {
-				// Recoverable error - retry WriteUpdateWithXattr
-				continue
-			} else {
-				// Non-recoverable error - return
-				return emptyCas, removeErr
+			deleteCas, deleteErr := bucket.DeleteAndUpdateXattr(k, xattrKey, exp, cas, updatedXattrValue)
+			switch deleteErr {
+			case nil:
+				return deleteCas, deleteErr
+			case gocb.ErrKeyExists:
+				continue // Retry on CAS failure
+			default:
+				// DeleteAndUpdateXattr already does retry on recoverable errors, so return any error here
+				LogTo("CRUD", "Delete and update of xattr during WriteUpdateWithXattr failed for key %s: %v", k, deleteErr)
+				return emptyCas, deleteErr
 			}
 
-			// update xattr only
-			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
-			}
-
-			// If there was no error, we're done
-			if writeErr == nil {
-				return casOut, nil
-			}
 		} else {
 			// Not a delete - update the body and xattr
 			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
