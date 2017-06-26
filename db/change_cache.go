@@ -15,6 +15,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"runtime/debug"
 )
 
 const (
@@ -295,12 +296,16 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 	for i = 0; i < 20; i++ {
 		c.lock.RLock()
 		nextSequence := c.nextSequence
+		base.LogTo("Changes+", "waitForSequenceWithMissing(%d) got nextSequence: %d", sequence, nextSequence)
 		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
+			base.LogTo("Changes+", "nextSequence(%d) >= sequence+1(%d)", nextSequence, sequence+1)
+
 			foundInMissing := false
 			c.skippedSeqLock.RLock()
 			for _, skippedSeq := range c.skippedSeqs {
 				if skippedSeq.seq == sequence {
+					base.LogTo("Changes+", "found sequence(%d) in skippedSeq(%d).  Done", sequence, skippedSeq.seq)
 					foundInMissing = true
 					break
 				}
@@ -310,6 +315,9 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 				base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
 				return
 			}
+		} else {
+			base.LogTo("Changes+", "nextSequence(%d) < sequence+1(%d)", nextSequence, sequence+1)
+
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -327,6 +335,10 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 	changedChannelsCombined := base.Set{}
 
 	processDocChanged := func() {
+
+		base.LogTo("Changes+", "processDocChanged func() invoked.  docId: %v docJSON: %v, changedChannels: %v", docID, string(docJSON), changedChannelsCombined)
+		defer base.LogTo("Changes+", "/processDocChanged func() finished")
+
 		// ** This method does not directly access any state of c, so it doesn't lock.
 		// Is this a user/role doc?
 		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
@@ -359,9 +371,15 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 
 		// Import handling.
 		if c.context.UseXattrs() {
+			base.LogTo("Changes+", "c.context.UseXattrs() == true")
+
 			// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
 			if syncData == nil || !syncData.IsSGWrite(event.Cas) {
+				base.LogTo("Changes+", "syncData == nil || !syncData.IsSGWrite(event.Cas)")
+
 				if c.context.autoImport {
+					base.LogTo("Changes+", "c.context.autoImport")
+
 					// If syncData is nil, or if this was not an SG write, attempt to import
 					isDelete := event.Opcode == sgbucket.TapDeletion
 					if isDelete {
@@ -377,6 +395,8 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 						}
 					}
 				}
+				base.LogTo("Changes+", "return from function c.context.UseXattrs() == true")
+
 				return
 			}
 		}
@@ -455,8 +475,12 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 		changedChannels := c.processEntry(change)
 		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 
+		debug.PrintStack()
+		base.LogTo("Changes+", "Notify change listeners for all of the changed channels")
+
 		// Notify change listeners for all of the changed channels
 		if c.onChange != nil && len(changedChannelsCombined) > 0 {
+			base.LogTo("Changes+", "c.onChange(%v)", changedChannelsCombined)
 			c.onChange(changedChannelsCombined)
 		}
 	}

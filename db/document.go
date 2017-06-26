@@ -226,21 +226,31 @@ func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
 // Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value
 func (s *syncData) GetSyncCas() uint64 {
 
+	base.LogTo("Changes+", "GetSyncCas() called")
+
 	if s.Cas == "" {
+		base.LogTo("Changes+", "GetSyncCas() s.Cas is empty, return 0")
+
 		return 0
 	}
 
 	casBytes, err := hex.DecodeString(strings.TrimPrefix(s.Cas, "0x"))
 	if err != nil || len(casBytes) != 8 {
 		// Invalid cas - return zero
+		base.LogTo("Changes+", "GetSyncCas() Invalid cas - return zero")
+
 		return 0
 	}
+
+	base.LogTo("Changes+", "GetSyncCas() return binary.LittleEndian.Uint64(casBytes[0:8])")
 
 	return binary.LittleEndian.Uint64(casBytes[0:8])
 }
 
 // Checks whether the specified cas matches the cas value in the sync metadata.
 func (s *syncData) IsSGWrite(cas uint64) bool {
+	base.LogTo("Changes+", "IsSGWrite called, returning %v.  cas(%v) == s.GetSyncCas(%v)", cas == s.GetSyncCas(), cas, s.GetSyncCas())
+
 	return cas == s.GetSyncCas()
 }
 

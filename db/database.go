@@ -201,9 +201,20 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		}
 	}
 
-	context.changeCache.Init(context, SequenceID{Seq: lastSeq}, func(changedChannels base.Set) {
+	onChange := func(changedChannels base.Set) {
+		base.LogTo("Changes+", "Calling context.tapListener.Notify(changedChannels=%+v)", changedChannels)
 		context.tapListener.Notify(changedChannels)
-	}, options.CacheOptions, options.IndexOptions)
+	}
+
+	base.LogTo("Changes+", "Calling changeCacheInit() with onchanged() func")
+	context.changeCache.Init(
+		context,
+		SequenceID{Seq: lastSeq},
+		onChange,
+		options.CacheOptions,
+		options.IndexOptions,
+	)
+
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling

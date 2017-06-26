@@ -547,17 +547,29 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
+	// Enable Changes+ logging
+	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Feed":true, "Debug":true}`)
+
 	// Create user:
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	// Kick off a goroutine that waits for sequence 7 (why 7?)
+	wgWaitForSeqWithMissing6 := sync.WaitGroup{}
+	wgWaitForSeqWithMissing6.Add(1)
+	go func() {
+		testDb.WaitForSequenceWithMissing(6)
+		wgWaitForSeqWithMissing6.Done()
+	}()
+
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(testDb, []string{"PBS"}, 2)
 	WriteDirect(testDb, []string{"PBS"}, 5)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	testDb.WaitForSequenceWithMissing(6)
+
+	wgWaitForSeqWithMissing6.Wait()
+
 
 	// Check the _changes feed:
 	var changes struct {

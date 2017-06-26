@@ -38,6 +38,9 @@ func (listener *changeListener) Init(name string) {
 
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, xattrImport bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
+
+	base.LogTo("Changes+", "changeListener.Start() called with trackDocs: %v xattrImport: %v", trackDocs, xattrImport)
+
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.TapArgs = sgbucket.TapArguments{
@@ -69,24 +72,38 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, xattrI
 			}
 		}()
 		for event := range tapFeed.Events() {
+
+			base.LogTo("Changes+", "mutation event: %v.  listener: %T", string(event.Key), listener)
+
 			if event.Opcode == sgbucket.TapMutation || event.Opcode == sgbucket.TapDeletion {
 				key := string(event.Key)
 				if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 					strings.HasPrefix(key, auth.RoleKeyPrefix) {
 					if listener.OnDocChanged != nil {
+						base.LogTo("Changes+", "user or role, calling onDocChanged()")
+
 						listener.OnDocChanged(event)
 					}
+					base.LogTo("Changes+", "calling listener.Notify()")
 					listener.Notify(base.SetOf(key))
 				} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) {
 					if listener.OnDocChanged != nil {
+						base.LogTo("Changes+", "UnusedSequenceKeyPrefix, calling calling onDocChanged()")
 						listener.OnDocChanged(event)
 					}
 				} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) {
 					if listener.OnDocChanged != nil {
+						base.LogTo("Changes+", "KSyncKeyPrefix but not KIndexPrefix, calling calling onDocChanged()")
+
 						listener.OnDocChanged(event)
 					}
 					if trackDocs {
+						base.LogTo("Changes+", "trackDocs == true, calling listener.DocChannel <- event")
+
 						listener.DocChannel <- event
+					} else {
+						base.LogTo("Changes+", "trackDocs == false, not calling listener.DocChannel <- event")
+
 					}
 
 				}
@@ -122,6 +139,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 	}
 	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
 		listener.bucketName, keys, listener.counter)
+	// debug.PrintStack()
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
