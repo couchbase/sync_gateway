@@ -1101,6 +1101,10 @@ func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uin
 
 func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []string, sequence uint64) {
 
+	if base.TestUseXattrs() {
+		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
+	}
+
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
