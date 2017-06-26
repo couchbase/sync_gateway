@@ -397,7 +397,7 @@ func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
 				}
 				base.LogTo("Changes+", "return from function c.context.UseXattrs() == true")
 
-				return
+				// return
 			}
 		}
 
