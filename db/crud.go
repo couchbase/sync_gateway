@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"fmt"
+
 	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -962,7 +964,14 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if err != nil {
 				return
 			}
-			deleteDoc = docOut.History[docOut.CurrentRev].Deleted
+
+			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
+			if !ok {
+				err = fmt.Errorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
+				return
+			}
+
+			deleteDoc = currentRevFromHistory.Deleted
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
