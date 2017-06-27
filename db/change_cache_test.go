@@ -213,6 +213,10 @@ func WriteUserDirect(db *Database, username string, sequence uint64) {
 
 func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
 
+	if base.TestUseXattrs() {
+		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
+	}
+
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
@@ -233,6 +237,10 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 // simulating out-of-order arrivals on the tap feed using walrus.
 
 func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence uint64, username string, channelGrantArray []string) {
+
+	if base.TestUseXattrs() {
+		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
+	}
 
 	docId := fmt.Sprintf("doc-%v", sequence)
 	rev := "1-a"

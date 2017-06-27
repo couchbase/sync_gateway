@@ -532,6 +532,10 @@ func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
+	}
+
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -1100,6 +1104,10 @@ func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uin
 }
 
 func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []string, sequence uint64) {
+
+	if base.TestUseXattrs() {
+		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
+	}
 
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
