@@ -17,9 +17,9 @@ import (
 
 	"errors"
 
-	"github.com/couchbase/sync_gateway/base"
 	"bytes"
-	"log"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 type RevKey string
@@ -174,9 +174,6 @@ func (tree RevTree) GetLeaves() []string {
 	}
 	return tree.GetLeavesFiltered(acceptAllLeavesFilter)
 }
-
-
-
 
 func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 
@@ -346,7 +343,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	// Calculate tombstoneGenerationThreshold
 	genShortestNonTSBranch, foundShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
 	tombstoneGenerationThreshold := -1
-	if (foundShortestNonTSBranch) {
+	if foundShortestNonTSBranch {
 		// Only set the tombstoneGenerationThreshold if a genShortestNonTSBranch was found.  (fixes #2695)
 		tombstoneGenerationThreshold = genShortestNonTSBranch - int(maxDepth)
 	}
@@ -369,7 +366,6 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 			}
 		}
 	}
-
 
 	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
 	if tombstoneGenerationThreshold != -1 {
@@ -574,7 +570,6 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 }
 
-
 //////// ENCODED REVISION LISTS (_revisions):
 
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
@@ -663,4 +658,3 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 	return true, trimmedRevs
 
 }
-
