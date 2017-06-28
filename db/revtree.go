@@ -19,6 +19,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"bytes"
+	"log"
 )
 
 type RevKey string
@@ -343,12 +344,22 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	}
 
 	// Calculate tombstoneGenerationThreshold
-	genShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
-	tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
+
+	genShortestNonTSBranch, foundShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
+	log.Printf("genShortestNonTSBranch: %v", genShortestNonTSBranch)
+
+	tombstoneGenerationThreshold := -1
+
+	if (foundShortestNonTSBranch) {
+		tombstoneGenerationThreshold = genShortestNonTSBranch - int(maxDepth)
+		log.Printf("tombstoneGenerationThreshold: %v", tombstoneGenerationThreshold)
+	}
 
 	// Delete nodes whose depth is greater than maxDepth:
 	for revid, node := range tree {
 		if node.depth > maxDepth {
+			log.Printf("prune revid: %v", revid)
+
 			delete(tree, revid)
 			pruned++
 		}
@@ -365,17 +376,27 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
-	// Delete any tombstoned branches that are too old
-	for _, leafRevId := range leaves {
-		leaf := tree[leafRevId]
-		if !leaf.Deleted { // Ignore non-tombstoned leaves
-			continue
-		}
-		leafGeneration, _ := ParseRevID(leaf.ID)
-		if leafGeneration < tombstoneGenerationThreshold {
-			pruned += tree.DeleteBranch(leaf)
+
+	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
+	if tombstoneGenerationThreshold != -1 {
+		log.Printf("Delete any tombstoned branches that are too old")
+
+		for _, leafRevId := range leaves {
+			leaf := tree[leafRevId]
+			if !leaf.Deleted { // Ignore non-tombstoned leaves
+				continue
+			}
+			log.Printf("leafRevId is tombstoned: %v (%v)", leafRevId, leaf.ID)
+
+			leafGeneration, _ := ParseRevID(leaf.ID)
+
+			if leafGeneration < tombstoneGenerationThreshold {
+				log.Printf("yes, leafGeneration (%v) < tombstoneGenerationThreshold (%v).  delete branch connected to leaf: %v", leafGeneration, tombstoneGenerationThreshold, leafRevId)
+				pruned += tree.DeleteBranch(leaf)
+			}
 		}
 	}
+
 
 	return
 
@@ -425,13 +446,15 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
-func (tree RevTree) FindShortestNonTombstonedBranch() (generation int) {
+func (tree RevTree) FindShortestNonTombstonedBranch() (generation int, found bool) {
 	return tree.FindShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int) {
+func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int, found bool) {
 
+	found = false
 	genShortestNonTSBranch := math.MaxInt32
+
 	for _, revid := range leaves {
 
 		revInfo := tree[revid]
@@ -442,9 +465,10 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 		gen := genOfRevID(revid)
 		if gen > 0 && gen < genShortestNonTSBranch {
 			genShortestNonTSBranch = gen
+			found = true
 		}
 	}
-	return genShortestNonTSBranch
+	return genShortestNonTSBranch, found
 }
 
 // Find the generation of the longest deleted branch.  For example in this rev tree:
