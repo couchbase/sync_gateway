@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"runtime/debug"
 )
 
 const (
@@ -937,9 +938,13 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 
 		// Prune old revision history to limit the number of revisions:
+		base.LogTo("CRUD+", "RevTree before pruning: %v", doc.History.RenderGraphvizDot())
+
 		if pruned := doc.History.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
+
+		base.LogTo("CRUD+", "RevTree after pruning: %v", doc.History.RenderGraphvizDot())
 
 		doc.TimeSaved = time.Now()
 		doc.UpdateExpiry(expiry)
@@ -968,6 +973,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
 			if !ok {
 				err = fmt.Errorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
+				debug.PrintStack()
 				return
 			}
 
