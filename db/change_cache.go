@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	DefaultCachePendingSeqMaxNum  = 1000000            // Max number of waiting sequences
+	DefaultCachePendingSeqMaxNum  = 10000            // Max number of waiting sequences
 	DefaultCachePendingSeqMaxWait = 5 * time.Second  // Max time we'll wait for a pending sequence before sending to missed queue
-	DefaultSkippedSeqMaxWait      = 600 * time.Minute // Max time we'll wait for an entry in the missing before purging
+	DefaultSkippedSeqMaxWait      = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
 )
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
