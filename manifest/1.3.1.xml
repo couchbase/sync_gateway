@@ -21,7 +21,7 @@
 
   <!-- Build Scripts (required on CI servers) -->
   <project name="build" path="cbbuild" remote="couchbase" revision="b3bea7ac2aadd581ce6ac51d615fb36d02ea6fd5">
-    <annotation name="VERSION" value="1.3.1"     keep="true"/>
+    <annotation name="VERSION" value="1.3.1.2"     keep="true"/>
     <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
   </project>
