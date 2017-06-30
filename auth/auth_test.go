@@ -106,7 +106,7 @@ func TestUserPasswords(t *testing.T) {
 // Test that multiple authentications of the same user/password are fast.
 // This is an important check because the underlying bcrypt algorithm used to verify passwords
 // is _extremely_ slow (~100ms!) so we use a cache to speed it up (see password_hash.go).
-func TestAuthenticationSpeed(t *testing.T) {
+func DisableTestAuthenticationSpeed(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("me", "goIsKewl", nil)
