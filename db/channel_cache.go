@@ -11,8 +11,8 @@ import (
 
 var (
 	DefaultChannelCacheMinLength = 50               // Keep at least this many entries in cache
-	DefaultChannelCacheMaxLength = 500              // Don't put more than this many entries in cache
-	DefaultChannelCacheAge       = 60 * time.Second // Keep entries at least this long
+	DefaultChannelCacheMaxLength = 500000              // Don't put more than this many entries in cache
+	DefaultChannelCacheAge       = 600 * time.Second // Keep entries at least this long
 )
 
 const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
