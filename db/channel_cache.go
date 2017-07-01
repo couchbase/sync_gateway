@@ -122,7 +122,7 @@ func (c *channelCache) _pruneCache() {
 			pruned, c.options.ChannelCacheMaxLength, c.validFrom)
 
 		for i := 0; i < pruned; i++ {
-			base.LogTo("Cache", "    pruning: doc id %v seq: %v", c.logs[i].DocID, c.logs[i].Sequence)
+			base.LogTo("Cache", "    pruning: over-max-len doc id %v seq: %v", c.logs[i].DocID, c.logs[i].Sequence)
 
 			delete(c.cachedDocIDs, c.logs[i].DocID)
 		}
@@ -136,6 +136,7 @@ func (c *channelCache) _pruneCache() {
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
 	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
+		base.LogTo("Cache", "    pruning: old doc id %v seq: %v.  new validFrom: %v", c.logs[0].DocID, c.logs[0].Sequence, c.validFrom)
 		delete(c.cachedDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
 		pruned++
