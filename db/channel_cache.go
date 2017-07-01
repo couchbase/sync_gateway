@@ -85,8 +85,8 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	}
 
 	// find oldest entry in cache
-	oldestSeq := uint64(0)
-	docIdOldestSeq := ""
+	oldestSeq := uint64(10000000000)
+	docIdOldestSeq := "not found"
 
 	for i := 0; i < len(c.logs); i++ {
 		if c.logs[i].Sequence < oldestSeq {
