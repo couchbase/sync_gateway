@@ -77,6 +77,23 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	if change.Skipped {
+		base.LogTo("Cache", "    addToCache() (SKIPPED) docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+
+	} else {
+		base.LogTo("Cache", "    addToCache() non-skipped docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+	}
+
+	// find oldest entry in cache
+	oldestSeq := uint64(0)
+	for i := 0; i < len(c.logs); i++ {
+		if c.logs[i].Sequence < oldestSeq {
+			oldestSeq = c.logs[i].Sequence
+		}
+	}
+	base.LogTo("Cache", "     addToCache() oldest sequence", oldestSeq)
+
+	
 	if !isRemoval {
 		c._appendChange(change)
 	} else {
@@ -84,6 +101,8 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		removalChange.Flags |= channels.Removed
 		c._appendChange(&removalChange)
 	}
+	base.LogTo("Cache", "    calling pruneCache() docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 }
@@ -95,10 +114,18 @@ func (c *channelCache) _pruneCache() {
 	// If we are over max length, prune it down to max length
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
+
+		base.LogTo("Cache", "    pruning: %v entries from channel cache to get below %v.  validfrom: %v",
+			pruned, c.options.ChannelCacheMaxLength, c.validFrom)
+
 		for i := 0; i < pruned; i++ {
+			base.LogTo("Cache", "    pruning: doc id %v ", c.logs[i].DocID)
+
 			delete(c.cachedDocIDs, c.logs[i].DocID)
 		}
 		c.validFrom = c.logs[pruned-1].Sequence + 1
+		base.LogTo("Cache", "    pruning: new validFrom %v ", c.validFrom)
+
 		c.logs = c.logs[pruned:]
 	}
 
