@@ -86,14 +86,17 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 	// find oldest entry in cache
 	oldestSeq := uint64(0)
+	docIdOldestSeq := ""
+
 	for i := 0; i < len(c.logs); i++ {
 		if c.logs[i].Sequence < oldestSeq {
 			oldestSeq = c.logs[i].Sequence
+			docIdOldestSeq = c.logs[i].DocID
 		}
 	}
-	base.LogTo("Cache", "     addToCache() oldest sequence", oldestSeq)
+	base.LogTo("Cache", "     addToCache() oldest sequence: %v  docid of oldest seq: %v", oldestSeq, docIdOldestSeq)
 
-	
+
 	if !isRemoval {
 		c._appendChange(change)
 	} else {
@@ -101,7 +104,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		removalChange.Flags |= channels.Removed
 		c._appendChange(&removalChange)
 	}
-	base.LogTo("Cache", "    calling pruneCache() docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+	base.LogTo("Cache", "    calling pruneCache() triggered by adding docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
 
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
@@ -119,7 +122,7 @@ func (c *channelCache) _pruneCache() {
 			pruned, c.options.ChannelCacheMaxLength, c.validFrom)
 
 		for i := 0; i < pruned; i++ {
-			base.LogTo("Cache", "    pruning: doc id %v ", c.logs[i].DocID)
+			base.LogTo("Cache", "    pruning: doc id %v seq: %v", c.logs[i].DocID, c.logs[i].Sequence)
 
 			delete(c.cachedDocIDs, c.logs[i].DocID)
 		}
