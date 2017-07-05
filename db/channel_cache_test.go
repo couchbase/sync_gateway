@@ -230,6 +230,14 @@ func TestExceedChannelCacheSize(t *testing.T) {
 	cache.addToCache(e(15, "doc3", "3-doc3"), false)
 	cache.addToCache(e(16, "doc4", "3-doc4"), false)
 
+	changesSince0 := ChangesOptions{Since: SequenceID{Seq: 0}}
+
+	_, changes := cache.getCachedChanges(changesSince0)
+	for _, change := range changes {
+		log.Printf("change before skipped: %v", change.Sequence)
+	}
+
+
 	// now add the previously skipped sequence
 	skippedSequence := uint64(6)
 	skippedLogEntry := &LogEntry{
@@ -242,14 +250,50 @@ func TestExceedChannelCacheSize(t *testing.T) {
 	cache.addToCache(skippedLogEntry, false)
 
 
-	changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}}
-	validFrom, _ := cache.getCachedChanges(changesOptions)
+	validFrom, _ := cache.getCachedChanges(changesSince0)
 
 	// If the validFrom is greater than the skippedSequence we just tried to add, that means
 	// it basically got pruned away instantly and will never have a chance to be returned in
 	// the changes feed, which is the bug reported in https://github.com/couchbase/sync_gateway/issues/2662
 	assert.True(t, validFrom <= skippedSequence)
 
+	validFrom, changes = cache.getCachedChanges(changesSince0)
+	log.Printf("validFrom after skipped: %v", validFrom)
+
+	foundSeq6 := false
+	foundSeq16 := false
+	for _, change := range changes {
+		log.Printf("change after skipped: %v", change.Sequence)
+		if change.Sequence == uint64(6) {
+			foundSeq6 = true
+		}
+		if change.Sequence == uint64(16) {
+			foundSeq16 = true
+		}
+	}
+	assert.True(t, foundSeq6)
+	assert.True(t, foundSeq16)
+
+	// Add another revision
+	cache.addToCache(e(17, "doc7", "1-doc7"), false)
+
+	// Should see sequence 6 in these changes -- not seeing
+	validFrom, changes = cache.getCachedChanges(changesSince0)
+	log.Printf("validFrom after skipped + add doc6: %v", validFrom)
+
+	foundSeq6 = false
+	foundSeq17 := false
+	for _, change := range changes {
+		log.Printf("change after skipped + add doc6: %v", change.Sequence)
+		if change.Sequence == uint64(6) {
+			foundSeq6 = true
+		}
+		if change.Sequence == uint64(17) {
+			foundSeq17 = true
+		}
+	}
+	assert.True(t, foundSeq6)
+	assert.True(t, foundSeq17)
 
 }
 

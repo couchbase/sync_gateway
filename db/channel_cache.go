@@ -7,6 +7,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"math"
+	"fmt"
 )
 
 var (
@@ -84,25 +86,22 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		base.LogTo("Cache", "    addToCache() non-skipped docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
 	}
 
-	// find oldest entry in cache
-	oldestSeq := uint64(10000000000)
-	mostRecentSeq := uint64(0)
-	docIdOldestSeq := "not found"
-	docIdMostRecentSeq := "not found"
-
-	for i := 0; i < len(c.logs); i++ {
-		if c.logs[i].Sequence < oldestSeq {
-			oldestSeq = c.logs[i].Sequence
-			docIdOldestSeq = c.logs[i].DocID
-		}
-
-		if c.logs[i].Sequence > mostRecentSeq {
-			mostRecentSeq = c.logs[i].Sequence
-			docIdMostRecentSeq = c.logs[i].DocID
+	// if the sequence to be pruned is older than oldest sequence, resize the cache and don't do any pruning
+	skipPruning := false
+	oldestSeq, err := c._oldestSeq()
+	if err != nil {
+		base.Warn("Unable to find oldest sequence in channel cache, skipping possible cache resize check.")
+	} else {
+		if change.Sequence < oldestSeq {
+			base.LogTo("Cache", "     should aborting pruning + resize cache since %d (c.logs[i].Sequence) <= %d (oldestSeq).", change.Sequence, oldestSeq)
+			oldChannelCacheMaxLength := DefaultChannelCacheMaxLength
+			DefaultChannelCacheMaxLength = DefaultChannelCacheMaxLength * 2
+			c.options.ChannelCacheMaxLength = DefaultChannelCacheMaxLength
+			base.LogTo("Cache", "     resized change cache from %d -> %d.", oldChannelCacheMaxLength, DefaultChannelCacheMaxLength)
+			skipPruning = true
 		}
 	}
-	base.LogTo("Cache", "     addToCache() oldest sequence: %v  docid: %v", oldestSeq, docIdOldestSeq)
-	base.LogTo("Cache", "     addToCache() most recent sequence: %v  docid: %v", mostRecentSeq, docIdMostRecentSeq)
+
 
 	if !isRemoval {
 		c._appendChange(change)
@@ -111,14 +110,35 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		removalChange.Flags |= channels.Removed
 		c._appendChange(&removalChange)
 	}
-	base.LogTo("Cache", "    calling pruneCache() triggered by adding docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
 
-	c._pruneCache()
-	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+	if !skipPruning {
+		base.LogTo("Cache", "    calling pruneCache() triggered by adding docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+		c._pruneCache()
+		base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+	}
+
+}
+
+func (c *channelCache) _oldestSeq() (uint64, error) {
+	oldestSeq := uint64(math.MaxInt64)
+
+	for i := 0; i < len(c.logs); i++ {
+		if c.logs[i].Sequence < oldestSeq {
+			oldestSeq = c.logs[i].Sequence
+		}
+	}
+
+	if oldestSeq == math.MaxInt64 {
+		return math.MaxInt64, fmt.Errorf("Unable to find oldest sequence")
+	}
+
+	return oldestSeq, nil
+
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
+
 	pruned := 0
 
 	// If we are over max length, prune it down to max length
