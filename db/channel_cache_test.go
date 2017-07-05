@@ -17,6 +17,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"time"
 )
 
 func TestDuplicateDocID(t *testing.T) {
@@ -191,6 +192,64 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, verifyChannelSequences(entries, []uint64{27, 30, 41, 45}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc4", "doc2"}))
 	assert.True(t, err == nil)
+
+}
+
+// Repro attempt for https://github.com/couchbase/sync_gateway/issues/2662
+func TestExceedChannelCacheSize(t *testing.T) {
+
+	// Make the channel cache smaller
+	DefaultChannelCacheMinLength = 2
+	DefaultChannelCacheMaxLength = 5
+
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
+	defer context.Close()
+	cache := newChannelCache(context, "Test1", 0)
+
+	// Add some entries to cache
+	cache.addToCache(e(1, "doc1", "1-doc1"), false)
+	cache.addToCache(e(2, "doc2", "1-doc2"), false)
+	cache.addToCache(e(3, "doc3", "1-doc3"), false)
+	cache.addToCache(e(4, "doc4", "1-doc4"), false)
+	cache.addToCache(e(5, "doc5", "1-doc5"), false)
+
+	// skip sequence 6
+
+	// Increment revs for all docs
+	cache.addToCache(e(7, "doc5", "2-doc5"), false)
+	cache.addToCache(e(8, "doc1", "2-doc1"), false)
+	cache.addToCache(e(9, "doc2", "2-doc2"), false)
+	cache.addToCache(e(10, "doc3", "2-doc3"), false)
+	cache.addToCache(e(11, "doc4", "2-doc4"), false)
+
+	// Increment revs for all docs one more time
+	cache.addToCache(e(12, "doc5", "3-doc5"), false)
+	cache.addToCache(e(13, "doc1", "3-doc1"), false)
+	cache.addToCache(e(14, "doc2", "3-doc2"), false)
+	cache.addToCache(e(15, "doc3", "3-doc3"), false)
+	cache.addToCache(e(16, "doc4", "3-doc4"), false)
+
+	// now add the previously skipped sequence
+	skippedSequence := uint64(6)
+	skippedLogEntry := &LogEntry{
+		Sequence:     skippedSequence,
+		DocID:        "doc6",
+		RevID:        "1-doc6",
+		Skipped: true,
+		TimeReceived: time.Now(),
+	}
+	cache.addToCache(skippedLogEntry, false)
+
+
+	changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}}
+	validFrom, _ := cache.getCachedChanges(changesOptions)
+
+	// If the validFrom is greater than the skippedSequence we just tried to add, that means
+	// it basically got pruned away instantly and will never have a chance to be returned in
+	// the changes feed, which is the bug reported in https://github.com/couchbase/sync_gateway/issues/2662
+	assert.True(t, validFrom <= skippedSequence)
+
 
 }
 
