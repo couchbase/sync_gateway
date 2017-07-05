@@ -86,16 +86,23 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 	// find oldest entry in cache
 	oldestSeq := uint64(10000000000)
+	mostRecentSeq := uint64(0)
 	docIdOldestSeq := "not found"
+	docIdMostRecentSeq := "not found"
 
 	for i := 0; i < len(c.logs); i++ {
 		if c.logs[i].Sequence < oldestSeq {
 			oldestSeq = c.logs[i].Sequence
 			docIdOldestSeq = c.logs[i].DocID
 		}
-	}
-	base.LogTo("Cache", "     addToCache() oldest sequence: %v  docid of oldest seq: %v", oldestSeq, docIdOldestSeq)
 
+		if c.logs[i].Sequence > mostRecentSeq {
+			mostRecentSeq = c.logs[i].Sequence
+			docIdMostRecentSeq = c.logs[i].DocID
+		}
+	}
+	base.LogTo("Cache", "     addToCache() oldest sequence: %v  docid: %v", oldestSeq, docIdOldestSeq)
+	base.LogTo("Cache", "     addToCache() most recent sequence: %v  docid: %v", mostRecentSeq, docIdMostRecentSeq)
 
 	if !isRemoval {
 		c._appendChange(change)
