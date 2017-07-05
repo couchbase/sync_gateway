@@ -137,6 +137,10 @@ func (c *channelCache) _pruneCache() {
 		base.LogTo("Cache", "    pruning: new validFrom %v ", c.validFrom)
 
 		c.logs = c.logs[pruned:]
+	} else {
+
+		base.LogTo("Cache", "    not pruning from channel cache.  %d (len(c.logs)) <=  %d (c.options.ChannelCacheMaxLength). c.logs: %v",
+			len(c.logs), c.options.ChannelCacheMaxLength, c.logs)
 	}
 
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
