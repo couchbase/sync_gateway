@@ -79,28 +79,31 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if change.Skipped {
-		base.LogTo("Cache", "    addToCache() (SKIPPED) docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+	//if change.Skipped {
+	//	base.LogTo("Cache", "    addToCache() (SKIPPED) docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+	//
+	//} else {
+	//	base.LogTo("Cache", "    addToCache() non-skipped docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+	//}
 
-	} else {
-		base.LogTo("Cache", "    addToCache() non-skipped docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
-	}
-
-	// if the sequence to be pruned is older than oldest sequence, resize the cache and don't do any pruning
-	skipPruning := false
-	oldestSeq, err := c._oldestSeq()
-	if err != nil {
-		base.Warn("Unable to find oldest sequence in channel cache, skipping possible cache resize check.")
-	} else {
-		if change.Sequence < oldestSeq {
-			base.LogTo("Cache", "     should aborting pruning + resize cache since %d (c.logs[i].Sequence) <= %d (oldestSeq).", change.Sequence, oldestSeq)
-			oldChannelCacheMaxLength := DefaultChannelCacheMaxLength
-			DefaultChannelCacheMaxLength = DefaultChannelCacheMaxLength * 2
-			c.options.ChannelCacheMaxLength = DefaultChannelCacheMaxLength
-			base.LogTo("Cache", "     resized change cache from %d -> %d.", oldChannelCacheMaxLength, DefaultChannelCacheMaxLength)
-			skipPruning = true
+	allowPruning := true
+	// if the channel cache is full and the sequence to be pruned is older than oldest sequence, resize the cache and don't do any pruning
+	if len(c.logs) >= (c.options.ChannelCacheMaxLength - 1) {
+		oldestSeq, err := c._oldestSeq()
+		if err != nil {
+			base.Warn("Unable to find oldest sequence in channel cache, skipping possible cache resize check.")
+		} else {
+			if change.Sequence < oldestSeq {
+				//base.LogTo("Cache", "     abort pruning + resize cache since %d (c.logs[i].Sequence) <= %d (oldestSeq).", change.Sequence, oldestSeq)
+				//oldChannelCacheMaxLength := DefaultChannelCacheMaxLength
+				DefaultChannelCacheMaxLength = DefaultChannelCacheMaxLength + 100
+				c.options.ChannelCacheMaxLength = DefaultChannelCacheMaxLength
+				//base.LogTo("Cache", "     resized change cache from %d -> %d.", oldChannelCacheMaxLength, DefaultChannelCacheMaxLength)
+				allowPruning = false
+			}
 		}
 	}
+
 
 
 	if !isRemoval {
@@ -111,10 +114,10 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 
-	if !skipPruning {
-		base.LogTo("Cache", "    calling pruneCache() triggered by adding docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
+	if allowPruning {
+		//base.LogTo("Cache", "    calling pruneCache() triggered by adding docid: %v seq #%d ==> channel %q", change.DocID, change.Sequence, c.channelName)
 		c._pruneCache()
-		base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+		//base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
 	}
 
 }
@@ -145,29 +148,29 @@ func (c *channelCache) _pruneCache() {
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
 
-		base.LogTo("Cache", "    pruning: %v entries from channel cache to get below %v.  validfrom: %v",
-			pruned, c.options.ChannelCacheMaxLength, c.validFrom)
+		//base.LogTo("Cache", "    pruning: %v entries from channel cache to get below %v.  validfrom: %v",
+		//	pruned, c.options.ChannelCacheMaxLength, c.validFrom)
 
 		for i := 0; i < pruned; i++ {
-			base.LogTo("Cache", "    pruning: over-max-len doc id %v seq: %v", c.logs[i].DocID, c.logs[i].Sequence)
+			//base.LogTo("Cache", "    pruning: over-max-len doc id %v seq: %v", c.logs[i].DocID, c.logs[i].Sequence)
 
 			delete(c.cachedDocIDs, c.logs[i].DocID)
 		}
 		c.validFrom = c.logs[pruned-1].Sequence + 1
-		base.LogTo("Cache", "    pruning: new validFrom %v ", c.validFrom)
+		//base.LogTo("Cache", "    pruning: new validFrom %v ", c.validFrom)
 
 		c.logs = c.logs[pruned:]
 	} else {
 
-		base.LogTo("Cache", "    not pruning from channel cache.  %d (len(c.logs)) <=  %d (c.options.ChannelCacheMaxLength). c.logs: %v",
-			len(c.logs), c.options.ChannelCacheMaxLength, c.logs)
+		//base.LogTo("Cache", "    not pruning from channel cache.  %d (len(c.logs)) <=  %d (c.options.ChannelCacheMaxLength). c.logs: %v",
+		//	len(c.logs), c.options.ChannelCacheMaxLength, c.logs)
 	}
 
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
 	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
-		base.LogTo("Cache", "    pruning: old doc id %v seq: %v.  new validFrom: %v", c.logs[0].DocID, c.logs[0].Sequence, c.validFrom)
+		//base.LogTo("Cache", "    pruning: old doc id %v seq: %v.  new validFrom: %v", c.logs[0].DocID, c.logs[0].Sequence, c.validFrom)
 		delete(c.cachedDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
 		pruned++
