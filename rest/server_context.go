@@ -932,12 +932,14 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 
 		// There are no users in the config, but there might be users in the db.  Find out
 		// by querying the "view principals" view which will return users and roles.  We only want to
-		// find out if there is at least one user (or role) defined, so set stale=ok and limit == 1 to minimize
+		// find out if there is at least one user (or role) defined, so set limit == 1 to minimize
 		// performance hit of query.
 		viewOptions := db.Body{
+			"stale": false,
 			"limit": 1,
 		}
-		vres, err := currentDb.Bucket.View(db.DesignDocSyncHousekeeping, db.ViewPrincipals, viewOptions)
+
+		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway, db.ViewPrincipals, viewOptions)
 		if err != nil {
 			base.Warn("Error trying to query ViewPrincipals: %v", err)
 			return []string{}
