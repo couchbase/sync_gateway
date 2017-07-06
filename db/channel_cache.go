@@ -107,6 +107,25 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		}
 	}
 
+	// if the sequence is older than the oldest sequence, yet it's time received will cause it to be pruned immediately,
+	// resize the cache and don't do any pruning
+	if time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
+
+		oldestSeq, err := c._oldestSeq()
+		if err != nil {
+			base.Warn("Unable to find oldest sequence in channel cache, skipping possible cache resize check.")
+		} else {
+			if change.Sequence < oldestSeq {
+				//base.LogTo("Cache", "     abort pruning + resize cache since %d (c.logs[i].Sequence) <= %d (oldestSeq).", change.Sequence, oldestSeq)
+				//oldChannelCacheMaxLength := DefaultChannelCacheMaxLength
+				DefaultChannelCacheMaxLength = DefaultChannelCacheMaxLength + 100
+				c.options.ChannelCacheMaxLength = DefaultChannelCacheMaxLength
+				//base.LogTo("Cache", "     resized change cache from %d -> %d.", oldChannelCacheMaxLength, DefaultChannelCacheMaxLength)
+				allowPruning = false
+			}
+		}
+
+	}
 
 
 	if !isRemoval {
