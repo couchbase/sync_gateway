@@ -297,6 +297,65 @@ func TestExceedChannelCacheSize(t *testing.T) {
 
 }
 
+
+// Repro attempt for https://github.com/couchbase/sync_gateway/issues/2662
+func TestExceedChannelCacheSizeOldEntry(t *testing.T) {
+
+	// Make the channel cache smaller
+	DefaultChannelCacheMinLength = 0
+	DefaultChannelCacheMaxLength = 5
+
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
+	defer context.Close()
+	cache := newChannelCache(context, "Test1", 0)
+
+	// Add some entries to cache -- skip sequence 1
+	cache.addToCache(e(2, "doc1", "1-doc1"), false)
+	cache.addToCache(e(3, "doc2", "1-doc2"), false)
+	cache.addToCache(e(4, "doc3", "1-doc3"), false)
+
+	changesSince0 := ChangesOptions{Since: SequenceID{Seq: 0}}
+
+	_, changes := cache.getCachedChanges(changesSince0)
+	for _, change := range changes {
+		log.Printf("change before skipped: %v", change.Sequence)
+	}
+
+	twiceDefaultChannelCacheAge := DefaultChannelCacheAge * -2
+	stale := time.Now().Add(twiceDefaultChannelCacheAge)
+	log.Printf("now: %v stale: %v", time.Now(), stale)
+
+	// now add the previously skipped sequence with a very old TimeReceived
+	skippedSequence := uint64(1)
+	skippedLogEntry := &LogEntry{
+		Sequence:     skippedSequence,
+		DocID:        "doc6",
+		RevID:        "1-doc6",
+		Skipped: true,
+		TimeReceived: stale,
+	}
+	cache.addToCache(skippedLogEntry, false)
+
+
+	validFrom, _ := cache.getCachedChanges(changesSince0)
+
+	// If the validFrom is greater than the skippedSequence we just tried to add, that means
+	// it basically got pruned away instantly and will never have a chance to be returned in
+	// the changes feed, which is the bug reported in https://github.com/couchbase/sync_gateway/issues/2662
+	assert.True(t, validFrom <= skippedSequence)
+
+	validFrom, changes = cache.getCachedChanges(changesSince0)
+	log.Printf("validFrom after skipped: %v", validFrom)
+
+	for _, change := range changes {
+		log.Printf("change after skipped: %v", change.Sequence)
+	}
+
+
+}
+
+
 func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {
 	if len(entries) != len(sequences) {
 		log.Printf("verifyChannelSequences: entries size (%v) not equals to sequences size (%v)",
