@@ -773,6 +773,77 @@ func TestConflicts(t *testing.T) {
 		branched: true})
 }
 
+func TestNoConflictsMode(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
+		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Error: https://gist.github.com/tleyden/3549e4010abff88f2531706887c67271")
+	}
+
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	// Strictly speaking, this flag should be set before opening the database, but it only affects
+	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
+	db.Options.UnsupportedOptions.AllowConflicts = base.BooleanPointer(false)
+
+	/*
+		var logKeys = map[string]bool {
+			"Cache": true,
+			"Changes": true,
+			"Changes+": true,
+		}
+
+		base.UpdateLogKeys(logKeys, true)
+	*/
+
+	// Create revs 1 and 2 of "doc":
+	body := Body{"n": 1, "channels": []string{"all", "1"}}
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
+	body["n"] = 2
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
+
+	// Try to create a conflict branching from rev 1:
+	err := db.PutExistingRev("doc", body, []string{"2-b", "1-a"})
+	assertHTTPError(t, err, 409)
+
+	// Try to create a conflict with no common ancestor:
+	err = db.PutExistingRev("doc", body, []string{"2-c", "1-c"})
+	assertHTTPError(t, err, 409)
+
+	// Try to create a conflict with a longer history:
+	err = db.PutExistingRev("doc", body, []string{"4-d", "3-d", "2-d", "1-a"})
+	assertHTTPError(t, err, 409)
+
+	// Try to create a conflict with no history:
+	err = db.PutExistingRev("doc", body, []string{"1-e"})
+	assertHTTPError(t, err, 409)
+
+	// Create a non-conflict with a longer history, ending in a deletion:
+	body["_deleted"] = true
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"4-a", "3-a", "2-a", "1-a"}), "add 4-a")
+	delete(body, "_deleted")
+
+	// Create a non-conflict with no history (re-creating the document):
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-f"}), "add 1-f")
+
+	// Create a new document with a longer history:
+	assertNoError(t, db.PutExistingRev("COD", body, []string{"4-a", "3-a", "2-a", "1-a"}), "add COD")
+	delete(body, "_deleted")
+
+	// Now use Put instead of PutExistingRev:
+
+	// Successfully add a new revision:
+	_, err = db.Put("doc", Body{"_rev": "1-f", "foo": -1})
+	assertNoError(t, err, "Put rev after 1-f")
+
+	// Try to create a conflict:
+	_, err = db.Put("doc", Body{"_rev": "3-a", "foo": 7})
+	assertHTTPError(t, err, 409)
+
+	// Conflict with no ancestry:
+	_, err = db.Put("doc", Body{"foo": 7})
+	assertHTTPError(t, err, 409)
+}
+
 func TestSyncFnOnPush(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
