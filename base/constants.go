@@ -33,8 +33,8 @@ const (
 	DefaultTestShadowPassword   = DefaultTestPassword
 
 	DefaultTestIndexBucketname = "test_indexbucket"
-	DefaultTestIndexUsername = DefaultTestIndexBucketname
-	DefaultTestIndexPassword = DefaultTestPassword
+	DefaultTestIndexUsername   = DefaultTestIndexBucketname
+	DefaultTestIndexPassword   = DefaultTestPassword
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
@@ -50,7 +50,8 @@ const (
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
-	DefaultUseXattrs = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
 )
 
