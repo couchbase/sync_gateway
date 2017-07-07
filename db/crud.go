@@ -482,7 +482,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	return db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+	putCallback := func(doc *document) (Body, AttachmentData, error) {
+
+		base.LogTo("CRUD+", "putCallback invoked.  doc: %+v, matchRev: %v doc.History: %v", doc, matchRev, doc.History)
 
 		// If doc isn't an SG write, import it before updating.
 		if doc != nil && !doc.IsSGWrite() {
@@ -503,9 +505,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			// Use an admin-scoped database for import
 			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 			var importErr error
-			base.LogTo("CRUD+", "importing doc: %+v doc.rev: %v doc.history: %v", doc, doc.CurrentRev, doc.History)
+			base.LogTo("CRUD+", "putcallback importing doc: %+v doc.rev: %v doc.history: %v", doc, doc.CurrentRev, doc.History)
 			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
-			base.LogTo("CRUD+", "imported doc: %+v.  doc.rev: %v doc.history: %v", doc, doc.CurrentRev, doc.History)
+			base.LogTo("CRUD+", "putcallback imported doc: %+v.  doc.rev: %v doc.history: %v", doc, doc.CurrentRev, doc.History)
 
 			if importErr != nil {
 				return nil, nil, importErr
@@ -526,7 +528,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) {
-			base.LogTo("CRUD+", "!doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
+			base.LogTo("CRUD+", "putcallback !doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
 
 			return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
@@ -545,8 +547,18 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
 		doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
+		base.LogTo("CRUD+", "putcallback created newRev for doc: %+v newRev: %v currentRev: %v doc.history: %v", doc, newRev, doc.CurrentRev, doc.History)
+
 		return body, newAttachments, nil
-	})
+
+	}
+
+	return db.updateDoc(
+		docid,
+		true,
+		expiry,
+		putCallback,
+	)
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -724,6 +736,7 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 	return newRevID, err
 }
 
+
 func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (docOut *document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
@@ -743,17 +756,28 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
 	documentUpdateFunc := func(doc *document, docExists bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, err error) {
 
+		base.LogTo("CRUD+", "documentUpdateFunc called with doc: %+v.  Doc exists: %v  allowImport: %v", docid, docExists, allowImport)
+
 		// Be careful: this block can be invoked multiple times if there are races!
 		if !allowImport && docExists && !doc.HasValidSyncData(db.writeSequences()) {
+
+			base.LogTo("CRUD+", "!doc.HasValidSyncData, return 409")
+
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
+		base.LogTo("CRUD+", "documentUpdateFunc invoke callback on doc: %+v", doc.body)
+
 		body, newAttachments, err = callback(doc)
 		if err != nil {
+			base.LogTo("CRUD+", "documentUpdateFunc invoked callback on doc: %+v, got error: %v", doc.body, err)
+
 			return
 		}
+
+		base.LogTo("CRUD+", "documentUpdateFunc invoked callback on doc: %+v, no errors", doc.body)
 
 		//Test for shadower echo here before UpstreamRev gets set to CurrentRev
 		//Ignore new docs (doc.CurrentRev == "")
@@ -962,25 +986,36 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		return doc, writeOpts, shadowerEcho, err
 	}
 
+	// ------------------------------- END OF DOC UPDATE FUNC ---------------------------------------
+
+
 	var shadowerEcho bool
 
 	// Update the document
 	if db.UseXattrs() {
 		var casOut uint64
 		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+
+			base.LogTo("CRUD+", "WriteUpdateWithXattrCallback() called.  Key: %v, casOut: %v", key, casOut)
+
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
+				base.LogTo("CRUD+", "unmarshalDocumentWithXattr for key %v returned error: %v.  returning", key, err)
 				return
 			}
+
 
 			docOut, _, _, err = documentUpdateFunc(doc, currentValue != nil)
 			if err != nil {
+				base.LogTo("CRUD+", "WriteUpdateWithXattrCallback() called documentUpdateFunc for key %v and got error: %v", key, err)
 				return
 			}
 
+			base.LogTo("CRUD+", "WriteUpdateWithXattrCallback() called documentUpdateFunc for key %v and got docOut: %v", key, docOut)
+
 			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
 			if !ok {
-				err = fmt.Errorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
+				err = fmt.Errorf("WriteUpdateWithXattrCallback() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
 				return
 			}
 
@@ -988,7 +1023,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
-			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
+			base.LogTo("CRUD+", "WriteUpdateWithXattrCallback() Saving doc (seq: #%d, id: %v rev: %v doc: %+v)", doc.Sequence, doc.ID, doc.CurrentRev, doc)
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {

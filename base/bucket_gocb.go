@@ -1229,40 +1229,64 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		}
 
 		// Invoke callback to get updated value
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called.  Key: %v.  Calling callback()", k)
+
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
 		if err != nil {
+			LogTo("CRUD+", "gocb WriteUpdateWithXattr() called callback() but got err")
+
 			return emptyCas, err
 		}
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called callback() and got updatedValue/xattr")
+
 
 		var writeErr error
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
+
 			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
 			removeCas, removeErr := bucket.Remove(k, cas)
 			if removeErr == nil {
 				// Successful removal - update the cas for the xattr operation
+				LogTo("CRUD+", "Successful removal - update the cas for the xattr operation.  cas: %v", removeCas)
+
 				cas = removeCas
 			} else if removeErr == gocb.ErrKeyNotFound {
+				LogTo("CRUD+", "removeErr == gocb.ErrKeyNotFound")
+
 				// Document body has already been removed - continue to xattr processing w/ same cas
 			} else if isRecoverableGoCBError(removeErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
+				LogTo("CRUD+", "Recoverable error: %v - retry WriteUpdateWithXattr", removeErr)
 				continue
 			} else {
 				// Non-recoverable error - return
+				LogTo("CRUD+", "Non-recoverable error - return.  removeErr: %v", removeErr)
 				return emptyCas, removeErr
 			}
 
 			// update xattr only
+
+			LogTo("CRUD+", "calling bucket.WriteCasWithXattr() with key: %v, xattrkey: %v", k, xattrKey)
+
 			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
 			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
 				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
 				return emptyCas, writeErr
 			}
 
+			LogTo("CRUD+", "called bucket.WriteCasWithXattr() with key: %v, xattrkey: %v.  casOut: %v writeErr: %v", k, xattrKey, casOut, writeErr)
+
 			// If there was no error, we're done
 			if writeErr == nil {
+
+				LogTo("CRUD", "no error, we're done")
+
 				return casOut, nil
 			}
+
+
+
 		} else {
 			// Not a delete - update the body and xattr
 			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
