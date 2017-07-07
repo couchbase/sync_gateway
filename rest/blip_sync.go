@@ -390,6 +390,14 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 	outrq := blip.NewRequest()
 	outrq.SetProfile("rev")
 	seqJSON, _ := json.Marshal(seq)
+	outrq.Properties["id"] = docID
+	delete(body, "_id")
+	outrq.Properties["rev"] = revID
+	delete(body, "_rev")
+	if del, _ := body["_deleted"].(bool); del {
+		outrq.Properties["deleted"] = "1"
+		delete(body, "deleted")
+	}
 	outrq.Properties["sequence"] = string(seqJSON)
 	if len(history) > 0 {
 		outrq.Properties["history"] = strings.Join(history, ",")
@@ -416,10 +424,14 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 		return err
 	}
 
-	docID, found := body["_id"].(string)
-	revID, rfound := body["_rev"].(string)
+	// Doc metadata comes from the BLIP message metadata, not magic document properties:
+	docID, found := rq.Properties["id"]
+	revID, rfound := rq.Properties["rev"]
 	if !found || !rfound {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing doc _id or _rev")
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+	}
+	if del, found := rq.Properties["deleted"]; found && del != "0" && del != "false" {
+		body["_deleted"] = true // (PutExistingRev expects deleted flag in the body)
 	}
 
 	history := []string{revID}
