@@ -468,7 +468,7 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body["_rev"].(string)
-	base.LogTo("CRUD+", "Put called on doc. %v, matchRev: %v", docid, matchRev)
+	//base.LogTo("CRUD+", "Put called on doc. %v, matchRev: %v", docid, matchRev)
 
 	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
@@ -529,9 +529,10 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			base.LogTo("CRUD+", "!doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
 
 			return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-		} else if doc.History.isLeaf(matchRev) {
-			base.LogTo("CRUD+", "doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
 		}
+		//else if doc.History.isLeaf(matchRev) {
+		//	base.LogTo("CRUD+", "doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
+		//}
 
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
