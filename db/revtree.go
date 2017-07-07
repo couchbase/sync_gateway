@@ -211,6 +211,7 @@ func (tree RevTree) isLeaf(revid string) bool {
 	}
 	for _, info := range tree {
 		if info.Parent == revid {
+			base.LogTo("CRUD+", "isLeaf() returning false.  info.Parent (%v) == revid (%v)", info.Parent, revid)
 			return false
 		}
 	}

@@ -468,6 +468,8 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body["_rev"].(string)
+	base.LogTo("CRUD+", "Put called on doc. %v, matchRev: %v", docid, matchRev)
+
 	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
@@ -484,6 +486,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 		// If doc isn't an SG write, import it before updating.
 		if doc != nil && !doc.IsSGWrite() {
+			base.LogTo("CRUD+", "doc %v is not an SG write, import it before updating", doc.ID)
 			// Check whether the doc requiring import is an SDK delete
 			isDelete := false
 			if doc.body == nil {
@@ -492,13 +495,18 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				deletedInBody, ok := body["_deleted"].(bool)
 				if ok {
 					isDelete = deletedInBody
+					base.LogTo("CRUD+", "doc rev %v is a delete", doc.CurrentRev)
+
 				}
 			}
 
 			// Use an admin-scoped database for import
 			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 			var importErr error
+			base.LogTo("CRUD+", "importing doc: %+v doc.rev: %v doc.history: %v", doc, doc.CurrentRev, doc.History)
 			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
+			base.LogTo("CRUD+", "imported doc: %+v.  doc.rev: %v doc.history: %v", doc, doc.CurrentRev, doc.History)
+
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -518,7 +526,11 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) {
+			base.LogTo("CRUD+", "!doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
+
 			return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		} else if doc.History.isLeaf(matchRev) {
+			base.LogTo("CRUD+", "doc.History.isLeaf(matchRev).  doc: %+v, matchRev: %v doc.History: %v doc.dot: %v", doc, matchRev, doc.History, doc.History.RenderGraphvizDot())
 		}
 
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
