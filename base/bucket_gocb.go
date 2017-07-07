@@ -1244,46 +1244,72 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
 
-			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
-			removeCas, removeErr := bucket.Remove(k, cas)
-			if removeErr == nil {
-				// Successful removal - update the cas for the xattr operation
-				LogTo("CRUD+", "Successful removal - update the cas for the xattr operation.  cas: %v", removeCas)
 
-				cas = removeCas
-			} else if removeErr == gocb.ErrKeyNotFound {
-				LogTo("CRUD+", "removeErr == gocb.ErrKeyNotFound")
+			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+				UpsertEx(xattrKey, xattrValue, gocb.SubdocFlagXattr).                                     // Update the xattr
+				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+				RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+				Execute()
 
+			if mutateErr == nil {
+				// Successful
+
+			} else if mutateErr == gocb.ErrKeyNotFound {
 				// Document body has already been removed - continue to xattr processing w/ same cas
-			} else if isRecoverableGoCBError(removeErr) {
+			} else if isRecoverableGoCBError(mutateErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
-				LogTo("CRUD+", "Recoverable error: %v - retry WriteUpdateWithXattr", removeErr)
 				continue
 			} else {
 				// Non-recoverable error - return
-				LogTo("CRUD+", "Non-recoverable error - return.  removeErr: %v", removeErr)
-				return emptyCas, removeErr
-			}
-
-			// update xattr only
-
-			LogTo("CRUD+", "calling bucket.WriteCasWithXattr() with key: %v, xattrkey: %v", k, xattrKey)
-
-			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
+				return emptyCas, mutateErr
 			}
 
 			LogTo("CRUD+", "called bucket.WriteCasWithXattr() with key: %v, xattrkey: %v.  casOut: %v writeErr: %v", k, xattrKey, casOut, writeErr)
 
-			// If there was no error, we're done
-			if writeErr == nil {
+			return uint64(docFragment.Cas()), nil
 
-				LogTo("CRUD", "no error, we're done")
 
-				return casOut, nil
-			}
+
+			//// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
+			//removeCas, removeErr := bucket.Remove(k, cas)
+			//if removeErr == nil {
+			//	// Successful removal - update the cas for the xattr operation
+			//	LogTo("CRUD+", "Successful removal - update the cas for the xattr operation.  cas: %v", removeCas)
+			//
+			//	cas = removeCas
+			//} else if removeErr == gocb.ErrKeyNotFound {
+			//	LogTo("CRUD+", "removeErr == gocb.ErrKeyNotFound")
+			//
+			//	// Document body has already been removed - continue to xattr processing w/ same cas
+			//} else if isRecoverableGoCBError(removeErr) {
+			//	// Recoverable error - retry WriteUpdateWithXattr
+			//	LogTo("CRUD+", "Recoverable error: %v - retry WriteUpdateWithXattr", removeErr)
+			//	continue
+			//} else {
+			//	// Non-recoverable error - return
+			//	LogTo("CRUD+", "Non-recoverable error - return.  removeErr: %v", removeErr)
+			//	return emptyCas, removeErr
+			//}
+			//
+			//// update xattr only
+			//
+			//LogTo("CRUD+", "calling bucket.WriteCasWithXattr() with key: %v, xattrkey: %v", k, xattrKey)
+			//
+			//casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
+			//if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
+			//	LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
+			//	return emptyCas, writeErr
+			//}
+
+			//LogTo("CRUD+", "called bucket.WriteCasWithXattr() with key: %v, xattrkey: %v.  casOut: %v writeErr: %v", k, xattrKey, casOut, writeErr)
+			//
+			//// If there was no error, we're done
+			//if writeErr == nil {
+			//
+			//	LogTo("CRUD", "no error, we're done")
+			//
+			//	return casOut, nil
+			//}
 
 
 
