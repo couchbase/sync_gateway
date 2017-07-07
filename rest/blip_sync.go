@@ -65,6 +65,9 @@ func (h *handler) handleBLIPSync() error {
 	for profile, handlerFn := range kHandlersByProfile {
 		ctx.register(profile, handlerFn)
 	}
+	if !h.db.AllowConflicts() {
+		ctx.register("proposeChanges", (*blipHandler).handleProposedChanges)
+	}
 
 	ctx.blipContext.Logger = func(fmt string, params ...interface{}) {
 		base.LogTo("BLIP", fmt, params...)
@@ -329,6 +332,10 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 
 // Handles a "changes" request, i.e. a set of changes pushed by the client
 func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
+	if !bh.db.AllowConflicts() {
+		return base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
+	}
+
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
@@ -356,6 +363,46 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 			jsonOutput.Encode(possible)
 		}
 		nWritten++
+	}
+	output.Write([]byte("]"))
+	response := rq.Response()
+	response.SetCompressed(true)
+	response.SetBody(output.Bytes())
+	return nil
+}
+
+// Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
+func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
+	var changeList [][]interface{}
+	if err := rq.ReadJSONBody(&changeList); err != nil {
+		return err
+	}
+	base.LogTo("Sync", "Received %d changes from client", len(changeList))
+	if len(changeList) == 0 {
+		return nil
+	}
+	output := bytes.NewBuffer(make([]byte, 0, 5*len(changeList)))
+	output.Write([]byte("["))
+	nWritten := 0
+	for i, change := range changeList {
+		docID := change[0].(string)
+		revID := change[1].(string)
+		parentRevID := ""
+		if len(change) >= 2 {
+			parentRevID = change[2].(string)
+		}
+		status := bh.db.CheckProposedRev(docID, revID, parentRevID)
+		if status != 0 {
+			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
+			if nWritten > 0 {
+				output.Write([]byte(","))
+			}
+			for ; nWritten < i; nWritten++ {
+				output.Write([]byte("0,"))
+			}
+			output.Write([]byte(strconv.FormatInt(int64(status), 10)))
+			nWritten++
+		}
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
