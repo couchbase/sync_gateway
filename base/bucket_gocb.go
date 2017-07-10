@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
+	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -1053,30 +1054,136 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 }
 
-// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS) tombstone when a document is deleted.
-// To remove the system xattr as well, an explicit subdoc delete operation is required.
+
+// Only called for Purge
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
+
+	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
+
+}
+
+
+// A function that will be called back after the bucket.Get() is called but before the MutateInEx is called,
+// to simulate race condition behavior
+type deletePostCheckDocState func(bucket CouchbaseBucketGoCB, k string, xattrKey string, bodyExists, xattrsExist bool)
+
+
+func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deletePostCheckDocState) error {
+
+	// TODO: change to this approach:
+
+	// Try to delete in single op
+	// If fails
+	// Do get w/ xattr (get cas)
+	// Cas-safe delete just the xattr
+	// If that fails with a cas error, return error from purge (someone resurrected doc)
+
+	// TODO: TestDeleteWithXattrInternal currently fails
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Delete", 1)
-	removeCas, err := bucket.Bucket.Remove(k, 0)
-	if err != nil && err != gocb.ErrKeyNotFound {
-		return err
+
+	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
+
+	for {
+
+		var retrievedVal map[string]interface{}
+		var retrievedXattr map[string]interface{}
+		getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
+		if err != nil {
+			// TODO: should we check if the type of error and possibly ignore it if
+			// TODO: it indicates there is no work to be done?
+			return err
+		}
+		log.Printf("deleteWithXattrInternal() getCas: %v", getCas)  // TODO: use this cas
+
+		docExists := (len(retrievedVal) > 0)
+		xattrsExist := (len(retrievedXattr) > 0)
+
+		// Invoke the callback which has the ability to change the document state
+		if callback != nil {
+			callback(
+				bucket,
+				k,
+				xattrKey,
+				docExists,
+				xattrsExist,
+			)
+		}
+
+		log.Printf("docExists: %v.  xattrsExist: %v", docExists, xattrsExist)
+
+		// This flag seems to work well no matter what the current document state is in
+		deleteFlags := gocb.SubdocDocFlagAccessDeleted
+
+		switch {
+		case docExists && xattrsExist:
+
+			log.Printf("docExists && xattrsExist")
+
+			// If the doc exists, delete both the doc body and the xattrs in one single op
+			_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
+				RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+				RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
+				Execute()
+
+			if mutateErr != nil && mutateErr == gocb.ErrKeyExists {  // TODO: use helper method that checks if cas error (gocb/walrus)
+				// TODO: review if this is always a cas failure
+				// cas failure, retry
+				log.Printf("deleteWithXattrInternal() CAS failure, retry")
+				continue
+			}
+
+			log.Printf("docExists && xattrsExist.  mutateErr: %v", mutateErr)
+			if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+				// ErrSubDocSuccessDeleted is confusing success error that means "op was on a tombstone".  If not that, we need to abort
+				return mutateErr
+			}
+
+		case docExists && !xattrsExist:
+			// is this possible
+			return fmt.Errorf("Unexpected state: docExists && !xattrsExist")
+		case !docExists && xattrsExist:
+
+			log.Printf("!docExists && xattrsExist")
+
+			// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
+			// case, it will return a KeyNotFound error
+			_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
+				RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+				Execute()
+
+			if mutateErr != nil && mutateErr == gocb.ErrKeyExists {
+				// TODO: review if this is always a cas failure
+				// cas failure, retry
+				log.Printf("deleteWithXattrInternal() CAS failure, retry")
+				continue
+			}
+
+			log.Printf("!docExists && xattrsExist.  mutateErr: %v", mutateErr)
+
+			if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+				// ErrSubDocSuccessDeleted is confusing success error that means "op was on a tombstone".  If not that, we need to abort
+				return mutateErr
+			}
+		case !docExists && !xattrsExist:
+			// do nothing to do
+			return nil
+		}
+
+
+
+		return nil
+
 	}
 
-	_, deleteXattrErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, removeCas, 0).
-		RemoveEx(xattrKey, gocb.SubdocFlagXattr).
-		Execute()
 
-	if deleteXattrErr != nil && deleteXattrErr != gocbcore.ErrSubDocSuccessDeleted {
-		return deleteXattrErr
-	}
 
-	return nil
 }
+
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 
@@ -1216,6 +1323,8 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Load the existing value.
 		gocbExpvars.Add("Update_GetWithXattr", 1)
 		cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called GetWithXattr() for key: %v.  Got cas: %v err: %v", k, cas, err)
+
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, cancel writeupdate
@@ -1230,6 +1339,8 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called callback() key: %v updatedValue: %v.  updatedXattrValue: %v  deleteDoc: %v err: %v", k, string(updatedValue), string(updatedXattrValue), deleteDoc, err)
+
 		if err != nil {
 			return emptyCas, err
 		}
@@ -1237,32 +1348,49 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		var writeErr error
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
-			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
-			removeCas, removeErr := bucket.Remove(k, cas)
-			if removeErr == nil {
-				// Successful removal - update the cas for the xattr operation
-				cas = removeCas
-			} else if removeErr == gocb.ErrKeyNotFound {
-				// Document body has already been removed - continue to xattr processing w/ same cas
-			} else if isRecoverableGoCBError(removeErr) {
+
+			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx for key: %v", k)
+
+			// TODO: review subdoc flags -- same as TestXattrDeleteDocumentAndUpdateXATTR
+
+			// TODO: should this be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted instead?
+			// TODO: leaving as-is for now, since it matches flags used in TestXattrDeleteDocumentAndUpdateXATTR
+
+			// flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted -- fails with xattr: invalid arguments
+			// flags := gocb.SubdocDocFlagNone // -- passes local smoke test and functional test, but what about doc ressurection?  Don't we need SubdocDocFlagAccessDeleted?
+
+			flags := gocb.SubdocDocFlagAccessDeleted // passes local smoke test with doc ressurrection and purging
+
+			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, flags, gocb.Cas(cas), uint32(0)).
+				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                             // Update the xattr
+				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+				RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+				Execute()
+
+			casOut := emptyCas
+
+			if mutateErr == nil {
+				// Successful
+				casOut = uint64(docFragment.Cas())
+			} else if mutateErr == gocb.ErrKeyNotFound {
+				// Document body has already been removed
+				// TODO: what should we do in this case?
+				Warn("MutateInEx returned mutateErr == gocb.ErrKeyNotFound for key: %v", k)
+				return emptyCas, mutateErr
+			} else if isRecoverableGoCBError(mutateErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
 				continue
 			} else {
 				// Non-recoverable error - return
-				return emptyCas, removeErr
+				Warn("MutateInEx returned Non-recoverable error for key: %v.  Err: %v", k, mutateErr)
+
+				return emptyCas, mutateErr
 			}
 
-			// update xattr only
-			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
-			}
+			LogTo("CRUD+", "called bucket.WriteCasWithXattr() with key: %v, xattrkey: %v.  casOut: %v writeErr: %v", k, xattrKey, casOut, writeErr)
 
-			// If there was no error, we're done
-			if writeErr == nil {
-				return casOut, nil
-			}
+			return casOut, nil
+
 		} else {
 			// Not a delete - update the body and xattr
 			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
