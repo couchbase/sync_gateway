@@ -1238,9 +1238,10 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
 
-			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx with updated xattrvalue: %v", string(updatedXattrValue))
+			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx")
 
-			// TODO: review subdoc flags
+			// TODO: review subdoc flags -- same as TestXattrDeleteDocumentAndUpdateXATTR
+
 			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
 				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                                     // Update the xattr
 				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
@@ -1255,6 +1256,17 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			} else if mutateErr == gocb.ErrKeyNotFound {
 				// Document body has already been removed
 				// TODO: what should we do in this case?  It currently just returns an emptyCas and does nothing further
+				LogTo("CRUD+", "mutateErr == gocb.ErrKeyNotFound for key: %v xattrKey: %v.  casOut will be 0", k, xattrKey)
+				LogTo("CRUD+", "mutateErr == gocb.ErrKeyNotFound.  call GetWithXattr")
+
+				// Since the combined delete + update xattr op failed with an ErrKeyNotFound, fallback to trying to update xattr only
+				var writeErr error
+				casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
+				if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
+					LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
+					return emptyCas, writeErr
+				}
+
 			} else if isRecoverableGoCBError(mutateErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
 				continue
