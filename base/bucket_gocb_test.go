@@ -1255,8 +1255,6 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 // TestXattrDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
 func TestXattrDeleteDocumentAndUpdateXATTR(t *testing.T) {
 
-	t.Skip("Failing, see https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305330059")
-
 	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
