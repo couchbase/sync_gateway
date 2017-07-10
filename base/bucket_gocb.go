@@ -1238,19 +1238,23 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
 
-			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx")
+			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx with updated xattrvalue: %v", string(updatedXattrValue))
 
+			// TODO: review subdoc flags
 			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
 				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                                     // Update the xattr
 				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
 				Execute()
 
+			casOut := emptyCas
+
 			if mutateErr == nil {
 				// Successful
-
+				casOut = uint64(docFragment.Cas())
 			} else if mutateErr == gocb.ErrKeyNotFound {
-				// Document body has already been removed - continue to xattr processing w/ same cas
+				// Document body has already been removed
+				// TODO: what should we do in this case?  It currently just returns an emptyCas and does nothing further
 			} else if isRecoverableGoCBError(mutateErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
 				continue
@@ -1261,7 +1265,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 			LogTo("CRUD+", "called bucket.WriteCasWithXattr() with key: %v, xattrkey: %v.  casOut: %v writeErr: %v", k, xattrKey, casOut, writeErr)
 
-			return uint64(docFragment.Cas()), nil
+			return casOut, nil
 
 		} else {
 			// Not a delete - update the body and xattr
