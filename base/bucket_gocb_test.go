@@ -1224,8 +1224,7 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 	key := "TestDeleteDocumentAndXATTR"
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
-		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		bucket.Delete(key)
+		t.Fatalf("Key should not exist yet, expected error but got nil.")
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
@@ -1245,7 +1244,8 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 	// Verify delete of body and XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	cas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("GetWithXattr returned cas: %v err: %v", cas, err)
 	if err != gocbcore.ErrKeyNotFound {
 		t.Errorf("Unexpected error calling GetWithXattr: %+v", err)
 	}
@@ -1254,8 +1254,6 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 
 // TestXattrDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
 func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
-
-	//t.Skip("Failing, see https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305330059")
 
 	SkipXattrTestsIfNotEnabled(t)
 
@@ -1304,6 +1302,159 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	assert.Equals(t, retrievedXattr["seq"], float64(123))
 	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
 	log.Printf("MutateInEx cas: %v", mutateCas)
+
+}
+
+func TestSoftDeleteFollowedByHardDelete(t *testing.T) {
+
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	// Create document with XATTR
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-1234"
+
+	key := "TestSoftDeleteFollowedByPurge"
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Fatalf("Expected empty bucket")
+	}
+
+	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	// flags := gocb.SubdocDocFlagNone  // Passes
+	flags := gocb.SubdocDocFlagAccessDeleted  // With this, get Unexpected error calling DeleteWithXattr(): key not found
+	// flags := gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted // With this, also get Unexpected error calling DeleteWithXattr(): key not found
+	// flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted // With this, get Unexpected mutateErr: invalid arguments -- could be due to not ordering xattr ops before normal ops
+
+	_, mutateErr := bucket.Bucket.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
+		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
+		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+		RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+		Execute()
+
+	log.Printf("MutateInEx error: %v", mutateErr)
+	assertNoError(t, mutateErr, "Unexpected mutateErr")
+
+	// Verify delete of body and XATTR
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	mutateCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("retrievedVal: %+v", retrievedVal)
+	assert.Equals(t, len(retrievedVal), 0)
+	assert.Equals(t, retrievedXattr["seq"], float64(123))
+	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
+	log.Printf("MutateInEx cas: %v", mutateCas)
+
+	err = bucket.DeleteWithXattr(key, xattrName)
+	assertNoError(t, err, "Unexpected error calling DeleteWithXattr()")
+
+	getCas, getErr := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("GetWithXattr returned cas: %v err: %v", getCas, getErr)
+	if getErr != gocbcore.ErrKeyNotFound {
+		t.Errorf("Unexpected error calling GetWithXattr: %+v", getErr)
+	}
+
+
+}
+
+
+// This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
+// callback function, which has the effect of deleting the doc body in between the "check status"
+// and the mutation phase of deleteWithXattrInternal()
+func TestDeleteWithXattrInternal(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	// Create document with XATTR
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-1234"
+
+	key := "TestDeleteWithXattrInternal"
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Fatalf("Expected empty bucket")
+	}
+
+	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	numTimesCalledBack := 0
+	callback := func(b CouchbaseBucketGoCB, k string, xattrKey string, bodyExists, xattrsExist bool) {
+
+		//// Delete doc (what does this do about xattrs?)
+		//_, err := bucket.Remove(key, cas)
+		//assertNoError(t, err, "Unexpected error removing doc from bucket")
+
+		// Only want the callback to execute once.  Should be called multiple times (twice) due to expected
+		// cas failure due to using stale cas
+		if numTimesCalledBack >= 1 {
+			return
+		}
+		numTimesCalledBack += 1
+
+		// Delete the doc body, but preserve xattrs
+		flags := gocb.SubdocDocFlagAccessDeleted // passes local smoke test with doc ressurrection and purging
+
+		updatedDoc, mutateErr := bucket.Bucket.MutateInEx(k, flags, gocb.Cas(cas), uint32(0)).
+			UpsertEx(xattrKey, xattrVal, gocb.SubdocFlagXattr).                             // Keep the same xattr
+			UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+			RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+			Execute()
+
+		assertNoError(t, mutateErr, "Got unexpected mutateErr tryng to delete doc body")
+
+		log.Printf("Updated doc after deleting doc body.  Cas: %v", updatedDoc.Cas())
+
+
+
+	}
+
+	deleteErr := bucket.deleteWithXattrInternal(key, xattrName, callback)
+	assertNoError(t, deleteErr, "Unexpected error calling DeleteWithXattr()")
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, getErr := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if getErr != gocbcore.ErrKeyNotFound {
+		t.Errorf("Unexpected error calling GetWithXattr: %+v", getErr)
+	}
+	log.Printf("retrievedXattr: %+v", retrievedXattr)
+	assert.True(t, len(retrievedXattr) == 0)
+
 
 }
 

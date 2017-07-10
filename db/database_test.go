@@ -241,6 +241,11 @@ func TestGetDeleted(t *testing.T) {
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
+	// Get the raw doc and make sure the sync data has the current revision
+	doc, err := db.GetDoc("doc1")
+	assertNoError(t, err, "Err getting doc")
+	assert.Equals(t, doc.syncData.CurrentRev, rev2id)
+	
 	// Try again but with a user who doesn't have access to this revision (see #179)
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, err = authenticator.GetUser("")
