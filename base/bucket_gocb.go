@@ -1090,22 +1090,11 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 	}()
 	gocbExpvars.Add("Delete", 1)
 
-	//var value []byte
-	//var xattrValue []byte
-	//cas, err := bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
-	//if err != nil {
-	//	return err
-	//}
-
-	// TODO: figure out these flags
-	// TODO: make sure no & flags
-	// deleteFlags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted
-
-	// We don't soft-delete flag because it won't have been soft-deleted
+	// We don't need gocb.SubdocDocFlagAccessDeleted flag because it won't have been soft-deleted
 	deleteFlags := gocb.SubdocDocFlagNone
 
 	_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
-		RemoveEx(xattrKey, gocb.SubdocFlagXattr).                                     // Update the xattr
+		RemoveEx(xattrKey, gocb.SubdocFlagXattr).                                     // Remove the xattr
 		RemoveEx("", gocb.SubdocFlagNone).                                      // Delete the document body
 		Execute()
 
@@ -1280,6 +1269,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 			// TODO: review subdoc flags -- same as TestXattrDeleteDocumentAndUpdateXATTR
 
+			// TODO: I think this should be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted
 			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
 				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                                     // Update the xattr
 				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
