@@ -1255,9 +1255,8 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				casOut = uint64(docFragment.Cas())
 			} else if mutateErr == gocb.ErrKeyNotFound {
 				// Document body has already been removed
-				// TODO: what should we do in this case?  It currently just returns an emptyCas and does nothing further
-				LogTo("CRUD+", "mutateErr == gocb.ErrKeyNotFound for key: %v xattrKey: %v.  casOut will be 0", k, xattrKey)
-				LogTo("CRUD+", "mutateErr == gocb.ErrKeyNotFound.  call GetWithXattr")
+				// TODO: what should we do in this case?
+				Warn("Error removing doc and xattrs in single op for key: %v.  Attempt removing only xattrs", k)
 
 				// Since the combined delete + update xattr op failed with an ErrKeyNotFound, fallback to trying to update xattr only
 				var writeErr error
