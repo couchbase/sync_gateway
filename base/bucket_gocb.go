@@ -1063,7 +1063,6 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattrOld(k string, xattrKey string) 
 	}()
 	gocbExpvars.Add("Delete", 1)
 
-
 	// Normal remove, with soft-delete
 	removeCas, err := bucket.Bucket.Remove(k, 0)
 	if err != nil && err != gocb.ErrKeyNotFound {
@@ -1094,8 +1093,8 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 	deleteFlags := gocb.SubdocDocFlagNone
 
 	_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
-		RemoveEx(xattrKey, gocb.SubdocFlagXattr).                                     // Remove the xattr
-		RemoveEx("", gocb.SubdocFlagNone).                                      // Delete the document body
+		RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+		RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
 		Execute()
 
 	if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
@@ -1265,13 +1264,14 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
 
-			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx")
+			LogTo("CRUD+", "gocb WriteUpdateWithXattr() deleteDoc=true, going to call MutateInEx for key: %v", k)
 
 			// TODO: review subdoc flags -- same as TestXattrDeleteDocumentAndUpdateXATTR
 
-			// TODO: I think this should be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted
-			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
-				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                                     // Update the xattr
+			// TODO: should this be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted instead?
+			// TODO: leaving as-is for now, since it matches flags used in TestXattrDeleteDocumentAndUpdateXATTR
+			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                             // Update the xattr
 				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
 				Execute()
@@ -1284,12 +1284,15 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			} else if mutateErr == gocb.ErrKeyNotFound {
 				// Document body has already been removed
 				// TODO: what should we do in this case?
+				Warn("MutateInEx returned mutateErr == gocb.ErrKeyNotFound for key: %v", k)
 				return emptyCas, mutateErr
 			} else if isRecoverableGoCBError(mutateErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
 				continue
 			} else {
 				// Non-recoverable error - return
+				Warn("MutateInEx returned Non-recoverable error for key: %v.  Err: %v", k, mutateErr)
+
 				return emptyCas, mutateErr
 			}
 
