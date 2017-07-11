@@ -1062,6 +1062,8 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Delete", 1)
+
+
 	removeCas, err := bucket.Bucket.Remove(k, 0)
 	if err != nil && err != gocb.ErrKeyNotFound {
 		return err
@@ -1256,16 +1258,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			} else if mutateErr == gocb.ErrKeyNotFound {
 				// Document body has already been removed
 				// TODO: what should we do in this case?
-				Warn("Error removing doc and xattrs in single op for key: %v.  Attempt removing only xattrs", k)
-
-				// Since the combined delete + update xattr op failed with an ErrKeyNotFound, fallback to trying to update xattr only
-				var writeErr error
-				casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
-				if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-					LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-					return emptyCas, writeErr
-				}
-
+				return emptyCas, mutateErr
 			} else if isRecoverableGoCBError(mutateErr) {
 				// Recoverable error - retry WriteUpdateWithXattr
 				continue
