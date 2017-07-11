@@ -1089,6 +1089,8 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 	}()
 	gocbExpvars.Add("Delete", 1)
 
+	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
+
 	// Does the doc exist?
 	docExists := false
 	_, _, err := bucket.GetRaw(k)
@@ -1096,29 +1098,41 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 		docExists = true
 	}
 
+	LogTo("CRUD+", "docExists: %v", docExists)
+
 	// We don't need gocb.SubdocDocFlagAccessDeleted flag because it won't have been soft-deleted
 	deleteFlags := gocb.SubdocDocFlagNone
 
 	if docExists {
+
 		// If the doc exists, delete both the doc body and the xattrs in one single op
 		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
 			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
 			RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
 			Execute()
 
-		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
-			return mutateErr
-		}
-	} else {
-		// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
-		// case, it will return a KeyNotFound error
-		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
-			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
-			Execute()
+		LogTo("CRUD+", "delete both doc body and xattr.  err: %v", mutateErr)
+
 
 		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
 			return mutateErr
 		}
+
+	} else {
+
+		// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
+		// case, it will return a KeyNotFound error
+		deleteFlags = gocb.SubdocDocFlagNone|gocb.SubdocDocFlagAccessDeleted
+		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
+			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+			Execute()
+
+		LogTo("CRUD+", "delete just the xattr.  err: %v", mutateErr)
+
+		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+			return mutateErr
+		}
+
 	}
 
 	return nil
@@ -1262,6 +1276,8 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Load the existing value.
 		gocbExpvars.Add("Update_GetWithXattr", 1)
 		cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called GetWithXattr() for key: %v.  Got cas: %v err: %v", k, cas, err)
+
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, cancel writeupdate
@@ -1276,6 +1292,8 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called callback() key: %v updatedValue: %v.  updatedXattrValue: %v  deleteDoc: %v err: %v", k, updatedValue, updatedXattrValue, deleteDoc, err)
+
 		if err != nil {
 			return emptyCas, err
 		}
@@ -1290,7 +1308,11 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 			// TODO: should this be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted instead?
 			// TODO: leaving as-is for now, since it matches flags used in TestXattrDeleteDocumentAndUpdateXATTR
-			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+
+			// 	flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted -- fails with xattr: invalid arguments
+			flags := gocb.SubdocDocFlagNone
+
+			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, flags, gocb.Cas(cas), uint32(0)).
 				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                             // Update the xattr
 				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
