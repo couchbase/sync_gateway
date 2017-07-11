@@ -1292,7 +1292,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
-		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called callback() key: %v updatedValue: %v.  updatedXattrValue: %v  deleteDoc: %v err: %v", k, updatedValue, updatedXattrValue, deleteDoc, err)
+		LogTo("CRUD+", "gocb WriteUpdateWithXattr() called callback() key: %v updatedValue: %v.  updatedXattrValue: %v  deleteDoc: %v err: %v", k, string(updatedValue), string(updatedXattrValue), deleteDoc, err)
 
 		if err != nil {
 			return emptyCas, err
@@ -1309,8 +1309,10 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			// TODO: should this be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted instead?
 			// TODO: leaving as-is for now, since it matches flags used in TestXattrDeleteDocumentAndUpdateXATTR
 
-			// 	flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted -- fails with xattr: invalid arguments
-			flags := gocb.SubdocDocFlagNone
+			// flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted -- fails with xattr: invalid arguments
+			// flags := gocb.SubdocDocFlagNone // -- passes local smoke test and functional test, but what about doc ressurection?  Don't we need SubdocDocFlagAccessDeleted?
+
+			flags := gocb.SubdocDocFlagAccessDeleted // passes local smoke test with doc ressurrection and purging
 
 			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, flags, gocb.Cas(cas), uint32(0)).
 				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                             // Update the xattr

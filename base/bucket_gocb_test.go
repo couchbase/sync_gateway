@@ -1340,8 +1340,8 @@ func TestSoftDeleteFollowedByHardDelete(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	flags := gocb.SubdocDocFlagNone
-	// flags := gocb.SubdocDocFlagAccessDeleted  // With this, get Unexpected error calling DeleteWithXattr(): key not found
+	// flags := gocb.SubdocDocFlagNone  // Passes
+	flags := gocb.SubdocDocFlagAccessDeleted  // With this, get Unexpected error calling DeleteWithXattr(): key not found
 	// flags := gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted // With this, also get Unexpected error calling DeleteWithXattr(): key not found
 	// flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted // With this, get Unexpected mutateErr: invalid arguments -- could be due to not ordering xattr ops before normal ops
 
