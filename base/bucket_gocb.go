@@ -1055,7 +1055,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 // Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS) tombstone when a document is deleted.
 // To remove the system xattr as well, an explicit subdoc delete operation is required.
-func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
+func (bucket CouchbaseBucketGoCB) DeleteWithXattrOld(k string, xattrKey string) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1064,17 +1064,53 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 	gocbExpvars.Add("Delete", 1)
 
 
+	// Normal remove, with soft-delete
 	removeCas, err := bucket.Bucket.Remove(k, 0)
 	if err != nil && err != gocb.ErrKeyNotFound {
 		return err
 	}
 
+	// Remove xattr from recently soft-deleted
 	_, deleteXattrErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, removeCas, 0).
 		RemoveEx(xattrKey, gocb.SubdocFlagXattr).
 		Execute()
 
 	if deleteXattrErr != nil && deleteXattrErr != gocbcore.ErrSubDocSuccessDeleted {
 		return deleteXattrErr
+	}
+
+	return nil
+}
+
+func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+	gocbExpvars.Add("Delete", 1)
+
+	//var value []byte
+	//var xattrValue []byte
+	//cas, err := bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+	//if err != nil {
+	//	return err
+	//}
+
+	// TODO: figure out these flags
+	// TODO: make sure no & flags
+	// deleteFlags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted
+
+	// We don't soft-delete flag because it won't have been soft-deleted
+	deleteFlags := gocb.SubdocDocFlagNone
+
+	_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
+		RemoveEx(xattrKey, gocb.SubdocFlagXattr).                                     // Update the xattr
+		RemoveEx("", gocb.SubdocFlagNone).                                      // Delete the document body
+		Execute()
+
+	if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+		return mutateErr
 	}
 
 	return nil

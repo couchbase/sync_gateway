@@ -1224,8 +1224,7 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 	key := "TestDeleteDocumentAndXATTR"
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
-		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		bucket.Delete(key)
+		t.Fatalf("Key should not exist yet, expected error but got nil.")
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
@@ -1245,7 +1244,8 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 	// Verify delete of body and XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	cas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("GetWithXattr returned cas: %v err: %v", cas, err)
 	if err != gocbcore.ErrKeyNotFound {
 		t.Errorf("Unexpected error calling GetWithXattr: %+v", err)
 	}
