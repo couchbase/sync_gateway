@@ -1306,6 +1306,70 @@ func TestXattrDeleteDocumentAndUpdateXATTR(t *testing.T) {
 
 }
 
+func TestSoftDeleteFollowedByPurge(t *testing.T) {
+
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	// Create document with XATTR
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-1234"
+
+	key := "TestSoftDeleteFollowedByPurge"
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Fatalf("Expected empty bucket")
+	}
+
+	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	// TODO: review flags.  Looks like invalid use to & these together, will end up with 0 (or was that intention?)
+	_, mutateErr := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
+		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+		RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+		Execute()
+
+	log.Printf("MutateInEx error: %v", mutateErr)
+
+	// Verify delete of body and XATTR
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	mutateCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	assert.Equals(t, len(retrievedVal), 0)
+	assert.Equals(t, retrievedXattr["seq"], float64(123))
+	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
+	log.Printf("MutateInEx cas: %v", mutateCas)
+
+	err = bucket.DeleteWithXattr(key, xattrName)
+	assertNoError(t, err, "Unexpected error calling DeleteWithXattr()")
+
+	getCas, getErr := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("GetWithXattr returned cas: %v err: %v", getCas, getErr)
+	if getErr != gocbcore.ErrKeyNotFound {
+		t.Errorf("Unexpected error calling GetWithXattr: %+v", getErr)
+	}
+
+
+}
+
 // TestXattrRetrieveDocumentAndXattr.
 func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
