@@ -1306,7 +1306,7 @@ func TestXattrDeleteDocumentAndUpdateXATTR(t *testing.T) {
 
 }
 
-func TestSoftDeleteFollowedByPurge(t *testing.T) {
+func TestSoftDeleteFollowedByHardDelete(t *testing.T) {
 
 
 	SkipXattrTestsIfNotEnabled(t)
@@ -1340,19 +1340,24 @@ func TestSoftDeleteFollowedByPurge(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	// TODO: review flags.  Looks like invalid use to & these together, will end up with 0 (or was that intention?)
-	_, mutateErr := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+	// flags := gocb.SubdocDocFlagAccessDeleted  // With this, get Unexpected error calling DeleteWithXattr(): key not found
+	// flags := gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted // With this, also get Unexpected error calling DeleteWithXattr(): key not found
+	flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted // With this, get Unexpected mutateErr: invalid arguments
+
+	_, mutateErr := bucket.Bucket.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
 		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
 		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 		RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
 		Execute()
 
 	log.Printf("MutateInEx error: %v", mutateErr)
+	assertNoError(t, mutateErr, "Unexpected mutateErr")
 
 	// Verify delete of body and XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	mutateCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("retrievedVal: %+v", retrievedVal)
 	assert.Equals(t, len(retrievedVal), 0)
 	assert.Equals(t, retrievedXattr["seq"], float64(123))
 	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)

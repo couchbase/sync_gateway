@@ -1089,16 +1089,36 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 	}()
 	gocbExpvars.Add("Delete", 1)
 
+	// Does the doc exist?
+	docExists := false
+	_, _, err := bucket.GetRaw(k)
+	if err == nil {
+		docExists = true
+	}
+
 	// We don't need gocb.SubdocDocFlagAccessDeleted flag because it won't have been soft-deleted
 	deleteFlags := gocb.SubdocDocFlagNone
 
-	_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
-		RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
-		RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
-		Execute()
+	if docExists {
+		// If the doc exists, delete both the doc body and the xattrs in one single op
+		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
+			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+			RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
+			Execute()
 
-	if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
-		return mutateErr
+		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+			return mutateErr
+		}
+	} else {
+		// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
+		// case, it will return a KeyNotFound error
+		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
+			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+			Execute()
+
+		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+			return mutateErr
+		}
 	}
 
 	return nil
