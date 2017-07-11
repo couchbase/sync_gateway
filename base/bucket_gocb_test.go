@@ -1342,7 +1342,7 @@ func TestSoftDeleteFollowedByHardDelete(t *testing.T) {
 
 	// flags := gocb.SubdocDocFlagAccessDeleted  // With this, get Unexpected error calling DeleteWithXattr(): key not found
 	// flags := gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted // With this, also get Unexpected error calling DeleteWithXattr(): key not found
-	flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted // With this, get Unexpected mutateErr: invalid arguments
+	flags := gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted // With this, get Unexpected mutateErr: invalid arguments -- could be due to not ordering xattr ops before normal ops
 
 	_, mutateErr := bucket.Bucket.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
 		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
