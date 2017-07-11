@@ -1270,7 +1270,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			// TODO: review subdoc flags -- same as TestXattrDeleteDocumentAndUpdateXATTR
 
 			// TODO: I think this should be gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted
-			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+			docFragment, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc|gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
 				UpsertEx(xattrKey, updatedXattrValue, gocb.SubdocFlagXattr).                                     // Update the xattr
 				UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
