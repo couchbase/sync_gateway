@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"log"
+	"io/ioutil"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -609,33 +610,51 @@ func TestLongestBranch2(t *testing.T) {
 // Make sure the winning branch is pruned as expected
 func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 
+	dumpRevTreeDotFiles := false
+
 	branchSpecs := []BranchSpec{
 		{
-			NumRevs:                 90,
+			NumRevs:                 10,
 			Digest:                  "non-winning",
 			LastRevisionIsTombstone: false,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(5, 100, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
 
-	maxDepth := uint32(20)
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	maxDepth := uint32(7)
 
 	revTree.pruneRevisions(maxDepth, "")
 
-	winningBranchStartRev := fmt.Sprintf("%d-%s", 105, "winning")
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
 
 	// Add revs to winning branch
 	addRevs(
 		revTree,
 		winningBranchStartRev,
-		100,
+		10,
 		"winning",
 	)
 
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
 	revTree.pruneRevisions(maxDepth, "")
 
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
 	// Make sure the winning branch is pruned down to 20, even with the disconnected rev tree
-	assert.True(t, revTree.LongestBranch() == 20)
+	assert.True(t, revTree.LongestBranch() == 7)
 
 }
 
