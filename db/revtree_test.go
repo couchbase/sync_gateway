@@ -19,6 +19,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"io/ioutil"
 )
 
 var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
@@ -189,6 +190,259 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
 	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
 }
+
+type BranchSpec struct {
+	NumRevs                 int
+	LastRevisionIsTombstone bool
+	Digest                  string
+}
+
+//            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
+// 1-a -- 2-a
+//            \ 3-b -- 4-b ... etc (losing branch #1)
+//            \ 3-c -- 4-c ... etc (losing branch #2)
+//            \ 3-d -- 4-d ... etc (losing branch #n)
+//
+// NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
+func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
+
+	if unconflictedBranchNumRevs < 1 {
+		panic(fmt.Sprintf("Must have at least 1 unconflictedBranchNumRevs"))
+	}
+
+	winningBranchDigest := "winning"
+
+	const testJSON = `{
+		   "revs":[
+			  "1-winning"
+		   ],
+		   "parents":[
+			  -1
+		   ],
+		   "channels":[
+			  null
+		   ]
+		}`
+
+	revTree := RevTree{}
+	if err := json.Unmarshal([]byte(testJSON), &revTree); err != nil {
+		panic(fmt.Sprintf("Error: %v", err))
+	}
+
+	if unconflictedBranchNumRevs > 1 {
+		// Add revs to unconflicted branch
+		addRevs(
+			revTree,
+			"1-winning",
+			unconflictedBranchNumRevs-1,
+			winningBranchDigest,
+		)
+	}
+
+	if winningBranchNumRevs > 0 {
+
+		// Figure out which generation the conflicting branches will start at
+		generation := unconflictedBranchNumRevs
+
+		// Figure out the starting revision id on winning and losing branches
+		winningBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)
+
+		// Add revs to winning branch
+		addRevs(
+			revTree,
+			winningBranchStartRev,
+			winningBranchNumRevs,
+			winningBranchDigest,
+		)
+
+	}
+
+	for _, losingBranchSpec := range losingBranches {
+
+		if losingBranchSpec.NumRevs > 0 {
+
+			// Figure out which generation the conflicting branches will start at
+			generation := unconflictedBranchNumRevs
+
+			losingBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest) // Start on last revision of the non-conflicting branch
+
+			// Add revs to losing branch
+			addRevs(
+				revTree,
+				losingBranchStartRev,
+				losingBranchSpec.NumRevs, // Subtract 1 since we already added initial
+				losingBranchSpec.Digest,
+			)
+
+			generation += losingBranchSpec.NumRevs
+
+			if losingBranchSpec.LastRevisionIsTombstone {
+
+				newRevId := fmt.Sprintf("%v-%v", generation+1, losingBranchSpec.Digest)
+				parentRevId := fmt.Sprintf("%v-%v", generation, losingBranchSpec.Digest)
+
+				revInfo := RevInfo{
+					ID:      newRevId,
+					Parent:  parentRevId,
+					Deleted: true,
+				}
+				revTree.addRevision(revInfo)
+
+			}
+
+		}
+
+	}
+
+	return revTree
+
+}
+
+func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {
+
+	docSizeBytes := 1024 * 5
+	body := createBodyContentAsMapWithSize(docSizeBytes)
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		panic(fmt.Sprintf("Error: %v", err))
+	}
+
+	channels := base.SetOf("ABC", "CBS")
+
+	generation, _ := ParseRevID(startingParentRevId)
+
+	for i := 0; i < numRevs; i++ {
+
+		newRevId := fmt.Sprintf("%v-%v", generation+1, revDigest)
+		parentRevId := ""
+		if i == 0 {
+			parentRevId = startingParentRevId
+		} else {
+			parentRevId = fmt.Sprintf("%v-%v", generation, revDigest)
+		}
+
+		revInfo := RevInfo{
+			ID:       newRevId,
+			Parent:   parentRevId,
+			Body:     bodyBytes,
+			Deleted:  false,
+			Channels: channels,
+		}
+		revTree.addRevision(revInfo)
+
+		generation += 1
+
+	}
+
+}
+
+
+// Find the length of the longest branch
+func (tree RevTree) LongestBranch() int {
+
+	longestBranch := 0
+
+	leafProcessor := func(leaf *RevInfo) {
+
+		lengthOfBranch := 0
+
+		// Walk up the tree until we find a root, and append each node
+		node := leaf
+		for {
+
+			// Increment length of branch
+			lengthOfBranch += 1
+
+			// Reached a root, we're done -- if this branch is longer than the
+			// current longest branch, record branch length as longestBranch
+			if node.IsRoot() {
+				if lengthOfBranch > longestBranch {
+					longestBranch = lengthOfBranch
+				}
+				break
+			}
+
+			// Walk up the branch to the parent node
+			node = tree[node.Parent]
+
+		}
+	}
+
+	tree.forEachLeaf(leafProcessor)
+
+	return longestBranch
+
+}
+
+// Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
+func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
+
+	numEntries := int(docSizeBytes/100) + 1
+	body := make(map[string]string, numEntries)
+	for i := 0; i < numEntries; i++ {
+		key := fmt.Sprintf("field_%d", i)
+		body[key] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	}
+	return body
+}
+
+
+
+// Create a disconnected rev tree
+// Add lots of revisions to winning branch
+// Prune rev tree
+// Make sure the winning branch is pruned as expected
+func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
+
+	dumpRevTreeDotFiles := false
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 10,
+			Digest:                  "non-winning",
+			LastRevisionIsTombstone: false,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	maxDepth := uint32(7)
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
+
+	// Add revs to winning branch
+	addRevs(
+		revTree,
+		winningBranchStartRev,
+		10,
+		"winning",
+	)
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	// Make sure the winning branch is pruned down to 20, even with the disconnected rev tree
+	assert.True(t, revTree.LongestBranch() == 7)
+
+}
+
+
 
 func TestParseRevisions(t *testing.T) {
 	type testCase struct {
