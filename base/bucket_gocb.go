@@ -1100,18 +1100,16 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 
 	LogTo("CRUD+", "docExists: %v", docExists)
 
-	// We don't need gocb.SubdocDocFlagAccessDeleted flag because it won't have been soft-deleted
-	deleteFlags := gocb.SubdocDocFlagNone
-
 	if docExists {
+
+		// No need to set gocb.SubdocDocFlagAccessDeleted flag because it won't have been previously soft-deleted
+		deleteFlags := gocb.SubdocDocFlagNone
 
 		// If the doc exists, delete both the doc body and the xattrs in one single op
 		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
 			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
 			RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
 			Execute()
-
-		LogTo("CRUD+", "delete both doc body and xattr.  err: %v", mutateErr)
 
 
 		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
@@ -1120,14 +1118,15 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 
 	} else {
 
+		// Presumably the doc was previously soft-deleted, so set the SubdocDocFlagAccessDeleted flag
+		// TODO: what will happen if it was previously hard-deleted?  Will this just be a no-op?
+		deleteFlags := gocb.SubdocDocFlagAccessDeleted
+
 		// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
 		// case, it will return a KeyNotFound error
-		deleteFlags = gocb.SubdocDocFlagNone|gocb.SubdocDocFlagAccessDeleted
 		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
 			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
 			Execute()
-
-		LogTo("CRUD+", "delete just the xattr.  err: %v", mutateErr)
 
 		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
 			return mutateErr
@@ -1137,6 +1136,7 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 
 	return nil
 }
+
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
 
