@@ -653,7 +653,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
-	// Make sure the winning branch is pruned down to 20, even with the disconnected rev tree
+	// Make sure the winning branch is pruned down to maxDepth, even with the disconnected rev tree
 	assert.True(t, revTree.LongestBranch() == 7)
 
 }
