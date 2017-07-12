@@ -602,6 +602,44 @@ func TestLongestBranch2(t *testing.T) {
 
 }
 
+
+// Create a disconnected rev tree
+// Add lots of revisions to winning branch
+// Prune rev tree
+// Make sure the winning branch is pruned as expected
+func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 90,
+			Digest:                  "non-winning",
+			LastRevisionIsTombstone: false,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(5, 100, branchSpecs)
+
+	maxDepth := uint32(20)
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	winningBranchStartRev := fmt.Sprintf("%d-%s", 105, "winning")
+
+	// Add revs to winning branch
+	addRevs(
+		revTree,
+		winningBranchStartRev,
+		100,
+		"winning",
+	)
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	// Make sure the winning branch is pruned down to 20, even with the disconnected rev tree
+	assert.True(t, revTree.LongestBranch() == 20)
+
+}
+
+
 func TestParseRevisions(t *testing.T) {
 	type testCase struct {
 		json string
