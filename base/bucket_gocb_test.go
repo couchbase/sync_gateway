@@ -1376,6 +1376,10 @@ func TestSoftDeleteFollowedByHardDelete(t *testing.T) {
 
 }
 
+
+// This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
+// callback function, which has the effect of deleting the doc body in between the "check status"
+// and the mutation phase of deleteWithXattrInternal()
 func TestDeleteWithXattrInternal(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
@@ -1410,9 +1414,34 @@ func TestDeleteWithXattrInternal(t *testing.T) {
 	}
 
 	callback := func(b CouchbaseBucketGoCB, k string, xattrKey string, bodyExists, xattrsExist bool) {
-		// Delete the doc
-		_, err := bucket.Remove(key, cas)
-		assertNoError(t, err, "Unexpected error removing doc from bucket")
+
+		//// Delete doc (what does this do about xattrs?)
+		//_, err := bucket.Remove(key, cas)
+		//assertNoError(t, err, "Unexpected error removing doc from bucket")
+
+		// Delete the doc body, but preserve xattrs
+		flags := gocb.SubdocDocFlagAccessDeleted // passes local smoke test with doc ressurrection and purging
+
+		updatedDoc, mutateErr := bucket.Bucket.MutateInEx(k, flags, gocb.Cas(cas), uint32(0)).
+			UpsertEx(xattrKey, xattrVal, gocb.SubdocFlagXattr).                             // Keep the same xattr
+			UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+			RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+			Execute()
+
+		assertNoError(t, mutateErr, "Got unexpected mutateErr tryng to delete doc body")
+
+		log.Printf("Updated doc after deleting doc body: %v", updatedDoc.Cas())
+
+		//staleCas := cas  // newer cas in updatedDoc.Cas()
+		//
+		//
+		//// what if I try another mutation based on a stale cas value?
+		//_, mutate2Err := bucket.Bucket.MutateInEx(k, flags, gocb.Cas(staleCas), uint32(0)).
+		//	RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+		//	Execute()
+		//log.Printf("Expected mutate2err due to stale cas: %v.  Error type: %T", mutate2Err, mutate2Err)  // returns: key already exists, if a cas was provided the key exists with a different cas
+
+
 	}
 
 	deleteErr := bucket.deleteWithXattrInternal(key, xattrName, callback)
