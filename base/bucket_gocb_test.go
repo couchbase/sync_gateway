@@ -1376,6 +1376,58 @@ func TestSoftDeleteFollowedByHardDelete(t *testing.T) {
 
 }
 
+func TestDeleteWithXattrInternal(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	// Create document with XATTR
+	xattrName := "_sync"
+	val := make(map[string]interface{})
+	val["body_field"] = "1234"
+
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-1234"
+
+	key := "TestDeleteWithXattrInternal"
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Fatalf("Expected empty bucket")
+	}
+
+	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	callback := func(b CouchbaseBucketGoCB, k string, xattrKey string, bodyExists, xattrsExist bool) {
+		// Delete the doc
+		_, err := bucket.Remove(key, cas)
+		assertNoError(t, err, "Unexpected error removing doc from bucket")
+	}
+
+	deleteErr := bucket.deleteWithXattrInternal(key, xattrName, callback)
+	assertNoError(t, deleteErr, "Unexpected error calling DeleteWithXattr()")
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, getErr := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if getErr != gocbcore.ErrKeyNotFound {
+		t.Errorf("Unexpected error calling GetWithXattr: %+v", getErr)
+	}
+
+
+}
+
 // TestXattrRetrieveDocumentAndXattr.
 func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
