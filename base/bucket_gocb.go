@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
+	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -1055,6 +1056,26 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
 
+	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
+
+}
+
+
+// A function that will be called back after the bucket.Get() is called but before the MutateInEx is called,
+// to simulate race condition behavior
+type deletePostCheckDocState func(bucket CouchbaseBucketGoCB, k string, xattrKey string, bodyExists, xattrsExist bool)
+
+func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deletePostCheckDocState) error {
+
+	// TODO: there is a race condition where
+	// 1. Check for doc existence
+	// 2. Something else does a soft delete or hard delete
+	// 3. The mutateinEx will fail and return an error
+	// FIX: add cas check retry loop
+
+	// TODO: need to do a GetWithXattrs so we know the state of the xattrs, not just doc body
+
+
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -1063,11 +1084,43 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 
 	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
 
-	// Does the doc exist?
-	docExists := false
-	_, _, err := bucket.GetRaw(k)
-	if err == nil {
-		docExists = true
+	//// Does the doc exist?
+	//docExists := false
+	//_, _, err := bucket.GetRaw(k)
+	//if err == nil {
+	//	// TODO: check the error type
+	//	docExists = true
+	//}
+
+	// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
+	// to retrieve the full doc body, so need to retry that scenario below.
+	//res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
+	//	GetEx(xattrKey, gocb.SubdocFlagXattr). // Get the xattr
+	//	GetEx("", gocb.SubdocFlagNone).        // Get the document body
+	//	Execute()
+
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
+	if err != nil {
+		// TODO: should we check if the type of error and possibly ignore it if
+		// TODO: it indicates there is no work to be done?
+		return err
+	}
+	log.Printf("getCas: %v", getCas)  // TODO: use this cas
+
+	docExists := (len(retrievedVal) > 0)
+	xattrsExist := (len(retrievedXattr) > 0)
+
+	// Invoke the callback which has the ability to change the document state
+	if callback != nil {
+		callback(
+			bucket,
+			k,
+			xattrKey,
+			docExists,
+			xattrsExist,
+		)
 	}
 
 	LogTo("CRUD+", "docExists: %v", docExists)
