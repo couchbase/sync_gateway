@@ -1077,78 +1077,98 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
 
+	for {
 
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
-	if err != nil {
-		// TODO: should we check if the type of error and possibly ignore it if
-		// TODO: it indicates there is no work to be done?
-		return err
-	}
-	log.Printf("deleteWithXattrInternal() getCas: %v", getCas)  // TODO: use this cas
+		var retrievedVal map[string]interface{}
+		var retrievedXattr map[string]interface{}
+		getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
+		if err != nil {
+			// TODO: should we check if the type of error and possibly ignore it if
+			// TODO: it indicates there is no work to be done?
+			return err
+		}
+		log.Printf("deleteWithXattrInternal() getCas: %v", getCas)  // TODO: use this cas
 
-	docExists := (len(retrievedVal) > 0)
-	xattrsExist := (len(retrievedXattr) > 0)
+		docExists := (len(retrievedVal) > 0)
+		xattrsExist := (len(retrievedXattr) > 0)
 
-	// Invoke the callback which has the ability to change the document state
-	if callback != nil {
-		callback(
-			bucket,
-			k,
-			xattrKey,
-			docExists,
-			xattrsExist,
-		)
-	}
-
-	log.Printf("docExists: %v.  xattrsExist: %v", docExists, xattrsExist)
-
-	// This flag seems to work well no matter what the current document state is in
-	deleteFlags := gocb.SubdocDocFlagAccessDeleted
-
-	switch {
-	case docExists && xattrsExist:
-
-		log.Printf("docExists && xattrsExist")
-
-		// If the doc exists, delete both the doc body and the xattrs in one single op
-		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
-			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
-			RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
-			Execute()
-
-		log.Printf("docExists && xattrsExist.  mutateErr: %v", mutateErr)
-		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
-			return mutateErr
+		// Invoke the callback which has the ability to change the document state
+		if callback != nil {
+			callback(
+				bucket,
+				k,
+				xattrKey,
+				docExists,
+				xattrsExist,
+			)
 		}
 
-	case docExists && !xattrsExist:
-		// is this possible
-		return fmt.Errorf("Unexpected state: docExists && !xattrsExist")
-	case !docExists && xattrsExist:
+		log.Printf("docExists: %v.  xattrsExist: %v", docExists, xattrsExist)
 
-		log.Printf("!docExists && xattrsExist")
+		// This flag seems to work well no matter what the current document state is in
+		deleteFlags := gocb.SubdocDocFlagAccessDeleted
 
-		// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
-		// case, it will return a KeyNotFound error
-		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
-			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
-			Execute()
+		switch {
+		case docExists && xattrsExist:
 
-		log.Printf("!docExists && xattrsExist.  mutateErr: %v", mutateErr)
+			log.Printf("docExists && xattrsExist")
 
-		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
-			return mutateErr
+			// If the doc exists, delete both the doc body and the xattrs in one single op
+			_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
+				RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+				RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
+				Execute()
+
+			if mutateErr != nil && mutateErr == gocb.ErrKeyExists {
+				// TODO: review if this is always a cas failure
+				// cas failure, retry
+				log.Printf("deleteWithXattrInternal() CAS failure, retry")
+				continue
+			}
+
+			log.Printf("docExists && xattrsExist.  mutateErr: %v", mutateErr)
+			if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+				return mutateErr
+			}
+
+		case docExists && !xattrsExist:
+			// is this possible
+			return fmt.Errorf("Unexpected state: docExists && !xattrsExist")
+		case !docExists && xattrsExist:
+
+			log.Printf("!docExists && xattrsExist")
+
+			// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
+			// case, it will return a KeyNotFound error
+			_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
+				RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+				Execute()
+
+			if mutateErr != nil && mutateErr == gocb.ErrKeyExists {
+				// TODO: review if this is always a cas failure
+				// cas failure, retry
+				log.Printf("deleteWithXattrInternal() CAS failure, retry")
+				continue
+			}
+
+			log.Printf("!docExists && xattrsExist.  mutateErr: %v", mutateErr)
+
+			if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
+				return mutateErr
+			}
+		case !docExists && !xattrsExist:
+			// do nothing to do
+			return nil
 		}
-	case !docExists && !xattrsExist:
-		// do nothing to do
+
+
+
 		return nil
+
 	}
 
 
 
-	return nil
 }
 
 
