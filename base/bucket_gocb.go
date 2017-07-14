@@ -1067,14 +1067,7 @@ type deletePostCheckDocState func(bucket CouchbaseBucketGoCB, k string, xattrKey
 
 func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deletePostCheckDocState) error {
 
-	// TODO: there is a race condition where
-	// 1. Check for doc existence
-	// 2. Something else does a soft delete or hard delete
-	// 3. The mutateinEx will fail and return an error
-	// FIX: add cas check retry loop
-
-	// TODO: need to do a GetWithXattrs so we know the state of the xattrs, not just doc body
-
+	// TODO: TestDeleteWithXattrInternal currently fails
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1084,20 +1077,6 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
 
-	//// Does the doc exist?
-	//docExists := false
-	//_, _, err := bucket.GetRaw(k)
-	//if err == nil {
-	//	// TODO: check the error type
-	//	docExists = true
-	//}
-
-	// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
-	// to retrieve the full doc body, so need to retry that scenario below.
-	//res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
-	//	GetEx(xattrKey, gocb.SubdocFlagXattr). // Get the xattr
-	//	GetEx("", gocb.SubdocFlagNone).        // Get the document body
-	//	Execute()
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
@@ -1107,7 +1086,7 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 		// TODO: it indicates there is no work to be done?
 		return err
 	}
-	log.Printf("getCas: %v", getCas)  // TODO: use this cas
+	log.Printf("deleteWithXattrInternal() getCas: %v", getCas)  // TODO: use this cas
 
 	docExists := (len(retrievedVal) > 0)
 	xattrsExist := (len(retrievedXattr) > 0)
@@ -1123,41 +1102,51 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 		)
 	}
 
-	LogTo("CRUD+", "docExists: %v", docExists)
+	log.Printf("docExists: %v.  xattrsExist: %v", docExists, xattrsExist)
 
-	if docExists {
+	// This flag seems to work well no matter what the current document state is in
+	deleteFlags := gocb.SubdocDocFlagAccessDeleted
 
-		// No need to set gocb.SubdocDocFlagAccessDeleted flag because it won't have been previously soft-deleted
-		deleteFlags := gocb.SubdocDocFlagNone
+	switch {
+	case docExists && xattrsExist:
+
+		log.Printf("docExists && xattrsExist")
 
 		// If the doc exists, delete both the doc body and the xattrs in one single op
-		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
+		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
 			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
 			RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
 			Execute()
 
-
+		log.Printf("docExists && xattrsExist.  mutateErr: %v", mutateErr)
 		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
 			return mutateErr
 		}
 
-	} else {
+	case docExists && !xattrsExist:
+		// is this possible
+		return fmt.Errorf("Unexpected state: docExists && !xattrsExist")
+	case !docExists && xattrsExist:
 
-		// Presumably the doc was previously soft-deleted, so set the SubdocDocFlagAccessDeleted flag
-		// TODO: what will happen if it was previously hard-deleted?  Will this just be a no-op?
-		deleteFlags := gocb.SubdocDocFlagAccessDeleted
+		log.Printf("!docExists && xattrsExist")
 
 		// Otherwise, just try to delete the xattrs, since if you try to delete both body and xattrs in this
 		// case, it will return a KeyNotFound error
-		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(0), uint32(0)).
+		_, mutateErr := bucket.Bucket.MutateInEx(k, deleteFlags, gocb.Cas(getCas), uint32(0)).
 			RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
 			Execute()
+
+		log.Printf("!docExists && xattrsExist.  mutateErr: %v", mutateErr)
 
 		if mutateErr != nil && mutateErr != gocbcore.ErrSubDocSuccessDeleted {
 			return mutateErr
 		}
-
+	case !docExists && !xattrsExist:
+		// do nothing to do
+		return nil
 	}
+
+
 
 	return nil
 }
