@@ -1253,7 +1253,7 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 }
 
 // TestXattrDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
-func TestXattrDeleteDocumentAndUpdateXATTR(t *testing.T) {
+func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
@@ -1287,8 +1287,7 @@ func TestXattrDeleteDocumentAndUpdateXATTR(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	// TODO: review flags.  Looks like invalid use to & these together, will end up with 0 (or was that intention?)
-	_, mutateErr := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagReplaceDoc&gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(0)).
+	_, mutateErr := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
 		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 		RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
