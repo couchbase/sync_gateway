@@ -202,7 +202,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 // the problematic behavior when:
 //    - The channel cache is at capacity
 //    - The channel cache receives changes that are older than it's current oldest entry
-func FailingTestExceedChannelCacheSize(t *testing.T) {
+func TestExceedChannelCacheSize(t *testing.T) {
 
 	// Make the channel cache smaller
 	DefaultChannelCacheMinLength = 2
@@ -244,6 +244,10 @@ func FailingTestExceedChannelCacheSize(t *testing.T) {
 		t.Fatalf("verifyExpectedSequences failed: %v", err)
 	}
 
+	validFromBefore, cachedChangesBefore := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	log.Printf("before adding skipped seq 6.  validFrom: %d", validFromBefore)
+
+
 	// now add the previously skipped sequence
 	skippedSequence := uint64(6)
 	skippedLogEntry := &LogEntry{
@@ -256,49 +260,32 @@ func FailingTestExceedChannelCacheSize(t *testing.T) {
 	cache.addToCache(skippedLogEntry, false)
 
 	// Verify that the changes contains the skipped sequence
-	validFrom, _ := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	validFromAfter, cachedChangesAfter := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	log.Printf("after adding skipped seq 6.  validFrom: %d", validFromAfter)
 
-	// If the validFrom is greater than the skippedSequence we just tried to add, that means
-	// it basically got pruned away instantly and will never have a chance to be returned in
-	// the changes feed, which is the bug reported in https://github.com/couchbase/sync_gateway/issues/2662
-	// Test currently fails here.
-	if validFrom > skippedSequence {
-		t.Errorf("validFrom (%d) > skippedSequence (%d)", validFrom, skippedSequence)
-	}
+	// Since the channel cache is full, and the skipped sequence is older than the oldest sequence in the cache (12 at this point)
+	// then it should be ignored.  That means validFrom shouldn't have changed, and neither should the cached changes
+	assert.Equals(t, validFromBefore, validFromAfter)
 
-	_, changes := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
-
-	foundSeq6 := false
-	foundSeq16 := false
-	for _, change := range changes {
-		if change.Sequence == uint64(6) {
-			foundSeq6 = true
-		}
-		if change.Sequence == uint64(16) {
-			foundSeq16 = true
-		}
-	}
-	assert.True(t, foundSeq6)
-	assert.True(t, foundSeq16)
+	// Make sure cached changes haven't changed after adding the old skipped seq
+	assert.Equals(t, len(cachedChangesBefore), len(cachedChangesAfter))
+	assert.Equals(t, cachedChangesBefore[0].Sequence, cachedChangesAfter[0].Sequence)
+	lastIndex := len(cachedChangesBefore) - 1
+	assert.Equals(t, cachedChangesBefore[lastIndex].Sequence, cachedChangesAfter[lastIndex].Sequence)
 
 	// Add another revision
 	cache.addToCache(e(17, "doc7", "1-doc7"), false)
 
-	// Should see sequence 6 in these changes
-	validFrom, changes = cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	// Since this is a non-skipped seq it will make it into the cache.
+	// Now the validFrom should increment.
+	validFromAfterNonSkippedSeq, changesAfterNonSkippedSeq := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	assert.True(t, validFromAfterNonSkippedSeq > validFromAfter)
 
-	foundSeq6 = false
-	foundSeq17 := false
-	for _, change := range changes {
-		if change.Sequence == uint64(6) {
-			foundSeq6 = true
-		}
-		if change.Sequence == uint64(17) {
-			foundSeq17 = true
-		}
-	}
-	assert.True(t, foundSeq6)
-	assert.True(t, foundSeq17)
+	// And the sequence of the first entry in the cache should be higher than the first entry in the previous cache snapshot
+	assert.True(t, changesAfterNonSkippedSeq[0].Sequence > cachedChangesAfter[0].Sequence)
+
+	// Ditto for the last entry in the cache
+	assert.True(t, changesAfterNonSkippedSeq[lastIndex].Sequence > cachedChangesAfter[lastIndex].Sequence)
 
 }
 
@@ -307,7 +294,7 @@ func FailingTestExceedChannelCacheSize(t *testing.T) {
 // This illustrates the problematic behavior when:
 //    - The channel cache receives changes that is older than is allowed by the ChannelCacheAge parameter
 //    - The channel cache immediately prunes/discards the change, so that it can never be returned from changes feed
-func FailingTestExceedChannelCacheSizeOldEntry(t *testing.T) {
+func TestExceedChannelCacheSizeOldEntry(t *testing.T) {
 
 	// Make the channel cache smaller
 	DefaultChannelCacheMinLength = 0
@@ -325,6 +312,8 @@ func FailingTestExceedChannelCacheSizeOldEntry(t *testing.T) {
 
 	changesSince0 := ChangesOptions{Since: SequenceID{Seq: 0}}
 
+	validFromBeforeOldSkippedSeq, cacheBeforeOldSkippedSeq := cache.getCachedChanges(changesSince0)
+
 	twiceDefaultChannelCacheAge := DefaultChannelCacheAge * -2
 	stale := time.Now().Add(twiceDefaultChannelCacheAge)
 
@@ -339,14 +328,12 @@ func FailingTestExceedChannelCacheSizeOldEntry(t *testing.T) {
 	}
 	cache.addToCache(skippedLogEntry, false)
 
-	validFrom, _ := cache.getCachedChanges(changesSince0)
+	// Since the channel cache is full, and the skipped sequence is older than the oldest sequence in the cache (12 at this point)
+	// then it should be ignored.  That means validFrom shouldn't have changed, and neither should the cached changes
+	validFromAfterOldSkippedSeq, cacheAfterOldSkippedSeq := cache.getCachedChanges(changesSince0)
 
-	// If the validFrom is greater than the skippedSequence we just tried to add, that means
-	// it basically got pruned away instantly and will never have a chance to be returned in
-	// the changes feed, which is the bug reported in https://github.com/couchbase/sync_gateway/issues/2662
-	assert.True(t, validFrom <= skippedSequence)
-
-
+	assert.Equals(t, validFromBeforeOldSkippedSeq, validFromAfterOldSkippedSeq)
+	assert.Equals(t, cacheBeforeOldSkippedSeq[0].Sequence, cacheAfterOldSkippedSeq[0].Sequence)
 
 }
 

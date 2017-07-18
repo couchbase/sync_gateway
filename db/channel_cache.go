@@ -7,6 +7,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"math"
+	"fmt"
 )
 
 var (
@@ -77,6 +79,11 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	if c.wouldBeImmediatelyPruned(change) {
+		base.LogTo("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned", change.Sequence, c.channelName)
+		return
+	}
+
 	if !isRemoval {
 		c._appendChange(change)
 	} else {
@@ -86,6 +93,42 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	}
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+}
+
+// If certain conditions are met, it's possible that this change will be added and then
+// immediately pruned, which causes the issues described in https://github.com/couchbase/sync_gateway/issues/2662
+func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
+
+	// If the channel cache is full and the entry has a seqeunce older than the oldest seqeunce in the cache,
+	// then it will be immediately pruned.
+	// to ignore the entry.   See
+	if len(c.logs) >= (c.options.ChannelCacheMaxLength - 1) {
+		// If the incoming entry older than oldest sequence, then ignore it
+		oldestSeq, err := c._oldestSeq()  // TODO: is there a way to shortcut this based on ordering of c.logs?  eg, just grab c.logs[0] or c.logs[-1]?
+		if err == nil {
+			if change.Sequence < oldestSeq {
+				// Ignore sequences that are too old.
+				base.Warn("Channel cache full and incoming change has sequence (%d) older than oldest sequence in cache (%d).  Ignoring.",
+					change.Sequence,
+					oldestSeq,
+				)
+				return true
+			}
+
+		} else {
+			base.Warn("Unable to find oldest sequence in channel cache.")
+		}
+	}
+
+	// If after adding the entry the size of the cache will be greater than the channelcacheminlen, and the
+	// entry's age is older than the max ChannelCacheAge setting, then it will be immediately pruned.
+	lenAfterAddingEntry := len(c.logs) + 1
+	if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
+		return true
+	}
+
+	return false
+
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
@@ -235,6 +278,7 @@ func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
 func (c *channelCache) _appendChange(change *LogEntry) {
+
 	log := c.logs
 	end := len(log) - 1
 	if end >= 0 {
@@ -529,4 +573,22 @@ func (c *channelCache) addDocIDs(changes LogEntries) {
 	for _, change := range changes {
 		c.cachedDocIDs[change.DocID] = struct{}{}
 	}
+}
+
+func (c *channelCache) _oldestSeq() (uint64, error) {
+
+	oldestSeq := uint64(math.MaxInt64)
+
+	for i := 0; i < len(c.logs); i++ {
+		if c.logs[i].Sequence < oldestSeq {
+			oldestSeq = c.logs[i].Sequence
+		}
+	}
+
+	if oldestSeq == math.MaxInt64 {
+		return math.MaxInt64, fmt.Errorf("Unable to find oldest sequence")
+	}
+
+	return oldestSeq, nil
+
 }
