@@ -16,8 +16,8 @@
             "start_build": 1
         },
         "manifest/1.4.1.xml": {
-            "release": "1.4.1",
-            "release_name": "Couchbase Sync Gateway 1.4.1",
+            "release": "1.4.1.1",
+            "release_name": "Couchbase Sync Gateway 1.4.1.1",
             "production": true,
             "interval": 120,
             "start_build": 1
