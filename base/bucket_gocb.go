@@ -985,7 +985,7 @@ func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
+		
 		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(exp)).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
@@ -994,7 +994,7 @@ func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string
 
 		if removeErr != nil {
 			shouldRetry = isRecoverableGoCBError(removeErr)
-			return shouldRetry, err, uint64(0)
+			return shouldRetry, removeErr, uint64(0)
 		}
 		return false, nil, uint64(docFragment.Cas())
 	}
