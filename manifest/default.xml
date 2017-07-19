@@ -88,7 +88,7 @@
 
   <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="c980adc4a823548817b9c47d38c6ca6b7d7d8b6a"/>
 
-  <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="7006f7a1abbda37f3276216302f9eb7425e1dfa5"/>
+  <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="8968c61983e8f51a91b8c0ef25bf739278c89634"/>
 
   <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
 
