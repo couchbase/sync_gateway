@@ -1252,6 +1252,51 @@ func TestXattrDeleteDocumentWithXattr(t *testing.T) {
 
 }
 
+// Ensure that calling DeleteWithXattr on a doc _without_ an xattr will just delete the doc body
+func TestDeleteWithXattrNoXattr(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	xattrName := "_sync"
+	key := "TestDeleteWithXattrNoXattr"
+
+	_, _, err := bucket.GetRaw(key)
+	if err == nil {
+		t.Errorf("Key should not exist yet, expected error but got nil")
+	}
+
+	cas := uint64(0)
+
+	cas, err = bucket.WriteCas(key, 0, 0, cas, []byte("bar"), sgbucket.Raw)
+	if err != nil {
+		t.Errorf("Error doing WriteCas: %v", err)
+	}
+
+	// Delete the document and XATTR.
+	err = bucket.DeleteWithXattr(key, xattrName)
+	if err != nil {
+		t.Errorf("Error doing DeleteWithXATTR: %+v", err)
+	}
+
+	// Verify delete of body and XATTR
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	cas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("GetWithXattr returned cas: %v err: %v", cas, err)
+	if err != gocbcore.ErrKeyNotFound {
+		t.Errorf("Unexpected error calling GetWithXattr: %+v", err)
+	}
+
+}
+
+
 // TestXattrDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.  Pending https://issues.couchbase.com/browse/MB-24098
 func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
@@ -1304,8 +1349,6 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	log.Printf("MutateInEx cas: %v", mutateCas)
 
 }
-
-
 
 
 func createXattrDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) (xattrValue map[string]interface{} ) {
