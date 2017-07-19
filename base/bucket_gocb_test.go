@@ -1789,7 +1789,7 @@ func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 		panic(fmt.Sprintf("Expected empty bucket"))
 	}
 
-	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
+	// Create w/ doc and XATTR
 	cas := uint64(0)
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
@@ -1798,7 +1798,7 @@ func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 
 	flags := gocb.SubdocDocFlagAccessDeleted
 
-	// Soft-delete (tombstone)
+	// Create tombstone revision which deletes doc body but preserves XATTR
 	_, mutateErr := bucket.Bucket.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
 		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
 		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr

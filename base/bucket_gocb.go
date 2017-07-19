@@ -1137,11 +1137,9 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 	switch {
 	case bucket.IsKeyNotFoundError(mutateErr):
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
-		LogTo("CRUD+", "Initial attempt to delete doc failed with error: %v.  Trying again, this time only deleting XATTR.", mutateErr)
 		return bucket.deleteDocXattrOnly(k, xattrKey, callback)
 	case bucket.IsSubDocPathNotFound(mutateErr):
 		// KeyNotFound indicates there is no XATTR.  Try to delete only the body.
-		LogTo("CRUD+", "Initial attempt to delete doc failed with error: %v.  Trying again, this time only deleting doc body.", mutateErr)
 		return bucket.deleteDocBodyOnly(k, xattrKey, callback)
 	default:
 		// return error
@@ -1165,16 +1163,17 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
-	if err != nil {
+	// TODO: in the NoDocNoXattr case, this fails with key not found error and we just return it
+	if err != nil && !bucket.IsKeyNotFoundError(err) {
 		return err
 	}
 
 	// If the doc body is non-empty at this point, then give up because it seems that a doc update has been
 	// interleaved with the purge.  Return error to the caller and cancel the purge.
 	if len(retrievedVal) != 0 {
-		return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  It might be the case that another update " +
+		return fmt.Errorf("DeleteWithXattr was unable to delete the doc. Another update " +
 			"was received which resurrected the doc by adding a new revision, in which case this delete operation is " +
-			"considred as cancelled.")
+			"considered as cancelled.")
 	}
 
 	// Cas-safe delete of just the XATTR.  Use SubdocDocFlagAccessDeleted since presumably the document body
@@ -1189,11 +1188,17 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 		return nil
 	}
 
+	// TODO: review this, workaround for NoDocNoXattr
+	// Ignore key not found errors,
+	if mutateErrDeleteXattr != nil && bucket.IsKeyNotFoundError(mutateErrDeleteXattr) {
+		return nil
+	}
+
 	// If the cas-safe delete of XATTR fails, return an error to the caller.
 	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
-	return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  It might be the case that another update "+
+	return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  Another update "+
 		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
-		"considred as cancelled.  Underlying gocb bucket operation error: %v", mutateErrDeleteXattr)
+		"considered as cancelled.  Underlying gocb bucket operation error: %v", mutateErrDeleteXattr)
 
 }
 
