@@ -81,7 +81,8 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	defer c.lock.Unlock()
 
 	if c.wouldBeImmediatelyPruned(change) {
-		base.LogTo("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned", change.Sequence, c.channelName)
+		base.LogTo("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned.  Set forceViewRequery flag to true", change.Sequence, c.channelName)
+		c.forceViewRequery = true
 		return
 	}
 
@@ -242,7 +243,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 			base.LogTo("Cache", "Not returning results from cache since cacheValidFrom (%v) > startSeq (%v).  options.Since.SafeSequence() = %v",
 				cacheValidFrom, startSeq, options.Since.SafeSequence(),
 			)
-		}		
+		}
 	}
 
 	// reset forceViewRequery back to false
