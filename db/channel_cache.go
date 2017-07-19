@@ -31,6 +31,7 @@ type channelCache struct {
 	lateLogLock      sync.RWMutex         // Controls access to lateLogs
 	options          *ChannelCacheOptions // Cache size/expiry settings
 	cachedDocIDs     map[string]struct{}
+	forceViewRequery bool // If any entries arive that would be immediately pruned, force the cache to requery view
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
@@ -92,7 +93,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 	c._pruneCache()
-	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+	base.LogTo("Cache", "    Append change with sequence %d ==> channel %q", change.Sequence, c.channelName)
 }
 
 // If certain conditions are met, it's possible that this change will be added and then
@@ -124,6 +125,10 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 	// entry's age is older than the max ChannelCacheAge setting, then it will be immediately pruned.
 	lenAfterAddingEntry := len(c.logs) + 1
 	if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
+		base.Warn("lenAfterAddingEntry > ChannelCacheMinLength and incoming change has time.Since(TimeReceived) (%v) older than ChannelCacheAge (%v).  Ignoring.",
+			time.Since(change.TimeReceived),
+			c.options.ChannelCacheAge,
+		)
 		return true
 	}
 
@@ -209,22 +214,48 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
-	if numFromCache > 0 || resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %s) --> %d changes valid from #%d",
-			c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
-	} else if resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %s) --> nothing cached",
-			c.channelName, options.Since.String())
+
+	base.LogTo("Cache", "getCachedChanges(channel: %q, since: %s) --> %d cached changes found.  valid from is: #%d",
+		c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
+
+	if len(resultFromCache) > 0 {
+		firstEntrySeq := resultFromCache[0].Sequence
+		lastIndex := len(resultFromCache) - 1
+		lastEntrySeq := resultFromCache[lastIndex].Sequence
+		base.LogTo("Cache", "getCachedChanges(channel: %q, since: %s).  firstEntrySeq: %v, lastEntrySeq",
+			c.channelName, options.Since.String(), firstEntrySeq, lastEntrySeq)
 	}
+
 	startSeq := options.Since.SafeSequence() + 1
-	if cacheValidFrom <= startSeq {
-		return resultFromCache, nil
+
+	// As long as we aren't in the forceViewRequery state, it might be possible to return
+	// changes just from the cache
+	if !c.forceViewRequery {
+
+		if cacheValidFrom <= startSeq {
+			// log that we're returning results from cache
+			base.LogTo("Cache", "Returning results from cache since cacheValidFrom (%v) <= startSeq (%v).  options.Since.SafeSequence() = %v",
+				cacheValidFrom, startSeq, options.Since.SafeSequence(),
+			)
+			return resultFromCache, nil
+		} else {
+			base.LogTo("Cache", "Not returning results from cache since cacheValidFrom (%v) > startSeq (%v).  options.Since.SafeSequence() = %v",
+				cacheValidFrom, startSeq, options.Since.SafeSequence(),
+			)
+		}		
 	}
+
+	// reset forceViewRequery back to false
+	c.lock.Lock()
+	c.forceViewRequery = false
+	c.lock.Unlock()
 
 	// Nope, we're going to have to backfill from the view.
 	//** First acquire the _view_ lock (not the regular lock!)
 	c.viewLock.Lock()
 	defer c.viewLock.Unlock()
+
+	// log that we're doing a a veiw w=query
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
@@ -234,19 +265,36 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
+		base.LogTo("Cache", "2nd getCachedChanges call.  Returning results from cache since cacheValidFrom (%v) <= startSeq (%v).  options.Since.SafeSequence() = %v",
+			cacheValidFrom, startSeq, options.Since.SafeSequence(),
+		)
 		return resultFromCache, nil
 	}
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
+	base.LogTo("Cache", "Querying view for channel: %v with cacheValidFrom: %v and options: %v",
+		c.channelName,
+		cacheValidFrom,
+		options,
+	)
 	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom,
 		options)
+
+	base.LogTo("Cache", "Queried view for channel: %v with cacheValidFrom: %v.  Got result with %d entries.  Err: %v",
+		c.channelName,
+		cacheValidFrom,
+		len(resultFromView),
+		err,
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache some of the view results, if there's room in the cache:
 	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
+		base.LogTo("Cache", "Prepending %d changes to cache.  Startseq: %v", len(resultFromView), startSeq)
 		c.prependChanges(resultFromView, startSeq, options.Limit == 0)
 	}
 
@@ -261,7 +309,9 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		if options.Limit > 0 && room > 0 && room < n {
 			n = room
 		}
+		base.LogTo("Cache", "Appending %d results from cache to %d view query results", len(resultFromCache), len(result))
 		result = append(result, resultFromCache[0:n]...)
+
 	}
 	base.LogTo("Cache", "GetChangesInChannel(%q) --> %d rows", c.channelName, len(result))
 	return result, nil
