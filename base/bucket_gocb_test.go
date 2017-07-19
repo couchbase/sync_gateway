@@ -1255,10 +1255,12 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 
 
-// Validates deletion of doc + xattr in various possible previous states of the document.
+// Validates deletion of doc + xattr in a matrix of various possible previous states of the document.
 func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
+
+	LogKeys["CRUD+"] = true
 
 	b := GetBucketOrPanic()
 	bucket, ok := b.(*CouchbaseBucketGoCB)
@@ -1327,150 +1329,16 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	// Attempt to delete all 4 docs
 	keys := []string{key1, key2, key3, key4}
 	for _, key := range keys {
+		log.Printf("Deleting key: %v", key)
 		errDelete := bucket.DeleteWithXattr(key, xattrName)
 		assertNoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 		assertTrue(t, verifyDocAndXattrDeleted(bucket, key, xattrName), "Expected doc to be deleted")
 	}
 
 
-
 }
 
-func verifyDocAndXattrDeleted(bucket *CouchbaseBucketGoCB, key, xattrName string) bool {
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-	_, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	if err != gocbcore.ErrKeyNotFound {
-		return false
-	}
-	return true
-}
 
-// TestXattrDeleteDocumentWithXattr.  Delete document and XATTR, ensure it's not available
-// Todo: add equivalent of TestXattrMutateDocAndXattr  (combine a few existing tests)
-func TestXattrDeleteDocumentWithXattr(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
-	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
-	}
-
-	// Create document with XATTR
-	xattrName := "_sync"
-	val := make(map[string]interface{})
-	val["body_field"] = "1234"
-
-	xattrVal := make(map[string]interface{})
-	xattrVal["seq"] = 123
-	xattrVal["rev"] = "1-1234"
-
-	key := "TestDeleteDocumentAndXATTR"
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Fatalf("Key should not exist yet, expected error but got nil.")
-	}
-
-	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
-
-	cas := uint64(0)
-	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
-
-	// Delete the document and XATTR.
-	err = bucket.DeleteWithXattr(key, xattrName)
-	if err != nil {
-		t.Errorf("Error doing DeleteWithXATTR: %+v", err)
-	}
-
-	// Verify delete of body and XATTR
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-	cas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	log.Printf("GetWithXattr returned cas: %v err: %v", cas, err)
-	if err != gocbcore.ErrKeyNotFound {
-		t.Errorf("Unexpected error calling GetWithXattr: %+v", err)
-	}
-
-}
-
-func TestDeleteTombstonedDoc(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
-	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
-	}
-
-	key := "TestDeleteTombstonedDoc"
-	xattrName := "_sync"
-	createTombstonedDoc(bucket, key, xattrName)
-
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-
-	err := bucket.DeleteWithXattr(key, xattrName)
-	assertNoError(t, err, "Unexpected error calling DeleteWithXattr()")
-
-	_, getErr := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	if getErr != gocbcore.ErrKeyNotFound {
-		t.Errorf("Unexpected error calling GetWithXattr: %+v", getErr)
-	}
-
-}
-
-// Ensure that calling DeleteWithXattr on a doc _without_ an xattr will just delete the doc body
-// TOOD: reverse: Ensure that calling DeleteWithXattr on a tombstone (xattr only)
-func TestDeleteWithXattrNoXattr(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
-	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
-	}
-
-	xattrName := "_sync"
-	key := "TestDeleteWithXattrNoXattr"
-
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Fatalf("Key should not exist yet, expected error but got nil")
-	}
-
-	cas := uint64(0)
-
-	cas, err = bucket.WriteCas(key, 0, 0, cas, []byte(`{"foo":"bar"}`), 0)
-	if err != nil {
-		t.Fatalf("Error doing WriteCas: %v", err)
-	}
-
-	// Delete the document and XATTR.
-	err = bucket.DeleteWithXattr(key, xattrName)
-	if err != nil {
-		t.Fatalf("Error doing DeleteWithXATTR: %+v", err)
-	}
-
-	// Verify delete of body and XATTR
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-	cas, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	log.Printf("GetWithXattr returned cas: %v err: %v", cas, err)
-	if err != gocbcore.ErrKeyNotFound {
-		t.Errorf("Unexpected error calling GetWithXattr: %+v", err)
-	}
-
-}
 
 // This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
 // callback function
@@ -1954,4 +1822,14 @@ func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 		panic(fmt.Sprintf("retrievedXattr[seq] should be 123"))
 	}
 
+}
+
+func verifyDocAndXattrDeleted(bucket *CouchbaseBucketGoCB, key, xattrName string) bool {
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	if err != gocbcore.ErrKeyNotFound {
+		return false
+	}
+	return true
 }
