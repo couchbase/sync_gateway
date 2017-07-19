@@ -1326,8 +1326,9 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	updatedXattrVal["seq"] = 123
 	updatedXattrVal["rev"] = "2-1234"
 
-	// Attempt to delete all 4 docs
-	keys := []string{key1, key2, key3, key4}
+	// Attempt to delete DocExistsXattrExists, DocExistsNoXattr, and XattrExistsNoDoc
+	// No errors should be returned when deleting these.
+	keys := []string{key1, key2, key3}
 	for _, key := range keys {
 		log.Printf("Deleting key: %v", key)
 		errDelete := bucket.DeleteWithXattr(key, xattrName)
@@ -1335,9 +1336,13 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 		assertTrue(t, verifyDocAndXattrDeleted(bucket, key, xattrName), "Expected doc to be deleted")
 	}
 
+	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
+	log.Printf("Deleting key: %v", key4)
+	errDelete := bucket.DeleteWithXattr(key4, xattrName)
+	assertTrue(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
+	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
 
 }
-
 
 
 // This simulates a race condition by calling deleteWithXattrInternal() and passing a custom

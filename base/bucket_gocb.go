@@ -985,7 +985,7 @@ func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		
+
 		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(exp)).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
@@ -1093,6 +1093,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 }
 
 // Only called for Purge
+// Returns key not found if no doc and no xattrs
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
 
 	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
@@ -1163,8 +1164,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
-	// TODO: in the NoDocNoXattr case, this fails with key not found error and we just return it
-	if err != nil && !bucket.IsKeyNotFoundError(err) {
+	if err != nil {
 		return err
 	}
 
@@ -1185,12 +1185,6 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 	// If no error, or it was just a ErrSubDocSuccessDeleted error, we're done.
 	// ErrSubDocSuccessDeleted is a "success error" that means "operation was on a tombstoned document"
 	if mutateErrDeleteXattr == nil || mutateErrDeleteXattr == gocbcore.ErrSubDocSuccessDeleted {
-		return nil
-	}
-
-	// TODO: review this, workaround for NoDocNoXattr
-	// Ignore key not found errors,
-	if mutateErrDeleteXattr != nil && bucket.IsKeyNotFoundError(mutateErrDeleteXattr) {
 		return nil
 	}
 
