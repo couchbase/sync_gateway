@@ -986,7 +986,7 @@ func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
+		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(exp)).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 			RemoveEx("", gocb.SubdocFlagNone).                                                            // Delete the document body
