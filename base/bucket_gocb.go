@@ -1092,8 +1092,12 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 }
 
-// Delete doc + xattrs -- called for Purge operations
-// The doc can be in any of these states
+
+// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
+// tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
+// This is currently called only for Purge operations.
+//
+// The doc existing doc is expected to be in one of the following states:
 //   - DocExists and XattrExists
 //   - DocExists but NoXattr
 //   - XattrExists but NoDoc
