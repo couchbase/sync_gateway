@@ -1103,7 +1103,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 //   - XattrExists but NoDoc
 //   - NoDoc and NoXattr
 // In all cases, the end state will be NoDoc and NoXattr.
-// Exepcted errors:
+// Expected errors:
 //    - Temporary server overloaded errors, in which case the caller should retry
 //    - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
@@ -1144,9 +1144,13 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 	switch {
 	case bucket.IsKeyNotFoundError(mutateErr):
+		// Invoke the callback which has the ability to change the document state
+		if callback != nil { callback( bucket, k, xattrKey) }
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
 		return bucket.deleteDocXattrOnly(k, xattrKey, callback)
 	case bucket.IsSubDocPathNotFound(mutateErr):
+		// Invoke the callback which has the ability to change the document state
+		if callback != nil { callback( bucket, k, xattrKey) }
 		// KeyNotFound indicates there is no XATTR.  Try to delete only the body.
 		return bucket.deleteDocBodyOnly(k, xattrKey, callback)
 	default:
@@ -1157,15 +1161,6 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 }
 
 func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
-
-	// Invoke the callback which has the ability to change the document state
-	if callback != nil {
-		callback(
-			bucket,
-			k,
-			xattrKey,
-		)
-	}
 
 	//  Do get w/ xattr in order to get cas
 	var retrievedVal map[string]interface{}
@@ -1204,15 +1199,6 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 }
 
 func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
-
-	// Invoke the callback which has the ability to change the document state
-	if callback != nil {
-		callback(
-			bucket,
-			k,
-			xattrKey,
-		)
-	}
 
 	//  Do get in order to get cas
 	var retrievedVal map[string]interface{}
