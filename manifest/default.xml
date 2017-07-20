@@ -58,9 +58,9 @@
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="38214ff773a7fa8df2789558ebea9b3f86379324"/>
 
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="bf740f17ea6cd6a1bbd5ca3583266c8f74692524"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="0cd63ba8b594091ea0005ec50ee21299e0b22d97"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="cfd05d858efb2899132a1bf18cba441ca307cc78"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="6b3fcad8ac5e2212fad55e57d481cb056b99f3c0"/>
 
   <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
@@ -88,7 +88,7 @@
 
   <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="c980adc4a823548817b9c47d38c6ca6b7d7d8b6a"/>
 
-  <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="7006f7a1abbda37f3276216302f9eb7425e1dfa5"/>
+  <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="8968c61983e8f51a91b8c0ef25bf739278c89634"/>
 
   <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
 
