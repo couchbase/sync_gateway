@@ -1092,10 +1092,19 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 }
 
-// Only called for Purge
-// Returns key not found if no doc and no xattrs
+// Delete doc + xattrs -- called for Purge operations
+// The doc can be in any of these states
+//   - DocExists and XattrExists
+//   - DocExists but NoXattr
+//   - XattrExists but NoDoc
+//   - NoDoc and NoXattr
+// In all cases, the end state will be NoDoc and NoXattr.
+// Exepcted errors:
+//    - Temporary server overloaded errors, in which case the caller should retry
+//    - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
 
+	// Delegate to internal method that can take a testing-related callback
 	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
 
 }
@@ -1103,12 +1112,6 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 // A function that will be called back after the first delete attempt but before second delete attempt
 type deleteWithXattrRaceInjection func(bucket CouchbaseBucketGoCB, k string, xattrKey string)
 
-// Delete doc + xattrs (purge).  Algorithm:
-// Try to delete body + xattr in single op
-// If fails
-// 		- Do get w/ xattr (get cas)
-// 		- Cas-safe delete just the xattr
-// If that fails with a cas error, return error (maybe race where someone resurrected doc)
 func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	bucket.singleOps <- struct{}{}
