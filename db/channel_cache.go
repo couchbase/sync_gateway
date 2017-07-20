@@ -108,15 +108,16 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 		if err == nil {
 			if change.Sequence < oldestSeq {
 				// Ignore sequences that are too old.
-				base.Warn("Channel cache full and incoming change has sequence (%d) older than oldest sequence in cache (%d).  Ignoring.",
+				base.Warn("wouldBeImmediatelyPruned(): Channel cache full and incoming change has sequence (%d) older than oldest sequence in cache (%d).  Ignoring.  ValidFrom: %v",
 					change.Sequence,
 					oldestSeq,
+					c.validFrom,
 				)
 				return true
 			}
 
 		} else {
-			base.Warn("Unable to find oldest sequence in channel cache.")
+			base.Warn("wouldBeImmediatelyPruned(): Unable to find oldest sequence in channel cache.")
 		}
 	}
 
@@ -124,6 +125,12 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 	// entry's age is older than the max ChannelCacheAge setting, then it will be immediately pruned.
 	lenAfterAddingEntry := len(c.logs) + 1
 	if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
+		base.Warn("wouldBeImmediatelyPruned(): lenAfterAddingEntry > ChannelCacheMinLength and incoming change (seq=%v) has time.Since(TimeReceived) (%v) older than ChannelCacheAge (%v).  Ignoring.  ValidFrom: %v",
+			change.Sequence,
+			time.Since(change.TimeReceived),
+			c.options.ChannelCacheAge,
+			c.validFrom,
+		)
 		return true
 	}
 
@@ -209,10 +216,11 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
-	if numFromCache > 0 || resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %s) --> %d changes valid from #%d",
-			c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
-	} else if resultFromCache == nil {
+
+	base.LogTo("Cache", "getCachedChanges(%q, %s) --> %d changes valid from #%d",
+		c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
+
+	if resultFromCache == nil {
 		base.LogTo("Cache", "getCachedChanges(%q, %s) --> nothing cached",
 			c.channelName, options.Since.String())
 	}
@@ -239,14 +247,28 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
+	base.LogTo("Cache", "Querying view for channel: %v with cacheValidFrom: %v and options: %v",
+		c.channelName,
+		cacheValidFrom,
+		options,
+	)
 	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom,
 		options)
 	if err != nil {
 		return nil, err
 	}
 
+	base.LogTo("Cache", "Queried view for channel: %v with cacheValidFrom: %v.  Got result with %d entries.  Err: %v",
+		c.channelName,
+		cacheValidFrom,
+		len(resultFromView),
+		err,
+	)
+
+
 	// Cache some of the view results, if there's room in the cache:
 	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
+		base.LogTo("Cache", "Prepending %d changes to cache.  Startseq: %v", len(resultFromView), startSeq)
 		c.prependChanges(resultFromView, startSeq, options.Limit == 0)
 	}
 
@@ -261,6 +283,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		if options.Limit > 0 && room > 0 && room < n {
 			n = room
 		}
+		base.LogTo("Cache", "Appending %d results from cache to %d view query results", len(resultFromCache), len(result))
 		result = append(result, resultFromCache[0:n]...)
 	}
 	base.LogTo("Cache", "GetChangesInChannel(%q) --> %d rows", c.channelName, len(result))
