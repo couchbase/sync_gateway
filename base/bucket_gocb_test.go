@@ -1347,7 +1347,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 // This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
 // callback function
-func TestDeleteWithXattrWithSimulatedRaceRessurect(t *testing.T) {
+func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
