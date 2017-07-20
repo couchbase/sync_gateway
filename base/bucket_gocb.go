@@ -1092,7 +1092,6 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 }
 
-
 // Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
 // tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
 // This is currently called only for Purge operations.
@@ -1114,6 +1113,7 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 }
 
 // A function that will be called back after the first delete attempt but before second delete attempt
+// to simulate the doc having changed state (artifiically injected race condition)
 type deleteWithXattrRaceInjection func(bucket CouchbaseBucketGoCB, k string, xattrKey string)
 
 func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
@@ -1144,18 +1144,30 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 	switch {
 	case bucket.IsKeyNotFoundError(mutateErr):
-		// Invoke the callback which has the ability to change the document state
-		if callback != nil { callback( bucket, k, xattrKey) }
+
+		// Invoke the testing related callback.  This is a no-op in non-test contexts.
+		if callback != nil {
+			callback(bucket, k, xattrKey)
+		}
+
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
 		return bucket.deleteDocXattrOnly(k, xattrKey, callback)
+
 	case bucket.IsSubDocPathNotFound(mutateErr):
-		// Invoke the callback which has the ability to change the document state
-		if callback != nil { callback( bucket, k, xattrKey) }
+
+		// Invoke the testing related callback.  This is a no-op in non-test contexts.
+		if callback != nil {
+			callback(bucket, k, xattrKey)
+		}
+
 		// KeyNotFound indicates there is no XATTR.  Try to delete only the body.
 		return bucket.deleteDocBodyOnly(k, xattrKey, callback)
+
 	default:
+
 		// return error
 		return mutateErr
+
 	}
 
 }
