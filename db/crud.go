@@ -650,19 +650,31 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas 
 		// Cancel update
 		if doc.IsSGWrite() {
 			base.LogTo("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
+			base.LogTo("Import+", "Cancel import details.  existing doc id: %v sequence: %v rev: %v cas: %v doc.syncdata.cas: %v",
+				docid, doc.Sequence, doc.CurrentRev, doc.Cas, doc.GetSyncCas())
 			alreadyImportedDoc = doc
 			return nil, nil, base.ErrAlreadyImported
+		} else {
+			base.LogTo("Import+", "Not SG write.  existing doc id: %v sequence: %v rev: %v cas: %v doc.syncdata.cas: %v",
+				docid, doc.Sequence, doc.CurrentRev, doc.Cas, doc.GetSyncCas())
 		}
 
-		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  This is an SDK write (since we checked
+		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.
+		// This is an SDK write (since we checked
 		// for SG write above).  How to handle depends on import mode.
 		if doc.Cas != importCas {
+			base.LogTo("Import+", "doc.Cas (%d) != importCas (%d)",
+				doc.Cas, importCas)
+
 			// If this is a feed import, cancel on cas failure (doc has been updated )
 			if mode == ImportFromFeed {
+				base.LogTo("Import+", "mode == ImportFromFeed.  return base.ErrImportCasFailure.  docid: %v seq: %v", docid, doc.Sequence)
 				return nil, nil, base.ErrImportCasFailure
 			}
 			// If this is an on-demand import, we want to switch to importing the current version doc
 			if mode == ImportOnDemand {
+				base.LogTo("Import+", "mode == ImportOnDemand.  docid: %v seq: %v", docid, doc.Sequence)
+				// TODO: is there other properties we should be setting?
 				body = doc.body
 			}
 		}
