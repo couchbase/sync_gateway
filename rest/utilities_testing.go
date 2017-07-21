@@ -23,10 +23,10 @@ var gBucketCounter = 0
 type RestTester struct {
 	RestTesterBucket        base.Bucket
 	RestTesterServerContext *ServerContext
-	noAdminParty            bool         // Unless this is true, Admin Party is in full effect
-	distributedIndex        bool         // Test with walrus-based index bucket
-	SyncFn                  string       // put the sync() function source in here (optional)
-	CacheConfig             *CacheConfig // Cache options (optional)
+	noAdminParty            bool      // Unless this is true, Admin Party is in full effect
+	distributedIndex        bool      // Test with walrus-based index bucket
+	SyncFn                  string    // put the sync() function source in here (optional)
+	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -59,23 +59,24 @@ func (rt *RestTester) Bucket() base.Bucket {
 		})
 
 		useXattrs := base.TestUseXattrs()
-		dbConfig := &DbConfig{
-			BucketConfig: BucketConfig{
-				Server:   &server,
-				Bucket:   &spec.BucketName,
-				Username: username,
-				Password: password,
-			},
 
-			Name:        "db",
-			Sync:        syncFnPtr,
-			CacheConfig: rt.CacheConfig,
-			Unsupported: db.UnsupportedOptions{
-				EnableXattr: &useXattrs,
-			},
+		if rt.DatabaseConfig == nil {
+			rt.DatabaseConfig = &DbConfig{}
 		}
 
-		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(dbConfig)
+		rt.DatabaseConfig.BucketConfig = BucketConfig{
+			Server:   &server,
+			Bucket:   &spec.BucketName,
+			Username: username,
+			Password: password,
+		}
+		rt.DatabaseConfig.Name = "db"
+		rt.DatabaseConfig.Sync = syncFnPtr
+		rt.DatabaseConfig.Unsupported = db.UnsupportedOptions{
+			EnableXattr: &useXattrs,
+		}
+
+		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 		}
@@ -108,7 +109,6 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 			Bucket: &bucketName},
 		Name:               "db",
 		AllowEmptyPassword: true,
-		CacheConfig:        rt.CacheConfig,
 	})
 
 	if err != nil {

@@ -93,6 +93,7 @@ type DatabaseContextOptions struct {
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions         ImportOptions
 }
 
 type OidcTestProviderOptions struct {
@@ -103,11 +104,17 @@ type OidcTestProviderOptions struct {
 type UserViewsOptions struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
+
 type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
 	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
 	EnableXattr      *bool                   `json:"enable_extended_attributes"`   // Use xattr for _sync
+}
+
+// Options associated with the import of documents not written by Sync Gateway
+type ImportOptions struct {
+	ImportFilter *ImportFilterFunction // Opt-in filter for document import
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,

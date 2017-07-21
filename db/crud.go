@@ -11,12 +11,11 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
 	"time"
-
-	"fmt"
 
 	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -59,13 +58,16 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 		if unmarshalErr != nil {
 			return nil, unmarshalErr
 		}
-		// If this wasn't an SG Write, import the doc.
+		// If existing doc wasn't an SG Write, import the doc.
 		if !doc.IsSGWrite() {
 			isDelete := rawDoc == nil
 			db := Database{DatabaseContext: db, user: nil}
 			var importErr error
 			doc, importErr = db.ImportDocRaw(docid, rawDoc, isDelete, cas, ImportOnDemand)
-			if importErr != nil {
+			if importErr == base.ErrImportCancelledFilter {
+				// If the import was cancelled due to filter, treat as not found
+				return nil, base.HTTPErrorf(404, "Not imported")
+			} else if importErr != nil {
 				return nil, importErr
 			}
 		}
@@ -465,6 +467,33 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 	return
 }
 
+func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Body) error {
+	if doc != nil && !doc.IsSGWrite() {
+		// Check whether the doc requiring import is an SDK delete
+		isDelete := false
+		if doc.body == nil {
+			isDelete = true
+		} else {
+			deletedInBody, ok := body["_deleted"].(bool)
+			if ok {
+				isDelete = deletedInBody
+			}
+		}
+		// Use an admin-scoped database for import
+		importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
+		importedDoc, importErr := importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
+		if importErr == base.ErrImportCancelledFilter {
+			// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
+			doc.syncData = syncData{History: make(RevTree)}
+		} else if importErr != nil {
+			return importErr
+		} else {
+			doc = importedDoc
+		}
+	}
+	return nil
+}
+
 // Updates or creates a document.
 // The new body's "_rev" property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
@@ -484,25 +513,11 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 	return db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
 
-		// If doc isn't an SG write, import it before updating.
+		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !doc.IsSGWrite() {
-			// Check whether the doc requiring import is an SDK delete
-			isDelete := false
-			if doc.body == nil {
-				isDelete = true
-			} else {
-				deletedInBody, ok := body["_deleted"].(bool)
-				if ok {
-					isDelete = deletedInBody
-				}
-			}
-
-			// Use an admin-scoped database for import
-			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
-			var importErr error
-			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
-			if importErr != nil {
-				return nil, nil, importErr
+			err := db.OnDemandImportForWrite(docid, doc, body)
+			if err != nil {
+				return nil, nil, err
 			}
 		}
 
@@ -559,15 +574,11 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 	_, err = db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
 
-		// If doc isn't an SG write, import it before updating.
+		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !doc.IsSGWrite() {
-			isDelete := doc.body == nil
-			// Use an admin-scoped database for import
-			importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
-			var importErr error
-			doc, importErr = importDb.ImportDoc(docid, doc.body, isDelete, doc.Cas, ImportOnDemand)
-			if importErr != nil {
-				return nil, nil, importErr
+			err := db.OnDemandImportForWrite(docid, doc, body)
+			if err != nil {
+				return nil, nil, err
 			}
 		}
 
@@ -611,109 +622,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return body, newAttachments, nil
 	})
 	return err
-}
-
-type ImportMode uint8
-
-const (
-	ImportFromFeed = ImportMode(iota) // Feed-based import.  Attempt to import once - cancels import on cas write failure of the imported doc.
-	ImportOnDemand                    // On-demand import. Reattempt import on cas write failure of the imported doc until either the import succeeds, or existing doc is an SG write.
-)
-
-// Imports a document that was written by someone other than sync gateway.
-func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool, cas uint64, mode ImportMode) (docOut *document, err error) {
-
-	var body Body
-	if isDelete {
-		body = Body{"_deleted": true}
-	} else {
-		err := body.Unmarshal(value)
-		if err != nil {
-			base.LogTo("Import", "Unmarshal error during importDoc %v", err)
-			return nil, err
-		}
-	}
-
-	return db.ImportDoc(docid, body, isDelete, cas, mode)
-}
-
-func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas uint64, mode ImportMode) (docOut *document, err error) {
-
-	base.LogTo("Import+", "Attempting to import doc %q...", docid)
-	var newRev string
-	var alreadyImportedDoc *document
-	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
-
-		// Check if the doc has been deleted
-		if doc.Cas == 0 {
-			base.LogTo("Import+", "Document has been removed from the bucket before it could be imported - cancelling import.")
-			return nil, nil, base.ErrImportCancelled
-		}
-
-		// If this is a delete, and there is no xattr on the existing doc,
-		// we shouldn't import.  (SG purge arriving over DCP feed)
-		if isDelete && doc.CurrentRev == "" {
-			base.LogTo("Import+", "Import not required for delete mutation with no existing SG xattr (SG purge): %s", docid)
-			return nil, nil, base.ErrImportCancelled
-		}
-
-		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
-		// Cancel update
-		if doc.IsSGWrite() {
-			base.LogTo("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
-			alreadyImportedDoc = doc
-			return nil, nil, base.ErrAlreadyImported
-		}
-
-		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  This is an SDK write (since we checked
-		// for SG write above).  How to handle depends on import mode.
-		if doc.Cas != importCas {
-			// If this is a feed import, cancel on cas failure (doc has been updated )
-			if mode == ImportFromFeed {
-				return nil, nil, base.ErrImportCasFailure
-			}
-			// If this is an on-demand import, we want to switch to importing the current version doc
-			if mode == ImportOnDemand {
-				body = doc.body
-			}
-		}
-
-		// The active rev is the parent for an import
-		parentRev := doc.CurrentRev
-		generation, _ := ParseRevID(parentRev)
-		generation++
-		newRev = createRevID(generation, parentRev, body)
-		base.LogTo("Import", "Created new rev ID %v", newRev)
-		body["_rev"] = newRev
-		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete}); err != nil {
-			return nil, nil, base.ErrRevTreeAddRevFailure
-		}
-
-		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
-		doc.body = nil
-
-		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
-
-		return body, nil, nil
-	})
-
-	switch err {
-	case base.ErrAlreadyImported:
-		// If the doc was already imported, we want to return the imported version
-		docOut = alreadyImportedDoc
-	case nil:
-		base.LogTo("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
-	case base.ErrImportCancelled:
-		// Import was cancelled (SG purge) - don't return error.
-	case base.ErrImportCasFailure:
-		// Import was cancelled due to CAS failure.
-		return nil, err
-	default:
-		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
-		return nil, err
-	}
-
-	return docOut, nil
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
@@ -931,7 +839,6 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
 			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-
 				major, _, _, err := db.Bucket.CouchbaseServerVersion()
 				if err == nil && major < 3 {
 					// If the couchbase server version is less than 3, then do an indexable write.
@@ -987,7 +894,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
-			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
+			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", docOut.Sequence, docOut.ID, docOut.CurrentRev)
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {
