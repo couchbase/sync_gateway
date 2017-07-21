@@ -99,35 +99,14 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 // immediately pruned, which causes the issues described in https://github.com/couchbase/sync_gateway/issues/2662
 func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 
-	// If the channel cache is full and the entry has a seqeunce older than the oldest seqeunce in the cache,
-	// then it will be immediately pruned.
-	// to ignore the entry.   See
-	if len(c.logs) >= (c.options.ChannelCacheMaxLength - 1) {
-		// If the incoming entry older than oldest sequence, then ignore it
-		oldestSeq, err := c._oldestSeq()  // TODO: is there a way to shortcut this based on ordering of c.logs?  eg, just grab c.logs[0] or c.logs[-1]?
-		if err == nil {
-			if change.Sequence < oldestSeq {
-				// Ignore sequences that are too old.
-				base.Warn("Channel cache full and incoming change has sequence (%d) older than oldest sequence in cache (%d).  Ignoring.",
-					change.Sequence,
-					oldestSeq,
-				)
-				return true
-			}
-
-		} else {
-			base.Warn("Unable to find oldest sequence in channel cache.")
-		}
+	// This might not be the one that is going to be immediately pruned
+	if change.Sequence >= c.validFrom {
+		return false
 	}
 
-	// If after adding the entry the size of the cache will be greater than the channelcacheminlen, and the
-	// entry's age is older than the max ChannelCacheAge setting, then it will be immediately pruned.
-	lenAfterAddingEntry := len(c.logs) + 1
-	if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
-		return true
-	}
-
-	return false
+	// If older than validFrom, never try to cache it
+	
+	return true
 
 }
 
