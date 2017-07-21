@@ -1253,7 +1253,94 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 }
 
+// Validates tombstone of doc + xattr in a matrix of various possible previous states of the document.
+func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
+	SkipXattrTestsIfNotEnabled(t)
+
+	LogKeys["CRUD+"] = true
+
+	b := GetBucketOrPanic()
+	bucket, ok := b.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	key1 := "DocExistsXattrExists"
+	key2 := "DocExistsNoXattr"
+	key3 := "XattrExistsNoDoc"
+	key4 := "NoDocNoXattr"
+
+	// 1. Create document with XATTR
+	val := make(map[string]interface{})
+	val["type"] = key1
+
+	xattrName := "_sync"
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-1234"
+
+	var err error
+
+	// Create w/ XATTR
+	cas1 := uint64(0)
+	cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	// 2. Create document with no XATTR
+	val = make(map[string]interface{})
+	val["type"] = key2
+	_, err = bucket.Bucket.Insert(key2, val, uint32(0))
+
+	// 3. Xattr, no document
+	val = make(map[string]interface{})
+	val["type"] = key3
+
+	xattrVal = make(map[string]interface{})
+	xattrVal["seq"] = 456
+	xattrVal["rev"] = "1-1234"
+
+	// Create w/ XATTR
+	cas3int := uint64(0)
+	cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+	// Delete the doc body
+	var cas3 gocb.Cas
+	cas3, err = bucket.Bucket.Remove(key3, 0)
+	if err != nil {
+		t.Errorf("Error removing doc body: %+v.  Cas: %v", err, cas3)
+	}
+
+	// 4. No xattr, no document
+	updatedVal := make(map[string]interface{})
+	updatedVal["type"] = "updated"
+
+	updatedXattrVal := make(map[string]interface{})
+	updatedXattrVal["seq"] = 123
+	updatedXattrVal["rev"] = "2-1234"
+
+	// Attempt to delete DocExistsXattrExists, DocExistsNoXattr, and XattrExistsNoDoc
+	// No errors should be returned when deleting these.
+	keys := []string{key1, key2, key3}
+	for _, key := range keys {
+		log.Printf("Deleting key: %v", key)
+		errDelete := bucket.DeleteWithXattr(key, xattrName)
+		assertNoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
+		assertTrue(t, verifyDocAndXattrDeleted(bucket, key, xattrName), "Expected doc to be deleted")
+	}
+
+	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
+	log.Printf("Deleting key: %v", key4)
+	errDelete := bucket.DeleteWithXattr(key4, xattrName)
+	assertTrue(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
+	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
+
+}
 
 // Validates deletion of doc + xattr in a matrix of various possible previous states of the document.
 func TestXattrDeleteDocAndXattr(t *testing.T) {
@@ -1343,7 +1430,6 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
 
 }
-
 
 // This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
 // callback function

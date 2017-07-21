@@ -60,6 +60,7 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 			return nil, unmarshalErr
 		}
 		// If this wasn't an SG Write, import the doc.
+
 		if !doc.IsSGWrite() {
 			isDelete := rawDoc == nil
 			db := Database{DatabaseContext: db, user: nil}
