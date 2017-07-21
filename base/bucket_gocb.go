@@ -978,7 +978,8 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	return cas, err
 }
 
-// CAS-safe delete of a document, and update of it's corresponding xattr
+// CAS-safe delete of a document, and update of it's corresponding xattr.  Requires that at least one of the document body and xattr already exist -
+// if neither are present returns a KeyNotFound error.
 func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
@@ -986,7 +987,8 @@ func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(exp)).
+		// Setting the access deleted doc flag allows this operation to succeed whether or not the document body currently exists.
+		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(exp)).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 			RemoveEx("", gocb.SubdocFlagNone).                                                            // Delete the document body
