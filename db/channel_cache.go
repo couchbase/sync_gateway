@@ -105,7 +105,7 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 	}
 
 	// If older than validFrom, never try to cache it
-	
+
 	return true
 
 }
@@ -369,7 +369,10 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		return len(changes)
 
 	} else if len(changes) == 0 {
+
 		if openEnded && changesValidFrom < c.validFrom {
+			base.LogTo("Cache", " openEnded && changesValidFrom < c.validFrom, setting c.validFrom from %v -> %v",
+				c.validFrom, changesValidFrom)
 			c.validFrom = changesValidFrom
 		}
 		return 0
@@ -393,6 +396,8 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 						base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
 							i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
 					}
+					base.LogTo("Cache", " Backfill cache from view c.validFrom from %v -> %v",
+						c.validFrom, changesValidFrom)
 					c.validFrom = changesValidFrom
 					return i
 				}
