@@ -123,16 +123,17 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 
 	// If after adding the entry the size of the cache will be greater than the channelcacheminlen, and the
 	// entry's age is older than the max ChannelCacheAge setting, then it will be immediately pruned.
-	lenAfterAddingEntry := len(c.logs) + 1
-	if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
-		base.Warn("wouldBeImmediatelyPruned(): lenAfterAddingEntry > ChannelCacheMinLength and incoming change (seq=%v) has time.Since(TimeReceived) (%v) older than ChannelCacheAge (%v).  Ignoring.  ValidFrom: %v",
-			change.Sequence,
-			time.Since(change.TimeReceived),
-			c.options.ChannelCacheAge,
-			c.validFrom,
-		)
-		return true
-	}
+	// Disabling per https://github.com/couchbase/sync_gateway/issues/2662#issuecomment-316912899
+	//lenAfterAddingEntry := len(c.logs) + 1
+	//if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
+	//	base.Warn("wouldBeImmediatelyPruned(): lenAfterAddingEntry > ChannelCacheMinLength and incoming change (seq=%v) has time.Since(TimeReceived) (%v) older than ChannelCacheAge (%v).  Ignoring.  ValidFrom: %v",
+	//		change.Sequence,
+	//		time.Since(change.TimeReceived),
+	//		c.options.ChannelCacheAge,
+	//		c.validFrom,
+	//	)
+	//	return true
+	//}
 
 	return false
 
