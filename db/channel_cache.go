@@ -7,6 +7,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"math"
+	"fmt"
 )
 
 var (
@@ -29,6 +31,7 @@ type channelCache struct {
 	lateLogLock      sync.RWMutex         // Controls access to lateLogs
 	options          *ChannelCacheOptions // Cache size/expiry settings
 	cachedDocIDs     map[string]struct{}
+	forceViewRequery bool // If any entries arive that would be immediately pruned, force the cache to requery view
 }
 
 func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
@@ -77,6 +80,12 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	if c.wouldBeImmediatelyPruned(change) {
+		base.LogTo("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned.  Set forceViewRequery flag to true", change.Sequence, c.channelName)
+		c.forceViewRequery = true
+		return
+	}
+
 	if !isRemoval {
 		c._appendChange(change)
 	} else {
@@ -85,7 +94,47 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 	c._pruneCache()
-	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+	base.LogTo("Cache", "    Append change with sequence %d ==> channel %q", change.Sequence, c.channelName)
+}
+
+// If certain conditions are met, it's possible that this change will be added and then
+// immediately pruned, which causes the issues described in https://github.com/couchbase/sync_gateway/issues/2662
+func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
+
+	// If the channel cache is full and the entry has a seqeunce older than the oldest seqeunce in the cache,
+	// then it will be immediately pruned.
+	// to ignore the entry.   See
+	if len(c.logs) >= (c.options.ChannelCacheMaxLength - 1) {
+		// If the incoming entry older than oldest sequence, then ignore it
+		oldestSeq, err := c._oldestSeq()  // TODO: is there a way to shortcut this based on ordering of c.logs?  eg, just grab c.logs[0] or c.logs[-1]?
+		if err == nil {
+			if change.Sequence < oldestSeq {
+				// Ignore sequences that are too old.
+				base.Warn("Channel cache full and incoming change has sequence (%d) older than oldest sequence in cache (%d).  Ignoring.",
+					change.Sequence,
+					oldestSeq,
+				)
+				return true
+			}
+
+		} else {
+			base.Warn("Unable to find oldest sequence in channel cache.")
+		}
+	}
+
+	// If after adding the entry the size of the cache will be greater than the channelcacheminlen, and the
+	// entry's age is older than the max ChannelCacheAge setting, then it will be immediately pruned.
+	lenAfterAddingEntry := len(c.logs) + 1
+	if lenAfterAddingEntry > c.options.ChannelCacheMinLength && time.Since(change.TimeReceived) > c.options.ChannelCacheAge {
+		base.Warn("lenAfterAddingEntry > ChannelCacheMinLength and incoming change has time.Since(TimeReceived) (%v) older than ChannelCacheAge (%v).  Ignoring.",
+			time.Since(change.TimeReceived),
+			c.options.ChannelCacheAge,
+		)
+		return true
+	}
+
+	return false
+
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
@@ -166,22 +215,48 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
-	if numFromCache > 0 || resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %s) --> %d changes valid from #%d",
-			c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
-	} else if resultFromCache == nil {
-		base.LogTo("Cache", "getCachedChanges(%q, %s) --> nothing cached",
-			c.channelName, options.Since.String())
+
+	base.LogTo("Cache", "getCachedChanges(channel: %q, since: %s) --> %d cached changes found.  valid from is: #%d",
+		c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
+
+	if len(resultFromCache) > 0 {
+		firstEntrySeq := resultFromCache[0].Sequence
+		lastIndex := len(resultFromCache) - 1
+		lastEntrySeq := resultFromCache[lastIndex].Sequence
+		base.LogTo("Cache", "getCachedChanges(channel: %q, since: %s).  firstEntrySeq: %v, lastEntrySeq",
+			c.channelName, options.Since.String(), firstEntrySeq, lastEntrySeq)
 	}
+
 	startSeq := options.Since.SafeSequence() + 1
-	if cacheValidFrom <= startSeq {
-		return resultFromCache, nil
+
+	// As long as we aren't in the forceViewRequery state, it might be possible to return
+	// changes just from the cache
+	if !c.forceViewRequery {
+
+		if cacheValidFrom <= startSeq {
+			// log that we're returning results from cache
+			base.LogTo("Cache", "Returning results from cache since cacheValidFrom (%v) <= startSeq (%v).  options.Since.SafeSequence() = %v",
+				cacheValidFrom, startSeq, options.Since.SafeSequence(),
+			)
+			return resultFromCache, nil
+		} else {
+			base.LogTo("Cache", "Not returning results from cache since cacheValidFrom (%v) > startSeq (%v).  options.Since.SafeSequence() = %v",
+				cacheValidFrom, startSeq, options.Since.SafeSequence(),
+			)
+		}
 	}
+
+	// reset forceViewRequery back to false
+	c.lock.Lock()
+	c.forceViewRequery = false
+	c.lock.Unlock()
 
 	// Nope, we're going to have to backfill from the view.
 	//** First acquire the _view_ lock (not the regular lock!)
 	c.viewLock.Lock()
 	defer c.viewLock.Unlock()
+
+	// log that we're doing a a veiw w=query
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
@@ -191,19 +266,36 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
+		base.LogTo("Cache", "2nd getCachedChanges call.  Returning results from cache since cacheValidFrom (%v) <= startSeq (%v).  options.Since.SafeSequence() = %v",
+			cacheValidFrom, startSeq, options.Since.SafeSequence(),
+		)
 		return resultFromCache, nil
 	}
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
+	base.LogTo("Cache", "Querying view for channel: %v with cacheValidFrom: %v and options: %v",
+		c.channelName,
+		cacheValidFrom,
+		options,
+	)
 	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom,
 		options)
+
+	base.LogTo("Cache", "Queried view for channel: %v with cacheValidFrom: %v.  Got result with %d entries.  Err: %v",
+		c.channelName,
+		cacheValidFrom,
+		len(resultFromView),
+		err,
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache some of the view results, if there's room in the cache:
 	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
+		base.LogTo("Cache", "Prepending %d changes to cache.  Startseq: %v", len(resultFromView), startSeq)
 		c.prependChanges(resultFromView, startSeq, options.Limit == 0)
 	}
 
@@ -218,7 +310,9 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		if options.Limit > 0 && room > 0 && room < n {
 			n = room
 		}
+		base.LogTo("Cache", "Appending %d results from cache to %d view query results", len(resultFromCache), len(result))
 		result = append(result, resultFromCache[0:n]...)
+
 	}
 	base.LogTo("Cache", "GetChangesInChannel(%q) --> %d rows", c.channelName, len(result))
 	return result, nil
@@ -235,6 +329,7 @@ func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
 func (c *channelCache) _appendChange(change *LogEntry) {
+
 	log := c.logs
 	end := len(log) - 1
 	if end >= 0 {
@@ -529,4 +624,22 @@ func (c *channelCache) addDocIDs(changes LogEntries) {
 	for _, change := range changes {
 		c.cachedDocIDs[change.DocID] = struct{}{}
 	}
+}
+
+func (c *channelCache) _oldestSeq() (uint64, error) {
+
+	oldestSeq := uint64(math.MaxInt64)
+
+	for i := 0; i < len(c.logs); i++ {
+		if c.logs[i].Sequence < oldestSeq {
+			oldestSeq = c.logs[i].Sequence
+		}
+	}
+
+	if oldestSeq == math.MaxInt64 {
+		return math.MaxInt64, fmt.Errorf("Unable to find oldest sequence")
+	}
+
+	return oldestSeq, nil
+
 }

@@ -14,9 +14,12 @@ import (
 	"log"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"sort"
+	"math"
 )
 
 func TestDuplicateDocID(t *testing.T) {
@@ -191,6 +194,146 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, verifyChannelSequences(entries, []uint64{27, 30, 41, 45}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc4", "doc2"}))
 	assert.True(t, err == nil)
+
+}
+
+// Repro attempt for https://github.com/couchbase/sync_gateway/issues/2662
+// I'm not 100% how the channel cache *should* behave, but this test does illustrate
+// the problematic behavior when:
+//    - The channel cache is at capacity
+//    - The channel cache receives changes that are older than it's current oldest entry
+func TestExceedChannelCacheSize(t *testing.T) {
+
+	// Make the channel cache smaller
+	DefaultChannelCacheMinLength = 2
+	DefaultChannelCacheMaxLength = 5
+
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
+	defer context.Close()
+	cache := newChannelCache(context, "Test1", 0)
+
+	// Add some entries to cache
+	cache.addToCache(e(1, "doc1", "1-doc1"), false)
+	cache.addToCache(e(2, "doc2", "1-doc2"), false)
+	cache.addToCache(e(3, "doc3", "1-doc3"), false)
+	cache.addToCache(e(4, "doc4", "1-doc4"), false)
+	cache.addToCache(e(5, "doc5", "1-doc5"), false)
+
+	// skip sequence 6
+
+	// Increment revs for all docs
+	cache.addToCache(e(7, "doc5", "2-doc5"), false)
+	cache.addToCache(e(8, "doc1", "2-doc1"), false)
+	cache.addToCache(e(9, "doc2", "2-doc2"), false)
+	cache.addToCache(e(10, "doc3", "2-doc3"), false)
+	cache.addToCache(e(11, "doc4", "2-doc4"), false)
+
+	// Increment revs for all docs one more time
+	cache.addToCache(e(12, "doc5", "3-doc5"), false)
+	cache.addToCache(e(13, "doc1", "3-doc1"), false)
+	cache.addToCache(e(14, "doc2", "3-doc2"), false)
+	cache.addToCache(e(15, "doc3", "3-doc3"), false)
+	cache.addToCache(e(16, "doc4", "3-doc4"), false)
+
+	sinceZero := SequenceID{Seq: 0}
+
+	expectedSequences := []int{12,13,14,15,16}
+	expectedValidFrom := uint64(0)
+	if err := verifyExpectedSequences(cache, sinceZero, expectedValidFrom, expectedSequences); err != nil {
+		t.Fatalf("verifyExpectedSequences failed: %v", err)
+	}
+
+	validFromBefore, cachedChangesBefore := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	log.Printf("before adding skipped seq 6.  validFrom: %d", validFromBefore)
+
+
+	// now add the previously skipped sequence
+	skippedSequence := uint64(6)
+	skippedLogEntry := &LogEntry{
+		Sequence:     skippedSequence,
+		DocID:        "doc6",
+		RevID:        "1-doc6",
+		Skipped:      true,
+		TimeReceived: time.Now(),
+	}
+	cache.addToCache(skippedLogEntry, false)
+
+	// Verify that the changes contains the skipped sequence
+	validFromAfter, cachedChangesAfter := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	log.Printf("after adding skipped seq 6.  validFrom: %d", validFromAfter)
+
+	// Since the channel cache is full, and the skipped sequence is older than the oldest sequence in the cache (12 at this point)
+	// then it should be ignored.  That means validFrom shouldn't have changed, and neither should the cached changes
+	assert.Equals(t, validFromBefore, validFromAfter)
+
+	// Make sure cached changes haven't changed after adding the old skipped seq
+	assert.Equals(t, len(cachedChangesBefore), len(cachedChangesAfter))
+	assert.Equals(t, cachedChangesBefore[0].Sequence, cachedChangesAfter[0].Sequence)
+	lastIndex := len(cachedChangesBefore) - 1
+	assert.Equals(t, cachedChangesBefore[lastIndex].Sequence, cachedChangesAfter[lastIndex].Sequence)
+
+	// Add another revision
+	cache.addToCache(e(17, "doc7", "1-doc7"), false)
+
+	// Since this is a non-skipped seq it will make it into the cache.
+	// Now the validFrom should increment.
+	validFromAfterNonSkippedSeq, changesAfterNonSkippedSeq := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
+	assert.True(t, validFromAfterNonSkippedSeq > validFromAfter)
+
+	// And the sequence of the first entry in the cache should be higher than the first entry in the previous cache snapshot
+	assert.True(t, changesAfterNonSkippedSeq[0].Sequence > cachedChangesAfter[0].Sequence)
+
+	// Ditto for the last entry in the cache
+	assert.True(t, changesAfterNonSkippedSeq[lastIndex].Sequence > cachedChangesAfter[lastIndex].Sequence)
+
+}
+
+
+// Repro attempt for https://github.com/couchbase/sync_gateway/issues/2662
+// This illustrates the problematic behavior when:
+//    - The channel cache receives changes that is older than is allowed by the ChannelCacheAge parameter
+//    - The channel cache immediately prunes/discards the change, so that it can never be returned from changes feed
+func TestExceedChannelCacheSizeOldEntry(t *testing.T) {
+
+	// Make the channel cache smaller
+	DefaultChannelCacheMinLength = 0
+	DefaultChannelCacheMaxLength = 5
+
+	base.EnableLogKey("Cache")
+	context := testBucketContext()
+	defer context.Close()
+	cache := newChannelCache(context, "Test1", 0)
+
+	// Add some entries to cache -- skip sequence 1
+	cache.addToCache(e(2, "doc1", "1-doc1"), false)
+	cache.addToCache(e(3, "doc2", "1-doc2"), false)
+	cache.addToCache(e(4, "doc3", "1-doc3"), false)
+
+	changesSince0 := ChangesOptions{Since: SequenceID{Seq: 0}}
+
+	validFromBeforeOldSkippedSeq, cacheBeforeOldSkippedSeq := cache.getCachedChanges(changesSince0)
+
+	twiceDefaultChannelCacheAge := DefaultChannelCacheAge * -2
+	stale := time.Now().Add(twiceDefaultChannelCacheAge)
+
+	// now add the previously skipped sequence with a very old TimeReceived
+	skippedSequence := uint64(1)
+	skippedLogEntry := &LogEntry{
+		Sequence:     skippedSequence,
+		DocID:        "doc6",
+		RevID:        "1-doc6",
+		Skipped:      true,
+		TimeReceived: stale,
+	}
+	cache.addToCache(skippedLogEntry, false)
+
+	// Since the channel cache is full, and the skipped sequence is older than the oldest sequence in the cache (12 at this point)
+	// then it should be ignored.  That means validFrom shouldn't have changed, and neither should the cached changes
+	validFromAfterOldSkippedSeq, cacheAfterOldSkippedSeq := cache.getCachedChanges(changesSince0)
+
+	assert.Equals(t, validFromBeforeOldSkippedSeq, validFromAfterOldSkippedSeq)
+	assert.Equals(t, cacheBeforeOldSkippedSeq[0].Sequence, cacheAfterOldSkippedSeq[0].Sequence)
 
 }
 
@@ -372,4 +515,35 @@ func generateDocs(percentInsert float64, N int) ([]string, []string) {
 		}
 	}
 	return docIDs, revStrings
+}
+
+
+func verifyExpectedSequences(cache *channelCache, since SequenceID, expectedValidFrom uint64, expectedSequences []int) error {
+
+	sort.Ints(expectedSequences)
+
+	changesSince0 := ChangesOptions{Since: since}
+	validFrom, changes := cache.getCachedChanges(changesSince0)
+
+	if expectedValidFrom != math.MaxUint64 {  // if caller passed math.MaxUint64 for expectedValidFrom, ignore the verification
+		if validFrom != expectedValidFrom {
+			return fmt.Errorf("Got validFrom: %v, expected: %v", validFrom, expectedValidFrom)
+
+		}
+	}
+
+	changeSequences := []int{}
+	for _, change := range changes {
+		changeSequences = append(changeSequences, int(change.Sequence))
+	}
+	sort.Ints(changeSequences)
+
+	for i, changeSequence := range changeSequences {
+		if changeSequence != expectedSequences[i] {
+			return fmt.Errorf("changeSequence (%d) != expectedSequence (%d) for i=%d", changeSequence, expectedSequences[i], i)
+		}
+	}
+
+	return nil
+
 }
