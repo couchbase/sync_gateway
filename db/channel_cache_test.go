@@ -14,12 +14,9 @@ import (
 	"log"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"math"
-	"sort"
 )
 
 func TestDuplicateDocID(t *testing.T) {
@@ -376,4 +373,3 @@ func generateDocs(percentInsert float64, N int) ([]string, []string) {
 	}
 	return docIDs, revStrings
 }
-
