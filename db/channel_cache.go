@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"math"
-	"fmt"
 )
 
 var (
@@ -557,4 +557,3 @@ func (c *channelCache) addDocIDs(changes LogEntries) {
 		c.cachedDocIDs[change.DocID] = struct{}{}
 	}
 }
-

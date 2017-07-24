@@ -18,8 +18,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"sort"
 	"math"
+	"sort"
 )
 
 func TestDuplicateDocID(t *testing.T) {
@@ -238,7 +238,7 @@ func TestExceedChannelCacheSize(t *testing.T) {
 
 	sinceZero := SequenceID{Seq: 0}
 
-	expectedSequences := []int{12,13,14,15,16}
+	expectedSequences := []int{12, 13, 14, 15, 16}
 	expectedValidFrom := uint64(0)
 	if err := verifyExpectedSequences(cache, sinceZero, expectedValidFrom, expectedSequences); err != nil {
 		t.Fatalf("verifyExpectedSequences failed: %v", err)
@@ -246,7 +246,6 @@ func TestExceedChannelCacheSize(t *testing.T) {
 
 	validFromBefore, cachedChangesBefore := cache.getCachedChanges(ChangesOptions{Since: sinceZero})
 	log.Printf("before adding skipped seq 6.  validFrom: %d", validFromBefore)
-
 
 	// now add the previously skipped sequence
 	skippedSequence := uint64(6)
@@ -288,7 +287,6 @@ func TestExceedChannelCacheSize(t *testing.T) {
 	assert.True(t, changesAfterNonSkippedSeq[lastIndex].Sequence > cachedChangesAfter[lastIndex].Sequence)
 
 }
-
 
 // Repro attempt for https://github.com/couchbase/sync_gateway/issues/2662
 // This illustrates the problematic behavior when:
@@ -517,7 +515,6 @@ func generateDocs(percentInsert float64, N int) ([]string, []string) {
 	return docIDs, revStrings
 }
 
-
 func verifyExpectedSequences(cache *channelCache, since SequenceID, expectedValidFrom uint64, expectedSequences []int) error {
 
 	sort.Ints(expectedSequences)
@@ -525,7 +522,7 @@ func verifyExpectedSequences(cache *channelCache, since SequenceID, expectedVali
 	changesSince0 := ChangesOptions{Since: since}
 	validFrom, changes := cache.getCachedChanges(changesSince0)
 
-	if expectedValidFrom != math.MaxUint64 {  // if caller passed math.MaxUint64 for expectedValidFrom, ignore the verification
+	if expectedValidFrom != math.MaxUint64 { // if caller passed math.MaxUint64 for expectedValidFrom, ignore the verification
 		if validFrom != expectedValidFrom {
 			return fmt.Errorf("Got validFrom: %v, expected: %v", validFrom, expectedValidFrom)
 
