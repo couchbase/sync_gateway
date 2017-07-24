@@ -377,32 +377,3 @@ func generateDocs(percentInsert float64, N int) ([]string, []string) {
 	return docIDs, revStrings
 }
 
-func verifyExpectedSequences(cache *channelCache, since SequenceID, expectedValidFrom uint64, expectedSequences []int) error {
-
-	sort.Ints(expectedSequences)
-
-	changesSince0 := ChangesOptions{Since: since}
-	validFrom, changes := cache.getCachedChanges(changesSince0)
-
-	if expectedValidFrom != math.MaxUint64 { // if caller passed math.MaxUint64 for expectedValidFrom, ignore the verification
-		if validFrom != expectedValidFrom {
-			return fmt.Errorf("Got validFrom: %v, expected: %v", validFrom, expectedValidFrom)
-
-		}
-	}
-
-	changeSequences := []int{}
-	for _, change := range changes {
-		changeSequences = append(changeSequences, int(change.Sequence))
-	}
-	sort.Ints(changeSequences)
-
-	for i, changeSequence := range changeSequences {
-		if changeSequence != expectedSequences[i] {
-			return fmt.Errorf("changeSequence (%d) != expectedSequence (%d) for i=%d", changeSequence, expectedSequences[i], i)
-		}
-	}
-
-	return nil
-
-}
