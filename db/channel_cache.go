@@ -77,6 +77,11 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	if c.wouldBeImmediatelyPruned(change) {
+		base.LogTo("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned", change.Sequence, c.channelName)
+		return
+	}
+
 	if !isRemoval {
 		c._appendChange(change)
 	} else {
@@ -86,6 +91,20 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	}
 	c._pruneCache()
 	base.LogTo("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+}
+
+// If certain conditions are met, it's possible that this change will be added and then
+// immediately pruned, which causes the issues described in https://github.com/couchbase/sync_gateway/issues/2662
+func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
+
+	// This might not be the one that is going to be immediately pruned
+	if change.Sequence >= c.validFrom {
+		return false
+	}
+
+	// If older than validFrom, never try to cache it
+	return true
+
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
@@ -235,6 +254,7 @@ func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
 func (c *channelCache) _appendChange(change *LogEntry) {
+
 	log := c.logs
 	end := len(log) - 1
 	if end >= 0 {
@@ -346,7 +366,10 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		return len(changes)
 
 	} else if len(changes) == 0 {
+
 		if openEnded && changesValidFrom < c.validFrom {
+			base.LogTo("Cache+", " openEnded && changesValidFrom < c.validFrom, setting c.validFrom from %v -> %v",
+				c.validFrom, changesValidFrom)
 			c.validFrom = changesValidFrom
 		}
 		return 0
@@ -370,6 +393,8 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 						base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
 							i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
 					}
+					base.LogTo("Cache+", " Backfill cache from view c.validFrom from %v -> %v",
+						c.validFrom, changesValidFrom)
 					c.validFrom = changesValidFrom
 					return i
 				}
