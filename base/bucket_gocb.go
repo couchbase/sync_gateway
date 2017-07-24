@@ -985,7 +985,6 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
 		// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.  If the body exists (and we're trying to delete it), revert
 		// to SubdocDocFlagNone
 		mutateFlag := gocb.SubdocDocFlagAccessDeleted
@@ -1002,6 +1001,9 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int
 
 		if removeErr != nil {
 			shouldRetry = isRecoverableGoCBError(removeErr)
+			if !shouldRetry {
+				Warn("Unrecoverable error attempting to update xattr for key:%s cas:%d deleteBody:%v error:%v", k, cas, deleteBody, removeErr)
+			}
 			return shouldRetry, removeErr, uint64(0)
 		}
 		return false, nil, uint64(docFragment.Cas())
@@ -1392,9 +1394,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				return emptyCas, err
 			}
 			// Key not found - initialize cas and values
+
+			LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr err: %v.  Treating as insert.", k, cas)
 			cas = 0
 			value = nil
 			xattrValue = nil
+		} else {
+			LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr successful - cas: %v  len(value):%d", k, cas, len(value))
 		}
 
 		// Invoke callback to get updated value
@@ -1408,6 +1414,9 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
 			deleteBody := len(value) > 0
+			if deleteBody {
+				LogTo("CRUD+", "WriteUpdateWithXattr attempting to delete body and update the xattr for key=%s. Existing value: %s", k, value)
+			}
 			deleteCas, deleteErr := bucket.UpdateXattr(k, xattrKey, exp, cas, updatedXattrValue, deleteBody)
 			switch deleteErr {
 			case nil:
