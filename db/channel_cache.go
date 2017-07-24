@@ -5,10 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"math"
 )
 
 var (
