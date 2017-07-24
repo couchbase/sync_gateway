@@ -105,7 +105,6 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 	}
 
 	// If older than validFrom, never try to cache it
-
 	return true
 
 }
@@ -371,7 +370,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 	} else if len(changes) == 0 {
 
 		if openEnded && changesValidFrom < c.validFrom {
-			base.LogTo("Cache", " openEnded && changesValidFrom < c.validFrom, setting c.validFrom from %v -> %v",
+			base.LogTo("Cache+", " openEnded && changesValidFrom < c.validFrom, setting c.validFrom from %v -> %v",
 				c.validFrom, changesValidFrom)
 			c.validFrom = changesValidFrom
 		}
@@ -396,7 +395,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 						base.LogTo("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
 							i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
 					}
-					base.LogTo("Cache", " Backfill cache from view c.validFrom from %v -> %v",
+					base.LogTo("Cache+", " Backfill cache from view c.validFrom from %v -> %v",
 						c.validFrom, changesValidFrom)
 					c.validFrom = changesValidFrom
 					return i
@@ -559,20 +558,3 @@ func (c *channelCache) addDocIDs(changes LogEntries) {
 	}
 }
 
-func (c *channelCache) _oldestSeq() (uint64, error) {
-
-	oldestSeq := uint64(math.MaxInt64)
-
-	for i := 0; i < len(c.logs); i++ {
-		if c.logs[i].Sequence < oldestSeq {
-			oldestSeq = c.logs[i].Sequence
-		}
-	}
-
-	if oldestSeq == math.MaxInt64 {
-		return math.MaxInt64, fmt.Errorf("Unable to find oldest sequence")
-	}
-
-	return oldestSeq, nil
-
-}

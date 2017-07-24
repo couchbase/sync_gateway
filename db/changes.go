@@ -350,17 +350,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var userChanged bool       // Whether the user document has changed in a given iteration loop
 		var deferredBackfill bool  // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
-		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
-		// skipped sequences in a future iteration or request.
-		// TODO: might not be needed, since it's copied in the loop
-		// was: 16965 ..
-		//oldestSkipped := db.changeCache.getOldestSkippedSequence()
-		//if oldestSkipped > 0 {
-		//	lowSequence = oldestSkipped - 1
-		//} else {
-		//	lowSequence = 0
-		//}
-
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.GetStableSequence("").Seq
 		if options.Wait {
@@ -390,16 +379,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			channelsSince = channels.AtSequence(chans, 0)
 		}
 
-		// If a request has a low sequence that matches the current lowSequence,
-		// ignore the low sequence.  This avoids infinite looping of the records between
-		// low::high.  It also means any additional skipped sequences between low::high won't
-		// be sent until low arrives or is abandoned.
-		base.LogTo("Changes+", "MultiChangesFeed: options.Since.LowSeq %#v, lowSequence: %#v", options.Since.LowSeq, lowSequence)
-		// TODO: might not need this, since we have it below
-		//if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
-		//	options.Since.LowSeq = 0
-		//}
-
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
 		if options.Continuous {
@@ -425,7 +404,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				lowSequence = 0
 			}
 
-			// TODO: possible fix
+			// If a request has a low sequence that matches the current lowSequence,
+			// ignore the low sequence.  This avoids infinite looping of the records between
+			// low::high.  It also means any additional skipped sequences between low::high won't
+			// be sent until low arrives or is abandoned.
 			if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
 				options.Since.LowSeq = 0
 			}
