@@ -210,6 +210,12 @@ func TestRevTreeUnmarshal(t *testing.T) {
 	fmt.Printf("Unmarshaled to %v\n", gotmap)
 }
 
+func failTestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
+	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
+	gotmap := testUnmarshal(t, testJSON)
+	fmt.Printf("Unmarshaled to %v\n", gotmap)
+}
+
 func TestRevTreeMarshal(t *testing.T) {
 	bytes, err := json.Marshal(testmap)
 	assertNoError(t, err, "Couldn't write RevTree to JSON")
