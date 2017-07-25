@@ -978,31 +978,39 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	return cas, err
 }
 
-// CAS-safe delete of a document, and update of it's corresponding xattr.  Requires that at least one of the document body and xattr already exist -
-// if neither are present returns a KeyNotFound error.
-func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}) (casOut uint64, err error) {
+// CAS-safe update of a document's xattr.  Also deletes the document body if deleteBody is true.
+func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
-		// Setting the access deleted doc flag allows this operation to succeed whether or not the document body currently exists.
-		docFragment, removeErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(exp)).
-			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
-			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-			RemoveEx("", gocb.SubdocFlagNone).                                                            // Delete the document body
-			Execute()
+		// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.  If the body exists (and we're trying to delete it), revert
+		// to SubdocDocFlagNone
+		mutateFlag := gocb.SubdocDocFlagAccessDeleted
+		if deleteBody {
+			mutateFlag = gocb.SubdocDocFlagNone
+		}
+		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
+		if deleteBody {
+			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
+		}
+		docFragment, removeErr := builder.Execute()
 
 		if removeErr != nil {
 			shouldRetry = isRecoverableGoCBError(removeErr)
+			if !shouldRetry {
+				Warn("Unrecoverable error attempting to update xattr for key:%s cas:%d deleteBody:%v error:%v", k, cas, deleteBody, removeErr)
+			}
 			return shouldRetry, removeErr, uint64(0)
 		}
 		return false, nil, uint64(docFragment.Cas())
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("DeleteAndUpdateXattr with key %v", k)
+	description := fmt.Sprintf("UpdateXattr with key %v", k)
 	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
 
 	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
@@ -1013,7 +1021,7 @@ func (bucket CouchbaseBucketGoCB) DeleteAndUpdateXattr(k string, xattrKey string
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("DeleteAndUpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -1386,9 +1394,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				return emptyCas, err
 			}
 			// Key not found - initialize cas and values
+
+			LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr err: %v.  Treating as insert.", k, cas)
 			cas = 0
 			value = nil
 			xattrValue = nil
+		} else {
+			LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr successful - cas: %v  len(value):%d", k, cas, len(value))
 		}
 
 		// Invoke callback to get updated value
@@ -1401,15 +1413,18 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		var writeErr error
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
-
-			deleteCas, deleteErr := bucket.DeleteAndUpdateXattr(k, xattrKey, exp, cas, updatedXattrValue)
+			deleteBody := len(value) > 0
+			if deleteBody {
+				LogTo("CRUD+", "WriteUpdateWithXattr attempting to delete body and update the xattr for key=%s. Existing value: %s", k, value)
+			}
+			deleteCas, deleteErr := bucket.UpdateXattr(k, xattrKey, exp, cas, updatedXattrValue, deleteBody)
 			switch deleteErr {
 			case nil:
 				return deleteCas, deleteErr
 			case gocb.ErrKeyExists:
 				continue // Retry on CAS failure
 			default:
-				// DeleteAndUpdateXattr already does retry on recoverable errors, so return any error here
+				// UpdateXattr already does retry on recoverable errors, so return any error here
 				LogTo("CRUD", "Delete and update of xattr during WriteUpdateWithXattr failed for key %s: %v", k, deleteErr)
 				return emptyCas, deleteErr
 			}

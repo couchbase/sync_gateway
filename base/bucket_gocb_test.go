@@ -1328,11 +1328,16 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	// No errors should be returned when deleting these.
 	keys := []string{key1, key2, key3}
 	casValues := []gocb.Cas{gocb.Cas(cas1), cas2, cas3}
+	shouldDeleteBody := []bool{true, true, false}
 	for i, key := range keys {
-		log.Printf("Deleting key: %v", key)
-		_, errDelete := bucket.DeleteAndUpdateXattr(key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal)
 
-		log.Printf("Result error: %v", errDelete)
+		log.Printf("Delete testing for key: %v", key)
+		// First attempt to update with a bad cas value, and ensure we're getting the expected error
+		_, errCasMismatch := bucket.UpdateXattr(key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
+		assertTrue(t, errCasMismatch == gocb.ErrKeyExists, fmt.Sprintf("Expected cas mismatch error, got: %v", err))
+
+		_, errDelete := bucket.UpdateXattr(key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
+		log.Printf("Delete error: %v", errDelete)
 
 		assertNoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 		assertTrue(t, verifyDocDeletedXattrExists(bucket, key, xattrName), fmt.Sprintf("Expected doc %s to be deleted", key))
@@ -1340,7 +1345,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
 	log.Printf("Deleting key: %v", key4)
-	_, errDelete := bucket.DeleteAndUpdateXattr(key4, xattrName, 0, uint64(0), &updatedXattrVal)
+	_, errDelete := bucket.UpdateXattr(key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
 	assertTrue(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
 	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
 }
