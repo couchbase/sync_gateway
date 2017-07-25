@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 
+	"net/url"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
@@ -703,6 +705,27 @@ func isRecoverableGoCBError(err error) bool {
 	_, ok := recoverableGoCBErrors[err.Error()]
 
 	return ok
+}
+
+// If the error is a net/url.Error and the error message is:
+// 		net/http: request canceled while waiting for connection
+// Then it means that the view request timed out, most likely due to the fact that it's a stale=false query and
+// it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
+// underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
+func isGoCBViewTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// If it's not a *url.Error, then it's not a viewtimeout error
+	netUrlError, ok := err.(*url.Error)
+	if !ok {
+		return false
+	}
+
+	// If it's a *url.Error and contains the "request canceled" substring, then it's a viewtimeout error.
+	return strings.Contains(netUrlError.Error(), "request canceled")
+
 }
 
 func containsElement(items []string, itemToCheck string) bool {
@@ -1715,6 +1738,14 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 	}
 
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+
+	// If it's a view timeout error, return an error message specific to that.
+	if isGoCBViewTimeoutError(err) {
+		return viewResult, fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing."+
+			" Underlying error: %v", err)
+	}
+
+	// If it's any other error, return it as-is
 	if err != nil {
 		return viewResult, err
 	}
@@ -1758,6 +1789,14 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	}
 
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+
+	// If it's a view timeout error, return an error message specific to that.
+	if isGoCBViewTimeoutError(err) {
+		return fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing."+
+			" Underlying error: %v", err)
+	}
+
+	// If it's any other error, return it as-is
 	if err != nil {
 		return err
 	}
