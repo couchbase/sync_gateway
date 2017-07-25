@@ -100,6 +100,11 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		return
 	}
 
+	//validate revTreeList revs, parents and channels lists are of equal length
+	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
+		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
+	}
+
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
 		if rep.BodyMap != nil {

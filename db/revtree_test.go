@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"log"
+	"errors"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -210,10 +211,11 @@ func TestRevTreeUnmarshal(t *testing.T) {
 	fmt.Printf("Unmarshaled to %v\n", gotmap)
 }
 
-func failTestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
+func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
-	gotmap := testUnmarshal(t, testJSON)
-	fmt.Printf("Unmarshaled to %v\n", gotmap)
+	gotmap := RevTree{}
+	err := json.Unmarshal([]byte(testJSON), &gotmap)
+	assert.DeepEquals(t, err, errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent"))
 }
 
 func TestRevTreeMarshal(t *testing.T) {
