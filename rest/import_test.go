@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -333,4 +334,74 @@ func TestXattrDoubleDelete(t *testing.T) {
 	assert.Equals(t, body["ok"], true)
 	revId = body["rev"].(string)
 
+}
+
+func TestViewQueryTombstoneRetrieval(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{SyncFn: `
+		function(doc, oldDoc) { channel(doc.channels) }`}
+	defer rt.Close()
+
+	log.Printf("Starting get bucket....")
+
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
+
+	// 1. Create and import docs
+	key := "SG_delete"
+	docBody := make(map[string]interface{})
+	docBody["test"] = key
+	docBody["channels"] = "ABC"
+
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), `{"channels":"ABC"}`)
+	assert.Equals(t, response.Code, 201)
+	log.Printf("insert response: %s", response.Body.Bytes())
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId := body["rev"].(string)
+
+	sdk_key := "SDK_delete"
+	docBody = make(map[string]interface{})
+	docBody["test"] = sdk_key
+	docBody["channels"] = "ABC"
+
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", sdk_key), `{"channels":"ABC"}`)
+	assert.Equals(t, response.Code, 201)
+	log.Printf("insert response: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+
+	// 2. Delete SDK_delete through the SDK
+	log.Printf("...............Delete through SDK.....................................")
+	deleteErr := bucket.Delete(sdk_key)
+	assertNoError(t, deleteErr, "Couldn't delete via SDK")
+
+	// Trigger import via SG retrieval
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", sdk_key), "")
+	assert.Equals(t, response.Code, 404) // expect 404 deleted
+
+	// 3.  Delete SG_delete through SG.
+	log.Printf("...............Delete through SG.......................................")
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
+	assert.Equals(t, response.Code, 200)
+	log.Printf("delete response: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId = body["rev"].(string)
+
+	log.Printf("TestXattrDeleteDCPMutation done")
+
+	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
+	// stale=false view results should be immediately updated.
+	results, err := rt.GetDatabase().ChannelViewTest("ABC", 1000, db.ChangesOptions{})
+	assertNoError(t, err, "Error issuing channel view query")
+	for _, entry := range results {
+		log.Printf("Got view result: %v", entry)
+	}
+	assert.Equals(t, len(results), 2)
+	assertTrue(t, strings.HasPrefix(results[0].RevID, "2-") && strings.HasPrefix(results[1].RevID, "2-"), "Unexpected revisions in view results post-delete")
 }
