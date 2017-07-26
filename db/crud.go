@@ -674,7 +674,10 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas 
 		newRev = createRevID(generation, parentRev, body)
 		base.LogTo("Import", "Created new rev ID %v", newRev)
 		body["_rev"] = newRev
-		doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+		if err := doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete}); err != nil {
+			base.LogTo("Import+", "Import failed to add revision ID: %s, error: %v", newRev, err)
+			return nil, nil, base.ErrImportRevFailure
+		}
 
 		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
 		doc.body = nil
@@ -695,10 +698,12 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas 
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
 		return nil, err
+	case base.ErrImportRevFailure:
+		// Import was cancelled due to Rev import failure.
+		return nil, err
 	default:
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
 		return nil, err
-
 	}
 
 	return docOut, nil
