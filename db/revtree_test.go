@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"log"
+	"errors"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -156,7 +157,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 					Parent:  parentRevId,
 					Deleted: true,
 				}
-				revTree.addRevision(revInfo)
+				revTree.addRevision("testdoc", revInfo)
 
 			}
 
@@ -256,8 +257,32 @@ func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.DeepEquals(t, tempmap, testmap)
 
-	tempmap.addRevision(RevInfo{ID: "4-four", Parent: "3-three"})
+	tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	assert.Equals(t, tempmap.getParent("4-four"), "3-three")
+}
+
+func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
+	tempmap := testmap.copy()
+	assert.DeepEquals(t, tempmap, testmap)
+
+	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
+	assert.DeepEquals(t, err, errors.New("empty revid is illegal"))
+}
+
+func TestRevTreeAddDuplicateRevID(t *testing.T) {
+	tempmap := testmap.copy()
+	assert.DeepEquals(t, tempmap, testmap)
+
+	err := tempmap.addRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
+	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("already contains rev %q", "2-two")))
+}
+
+func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
+	tempmap := testmap.copy()
+	assert.DeepEquals(t, tempmap, testmap)
+
+	err := tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
+	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("parent id %q is missing", "4-four")))
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {
@@ -282,12 +307,12 @@ func TestRevTreeWinningRev(t *testing.T) {
 	assert.Equals(t, winner, "3-three")
 	assert.True(t, branched)
 	assert.True(t, conflict)
-	tempmap.addRevision(RevInfo{ID: "4-four", Parent: "3-three"})
+	tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	winner, branched, conflict = tempmap.winningRevision()
 	assert.Equals(t, winner, "4-four")
 	assert.True(t, branched)
 	assert.True(t, conflict)
-	tempmap.addRevision(RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
 	winner, branched, conflict = tempmap.winningRevision()
 	assert.Equals(t, winner, "3-drei")
 	assert.True(t, branched)
@@ -766,7 +791,7 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 			Deleted:  false,
 			Channels: channels,
 		}
-		revTree.addRevision(revInfo)
+		revTree.addRevision("testdoc", revInfo)
 
 		generation += 1
 

@@ -456,7 +456,7 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 	body["_rev"] = doc.CurrentRev
 	doc.setFlag(channels.Deleted, false)
 	doc.History = make(RevTree)
-	if err = doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false}); err != nil {
+	if err = doc.History.addRevision(doc.ID, RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false}); err != nil {
 		return err
 	}
 	if db.writeSequences() {
@@ -533,9 +533,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
-		if err := doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
-			base.LogTo("Import+", "Import failed to add revision ID: %s, error: %v", newRev, err)
-			return nil, nil, base.ErrImportRevFailure
+		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+			base.LogTo("CRUD", "Failed to add revision ID: %s, error: %v", newRev, err)
+			return nil, nil, base.ErrRevTreeAddRevFailure
 		}
 
 		return body, newAttachments, nil
@@ -589,10 +589,13 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
-			if err := doc.History.addRevision(RevInfo{
-				ID:      docHistory[i],
-				Parent:  parent,
-				Deleted: (i == 0 && deleted)}); err != nil {
+			err := doc.History.addRevision(docid,
+				RevInfo{
+					ID:      docHistory[i],
+					Parent:  parent,
+					Deleted: (i == 0 && deleted)})
+
+			if err != nil {
 				return nil, nil, err
 			}
 			parent = docHistory[i]
@@ -682,9 +685,8 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas 
 		newRev = createRevID(generation, parentRev, body)
 		base.LogTo("Import", "Created new rev ID %v", newRev)
 		body["_rev"] = newRev
-		if err := doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete}); err != nil {
-			base.LogTo("Import+", "Import failed to add revision ID: %s, error: %v", newRev, err)
-			return nil, nil, base.ErrImportRevFailure
+		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete}); err != nil {
+			return nil, nil, base.ErrRevTreeAddRevFailure
 		}
 
 		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
@@ -705,9 +707,6 @@ func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas 
 		// Import was cancelled (SG purge) - don't return error.
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
-		return nil, err
-	case base.ErrImportRevFailure:
-		// Import was cancelled due to Rev import failure.
 		return nil, err
 	default:
 		base.LogTo("Import", "Error importing doc %q: %v", docid, err)
