@@ -19,6 +19,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"log"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -334,6 +335,7 @@ func TestPruneRevisions(t *testing.T) {
 
 }
 
+
 func TestPruneRevsSingleBranch(t *testing.T) {
 
 	numRevs := 100
@@ -460,7 +462,7 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
 
-	generationShortestNonTombstonedBranch := revTree.FindShortestNonTombstonedBranch()
+	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch()
 
 	// The "non-winning unresolved" branch has 7 revisions due to:
 	// 3 unconflictedBranchNumRevs
@@ -533,6 +535,33 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 
 	assert.True(t, uint32(revTree.LongestBranch()) == maxDepth)
+
+}
+
+func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
+
+	numRevsTotal := 100
+	numRevsDeletedBranch := 99
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 numRevsDeletedBranch,
+			Digest:                  "single-tombstoned-branch",
+			LastRevisionIsTombstone: true,
+		},
+	}
+
+	revTree := getMultiBranchTestRevtree1(1, 0, branchSpecs)
+
+	maxDepth := uint32(20)
+	expectedNumPruned := numRevsTotal - int(maxDepth)
+
+	expectedNumPruned += 1  // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
+
+	numPruned := revTree.pruneRevisions(maxDepth, "")
+
+	log.Printf("RevTreeAfter pruning: %v", revTree.RenderGraphvizDot())
+
+	assert.Equals(t, numPruned, expectedNumPruned)
 
 }
 
@@ -707,7 +736,7 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 
 	channels := base.SetOf("ABC", "CBS")
 
-	generation, _ := parseRevID(startingParentRevId)
+	generation, _ := ParseRevID(startingParentRevId)
 
 	for i := 0; i < numRevs; i++ {
 

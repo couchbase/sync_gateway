@@ -17,6 +17,8 @@ import (
 
 	"errors"
 
+	"bytes"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -339,8 +341,12 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 	}
 
 	// Calculate tombstoneGenerationThreshold
-	genShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
-	tombstoneGenerationThreshold := genShortestNonTSBranch - int(maxDepth)
+	genShortestNonTSBranch, foundShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
+	tombstoneGenerationThreshold := -1
+	if foundShortestNonTSBranch {
+		// Only set the tombstoneGenerationThreshold if a genShortestNonTSBranch was found.  (fixes #2695)
+		tombstoneGenerationThreshold = genShortestNonTSBranch - int(maxDepth)
+	}
 
 	// Delete nodes whose depth is greater than maxDepth:
 	for revid, node := range tree {
@@ -361,15 +367,17 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
-	// Delete any tombstoned branches that are too old
-	for _, leafRevId := range leaves {
-		leaf := tree[leafRevId]
-		if !leaf.Deleted { // Ignore non-tombstoned leaves
-			continue
-		}
-		leafGeneration, _ := ParseRevID(leaf.ID)
-		if leafGeneration < tombstoneGenerationThreshold {
-			pruned += tree.DeleteBranch(leaf)
+	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
+	if tombstoneGenerationThreshold != -1 {
+		for _, leafRevId := range leaves {
+			leaf := tree[leafRevId]
+			if !leaf.Deleted { // Ignore non-tombstoned leaves
+				continue
+			}
+			leafGeneration, _ := ParseRevID(leaf.ID)
+			if leafGeneration < tombstoneGenerationThreshold {
+				pruned += tree.DeleteBranch(leaf)
+			}
 		}
 	}
 
@@ -421,13 +429,15 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
 //   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
-func (tree RevTree) FindShortestNonTombstonedBranch() (generation int) {
+func (tree RevTree) FindShortestNonTombstonedBranch() (generation int, found bool) {
 	return tree.FindShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int) {
+func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int, found bool) {
 
+	found = false
 	genShortestNonTSBranch := math.MaxInt32
+
 	for _, revid := range leaves {
 
 		revInfo := tree[revid]
@@ -438,9 +448,10 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 		gen := genOfRevID(revid)
 		if gen > 0 && gen < genShortestNonTSBranch {
 			genShortestNonTSBranch = gen
+			found = true
 		}
 	}
-	return genShortestNonTSBranch
+	return genShortestNonTSBranch, found
 }
 
 // Find the generation of the longest deleted branch.  For example in this rev tree:
@@ -461,6 +472,102 @@ func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (gene
 		}
 	}
 	return genLongestTSBranch
+}
+
+// Render the RevTree in Graphviz Dot format, which can then be used to generate a PNG diagram
+// like http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
+// using the command: dot -Tpng revtree.dot > revtree.png or an online tool such as webgraphviz.com
+func (tree RevTree) RenderGraphvizDot() string {
+
+	resultBuffer := bytes.Buffer{}
+
+	// Helper func to surround graph node w/ double quotes
+	surroundWithDoubleQuotes := func(orig string) string {
+		return fmt.Sprintf(`"%s"`, orig)
+	}
+
+	// Helper func to get the graphviz dot representation of a node
+	dotRepresentation := func(node *RevInfo) string {
+		switch node.Deleted {
+		case false:
+			return fmt.Sprintf(
+				"%s -> %s; ",
+				surroundWithDoubleQuotes(node.Parent),
+				surroundWithDoubleQuotes(node.ID),
+			)
+		default:
+			multilineResult := bytes.Buffer{}
+			multilineResult.WriteString(
+				fmt.Sprintf(
+					`%s [fontcolor=red];`,
+					surroundWithDoubleQuotes(node.ID),
+				),
+			)
+			multilineResult.WriteString(
+				fmt.Sprintf(
+					`%s -> %s [label="Tombstone", fontcolor=red];`,
+					surroundWithDoubleQuotes(node.Parent),
+					surroundWithDoubleQuotes(node.ID),
+				),
+			)
+
+			return multilineResult.String()
+		}
+
+	}
+
+	// Helper func to append node to result: parent -> child;
+	dupes := base.Set{}
+	appendNodeToResult := func(node *RevInfo) {
+		nodeAsDotText := dotRepresentation(node)
+		if dupes.Contains(nodeAsDotText) {
+			return
+		} else {
+			dupes[nodeAsDotText] = struct{}{}
+		}
+		resultBuffer.WriteString(nodeAsDotText)
+	}
+
+	// Start graphviz dot file
+	resultBuffer.WriteString("digraph graphname{")
+
+	// This function will be called back for every leaf node in tree
+	leafProcessor := func(leaf *RevInfo) {
+
+		// Append the leaf to the output
+		appendNodeToResult(leaf)
+
+		// Walk up the tree until we find a root, and append each node
+		node := leaf
+		for {
+
+			node = tree[node.Parent]
+
+			// Not sure how this can happen, but in any case .. probably nothing left to do for this branch
+			if node == nil {
+				break
+			}
+
+			// Reached a root, we're done -- there's no need
+			// to call appendNodeToResult() on the root, since
+			// the child of the root will have already added a node
+			// pointing to the root.
+			if node.IsRoot() {
+				break
+			}
+
+			appendNodeToResult(node)
+		}
+	}
+
+	// Iterate over leaves
+	tree.forEachLeaf(leafProcessor)
+
+	// Finish graphviz dot file
+	resultBuffer.WriteString("}")
+
+	return resultBuffer.String()
+
 }
 
 //////// ENCODED REVISION LISTS (_revisions):
@@ -551,4 +658,3 @@ func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedL
 	return true, trimmedRevs
 
 }
-
