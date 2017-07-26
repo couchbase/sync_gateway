@@ -85,3 +85,8 @@ func changesViewOptions(channelName string, endSeq uint64, options ChangesOption
 	}
 	return optMap
 }
+
+// Public channel view call - for unit test support
+func (dbc *DatabaseContext) ChannelViewTest(channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
+	return dbc.getChangesInChannelFromView(channelName, endSeq, options)
+}
