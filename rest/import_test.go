@@ -336,7 +336,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 }
 
-func TestViewTombstoneRetrieval(t *testing.T) {
+func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
