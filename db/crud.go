@@ -456,7 +456,9 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 	body["_rev"] = doc.CurrentRev
 	doc.setFlag(channels.Deleted, false)
 	doc.History = make(RevTree)
-	doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false})
+	if err = doc.History.addRevision(RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false}); err != nil {
+		return err
+	}
 	if db.writeSequences() {
 		doc.Sequence, err = db.sequences.nextSequence()
 	}
@@ -531,7 +533,11 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
-		doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted})
+		if err := doc.History.addRevision(RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+			base.LogTo("Import+", "Import failed to add revision ID: %s, error: %v", newRev, err)
+			return nil, nil, base.ErrImportRevFailure
+		}
+
 		return body, newAttachments, nil
 	})
 }
@@ -583,10 +589,12 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
-			doc.History.addRevision(RevInfo{
+			if err := doc.History.addRevision(RevInfo{
 				ID:      docHistory[i],
 				Parent:  parent,
-				Deleted: (i == 0 && deleted)})
+				Deleted: (i == 0 && deleted)}); err != nil {
+				return nil, nil, err
+			}
 			parent = docHistory[i]
 		}
 
