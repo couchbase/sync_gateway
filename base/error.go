@@ -48,7 +48,7 @@ func (e SGError) Error() string {
 	case importCasFailure:
 		return "CAS failure during import"
 	case importRevFailure:
-		return "CAS failure during Rev import"
+		return "Failure during Rev import"
 	default:
 		return "Unknown error"
 	}
