@@ -133,12 +133,9 @@ func (bucket CouchbaseBucket) ViewCustom(ddoc, name string, params map[string]in
 		return shouldRetry, err, nil
 	}
 
-	// Set NumRetries to 1, since before the change to override ViewCustom, it was passing through directly
-	// to the go-couchbase ViewCustom.
-	maxNumRetries := 1
 	sleeper := CreateDoublingSleeperFunc(
-		maxNumRetries,
-		bucket.spec.InitialRetrySleepTimeMS, // Since MaxNumRetries is 0, this is ignored
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
 	)
 
 	// Kick off retry loop with a timeout
