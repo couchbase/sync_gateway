@@ -122,7 +122,7 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 
 func (bucket CouchbaseBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 
-	// Wrap in a worker function to leverage RetryLoopTimeout, even though it doesn't actually retry
+	// RetryLoopTimeout worker function
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		err = bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
