@@ -281,6 +281,8 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker func() (shouldRetry bool, err error, value interface{})
 
+type TimeoutWorker func()
+
 func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 
 	numAttempts := 1
@@ -306,6 +308,84 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
 		numAttempts += 1
+
+	}
+}
+
+
+type WorkerResult struct {
+	ShouldRetry bool
+	Error error
+	Value interface{}
+}
+
+func (w WorkerResult) Unwrap() (ShouldRetry bool, Error error, Value interface{}) {
+	return w.ShouldRetry, w.Error, w.Value
+}
+
+func WrapRetryWorkerTimeout(worker RetryWorker, timeoutPerInvocation time.Duration) (timeoutWorker TimeoutWorker, resultChan chan WorkerResult) {
+
+	resultChan = make(chan WorkerResult)
+
+	timeoutWorker = func() {
+
+		shouldRetry, err, value := worker()
+
+		result := WorkerResult{
+			ShouldRetry: shouldRetry,
+			Error: err,
+			Value: value,
+		}
+		resultChan <- result
+
+	}
+
+	return timeoutWorker, resultChan
+
+}
+
+func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleeper, timeoutPerInvocation time.Duration) (error, interface{}) {
+
+	numAttempts := 1
+
+	for {
+
+		// Wrap the retry worker into a "timeout worker" function that can be run async and will write it's
+		// result to a channel
+		timeoutWorker, chWorkerResult := WrapRetryWorkerTimeout(worker, timeoutPerInvocation)
+
+		// Kick off the timeout worker in it's own goroutine
+		go timeoutWorker()
+
+		// Wait for either the timeout worker to send it's result on the channel, or for the timeout to expire
+		select {
+
+		case workerResult := <- chWorkerResult:
+			shouldRetry, err, value := workerResult.Unwrap()
+
+			if !shouldRetry {
+				if err != nil {
+					return err, nil
+				}
+				return nil, value
+			}
+			shouldContinue, sleepMs := sleeper(numAttempts)
+			if !shouldContinue {
+				if err == nil {
+					err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				}
+				Warn("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				return err, value
+			}
+			LogTo("Debug", "RetryLoop retrying %v after %v ms.", description, sleepMs)
+
+			<-time.After(time.Millisecond * time.Duration(sleepMs))
+
+			numAttempts += 1
+
+		case <- time.After(timeoutPerInvocation):
+			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
+		}
 
 	}
 }
