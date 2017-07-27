@@ -14,10 +14,11 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
 	"net/url"
-	"time"
 	"strings"
+	"time"
+
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -140,7 +141,6 @@ func TestRetryLoop(t *testing.T) {
 
 }
 
-
 // Make sure that the RetryLoopTimeout doesn't break existing RetryLoop functionality
 func TestRetryLoopTimeoutSafe(t *testing.T) {
 
@@ -186,14 +186,13 @@ func TestRetryLoopTimeoutEffective(t *testing.T) {
 
 	// Kick off timeout loop that expects lazy worker to return in 100 ms, even though it takes a week
 	description := fmt.Sprintf("TestRetryLoop")
-	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond * 100)
+	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond*100)
 
 	// We should get a timeout error
 	assert.True(t, err != nil)
 	assert.True(t, strings.Contains(err.Error(), "timeout"))
 
 }
-
 
 func TestSyncSourceFromURL(t *testing.T) {
 	u, err := url.Parse("http://www.test.com:4985/mydb")
@@ -233,7 +232,6 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 	// leave a gap and don't specify a high seq for vbno 4
 	highSeqs[5] = 250
 
-
 	var seqClock SequenceClock
 	var err error
 
@@ -248,6 +246,3 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 	assert.True(t, seqClock.GetSequence(5) == 250)
 
 }
-
-
-

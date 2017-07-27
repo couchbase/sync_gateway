@@ -312,11 +312,10 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 	}
 }
 
-
 type WorkerResult struct {
 	ShouldRetry bool
-	Error error
-	Value interface{}
+	Error       error
+	Value       interface{}
 }
 
 func (w WorkerResult) Unwrap() (ShouldRetry bool, Error error, Value interface{}) {
@@ -333,8 +332,8 @@ func WrapRetryWorkerTimeout(worker RetryWorker, timeoutPerInvocation time.Durati
 
 		result := WorkerResult{
 			ShouldRetry: shouldRetry,
-			Error: err,
-			Value: value,
+			Error:       err,
+			Value:       value,
 		}
 		resultChan <- result
 
@@ -361,7 +360,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 		// Wait for either the timeout worker to send it's result on the channel, or for the timeout to expire
 		select {
 
-		case workerResult := <- chWorkerResult:
+		case workerResult := <-chWorkerResult:
 			shouldRetry, err, value := workerResult.Unwrap()
 
 			if !shouldRetry {
@@ -384,7 +383,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 
 			numAttempts += 1
 
-		case <- time.After(timeoutPerInvocation):
+		case <-time.After(timeoutPerInvocation):
 			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
 		}
 

@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 
-	"log"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
