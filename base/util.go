@@ -384,7 +384,8 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 			numAttempts += 1
 
 		case <-time.After(timeoutPerInvocation):
-			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
+			Warn("RetryLoopTimeout() timeout after waiting %v for %v worker to complete", description, timeoutPerInvocation)
+			return ErrRetryTimeoutError, nil
 		}
 
 	}

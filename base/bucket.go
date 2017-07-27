@@ -144,10 +144,9 @@ func (bucket CouchbaseBucket) ViewCustom(ddoc, name string, params map[string]in
 	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
 	err, _ := RetryLoopTimeout(description, worker, sleeper, timeout)
 
-	// If it's a timeout error, return a specific error string
-	if err != nil && strings.Contains(err.Error(), "timeout") {
-		return fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing. "+
-			" Underlying error: %v", err)
+	// If it's a timeout error, return a specific error
+	if err != nil && err == ErrRetryTimeoutError {
+		return ErrViewTimeoutError
 	}
 
 	return err
@@ -181,9 +180,8 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	err, result := RetryLoopTimeout(description, worker, sleeper, timeout)
 
 	// If it's a timeout error, return a specific error string
-	if err != nil && strings.Contains(err.Error(), "timeout") {
-		return sgbucket.ViewResult{}, fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing. "+
-			" Underlying error: %v", err)
+	if err != nil && err == ErrRetryTimeoutError {
+		return sgbucket.ViewResult{}, ErrViewTimeoutError
 	}
 
 	if err != nil {
