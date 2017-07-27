@@ -344,6 +344,7 @@ func WrapRetryWorkerTimeout(worker RetryWorker, timeoutPerInvocation time.Durati
 
 }
 
+// Retry loop with a timeout.  The timeout is per individual worker invocation
 func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleeper, timeoutPerInvocation time.Duration) (error, interface{}) {
 
 	numAttempts := 1

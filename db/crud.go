@@ -1049,6 +1049,7 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
+
 	// Merge the TimedSets from the view result:
 	var result channels.TimedSet
 	for _, row := range vres.Rows {

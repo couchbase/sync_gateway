@@ -16,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 
+	"log"
+	"time"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
@@ -118,6 +121,43 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
+func (bucket CouchbaseBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
+
+	// Wrap in a worker function to leverage RetryLoopTimeout, even though it doesn't actually retry
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		err = bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
+
+		//Only retry if view Object not found as view may still be initialising
+		shouldRetry = err != nil && strings.Contains(err.Error(), "404 Object Not Found")
+
+		return shouldRetry, err, nil
+	}
+
+	// Set NumRetries to 1, since before the change to override ViewCustom, it was passing through directly
+	// to the go-couchbase ViewCustom.
+	maxNumRetries := 1
+	sleeper := CreateDoublingSleeperFunc(
+		maxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS, // Since MaxNumRetries is 0, this is ignored
+	)
+
+	// Kick off retry loop with a timeout
+	// Note: timeout support was added for https://github.com/couchbase/sync_gateway/issues/2639
+	description := fmt.Sprintf("Query View: %v", name)
+	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
+	err, _ := RetryLoopTimeout(description, worker, sleeper, timeout)
+
+	// If it's a timeout error, return a specific error string
+	if err != nil && strings.Contains(err.Error(), "timeout") {
+		return fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing. "+
+			" Underlying error: %v", err)
+	}
+
+	return err
+
+}
+
 func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	//Query view in retry loop backing off double the delay each time
@@ -138,9 +178,17 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 		bucket.spec.InitialRetrySleepTimeMS,
 	)
 
-	// Kick off retry loop
+	// Kick off retry loop with a timeout
+	// Note: timeout support was added for https://github.com/couchbase/sync_gateway/issues/2639
 	description := fmt.Sprintf("Query View: %v", name)
-	err, result := RetryLoop(description, worker, sleeper)
+	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
+	err, result := RetryLoopTimeout(description, worker, sleeper, timeout)
+
+	// If it's a timeout error, return a specific error string
+	if err != nil && strings.Contains(err.Error(), "timeout") {
+		return sgbucket.ViewResult{}, fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing. "+
+			" Underlying error: %v", err)
+	}
 
 	if err != nil {
 		return sgbucket.ViewResult{}, err
