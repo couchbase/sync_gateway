@@ -322,7 +322,7 @@ func (w WorkerResult) Unwrap() (ShouldRetry bool, Error error, Value interface{}
 	return w.ShouldRetry, w.Error, w.Value
 }
 
-func WrapRetryWorkerTimeout(worker RetryWorker, timeoutPerInvocation time.Duration) (timeoutWorker TimeoutWorker, resultChan chan WorkerResult) {
+func WrapRetryWorkerTimeout(worker RetryWorker) (timeoutWorker TimeoutWorker, resultChan chan WorkerResult) {
 
 	resultChan = make(chan WorkerResult)
 
@@ -352,7 +352,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 
 		// Wrap the retry worker into a "timeout worker" function that can be run async and will write it's
 		// result to a channel
-		timeoutWorker, chWorkerResult := WrapRetryWorkerTimeout(worker, timeoutPerInvocation)
+		timeoutWorker, chWorkerResult := WrapRetryWorkerTimeout(worker)
 
 		// Kick off the timeout worker in it's own goroutine
 		go timeoutWorker()
