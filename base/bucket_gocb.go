@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"time"
 )
 
 var gocbExpvars *expvar.Map
