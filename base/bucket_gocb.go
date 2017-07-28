@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
+	"time"
 )
 
 var gocbExpvars *expvar.Map
@@ -1741,8 +1742,7 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 	// If it's a view timeout error, return an error message specific to that.
 	if isGoCBViewTimeoutError(err) {
-		return viewResult, fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing."+
-			" Underlying error: %v", err)
+		return viewResult, ErrViewTimeoutError
 	}
 
 	// If it's any other error, return it as-is
@@ -1792,8 +1792,7 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	// If it's a view timeout error, return an error message specific to that.
 	if isGoCBViewTimeoutError(err) {
-		return fmt.Errorf("Timeout performing ViewQuery.  This could indicate that views are still reindexing."+
-			" Underlying error: %v", err)
+		return ErrViewTimeoutError
 	}
 
 	// If it's any other error, return it as-is
