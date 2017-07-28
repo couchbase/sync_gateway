@@ -648,8 +648,16 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 					base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
 					unusedSequences = append(unusedSequences, docSequence)
 				}
-				if docSequence, err = db.sequences.nextSequence(); err != nil {
-					return
+				for {
+					if docSequence, err = db.sequences.nextSequence(); err != nil {
+						return
+					}
+
+					if docSequence > doc.Sequence {
+						break
+					} else {
+						db.sequences.releaseSequence(docSequence)
+					}
 				}
 			}
 			doc.Sequence = docSequence
