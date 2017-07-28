@@ -18,6 +18,45 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+type sgErrorCode uint16
+
+const (
+	alreadyImported   = sgErrorCode(0x00)
+	importCancelled   = sgErrorCode(0x01)
+	importCasFailure  = sgErrorCode(0x02)
+	viewTimeoutError  = sgErrorCode(0x03)
+	retryTimeoutError = sgErrorCode(0x04)
+)
+
+type SGError struct {
+	code sgErrorCode
+}
+
+var (
+	ErrImportCancelled   = &SGError{importCancelled}
+	ErrAlreadyImported   = &SGError{alreadyImported}
+	ErrImportCasFailure  = &SGError{importCasFailure}
+	ErrRetryTimeoutError = &SGError{retryTimeoutError}
+	ErrViewTimeoutError  = &SGError{viewTimeoutError}
+)
+
+func (e SGError) Error() string {
+	switch e.code {
+	case alreadyImported:
+		return "Document already imported"
+	case importCancelled:
+		return "Import cancelled"
+	case importCasFailure:
+		return "CAS failure during import"
+	case retryTimeoutError:
+		return "Retry timeout error"
+	case viewTimeoutError:
+		return "Timeout performing ViewQuery - could indicate that views are still reindexing"
+	default:
+		return "Unknown error"
+	}
+}
+
 // Simple error implementation wrapping an HTTP response status.
 type HTTPError struct {
 	Status  int
@@ -38,6 +77,13 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	if err == nil {
 		return 200, "OK"
 	}
+
+	// Check for SGErrors
+	switch err {
+	case ErrViewTimeoutError:
+		return http.StatusServiceUnavailable, err.Error()
+	}
+
 	switch err := err.(type) {
 	case *HTTPError:
 		return err.Status, err.Message
@@ -60,6 +106,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case *json.SyntaxError, *json.UnmarshalTypeError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", err)
 	}
+
 	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 

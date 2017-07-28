@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 
+	"time"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
@@ -118,6 +120,39 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
+func (bucket CouchbaseBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
+
+	// RetryLoopTimeout worker function
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		err = bucket.Bucket.ViewCustom(ddoc, name, params, &vres)
+
+		//Only retry if view Object not found as view may still be initialising
+		shouldRetry = err != nil && strings.Contains(err.Error(), "404 Object Not Found")
+
+		return shouldRetry, err, nil
+	}
+
+	sleeper := CreateDoublingSleeperFunc(
+		bucket.spec.MaxNumRetries,
+		bucket.spec.InitialRetrySleepTimeMS,
+	)
+
+	// Kick off retry loop with a timeout
+	// Note: timeout support was added for https://github.com/couchbase/sync_gateway/issues/2639
+	description := fmt.Sprintf("Query View: %v", name)
+	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
+	err, _ := RetryLoopTimeout(description, worker, sleeper, timeout)
+
+	// If it's a timeout error, return a specific error
+	if err != nil && err == ErrRetryTimeoutError {
+		return ErrViewTimeoutError
+	}
+
+	return err
+
+}
+
 func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	//Query view in retry loop backing off double the delay each time
@@ -138,9 +173,16 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 		bucket.spec.InitialRetrySleepTimeMS,
 	)
 
-	// Kick off retry loop
+	// Kick off retry loop with a timeout
+	// Note: timeout support was added for https://github.com/couchbase/sync_gateway/issues/2639
 	description := fmt.Sprintf("Query View: %v", name)
-	err, result := RetryLoop(description, worker, sleeper)
+	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
+	err, result := RetryLoopTimeout(description, worker, sleeper, timeout)
+
+	// If it's a timeout error, return a specific error string
+	if err != nil && err == ErrRetryTimeoutError {
+		return sgbucket.ViewResult{}, ErrViewTimeoutError
+	}
 
 	if err != nil {
 		return sgbucket.ViewResult{}, err
