@@ -263,6 +263,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	server := "http://localhost:8091"
 	pool := "default"
 	bucketName := config.Name
+	viewQueryTimeoutMs := uint32(base.DefaultViewQueryTimeoutMs)
 
 	if config.Server != nil {
 		server = *config.Server
@@ -276,6 +277,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbName := config.Name
 	if dbName == "" {
 		dbName = bucketName
+	}
+
+	if config.ViewQueryTimeoutMs != nil {
+		viewQueryTimeoutMs = *config.ViewQueryTimeoutMs
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -310,11 +315,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
-		Server:     server,
-		PoolName:   pool,
-		BucketName: bucketName,
-		FeedType:   feedType,
-		Auth:       config,
+		Server:             server,
+		PoolName:           pool,
+		BucketName:         bucketName,
+		FeedType:           feedType,
+		Auth:               config,
+		ViewQueryTimeoutMs: int(viewQueryTimeoutMs),
 	}
 
 	// Set cache properties, if present

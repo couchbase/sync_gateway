@@ -26,8 +26,9 @@ import (
 
 func GetBucketOrPanic() Bucket {
 	spec := BucketSpec{
-		Server:     "http://localhost:8091",
-		BucketName: "bucket-1",
+		Server:             "http://localhost:8091",
+		BucketName:         "bucket-1",
+		ViewQueryTimeoutMs: DefaultViewQueryTimeoutMs,
 	}
 	bucket, err := GetCouchbaseBucketGoCB(spec)
 	if err != nil {
