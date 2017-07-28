@@ -56,7 +56,7 @@ type BucketSpec struct {
 	CouchbaseDriver                        CouchbaseDriver
 	MaxNumRetries                          int     // max number of retries before giving up
 	InitialRetrySleepTimeMS                int     // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
-	ViewQueryTimeoutSecs                   *uint32 // the view query timeout in milliseconds (default: 75000ms)
+	ViewQueryTimeoutSecs                   *uint32 // the view query timeout in seconds (default: 75s, which is the same as the gocb default)
 }
 
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {
@@ -68,7 +68,7 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 	// If the user specifies 0, then translate that to "No timeout"
 	if *b.ViewQueryTimeoutSecs == 0 {
-		return time.Hour * 24 * 7 * 365 * 10 // 10 years
+		return time.Hour * 24 * 365 // 1 year
 	}
 
 	return time.Duration(*b.ViewQueryTimeoutSecs) * time.Second
