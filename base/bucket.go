@@ -54,8 +54,25 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
-	MaxNumRetries                          int // max number of retries before giving up
-	InitialRetrySleepTimeMS                int // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	MaxNumRetries                          int     // max number of retries before giving up
+	InitialRetrySleepTimeMS                int     // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	ViewQueryTimeoutSecs                   *uint32 // the view query timeout in milliseconds (default: 75000ms)
+}
+
+func (b BucketSpec) GetViewQueryTimeout() time.Duration {
+
+	// If the user doesn't specify any timeout, default to 75s
+	if b.ViewQueryTimeoutSecs == nil {
+		return time.Second * 75
+	}
+
+	// If the user specifies 0, then translate that to "No timeout"
+	if *b.ViewQueryTimeoutSecs == 0 {
+		return time.Hour * 24 * 7 * 365 * 10 // 10 years
+	}
+
+	return time.Duration(*b.ViewQueryTimeoutSecs) * time.Second
+
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
@@ -141,8 +158,7 @@ func (bucket CouchbaseBucket) ViewCustom(ddoc, name string, params map[string]in
 	// Kick off retry loop with a timeout
 	// Note: timeout support was added for https://github.com/couchbase/sync_gateway/issues/2639
 	description := fmt.Sprintf("Query View: %v", name)
-	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
-	err, _ := RetryLoopTimeout(description, worker, sleeper, timeout)
+	err, _ := RetryLoopTimeout(description, worker, sleeper, bucket.spec.GetViewQueryTimeout())
 
 	// If it's a timeout error, return a specific error
 	if err != nil && err == ErrRetryTimeoutError {
@@ -176,8 +192,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	// Kick off retry loop with a timeout
 	// Note: timeout support was added for https://github.com/couchbase/sync_gateway/issues/2639
 	description := fmt.Sprintf("Query View: %v", name)
-	timeout := time.Second * 75 // Same timeout as gocb default view query timeout
-	err, result := RetryLoopTimeout(description, worker, sleeper, timeout)
+	err, result := RetryLoopTimeout(description, worker, sleeper, bucket.spec.GetViewQueryTimeout())
 
 	// If it's a timeout error, return a specific error string
 	if err != nil && err == ErrRetryTimeoutError {
