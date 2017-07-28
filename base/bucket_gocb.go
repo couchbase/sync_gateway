@@ -142,6 +142,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		make(chan struct{}, MaxConcurrentViewOps),
 	}
 
+	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
+
 	return bucket, err
 
 }
