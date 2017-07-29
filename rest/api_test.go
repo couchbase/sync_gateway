@@ -34,6 +34,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+const kTestURL = "walrus:"
+
 func init() {
 	base.LogNoColor()
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
@@ -961,7 +963,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := "http://localhost:8091"
+	server := kTestURL
 	bucketName := rt1._bucket.GetName()
 
 	_, err := rt2._sc.AddDatabaseFromConfig(&DbConfig{
@@ -1040,7 +1042,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := "http://localhost:8091"
+	server := kTestURL
 	bucketName := rt1._bucket.GetName()
 
 	_, err := rt2._sc.AddDatabaseFromConfig(&DbConfig{
@@ -1127,7 +1129,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := "http://localhost:8091"
+	server := kTestURL
 	bucketName := rt1._bucket.GetName()
 
 	_, err := rt2._sc.AddDatabaseFromConfig(&DbConfig{
