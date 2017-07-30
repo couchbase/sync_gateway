@@ -534,6 +534,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			if err != nil {
 				return nil, nil, err
 			}
+			parent = docHistory[i]
 		}
 
 		// Process the attachments, replacing bodies with digests.
