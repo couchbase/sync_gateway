@@ -2603,7 +2603,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 
 
 
-// Attempts to repro panic seen in https://github.com/couchbase/sync_gateway/issues/2528
+// Reproduces panic seen in https://github.com/couchbase/sync_gateway/issues/2528
 func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	var rt RestTester
@@ -2696,6 +2696,12 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	if bulkGetResponse.Code != 200 {
 		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
 	}
+
+	bulkGetResponse.DumpBody()
+
+	// Expect an error in the response body
+	respBodyStr := string(bulkGetResponse.Body.Bytes())
+	assertTrue(t, strings.Contains(respBodyStr, "error"), "Expected error in response body")
 
 }
 
