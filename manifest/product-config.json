@@ -5,7 +5,7 @@
             "release": "default",
             "release_name": "Couchbase Sync Gateway",
             "production": true,
-            "interval": 60,
+            "interval": 30,
             "start_build": 1
         },
         "manifest/1.4.0.xml": {
