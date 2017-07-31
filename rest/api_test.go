@@ -2602,29 +2602,6 @@ func TestBulkGetRevPruning(t *testing.T) {
 }
 
 
-func failingTestBulkGetBadAttachment(t *testing.T) {
-
-	var rt RestTester
-	var body db.Body
-
-	// Do a write
-	response := rt.SendRequest("PUT", "/db/doc1", `{"_attachments": {"detail": { "revpos": 7, "stub": true }}}`)
-
-	assertStatus(t, response, 201)
-	json.Unmarshal(response.Body.Bytes(), &body)
-	revId := body["rev"]
-
-	// Get latest rev id
-	response = rt.SendRequest("GET", "/db/doc1", "")
-	json.Unmarshal(response.Body.Bytes(), &body)
-	revId = body["_rev"]
-
-	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "doc1", "rev": "%v"}]}`, revId)
-	bulkGetResponse := rt.SendRequest("POST", "/db/_bulk_get?revs=true&revs_limit=2", bulkGetDocs)
-	if bulkGetResponse.Code != 200 {
-		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
-	}
-}
 
 // Attempts to repro panic seen in https://github.com/couchbase/sync_gateway/issues/2528
 func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
