@@ -2626,6 +2626,103 @@ func failingTestBulkGetBadAttachment(t *testing.T) {
 	}
 }
 
+// Attempts to repro panic seen in https://github.com/couchbase/sync_gateway/issues/2528
+func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
+
+	var rt RestTester
+	var body db.Body
+
+	key := "doc"
+	attachmentName := "attach1"
+
+	resource := fmt.Sprintf("/db/%v", key)
+	response := rt.SendRequest("PUT", resource, `{"prop":true}`)
+	assertStatus(t, response, 201)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revid := body["rev"].(string)
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// attach to existing document with correct rev (should succeed)
+	response = rt.SendRequestWithHeaders(
+		"PUT",
+		fmt.Sprintf("%v/%v?rev=%v", resource, attachmentName, revid),
+		attachmentBody,
+		reqHeaders,
+	)
+	assertStatus(t, response, 201)
+
+	// Get the couchbase doc
+	couchbaseDoc := db.Body{}
+	bucket := rt.Bucket()
+	_, err := bucket.Get(key, &couchbaseDoc)
+	assertNoError(t, err, "Error getting couchbaseDoc")
+	log.Printf("couchbase doc: %+v", couchbaseDoc)
+
+
+	// Doc at this point
+	/*
+	{
+	  "_attachments": {
+		"attach1": {
+		  "content_type": "content/type",
+		  "digest": "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+		  "length": 30,
+		  "revpos": 2,
+		  "stub": true
+		}
+	  },
+	  "prop": true
+	}
+	 */
+
+
+	// Modify the doc directly in the bucket to delete the digest field
+	attachments := db.BodyAttachments(couchbaseDoc)
+	attach1 := attachments[attachmentName].(map[string]interface{})
+	delete(attach1, "digest")
+	delete(attach1, "content_type")
+	delete(attach1, "length")
+	attachments[attachmentName] = attach1
+	log.Printf("couchbase doc after: %+v", couchbaseDoc)
+
+
+	// Doc at this point
+	/*
+	{
+	  "_attachments": {
+		"attach1": {
+		  "revpos": 2,
+		  "stub": true
+		}
+	  },
+	  "prop": true
+	}
+	 */
+
+	// Put the doc back into couchbase
+	err = bucket.Set(key, 0, couchbaseDoc)
+	assertNoError(t, err, "Error putting couchbaseDoc")
+
+	// Get latest rev id
+	response = rt.SendRequest("GET", resource, "")
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId := body["_rev"]
+
+	// Do a bulk_get to get the doc (expected to panic at this point)
+	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}]}`, key, revId)
+	bulkGetResponse := rt.SendRequest("POST", "/db/_bulk_get?revs=true&attachments=true&revs_limit=2", bulkGetDocs)
+	if bulkGetResponse.Code != 200 {
+		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
+	}
+
+}
+
+
 // TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
 // in walrus).
 func TestDocExpiry(t *testing.T) {
