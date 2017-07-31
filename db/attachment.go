@@ -146,11 +146,19 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 func (db *Database) loadBodyAttachments(body Body, minRevpos int) (Body, error) {
 
 	body = body.ImmutableAttachmentsCopy()
-	for _, value := range BodyAttachments(body) {
+	for attachmentName, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
-			key := AttachmentKey(meta["digest"].(string))
+			digest, ok := meta["digest"]
+			if !ok {
+				return nil, fmt.Errorf("Unable to load attachment with name: %v and revpos: %v due to missing digest field", attachmentName, revpos)
+			}
+			digestStr, ok := digest.(string)
+			if !ok {
+				return nil, fmt.Errorf("Unable to load attachment with name: %v and revpos: %v due to unexpected digest field: %v", attachmentName, revpos, digest)
+			}
+			key := AttachmentKey(digestStr)
 			data, err := db.GetAttachment(key)
 			if err != nil {
 				return nil, err

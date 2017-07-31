@@ -2701,7 +2701,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Expect an error in the response body
 	respBodyStr := string(bulkGetResponse.Body.Bytes())
-	assertTrue(t, strings.Contains(respBodyStr, "error"), "Expected error in response body")
+	assertTrue(t, strings.Contains(respBodyStr, "error"), fmt.Sprintf("Expected error in response body, got: %v", respBodyStr))
 
 }
 
