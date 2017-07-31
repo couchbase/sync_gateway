@@ -1,4 +1,7 @@
 
+# Fail if any commands return non-zero exit code
+set -e
+
 ## Go Tests
 echo "Testing code with 'go test' ..."
 
