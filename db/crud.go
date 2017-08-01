@@ -252,7 +252,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 				minRevpos++
 			}
 		}
-		body, err = db.loadBodyAttachments(body, minRevpos)
+		body, err = db.loadBodyAttachments(body, minRevpos, docid)
 		if err != nil {
 			return nil, err
 		}
