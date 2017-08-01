@@ -2618,15 +2618,15 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// short-circuits Sync Gateway and directly updates the bucket.
 	db.KDefaultRevisionCacheCapacity = 0
 	
-	key := "doc"
+	docIdDoc1 := "doc"
 	attachmentName := "attach1"
 
 	// Add a doc
-	resource := fmt.Sprintf("/db/%v", key)
+	resource := fmt.Sprintf("/db/%v", docIdDoc1)
 	response := rt.SendRequest("PUT", resource, `{"prop":true}`)
 	assertStatus(t, response, 201)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	revid := body["rev"].(string)
+	revidDoc1 := body["rev"].(string)
 
 	// Add another doc
 	docIdDoc2 := "doc2"
@@ -2642,7 +2642,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	}
 	response = rt.SendRequestWithHeaders(
 		"PUT",
-		fmt.Sprintf("%v/%v?rev=%v", resource, attachmentName, revid),
+		fmt.Sprintf("%v/%v?rev=%v", resource, attachmentName, revidDoc1),
 		attachmentBody,
 		reqHeaders,
 	)
@@ -2651,7 +2651,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Get the couchbase doc
 	couchbaseDoc := db.Body{}
 	bucket := rt.Bucket()
-	_, err := bucket.Get(key, &couchbaseDoc)
+	_, err := bucket.Get(docIdDoc1, &couchbaseDoc)
 	assertNoError(t, err, "Error getting couchbaseDoc")
 	log.Printf("couchbase doc: %+v", couchbaseDoc)
 
@@ -2697,7 +2697,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	 */
 
 	// Put the doc back into couchbase
-	err = bucket.Set(key, 0, couchbaseDoc)
+	err = bucket.Set(docIdDoc1, 0, couchbaseDoc)
 	assertNoError(t, err, "Error putting couchbaseDoc")
 
 	// Get latest rev id
@@ -2706,7 +2706,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	revId := body["_rev"]
 
 	// Do a bulk_get to get the doc -- this was causing a panic prior to the fix for #2528
-	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, key, revId, docIdDoc2, revidDoc2)
+	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, docIdDoc1, revId, docIdDoc2, revidDoc2)
 	bulkGetResponse := rt.SendRequest("POST", "/db/_bulk_get?revs=true&attachments=true&revs_limit=2", bulkGetDocs)
 	if bulkGetResponse.Code != 200 {
 		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
@@ -2714,18 +2714,44 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	bulkGetResponse.DumpBody()
 
+	// Parse multipart/mixed docs and create reader
 	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
 	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
 	assert.Equals(t, contentType, "multipart/mixed")
-
 	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
-	// multipartBody, errReadMultipart := db.ReadMultipartDocument(reader)
-	// assertNoError(t, errReadMultipart, "Could not read multipart doc")
 
-	sawKey := false
+	// Make sure we see both docs
+	sawDoc1 := false
 	sawDoc2 := false
 
+	// Iterate over multipart parts and make assertions on each part
+	// Should get the following docs in their own parts:
+	/*
+	{
+	   "error":"500",
+	   "id":"doc",
+	   "reason":"Internal error: Unable to load attachment for doc: doc with name: attach1 and revpos: 2 due to missing digest field",
+	   "rev":"2-d501cf345b2e906547fe27dbbedf825b",
+	   "status":500
+	}
+
+		and:
+
+	{
+	   "_id":"doc2",
+	   "_rev":"1-45ca73d819d5b1c9b8eea95290e79004",
+	   "_revisions":{
+		  "ids":[
+			 "45ca73d819d5b1c9b8eea95290e79004"
+		  ],
+		  "start":1
+	   },
+	   "prop":true
+	}
+	 */
 	for {
+
+		// Get the next part.  Break out of the loop if we hit EOF
 		part, err := reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
@@ -2743,30 +2769,6 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		err = json.Unmarshal(partBytes, &partJson)
 		assertNoError(t, err, "Unexpected error")
 
-		// We should get the following docs in their own parts:
-		/*
-		{
-		   "error":"500",
-		   "id":"doc",
-		   "reason":"Internal error: Unable to load attachment for doc: doc with name: attach1 and revpos: 2 due to missing digest field",
-		   "rev":"2-d501cf345b2e906547fe27dbbedf825b",
-		   "status":500
-		}
-
-	    	and:
-
-		{
-		   "_id":"doc2",
-		   "_rev":"1-45ca73d819d5b1c9b8eea95290e79004",
-		   "_revisions":{
-			  "ids":[
-				 "45ca73d819d5b1c9b8eea95290e79004"
-			  ],
-			  "start":1
-		   },
-		   "prop":true
-		}
-		 */
 
 		// Assert expectations for the doc with attachment errors
 		rawId, ok := partJson["id"]
@@ -2774,8 +2776,8 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 			// expect an error
 			_, hasErr := partJson["error"]
 			assertTrue(t, hasErr, "Expected error field for this doc")
-			assert.Equals(t, key, rawId)
-			sawKey = true
+			assert.Equals(t, docIdDoc1, rawId)
+			sawDoc1 = true
 
 		}
 
@@ -2788,16 +2790,10 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 			sawDoc2 = true
 		}
 
-
-
-
 	}
 
-
 	assertTrue(t, sawDoc2, "Did not see doc 2")
-	assertTrue(t, sawKey, "Did not see doc 1")
-
-
+	assertTrue(t, sawDoc1, "Did not see doc 1")
 
 }
 
