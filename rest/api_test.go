@@ -2617,19 +2617,25 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	key := "doc"
 	attachmentName := "attach1"
 
+	// Add a doc
 	resource := fmt.Sprintf("/db/%v", key)
 	response := rt.SendRequest("PUT", resource, `{"prop":true}`)
 	assertStatus(t, response, 201)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revid := body["rev"].(string)
 
+	// Add another doc
+	docIdDoc2 := "doc2"
+	responseDoc2 := rt.SendRequest("PUT", fmt.Sprintf("/db/%v", docIdDoc2), `{"prop":true}`)
+	assertStatus(t, responseDoc2, 201)
+	revidDoc2 := body["rev"].(string)
+
+	// attach to existing document with correct rev (should succeed)
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
-
-	// attach to existing document with correct rev (should succeed)
 	response = rt.SendRequestWithHeaders(
 		"PUT",
 		fmt.Sprintf("%v/%v?rev=%v", resource, attachmentName, revid),
@@ -2695,8 +2701,8 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revId := body["_rev"]
 
-	// Do a bulk_get to get the doc (expected to panic at this point)
-	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}]}`, key, revId)
+	// Do a bulk_get to get the doc -- this was causing a panic prior to the fix for #2528
+	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, key, revId, docIdDoc2, revidDoc2)
 	bulkGetResponse := rt.SendRequest("POST", "/db/_bulk_get?revs=true&attachments=true&revs_limit=2", bulkGetDocs)
 	if bulkGetResponse.Code != 200 {
 		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
