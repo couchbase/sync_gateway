@@ -2609,6 +2609,10 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	var rt RestTester
 	var body db.Body
 
+	// Disable rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
+	// rather than loading it from the (stale) rev cache.  Required when testing against a walrus bucket.
+	db.KDefaultRevisionCacheCapacity = 0
+	
 	key := "doc"
 	attachmentName := "attach1"
 

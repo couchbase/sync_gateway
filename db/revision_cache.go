@@ -8,7 +8,7 @@ import (
 )
 
 // Number of recently-accessed doc revisions to cache in RAM
-const KDefaultRevisionCacheCapacity = 5000
+var KDefaultRevisionCacheCapacity uint32 = 5000
 
 // An LRU cache of document revision bodies, together with their channel access.
 type RevisionCache struct {
@@ -35,7 +35,7 @@ type revCacheValue struct {
 func NewRevisionCache(capacity int, loaderFunc RevisionCacheLoaderFunc) *RevisionCache {
 
 	if capacity == 0 {
-		capacity = KDefaultRevisionCacheCapacity
+		capacity = int(KDefaultRevisionCacheCapacity)
 	}
 
 	return &RevisionCache{
