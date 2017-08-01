@@ -227,7 +227,7 @@ case $OS in
                 ;;
         esac
         ;;
-    RedHat|CentOS)
+    RedHat*|CentOS)
         case $OS_MAJOR_VERSION in
             5) 
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
