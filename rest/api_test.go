@@ -30,6 +30,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"mime"
+	"mime/multipart"
+	"io"
+	"io/ioutil"
 )
 
 func init() {
@@ -2710,9 +2714,90 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	bulkGetResponse.DumpBody()
 
-	// Expect an error in the response body
-	respBodyStr := string(bulkGetResponse.Body.Bytes())
-	assertTrue(t, strings.Contains(respBodyStr, "error"), fmt.Sprintf("Expected error in response body, got: %v", respBodyStr))
+	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
+	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
+	assert.Equals(t, contentType, "multipart/mixed")
+
+	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
+	// multipartBody, errReadMultipart := db.ReadMultipartDocument(reader)
+	// assertNoError(t, errReadMultipart, "Could not read multipart doc")
+
+	sawKey := false
+	sawDoc2 := false
+
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+		}
+
+		partBytes, err := ioutil.ReadAll(part)
+		assertNoError(t, err, "Unexpected error")
+
+		log.Printf("multipart part: %+v", string(partBytes))
+
+		partJson := map[string]interface{}{}
+		err = json.Unmarshal(partBytes, &partJson)
+		assertNoError(t, err, "Unexpected error")
+
+		// We should get the following docs in their own parts:
+		/*
+		{
+		   "error":"500",
+		   "id":"doc",
+		   "reason":"Internal error: Unable to load attachment for doc: doc with name: attach1 and revpos: 2 due to missing digest field",
+		   "rev":"2-d501cf345b2e906547fe27dbbedf825b",
+		   "status":500
+		}
+
+	    	and:
+
+		{
+		   "_id":"doc2",
+		   "_rev":"1-45ca73d819d5b1c9b8eea95290e79004",
+		   "_revisions":{
+			  "ids":[
+				 "45ca73d819d5b1c9b8eea95290e79004"
+			  ],
+			  "start":1
+		   },
+		   "prop":true
+		}
+		 */
+
+		// Assert expectations for the doc with attachment errors
+		rawId, ok := partJson["id"]
+		if ok {
+			// expect an error
+			_, hasErr := partJson["error"]
+			assertTrue(t, hasErr, "Expected error field for this doc")
+			assert.Equals(t, key, rawId)
+			sawKey = true
+
+		}
+
+		// Assert expectations for the doc with no attachment errors
+		rawId, ok = partJson["_id"]
+		if ok {
+			_, hasErr := partJson["error"]
+			assertTrue(t, !hasErr, "Did not expect error field for this doc")
+			assert.Equals(t, docIdDoc2, rawId)
+			sawDoc2 = true
+		}
+
+
+
+
+	}
+
+
+	assertTrue(t, sawDoc2, "Did not see doc 2")
+	assertTrue(t, sawKey, "Did not see doc 1")
+
+
 
 }
 
