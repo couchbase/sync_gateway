@@ -25,7 +25,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"log"
+
+	"github.com/couchbaselabs/gocbconnstr"
 )
 
 const (
@@ -509,65 +510,33 @@ func BooleanPointer(booleanValue bool) *bool {
 }
 
 // Convert a Couchbase URI (eg, couchbase://host1,host2) to an HTTP URL (eg, http://host1:8091)
-func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string, err error) {
+func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 
-	resultUrl, errParseResult := url.Parse("http://localhost")
-	if errParseResult != nil {
-		return "", errParseResult
-	}
-	log.Printf("resultUrl: %+v", resultUrl)
-
-
-	parsedUrl, errParse := url.Parse(couchbaseUri)
+	connSpec, errParse := gocbconnstr.Parse(couchbaseUri)
 	if errParse != nil {
-		return "", errParse
+		return httpUrls, errParse
 	}
 
-	log.Printf("parsedUrl: %+v", parsedUrl)
-	log.Printf("scheme: %v", parsedUrl.Scheme)
-	log.Printf("Host: %v", parsedUrl.Host)
+	for _, address := range connSpec.Addresses {
 
-	firstHost := ExtractFirstHostFromList(parsedUrl.Host)
-	firstHost = AppendDefaultPortIfMissing(firstHost)
+		translatedScheme := "http"
+		switch connSpec.Scheme {
+		case "couchbases":
+			translatedScheme = "https"
+		case "https":
+			translatedScheme = "https"
+		}
 
-	// parsedUrl.Scheme = "https"
+		port := 8091
+		if address.Port > 0 {
+			port = address.Port
+		}
 
-	resultUrl.Host = firstHost
+		httpUrl := fmt.Sprintf("%s://%s:%d", translatedScheme, address.Host, port)
+		httpUrls = append(httpUrls, httpUrl)
 
-	return resultUrl.String(), nil
-
-}
-
-// Given "host1,host2,host3" return "host1"
-func ExtractFirstHostFromList(host string) string {
-
-	if strings.TrimSpace(host) == "" {
-		return ""
 	}
 
-	hosts:= strings.Split(host, ",")
-
-	switch len(hosts) {
-	case 0:
-		return host
-	default:
-		return hosts[0]
-	}
-
-}
-
-// Given "host1" return "host1:8091"
-func AppendDefaultPortIfMissing(host string) string {
-
-	if strings.TrimSpace(host) == "" {
-		return ""
-	}
-
-	if strings.Contains(host, ":") {
-		// already has a port
-		return host
-	}
-
-	return fmt.Sprintf("%s:8091", host)
+	return httpUrls, nil
 
 }
