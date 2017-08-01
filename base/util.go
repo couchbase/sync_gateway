@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"log"
 )
 
 const (
@@ -505,4 +506,68 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 
 func BooleanPointer(booleanValue bool) *bool {
 	return &booleanValue
+}
+
+// Convert a Couchbase URI (eg, couchbase://host1,host2) to an HTTP URL (eg, http://host1:8091)
+func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string, err error) {
+
+	resultUrl, errParseResult := url.Parse("http://localhost")
+	if errParseResult != nil {
+		return "", errParseResult
+	}
+	log.Printf("resultUrl: %+v", resultUrl)
+
+
+	parsedUrl, errParse := url.Parse(couchbaseUri)
+	if errParse != nil {
+		return "", errParse
+	}
+
+	log.Printf("parsedUrl: %+v", parsedUrl)
+	log.Printf("scheme: %v", parsedUrl.Scheme)
+	log.Printf("Host: %v", parsedUrl.Host)
+
+	firstHost := ExtractFirstHostFromList(parsedUrl.Host)
+	firstHost = AppendDefaultPortIfMissing(firstHost)
+
+	// parsedUrl.Scheme = "https"
+
+	resultUrl.Host = firstHost
+
+	return resultUrl.String(), nil
+
+}
+
+// Given "host1,host2,host3" return "host1"
+func ExtractFirstHostFromList(host string) string {
+
+	if strings.TrimSpace(host) == "" {
+		return ""
+	}
+
+	hosts:= strings.Split(host, ",")
+
+	switch len(hosts) {
+	case 0:
+		return host
+	default:
+		return hosts[0]
+	}
+
+}
+
+// Given "host1" return "host1:8091"
+func AppendDefaultPortIfMissing(host string) string {
+
+	if strings.TrimSpace(host) == "" {
+		return ""
+	}
+
+	if strings.Contains(host, ":") {
+		// already has a port
+		return host
+	}
+
+	return fmt.Sprintf("%s:8091", host)
+
 }

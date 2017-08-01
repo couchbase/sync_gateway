@@ -176,7 +176,6 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 	// leave a gap and don't specify a high seq for vbno 4
 	highSeqs[5] = 250
 
-
 	var seqClock SequenceClock
 	var err error
 
@@ -192,5 +191,102 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 
 }
 
+func TestCouchbaseURIToHttpURL(t *testing.T) {
 
+	inputsAndExpected := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "couchbase://host1",
+			expected: "http://host1:8091",
+		},
+		{
+			input:    "couchbases://host1",
+			expected: "https://host1:8091",
+		},
+		{
+			input:    "couchbase://host1,host2",
+			expected: "http://host1:8091",
+		},
+		{
+			input:    "couchbase://host1:8091,host2",
+			expected: "http://host1:8091",
+		},
+		{
+			input:    "couchbase://host1:18091,host2:8091",
+			expected: "http://host1:18091",
+		},
+	}
+
+	for _, inputAndExpected := range inputsAndExpected {
+		actual, err := CouchbaseURIToHttpURL(inputAndExpected.input)
+		assertNoError(t, err, "Unexpected error")
+		assert.Equals(t, actual, inputAndExpected.expected)
+	}
+
+}
+
+func TestExtractFirstHostFromList(t *testing.T) {
+
+	inputsAndExpected := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "host1,host2",
+			expected: "host1",
+		},
+		{
+			input:    "host1",
+			expected: "host1",
+		},
+		{
+			input:    "",
+			expected: "",
+		},
+		{
+			input:    "    ",
+			expected: "",
+		},
+		{
+			input:    "host1:8091,host2",
+			expected: "host1:8091",
+		},
+	}
+
+	for _, inputAndExpected := range inputsAndExpected {
+		actual := ExtractFirstHostFromList(inputAndExpected.input)
+		assert.Equals(t, actual, inputAndExpected.expected)
+	}
+
+}
+
+
+func TestAppendDefaultPortIfMissing(t *testing.T) {
+
+	inputsAndExpected := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "host1",
+			expected: "host1:8091",
+		},
+		{
+			input:    "host1:8091",
+			expected: "host1:8091",
+		},
+		{
+			input:    "host1:18091",
+			expected: "host1:18091",
+		},
+	}
+
+	for _, inputAndExpected := range inputsAndExpected {
+		actual := AppendDefaultPortIfMissing(inputAndExpected.input)
+		assert.Equals(t, actual, inputAndExpected.expected)
+	}
+
+}
 
