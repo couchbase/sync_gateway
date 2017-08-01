@@ -220,9 +220,29 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 			},
 		},
 		{
+			input: "couchbase://host1:8091,host2,",  // trailing comma
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
 			input: "couchbase://host1:18091,host2:8091",
 			expected: []string{
 				"http://host1:18091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "http://host1:8091",
+			expected: []string{
+				"http://host1:8091",
+			},
+		},
+		{
+			input: "http://host1,host2:8091",
+			expected: []string{
+				"http://host1:8091",
 				"http://host2:8091",
 			},
 		},
