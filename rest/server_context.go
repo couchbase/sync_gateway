@@ -425,9 +425,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			BucketName:      indexBucketName,
 			CouchbaseDriver: couchbaseDriverIndexBucket,
 		}
-		if config.ChannelIndex.Username != "" || config.ChannelIndex.Password != "" {
-			indexSpec.Auth = config.ChannelIndex
-		}
+
+		indexSpec.Auth = config.ChannelIndex
 
 		if config.ChannelIndex.NumShards != 0 {
 			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
