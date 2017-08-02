@@ -22,10 +22,10 @@ import (
 type sgErrorCode uint16
 
 const (
-	alreadyImported  = sgErrorCode(0x00)
-	importCancelled  = sgErrorCode(0x01)
-	importCasFailure = sgErrorCode(0x02)
-
+	alreadyImported       = sgErrorCode(0x00)
+	importCancelled       = sgErrorCode(0x01)
+	importCasFailure      = sgErrorCode(0x02)
+	viewTimeoutError      = sgErrorCode(0x03)
 	revTreeAddRevFailure  = sgErrorCode(0x04)
 	importCancelledFilter = sgErrorCode(0x05)
 )
@@ -35,10 +35,11 @@ type SGError struct {
 }
 
 var (
-	ErrRevTreeAddRevFailure  = &SGError{revTreeAddRevFailure}
-	ErrImportCancelled       = &SGError{importCancelled}
-	ErrAlreadyImported       = &SGError{alreadyImported}
-	ErrImportCasFailure      = &SGError{importCasFailure}
+	ErrRevTreeAddRevFailure = &SGError{revTreeAddRevFailure}
+	ErrImportCancelled      = &SGError{importCancelled}
+	ErrAlreadyImported      = &SGError{alreadyImported}
+	ErrImportCasFailure     = &SGError{importCasFailure}
+	ErrViewTimeoutError     = &SGError{viewTimeoutError}
 	ErrImportCancelledFilter = &SGError{importCancelledFilter}
 )
 
@@ -54,6 +55,8 @@ func (e SGError) Error() string {
 		return "CAS failure during import"
 	case revTreeAddRevFailure:
 		return "Failure adding Rev to RevTree"
+	case viewTimeoutError:
+		return "Timeout performing ViewQuery - could indicate that views are still reindexing"
 	default:
 		return "Unknown error"
 	}
@@ -78,6 +81,12 @@ func HTTPErrorf(status int, format string, args ...interface{}) *HTTPError {
 func ErrorAsHTTPStatus(err error) (int, string) {
 	if err == nil {
 		return 200, "OK"
+	}
+
+	// Check for SGErrors
+	switch err {
+	case ErrViewTimeoutError:
+		return http.StatusServiceUnavailable, err.Error()
 	}
 
 	switch err {
