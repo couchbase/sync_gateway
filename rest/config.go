@@ -118,6 +118,7 @@ type DbConfig struct {
 	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
 	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
 	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
+	ImportFilter       *string                        `json:"import_filter,omitempty"`        // Filter function (import)
 	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
 	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
 	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version

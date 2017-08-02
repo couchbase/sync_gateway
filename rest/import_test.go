@@ -189,8 +189,6 @@ func TestXattrResurrectViaSG(t *testing.T) {
 		function(doc, oldDoc) { channel(doc.channels) }`}
 	defer rt.Close()
 
-	log.Printf("Starting get bucket....")
-
 	rt.Bucket()
 
 	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
@@ -235,10 +233,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 		function(doc, oldDoc) { channel(doc.channels) }`}
 	defer rt.Close()
 
-	log.Printf("Starting get bucket....")
-
 	bucket := rt.Bucket()
-	log.Printf("Got bucket....'")
 
 	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
 
@@ -298,8 +293,6 @@ func TestXattrDoubleDelete(t *testing.T) {
 		function(doc, oldDoc) { channel(doc.channels) }`}
 	defer rt.Close()
 
-	log.Printf("Starting get bucket....")
-
 	bucket := rt.Bucket()
 
 	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
@@ -343,8 +336,6 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	rt := RestTester{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
 	defer rt.Close()
-
-	log.Printf("Starting get bucket....")
 
 	bucket := rt.Bucket()
 
@@ -404,4 +395,112 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	}
 	assert.Equals(t, len(results), 2)
 	assertTrue(t, strings.HasPrefix(results[0].RevID, "2-") && strings.HasPrefix(results[1].RevID, "2-"), "Unexpected revisions in view results post-delete")
+}
+
+func TestXattrImportFilterOptIn(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	importFilter := `function (doc) { return doc.type == "mobile"}`
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			ImportFilter: &importFilter,
+		},
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create two docs via the SDK, one matching filter
+	mobileKey := "TestImportFilterValid"
+	mobileBody := make(map[string]interface{})
+	mobileBody["type"] = "mobile"
+	mobileBody["channels"] = "ABC"
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	nonMobileKey := "TestImportFilterInvalid"
+	nonMobileBody := make(map[string]interface{})
+	nonMobileBody["type"] = "non-mobile"
+	nonMobileBody["channels"] = "ABC"
+	_, err = bucket.Add(nonMobileKey, 0, nonMobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	assertDocProperty(t, response, "type", "mobile")
+
+	response = rt.SendAdminRequest("GET", "/db/"+nonMobileKey, "")
+	assert.Equals(t, response.Code, 404)
+	assertDocProperty(t, response, "reason", "Not imported")
+
+	// PUT to existing document that hasn't been imported.
+	sgWriteBody := `{"type":"whatever I want - I'm writing through SG",
+	                 "channels": "ABC"}`
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", nonMobileKey), sgWriteBody)
+	assert.Equals(t, response.Code, 201)
+	assertDocProperty(t, response, "id", "TestImportFilterInvalid")
+	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
+}
+
+// Write through SG, non-imported SDK write, subsequent SG write
+func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	importFilter := `function (doc) { return doc.type == "mobile"}`
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			ImportFilter: &importFilter,
+		},
+	}
+	defer rt.Close()
+
+	log.Printf("Starting get bucket....")
+
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via SG
+	sgWriteKey := "TestImportFilterSGWrite"
+	sgWriteBody := `{"type":"whatever I want - I'm writing through SG",
+	                 "channels": "ABC"}`
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", sgWriteKey), sgWriteBody)
+	assert.Equals(t, response.Code, 201)
+	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
+
+	// 2. Update via SDK, not matching import filter.  Will not be available via SG
+	nonMobileBody := make(map[string]interface{})
+	nonMobileBody["type"] = "non-mobile"
+	nonMobileBody["channels"] = "ABC"
+	err := bucket.Set(sgWriteKey, 0, nonMobileBody)
+	assertNoError(t, err, "Error updating SG doc from SDK ")
+
+	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
+
+	response = rt.SendAdminRequest("GET", "/db/"+sgWriteKey, "")
+	assert.Equals(t, response.Code, 404)
+	assertDocProperty(t, response, "reason", "Not imported")
+
+	// 3. Rewrite through SG - should treat as new insert
+	sgWriteBody = `{"type":"SG client rewrite",
+	                 "channels": "NBC"}`
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", sgWriteKey), sgWriteBody)
+	assert.Equals(t, response.Code, 201)
+	// Validate rev is 1, new rev id
+	assertDocProperty(t, response, "rev", "1-b9cdd5d413b572476799930f065657a6")
+}
+
+func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
+	var responseBody map[string]interface{}
+	err := json.Unmarshal(getDocResponse.Body.Bytes(), &responseBody)
+	assertNoError(t, err, "Error unmarshalling document response")
+	value, ok := responseBody[propertyName]
+	assertTrue(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
+	assert.Equals(t, value, expectedPropertyValue)
 }

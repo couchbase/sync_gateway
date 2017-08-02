@@ -306,6 +306,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
 	}
 
+	importOptions := db.ImportOptions{}
+	if config.ImportFilter != nil {
+		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
+	}
+
 	feedType := strings.ToLower(config.FeedType)
 
 	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
@@ -499,6 +504,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		TrackDocs:             trackDocs,
 		OIDCOptions:           config.OIDCConfig,
 		DBOnlineCallback:      dbOnlineCallback,
+		ImportOptions:         importOptions,
 	}
 
 	// Create the DB Context

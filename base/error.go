@@ -25,7 +25,9 @@ const (
 	alreadyImported  = sgErrorCode(0x00)
 	importCancelled  = sgErrorCode(0x01)
 	importCasFailure = sgErrorCode(0x02)
-	revTreeAddRevFailure = sgErrorCode(0x04)
+
+	revTreeAddRevFailure  = sgErrorCode(0x04)
+	importCancelledFilter = sgErrorCode(0x05)
 )
 
 type SGError struct {
@@ -33,10 +35,11 @@ type SGError struct {
 }
 
 var (
-	ErrRevTreeAddRevFailure = &SGError{revTreeAddRevFailure}
-	ErrImportCancelled  = &SGError{importCancelled}
-	ErrAlreadyImported  = &SGError{alreadyImported}
-	ErrImportCasFailure = &SGError{importCasFailure}
+	ErrRevTreeAddRevFailure  = &SGError{revTreeAddRevFailure}
+	ErrImportCancelled       = &SGError{importCancelled}
+	ErrAlreadyImported       = &SGError{alreadyImported}
+	ErrImportCasFailure      = &SGError{importCasFailure}
+	ErrImportCancelledFilter = &SGError{importCancelledFilter}
 )
 
 func (e SGError) Error() string {
@@ -45,6 +48,8 @@ func (e SGError) Error() string {
 		return "Document already imported"
 	case importCancelled:
 		return "Import cancelled"
+	case importCancelledFilter:
+		return "Import cancelled based on import filter"
 	case importCasFailure:
 		return "CAS failure during import"
 	case revTreeAddRevFailure:
