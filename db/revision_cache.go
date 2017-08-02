@@ -8,13 +8,13 @@ import (
 )
 
 // Number of recently-accessed doc revisions to cache in RAM
-const KDefaultRevisionCacheCapacity = 5000
+var KDefaultRevisionCacheCapacity uint32 = 5000
 
 // An LRU cache of document revision bodies, together with their channel access.
 type RevisionCache struct {
 	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
-	capacity   int                        // Max number of revisions to cache
+	capacity   uint32                     // Max number of revisions to cache
 	loaderFunc RevisionCacheLoaderFunc
 	lock       sync.Mutex // For thread-safety
 }
@@ -32,7 +32,7 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewRevisionCache(capacity int, loaderFunc RevisionCacheLoaderFunc) *RevisionCache {
+func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc) *RevisionCache {
 
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
@@ -84,7 +84,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	} else if create {
 		value = &revCacheValue{key: key}
 		rc.cache[key] = rc.lruList.PushFront(value)
-		for len(rc.cache) > rc.capacity {
+		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
 		}
 	}

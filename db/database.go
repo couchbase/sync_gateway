@@ -173,7 +173,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		autoImport: autoImport,
 		Options:    options,
 	}
-	context.revisionCache = NewRevisionCache(int(options.RevisionCacheCapacity), context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(options.RevisionCacheCapacity, context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
