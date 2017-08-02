@@ -120,8 +120,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 // being included in data.  If not present in either xattr or document body, returns nil but no error.
 // Returns the raw body, in case it's needed for import.
 
-// TODO: Use pool of unmarshal workers to manage throughput spikes
-
+// TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
 func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, rawBody []byte, err error) {
 
 	var body []byte

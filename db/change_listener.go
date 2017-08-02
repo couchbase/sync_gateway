@@ -1,7 +1,6 @@
 package db
 
 import (
-	"log"
 	"math"
 	"strings"
 	"sync"
@@ -40,11 +39,11 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfill uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.FeedArgs = sgbucket.FeedArguments{
-		Backfill: backfill,
+		Backfill: backfillMode,
 		Notify:   bucketStateNotify,
 	}
 
@@ -66,7 +65,6 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 		//    TAP feed is a go-channel of Tap events served by the bucket.  Start the feed, then
 		//    start a goroutine to work the event channel, calling ProcessEvent for each event
 		var err error
-		log.Printf("Calling start tap feed from StartMutationFeed")
 		listener.tapFeed, err = bucket.StartTapFeed(listener.FeedArgs)
 		if err != nil {
 			return err
@@ -79,7 +77,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 				}
 			}()
 			for event := range listener.tapFeed.Events() {
-				listener.ProcessEvent(event)
+				listener.ProcessFeedEvent(event)
 			}
 		}()
 		return nil
@@ -87,29 +85,31 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
 		base.LogTo("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
-		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessEvent)
+		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent)
 	}
 }
 
-func (listener *changeListener) ProcessEvent(event sgbucket.FeedEvent) bool {
+// ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
+// key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
+func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
 		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
-			strings.HasPrefix(key, auth.RoleKeyPrefix) {
+			strings.HasPrefix(key, auth.RoleKeyPrefix) { // SG users and roles
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
 			listener.Notify(base.SetOf(key))
-		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) {
+		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix) {
+		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix) { // SG DCP checkpoint docs
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
 			// we'll end up in a feedback loop for their vbucket
 			requiresCheckpointPersistence = false
-		} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) {
+		} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) { // Non-SG docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}

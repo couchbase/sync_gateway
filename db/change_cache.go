@@ -318,6 +318,8 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 //////// ADDING CHANGES:
 
+// Given a newly changed document (received from the tap feed), adds change entries to channels.
+// The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if event.Synchronous {
 		c.DocChangedSynchronous(event)
@@ -326,8 +328,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 }
 
-// Given a newly changed document (received from the tap feed), adds change entries to channels.
-// The JSON must be the raw document from the bucket, with the metadata and all.
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.

@@ -18,10 +18,10 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
-
-	"net/url"
+	"strings"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1839,7 +1839,6 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 
 }
 
-// TODO: Change to StartMutationFeed
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 	return nil, fmt.Errorf("GoCB bucket doesn't support TAP - use DCP feed type")
 }

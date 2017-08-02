@@ -1,7 +1,6 @@
 package db
 
 import (
-	"log"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -30,7 +29,6 @@ type Shadower struct {
 // Creates a new Shadower.
 func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp) (*Shadower, error) {
 
-	log.Printf("Calling start tap feed from NewShadower")
 	tapFeed, err := bucket.StartTapFeed(sgbucket.FeedArguments{Backfill: 0, Notify: func(bucket string, err error) {
 		context.TakeDbOffline("Lost shadower TAP Feed")
 	}})
