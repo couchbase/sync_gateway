@@ -25,6 +25,7 @@ const (
 	alreadyImported  = sgErrorCode(0x00)
 	importCancelled  = sgErrorCode(0x01)
 	importCasFailure = sgErrorCode(0x02)
+	revTreeAddRevFailure = sgErrorCode(0x04)
 )
 
 type SGError struct {
@@ -32,6 +33,7 @@ type SGError struct {
 }
 
 var (
+	ErrRevTreeAddRevFailure = &SGError{revTreeAddRevFailure}
 	ErrImportCancelled  = &SGError{importCancelled}
 	ErrAlreadyImported  = &SGError{alreadyImported}
 	ErrImportCasFailure = &SGError{importCasFailure}
@@ -45,6 +47,8 @@ func (e SGError) Error() string {
 		return "Import cancelled"
 	case importCasFailure:
 		return "CAS failure during import"
+	case revTreeAddRevFailure:
+		return "Failure adding Rev to RevTree"
 	default:
 		return "Unknown error"
 	}

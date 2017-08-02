@@ -134,7 +134,9 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 				base.Warn("Shadow: Adding revision as conflict branch, parent id %q is missing", parentRev)
 				parentRev = ""
 			}
-			doc.History.addRevision(RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion})
+			if err = doc.History.addRevision(doc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion}); err != nil {
+				return nil, nil, err
+			}
 			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
 		} else {
 			// We already have this rev; but don't cancel, because we do need to update the
