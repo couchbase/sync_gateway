@@ -1897,41 +1897,8 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	return 0, 0, "error", fmt.Errorf("GoCB bucket does not implement CouchbaseServerVersion yet")
 }
 
-// Temp workaround -- create a go-couchbase bucket just to get the UUID
-// See https://github.com/couchbase/sync_gateway/issues/2418#issuecomment-289941131
-// TODO: Switch over to using https://github.com/couchbase/gocbcore/blob/6b3fcad8ac5e2212fad55e57d481cb056b99f3c0/agent.go#L648
 func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
-
-	// Don't call go-couchbase with couchbase:// style urls, since it will break
-	// See https://github.com/couchbase/sync_gateway/issues/1019#issuecomment-319777577
-	urls, err := CouchbaseURIToHttpURL(bucket.spec.Server)
-	if err != nil {
-		return "", err
-	}
-
-	for _, url := range urls {
-
-		// Make a copy of the spec
-		bucket.spec.Server = url
-
-		goCouchbaseBucket, err := GetCouchbaseBucket(bucket.spec, nil)
-		if err != nil {
-			return "", err
-		}
-		if goCouchbaseBucket == nil {
-			return "", fmt.Errorf("GetCouchbaseBucket() returned nil.  Cannot get bucket UUID")
-		}
-
-		uuid, err := goCouchbaseBucket.UUID()
-		goCouchbaseBucket.Close()
-
-		return uuid, err
-
-	}
-
-	return "", fmt.Errorf("Unable to find bucket UUID()")
-
-
+	return bucket.Bucket.IoRouter().BucketUUID(), nil
 }
 
 func (bucket CouchbaseBucketGoCB) Close() {
