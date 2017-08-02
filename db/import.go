@@ -187,7 +187,7 @@ func (i *ImportFilterFunction) EvaluateFunction(doc Body) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warn("Import filter function returned non-boolean result %v", result)
+		base.Warn("Import filter function returned non-boolean result %v Type: %T", result, result)
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 }
