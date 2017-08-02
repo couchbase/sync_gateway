@@ -159,11 +159,18 @@ func (b *LoggingBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "StartTapFeed(...) [%v]", time.Since(start)) }()
 	return b.bucket.StartTapFeed(args)
 }
+
+func (b *LoggingBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "StartDcpFeed(...) [%v]", time.Since(start)) }()
+	return b.bucket.StartDCPFeed(args, callback)
+}
+
 func (b *LoggingBucket) Close() {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Close() [%v]", time.Since(start)) }()

@@ -119,6 +119,9 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 // Unmarshals sync metadata for a document arriving via DCP.  Includes handling for xattr content
 // being included in data.  If not present in either xattr or document body, returns nil but no error.
 // Returns the raw body, in case it's needed for import.
+
+// TODO: Use pool of unmarshal workers to manage throughput spikes
+
 func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, rawBody []byte, err error) {
 
 	var body []byte

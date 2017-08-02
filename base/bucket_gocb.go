@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"net/url"
 
@@ -1082,12 +1081,12 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// Attempt to retrieve the document body, if present
 			docContentErr := res.Content("", rv)
 			if docContentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
+				LogTo("CRUD+", "No document body found for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
 			}
 			// Attempt to retrieve the xattr, if present
 			xattrContentErr := res.Content(xattrKey, xv)
 			if xattrContentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
+				LogTo("CRUD+", "No xattr content found for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -1841,32 +1840,12 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 }
 
 // TODO: Change to StartMutationFeed
-func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
-	switch strings.ToLower(bucket.spec.FeedType) {
-	case DcpFeedType:
-		return StartDCPFeed(args, bucket.spec, bucket)
+func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
+	return nil, fmt.Errorf("GoCB bucket doesn't support TAP - use DCP feed type")
+}
 
-	case DcpShardFeedType:
-
-		// TODO: refactor to share this common code or remove if not need
-
-		// CBGT initialization
-		LogTo("Feed", "Starting CBGT feed?%v", bucket.GetName())
-
-		// Create the TapEvent feed channel that will be passed back to the caller
-		eventFeed := make(chan sgbucket.TapEvent, 10)
-
-		//  - create a new SimpleFeed and pass in the eventFeed channel
-		feed := &SimpleFeed{
-			eventFeed: eventFeed,
-		}
-		return feed, nil
-
-	default:
-		return StartDCPFeed(args, bucket.spec, bucket) // TEMP Hack to default to DCP feed
-
-	}
-
+func (bucket CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
 
 func (bucket CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

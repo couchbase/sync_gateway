@@ -175,7 +175,7 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 	}
 }
 
-func (k *kvChangeIndex) DocChanged(event sgbucket.TapEvent) {
+func (k *kvChangeIndex) DocChanged(event sgbucket.FeedEvent) {
 	// no-op for reader
 	base.Warn("DocChanged called in index reader for doc %s, will be ignored.", event.Key)
 }

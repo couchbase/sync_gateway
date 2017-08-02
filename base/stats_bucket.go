@@ -225,7 +225,7 @@ func (b *StatsBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *StatsBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *StatsBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 	return b.bucket.StartTapFeed(args)
 }
 func (b *StatsBucket) Close() {

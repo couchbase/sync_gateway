@@ -216,18 +216,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	context.tapListener.Init(bucket.GetName())
 
-	// TODO: Currently we're forcing the DCP feed to restart from zero if the node is importing xattrs, based on this flag.
-	//       Will be removed when https://github.com/couchbase/sync_gateway/issues/2484 is complete.  Requires DCP processing
-	//       to be synchronous per vbucket
-	xattrImportNode := false
+	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
+	feedMode := uint64(sgbucket.FeedNoBackfill)
 	if context.UseXattrs() && context.autoImport {
-		xattrImportNode = true
+		feedMode = sgbucket.FeedResume
 	}
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
-		if err = context.tapListener.Start(bucket, options.TrackDocs, xattrImportNode, func(bucket string, err error) {
+		if err = context.tapListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
 			base.Warn(msg)
@@ -409,11 +407,11 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.tapListener.Init(context.Bucket.GetName())
-	xattrImportNode := false
+	feedMode := uint64(sgbucket.FeedNoBackfill)
 	if context.UseXattrs() && context.autoImport {
-		xattrImportNode = true
+		feedMode = sgbucket.FeedResume
 	}
-	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, xattrImportNode, nil); err != nil {
+	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
 		return err
 	}
 	return nil
