@@ -146,6 +146,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
 
+	// TODO: why would bucket.spec.Auth be nil?  (assuming it is nil)
+
 	if bucket.spec.Auth != nil {
 		username, password, _ = bucket.spec.Auth.GetCredentials()
 	}
@@ -1566,7 +1568,11 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 // Get bucket manager.  Relies on existing auth settings for bucket.
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
+
+	// Todo: make sure this returns the bucket name
 	username, password := bucket.GetBucketCredentials()
+
+
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())

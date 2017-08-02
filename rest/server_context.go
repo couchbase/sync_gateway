@@ -425,6 +425,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			BucketName:      indexBucketName,
 			CouchbaseDriver: couchbaseDriverIndexBucket,
 		}
+
+		// TODO: this needs to always set auth
 		if config.ChannelIndex.Username != "" || config.ChannelIndex.Password != "" {
 			indexSpec.Auth = config.ChannelIndex
 		}
