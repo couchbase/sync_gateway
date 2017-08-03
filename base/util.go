@@ -519,7 +519,7 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 
 	for _, address := range connSpec.Addresses {
 
-		port := 8091
+		port := gocbconnstr.DefaultHttpPort
 
 		translatedScheme := "http"
 		switch connSpec.Scheme {
