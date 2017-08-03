@@ -1567,10 +1567,8 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 // Get bucket manager.  Relies on existing auth settings for bucket.
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
 
-	// Todo: make sure this returns the bucket name
 	username, password := bucket.GetBucketCredentials()
-
-
+	
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
