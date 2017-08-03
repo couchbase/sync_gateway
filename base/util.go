@@ -519,6 +519,8 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 
 	for _, address := range connSpec.Addresses {
 
+		port := 8091
+
 		translatedScheme := "http"
 		switch connSpec.Scheme {
 		case "couchbases":
@@ -527,9 +529,15 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 			translatedScheme = "https"
 		}
 
-		port := 8091
+
 		if address.Port > 0 {
 			port = address.Port
+		} else {
+			// If gocbconnstr didn't return a port, and it was detected to be an HTTPS connection,
+			// change the port to the secure port 18091
+			if translatedScheme == "https" {
+				port = 18091
+			}
 		}
 
 		httpUrl := fmt.Sprintf("%s://%s:%d", translatedScheme, address.Host, port)

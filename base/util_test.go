@@ -203,7 +203,7 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 		},
 		{
 			input:    "couchbases://host1",
-			expected: []string{"https://host1:8091"},
+			expected: []string{"https://host1:18091"},
 		},
 		{
 			input:    "couchbase://host1,host2",
