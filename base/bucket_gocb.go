@@ -146,8 +146,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
 
-	// TODO: why would bucket.spec.Auth be nil?  (assuming it is nil)
-
 	if bucket.spec.Auth != nil {
 		username, password, _ = bucket.spec.Auth.GetCredentials()
 	}
