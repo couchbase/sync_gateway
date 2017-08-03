@@ -1438,33 +1438,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		var writeErr error
 		// If this is a tombstone, we want to delete the document and update the xattr
 		if deleteDoc {
-			removeCas, removeErr := bucket.Remove(k, cas)
-			if removeErr == nil {
-				// Successful removal - update the cas for the xattr operation
-				cas = removeCas
-			} else if removeErr == gocb.ErrKeyNotFound {
-				// Document body has already been removed - continue to xattr processing w/ same cas
-			} else if isRecoverableGoCBError(removeErr) {
-				// Recoverable error - retry WriteUpdateWithXattr
-				continue
-			} else {
-				// Non-recoverable error - return
-				return emptyCas, removeErr
-			}
-
-			// update xattr only
-			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
-			}
-
-			// If there was no error, we're done
-			if writeErr == nil {
-				return casOut, nil
-			}
-
-			/* Temporarily disable single-op tombstoning until we have fix for https://issues.couchbase.com/browse/MB-25422
 			deleteBody := len(value) > 0
 			deleteCas, deleteErr := bucket.UpdateXattr(k, xattrKey, exp, cas, updatedXattrValue, deleteBody)
 			switch deleteErr {
@@ -1477,7 +1450,6 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				LogTo("CRUD", "Delete and update of xattr during WriteUpdateWithXattr failed for key %s: %v", k, deleteErr)
 				return emptyCas, deleteErr
 			}
-			*/
 
 		} else {
 			// Not a delete - update the body and xattr
