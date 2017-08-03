@@ -14,6 +14,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -226,7 +227,6 @@ func (h *handler) handleChanges() error {
 		}
 		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
 
-
 		if err != nil {
 			return err
 		}
@@ -242,7 +242,6 @@ func (h *handler) handleChanges() error {
 
 		base.LogTo("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
 			h.rq.URL, feed, options, filter, channelsArray, docIdsArray, to)
-
 
 	}
 
@@ -670,7 +669,7 @@ loop:
 			return nil, forceClose // error is probably because the client closed the connection
 		}
 	}
-	
+
 	return nil, forceClose
 }
 
@@ -838,21 +837,18 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 	return
 }
 
-// Helper function to read a complete message from a WebSocket (because the API makes it hard)
+// Helper function to read a complete message from a WebSocket
 func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
+
 	var message []byte
-	buf := make([]byte, 100)
-	for {
-		n, err := conn.Read(buf)
-		if err != nil {
+	if err := websocket.Message.Receive(conn, &message); err != nil {
+		if err != io.EOF {
+			base.Warn("Error reading initial websocket message: %v", err)
 			return nil, err
-		}
-		message = append(message, buf[0:n]...)
-		if n < len(buf) {
-			break
 		}
 	}
 	return message, nil
+
 }
 
 func sequenceFromString(str string) uint64 {
