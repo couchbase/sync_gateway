@@ -1591,7 +1591,9 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 // Get bucket manager.  Relies on existing auth settings for bucket.
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
+
 	username, password := bucket.GetBucketCredentials()
+	
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
@@ -1931,22 +1933,7 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 }
 
 func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
-
-	// Temp workaround -- create a go-couchbase bucket just to get the UUID
-	// See https://github.com/couchbase/sync_gateway/issues/2418#issuecomment-289941131
-	goCouchbaseBucket, err := GetCouchbaseBucket(bucket.spec, nil)
-	if err != nil {
-		return "", err
-	}
-	if goCouchbaseBucket == nil {
-		return "", fmt.Errorf("GetCouchbaseBucket() returned nil.  Cannot get bucket UUID")
-	}
-
-	uuid, err := goCouchbaseBucket.UUID()
-	goCouchbaseBucket.Close()
-
-	return uuid, err
-
+	return bucket.Bucket.IoRouter().BucketUUID(), nil
 }
 
 func (bucket CouchbaseBucketGoCB) Close() {

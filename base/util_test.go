@@ -233,7 +233,6 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 	// leave a gap and don't specify a high seq for vbno 4
 	highSeqs[5] = 250
 
-
 	var seqClock SequenceClock
 	var err error
 
@@ -249,5 +248,73 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 
 }
 
+func TestCouchbaseURIToHttpURL(t *testing.T) {
 
+	inputsAndExpected := []struct {
+		input    string
+		expected []string
+	}{
+		{
+			input:    "couchbase://host1",
+			expected: []string{"http://host1:8091"},
+		},
+		{
+			input:    "couchbases://host1",
+			expected: []string{"https://host1:18091"},
+		},
+		{
+			input:    "couchbase://host1,host2",
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "couchbase://host1:8091,host2",
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "couchbase://host1:8091,host2,",  // trailing comma
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "couchbase://host1:18091,host2:8091",
+			expected: []string{
+				"http://host1:18091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "http://host1:8091",
+			expected: []string{
+				"http://host1:8091",
+			},
+		},
+		{
+			input: "http://host1,host2:8091",
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "http://foo:bar@host1:8091",
+			expected: []string{
+				"http://foo:bar@host1:8091",
+			},
+		},
+	}
 
+	for _, inputAndExpected := range inputsAndExpected {
+		actual, err := CouchbaseURIToHttpURL(inputAndExpected.input)
+		assertNoError(t, err, "Unexpected error")
+		assert.DeepEquals(t, actual, inputAndExpected.expected)
+	}
+
+}

@@ -25,6 +25,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/couchbase/go-couchbase"
 )
 
 const (
@@ -585,4 +588,82 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 
 func BooleanPointer(booleanValue bool) *bool {
 	return &booleanValue
+}
+
+// Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
+// Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
+// Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
+func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
+
+	// First try to do a simple URL parse, which will only work for http:// and https:// urls where there
+	// is a single host.  If that works, return the result
+	singleHttpUrl := SingleHostCouchbaseURIToHttpURL(couchbaseUri)
+	if len(singleHttpUrl) > 0 {
+		return []string{ singleHttpUrl }, nil
+	}
+
+	// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
+	connSpec, errParse := gocbconnstr.Parse(couchbaseUri)
+	if errParse != nil {
+		return httpUrls, errParse
+	}
+
+	for _, address := range connSpec.Addresses {
+
+		port := gocbconnstr.DefaultHttpPort
+
+		translatedScheme := "http"
+		switch connSpec.Scheme {
+		case "couchbases":
+			translatedScheme = "https"
+		case "https":
+			translatedScheme = "https"
+		}
+
+
+		if address.Port > 0 {
+			port = address.Port
+		} else {
+			// If gocbconnstr didn't return a port, and it was detected to be an HTTPS connection,
+			// change the port to the secure port 18091
+			if translatedScheme == "https" {
+				port = 18091
+			}
+		}
+
+		httpUrl := fmt.Sprintf("%s://%s:%d", translatedScheme, address.Host, port)
+		httpUrls = append(httpUrls, httpUrl)
+
+	}
+
+	return httpUrls, nil
+
+}
+
+
+// Special case for couchbaseUri strings that contain a single host with http:// or https:// schemes,
+// possibly containing embedded basic auth.  Needed since gocbconnstr.Parse() will remove embedded
+// basic auth from URLS.
+func SingleHostCouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string) {
+	result, parseUrlErr := couchbase.ParseURL(couchbaseUri)
+
+	// If there was an error parsing, return an empty string
+	if parseUrlErr != nil {
+		return ""
+	}
+
+	// If the host contains a "," then it parsed http://host1,host2 into a url with "host1,host2" as the host, which
+	// is not going to work.  Return an empty string
+	if strings.Contains(result.Host, ",") {
+		return ""
+	}
+
+	// The scheme was couchbase://, but this method only deals with non-couchbase schemes, so return empty slice
+	if strings.Contains(result.Scheme, "couchbase") {
+		return ""
+	}
+
+	// It made it past all checks.  Return a slice with a single string
+	return result.String()
+
 }
