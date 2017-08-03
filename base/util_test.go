@@ -246,6 +246,12 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 				"http://host2:8091",
 			},
 		},
+		{
+			input: "http://foo:bar@host1:8091",
+			expected: []string{
+				"http://foo:bar@host1:8091",
+			},
+		},
 	}
 
 	for _, inputAndExpected := range inputsAndExpected {
