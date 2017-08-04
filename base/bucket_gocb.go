@@ -18,11 +18,10 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
-
-	"net/url"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1082,12 +1081,12 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// Attempt to retrieve the document body, if present
 			docContentErr := res.Content("", rv)
 			if docContentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
+				LogTo("CRUD+", "No document body found for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
 			}
 			// Attempt to retrieve the xattr, if present
 			xattrContentErr := res.Content(xattrKey, xv)
 			if xattrContentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
+				LogTo("CRUD+", "No xattr content found for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -1840,33 +1839,32 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 
 }
 
-// TODO: Change to StartMutationFeed
-func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
-	switch strings.ToLower(bucket.spec.FeedType) {
-	case DcpFeedType:
-		return StartDCPFeed(args, bucket.spec, bucket)
+// GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
+func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
-	case DcpShardFeedType:
+	LogTo("DCP", "Using DCP to generate TAP-like stream")
+	// Create the feed channel that will be passed back to the caller
+	eventFeed := make(chan sgbucket.FeedEvent, 10)
+	terminator := make(chan bool)
 
-		// TODO: refactor to share this common code or remove if not need
+	//  Create a new SimpleFeed for Close() support
+	feed := &SimpleFeed{
+		eventFeed:  eventFeed,
+		terminator: terminator,
+	}
+	args.Terminator = terminator
 
-		// CBGT initialization
-		LogTo("Feed", "Starting CBGT feed?%v", bucket.GetName())
-
-		// Create the TapEvent feed channel that will be passed back to the caller
-		eventFeed := make(chan sgbucket.TapEvent, 10)
-
-		//  - create a new SimpleFeed and pass in the eventFeed channel
-		feed := &SimpleFeed{
-			eventFeed: eventFeed,
-		}
-		return feed, nil
-
-	default:
-		return StartDCPFeed(args, bucket.spec, bucket) // TEMP Hack to default to DCP feed
-
+	callback := func(dcpFeedEvent sgbucket.FeedEvent) bool {
+		eventFeed <- dcpFeedEvent
+		return true
 	}
 
+	err := bucket.StartDCPFeed(args, callback)
+	return feed, err
+}
+
+func (bucket CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
 
 func (bucket CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

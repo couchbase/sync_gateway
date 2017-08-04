@@ -28,7 +28,8 @@ type Shadower struct {
 
 // Creates a new Shadower.
 func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp) (*Shadower, error) {
-	tapFeed, err := bucket.StartTapFeed(sgbucket.TapArguments{Backfill: 0, Notify: func(bucket string, err error) {
+
+	tapFeed, err := bucket.StartTapFeed(sgbucket.FeedArguments{Backfill: 0, Notify: func(bucket string, err error) {
 		context.TakeDbOffline("Lost shadower TAP Feed")
 	}})
 	if err != nil {
@@ -61,18 +62,18 @@ func (s *Shadower) readTapFeed() {
 	vbucketsFilling := 0
 	for event := range s.tapFeed.Events() {
 		switch event.Opcode {
-		case sgbucket.TapBeginBackfill:
+		case sgbucket.FeedOpBeginBackfill:
 			if vbucketsFilling == 0 {
 				base.LogTo("Shadow", "Reading history of external bucket")
 			}
 			vbucketsFilling++
 			//base.LogTo("Shadow", "Reading history of external bucket")
-		case sgbucket.TapMutation, sgbucket.TapDeletion:
+		case sgbucket.FeedOpMutation, sgbucket.FeedOpDeletion:
 			key := string(event.Key)
 			if !s.docIDMatches(key) {
 				break
 			}
-			isDeletion := event.Opcode == sgbucket.TapDeletion
+			isDeletion := event.Opcode == sgbucket.FeedOpDeletion
 			if !isDeletion && event.Expiry > 0 {
 				break // ignore ephemeral documents
 			}
@@ -81,7 +82,7 @@ func (s *Shadower) readTapFeed() {
 				base.Warn("Error applying change %q from external bucket: %v", key, err)
 			}
 			atomic.AddUint64(&s.pullCount, 1)
-		case sgbucket.TapEndBackfill:
+		case sgbucket.FeedOpEndBackfill:
 			if vbucketsFilling--; vbucketsFilling == 0 {
 				base.LogTo("Shadow", "Caught up with history of external bucket")
 			}

@@ -42,7 +42,7 @@ type ChangeIndex interface {
 	GetCachedChanges(channelName string, options ChangesOptions) (validFrom uint64, entries []*LogEntry)
 
 	// Called to add a document to the index
-	DocChanged(event sgbucket.TapEvent)
+	DocChanged(event sgbucket.FeedEvent)
 
 	// Retrieves stable sequence for index
 	GetStableSequence(docID string) SequenceID

@@ -11,13 +11,21 @@ package base
 
 import (
 	"encoding/json"
-	"log"
+	"errors"
+	"expvar"
+	"fmt"
 	"sync"
 
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
+
+var dcpExpvars *expvar.Map
+
+func init() {
+	dcpExpvars = expvar.NewMap("syncGateway_dcp")
+}
 
 // Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
 // used in MCRequest.DataType
@@ -27,16 +35,24 @@ const (
 	MemcachedDataTypeXattr
 )
 
+const DCPCheckpointPrefix = "_sync:dcp_ck:" // Prefix used for DCP checkpoint persistence (is appended with vbno)
+
+// Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
+// retriggering persistence solely based on checkpoint doc echo.
+// Based on ad-hoc testing w/ travel-sample bucket, increasing this value doesn't significantly improve performance, since under load
+// DCP will already be sending more documents per snapshot.
+const kCheckpointThreshold = 1
+
 type couchbaseDCPFeedImpl struct {
 	bds    cbdatasource.BucketDataSource
-	events chan sgbucket.TapEvent
+	events chan sgbucket.FeedEvent
 }
 
-func (feed *couchbaseDCPFeedImpl) Events() <-chan sgbucket.TapEvent {
+func (feed *couchbaseDCPFeedImpl) Events() <-chan sgbucket.FeedEvent {
 	return feed.events
 }
 
-func (feed *couchbaseDCPFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
+func (feed *couchbaseDCPFeedImpl) WriteEvents() chan<- sgbucket.FeedEvent {
 	return feed.events
 }
 
@@ -45,51 +61,56 @@ func (feed *couchbaseDCPFeedImpl) Close() error {
 }
 
 type SimpleFeed struct {
-	eventFeed chan sgbucket.TapEvent
+	eventFeed  chan sgbucket.FeedEvent
+	terminator chan bool
 }
 
-func (s *SimpleFeed) Events() <-chan sgbucket.TapEvent {
+func (s *SimpleFeed) Events() <-chan sgbucket.FeedEvent {
 	return s.eventFeed
 }
 
-func (s *SimpleFeed) WriteEvents() chan<- sgbucket.TapEvent {
+func (s *SimpleFeed) WriteEvents() chan<- sgbucket.FeedEvent {
 	return s.eventFeed
 }
 
-func (s *SimpleFeed) Close() error { // TODO
-	log.Fatalf("SimpleFeed.Close() called but not implemented")
+func (s *SimpleFeed) Close() error {
+	close(s.terminator)
 	return nil
 }
 
 type Receiver interface {
 	cbdatasource.Receiver
 	SeedSeqnos(map[uint16]uint64, map[uint16]uint64)
-	GetEventFeed() <-chan sgbucket.TapEvent
-	SetEventFeed(chan sgbucket.TapEvent)
-	GetOutput() chan sgbucket.TapEvent
 	updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool)
 	SetBucketNotifyFn(sgbucket.BucketNotifyFn)
 	GetBucketNotifyFn() sgbucket.BucketNotifyFn
+	initMetadata(maxVbNo uint16)
 }
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
 // cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
 // additional details
 type DCPReceiver struct {
-	m         sync.Mutex
-	seqs      map[uint16]uint64 // To track max seq #'s we received per vbucketId.
-	meta      map[uint16][]byte // To track metadata blob's per vbucketId.
-	eventFeed <-chan sgbucket.TapEvent
-	output    chan sgbucket.TapEvent  // Same as EventFeed but writeably-typed
-	notify    sgbucket.BucketNotifyFn // Function to callback when we lose our dcp feed
+	m                      sync.Mutex
+	bucket                 Bucket                         // For metadata persistence/retrieval
+	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
+	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
+	meta                   [][]byte                       // To track metadata blob's per vbucketId.
+	updatesSinceCheckpoint []uint64                       // Number of updates since the last checkpoint. Used to avoid checkpoint persistence feedback loop
+	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
+	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 }
 
-func NewDCPReceiver() Receiver {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) Receiver {
+	// TODO: set using maxvbno
 	r := &DCPReceiver{
-		output: make(chan sgbucket.TapEvent, 10),
+		bucket:             bucket,
+		persistCheckpoints: persistCheckpoints,
+		seqs:               make([]uint64, maxVbNo),
+		meta:               make([][]byte, maxVbNo),
+		updatesSinceCheckpoint: make([]uint64, maxVbNo),
 	}
-	r.eventFeed = r.output
-	//r.SetEventFeed(r.GetOutput())
+	r.callback = callback
 
 	if LogEnabledExcludingLogStar("DCP") {
 		LogTo("DCP", "Using DCP Logging Receiver")
@@ -107,18 +128,6 @@ func (r *DCPReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
 	return r.notify
 }
 
-func (r *DCPReceiver) SetEventFeed(c chan sgbucket.TapEvent) {
-	r.output = c
-}
-
-func (r *DCPReceiver) GetEventFeed() <-chan sgbucket.TapEvent {
-	return r.eventFeed
-}
-
-func (r *DCPReceiver) GetOutput() chan sgbucket.TapEvent {
-	return r.output
-}
-
 func (r *DCPReceiver) OnError(err error) {
 	Warn("Error processing DCP stream - will attempt to restart/reconnect: %v", err)
 
@@ -134,34 +143,50 @@ func (r *DCPReceiver) OnError(err error) {
 	// vbucket stream, not the entire feed.
 	// bucketName := "unknown" // this is currently ignored anyway
 	// r.notify(bucketName, err)
+	dcpExpvars.Add("onError_count", 1)
 
 }
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
+	dcpExpvars.Add("dataUpdate_count", 1)
 	r.updateSeq(vbucketId, seq, true)
-	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapMutation)
+	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
+	if shouldPersistCheckpoint {
+		r.incrementCheckpointCount(vbucketId)
+	}
 	return nil
 }
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
+	dcpExpvars.Add("dataDelete_count", 1)
 	r.updateSeq(vbucketId, seq, true)
-	r.output <- makeFeedEvent(req, vbucketId, sgbucket.TapDeletion)
+	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpDeletion))
+	if shouldPersistCheckpoint {
+		r.incrementCheckpointCount(vbucketId)
+	}
 	return nil
 }
 
-func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.TapOpcode) sgbucket.TapEvent {
+func (r *DCPReceiver) incrementCheckpointCount(vbucketId uint16) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	r.updatesSinceCheckpoint[vbucketId]++
+}
+
+func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 	// not currently doing rq.Extras handling (as in gocouchbase/upr_feed, makeUprEvent) as SG doesn't use
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
 	// SnapshotStart, SnapshotEnd
-	event := sgbucket.TapEvent{
-		Opcode:   opcode,
-		Key:      rq.Key,
-		Value:    rq.Body,
-		Sequence: rq.Cas,
-		DataType: rq.DataType,
-		Cas:      rq.Cas,
+	event := sgbucket.FeedEvent{
+		Opcode:      opcode,
+		Key:         rq.Key,
+		Value:       rq.Body,
+		Sequence:    rq.Cas,
+		DataType:    rq.DataType,
+		Cas:         rq.Cas,
+		Synchronous: true,
 	}
 	return event
 }
@@ -182,11 +207,17 @@ func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 	r.m.Lock()
 	defer r.m.Unlock()
 
-	if r.meta == nil {
-		r.meta = make(map[uint16][]byte)
-	}
+	dcpExpvars.Add("setMetadata_count", 1)
 	r.meta[vbucketId] = value
 
+	// Check persistMeta to avoids persistence if the only feed events we've seen are the DCP echo of DCP checkpoint docs
+	if r.persistCheckpoints && r.updatesSinceCheckpoint[vbucketId] >= kCheckpointThreshold {
+		err := r.persistCheckpoint(vbucketId, value)
+		if err != nil {
+			Warn("Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
+		}
+		r.updatesSinceCheckpoint[vbucketId] = 0
+	}
 	return nil
 }
 
@@ -208,11 +239,24 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 	return value, lastSeq, nil
 }
 
-// Until we have CBL client support for rollback, we just rollback the sequence for the
-// vbucket to unblock the DCP stream.
+// RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
+// it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", vbucketId, rollbackSeq)
+	Warn("DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0", vbucketId)
+	dcpExpvars.Add("rollback_count", 1)
+	r.updateSeq(vbucketId, 0, false)
+	r.SetMetaData(vbucketId, nil)
+
+	return nil
+}
+
+// RollbackEx includes the vbucketUUID needed to reset the metadata correctly
+func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
+	Warn("DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", vbucketId, rollbackSeq)
+
+	dcpExpvars.Add("rollback_count", 1)
 	r.updateSeq(vbucketId, rollbackSeq, false)
+	r.SetMetaData(vbucketId, makeVbucketMetadata(vbucketUUID, rollbackSeq))
 	return nil
 }
 
@@ -225,9 +269,6 @@ func (r *DCPReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo b
 	r.m.Lock()
 	defer r.m.Unlock()
 
-	if r.seqs == nil {
-		r.seqs = make(map[uint16]uint64)
-	}
 	if seq < r.seqs[vbucketId] && warnOnLowerSeqNo == true {
 		Warn("Setting to _lower_ sequence number than previous: %v -> %v", r.seqs[vbucketId], seq)
 	}
@@ -243,7 +284,9 @@ func (r *DCPReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64
 	defer r.m.Unlock()
 
 	// Set the high seqnos as-is
-	r.seqs = seqs
+	for vbNo, seq := range seqs {
+		r.seqs[vbNo] = seq
+	}
 
 	// For metadata, we need to do more work to build metadata based on uuid and map values.  This
 	// isn't strictly to the design of cbdatasource.Receiver, which intends metadata to be opaque, but
@@ -251,22 +294,80 @@ func (r *DCPReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64
 	// The implementation has been reviewed with the cbdatasource owners and they agree this is a
 	// reasonable approach, as the structure of VBucketMetaData is expected to rarely change.
 	for vbucketId, uuid := range uuids {
-		failOver := make([][]uint64, 1)
-		failOverEntry := []uint64{uuid, 0}
-		failOver[0] = failOverEntry
-		metadata := &cbdatasource.VBucketMetaData{
-			SeqStart:    seqs[vbucketId],
-			SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
-			SnapStart:   seqs[vbucketId],
-			SnapEnd:     seqs[vbucketId],
-			FailOverLog: failOver,
+		r.meta[vbucketId] = makeVbucketMetadata(uuid, seqs[vbucketId])
+	}
+}
+
+// Create VBucketMetadata, marshalled to []byte
+func makeVbucketMetadata(vbucketUUUID uint64, sequence uint64) []byte {
+	failOver := make([][]uint64, 1)
+	failOverEntry := []uint64{vbucketUUUID, 0}
+	failOver[0] = failOverEntry
+	metadata := &cbdatasource.VBucketMetaData{
+		SeqStart:    sequence,
+		SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
+		SnapStart:   sequence,
+		SnapEnd:     sequence,
+		FailOverLog: failOver,
+	}
+	metadataBytes, err := json.Marshal(metadata)
+	if err == nil {
+		return metadataBytes
+	} else {
+		return []byte{}
+	}
+}
+
+// TODO: Convert checkpoint persistence to an asynchronous batched process, since
+//       restarting w/ an older checkpoint:
+//         - Would only result in some repeated entry processing, which is already handled by the indexer
+//         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
+func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
+	dcpExpvars.Add("persistCheckpoint_count", 1)
+	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
+}
+
+// loadCheckpoint retrieves previously persisted DCP metadata.  Need to unmarshal metadata to determine last sequence processed.
+// We always restart the feed from the last persisted snapshot start (as opposed to a sequence we may have processed
+// midway through the checkpoint), because:
+//   - We don't otherwise persist the last sequence we processed
+//   - For SG feed processing, there's no harm if we receive feed events for mutations we've previously seen
+//   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
+//    sequences in a checkpoint on startup
+func (r *DCPReceiver) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, err error) {
+	dcpExpvars.Add("loadCheckpoint_count", 1)
+	rawValue, _, err := r.bucket.GetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo))
+	if err != nil {
+		// On a key not found error, metadata hasn't been persisted for this vbucket
+		if IsKeyNotFoundError(r.bucket, err) {
+			return []byte{}, 0, nil
+		} else {
+			return []byte{}, 0, err
 		}
-		buf, err := json.Marshal(metadata)
-		if err == nil {
-			if r.meta == nil {
-				r.meta = make(map[uint16][]byte)
-			}
-			r.meta[vbucketId] = buf
+	}
+
+	var snapshotMetadata cbdatasource.VBucketMetaData
+	unmarshalErr := json.Unmarshal(rawValue, &snapshotMetadata)
+	if unmarshalErr != nil {
+		return []byte{}, 0, err
+	}
+	return rawValue, snapshotMetadata.SnapStart, nil
+
+}
+
+func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	for i := uint16(0); i < maxVbNo; i++ {
+		metadata, lastSeq, err := r.loadCheckpoint(i)
+		if err != nil {
+			// TODO: instead of failing here, should log warning and init zero metadata/seq
+			Warn("Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that checkpoint from zero.  Error: %v", err)
+			r.meta[i] = []byte{}
+			r.seqs[i] = 0
+		} else {
+			r.meta[i] = metadata
+			r.seqs[i] = lastSeq
 		}
 	}
 }
@@ -337,14 +438,100 @@ func (r *DCPLoggingReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLower
 	r.rec.updateSeq(vbucketId, seq, warnOnLowerSeqNo)
 }
 
-func (r *DCPLoggingReceiver) SetEventFeed(c chan sgbucket.TapEvent) {
-	r.rec.SetEventFeed(c)
+func (r *DCPLoggingReceiver) initMetadata(maxVbNo uint16) {
+	LogTo("DCP", "Initializing metadata:%d", maxVbNo)
+	r.rec.initMetadata(maxVbNo)
 }
 
-func (r *DCPLoggingReceiver) GetEventFeed() <-chan sgbucket.TapEvent {
-	return r.rec.GetEventFeed()
-}
+// This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
+// bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
+func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
 
-func (r *DCPLoggingReceiver) GetOutput() chan sgbucket.TapEvent {
-	return r.rec.GetOutput()
+	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
+	// reusing the bucket connection we've already established.
+	urls, errConvertServerSpec := CouchbaseURIToHttpURL(spec.Server)
+	if errConvertServerSpec != nil {
+		return errConvertServerSpec
+	}
+
+	poolName := spec.PoolName
+	if poolName == "" {
+		poolName = "default"
+	}
+	bucketName := spec.BucketName
+
+	vbucketIdsArr := []uint16(nil) // nil means get all the vbuckets.
+
+	maxVbno, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	persistCheckpoints := false
+	if args.Backfill == sgbucket.FeedResume {
+		persistCheckpoints = true
+	}
+
+	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
+	dcpReceiver.SetBucketNotifyFn(args.Notify)
+
+	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
+	// DCP stream from that position.  Also being used as a check on whether the server supports
+	// DCP.
+
+	switch args.Backfill {
+	case sgbucket.FeedNoBackfill:
+		// For non-backfill, use vbucket uuids, high sequence numbers
+		statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
+		if err != nil {
+			return errors.New("Error retrieving stats-vbseqno - DCP not supported")
+		}
+		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
+		dcpReceiver.SeedSeqnos(statsUuids, highSeqnos)
+	case sgbucket.FeedResume:
+		// For resume case, load previously persisted checkpoints from bucket
+		dcpReceiver.initMetadata(maxVbno)
+	default:
+		// Otherwise, start feed from zero
+		startSeqnos := make(map[uint16]uint64, maxVbno)
+		vbuuids := make(map[uint16]uint64, maxVbno)
+		dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
+	}
+
+	var dataSourceOptions *cbdatasource.BucketDataSourceOptions
+	if spec.UseXattrs {
+		dataSourceOptions = cbdatasource.DefaultBucketDataSourceOptions
+		dataSourceOptions.IncludeXAttrs = true
+	}
+
+	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
+	bds, err := cbdatasource.NewBucketDataSource(
+		urls,
+		poolName,
+		bucketName,
+		"",
+		vbucketIdsArr,
+		spec.Auth,
+		dcpReceiver,
+		dataSourceOptions,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err = bds.Start(); err != nil {
+		return err
+	}
+
+	// Close the data source if feed terminator is closed
+	if args.Terminator != nil {
+		go func() {
+			<-args.Terminator
+			LogTo("Feed+", "Closing DCP Feed based on termination notification")
+			bds.Close()
+		}()
+	}
+
+	return nil
+
 }
