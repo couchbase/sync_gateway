@@ -30,10 +30,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"mime"
-	"mime/multipart"
 	"io"
 	"io/ioutil"
+	"mime"
+	"mime/multipart"
 )
 
 func init() {
@@ -733,9 +733,9 @@ func TestBulkDocs(t *testing.T) {
 func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//We want a sync function that will reject some docs
-	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
@@ -772,9 +772,9 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
-	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
@@ -788,7 +788,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	lastSequence, _ := rt1.GetDatabase().LastSequence()
 	assert.Equals(t, lastSequence, uint64(3))
 
-	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
@@ -846,10 +846,10 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
-	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
 	//add new docs, doc2 will be rejected by sync function
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
@@ -866,7 +866,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	lastSequence, _ := rt1.GetDatabase().LastSequence()
 	assert.Equals(t, lastSequence, uint64(3))
 
-	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
@@ -932,10 +932,10 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
-	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
 	//add new docs, doc2 will be rejected by sync function
-	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "failed"}, {"_id": "bulk3", "n": 3}]}`
+	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
@@ -952,7 +952,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	lastSequence, _ := rt1.GetDatabase().LastSequence()
 	assert.Equals(t, lastSequence, uint64(3))
 
-	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "failed") {throw("Rejecting failed doc")}}`}
+	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
@@ -971,8 +971,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 
-	//send another _bulk_docs to rt2, including an update to doc "bulk1" and another failed rev to create an unused sequence
-	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23, "type": "failed"}, {"_id": "bulk1", "_rev": "` + doc1RevID + `", "n": 2}]}`
+	//send another _bulk_docs to rt2, including an update to doc "bulk1" and another invalid rev to create an unused sequence
+	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23, "type": "invalid"}, {"_id": "bulk1", "_rev": "` + doc1RevID + `", "n": 2}]}`
 	response = rt2.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
@@ -2506,7 +2506,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	sc.Close()
 
 }
-func TestEventConfigValidationFailure(t *testing.T) {
+func TestEventConfigValidationInvalid(t *testing.T) {
 
 	sc := NewServerContext(&ServerConfig{})
 	configJSON := `{"name": "invalid",
@@ -2595,8 +2595,6 @@ func TestBulkGetRevPruning(t *testing.T) {
 
 }
 
-
-
 // Reproduces panic seen in https://github.com/couchbase/sync_gateway/issues/2528
 func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
@@ -2607,7 +2605,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
 	// short-circuits Sync Gateway and directly updates the bucket.
 	db.KDefaultRevisionCacheCapacity = 0
-	
+
 	docIdDoc1 := "doc"
 	attachmentName := "attach1"
 
@@ -2645,23 +2643,21 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	assertNoError(t, err, "Error getting couchbaseDoc")
 	log.Printf("couchbase doc: %+v", couchbaseDoc)
 
-
 	// Doc at this point
 	/*
-	{
-	  "_attachments": {
-		"attach1": {
-		  "content_type": "content/type",
-		  "digest": "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
-		  "length": 30,
-		  "revpos": 2,
-		  "stub": true
+		{
+		  "_attachments": {
+			"attach1": {
+			  "content_type": "content/type",
+			  "digest": "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
+			  "length": 30,
+			  "revpos": 2,
+			  "stub": true
+			}
+		  },
+		  "prop": true
 		}
-	  },
-	  "prop": true
-	}
-	 */
-
+	*/
 
 	// Modify the doc directly in the bucket to delete the digest field
 	attachments := db.BodyAttachments(couchbaseDoc)
@@ -2672,19 +2668,18 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	attachments[attachmentName] = attach1
 	log.Printf("couchbase doc after: %+v", couchbaseDoc)
 
-
 	// Doc at this point
 	/*
-	{
-	  "_attachments": {
-		"attach1": {
-		  "revpos": 2,
-		  "stub": true
+		{
+		  "_attachments": {
+			"attach1": {
+			  "revpos": 2,
+			  "stub": true
+			}
+		  },
+		  "prop": true
 		}
-	  },
-	  "prop": true
-	}
-	 */
+	*/
 
 	// Put the doc back into couchbase
 	err = bucket.Set(docIdDoc1, 0, couchbaseDoc)
@@ -2717,28 +2712,28 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Iterate over multipart parts and make assertions on each part
 	// Should get the following docs in their own parts:
 	/*
-	{
-	   "error":"500",
-	   "id":"doc",
-	   "reason":"Internal error: Unable to load attachment for doc: doc with name: attach1 and revpos: 2 due to missing digest field",
-	   "rev":"2-d501cf345b2e906547fe27dbbedf825b",
-	   "status":500
-	}
+		{
+		   "error":"500",
+		   "id":"doc",
+		   "reason":"Internal error: Unable to load attachment for doc: doc with name: attach1 and revpos: 2 due to missing digest field",
+		   "rev":"2-d501cf345b2e906547fe27dbbedf825b",
+		   "status":500
+		}
 
-		and:
+			and:
 
-	{
-	   "_id":"doc2",
-	   "_rev":"1-45ca73d819d5b1c9b8eea95290e79004",
-	   "_revisions":{
-		  "ids":[
-			 "45ca73d819d5b1c9b8eea95290e79004"
-		  ],
-		  "start":1
-	   },
-	   "prop":true
-	}
-	 */
+		{
+		   "_id":"doc2",
+		   "_rev":"1-45ca73d819d5b1c9b8eea95290e79004",
+		   "_revisions":{
+			  "ids":[
+				 "45ca73d819d5b1c9b8eea95290e79004"
+			  ],
+			  "start":1
+		   },
+		   "prop":true
+		}
+	*/
 	for {
 
 		// Get the next part.  Break out of the loop if we hit EOF
@@ -2758,7 +2753,6 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		partJson := map[string]interface{}{}
 		err = json.Unmarshal(partBytes, &partJson)
 		assertNoError(t, err, "Unexpected error")
-
 
 		// Assert expectations for the doc with attachment errors
 		rawId, ok := partJson["id"]
@@ -2786,7 +2780,6 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	assertTrue(t, sawDoc1, "Did not see doc 1")
 
 }
-
 
 // TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
 // in walrus).

@@ -245,7 +245,7 @@ func TestGetDeleted(t *testing.T) {
 	doc, err := db.GetDoc("doc1")
 	assertNoError(t, err, "Err getting doc")
 	assert.Equals(t, doc.syncData.CurrentRev, rev2id)
-	
+
 	// Try again but with a user who doesn't have access to this revision (see #179)
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, err = authenticator.GetUser("")
@@ -739,7 +739,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 func TestImport(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is currently failing against Couchbase server 4.1.  Needs investigation. " +
+		t.Skip("This test is currently not passing against Couchbase server 4.1.  Needs investigation. " +
 			"Logs: https://gist.github.com/tleyden/77a6aa0cfe6a8395edef616f368e1920")
 	}
 
@@ -876,7 +876,7 @@ func TestIncrRetrySuccess(t *testing.T) {
 
 }
 
-func TestIncrRetryFail(t *testing.T) {
+func TestIncrRetryUnsuccessful(t *testing.T) {
 	leakyBucketConfig := base.LeakyBucketConfig{
 		IncrTemporaryFailCount: 10,
 	}

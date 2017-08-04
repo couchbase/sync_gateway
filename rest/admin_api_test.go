@@ -30,7 +30,7 @@ import (
 func TestUserAPI(t *testing.T) {
 	// PUT a user
 	var rt RestTester
-	defer rt.Close()  
+	defer rt.Close()
 
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -548,7 +548,7 @@ func TestSessionExtension(t *testing.T) {
 func TestSessionAPI(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is currently failing against a Couchbase server bucket.  Needs investigation." +
+		t.Skip("This test is currently not passing against a Couchbase server bucket.  Needs investigation." +
 			"Logs: https://gist.github.com/tleyden/a0956455be0130ba22f2aef56a346de2")
 	}
 

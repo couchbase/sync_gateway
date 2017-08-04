@@ -56,7 +56,7 @@ func TestShadowerPull(t *testing.T) {
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
-	
+
 	base.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 *document
 	waitFor(t, func() bool {
@@ -235,7 +235,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is currently failing against Couchbase server.  Needs investigation. " +
+		t.Skip("This test is currently not passing against Couchbase server.  Needs investigation. " +
 			"Logs: https://gist.github.com/tleyden/795df447314a521aba5bd1aa6d0ed42e")
 	}
 

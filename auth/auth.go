@@ -153,7 +153,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	if auth.channelComputer != nil {
 		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
-			base.Warn("channelComputer.ComputeChannelsForPrincipal failed on %v: %v", princ, err)
+			base.Warn("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", princ, err)
 			return err
 		}
 		if previousChannels != nil {
