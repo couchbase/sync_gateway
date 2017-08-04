@@ -180,7 +180,7 @@ func genOfRevID(revid string) int {
 	var generation int
 	n, _ := fmt.Sscanf(revid, "%d-", &generation)
 	if n < 1 || generation < 1 {
-		base.Warn("genOfRevID failed on %q", revid)
+		base.Warn("genOfRevID unsuccessful for %q", revid)
 		return -1
 	}
 	return generation
@@ -195,7 +195,7 @@ func ParseRevID(revid string) (int, string) {
 	var id string
 	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
 	if n < 1 || generation < 1 {
-		base.Warn("parseRevID failed on %q", revid)
+		base.Warn("parseRevID unsuccessful for %q", revid)
 		return -1, ""
 	}
 	return generation, id

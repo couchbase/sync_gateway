@@ -266,7 +266,7 @@ func TestSetBulk(t *testing.T) {
 	// Might be failing due to something related to this comment:
 	//    When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
 	// However, there's no commented code in isRecoverableGoCBError()
-	t.Skip("TestSetBulk is currently failing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
+	t.Skip("TestSetBulk is currently not passing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
 
 	bucket := GetBucketOrPanic()
 
@@ -416,7 +416,7 @@ func TestUpdate(t *testing.T) {
 
 func TestIncrCounter(t *testing.T) {
 
-	t.Skip("Currently failing: under walrus, go-couchbase and gocb, this test fails with: Attempt to retrieve non-existent counter should return error")
+	t.Skip("Currently not passing: under walrus, go-couchbase and gocb, this test results in: Attempt to retrieve non-existent counter should return error")
 
 	bucket := GetBucketOrPanic()
 
@@ -678,8 +678,8 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 }
 
-// TestXattrWriteCasWithXattrCasFailure.  Validates cas check when using WriteCasWithXattr
-func TestXattrWriteCasWithXattrCasFailure(t *testing.T) {
+// TestXattrWriteCasWithXattrCasCheck.  Validates cas check when using WriteCasWithXattr
+func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
@@ -798,8 +798,6 @@ func TestXattrWriteCasRaw(t *testing.T) {
 // TestWriteCasTombstoneResurrect.  Verifies writing a new document body and xattr to a logically deleted document (xattr still exists)
 func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
-	//t.Skip("Test fails with errors: https://gist.github.com/tleyden/c64bc7c473c74e241a2a05f138c8be6e.  Needs investigation")
-
 	SkipXattrTestsIfNotEnabled(t)
 
 	b := GetBucketOrPanic()
@@ -880,7 +878,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 // TestXattrWriteCasTombstoneUpdate.  Validates update of xattr on logically deleted document.
 func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
-	t.Skip("Test fails with errors: https://gist.github.com/tleyden/d261fe2b92bdaaa6e78f9f1c00fdfd58.  Needs investigation")
+	t.Skip("Test does not pass with errors: https://gist.github.com/tleyden/d261fe2b92bdaaa6e78f9f1c00fdfd58.  Needs investigation")
 
 	SkipXattrTestsIfNotEnabled(t)
 
