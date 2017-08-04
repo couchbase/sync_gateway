@@ -61,7 +61,8 @@ func (feed *couchbaseDCPFeedImpl) Close() error {
 }
 
 type SimpleFeed struct {
-	eventFeed chan sgbucket.FeedEvent
+	eventFeed  chan sgbucket.FeedEvent
+	terminator chan bool
 }
 
 func (s *SimpleFeed) Events() <-chan sgbucket.FeedEvent {
@@ -73,7 +74,7 @@ func (s *SimpleFeed) WriteEvents() chan<- sgbucket.FeedEvent {
 }
 
 func (s *SimpleFeed) Close() error {
-	LogFatal("SimpleFeed.Close() called but not implemented")
+	close(s.terminator)
 	return nil
 }
 
@@ -238,13 +239,24 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 	return value, lastSeq, nil
 }
 
-// Until we have CBL client support for rollback, we just rollback the sequence for the
-// vbucket to unblock the DCP stream.
+// RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
+// it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	Warn("DCP Rollback request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", vbucketId, rollbackSeq)
+	Warn("DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0", vbucketId)
+	dcpExpvars.Add("rollback_count", 1)
+	r.updateSeq(vbucketId, 0, false)
+	r.SetMetaData(vbucketId, nil)
+
+	return nil
+}
+
+// RollbackEx includes the vbucketUUID needed to reset the metadata correctly
+func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
+	Warn("DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", vbucketId, rollbackSeq)
 
 	dcpExpvars.Add("rollback_count", 1)
 	r.updateSeq(vbucketId, rollbackSeq, false)
+	r.SetMetaData(vbucketId, makeVbucketMetadata(vbucketUUID, rollbackSeq))
 	return nil
 }
 
@@ -282,20 +294,27 @@ func (r *DCPReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64
 	// The implementation has been reviewed with the cbdatasource owners and they agree this is a
 	// reasonable approach, as the structure of VBucketMetaData is expected to rarely change.
 	for vbucketId, uuid := range uuids {
-		failOver := make([][]uint64, 1)
-		failOverEntry := []uint64{uuid, 0}
-		failOver[0] = failOverEntry
-		metadata := &cbdatasource.VBucketMetaData{
-			SeqStart:    seqs[vbucketId],
-			SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
-			SnapStart:   seqs[vbucketId],
-			SnapEnd:     seqs[vbucketId],
-			FailOverLog: failOver,
-		}
-		buf, err := json.Marshal(metadata)
-		if err == nil {
-			r.meta[vbucketId] = buf
-		}
+		r.meta[vbucketId] = makeVbucketMetadata(uuid, seqs[vbucketId])
+	}
+}
+
+// Create VBucketMetadata, marshalled to []byte
+func makeVbucketMetadata(vbucketUUUID uint64, sequence uint64) []byte {
+	failOver := make([][]uint64, 1)
+	failOverEntry := []uint64{vbucketUUUID, 0}
+	failOver[0] = failOverEntry
+	metadata := &cbdatasource.VBucketMetaData{
+		SeqStart:    sequence,
+		SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
+		SnapStart:   sequence,
+		SnapEnd:     sequence,
+		FailOverLog: failOver,
+	}
+	metadataBytes, err := json.Marshal(metadata)
+	if err == nil {
+		return metadataBytes
+	} else {
+		return []byte{}
 	}
 }
 
@@ -305,7 +324,7 @@ func (r *DCPReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64
 //         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 	dcpExpvars.Add("persistCheckpoint_count", 1)
-	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, BinaryDocument(value))
+	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
 }
 
 // loadCheckpoint retrieves previously persisted DCP metadata.  Need to unmarshal metadata to determine last sequence processed.
@@ -498,6 +517,15 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	if err = bds.Start(); err != nil {
 		return err
+	}
+
+	// Close the data source if feed terminator is closed
+	if args.Terminator != nil {
+		go func() {
+			<-args.Terminator
+			LogTo("Feed+", "Closing DCP Feed based on termination notification")
+			bds.Close()
+		}()
 	}
 
 	return nil

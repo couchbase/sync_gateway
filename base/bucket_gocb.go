@@ -1839,8 +1839,28 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 
 }
 
+// GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
 func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
-	return nil, fmt.Errorf("GoCB bucket doesn't support TAP - use DCP feed type")
+
+	LogTo("DCP", "Using DCP to generate TAP-like stream")
+	// Create the feed channel that will be passed back to the caller
+	eventFeed := make(chan sgbucket.FeedEvent, 10)
+	terminator := make(chan bool)
+
+	//  Create a new SimpleFeed for Close() support
+	feed := &SimpleFeed{
+		eventFeed:  eventFeed,
+		terminator: terminator,
+	}
+	args.Terminator = terminator
+
+	callback := func(dcpFeedEvent sgbucket.FeedEvent) bool {
+		eventFeed <- dcpFeedEvent
+		return true
+	}
+
+	err := bucket.StartDCPFeed(args, callback)
+	return feed, err
 }
 
 func (bucket CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
