@@ -449,7 +449,11 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
-	urls := []string{spec.Server}
+	urls, errConvertServerSpec := CouchbaseURIToHttpURL(spec.Server)
+	if errConvertServerSpec != nil {
+		return errConvertServerSpec
+	}
+
 	poolName := spec.PoolName
 	if poolName == "" {
 		poolName = "default"
