@@ -57,7 +57,7 @@
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="a24c61bd2da6e4930a415e550d68086f7e8c7f75"/>
 
-  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="38214ff773a7fa8df2789558ebea9b3f86379324"/>
+  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="6c44a8829958bfe71283ed9fec2c28d722a3be27"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="0cd63ba8b594091ea0005ec50ee21299e0b22d97"/>
 
