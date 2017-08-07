@@ -504,6 +504,14 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dataSourceOptions.IncludeXAttrs = true
 	}
 
+	// Create a prefix that will be used to create the dcp stream name, which must be globally unique
+	// in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
+	// version number for debugging purposes
+	dcpStreamNamePrefix := fmt.Sprintf(
+		"SyncGateway-%v-%v",
+	)
+	dataSourceOptions.Name = dcpStreamNamePrefix
+
 	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
