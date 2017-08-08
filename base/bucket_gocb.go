@@ -1793,11 +1793,13 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	// Define a struct to store the rows as raw bytes
 	viewResponse := struct {
-		TotalRows int               `json:"total_rows,omitempty"`
-		Rows      []json.RawMessage `json:"rows,omitempty"`
+		TotalRows int                  `json:"total_rows,omitempty"`
+		Rows      []json.RawMessage    `json:"rows,omitempty"`
+		Errors    []sgbucket.ViewError `json:"errors,omitempty"`
 	}{
 		TotalRows: 0,
 		Rows:      []json.RawMessage{},
+		Errors:    []sgbucket.ViewError{},
 	}
 
 	if goCbViewResult != nil {
@@ -1814,6 +1816,28 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 		}
 
+	}
+
+	// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
+	// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
+	// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
+	errClose := goCbViewResult.Close()
+	if errClose != nil {
+		switch v := errClose.(type) {
+		case *gocb.MultiError:
+			for _, multiErr := range v.Errors {
+				viewErr := sgbucket.ViewError{
+					// Since we only have the error interface, just add the Error() string to the Reason field
+					Reason: multiErr.Error(),
+				}
+				viewResponse.Errors = append(viewResponse.Errors, viewErr)
+			}
+		default:
+			viewErr := sgbucket.ViewError{
+				Reason: v.Error(),
+			}
+			viewResponse.Errors = append(viewResponse.Errors, viewErr)
+		}
 	}
 
 	// serialize the whole thing to a []byte
