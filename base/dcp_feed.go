@@ -504,15 +504,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dataSourceOptions.IncludeXAttrs = true
 	}
 
-	// Create a prefix that will be used to create the dcp stream name, which must be globally unique
-	// in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
-	// version number for debugging purposes
-	dcpStreamNamePrefix := fmt.Sprintf(
-		"SyncGateway-%v-%x",
-		LongVersionString,
-		uuid.NewV4().String(),
-	)
-	dataSourceOptions.Name = dcpStreamNamePrefix
+	dataSourceOptions.Name = GenerateDcpStreamName("SG")
 
 	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
 	bds, err := cbdatasource.NewBucketDataSource(
@@ -543,5 +535,23 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	return nil
+
+}
+
+// Create a prefix that will be used to create the dcp stream name, which must be globally unique
+// in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
+// version number / commit for debugging purposes
+func GenerateDcpStreamName(product string) string {
+
+	// Use V2 since it takes the timestamp into account (as opposed to V4 which appears that it would
+	// require the random number generator to be seeded), so that it's more likely to be unique across different processes.
+	uuidComponent := uuid.NewV2(uuid.DomainPerson).String()
+
+	return fmt.Sprintf(
+		"%v-commit-%v-uuid-%v",
+		product,
+		GitCommit,
+		uuidComponent,
+	)
 
 }
