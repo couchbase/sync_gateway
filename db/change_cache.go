@@ -360,7 +360,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
+	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
 
 	if err != nil {
 		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
@@ -378,7 +378,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 					rawBody = nil
 				}
 				db := Database{DatabaseContext: c.context, user: nil}
-				_, err := db.ImportDocRaw(docID, rawBody, isDelete, event.Cas, ImportFromFeed)
+				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, ImportFromFeed)
 				if err != nil {
 					if err == base.ErrImportCasFailure {
 						base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
