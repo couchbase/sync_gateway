@@ -1455,10 +1455,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			case nil:
 				return deleteCas, deleteErr
 			case gocb.ErrKeyExists:
-				// Retry on CAS failure.  Reset loaded value and set cas=0
-				value = nil
-				xattrValue = nil
-				cas = 0
+				// Retry on CAS failure.
 				continue
 			default:
 				// UpdateXattr already does retry on recoverable errors, so return any error here
@@ -1482,6 +1479,11 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				return casOut, nil
 			}
 		}
+		// Reset value, xattr, cas for cas retry
+		value = nil
+		xattrValue = nil
+		cas = 0
+
 	}
 
 }
