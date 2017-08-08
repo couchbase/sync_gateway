@@ -60,14 +60,9 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 		}
 		// If existing doc wasn't an SG Write, import the doc.
 		if !doc.IsSGWrite() {
-			isDelete := rawDoc == nil
-			db := Database{DatabaseContext: db, user: nil}
 			var importErr error
-			doc, importErr = db.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, ImportOnDemand)
-			if importErr == base.ErrImportCancelledFilter {
-				// If the import was cancelled due to filter, treat as not found
-				return nil, base.HTTPErrorf(404, "Not imported")
-			} else if importErr != nil {
+			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
+			if importErr != nil {
 				return nil, importErr
 			}
 		}
@@ -86,28 +81,75 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	return doc, nil
 }
 
-// This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons
+// This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons.
 func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
+	emptySyncData := syncData{}
 	key := realDocID(docid)
 	if key == "" {
 		return syncData{}, base.HTTPErrorf(400, "Invalid doc ID")
 	}
-	dbExpvars.Add("document_gets", 1)
-	rawDocBytes, _, err := db.Bucket.GetRaw(key)
-	if err != nil {
-		return syncData{}, err
+
+	if db.UseXattrs() {
+		// Retrieve doc and xattr from bucket, unmarshal only xattr.
+		// Triggers on-demand import when document xattr doesn't match cas.
+		var rawDoc, rawXattr []byte
+		cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		if getErr != nil {
+			return emptySyncData, getErr
+		}
+
+		// Unmarshal xattr only
+		doc, unmarshalErr := unmarshalDocumentWithXattr(docid, nil, rawXattr, cas)
+		if unmarshalErr != nil {
+			return emptySyncData, unmarshalErr
+		}
+
+		// If existing doc wasn't an SG Write, import the doc.
+		if !doc.IsSGWrite() {
+			var importErr error
+			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
+			if importErr != nil {
+				return emptySyncData, importErr
+			}
+		}
+
+		return doc.syncData, nil
+
+	} else {
+		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
+		dbExpvars.Add("document_gets", 1)
+		rawDocBytes, _, err := db.Bucket.GetRaw(key)
+		if err != nil {
+			return emptySyncData, err
+		}
+
+		docRoot := documentRoot{
+			SyncData: &syncData{History: make(RevTree)},
+		}
+		if err := json.Unmarshal(rawDocBytes, &docRoot); err != nil {
+			return emptySyncData, err
+		}
+
+		return *docRoot.SyncData, nil
 	}
 
-	docRoot := documentRoot{
-		SyncData: &syncData{History: make(RevTree)},
-	}
-	if err := json.Unmarshal(rawDocBytes, &docRoot); err != nil {
-		return syncData{}, err
-	}
+}
 
-	return *docRoot.SyncData, nil
-
+// OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
+// if the document gets updated after the initial retrieval attempt that triggered this.
+func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64) (docOut *document, err error) {
+	isDelete := rawDoc == nil
+	importDb := Database{DatabaseContext: db, user: nil}
+	var importErr error
+	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, ImportOnDemand)
+	if importErr == base.ErrImportCancelledFilter {
+		// If the import was cancelled due to filter, treat as not found
+		return nil, base.HTTPErrorf(404, "Not imported")
+	} else if importErr != nil {
+		return nil, importErr
+	}
+	return docOut, nil
 }
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
