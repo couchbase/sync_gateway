@@ -1400,7 +1400,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, currentValue []byte, currentXattr []byte, currentCas uint64, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte
@@ -1408,10 +1408,10 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 	emptyCas := uint64(0)
 
 	// If an existing value has been provided, use that as the initial value
-	if currentValue != nil && currentCas > 0 {
-		value = currentValue
-		xattrValue = currentXattr
-		cas = currentCas
+	if previous != nil && previous.Cas > 0 {
+		value = previous.Body
+		xattrValue = previous.Xattr
+		cas = previous.Cas
 	}
 
 	for {

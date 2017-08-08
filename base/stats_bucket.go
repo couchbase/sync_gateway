@@ -181,9 +181,9 @@ func (b *StatsBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uin
 	}
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
-func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp int, currentValue []byte, currentXattr []byte, cas uint64, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	defer b.docWrite(1, -1)
-	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, currentValue, currentXattr, cas, callback)
+	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 func (b *StatsBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
 	cas, err = b.bucket.GetWithXattr(k, xattr, rv, xv)

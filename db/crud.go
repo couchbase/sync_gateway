@@ -627,7 +627,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
 func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (newRevID string, err error) {
-	_, newRevID, err = db.updateAndReturnDoc(docid, allowImport, expiry, nil, nil, 0, callback)
+	_, newRevID, err = db.updateAndReturnDoc(docid, allowImport, expiry, nil, callback)
 	return newRevID, err
 }
 
@@ -639,9 +639,7 @@ func (db *Database) updateAndReturnDoc(
 	docid string,
 	allowImport bool,
 	expiry uint32,
-	existingValue []byte, // If existingValue, existingCas, and existingXattr are present, passes these to WriteUpdateWithXattr to allow bypass of initial GET
-	existingXattr []byte,
-	existingCas uint64,
+	existingDoc *sgbucket.BucketDocument, // If existing is present, passes these to WriteUpdateWithXattr to allow bypass of initial GET
 	callback func(*document) (Body, AttachmentData, error)) (docOut *document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
@@ -883,7 +881,7 @@ func (db *Database) updateAndReturnDoc(
 	// Update the document
 	if db.UseXattrs() {
 		var casOut uint64
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), existingValue, existingXattr, existingCas, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
 				return

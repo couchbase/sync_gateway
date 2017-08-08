@@ -209,7 +209,7 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
-func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, currentValue []byte, currentXattr []byte, currentCas uint64, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
