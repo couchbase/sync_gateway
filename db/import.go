@@ -16,8 +16,8 @@ const (
 	ImportOnDemand                    // On-demand import. Reattempt import on cas write failure of the imported doc until either the import succeeds, or existing doc is an SG write.
 )
 
-// Imports a document that was written by someone other than sync gateway.
-func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool, cas uint64, mode ImportMode) (docOut *document, err error) {
+// Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, mode ImportMode) (docOut *document, err error) {
 
 	var body Body
 	if isDelete {
@@ -30,16 +30,29 @@ func (db *Database) ImportDocRaw(docid string, value []byte, isDelete bool, cas 
 		}
 	}
 
-	return db.ImportDoc(docid, body, isDelete, cas, mode)
+	return db.importDoc(docid, body, isDelete, value, xattrValue, cas, mode)
 }
 
-func (db *Database) ImportDoc(docid string, body Body, isDelete bool, importCas uint64, mode ImportMode) (docOut *document, err error) {
+// Import a document, given the existing state of the doc in *document format.
+func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, mode ImportMode) (docOut *document, err error) {
+
+	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
+	//       but should refactor import processing to support using the already-unmarshalled doc.
+	rawValue, rawXattr, err := existingDoc.MarshalWithXattr()
+	if err != nil {
+		return nil, err
+	}
+
+	return db.importDoc(docid, existingDoc.body, isDelete, rawValue, rawXattr, existingDoc.Cas, mode)
+}
+
+func (db *Database) importDoc(docid string, body Body, isDelete bool, existingValue []byte, existingXattrValue []byte, importCas uint64, mode ImportMode) (docOut *document, err error) {
 
 	base.LogTo("Import+", "Attempting to import doc %q...", docid)
 
 	var newRev string
 	var alreadyImportedDoc *document
-	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, existingValue, existingXattrValue, importCas, func(doc *document) (Body, AttachmentData, error) {
 
 		// Check if the doc has been deleted
 		if doc.Cas == 0 {

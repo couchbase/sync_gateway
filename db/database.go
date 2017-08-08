@@ -1095,7 +1095,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		}
 		var err error
 		if db.UseXattrs() {
-			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, nil, 0, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing, so deleteDoc is always returned as false.
 				if currentValue == nil || len(currentValue) == 0 {
 					return nil, nil, deleteDoc, errors.New("Cancel update")

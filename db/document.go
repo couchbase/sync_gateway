@@ -121,7 +121,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, rawBody []byte, err error) {
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, rawBody []byte, rawXattr []byte, err error) {
 
 	var body []byte
 
@@ -131,7 +131,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 		var syncXattr []byte
 		body, syncXattr, err = parseXattrStreamData(KSyncXattrName, data)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		// If the sync xattr is present, use that to build syncData
@@ -142,9 +142,9 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 			}
 			err = json.Unmarshal(syncXattr, result)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
-			return result, body, nil
+			return result, body, syncXattr, nil
 		}
 	} else {
 		// Xattr flag not set - data is just the document body
@@ -153,7 +153,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	result, err = UnmarshalDocumentSyncData(body, needHistory)
-	return result, body, err
+	return result, body, nil, err
 }
 
 // parseXattrStreamData returns the raw bytes of the body and the requested xattr (when present) from the raw DCP data bytes.

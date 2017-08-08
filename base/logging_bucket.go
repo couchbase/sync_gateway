@@ -103,12 +103,12 @@ func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp int, cas u
 	defer func() { LogTo("Bucket", "WriteCasWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
-func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp int, currentValue []byte, currentXattr []byte, cas uint64, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	start := time.Now()
 	defer func() {
 		LogTo("Bucket", "WriteUpdateWithXattr(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start))
 	}()
-	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, callback)
+	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, currentValue, currentXattr, cas, callback)
 }
 func (b *LoggingBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
 	start := time.Now()

@@ -1042,7 +1042,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Insert
-	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, writeUpdateFunc)
+	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, nil, nil, 0, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
@@ -1058,7 +1058,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	assert.Equals(t, retrievedXattr["seq"], float64(1))
 
 	// Update
-	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, writeUpdateFunc)
+	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, nil, nil, 0, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
