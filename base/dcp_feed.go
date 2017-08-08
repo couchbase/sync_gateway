@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -498,9 +499,8 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
 	}
 
-	var dataSourceOptions *cbdatasource.BucketDataSourceOptions
+	dataSourceOptions := cbdatasource.DefaultBucketDataSourceOptions
 	if spec.UseXattrs {
-		dataSourceOptions = cbdatasource.DefaultBucketDataSourceOptions
 		dataSourceOptions.IncludeXAttrs = true
 	}
 
@@ -508,7 +508,9 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
 	// version number for debugging purposes
 	dcpStreamNamePrefix := fmt.Sprintf(
-		"SyncGateway-%v-%v",
+		"SyncGateway-%v-%x",
+		LongVersionString,
+		uuid.NewV4().String(),
 	)
 	dataSourceOptions.Name = dcpStreamNamePrefix
 
