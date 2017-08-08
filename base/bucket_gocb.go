@@ -1564,7 +1564,7 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
 
 	username, password := bucket.GetBucketCredentials()
-	
+
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
@@ -1739,11 +1739,28 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 		}
 
-		// Any error processing view results is returned on Close
+		// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
+		// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
+		// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
 		err := goCbViewResult.Close()
 		if err != nil {
-			return viewResult, err
+			switch v := err.(type) {
+			case *gocb.MultiError:
+				for _, multiErr := range v.Errors {
+					viewErr := sgbucket.ViewError{
+						// Since we only have the error interface, just add the Error() string to the Reason field
+						Reason: multiErr.Error(),
+					}
+					viewResult.Errors = append(viewResult.Errors, viewErr)
+				}
+			default:
+				viewErr := sgbucket.ViewError{
+					Reason: v.Error(),
+				}
+				viewResult.Errors = append(viewResult.Errors, viewErr)
+			}
 		}
+
 	}
 
 	return viewResult, nil
