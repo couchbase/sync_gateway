@@ -116,6 +116,28 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 
 }
 
+func TestDenseBlockGetIndexEntry(t *testing.T) {
+
+	indexBucket := base.GetIndexBucketOrPanic()
+	defer indexBucket.Close()
+
+	block := NewDenseBlock("block1", nil)
+
+	// Inserts
+	entries := make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", i*10, i+1, IsNotRemoval, IsAdded)
+	}
+	overflow, pendingRemoval, _, _, err := block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(10))
+
+	entry := block.GetIndexEntry(0)
+	assert.NotEquals(t, nil, entry)
+}
+
 func TestDenseBlockMultipleUpdates(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	base.EnableLogKey("ChannelStorage+")

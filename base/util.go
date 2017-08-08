@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbaselabs/gocbconnstr"
 )
 
 const (
@@ -307,11 +307,10 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 	}
 }
 
-
 type WorkerResult struct {
 	ShouldRetry bool
-	Error error
-	Value interface{}
+	Error       error
+	Value       interface{}
 }
 
 func (w WorkerResult) Unwrap() (ShouldRetry bool, Error error, Value interface{}) {
@@ -328,8 +327,8 @@ func WrapRetryWorkerTimeout(worker RetryWorker) (timeoutWorker TimeoutWorker, re
 
 		result := WorkerResult{
 			ShouldRetry: shouldRetry,
-			Error: err,
-			Value: value,
+			Error:       err,
+			Value:       value,
 		}
 		resultChan <- result
 
@@ -355,7 +354,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 		// Wait for either the timeout worker to send it's result on the channel, or for the timeout to expire
 		select {
 
-		case workerResult := <- chWorkerResult:
+		case workerResult := <-chWorkerResult:
 			shouldRetry, err, value := workerResult.Unwrap()
 
 			if !shouldRetry {
@@ -378,7 +377,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 
 			numAttempts += 1
 
-		case <- time.After(timeoutPerInvocation):
+		case <-time.After(timeoutPerInvocation):
 			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
 		}
 
@@ -599,7 +598,7 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 	// is a single host.  If that works, return the result
 	singleHttpUrl := SingleHostCouchbaseURIToHttpURL(couchbaseUri)
 	if len(singleHttpUrl) > 0 {
-		return []string{ singleHttpUrl }, nil
+		return []string{singleHttpUrl}, nil
 	}
 
 	// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
@@ -620,7 +619,6 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 			translatedScheme = "https"
 		}
 
-
 		if address.Port > 0 {
 			port = address.Port
 		} else {
@@ -639,7 +637,6 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 	return httpUrls, nil
 
 }
-
 
 // Special case for couchbaseUri strings that contain a single host with http:// or https:// schemes,
 // possibly containing embedded basic auth.  Needed since gocbconnstr.Parse() will remove embedded
@@ -666,4 +663,12 @@ func SingleHostCouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string) {
 	// It made it past all checks.  Return a slice with a single string
 	return result.String()
 
+}
+
+// Retrieves a slice from a byte, but returns error (instead of panic) if range isn't contained by the slice
+func SafeSlice(data []byte, from int, to int) ([]byte, error) {
+	if from > len(data) || to > len(data) || from > to {
+		return nil, fmt.Errorf("Invalid slice [%d:%d] of []byte with len %d", from, to, len(data))
+	}
+	return data[from:to], nil
 }

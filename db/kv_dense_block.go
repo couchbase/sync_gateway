@@ -17,6 +17,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"errors"
 )
 
 var MaxBlockSize = 10000 // Maximum size of index block, in bytes
@@ -594,7 +595,10 @@ func (d *DenseBlock) MakeLogEntry(indexEntry DenseBlockIndexEntry, entry DenseBl
 }
 
 func (d *DenseBlock) GetIndexEntry(position int64) (indexEntry DenseBlockIndexEntry) {
-	indexEntry = d.value[position : position+INDEX_ENTRY_LEN]
+	indexEntry, err := base.SafeSlice(d.value, int(position), int(position+INDEX_ENTRY_LEN))
+	if err != nil {
+		base.LogError(errors.New(fmt.Sprintf("Unable to GetIndexEntry from DensBlockIndexEntry, key: %v, cas: %v, startClock: %v, clock: %v",d.Key, d.cas, d.startClock, d.clock)))
+	}
 	return indexEntry
 }
 
