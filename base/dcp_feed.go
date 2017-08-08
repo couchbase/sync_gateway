@@ -547,7 +547,7 @@ func GenerateDcpStreamName(product string) string {
 	// require the random number generator to be seeded), so that it's more likely to be unique across different processes.
 	uuidComponent := uuid.NewV2(uuid.DomainPerson).String()
 
-	commitTruncated := SafeSlice(GitCommit, 7)
+	commitTruncated := StringPrefix(GitCommit, 7)
 
 	return fmt.Sprintf(
 		"%v-v-%v-commit-%v-uuid-%v",
