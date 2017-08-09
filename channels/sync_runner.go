@@ -21,13 +21,10 @@ import (
 )
 
 const funcWrapper = `
-	function(newDoc, oldDoc, realUserCtx) {
+	function() {
 
+		var realUserCtx, shouldValidate;
 		var v = %s;
-
-		if (oldDoc) {
-			oldDoc._id = newDoc._id;
-		}
 
 		function makeArray(maybeArray) {
 			if (Array.isArray(maybeArray)) {
@@ -57,9 +54,6 @@ const funcWrapper = `
 			return false;
 		}
 
-		// Proxy userCtx that allows queries but not direct access to user/roles:
-		var shouldValidate = (realUserCtx != null && realUserCtx.name != null);
-
 		function requireUser(names) {
 				if (!shouldValidate) return;
 				names = makeArray(names);
@@ -81,17 +75,28 @@ const funcWrapper = `
 					throw({forbidden: "missing channel access"});
 		}
 
-		try {
-			v(newDoc, oldDoc);
-		} catch(x) {
-			if (x.forbidden)
+		return function (newDoc, oldDoc, _realUserCtx) {
+			realUserCtx = _realUserCtx;
+
+			if (oldDoc) {
+				oldDoc._id = newDoc._id;
+			}
+
+			// Proxy userCtx that allows queries but not direct access to user/roles:
+			shouldValidate = (realUserCtx != null && realUserCtx.name != null);
+
+			try {
+				v(newDoc, oldDoc);
+			} catch(x) {
+				if (x.forbidden)
 				reject(403, x.forbidden);
-			else if (x.unauthorized)
+				else if (x.unauthorized)
 				reject(401, x.unauthorized);
-			else
+				else
 				throw(x);
+			}
 		}
-	}`
+	}()`
 
 // An object that runs a specific JS sync() function. Not thread-safe!
 type SyncRunner struct {
