@@ -370,7 +370,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
-			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+			base.LogTo("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
 		}
 		return
 	}
