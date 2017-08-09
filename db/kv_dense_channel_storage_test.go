@@ -135,7 +135,11 @@ func TestDenseBlockGetIndexEntry(t *testing.T) {
 	assert.Equals(t, block.getEntryCount(), uint16(10))
 
 	entry := block.GetIndexEntry(0)
-	assert.NotEquals(t, nil, entry)
+	assert.NotEquals(t, entry, nil)
+
+	entry2 := block.GetIndexEntry(1300)
+	assert.Equals(t, len(entry2), 0)
+	assert.Equals(t, cap(entry2), 0)
 }
 
 func TestDenseBlockMultipleUpdates(t *testing.T) {
