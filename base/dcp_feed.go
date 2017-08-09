@@ -36,6 +36,9 @@ const (
 	MemcachedDataTypeXattr
 )
 
+// Memcached datatype for raw (binary) document (non-flag)
+const MemcachedDataTypeRaw = 0
+
 const DCPCheckpointPrefix = "_sync:dcp_ck:" // Prefix used for DCP checkpoint persistence (is appended with vbno)
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid

@@ -496,6 +496,29 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	assertDocProperty(t, response, "rev", "1-b9cdd5d413b572476799930f065657a6")
 }
 
+// Test to write a binary document to the bucket, ensure it's not imported.
+func TestImportBinaryDoc(t *testing.T) {
+
+	rt := RestTester{SyncFn: `
+		function(doc, oldDoc) { channel(doc.channels) }`}
+	defer rt.Close()
+
+	log.Printf("Starting get bucket....")
+
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true, "Cache+":true}`)
+
+	// 1. Write a binary doc through the SDK
+	rawBytes := []byte("some bytes")
+	err := bucket.SetRaw("binaryDoc", 0, rawBytes)
+	assertNoError(t, err, "Error writing binary doc through the SDK")
+
+	// 2. Ensure we can't retrieve the document via SG
+	response := rt.SendAdminRequest("GET", "/db/binaryDoc", "")
+	assert.True(t, response.Code != 200)
+}
+
 func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(getDocResponse.Body.Bytes(), &responseBody)

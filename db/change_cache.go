@@ -359,11 +359,19 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		return
 	}
 
+	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
+	// are enabled, because walrus doesn't support DataType on feed.
+	if c.context.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
+		return
+	}
+
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
-
 	if err != nil {
-		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		// Avoid log noise related to failed unmarshaling of binary documents.
+		if event.DataType != base.MemcachedDataTypeRaw {
+			base.LogTo("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
+		}
 		return
 	}
 
