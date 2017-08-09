@@ -668,18 +668,8 @@ func SingleHostCouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string) {
 
 }
 
-// Take this array of strings and return a single semi-colon delimited string
-// ["http://host1", "http://host2"] -> "http://host1;http://host2"
-func SemicolonDelimited(originalStrings []string) (semicolonDelimited string) {
-	buffer := bytes.NewBufferString("")
-	for i, url := range originalStrings {
-		buffer.WriteString(url)
-		if i < (len(originalStrings) - 1) {
-			buffer.WriteString(";")
-		}
-	}
-	return buffer.String()
-}
+
+
 // Slice a string to be less than or equal to desiredSze
 func StringPrefix(s string, desiredSize int) string {
 	if len(s) <= desiredSize {
