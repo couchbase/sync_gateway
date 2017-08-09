@@ -37,7 +37,7 @@
   <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="8411555ab31944a2369c2dc97ddd8e1d4725fa6c"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="489e5ffbbd0dd63db68682529564ee8938ec77e2"/>
+  <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="eb79bf552d0992f5d790b25b6ebba9b633a259a2"/>
   
   <project groups="notdefault,sg-accel" name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="rcrowley" revision="7aeccdae5c4ea7140b90c8af1dcf9563065cc6dd"/>
 
