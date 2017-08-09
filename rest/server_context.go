@@ -538,7 +538,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if config.RevsLimit != nil && *config.RevsLimit > 0 {
 		dbcontext.RevsLimit = *config.RevsLimit
+		if dbcontext.RevsLimit < 20 {
+			return nil, fmt.Errorf("The revs_limit (%v) configuration cannot be set lower than 20.", dbcontext.RevsLimit)
+		}
+
+		if dbcontext.RevsLimit < 100 {
+			base.Warn("Setting the revs_limit (%v) to less than 100 is not recommended.  Please see documentation for details.", dbcontext.RevsLimit)
+		}
+
 	}
+
+
 
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
 
