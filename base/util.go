@@ -668,6 +668,8 @@ func SingleHostCouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string) {
 
 }
 
+
+
 // Slice a string to be less than or equal to desiredSze
 func StringPrefix(s string, desiredSize int) string {
 	if len(s) <= desiredSize {

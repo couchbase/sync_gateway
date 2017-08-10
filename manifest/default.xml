@@ -34,10 +34,10 @@
 
   
   <!-- Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="b60872fdda3d826acb96e536a882a094e8e07f45"/>
+  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="f7d610905a0a50b8b871b0ca0440d49b61a5c222"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="489e5ffbbd0dd63db68682529564ee8938ec77e2"/>
+  <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="eb79bf552d0992f5d790b25b6ebba9b633a259a2"/>
   
   <project groups="notdefault,sg-accel" name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="rcrowley" revision="7aeccdae5c4ea7140b90c8af1dcf9563065cc6dd"/>
 
@@ -57,7 +57,7 @@
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="a24c61bd2da6e4930a415e550d68086f7e8c7f75"/>
 
-  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="38214ff773a7fa8df2789558ebea9b3f86379324"/>
+  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="6c44a8829958bfe71283ed9fec2c28d722a3be27"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="6382451e5ef472cd19e4eba6e82e3c1957e4cc09"/>
 
