@@ -87,7 +87,7 @@
 
   <project name="go-metrics" path="godeps/src/github.com/samuel/go-metrics" remote="samuel" revision="52e6232924c9e785c3c4117b63a3e58b1f724544"/>
 
-  <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="ffbe531a496e0f677b018f61c21b8be43588b77a"/>
+  <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
   <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="c980adc4a823548817b9c47d38c6ca6b7d7d8b6a"/>
 
@@ -97,7 +97,7 @@
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
 
-  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="3a178dfab983e40487e45f1ec6f0b90f5aa946f2"/>
+  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="aef460b9ed0e88ca0e1014bc601c0ffec954c942"/>
 
   <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="ef844635a21403c0a5115bfdbbfb416cc57dae51"/>
 
