@@ -142,6 +142,32 @@ func TestDenseBlockGetIndexEntry(t *testing.T) {
 	assert.Equals(t, cap(entry2), 0)
 }
 
+func TestDenseBlockGetEntry(t *testing.T) {
+
+	indexBucket := base.GetIndexBucketOrPanic()
+	defer indexBucket.Close()
+
+	block := NewDenseBlock("block1", nil)
+
+	// Inserts
+	entries := make([]*LogEntry, 10)
+	for i := 0; i < 10; i++ {
+		entries[i] = makeBlockEntry(fmt.Sprintf("doc%d", i), "1-abc", i*10, i+1, IsNotRemoval, IsAdded)
+	}
+	overflow, pendingRemoval, _, _, err := block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(10))
+
+	entry := block.GetIndexEntry(0)
+	assert.NotEquals(t, entry, nil)
+
+	entry2 := block.GetIndexEntry(1300)
+	assert.Equals(t, len(entry2), 0)
+	assert.Equals(t, cap(entry2), 0)
+}
+
 func TestDenseBlockMultipleUpdates(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	base.EnableLogKey("ChannelStorage+")
@@ -345,6 +371,23 @@ func TestDenseBlockRollbackTo(t *testing.T) {
 	assert.Equals(t, len(foundEntries), 1)
 	assertLogEntry(t, foundEntries[0], "doc2", "1-abc", 2, 3)
 
+	// Attempt to rollback on an empty block
+	block = NewDenseBlock("block2", nil)
+
+	// Insert an empty entry list
+	entries = make([]*LogEntry, 0)
+
+	overflow, pendingRemoval, _, _, err = block.AddEntrySet(entries, indexBucket)
+	assertNoError(t, err, "Error adding empty entry set")
+	assert.Equals(t, len(overflow), 0)
+	assert.Equals(t, len(pendingRemoval), 0)
+	assert.Equals(t, block.getEntryCount(), uint16(0))
+
+	// Rollback should complete in this empty block
+	rollbackComplete, err = block.RollbackTo(1, 1, indexBucket)
+	assertNoError(t, err, "Error rolling back")
+	assert.Equals(t, rollbackComplete, true)
+	assert.Equals(t, block.getEntryCount(), uint16(0))
 }
 
 func DisableTestDenseBlockOverflow(t *testing.T) {

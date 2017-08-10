@@ -369,6 +369,10 @@ func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, r
 
 	for {
 		indexEntry := d.GetIndexEntry(int64(indexPos))
+		if indexEntry == nil {
+			rollbackComplete = true
+			break
+		}
 		entryPos -= uint32(indexEntry.getEntryLen())
 		if indexEntry.getVbNo() == vbNo {
 			if indexEntry.getSequence() > seq {
