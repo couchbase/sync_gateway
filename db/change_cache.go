@@ -400,8 +400,14 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	}
 
 	if !syncData.HasValidSyncData(c.context.writeSequences()) {
-		base.Warn("changeCache: Doc %q does not have valid sync data.", docID)
-		return
+		migratedDoc, _ := c.context.checkForUpgrade(docID)
+		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
+			base.LogTo("Cache", "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
+			syncData = &migratedDoc.syncData
+		} else {
+			base.Warn("changeCache: Doc %q does not have valid sync data.", docID)
+			return
+		}
 	}
 
 	if syncData.Sequence <= c.initialSequence {

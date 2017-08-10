@@ -72,6 +72,39 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	var alreadyImportedDoc *document
 	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, existingDoc, func(doc *document) (Body, AttachmentData, error) {
 
+		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
+		if doc.Cas != existingDoc.Cas {
+			// If this is a feed import, cancel on cas failure (doc has been updated )
+			if mode == ImportFromFeed {
+				return nil, nil, base.ErrImportCasFailure
+			}
+			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
+			if mode == ImportOnDemand {
+				body = doc.body
+				existingDoc = &sgbucket.BucketDocument{
+					Cas: doc.Cas,
+				}
+			}
+		}
+
+		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
+		_, ok := body["_sync"]
+		if ok {
+			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(docid, body, existingDoc)
+			if migrateErr != nil {
+				return nil, nil, migrateErr
+			}
+			// Migration successful, doesn't require import - return ErrDocumentMigrated to cancel import processing
+			if !requiresImport {
+				alreadyImportedDoc = migratedDoc
+				return nil, nil, base.ErrDocumentMigrated
+			}
+			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
+			doc = migratedDoc
+			body = migratedDoc.body
+			base.LogTo("Migrate", "Falling back to import with cas: %v", doc.Cas)
+		}
+
 		// Check if the doc has been deleted
 		if doc.Cas == 0 {
 			base.LogTo("Import+", "Document has been removed from the bucket before it could be imported - cancelling import.")
@@ -86,24 +119,11 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		}
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
-		// Cancel update
+		// Cancel import
 		if doc.IsSGWrite() {
 			base.LogTo("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
 			alreadyImportedDoc = doc
 			return nil, nil, base.ErrAlreadyImported
-		}
-
-		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  This is an SDK write (since we checked
-		// for SG write above).  How to handle depends on import mode.
-		if doc.Cas != existingDoc.Cas {
-			// If this is a feed import, cancel on cas failure (doc has been updated )
-			if mode == ImportFromFeed {
-				return nil, nil, base.ErrImportCasFailure
-			}
-			// If this is an on-demand import, we want to switch to importing the current version doc
-			if mode == ImportOnDemand {
-				body = doc.body
-			}
 		}
 
 		// If there's a filter function defined, evaluate to determine whether we should import this doc
@@ -139,7 +159,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	})
 
 	switch err {
-	case base.ErrAlreadyImported:
+	case base.ErrAlreadyImported, base.ErrDocumentMigrated:
 		// If the doc was already imported, we want to return the imported version
 		docOut = alreadyImportedDoc
 	case nil:
@@ -159,6 +179,68 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	}
 
 	return docOut, nil
+}
+
+// Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
+// migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
+func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
+
+	for {
+		// Reload existing doc, if not present
+		if len(existingDoc.Body) == 0 {
+			cas, getErr := db.Bucket.GetWithXattr(docid, KSyncXattrName, &existingDoc.Body, &existingDoc.Xattr)
+			base.LogTo("Migrate", "Reload in migrate got cas: %d", cas)
+			if getErr != nil {
+				return nil, false, getErr
+			}
+
+			// If an xattr exists on the doc, someone has already migrated.  Cancel and return for potential import checking.
+			if len(existingDoc.Xattr) > 0 {
+				updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas)
+				if unmarshalErr != nil {
+					return nil, false, unmarshalErr
+				}
+				base.LogTo("Migrate", "Returning updated doc because xattr exists (cas=%d): %s", updatedDoc.Cas, existingDoc.Xattr)
+				return updatedDoc, true, nil
+			}
+			existingDoc.Cas = cas
+		}
+
+		// Unmarshal the existing doc in legacy SG format
+		doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
+		if err != nil {
+			return nil, false, unmarshalErr
+		}
+		doc.Cas = existingDoc.Cas
+
+		// If no sync metadata is present, return for import handling
+		if !doc.HasValidSyncData(false) {
+			base.LogTo("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", docid, doc.Cas)
+			return doc, true, nil
+		}
+
+		// Persist the document in xattr format
+		value, xattrValue, marshalErr := doc.MarshalWithXattr()
+		if marshalErr != nil {
+			return nil, false, marshalErr
+		}
+
+		casOut, writeErr := db.Bucket.WriteCasWithXattr(docid, KSyncXattrName, 0, existingDoc.Cas, value, xattrValue)
+		if writeErr == nil {
+			doc.Cas = casOut
+			base.LogTo("Migrate", "Successfully migrated doc %q", docid)
+			return doc, false, nil
+		}
+
+		// On any error other than cas mismatch, return error
+		if !base.IsCasMismatch(db.Bucket, writeErr) {
+			return nil, false, writeErr
+		}
+
+		base.LogTo("Migrate", "CAS mismatch, retrying")
+		// On cas mismatch, reset existingDoc.Body to trigger reload
+		existingDoc = &sgbucket.BucketDocument{}
+	}
 }
 
 //////// Import Filter Function
