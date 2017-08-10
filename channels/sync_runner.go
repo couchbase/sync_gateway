@@ -24,7 +24,7 @@ const funcWrapper = `
 	function() {
 
 		var realUserCtx, shouldValidate;
-		var v = %s;
+		var syncFn = %s;
 
 		function makeArray(maybeArray) {
 			if (Array.isArray(maybeArray)) {
@@ -86,7 +86,7 @@ const funcWrapper = `
 			shouldValidate = (realUserCtx != null && realUserCtx.name != null);
 
 			try {
-				v(newDoc, oldDoc);
+				syncFn(newDoc, oldDoc);
 			} catch(x) {
 				if (x.forbidden)
 				reject(403, x.forbidden);
