@@ -1085,6 +1085,42 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 
 }
 
+// Test _changes returning conflicts
+func TestChangesIncludeConflicts(t *testing.T) {
+
+	base.ParseLogFlags([]string{"Cache+", "Changes+", "CRUD+"})
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
+			 channel(doc.channel)
+		 }`}
+	defer rt.Close()
+
+	// Create conflicted document documents
+	response := rt.SendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Create two conflicting revisions
+	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc?new_edits=false", `{"_revisions":{"start":2, "ids":["conflictOne", "82214a562e80c8fa7b2361719847bc73"]}, "value":"c1", "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc?new_edits=false", `{"_revisions":{"start":2, "ids":["conflictTwo", "82214a562e80c8fa7b2361719847bc73"]}, "value":"c2", "channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Get changes
+	rt.ServerContext().Database("db").WaitForPendingChanges()
+
+	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?style=all_docs", "")
+	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	log.Printf("changes response: %s", changesResponse.Body.Bytes())
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, len(changes.Results[0].Changes), 2)
+
+}
+
 //////// HELPERS:
 
 func assertNoError(t *testing.T, err error, message string) {

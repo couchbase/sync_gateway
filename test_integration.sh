@@ -205,7 +205,8 @@ declare -a arr=(
     "TestGetRestrictedIntQuery"
     "TestParseHTTPRangeHeader"
     "TestSanitizeURL"
-    "TestVerifyHTTPSSupport")
+    "TestVerifyHTTPSSupport",
+    "TestChangesIncludeConflicts")
 
 
 # --------------------------------- SG Accel tests -----------------------------------------
