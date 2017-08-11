@@ -672,7 +672,6 @@ func StringPrefix(s string, desiredSize int) string {
 	}
 
 	return s[:desiredSize]
-
 }
 
 // Retrieves a slice from a byte, but returns error (instead of panic) if range isn't contained by the slice

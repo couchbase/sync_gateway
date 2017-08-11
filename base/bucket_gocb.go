@@ -1398,33 +1398,45 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	}
 }
 
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+// WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
+// failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+
+	var value []byte
+	var xattrValue []byte
+	var cas uint64
+	emptyCas := uint64(0)
+
+	// If an existing value has been provided, use that as the initial value
+	if previous != nil && previous.Cas > 0 {
+		value = previous.Body
+		xattrValue = previous.Xattr
+		cas = previous.Cas
+	}
 
 	for {
-		var value []byte
-		var xattrValue []byte
 		var err error
-		var cas uint64
-		emptyCas := uint64(0)
+		// If no existing value has been provided, retrieve the current value from the bucket
+		if cas == 0 {
+			// Load the existing value.
+			gocbExpvars.Add("Update_GetWithXattr", 1)
+			cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
 
-		// Load the existing value.
-		gocbExpvars.Add("Update_GetWithXattr", 1)
-		cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+			if err != nil {
+				if !bucket.IsKeyNotFoundError(err) {
+					// Unexpected error, cancel writeupdate
+					LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+					return emptyCas, err
+				}
+				// Key not found - initialize cas and values
 
-		if err != nil {
-			if !bucket.IsKeyNotFoundError(err) {
-				// Unexpected error, cancel writeupdate
-				LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return emptyCas, err
+				LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr err: %v.  Treating as insert.", k, cas)
+				cas = 0
+				value = nil
+				xattrValue = nil
+			} else {
+				LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr successful - cas: %v  len(value):%d", k, cas, len(value))
 			}
-			// Key not found - initialize cas and values
-
-			LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr err: %v.  Treating as insert.", k, cas)
-			cas = 0
-			value = nil
-			xattrValue = nil
-		} else {
-			LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr successful - cas: %v  len(value):%d", k, cas, len(value))
 		}
 
 		// Invoke callback to get updated value
@@ -1443,7 +1455,8 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			case nil:
 				return deleteCas, deleteErr
 			case gocb.ErrKeyExists:
-				continue // Retry on CAS failure
+				// Retry on CAS failure.
+				continue
 			default:
 				// UpdateXattr already does retry on recoverable errors, so return any error here
 				LogTo("CRUD", "Delete and update of xattr during WriteUpdateWithXattr failed for key %s: %v", k, deleteErr)
@@ -1466,6 +1479,11 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 				return casOut, nil
 			}
 		}
+		// Reset value, xattr, cas for cas retry
+		value = nil
+		xattrValue = nil
+		cas = 0
+
 	}
 
 }
@@ -1564,7 +1582,7 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
 
 	username, password := bucket.GetBucketCredentials()
-	
+
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
@@ -1739,11 +1757,28 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 		}
 
-		// Any error processing view results is returned on Close
+		// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
+		// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
+		// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
 		err := goCbViewResult.Close()
 		if err != nil {
-			return viewResult, err
+			switch v := err.(type) {
+			case *gocb.MultiError:
+				for _, multiErr := range v.Errors {
+					viewErr := sgbucket.ViewError{
+						// Since we only have the error interface, just add the Error() string to the Reason field
+						Reason: multiErr.Error(),
+					}
+					viewResult.Errors = append(viewResult.Errors, viewErr)
+				}
+			default:
+				viewErr := sgbucket.ViewError{
+					Reason: v.Error(),
+				}
+				viewResult.Errors = append(viewResult.Errors, viewErr)
+			}
 		}
+
 	}
 
 	return viewResult, nil
@@ -1776,11 +1811,13 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	// Define a struct to store the rows as raw bytes
 	viewResponse := struct {
-		TotalRows int               `json:"total_rows,omitempty"`
-		Rows      []json.RawMessage `json:"rows,omitempty"`
+		TotalRows int                  `json:"total_rows,omitempty"`
+		Rows      []json.RawMessage    `json:"rows,omitempty"`
+		Errors    []sgbucket.ViewError `json:"errors,omitempty"`
 	}{
 		TotalRows: 0,
 		Rows:      []json.RawMessage{},
+		Errors:    []sgbucket.ViewError{},
 	}
 
 	if goCbViewResult != nil {
@@ -1797,6 +1834,28 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 		}
 
+	}
+
+	// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
+	// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
+	// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
+	errClose := goCbViewResult.Close()
+	if errClose != nil {
+		switch v := errClose.(type) {
+		case *gocb.MultiError:
+			for _, multiErr := range v.Errors {
+				viewErr := sgbucket.ViewError{
+					// Since we only have the error interface, just add the Error() string to the Reason field
+					Reason: multiErr.Error(),
+				}
+				viewResponse.Errors = append(viewResponse.Errors, viewErr)
+			}
+		default:
+			viewErr := sgbucket.ViewError{
+				Reason: v.Error(),
+			}
+			viewResponse.Errors = append(viewResponse.Errors, viewErr)
+		}
 	}
 
 	// serialize the whole thing to a []byte

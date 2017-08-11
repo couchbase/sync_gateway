@@ -745,7 +745,7 @@ func (config *ServerConfig) NumIndexWriters() int {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
-	base.Logf("==== %s ====", LongVersionString)
+	base.Logf("==== %s ====", base.LongVersionString)
 
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
