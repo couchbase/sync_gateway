@@ -665,6 +665,16 @@ func SingleHostCouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string) {
 
 }
 
+// Slice a string to be less than or equal to desiredSze
+func StringPrefix(s string, desiredSize int) string {
+	if len(s) <= desiredSize {
+		return s
+	}
+
+	return s[:desiredSize]
+
+}
+
 // Retrieves a slice from a byte, but returns error (instead of panic) if range isn't contained by the slice
 func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 	if from > len(data) || to > len(data) || from > to {
