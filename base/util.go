@@ -681,4 +681,3 @@ func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 	}
 	return data[from:to], nil
 }
-
