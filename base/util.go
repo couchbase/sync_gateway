@@ -681,3 +681,12 @@ func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 	}
 	return data[from:to], nil
 }
+
+func GetMaxVbNoOrDefault(bucket Bucket, defaultMaxVbNo uint16) (maxVbNo uint16) {
+
+	maxVbNo, err := bucket.GetMaxVbno()
+	if err != nil {
+		return defaultMaxVbNo
+	}
+	return maxVbNo
+}
