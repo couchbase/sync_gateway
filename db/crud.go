@@ -554,6 +554,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 	}
 
 	return db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !doc.IsSGWrite() {
@@ -563,7 +564,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			}
 		}
 
-		// (Be careful: this block can be invoked multiple times if there are races!)
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
 			matchRev = doc.CurrentRev
@@ -576,7 +576,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) {
+		} else if !doc.History.isLeaf(matchRev) || (!db.AllowConflicts() && matchRev != doc.CurrentRev) {
 			return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
@@ -615,6 +615,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	}
 
 	_, err = db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !doc.IsSGWrite() {
@@ -624,7 +625,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			}
 		}
 
-		// (Be careful: this block can be invoked multiple times if there are races!)
 		// Find the point where this doc's history branches from the current rev:
 		currentRevIndex := len(docHistory)
 		parent := ""
@@ -638,6 +638,18 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		if currentRevIndex == 0 {
 			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			return nil, nil, couchbase.UpdateCancel // No new revisions to add
+		}
+
+		if !db.AllowConflicts() {
+			// Conflict-free mode: If doc exists, its current rev must be the new rev's parent...
+			if parent != doc.CurrentRev && doc.CurrentRev != "" {
+				if len(docHistory) == 1 && doc.History[doc.CurrentRev].Deleted {
+					// ...unless the doc is currently deleted and the new rev has no parent.
+					parent = doc.CurrentRev
+				} else {
+					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				}
+			}
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -1346,4 +1358,40 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 		}
 	}
 	return
+}
+
+// Status code returned by CheckProposedRev
+type ProposedRevStatus int
+
+const (
+	ProposedRev_OK       ProposedRevStatus = 0   // Rev can be added without conflict
+	ProposedRev_Exists   ProposedRevStatus = 304 // Rev already exists locally
+	ProposedRev_Conflict ProposedRevStatus = 409 // Rev would cause conflict
+	ProposedRev_Error    ProposedRevStatus = 500 // Error occurred reading local doc
+)
+
+// Given a docID/revID to be pushed by a client, check whether it can be added _without conflict_.
+// This is used by the BLIP replication code in "allow_conflicts=false" mode.
+func (db *Database) CheckProposedRev(docid string, revid string, parentRevID string) ProposedRevStatus {
+	doc, err := db.GetDoc(docid)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) {
+			base.Warn("CheckProposedRev(%q) --> %T %v", docid, err, err)
+			return ProposedRev_Error
+		}
+		// Doc doesn't exist locally; adding it is OK (even if it has a history)
+		return ProposedRev_OK
+	} else if doc.CurrentRev == revid {
+		// Proposed rev already exists here:
+		return ProposedRev_Exists
+	} else if doc.CurrentRev == parentRevID {
+		// Proposed rev's parent is my current revision; OK to add:
+		return ProposedRev_OK
+	} else if parentRevID == "" && doc.History[doc.CurrentRev].Deleted {
+		// Proposed rev has no parent and doc is currently deleted; OK to add:
+		return ProposedRev_OK
+	} else {
+		// Parent revision mismatch, so this is a conflict:
+		return ProposedRev_Conflict
+	}
 }

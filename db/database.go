@@ -110,6 +110,7 @@ type UnsupportedOptions struct {
 	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
 	EnableXattr      *bool                   `json:"enable_extended_attributes"`   // Use xattr for _sync
+	AllowConflicts   *bool                   `json:"allow_conflicts"`              // False forbids creating conflicts
 }
 
 // Options associated with the import of documents not written by Sync Gateway
@@ -1222,6 +1223,13 @@ func (context *DatabaseContext) UseXattrs() bool {
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
+}
+
+func (context *DatabaseContext) AllowConflicts() bool {
+	if context.Options.UnsupportedOptions.AllowConflicts != nil {
+		return *context.Options.UnsupportedOptions.AllowConflicts
+	}
+	return base.DefaultAllowConflicts
 }
 
 //////// SEQUENCE ALLOCATION:
