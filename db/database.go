@@ -511,12 +511,14 @@ func (db *Database) DocCount() int {
 func installViews(bucket base.Bucket, useXattrs bool) error {
 
 	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
-	// in the document body when xattrs disabled, in the mobile xattr when xattrs enabled.
-	syncData := "var sync = doc._sync;"
-	if useXattrs {
-		syncData = fmt.Sprintf(`var sync = meta.xattrs.%s; 
-							var mb_24037 = doc.id;`, KSyncXattrName) // Workaround for https://issues.couchbase.com/browse/MB-24037
-	}
+	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
+	syncData := fmt.Sprintf(`var sync
+							if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
+		                        sync = doc._sync
+		                  	} else {
+		                       	sync = meta.xattrs.%s
+		                    }
+		                     `, KSyncXattrName, KSyncXattrName)
 
 	// View for finding every Couchbase doc (used when deleting a database)
 	// Key is docid; value is null

@@ -218,10 +218,6 @@ func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []b
 
 func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
-	// Additional diagnostics if sync metadata exists but isn't valid
-	if !valid && doc != nil {
-		base.LogTo("CRUD+", "Invalid sync metadata (may be expected):  Current rev: %s, Sequence: %v", doc.CurrentRev, doc.Sequence)
-	}
 	return valid
 }
 
