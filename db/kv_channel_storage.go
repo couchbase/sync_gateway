@@ -34,7 +34,7 @@ const (
 // without significant refactoring.
 type ChannelStorageReader interface {
 	// GetAllEntries returns all entries for the channel in the specified range, for all vbuckets
-	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int) ([]*LogEntry, error)
+	GetChanges(fromSeq base.SequenceClock, channelClock base.SequenceClock, limit int, activeOnly bool) ([]*LogEntry, error)
 	UpdateCache(fromSeq base.SequenceClock, channelClock base.SequenceClock, changedPartitions []*base.PartitionRange) error
 }
 

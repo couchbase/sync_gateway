@@ -12,7 +12,6 @@ package db
 import (
 	"errors"
 	"sync"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -76,7 +75,7 @@ func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock
 // caller.  Changes are retrieved in vbucket order, to allow a limit check after each vbucket (to avoid retrieval).  Since
 // a given partition includes results for more than one vbucket
 
-func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClock, limit int) (changes []*LogEntry, err error) {
+func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock base.SequenceClock, limit int, activeOnly bool) (changes []*LogEntry, err error) {
 
 	changes = make([]*LogEntry, 0)
 
@@ -88,6 +87,8 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 	// changed partitions is a cache of changes for a partition, for reuse by multiple vbs
 	changedPartitions := make(map[uint16]*PartitionChanges, len(partitionRanges))
 
+	var activecount int
+
 	for _, vbNo := range changedVbuckets {
 		partitionNo := ds.partitions.PartitionForVb(vbNo)
 		partitionChanges, ok := changedPartitions[partitionNo]
@@ -98,7 +99,22 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 			}
 			changedPartitions[partitionNo] = partitionChanges
 		}
-		changes = append(changes, partitionChanges.GetVbChanges(vbNo)...)
+		vbChanges := partitionChanges.GetVbChanges(vbNo)
+		changes = append(changes, vbChanges...)
+
+		if activeOnly {
+			// re-iterate over vbChanges to count the number of active
+			// use that count to determine whether we're at the limit
+			for _, logEntry := range vbChanges {
+				if !logEntry.IsRemoved() {
+					activecount++
+				}
+			}
+			if limit > 0 && activecount > limit {
+				break
+			}
+		}
+
 		if limit > 0 && len(changes) > limit {
 			break
 		}
