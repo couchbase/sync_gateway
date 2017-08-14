@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -35,29 +36,52 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	start := time.Now()
 	// Query the view:
 	optMap := changesViewOptions(channelName, endSeq, options)
-	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
-	vres := channelsViewResult{}
-	err := dbc.Bucket.ViewCustom(DesignDocSyncGatewayChannels, ViewChannels, optMap, &vres)
-	if err != nil {
-		base.Logf("Error from 'channels' view: %v", err)
-		return nil, err
-	} else if len(vres.Rows) == 0 {
-		base.LogTo("Cache", "    Got no rows from view for %q", channelName)
-		return nil, nil
-	}
 
-	// Convert the output to LogEntries:
-	entries := make(LogEntries, 0, len(vres.Rows))
-	for _, row := range vres.Rows {
-		entry := &LogEntry{
-			Sequence:     uint64(row.Key[1].(float64)),
-			DocID:        row.ID,
-			RevID:        row.Value.Rev,
-			Flags:        row.Value.Flags,
-			TimeReceived: time.Now(),
+	entries := make(LogEntries, 0)
+
+	//Required for activeOnly handling, loop until we have consumed limit log entries
+	for {
+		base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
+		vres := channelsViewResult{}
+		err := dbc.Bucket.ViewCustom(DesignDocSyncGatewayChannels, ViewChannels, optMap, &vres)
+		if err != nil {
+			base.Logf("Error from 'channels' view: %v", err)
+			return nil, err
+		} else if len(vres.Rows) == 0 {
+			if len(entries) > 0 {
+				break
+			}
+			base.LogTo("Cache", "    Got no rows from view for %q", channelName)
+			return nil, nil
 		}
-		// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
-		entries = append(entries, entry)
+
+		// Convert the output to LogEntries:
+		for _, row := range vres.Rows {
+			entry := &LogEntry{
+				Sequence:     uint64(row.Key[1].(float64)),
+				DocID:        row.ID,
+				RevID:        row.Value.Rev,
+				Flags:        row.Value.Flags,
+				TimeReceived: time.Now(),
+			}
+			if options.ActiveOnly {
+				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
+					// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
+					entries = append(entries, entry)
+				}
+			} else {
+				entries = append(entries, entry)
+			}
+			optMap["startkey"] = []interface{}{channelName, entry.Sequence + 1}
+		}
+
+		if options.ActiveOnly {
+			if len(entries) >= options.Limit || options.Limit == 0{
+				break
+			}
+		} else {
+			break
+		}
 	}
 
 	base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
