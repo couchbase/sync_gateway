@@ -48,37 +48,55 @@ func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
 	}
 	dbExpvars.Add("document_gets", 1)
 	if db.UseXattrs() {
-		var rawDoc, rawXattr []byte
-		cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
-		if getErr != nil {
-			return nil, getErr
-		}
-		var unmarshalErr error
-		doc, unmarshalErr = unmarshalDocumentWithXattr(docid, rawDoc, rawXattr, cas)
-		if unmarshalErr != nil {
-			return nil, unmarshalErr
+		var rawBucketDoc *sgbucket.BucketDocument
+		doc, rawBucketDoc, err = db.GetDocWithXattr(key)
+		if err != nil {
+			return nil, err
 		}
 		// If existing doc wasn't an SG Write, import the doc.
 		if !doc.IsSGWrite() {
 			var importErr error
-			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
+			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, importErr
 			}
 		}
-
+		if !doc.HasValidSyncData(db.writeSequences()) {
+			return nil, base.HTTPErrorf(404, "Not imported")
+		}
 	} else {
 		doc = newDocument(docid)
 		_, err = db.Bucket.Get(key, doc)
 		if err != nil {
 			return nil, err
 		}
+		if !doc.HasValidSyncData(db.writeSequences()) {
+			// Check whether doc has been upgraded to use xattrs
+			upgradeDoc, _ := db.checkForUpgrade(docid)
+			if upgradeDoc == nil {
+				return nil, base.HTTPErrorf(404, "Not imported")
+			}
+			doc = upgradeDoc
+		}
 	}
 
-	if !doc.HasValidSyncData(db.writeSequences()) {
-		return nil, base.HTTPErrorf(404, "Not imported")
-	}
 	return doc, nil
+}
+
+func (db *DatabaseContext) GetDocWithXattr(key string) (doc *document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+	rawBucketDoc = &sgbucket.BucketDocument{}
+	var getErr error
+	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
+	if getErr != nil {
+		return nil, nil, getErr
+	}
+
+	var unmarshalErr error
+	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
+	if unmarshalErr != nil {
+		return nil, nil, unmarshalErr
+	}
+	return doc, rawBucketDoc, nil
 }
 
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons.
@@ -510,6 +528,7 @@ func (db *Database) initializeSyncData(doc *document) (err error) {
 }
 
 func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Body) error {
+
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
 	if doc.body == nil {
@@ -553,10 +572,12 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	return db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+	allowImport := db.UseXattrs()
+
+	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (Body, AttachmentData, error) {
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !doc.IsSGWrite() {
+		if doc != nil && !doc.IsSGWrite() && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
 				return nil, nil, err
@@ -614,10 +635,11 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	_, err = db.updateDoc(docid, true, expiry, func(doc *document) (Body, AttachmentData, error) {
+	allowImport := db.UseXattrs()
+	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (Body, AttachmentData, error) {
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !doc.IsSGWrite() {
+		if doc != nil && !doc.IsSGWrite() && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
 				return nil, nil, err
@@ -689,7 +711,7 @@ func (db *Database) updateAndReturnDoc(
 	}
 
 	// Added annotation to the following variable declarations for reference during future refactoring of documentUpdateFunc into a standalone function
-	var doc *document                                // Passed to documentUpdateFunc as pointer, may be possible to define in documentUpdateFuncnot need to be defined here
+	var doc *document                                // Passed to documentUpdateFunc as pointer, may be possible to define in documentUpdateFunc
 	var body Body                                    // Could be returned by documentUpdateFunc
 	var changedPrincipals, changedRoleUsers []string // Could be returned by documentUpdateFunc
 	var docSequence uint64                           // Must be scoped outside callback, used over multiple iterations
@@ -697,12 +719,11 @@ func (db *Database) updateAndReturnDoc(
 	var oldBodyJSON string                           // Could be returned by documentUpdateFunc.  Stores previous revision body for use by DocumentChangeEvent
 
 	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
-	documentUpdateFunc := func(doc *document, docExists bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, err error) {
+	documentUpdateFunc := func(doc *document, docExists bool, importAllowed bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, err error) {
 
 		var newAttachments AttachmentData
-
 		// Be careful: this block can be invoked multiple times if there are races!
-		if !allowImport && docExists && !doc.HasValidSyncData(db.writeSequences()) {
+		if !importAllowed && docExists && !doc.HasValidSyncData(db.writeSequences()) {
 			err = base.HTTPErrorf(409, "Not imported")
 			return
 		}
@@ -921,15 +942,46 @@ func (db *Database) updateAndReturnDoc(
 	var shadowerEcho bool
 
 	// Update the document
-	if db.UseXattrs() {
+	upgradeInProgress := false
+	if !db.UseXattrs() {
+		// Update the document, storing metadata in _sync property
+		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+			// Be careful: this block can be invoked multiple times if there are races!
+			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
+				return
+			}
+			docOut, writeOpts, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil, allowImport)
+			if err != nil {
+				return
+			}
+
+			// Return the new raw document value for the bucket to store.
+			raw, err = json.Marshal(docOut)
+			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
+
+			return raw, writeOpts, err
+		})
+
+		// If we can't find sync metadata in the document body, check for upgrade.  If upgrade, retry write using WriteUpdateWithXattr
+		if err != nil && err.Error() == "409 Not imported" {
+			_, bucketDocument := db.checkForUpgrade(key)
+			if bucketDocument.Xattr != nil {
+				existingDoc = bucketDocument
+				upgradeInProgress = true
+			}
+		}
+	}
+
+	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
+		// Update the document, storing metadata in extended attribute
 		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
 				return
 			}
 
-			docOut, _, _, err = documentUpdateFunc(doc, currentValue != nil)
+			docOut, _, _, err = documentUpdateFunc(doc, currentValue != nil, true)
 			if err != nil {
 				return
 			}
@@ -948,27 +1000,16 @@ func (db *Database) updateAndReturnDoc(
 			return raw, rawXattr, deleteDoc, err
 		})
 		if err != nil {
-			base.LogTo("CRUD+", "Did not update document %q w/ xattr: %v", key, err)
+			if err == base.ErrDocumentMigrated {
+				base.LogTo("CRUD+", "Migrated document %q to use xattr.", key)
+			} else {
+				base.LogTo("CRUD+", "Did not update document %q w/ xattr: %v", key, err)
+			}
 		} else if docOut != nil {
 			docOut.Cas = casOut
 		}
 	} else {
-		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
-			// Be careful: this block can be invoked multiple times if there are races!
-			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
-				return
-			}
-			docOut, writeOpts, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil)
-			if err != nil {
-				return
-			}
 
-			// Return the new raw document value for the bucket to store.
-			raw, err = json.Marshal(docOut)
-			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
-
-			return raw, writeOpts, err
-		})
 	}
 
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
@@ -1296,6 +1337,18 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 		roleSet.Add(row.Value)
 	}
 	return roleSet, nil
+}
+
+// Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
+func (context *DatabaseContext) checkForUpgrade(key string) (*document, *sgbucket.BucketDocument) {
+	if context.UseXattrs() {
+		return nil, nil
+	}
+	doc, rawDocument, err := context.GetDocWithXattr(key)
+	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
+		return nil, nil
+	}
+	return doc, rawDocument
 }
 
 //////// REVS_DIFF:

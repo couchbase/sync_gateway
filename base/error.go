@@ -28,6 +28,7 @@ const (
 	viewTimeoutError      = sgErrorCode(0x03)
 	revTreeAddRevFailure  = sgErrorCode(0x04)
 	importCancelledFilter = sgErrorCode(0x05)
+	documentMigrated      = sgErrorCode(0x06)
 )
 
 type SGError struct {
@@ -35,12 +36,13 @@ type SGError struct {
 }
 
 var (
-	ErrRevTreeAddRevFailure = &SGError{revTreeAddRevFailure}
-	ErrImportCancelled      = &SGError{importCancelled}
-	ErrAlreadyImported      = &SGError{alreadyImported}
-	ErrImportCasFailure     = &SGError{importCasFailure}
-	ErrViewTimeoutError     = &SGError{viewTimeoutError}
+	ErrRevTreeAddRevFailure  = &SGError{revTreeAddRevFailure}
+	ErrImportCancelled       = &SGError{importCancelled}
+	ErrAlreadyImported       = &SGError{alreadyImported}
+	ErrImportCasFailure      = &SGError{importCasFailure}
+	ErrViewTimeoutError      = &SGError{viewTimeoutError}
 	ErrImportCancelledFilter = &SGError{importCancelledFilter}
+	ErrDocumentMigrated      = &SGError{documentMigrated}
 )
 
 func (e SGError) Error() string {
@@ -49,6 +51,8 @@ func (e SGError) Error() string {
 		return "Document already imported"
 	case importCancelled:
 		return "Import cancelled"
+	case documentMigrated:
+		return "Document migrated"
 	case importCancelledFilter:
 		return "Import cancelled based on import filter"
 	case importCasFailure:

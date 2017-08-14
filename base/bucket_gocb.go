@@ -1002,7 +1002,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	return cas, err
 }
 
-// CAS-safe update of a document's xattr.  Also deletes the document body if deleteBody is true.
+// CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
@@ -1425,17 +1425,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			if err != nil {
 				if !bucket.IsKeyNotFoundError(err) {
 					// Unexpected error, cancel writeupdate
-					LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+					LogTo("CRUD+", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
 					return emptyCas, err
 				}
 				// Key not found - initialize cas and values
-
-				LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr err: %v.  Treating as insert.", k, cas)
 				cas = 0
 				value = nil
 				xattrValue = nil
-			} else {
-				LogTo("CRUD+", "WriteUpdateWithXattr for key=%s. GetWithXattr successful - cas: %v  len(value):%d", k, cas, len(value))
 			}
 		}
 
@@ -1446,46 +1442,37 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 			return emptyCas, err
 		}
 
-		var writeErr error
-		// If this is a tombstone, we want to delete the document and update the xattr
-		if deleteDoc {
-			deleteBody := len(value) > 0
-			deleteCas, deleteErr := bucket.UpdateXattr(k, xattrKey, exp, cas, updatedXattrValue, deleteBody)
-			switch deleteErr {
-			case nil:
-				return deleteCas, deleteErr
-			case gocb.ErrKeyExists:
-				// Retry on CAS failure.
-				continue
-			default:
-				// UpdateXattr already does retry on recoverable errors, so return any error here
-				LogTo("CRUD", "Delete and update of xattr during WriteUpdateWithXattr failed for key %s: %v", k, deleteErr)
-				return emptyCas, deleteErr
-			}
-
-		} else {
-			// Not a delete - update the body and xattr
-			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
-
-			// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
-			// WriteUpdate.
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
-			}
-
-			// If there was no error, we're done
-			if writeErr == nil {
-				return casOut, nil
-			}
+		// Attempt to write the updated document to the bucket
+		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, deleteDoc)
+		switch writeErr {
+		case nil:
+			return casOut, nil
+		case gocb.ErrKeyExists:
+			// Retry on cas failure
+		default:
+			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
+			return emptyCas, writeErr
 		}
+
 		// Reset value, xattr, cas for cas retry
 		value = nil
 		xattrValue = nil
 		cas = 0
 
 	}
+}
 
+// Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
+// update types (UpdateXattr, WriteCasWithXattr) include recoverable error retry.
+func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp int, cas uint64, value []byte, xattrValue []byte, isDelete bool) (casOut uint64, err error) {
+	// If this is a tombstone, we want to delete the document and update the xattr
+	if isDelete {
+		deleteBody := len(value) > 0
+		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody)
+	} else {
+		// Not a delete - update the body and xattr
+		return bucket.WriteCasWithXattr(k, xattrKey, exp, cas, value, xattrValue)
+	}
 }
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
