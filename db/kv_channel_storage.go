@@ -297,7 +297,7 @@ func (b *BitFlagStorage) loadBlock(block IndexBlock) error {
 	return nil
 }
 
-func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock, limit int) ([]*LogEntry, error) {
+func (b *BitFlagStorage) GetChanges(fromSeq base.SequenceClock, toSeq base.SequenceClock, limit int, activeOnly bool) ([]*LogEntry, error) {
 
 	// Determine which blocks have changed, and load those blocks
 	blocksByKey, blocksByVb, err := b.calculateChangedBlocks(fromSeq, toSeq)
