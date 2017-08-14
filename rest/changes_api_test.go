@@ -1240,18 +1240,13 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	}
 }
 
-func TestChangesActiveOnlyWithLimitLowRevCahce(t *testing.T) {
+func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
-
-	pendingMaxWait := uint32(5)
-	maxNum := 50
-	skippedMaxWait := uint32(120000)
-
+	cacheSize := 2
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
-			CachePendingSeqMaxWait: &pendingMaxWait,
-			CachePendingSeqMaxNum:  &maxNum,
-			CacheSkippedSeqMaxWait: &skippedMaxWait,
+			ChannelCacheMinLength: &cacheSize,
+			ChannelCacheMaxLength: &cacheSize,
 		},
 	}
 

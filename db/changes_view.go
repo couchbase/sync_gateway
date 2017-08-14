@@ -37,10 +37,9 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	// Query the view:
 	optMap := changesViewOptions(channelName, endSeq, options)
 
-	var activecount int
-	var entries LogEntries
+	entries := make(LogEntries, 0)
 
-	//Loop until we have consumed limit log entries
+	//Required for activeOnly handling, loop until we have consumed limit log entries
 	for {
 		base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 		vres := channelsViewResult{}
@@ -49,12 +48,14 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			base.Logf("Error from 'channels' view: %v", err)
 			return nil, err
 		} else if len(vres.Rows) == 0 {
+			if len(entries) > 0 {
+				return entries, nil
+			}
 			base.LogTo("Cache", "    Got no rows from view for %q", channelName)
 			return nil, nil
 		}
 
 		// Convert the output to LogEntries:
-		newEntries := make(LogEntries, 0, len(vres.Rows))
 		for _, row := range vres.Rows {
 			entry := &LogEntry{
 				Sequence:     uint64(row.Key[1].(float64)),
@@ -65,27 +66,21 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			}
 			if options.ActiveOnly {
 				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
-					activecount++
+					// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
+					entries = append(entries, entry)
 				}
+			} else {
+				entries = append(entries, entry)
 			}
-			// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
-			newEntries = append(newEntries, entry)
-		}
-
-		entries = append(entries, newEntries...)
-
-		if options.Limit == 0 {
-			break
+			optMap["startkey"] = []interface{}{channelName, entry.Sequence + 1}
 		}
 
 		if options.ActiveOnly {
-			if activecount > options.Limit {
+			if len(entries) >= options.Limit || options.Limit == 0{
 				break
 			}
 		} else {
-			if options.Limit > 0 {
-				break
-			}
+			break
 		}
 	}
 
