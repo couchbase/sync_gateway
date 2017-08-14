@@ -5,9 +5,7 @@
       "bucket": "default",
       "password": "password",
       "import_docs": "continuous",
-      "unsupported": {
-         "enable_extended_attributes":true
-      }
+      "enable_extended_attributes":true,  
     }
   }
 }

@@ -94,6 +94,7 @@ type DatabaseContextOptions struct {
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions         ImportOptions
+	EnableXattr           bool // Use xattr for _sync
 }
 
 type OidcTestProviderOptions struct {
@@ -109,7 +110,6 @@ type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
 	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
-	EnableXattr      *bool                   `json:"enable_extended_attributes"`   // Use xattr for _sync
 }
 
 // Options associated with the import of documents not written by Sync Gateway
@@ -1215,10 +1215,7 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 }
 
 func (context *DatabaseContext) UseXattrs() bool {
-	if context.Options.UnsupportedOptions.EnableXattr != nil {
-		return *context.Options.UnsupportedOptions.EnableXattr
-	}
-	return base.DefaultUseXattrs
+	return context.Options.EnableXattr
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
