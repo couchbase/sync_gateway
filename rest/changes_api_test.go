@@ -1181,6 +1181,21 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 		}
 	}
 
+	// Active only NO Limit, POST
+	changesJSON = `{"style":"all_docs", "active_only":true}`
+	changes.Results = nil
+	changesResponse = it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 8)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+		// validate conflicted handling
+		if entry.ID == "conflictedDoc" {
+			assert.Equals(t, len(entry.Changes), 2)
+		}
+	}
+
 	// Active only with Limit, POST
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
 	changes.Results = nil
@@ -1203,6 +1218,21 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	assert.Equals(t, len(changes.Results), 5)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
+		if entry.ID == "conflictedDoc" {
+			assert.Equals(t, len(entry.Changes), 2)
+		}
+	}
+
+	// Active only with Limit set higher than number of revisions, POST
+	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
+	changes.Results = nil
+	changesResponse = it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 8)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+		// validate conflicted handling
 		if entry.ID == "conflictedDoc" {
 			assert.Equals(t, len(entry.Changes), 2)
 		}

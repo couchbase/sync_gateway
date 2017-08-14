@@ -13,6 +13,7 @@ import (
 	"errors"
 	"sync"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Implementation of ChannelStorage that stores entries as an append-based list of
@@ -106,7 +107,7 @@ func (ds *DenseStorageReader) GetChanges(sinceClock base.SequenceClock, toClock 
 			// re-iterate over vbChanges to count the number of active
 			// use that count to determine whether we're at the limit
 			for _, logEntry := range vbChanges {
-				if !logEntry.IsRemoved() {
+				if !logEntry.IsRemoved() && logEntry.Flags&channels.Deleted == 0 {
 					activecount++
 				}
 			}

@@ -38,7 +38,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 
 	var activecount int
 	var entries LogEntries
-	
+
 	//Loop until we have consumed limit log entries
 	for {
 		base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)

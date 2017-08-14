@@ -167,6 +167,10 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 	}
 
 	n := len(log) - start
+
+	//If the activeOnly option is set, then do not limit the number of entries returned
+	//we don't know how many non active entries will be discarded from the entry set
+	//by the caller, so the additional entries may be needed to return up to the limit requested
 	if options.Limit > 0 && n > options.Limit && !options.ActiveOnly {
 		n = options.Limit
 	}
