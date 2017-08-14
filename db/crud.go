@@ -1262,7 +1262,7 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayRoleAccess, ViewRoleAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccess, ViewRoleAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	// Merge the TimedSets from the view result:
@@ -1287,7 +1287,7 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayRoleAccessVbSeq, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccessVbSeq, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 

@@ -12,25 +12,23 @@ import (
 )
 
 const (
-	DesignDocSyncGateway                = "sync_gateway" // Legacy design doc, obsolete in SG 1.5 and later.  Used to remove if present during view installation
-	DesignDocSyncGatewayChannels        = "sync_gateway_channels"
-	DesignDocSyncGatewayAccess          = "sync_gateway_access"
-	DesignDocSyncGatewayAccessVbSeq     = "sync_gateway_access_vbseq"
-	DesignDocSyncGatewayRoleAccess      = "sync_gateway_role_access"
-	DesignDocSyncGatewayRoleAccessVbSeq = "sync_gateway_role_access_vbseq"
-	DesignDocSyncHousekeeping           = "sync_housekeeping"
-	ViewPrincipals                      = "principals"
-	ViewChannels                        = "channels"
-	ViewAccess                          = "access"
-	ViewAccessVbSeq                     = "access_vbseq"
-	ViewRoleAccess                      = "role_access"
-	ViewRoleAccessVbSeq                 = "role_access_vbseq"
-	ViewAllBits                         = "all_bits"
-	ViewAllDocs                         = "all_docs"
-	ViewImport                          = "import"
-	ViewOldRevs                         = "old_revs"
-	ViewSessions                        = "sessions"
-	ViewTombstones                      = "tombstones"
+	DesignDocSyncGateway            = "sync_gateway" // Legacy design doc, obsolete in SG 1.5 and later.  Used to remove if present during view installation
+	DesignDocSyncGatewayChannels    = "sync_gateway_channels"
+	DesignDocSyncGatewayAccess      = "sync_gateway_access"
+	DesignDocSyncGatewayAccessVbSeq = "sync_gateway_access_vbseq"
+	DesignDocSyncHousekeeping       = "sync_housekeeping"
+	ViewPrincipals                  = "principals"
+	ViewChannels                    = "channels"
+	ViewAccess                      = "access"
+	ViewAccessVbSeq                 = "access_vbseq"
+	ViewRoleAccess                  = "role_access"
+	ViewRoleAccessVbSeq             = "role_access_vbseq"
+	ViewAllBits                     = "all_bits"
+	ViewAllDocs                     = "all_docs"
+	ViewImport                      = "import"
+	ViewOldRevs                     = "old_revs"
+	ViewSessions                    = "sessions"
+	ViewTombstones                  = "tombstones"
 )
 
 func GetDesignDocForView(viewName string) (designDocName string) {
@@ -44,9 +42,9 @@ func GetDesignDocForView(viewName string) (designDocName string) {
 	case ViewAccessVbSeq:
 		return DesignDocSyncGatewayAccessVbSeq
 	case ViewRoleAccess:
-		return DesignDocSyncGatewayRoleAccess
+		return DesignDocSyncGatewayAccess
 	case ViewRoleAccessVbSeq:
-		return DesignDocSyncGatewayRoleAccessVbSeq
+		return DesignDocSyncGatewayAccessVbSeq
 	default:
 		return ""
 	}
