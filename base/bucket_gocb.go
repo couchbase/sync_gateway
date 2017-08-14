@@ -1672,6 +1672,9 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 
 	// Use the bucket's HTTP client to make the request
 	resp, err := goCBClient.HttpClient().Do(req)
+	if err != nil {
+		return err
+	}
 
 	if resp.StatusCode != 201 {
 		data, err := ioutil.ReadAll(resp.Body)
