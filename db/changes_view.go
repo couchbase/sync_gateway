@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -53,7 +54,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 		}
 
 		// Convert the output to LogEntries:
-		entries = make(LogEntries, 0, len(vres.Rows))
+		newEntries := make(LogEntries, 0, len(vres.Rows))
 		for _, row := range vres.Rows {
 			entry := &LogEntry{
 				Sequence:     uint64(row.Key[1].(float64)),
@@ -63,16 +64,28 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 				TimeReceived: time.Now(),
 			}
 			if options.ActiveOnly {
-				if !entry.IsRemoved() {
+				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
 					activecount++
 				}
 			}
 			// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
-			entries = append(entries, entry)
+			newEntries = append(newEntries, entry)
 		}
 
-		if options.Limit == 0 || options.Limit > 0  && activecount > options.Limit {
+		entries = append(entries, newEntries...)
+
+		if options.Limit == 0 {
 			break
+		}
+
+		if options.ActiveOnly {
+			if activecount > options.Limit {
+				break
+			}
+		} else {
+			if options.Limit > 0 {
+				break
+			}
 		}
 	}
 
