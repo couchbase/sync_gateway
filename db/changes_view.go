@@ -49,7 +49,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			return nil, err
 		} else if len(vres.Rows) == 0 {
 			if len(entries) > 0 {
-				return entries, nil
+				break
 			}
 			base.LogTo("Cache", "    Got no rows from view for %q", channelName)
 			return nil, nil
