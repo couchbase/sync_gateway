@@ -72,6 +72,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	var alreadyImportedDoc *document
 	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, existingDoc, func(doc *document) (Body, AttachmentData, error) {
 
+		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
 			// If this is a feed import, cancel on cas failure (doc has been updated )
@@ -185,6 +186,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
+	// TODO: Add unit test for standalone migrateMetadata execution
 	for {
 		// Reload existing doc, if not present
 		if len(existingDoc.Body) == 0 {

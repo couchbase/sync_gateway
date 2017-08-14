@@ -944,6 +944,7 @@ func (db *Database) updateAndReturnDoc(
 	// Update the document
 	upgradeInProgress := false
 	if !db.UseXattrs() {
+		// Update the document, storing metadata in _sync property
 		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
@@ -973,6 +974,7 @@ func (db *Database) updateAndReturnDoc(
 
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
+		// Update the document, storing metadata in extended attribute
 		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
