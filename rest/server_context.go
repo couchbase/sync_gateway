@@ -562,7 +562,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	emitAccessRelatedWarnings(config, dbcontext)
+	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
+	//emitAccessRelatedWarnings(config, dbcontext)
 
 	// Install bucket-shadower if any:
 	if shadow := config.Shadow; shadow != nil {

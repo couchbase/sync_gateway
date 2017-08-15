@@ -710,24 +710,14 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 
 	designDocMap[DesignDocSyncGatewayAccess] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewAccess: sgbucket.ViewDef{Map: access_map},
+			ViewAccess:     sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
 		},
 	}
 
 	designDocMap[DesignDocSyncGatewayAccessVbSeq] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewAccessVbSeq: sgbucket.ViewDef{Map: access_vbSeq_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayRoleAccess] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayRoleAccessVbSeq] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
+			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
 			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
 		},
 	}
