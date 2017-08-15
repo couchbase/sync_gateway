@@ -184,6 +184,18 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// Get the old revision, which should still be accessible:
 	response = rt.Send(requestByUser("GET", "/db/alpha?rev="+rev1, "", "alice"))
 	assert.Equals(t, response.Code, 200)
+
+	// Resurect document, but in another channel not visible to alice
+	assertStatus(t, rt.Send(request("PUT", "/db/alpha?rev="+rev2, `{"channel":"not-zero"}`)), 201)
+
+	// Now get the deleted revision:
+	response = rt.Send(requestByUser("GET", "/db/alpha?rev="+rev2, "", "alice"))
+	assert.Equals(t, response.Code, 200)
+	log.Printf("Deletion looks like: %s", response.Body.Bytes())
+	var deletedDocBody db.Body
+	json.Unmarshal(response.Body.Bytes(), &deletedDocBody)
+	assert.DeepEquals(t, deletedDocBody, db.Body{"_id": "alpha", "_rev": rev2, "_deleted": true})
+
 }
 
 func TestPostChangesInteger(t *testing.T) {
