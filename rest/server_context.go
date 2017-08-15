@@ -511,6 +511,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		OIDCOptions:           config.OIDCConfig,
 		DBOnlineCallback:      dbOnlineCallback,
 		ImportOptions:         importOptions,
+		EnableXattr:           config.UseXattrs(),
 	}
 
 	// Create the DB Context
@@ -547,8 +548,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 
 	}
-
-
 
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
 

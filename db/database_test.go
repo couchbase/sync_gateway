@@ -106,7 +106,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 
 	if base.TestUseXattrs() {
-		dbcOptions.UnsupportedOptions.EnableXattr = base.BooleanPointer(true)
+		dbcOptions.EnableXattr = true
 	}
 
 }

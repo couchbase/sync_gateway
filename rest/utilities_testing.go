@@ -72,9 +72,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 		rt.DatabaseConfig.Name = "db"
 		rt.DatabaseConfig.Sync = syncFnPtr
-		rt.DatabaseConfig.Unsupported = db.UnsupportedOptions{
-			EnableXattr: &useXattrs,
-		}
+		rt.DatabaseConfig.EnableXattrs = &useXattrs
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
