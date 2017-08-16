@@ -386,6 +386,11 @@ func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, 
 	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
 }
 
+// Implementation of AuthHandler interface for ClusterConfig
+func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
+}
+
 // Reads a ServerConfig from raw data
 func ReadServerConfigFromData(runMode SyncGatewayRunMode, data []byte) (*ServerConfig, error) {
 

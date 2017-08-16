@@ -592,7 +592,14 @@ func BooleanPointer(booleanValue bool) *bool {
 // Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
 // Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
-func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
+func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []string, err error) {
+
+	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints
+	gocbBucket, ok := bucket.(CouchbaseBucketGoCB)
+	if ok && gocbBucket.IoRouter() != nil {
+		mgmtEps := gocbBucket.IoRouter().MgmtEps()
+		return mgmtEps, nil
+	}
 
 	// First try to do a simple URL parse, which will only work for http:// and https:// urls where there
 	// is a single host.  If that works, return the result
@@ -609,6 +616,7 @@ func CouchbaseURIToHttpURL(couchbaseUri string) (httpUrls []string, err error) {
 
 	for _, address := range connSpec.Addresses {
 
+		// Determine port to use for management API
 		port := gocbconnstr.DefaultHttpPort
 
 		translatedScheme := "http"
