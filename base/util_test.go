@@ -16,8 +16,8 @@ import (
 
 	"github.com/couchbaselabs/go.assert"
 	"net/url"
-	"time"
 	"strings"
+	"time"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -140,7 +140,6 @@ func TestRetryLoop(t *testing.T) {
 
 }
 
-
 // Make sure that the RetryLoopTimeout doesn't break existing RetryLoop functionality
 func TestRetryLoopTimeoutSafe(t *testing.T) {
 
@@ -186,14 +185,13 @@ func TestRetryLoopTimeoutEffective(t *testing.T) {
 
 	// Kick off timeout loop that expects lazy worker to return in 100 ms, even though it takes a week
 	description := fmt.Sprintf("TestRetryLoop")
-	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond * 100)
+	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond*100)
 
 	// We should get a timeout error
 	assert.True(t, err != nil)
 	assert.True(t, strings.Contains(err.Error(), "timeout"))
 
 }
-
 
 func TestSyncSourceFromURL(t *testing.T) {
 	u, err := url.Parse("http://www.test.com:4985/mydb")
@@ -263,7 +261,7 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 			expected: []string{"https://host1:18091"},
 		},
 		{
-			input:    "couchbase://host1,host2",
+			input: "couchbase://host1,host2",
 			expected: []string{
 				"http://host1:8091",
 				"http://host2:8091",
@@ -277,7 +275,7 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 			},
 		},
 		{
-			input: "couchbase://host1:8091,host2,",  // trailing comma
+			input: "couchbase://host1:8091,host2,", // trailing comma
 			expected: []string{
 				"http://host1:8091",
 				"http://host2:8091",
@@ -312,7 +310,7 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 	}
 
 	for _, inputAndExpected := range inputsAndExpected {
-		actual, err := CouchbaseURIToHttpURL(inputAndExpected.input)
+		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input)
 		assertNoError(t, err, "Unexpected error")
 		assert.DeepEquals(t, actual, inputAndExpected.expected)
 	}
