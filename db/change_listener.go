@@ -84,7 +84,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 	default:
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.LogTo("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file", bucket.GetName())
+		base.LogTo("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file)", bucket.GetName())
 		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent)
 	}
 }
