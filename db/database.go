@@ -14,7 +14,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -142,7 +141,6 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
-		log.Printf("getBucket return error: %v", err)
 		return err != nil, err, bucket
 	}
 
