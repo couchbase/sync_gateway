@@ -1,5 +1,5 @@
 build:
-  image: golang
+  image: golang:1.8.3-jessie
   commands:
     - cd $GOPATH
     - rm -rf *
