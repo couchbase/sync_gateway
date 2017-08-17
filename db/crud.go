@@ -175,7 +175,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
 	var doc *document
 	if doc, err = context.GetDoc(id.DocID); doc == nil {
-		return
+		return body, history, channels, err
 	}
 
 	if body, err = context.getRevision(doc, id.RevID); err != nil {
@@ -194,7 +194,7 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 	}
 	history = encodeRevisions(doc.History.getHistory(id.RevID))
 	channels = doc.History[id.RevID].Channels
-	return
+	return body, history, channels, err
 }
 
 // Returns the body of the current revision of a document

@@ -258,6 +258,88 @@ func TestGetDeleted(t *testing.T) {
 }
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
+func TestGetRemovedAsUser(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	rev1body := Body{
+		"key1":     1234,
+		"channels": []string{"ABC"},
+	}
+	rev1id, err := db.Put("doc1", rev1body)
+	assertNoError(t, err, "Put")
+
+	rev2body := Body{
+		"key1":     1234,
+		"channels": []string{"NBC"},
+		"_rev":     rev1id,
+	}
+	rev2id, err := db.Put("doc1", rev2body)
+	assertNoError(t, err, "Put Rev 2")
+
+	// Add another revision, so that rev 2 is obsolete
+	rev3body := Body{
+		"key1":     12345,
+		"channels": []string{"NBC"},
+		"_rev":     rev2id,
+	}
+	_, err = db.Put("doc1", rev3body)
+	assertNoError(t, err, "Put Rev 3")
+
+	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
+	body, err := db.GetRev("doc1", rev2id, true, nil)
+	assertNoError(t, err, "GetRev")
+	rev2digest := rev2id[2:]
+	rev1digest := rev1id[2:]
+	expectedResult := Body{
+		"key1":     1234,
+		"channels": []string{"NBC"},
+		"_revisions": map[string]interface{}{
+			"start": 2,
+			"ids":   []string{rev2digest, rev1digest}},
+		"_id":  "doc1",
+		"_rev": rev2id,
+	}
+	assert.DeepEquals(t, body, expectedResult)
+
+	// Manually remove the temporary backup doc from the bucket
+	// Manually flush the rev cache
+	// After expiry from the rev cache and removal of doc backup, try again
+	db.DatabaseContext.revisionCache = NewRevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader)
+	err = db.purgeOldRevisionJSON("doc1", rev2id)
+	assertNoError(t, err, "Purge old revision JSON")
+
+	// Try again with a user who doesn't have access to this revision
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	db.user, err = authenticator.GetUser("")
+	assertNoError(t, err, "GetUser")
+
+	var chans channels.TimedSet
+	chans = channels.AtSequence(base.SetOf("ABC"), 1)
+	db.user.SetExplicitChannels(chans)
+
+	// Get the removal revision with its history; equivalent to GET with ?revs=true
+	body, err = db.GetRev("doc1", rev2id, true, nil)
+	assertNoError(t, err, "GetRev")
+	expectedResult = Body{
+		"_id":      "doc1",
+		"_rev":     rev2id,
+		"_removed": true,
+		"_revisions": map[string]interface{}{
+			"start": 2,
+			"ids":   []string{rev2digest, rev1digest}},
+	}
+	assert.DeepEquals(t, body, expectedResult)
+
+	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
+	err = db.purgeOldRevisionJSON("doc1", rev1id)
+	assertNoError(t, err, "Purge old revision JSON")
+
+	_, err = db.GetRev("doc1", rev1id, true, nil)
+	assertHTTPError(t, err, 404)
+}
+
+// Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemoved(t *testing.T) {
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
@@ -309,6 +391,79 @@ func TestGetRemoved(t *testing.T) {
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assertNoError(t, err, "Purge old revision JSON")
 
+	// Get the removal revision with its history; equivalent to GET with ?revs=true
+	body, err = db.GetRev("doc1", rev2id, true, nil)
+	assertNoError(t, err, "GetRev")
+	expectedResult = Body{
+		"_id":      "doc1",
+		"_rev":     rev2id,
+		"_removed": true,
+		"_revisions": map[string]interface{}{
+			"start": 2,
+			"ids":   []string{rev2digest, rev1digest}},
+	}
+	assert.DeepEquals(t, body, expectedResult)
+
+	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
+	err = db.purgeOldRevisionJSON("doc1", rev1id)
+	assertNoError(t, err, "Purge old revision JSON")
+
+	_, err = db.GetRev("doc1", rev1id, true, nil)
+	assertHTTPError(t, err, 404)
+}
+
+// Test retrieval of a channel removal revision, when the revision is not otherwise available
+func TestGetRemovedAndDeleted(t *testing.T) {
+	db := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+
+	rev1body := Body{
+		"key1":     1234,
+		"channels": []string{"ABC"},
+	}
+	rev1id, err := db.Put("doc1", rev1body)
+	assertNoError(t, err, "Put")
+
+	rev2body := Body{
+		"key1":     1234,
+		"_deleted": true,
+		"_rev":     rev1id,
+	}
+	rev2id, err := db.Put("doc1", rev2body)
+	assertNoError(t, err, "Put Rev 2")
+
+	// Add another revision, so that rev 2 is obsolete
+	rev3body := Body{
+		"key1":     12345,
+		"channels": []string{"NBC"},
+		"_rev":     rev2id,
+	}
+	_, err = db.Put("doc1", rev3body)
+	assertNoError(t, err, "Put Rev 3")
+
+	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
+	body, err := db.GetRev("doc1", rev2id, true, nil)
+	assertNoError(t, err, "GetRev")
+	rev2digest := rev2id[2:]
+	rev1digest := rev1id[2:]
+	expectedResult := Body{
+		"key1":     1234,
+		"_deleted": true,
+		"_revisions": map[string]interface{}{
+			"start": 2,
+			"ids":   []string{rev2digest, rev1digest}},
+		"_id":  "doc1",
+		"_rev": rev2id,
+	}
+	assert.DeepEquals(t, body, expectedResult)
+
+	// Manually remove the temporary backup doc from the bucket
+	// Manually flush the rev cache
+	// After expiry from the rev cache and removal of doc backup, try again
+	db.DatabaseContext.revisionCache = NewRevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader)
+	err = db.purgeOldRevisionJSON("doc1", rev2id)
+	assertNoError(t, err, "Purge old revision JSON")
+
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
 	body, err = db.GetRev("doc1", rev2id, true, nil)
 	assertNoError(t, err, "GetRev")
@@ -316,6 +471,7 @@ func TestGetRemoved(t *testing.T) {
 		"_id":      "doc1",
 		"_rev":     rev2id,
 		"_removed": true,
+		"_deleted": true,
 		"_revisions": map[string]interface{}{
 			"start": 2,
 			"ids":   []string{rev2digest, rev1digest}},

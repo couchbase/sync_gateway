@@ -373,7 +373,6 @@ func (doc *document) IsChannelRemoval(revID string) (body Body, history Body, ch
 			}
 		}
 	}
-
 	// If no matches found, return isRemoval=false
 	if len(channels) == 0 {
 		return nil, nil, nil, false
