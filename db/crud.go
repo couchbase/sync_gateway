@@ -175,18 +175,26 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
 	var doc *document
 	if doc, err = context.GetDoc(id.DocID); doc == nil {
-		return
+		return body, history, channels, err
 	}
 
 	if body, err = context.getRevision(doc, id.RevID); err != nil {
-		return
+		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
+		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
+		removalBody, removalHistory, removalChannels, isRemoval := doc.IsChannelRemoval(id.RevID)
+		if isRemoval {
+			return removalBody, removalHistory, removalChannels, nil
+		} else {
+			// If this wasn't a removal, return the original error from getRevision
+			return body, history, channels, err
+		}
 	}
 	if doc.History[id.RevID].Deleted {
 		body["_deleted"] = true
 	}
 	history = encodeRevisions(doc.History.getHistory(id.RevID))
 	channels = doc.History[id.RevID].Channels
-	return
+	return body, history, channels, err
 }
 
 // Returns the body of the current revision of a document
@@ -438,7 +446,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
-		// incorporate that tombsone and for that it needs to see the _revisions property.
+		// incorporate that tombstone and for that it needs to see the _revisions property.
 		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
 			return nil, err
 		}

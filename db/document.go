@@ -357,6 +357,48 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 	return
 }
 
+// Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
+// removal notification (_removed=true)
+func (doc *document) IsChannelRemoval(revID string) (body Body, history Body, channels base.Set, isRemoval bool) {
+
+	channels = make(base.Set)
+
+	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
+	isDelete := false
+	for channel, removal := range doc.Channels {
+		if removal != nil && removal.RevID == revID {
+			channels[channel] = struct{}{}
+			if removal.Deleted == true {
+				isDelete = true
+			}
+		}
+	}
+	// If no matches found, return isRemoval=false
+	if len(channels) == 0 {
+		return nil, nil, nil, false
+	}
+
+	// Construct removal body
+	body = Body{
+		"_id":      doc.ID,
+		"_rev":     revID,
+		"_removed": true,
+	}
+	if isDelete {
+		body["_deleted"] = true
+	}
+
+	// Build revision history for revID
+	revHistory := doc.History.getHistory(revID)
+	// If there's no history (because the revision has been pruned from the rev tree), treat revision history as only the specified rev id.
+	if len(revHistory) == 0 {
+		revHistory = []string{revID}
+	}
+	history = encodeRevisions(revHistory)
+
+	return body, history, channels, true
+}
+
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
 // Returns an array of the user/role names whose access has changed as a result.
 func (accessMap *UserAccessMap) updateAccess(doc *document, newAccess channels.AccessMap) (changedUsers []string) {
