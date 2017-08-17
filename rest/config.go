@@ -129,6 +129,7 @@ type DbConfig struct {
 	StartOffline         bool                           `json:"offline,omitempty"`                     // start the DB in the offline state, defaults to false
 	Unsupported          db.UnsupportedOptions          `json:"unsupported,omitempty"`                 // Config for unsupported features
 	OIDCConfig           *auth.OIDCOptions              `json:"oidc,omitempty"`                        // Config properties for OpenID Connect authentication
+	OldRevExpirySeconds  *uint32                        `json:"old_rev_expiry_seconds,omitempty"`      // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs *uint32                        `json:"view_query_timeout_secs,omitempty"`     // The view query timeout in seconds
 	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
 }

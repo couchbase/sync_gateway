@@ -204,7 +204,13 @@ func TestDocDeletionFromChannelTwoSG(t *testing.T) {
 	// base.LogKeys["Changes"] = true
 	// base.LogKeys["Cache"] = true
 
-	rt1 := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	oldRevExpirySeconds := uint32(1)
+
+	shortOldRevExpiryConfig := &DbConfig{
+		OldRevExpirySeconds: &oldRevExpirySeconds,
+	}
+
+	rt1 := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortOldRevExpiryConfig}
 	defer rt1.Close()
 
 	a := rt1.ServerContext().Database("db").Authenticator()
@@ -298,6 +304,9 @@ func TestDocDeletionFromChannelTwoSG(t *testing.T) {
 	var deletedDocBody db.Body
 	json.Unmarshal(response.Body.Bytes(), &deletedDocBody)
 	assert.DeepEquals(t, deletedDocBody, db.Body{"_id": "alpha", "_rev": rev2, "_deleted": true})
+
+	// Sleep to allow old revision to be expired
+	time.Sleep(2 * time.Second)
 
 	// Now get the deleted revision on SG instance2
 	response = rt2.Send(requestByUser("GET", "/db/alpha?rev="+rev2, "", "alice"))

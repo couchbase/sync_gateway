@@ -88,6 +88,7 @@ type DatabaseContextOptions struct {
 	IndexOptions          *ChannelIndexOptions
 	SequenceHashOptions   *SequenceHashOptions
 	RevisionCacheCapacity uint32
+	OldRevExpirySecods    int
 	AdminInterface        *string
 	UnsupportedOptions    UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
