@@ -594,11 +594,21 @@ func BooleanPointer(booleanValue bool) *bool {
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []string, err error) {
 
-	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints
-	gocbBucket, ok := bucket.(CouchbaseBucketGoCB)
-	if ok && gocbBucket.IoRouter() != nil {
-		mgmtEps := gocbBucket.IoRouter().MgmtEps()
-		return mgmtEps, nil
+	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
+	switch typedBucket := bucket.(type) {
+	case CouchbaseBucketGoCB:
+		if typedBucket.IoRouter() != nil {
+			mgmtEps := typedBucket.IoRouter().MgmtEps()
+			return mgmtEps, nil
+		}
+	case *CouchbaseBucketGoCB:
+		if typedBucket.IoRouter() != nil {
+			mgmtEps := typedBucket.IoRouter().MgmtEps()
+			return mgmtEps, nil
+		}
+	default:
+		// No bucket-based handling, fall back to URI parsing
+
 	}
 
 	// First try to do a simple URL parse, which will only work for http:// and https:// urls where there
