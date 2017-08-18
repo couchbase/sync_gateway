@@ -285,7 +285,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	if config.OldRevExpirySeconds != nil {
+	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds > 0 {
 		oldRevExpirySeconds = int(*config.OldRevExpirySeconds)
 	}
 
