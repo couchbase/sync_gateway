@@ -4,7 +4,7 @@
 OS=""
 VER=""
 SERVICE_NAME="sg_accel"
-SRCCFGDIR=../examples
+SRCCFGDIR=/opt/couchbase-sg-accel/examples
 SRCCFG=basic_sg_accel_config.json
 RUNAS_TEMPLATE_VAR=sg_accel
 RUNBASE_TEMPLATE_VAR=/home/sg_accel
