@@ -4,7 +4,7 @@
 OS=""
 VER=""
 SERVICE_NAME="sg_accel"
-SRCCFGDIR=../examples
+SRCCFGDIR=/opt/couchbase-sg-accel/examples
 SRCCFG=basic_sg_accel_config.json
 RUNAS_TEMPLATE_VAR=sg_accel
 RUNBASE_TEMPLATE_VAR=/home/sg_accel
@@ -210,7 +210,7 @@ case $OS in
                     #service ${SERVICE_NAME} start
                 fi
                 ;;
-            16)
+            16|17)
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "systemctl start ${SERVICE_NAME}"
                 else
