@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"log"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -257,8 +258,10 @@ func (h *handler) handlePutDoc() error {
 	}
 	var newRev string
 
+	log.Printf("handlePutDoc, %s", h.rq.URL.Query())
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
+		log.Printf("regular PUT")
 		if oldRev := h.getQuery("rev"); oldRev != "" {
 			body["_rev"] = oldRev
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
@@ -270,6 +273,7 @@ func (h *handler) handlePutDoc() error {
 		}
 		h.setHeader("Etag", strconv.Quote(newRev))
 	} else {
+		log.Printf("replicator style PUT")
 		// Replicator-style PUT with new_edits=false:
 		revisions := db.ParseRevisions(body)
 		if revisions == nil {

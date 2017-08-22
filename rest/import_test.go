@@ -519,6 +519,66 @@ func TestImportBinaryDoc(t *testing.T) {
 	assert.True(t, response.Code != 200)
 }
 
+// Trigger import during changes w/ style=all_docs
+func TestXattrImportChangesAllDocs(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{SyncFn: `
+		function(doc, oldDoc) { channel(doc.channels) }`}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "HTTP+":true, "Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via SG
+	key := "TestStyleAllDocs"
+	docBody := make(map[string]interface{})
+	docBody["test"] = key
+	docBody["channels"] = "ABC"
+
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), `{"channels":"ABC"}`)
+	assert.Equals(t, response.Code, 201)
+	log.Printf("insert response: %s", response.Body.Bytes())
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId := body["rev"].(string)
+
+	// 2. Update via SG
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", key, revId), `{"channels":"ABC"}`)
+	assert.Equals(t, response.Code, 201)
+
+	// 3. Create conflicting revision
+	rev1Digest := revId[2:]
+	conflictBody := fmt.Sprintf(`{
+		"channels":"ABC",
+		"_revisions": {"start":2, "ids":["foo", %q]}
+		}`, rev1Digest)
+	log.Printf("conflict body: %s", conflictBody)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", key), conflictBody)
+	assert.Equals(t, response.Code, 201)
+
+	// 4. Get Changes
+	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?style=all_docs", "")
+	assert.Equals(t, changesResponse.Code, 200)
+	log.Printf("Changes response pre-SDK : %s", changesResponse.Body.Bytes())
+
+	// 5. Update the doc through SDK
+	sdkBody := make(map[string]interface{})
+	sdkBody["type"] = "SDK"
+	sdkBody["channels"] = "ABC"
+	err := bucket.Set(key, 0, sdkBody)
+	assertNoError(t, err, "Error updating SG doc from SDK ")
+
+	// 6. Get Changes
+	changesResponse = rt.SendAdminRequest("GET", "/db/_changes?style=all_docs", "")
+	assert.Equals(t, changesResponse.Code, 200)
+	log.Printf("Changes response post-SDK : %s", changesResponse.Body.Bytes())
+
+}
+
 func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(getDocResponse.Body.Bytes(), &responseBody)
