@@ -78,7 +78,6 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 // (This is somewhat faster, if all you need is the sync data without the doc body.)
 // Needhistory is an optimization to figure out whether doc is insert by looking at the depth of the rev tree
 // (if insert, skip looking through blocks).  Potentially expensive if the history is large.
-// TODO: set needHistory = false when we call this
 func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
 	var root documentRoot
 	if needHistory {
