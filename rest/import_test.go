@@ -118,6 +118,48 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 }
 
+// Validate tombstone w/ xattrs
+func TestXattrSGTombstone(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{SyncFn: `
+		function(doc, oldDoc) { channel(doc.channels) }`}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc through SG
+	key := "TestXattrSGTombstone"
+	docBody := make(map[string]interface{})
+	docBody["test"] = key
+	docBody["channels"] = "ABC"
+
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), `{"channels":"ABC"}`)
+	assert.Equals(t, response.Code, 201)
+	log.Printf("insert response: %s", response.Body.Bytes())
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId := body["rev"].(string)
+
+	// 2. Delete the doc through SG
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
+	assert.Equals(t, response.Code, 200)
+	log.Printf("delete response: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId = body["rev"].(string)
+
+	// 3. Attempt to retrieve the doc through the SDK
+	deletedValue := make(map[string]interface{})
+	_, err := bucket.Get(key, deletedValue)
+	assertTrue(t, err != nil, "Expected key not found error trying to retrieve document")
+
+}
+
 // Test cas failure during WriteUpdate, triggering import of SDK write.
 // Disabled, as test depends on artificial latency in PutDoc to reliably hit the CAS failure on the SG write.  Scenario fully covered
 // by functional test.

@@ -209,7 +209,8 @@ declare -a arr=(
     "TestChangesIncludeConflicts",
     "TestGetRemoved",
     "TestGetRemovedAndDeleted",
-    "TestGetRemovedAsUser")
+    "TestGetRemovedAsUser",
+    "TestXattrSGTombstone")
 
 
 # --------------------------------- SG Accel tests -----------------------------------------

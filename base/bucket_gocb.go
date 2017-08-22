@@ -1436,14 +1436,15 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
+		updatedValue, updatedXattrValue, isDelete, err := callback(value, xattrValue, cas)
 
 		if err != nil {
 			return emptyCas, err
 		}
 
-		// Attempt to write the updated document to the bucket
-		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, deleteDoc)
+		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
+		deleteBody := len(value) > 0
+		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
 		switch writeErr {
 		case nil:
 			return casOut, nil
@@ -1464,10 +1465,9 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 // Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
 // update types (UpdateXattr, WriteCasWithXattr) include recoverable error retry.
-func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp int, cas uint64, value []byte, xattrValue []byte, isDelete bool) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp int, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
 	// If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
-		deleteBody := len(value) > 0
 		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody)
 	} else {
 		// Not a delete - update the body and xattr
