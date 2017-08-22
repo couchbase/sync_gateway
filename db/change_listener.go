@@ -95,9 +95,9 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
-		if (strings.HasPrefix(key, auth.UserKeyPrefix) ||
-			strings.HasPrefix(key, auth.RoleKeyPrefix)) && event.Opcode == sgbucket.FeedOpMutation { // SG users and roles
-			if listener.OnDocChanged != nil {
+		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
+			strings.HasPrefix(key, auth.RoleKeyPrefix) { // SG users and roles
+			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 			listener.Notify(base.SetOf(key))
