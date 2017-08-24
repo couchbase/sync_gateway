@@ -137,7 +137,7 @@ func TestAccessFunctionTakesNullChannels(t *testing.T) {
 	assert.DeepEquals(t, res.Access, AccessMap{})
 }
 
-func TestAccessFunctionTakesNonChannelsInArray(t *testing.T) {
+func DisabledTestAccessFunctionTakesNonChannelsInArray(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access("lee", ["ginger", null, 5])}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assertNoError(t, err, "MapToChannelsAndAccess failed")
