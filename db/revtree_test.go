@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"time"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -648,6 +649,50 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	assert.True(t, trimEncodedRevisionsToAncestor(encoded, nil, 2))
 	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey"}})
 }
+
+// Regression test for https://github.com/couchbase/sync_gateway/issues/2847
+func TestRevsHistoryInfiniteLoop(t *testing.T) {
+
+	docId := "testdocProblematicRevTree"
+
+	rawDoc, err := unmarshalDocument(docId, []byte(testdocProblematicRevTree))
+	if err != nil {
+		t.Fatalf("Error unmarshalling doc: %v", err)
+	}
+
+	revId := "275-6458b32429e335f981fc12b73765833d"
+	history, err := getHistoryWithTimeout(
+		rawDoc,
+		revId,
+		time.Second * 1,
+	)
+	if err != nil {
+		t.Fatalf("Timeout trying to get history: %v", err)
+	}
+	log.Printf("history: %v", history)
+
+	// TODO: add more assertions about history
+
+}
+
+func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, timeoutError error) {
+
+	historyChannel := make(chan []string)
+
+	go func() {
+		historyChannel <- rawDoc.History.getHistory(revId)
+	}()
+
+	select {
+	case history := <- historyChannel:
+		return history, nil
+	case _ = <- time.After(timeout):
+		return nil, fmt.Errorf("Timed out waiting for history")
+	}
+
+
+}
+
 
 //////// BENCHMARK:
 
