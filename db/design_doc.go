@@ -245,7 +245,13 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 			value, ok := row.Value.([]interface{})
 			if ok {
 				// value[0] is the array of channels; value[1] is the actual value
-				if !hasStarChannel || channelsIntersect(visibleChannels, value[0].([]interface{})) {
+				// handle the case where walrus returns []string instead of []interface{}
+				vi, ok := value[0].([]interface{})
+				if !ok {
+					vi = base.ToArrayOfInterface(value[0].([]string))
+				}
+
+				if !hasStarChannel || channelsIntersect(visibleChannels, vi) {
 					// Add this row:
 					stripSyncProperty(row)
 					result.Rows = append(result.Rows, &sgbucket.ViewRow{

@@ -129,6 +129,14 @@ func MergeStringArrays(arrays ...[]string) (merged []string) {
 	return
 }
 
+func ToArrayOfInterface(arrayOfString []string) []interface{} {
+	arrayOfInterface := make([]interface{}, len(arrayOfString))
+	for i, v := range arrayOfString {
+		arrayOfInterface[i] = v
+	}
+	return arrayOfInterface
+}
+
 func ToInt64(value interface{}) (int64, bool) {
 	switch value := value.(type) {
 	case int64:
