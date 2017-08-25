@@ -128,6 +128,48 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	return
 }
 
+// Validate the revtree.  If it's valid, it will return nil.
+// If invalid, it will return an error with details on why it's invalid.
+func (tree RevTree) Validate() (err error) {
+
+	err = tree.ValidateRevsParentsLength()
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+// Make sure that the size of the revs list is equal to the size of the parents list
+func (tree RevTree) ValidateRevsParentsLength() (err error) {
+
+	jsonBytes, err := tree.MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+
+	var rep revTreeList
+	err = json.Unmarshal(jsonBytes, &rep)
+	if err != nil {
+		return err
+	}
+
+	isValid := (len(rep.Revs) == len(rep.Parents))
+	if !isValid {
+		return fmt.Errorf("rep.Revs length (%d) != rep.Parents length (%d)", len(rep.Revs), len(rep.Parents))
+	}
+
+	log.Printf("rep.Revs length (%d) == rep.Parents length (%d)", len(rep.Revs), len(rep.Parents))
+
+
+
+	return nil
+
+}
+
+
 // Returns true if the RevTree has an entry for this revid.
 func (tree RevTree) contains(revid string) bool {
 	_, exists := tree[revid]
