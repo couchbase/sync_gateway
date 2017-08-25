@@ -698,27 +698,17 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData)
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
-
-	designDocMap[DesignDocSyncGatewayChannels] = sgbucket.DesignDoc{
+	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewChannels: sgbucket.ViewDef{Map: channels_map},
+			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:          sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
+			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
+			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true,
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayAccess] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAccess:     sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayAccessVbSeq] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
 		},
 	}
 
@@ -730,7 +720,6 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 			ViewOldRevs:    sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
 			ViewSessions:   sgbucket.ViewDef{Map: sessions_map},
 			ViewTombstones: sgbucket.ViewDef{Map: tombstones_map},
-			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true, // For ViewTombstones
@@ -741,9 +730,6 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 		11, //MaxNumRetries approx 10 seconds total retry duration
 		5,  //InitialRetrySleepTimeMS
 	)
-
-	// Remove legacy sync gateway design doc, if present
-	bucket.DeleteDDoc(DesignDocSyncGateway)
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
@@ -829,7 +815,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewPrincipals, Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}

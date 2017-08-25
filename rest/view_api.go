@@ -64,7 +64,7 @@ func (h *handler) handleView() error {
 	ddocName := h.PathVar("ddoc")
 	viewName := h.PathVar("view")
 	if ddocName == "" {
-		ddocName = db.GetDesignDocForView(viewName)
+		ddocName = db.DesignDocSyncGateway
 	}
 	opts := db.Body{}
 

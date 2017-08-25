@@ -959,7 +959,7 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 		viewOptions := db.Body{
 			"limit": 1,
 		}
-		vres, err := currentDb.Bucket.View(db.DesignDocSyncHousekeeping, db.ViewPrincipals, viewOptions)
+		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway, db.ViewPrincipals, viewOptions)
 		if err != nil {
 			base.Warn("Error trying to query ViewPrincipals: %v", err)
 			return []string{}
