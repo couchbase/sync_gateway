@@ -660,6 +660,16 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 		t.Fatalf("Error unmarshalling doc: %v", err)
 	}
 
+
+	if err := rawDoc.History.Validate(); err != nil {
+		t.Fatalf("Doc invalid.  Err: %v", err)
+	}
+
+	time.Sleep(time.Second)
+
+	graphViz := rawDoc.History.RenderGraphvizDot()
+	log.Printf("%v", graphViz)
+
 	revId := "275-6458b32429e335f981fc12b73765833d"
 	history, err := getHistoryWithTimeout(
 		rawDoc,
@@ -667,19 +677,26 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 		time.Second * 1,
 	)
 	if err != nil {
-		t.Fatalf("Timeout trying to get history: %v", err)
+		if strings.Contains(err.Error(), "Timeout") {
+			t.Fatalf("%v", err)
+		}
+
+		// if it's another type of error, that's probably good.
 	}
+
 	log.Printf("history: %v", history)
 
-	// TODO: add more assertions about history
+	// TODO: add more assertions about history.  Maybe just assert that we got an error here.
+
 
 }
 
-func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, timeoutError error) {
+func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, error error) {
 
 	historyChannel := make(chan []string)
 
 	go func() {
+		// TODO: should getHistory() return an error if the doc has a cycles in the rev tree?
 		historyChannel <- rawDoc.History.getHistory(revId)
 	}()
 
@@ -687,7 +704,7 @@ func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration
 	case history := <- historyChannel:
 		return history, nil
 	case _ = <- time.After(timeout):
-		return nil, fmt.Errorf("Timed out waiting for history")
+		return nil, fmt.Errorf("Timeout waiting for history")
 	}
 
 
