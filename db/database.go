@@ -94,7 +94,8 @@ type DatabaseContextOptions struct {
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions         ImportOptions
-	EnableXattr           bool // Use xattr for _sync
+	EnableXattr           bool   // Use xattr for _sync
+	LocalDocExpirySecs    uint32 //The _local doc expiry time in seconds
 }
 
 type OidcTestProviderOptions struct {
