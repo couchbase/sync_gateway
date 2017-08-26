@@ -22,7 +22,6 @@ import (
 	"log"
 
 	"github.com/couchbase/sync_gateway/base"
-	"time"
 )
 
 type RevKey string
@@ -152,7 +151,6 @@ func (tree RevTree) ValidateRevsParentsLength() (err error) {
 		return err
 	}
 
-
 	var rep revTreeList
 	err = json.Unmarshal(jsonBytes, &rep)
 	if err != nil {
@@ -166,12 +164,9 @@ func (tree RevTree) ValidateRevsParentsLength() (err error) {
 
 	log.Printf("rep.Revs length (%d) == rep.Parents length (%d)", len(rep.Revs), len(rep.Parents))
 
-
-
 	return nil
 
 }
-
 
 // Returns true if the RevTree has an entry for this revid.
 func (tree RevTree) contains(revid string) bool {
@@ -582,7 +577,7 @@ func (tree RevTree) RenderGraphvizDot() string {
 	// This function will be called back for every leaf node in tree
 	leafProcessor := func(leaf *RevInfo) {
 
-		log.Printf("leafProcessor called with leaf: %v", leaf)
+		// log.Printf("leafProcessor called with leaf: %v", leaf)
 
 		// Append the leaf to the output
 		appendNodeToResult(leaf)
@@ -591,17 +586,16 @@ func (tree RevTree) RenderGraphvizDot() string {
 		node := leaf
 		for {
 
-			time.Sleep(time.Millisecond * 250)
+			// time.Sleep(time.Millisecond * 250)
 
-			log.Printf("get parent of leaf %+v", node)
+			// log.Printf("get parent of leaf %+v", node)
 
 			node = tree[node.Parent]
 
-			log.Printf("parent of leaf is %+v", node)
+			// log.Printf("parent of leaf is %+v", node)
 
 			// Not sure how this can happen, but in any case .. probably nothing left to do for this branch
 			if node == nil {
-				log.Printf("leafProcessor node == nil, call break")
 				break
 			}
 
@@ -610,8 +604,6 @@ func (tree RevTree) RenderGraphvizDot() string {
 			// the child of the root will have already added a node
 			// pointing to the root.
 			if node.IsRoot() {
-				log.Printf("leafProcessor node (%+v) is root.  Break", leaf)
-
 				break
 			}
 

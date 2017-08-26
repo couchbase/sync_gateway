@@ -553,6 +553,10 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(1, 0, branchSpecs)
 
+
+	log.Printf("RevTreeAfter before: %v", revTree.RenderGraphvizDot())
+
+
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevsTotal - int(maxDepth)
 
@@ -649,6 +653,47 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	assert.True(t, trimEncodedRevisionsToAncestor(encoded, nil, 2))
 	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey"}})
 }
+
+// Attempt to repro root cause of https://github.com/couchbase/sync_gateway/issues/2847
+func TestIssue2847Repro(t *testing.T) {
+
+	// Try large rev tree with multiple branches
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 1,
+			Digest:                  "non-winning unresolved",
+			LastRevisionIsTombstone: false,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(120, 64, branchSpecs)
+	maxDepth := uint32(100)
+	log.Printf("maxDepth: %v", maxDepth)
+
+	newRevId := fmt.Sprintf("%v-%v", 2, "tombstoned")
+	parentRevId := fmt.Sprintf("1-winning")
+
+	revInfo := RevInfo{
+		ID:      newRevId,
+		Parent:  parentRevId,
+		Deleted: true,
+	}
+	revTree.addRevision(revInfo)
+
+
+	graphViz := revTree.RenderGraphvizDot()
+
+	log.Printf("graphViz: %v", graphViz)
+
+	numPruned := revTree.pruneRevisions(maxDepth, "")
+
+	log.Printf("pruned: %v", numPruned)
+
+	graphViz = revTree.RenderGraphvizDot()
+
+	log.Printf("graphViz after: %v", graphViz)
+
+}
+
 
 // Regression test for https://github.com/couchbase/sync_gateway/issues/2847
 func TestRevsHistoryInfiniteLoop(t *testing.T) {
