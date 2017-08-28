@@ -397,17 +397,6 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
-	// Snip dangling Parent links:
-	if pruned > 0 {
-		for _, node := range tree {
-			if node.Parent != "" {
-				if _, found := tree[node.Parent]; !found {
-					node.Parent = ""
-				}
-			}
-		}
-	}
-
 	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
 	if tombstoneGenerationThreshold != -1 {
 		for _, leafRevId := range leaves {
@@ -418,6 +407,17 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 			leafGeneration, _ := parseRevID(leaf.ID)
 			if leafGeneration < tombstoneGenerationThreshold {
 				pruned += tree.DeleteBranch(leaf)
+			}
+		}
+	}
+
+	// Snip dangling Parent links:
+	if pruned > 0 {
+		for _, node := range tree {
+			if node.Parent != "" {
+				if _, found := tree[node.Parent]; !found {
+					node.Parent = ""
+				}
 			}
 		}
 	}
