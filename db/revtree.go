@@ -629,7 +629,7 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 		if err != nil {
 			break
 		}
-		history = append(history, fmt.Sprintf("%s", revid))
+		history = append(history, revid)
 		if len(history) > maxHistory {
 			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
 		}
