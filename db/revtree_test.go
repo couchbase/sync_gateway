@@ -17,10 +17,10 @@ import (
 	"strings"
 	"testing"
 
+	"errors"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"log"
-	"errors"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -273,7 +273,7 @@ func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal","testdoc")))
+	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc")))
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
@@ -365,12 +365,7 @@ func TestPruneRevisions(t *testing.T) {
 	assert.True(t, tempmap["4-vier"] != nil)
 	assert.Equals(t, tempmap["4-vier"].Parent, "")
 
-
 }
-
-
-
-
 
 func TestPruneRevsSingleBranch(t *testing.T) {
 
@@ -407,7 +402,6 @@ func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 
 	assert.Equals(t, revTree.LongestBranch(), int(maxDepth))
 
-
 }
 
 func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
@@ -434,7 +428,6 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 	// we shouldn't have any tombstoned branches, since the tombstoned branch was so old
 	// it should have been pruned away
 	assert.Equals(t, revTree.FindLongestTombstonedBranch(), 0)
-
 
 }
 
@@ -483,8 +476,6 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 
 }
 
-
-
 func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
@@ -516,7 +507,6 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 }
 
-
 func TestGenerationLongestTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
@@ -546,13 +536,11 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 	// 100 revs in branchspec
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
-	expectedGenerationLongestTombstonedBranch :=  3 + 100 + 1
+	expectedGenerationLongestTombstonedBranch := 3 + 100 + 1
 
 	assert.Equals(t, generationLongestTombstonedBranch, expectedGenerationLongestTombstonedBranch)
 
-
 }
-
 
 // Tests for updated pruning algorithm, post https://github.com/couchbase/sync_gateway/issues/2651
 func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
@@ -598,7 +586,7 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevsTotal - int(maxDepth)
 
-	expectedNumPruned += 1  // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
+	expectedNumPruned += 1 // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
 
 	numPruned := revTree.pruneRevisions(maxDepth, "")
 
@@ -699,6 +687,104 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, nil, 2)
 	assert.True(t, result)
 	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey"}})
+}
+
+// TODO: add test for two tombstone branches getting pruned at once
+
+func TestRevisionPruningLoop(t *testing.T) {
+
+	revsLimit := uint32(5)
+	revBody := []byte(`{"foo":"bar"}`)
+	nonTombstone := false
+	tombstone := true
+
+	// create rev tree with a root entry
+	revTree := RevTree{}
+	err := addAndGet(revTree, "1-foo", "", nonTombstone)
+	assertNoError(t, err, "Error adding revision 1-foo to tree")
+
+	// Add several entries (2-foo to 5-foo)
+	for generation := 2; generation <= 5; generation++ {
+		revID := fmt.Sprintf("%d-foo", generation)
+		parentRevID := fmt.Sprintf("%d-foo", generation-1)
+		err := addAndGet(revTree, revID, parentRevID, nonTombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision 1-foo to tree", revID))
+	}
+
+	// Add tombstone children of 3-foo and 4-foo
+
+	err = addAndGet(revTree, "4-bar", "3-foo", nonTombstone)
+	err = addAndGet(revTree, "5-bar", "4-bar", tombstone)
+	assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+
+	/*
+		// Add a second branch as a child of 2-foo.
+		err = addAndGet(revTree, "3-bar", "2-foo", nonTombstone)
+		assertNoError(t, err, "Error adding revision 3-bar to tree")
+
+		// Tombstone the second branch
+		err = addAndGet(revTree, "4-bar", "3-bar", tombstone)
+		assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+	*/
+
+	// Add a another tombstoned branch as a child of 5-foo.  This will ensure that 2-foo doesn't get pruned
+	// until the first tombstone branch is deleted.
+	/*
+		err = addAndGet(revTree, "6-bar2", "5-foo", tombstone)
+		assertNoError(t, err, "Error adding tombstone 6-bar2 to tree")
+	*/
+
+	// Keep adding to the main branch without pruning.  Simulates old pruning algorithm,
+	// which maintained rev history due to tombstone branch
+	for generation := 6; generation <= 15; generation++ {
+		revID := fmt.Sprintf("%d-foo", generation)
+		parentRevID := fmt.Sprintf("%d-foo", generation-1)
+		_, err := addPruneAndGet(revTree, revID, parentRevID, revBody, revsLimit, nonTombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+
+		keepAliveRevID := fmt.Sprintf("%d-keep", generation)
+		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+
+		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
+		treeBytes, marshalErr := revTree.MarshalJSON()
+		assertNoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
+		revTree = RevTree{}
+		unmarshalErr := revTree.UnmarshalJSON(treeBytes)
+		assertNoError(t, unmarshalErr, fmt.Sprintf("Error unmarshalling tree: %v", unmarshalErr))
+	}
+
+}
+
+func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
+
+	revBody := []byte(`{"foo":"bar"}`)
+	revTree.addRevision("pruneTest", RevInfo{
+		ID:      revID,
+		Parent:  parentRevID,
+		Body:    revBody,
+		Deleted: isTombstone,
+	})
+	history, err := revTree.getValidatedHistory(revID)
+	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
+	return err
+
+}
+
+func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
+	revTree.addRevision("pruneTest", RevInfo{
+		ID:      revID,
+		Parent:  parentRevID,
+		Body:    revBody,
+		Deleted: tombstone,
+	})
+	numPruned = revTree.pruneRevisions(revsLimit, revID)
+
+	// Get history for new rev (checks for loops)
+	history, err := revTree.getValidatedHistory(revID)
+	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree), numPruned, history)
+	return numPruned, err
+
 }
 
 //////// BENCHMARK:
@@ -851,7 +937,6 @@ func (tree RevTree) LongestBranch() int {
 	return longestBranch
 
 }
-
 
 // Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
 func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
