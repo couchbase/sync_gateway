@@ -85,7 +85,17 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 
 	for i, revid := range rep.Revs {
-		rep.Parents[i] = revIndexes[tree[revid].Parent]
+		parentRevId := tree[revid].Parent
+		parentRevIndex, ok := revIndexes[parentRevId]
+		if ok {
+			rep.Parents[i] = parentRevIndex
+		} else {
+			// If the parent revision does not exist in the revtree due to being a dangling parent, then
+			// consider this a root node and set the parent index to -1
+			// See SG Issue #2847 for more details.
+			rep.Parents[i] = -1
+		}
+
 	}
 
 	return json.Marshal(rep)
