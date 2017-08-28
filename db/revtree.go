@@ -203,7 +203,6 @@ func (tree RevTree) getParent(revid string) string {
 	return info.Parent
 }
 
-
 // Returns the leaf revision IDs (those that have no children.)
 func (tree RevTree) GetLeaves() []string {
 	acceptAllLeavesFilter := func(revId string) bool {
@@ -517,8 +516,6 @@ func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (gene
 // using the command: dot -Tpng revtree.dot > revtree.png or an online tool such as webgraphviz.com
 func (tree RevTree) RenderGraphvizDot() string {
 
-	log.Printf("RenderGraphvizDot()")
-
 	resultBuffer := bytes.Buffer{}
 
 	// Helper func to surround graph node w/ double quotes
@@ -640,7 +637,6 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 	}
 	return history, nil
 }
-
 
 //////// ENCODED REVISION LISTS (_revisions):
 

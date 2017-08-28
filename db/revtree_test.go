@@ -19,9 +19,10 @@ import (
 
 	"log"
 
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"time"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -555,9 +556,7 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(1, 0, branchSpecs)
 
-
 	log.Printf("RevTreeAfter before: %v", revTree.RenderGraphvizDot())
-
 
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevsTotal - int(maxDepth)
@@ -656,7 +655,6 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey"}})
 }
 
-
 // Regression test for https://github.com/couchbase/sync_gateway/issues/2847
 func TestRevsHistoryInfiniteLoop(t *testing.T) {
 
@@ -675,7 +673,7 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 	_, err = getHistoryWithTimeout(
 		rawDoc,
 		revId,
-		time.Second * 1,
+		time.Second*1,
 	)
 
 	// This should return an error, since the history has cycles
@@ -734,7 +732,6 @@ func TestRevisionPruningLoop(t *testing.T) {
 
 	log.Printf("Tree before adding to main branch: [[%s]]", revTree.RenderGraphvizDot())
 
-
 	// Keep adding to the main branch without pruning.  Simulates old pruning algorithm,
 	// which maintained rev history due to tombstone branch
 	for generation := 6; generation <= 15; generation++ {
@@ -775,7 +772,7 @@ func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bo
 }
 
 func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
-	revTree.addRevision( RevInfo{
+	revTree.addRevision(RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
@@ -789,9 +786,6 @@ func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody [
 	return numPruned, err
 
 }
-
-
-
 
 func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, err error) {
 
@@ -808,17 +802,15 @@ func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration
 	}()
 
 	select {
-	case history := <- historyChannel:
+	case history := <-historyChannel:
 		return history, nil
-	case err := <- errChannel:
+	case err := <-errChannel:
 		return nil, err
-	case _ = <- time.After(timeout):
+	case _ = <-time.After(timeout):
 		return nil, fmt.Errorf("Timeout waiting for history")
 	}
 
-
 }
-
 
 //////// BENCHMARK:
 
