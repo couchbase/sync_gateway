@@ -736,6 +736,107 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 
 }
 
+// TODO: add test for two tombstone branches getting pruned at once
+
+func TestRevisionPruningLoop(t *testing.T) {
+
+	revsLimit := uint32(5)
+	revBody := []byte(`{"foo":"bar"}`)
+	nonTombstone := false
+	tombstone := true
+
+	// create rev tree with a root entry
+	revTree := RevTree{}
+	err := addAndGet(revTree, "1-foo", "", nonTombstone)
+	assertNoError(t, err, "Error adding revision 1-foo to tree")
+
+	// Add several entries (2-foo to 5-foo)
+	for generation := 2; generation <= 5; generation++ {
+		revID := fmt.Sprintf("%d-foo", generation)
+		parentRevID := fmt.Sprintf("%d-foo", generation-1)
+		err := addAndGet(revTree, revID, parentRevID, nonTombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision 1-foo to tree", revID))
+	}
+
+	// Add tombstone children of 3-foo and 4-foo
+
+	err = addAndGet(revTree, "4-bar", "3-foo", nonTombstone)
+	err = addAndGet(revTree, "5-bar", "4-bar", tombstone)
+	assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+
+	/*
+		// Add a second branch as a child of 2-foo.
+		err = addAndGet(revTree, "3-bar", "2-foo", nonTombstone)
+		assertNoError(t, err, "Error adding revision 3-bar to tree")
+
+		// Tombstone the second branch
+		err = addAndGet(revTree, "4-bar", "3-bar", tombstone)
+		assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+	*/
+
+	// Add a another tombstoned branch as a child of 5-foo.  This will ensure that 2-foo doesn't get pruned
+	// until the first tombstone branch is deleted.
+	/*
+		err = addAndGet(revTree, "6-bar2", "5-foo", tombstone)
+		assertNoError(t, err, "Error adding tombstone 6-bar2 to tree")
+	*/
+
+	// Keep adding to the main branch without pruning.  Simulates old pruning algorithm,
+	// which maintained rev history due to tombstone branch
+	for generation := 6; generation <= 15; generation++ {
+		revID := fmt.Sprintf("%d-foo", generation)
+		parentRevID := fmt.Sprintf("%d-foo", generation-1)
+		_, err := addPruneAndGet(revTree, revID, parentRevID, revBody, revsLimit, nonTombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+
+		keepAliveRevID := fmt.Sprintf("%d-keep", generation)
+		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+
+		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
+		treeBytes, marshalErr := revTree.MarshalJSON()
+		assertNoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
+		revTree = RevTree{}
+		unmarshalErr := revTree.UnmarshalJSON(treeBytes)
+		assertNoError(t, unmarshalErr, fmt.Sprintf("Error unmarshalling tree: %v", unmarshalErr))
+	}
+
+}
+
+func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
+
+	revBody := []byte(`{"foo":"bar"}`)
+	revTree.addRevision(RevInfo{
+		ID:      revID,
+		Parent:  parentRevID,
+		Body:    revBody,
+		Deleted: isTombstone,
+	})
+	history, err := revTree.getValidatedHistory(revID)
+	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
+	return err
+
+}
+
+func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
+	revTree.addRevision( RevInfo{
+		ID:      revID,
+		Parent:  parentRevID,
+		Body:    revBody,
+		Deleted: tombstone,
+	})
+	numPruned = revTree.pruneRevisions(revsLimit, revID)
+
+	// Get history for new rev (checks for loops)
+	history, err := revTree.getValidatedHistory(revID)
+	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree), numPruned, history)
+	return numPruned, err
+
+}
+
+
+
+
 func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, error error) {
 
 	historyChannel := make(chan []string)

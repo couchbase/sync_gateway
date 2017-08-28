@@ -584,20 +584,23 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 		// Walk up the tree until we find a root, and append each node
 		node := leaf
+		if node.IsRoot() {
+			return
+		}
+
 		for {
-
-			// time.Sleep(time.Millisecond * 250)
-
-			// log.Printf("get parent of leaf %+v", node)
-
-			node = tree[node.Parent]
-
-			// log.Printf("parent of leaf is %+v", node)
-
-			// Not sure how this can happen, but in any case .. probably nothing left to do for this branch
-			if node == nil {
+			// Mark nodes with dangling parent references
+			if tree[node.Parent] == nil {
+				missingParentNode := &RevInfo{
+					ID:      node.ID,
+					Parent:  fmt.Sprintf("%s - MISSING", node.Parent),
+					Deleted: node.Deleted,
+				}
+				appendNodeToResult(missingParentNode)
 				break
 			}
+
+			node = tree[node.Parent]
 
 			// Reached a root, we're done -- there's no need
 			// to call appendNodeToResult() on the root, since
@@ -620,6 +623,27 @@ func (tree RevTree) RenderGraphvizDot() string {
 	return resultBuffer.String()
 
 }
+
+// Returns the history of a revid as an array of revids in reverse chronological order.
+// Returns error if detects cycle(s) in rev tree
+func (tree RevTree) getValidatedHistory(revid string) ([]string, error) {
+	maxHistory := len(tree)
+
+	history := make([]string, 0, 5)
+	for revid != "" {
+		info, err := tree.getInfo(revid)
+		if err != nil {
+			break
+		}
+		history = append(history, fmt.Sprintf("%s(%q)", revid, info.Parent))
+		if len(history) > maxHistory {
+			return history, fmt.Errorf("getValidatedHistory found cycle in revision tree, history calculated as: %v", history)
+		}
+		revid = info.Parent
+	}
+	return history, nil
+}
+
 
 //////// ENCODED REVISION LISTS (_revisions):
 
