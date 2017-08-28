@@ -623,7 +623,7 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 // Returns the history of a revid as an array of revids in reverse chronological order.
 // Returns error if detects cycle(s) in rev tree
-func (tree RevTree) getValidatedHistory(revid string) ([]string, error) {
+func (tree RevTree) getHistory(revid string) ([]string, error) {
 	maxHistory := len(tree)
 
 	history := make([]string, 0, 5)
@@ -634,7 +634,7 @@ func (tree RevTree) getValidatedHistory(revid string) ([]string, error) {
 		}
 		history = append(history, fmt.Sprintf("%s(%q)", revid, info.Parent))
 		if len(history) > maxHistory {
-			return history, fmt.Errorf("getValidatedHistory found cycle in revision tree, history calculated as: %v", history)
+			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
 		}
 		revid = info.Parent
 	}

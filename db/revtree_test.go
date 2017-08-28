@@ -233,7 +233,7 @@ func TestRevTreeParentAccess(t *testing.T) {
 }
 
 func TestRevTreeGetHistory(t *testing.T) {
-	history, err := testmap.getValidatedHistory("3-three")
+	history, err := testmap.getHistory("3-three")
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, history, []string{"3-three", "2-two", "1-one"})
 }
@@ -433,7 +433,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	assert.Equals(t, len(tombstonedLeaves), 1)
 	tombstonedLeaf := tombstonedLeaves[0]
 
-	tombstonedBranch, err := revTree.getValidatedHistory(tombstonedLeaf)
+	tombstonedBranch, err := revTree.getHistory(tombstonedLeaf)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(tombstonedBranch), int(maxDepth))
 
@@ -768,7 +768,7 @@ func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bo
 		Body:    revBody,
 		Deleted: isTombstone,
 	})
-	history, err := revTree.getValidatedHistory(revID)
+	history, err := revTree.getHistory(revID)
 	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
 	return err
 
@@ -784,7 +784,7 @@ func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody [
 	numPruned = revTree.pruneRevisions(revsLimit, revID)
 
 	// Get history for new rev (checks for loops)
-	history, err := revTree.getValidatedHistory(revID)
+	history, err := revTree.getHistory(revID)
 	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree), numPruned, history)
 	return numPruned, err
 
@@ -799,7 +799,7 @@ func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration
 	errChannel := make(chan error)
 
 	go func() {
-		history, err := rawDoc.History.getValidatedHistory(revId)
+		history, err := rawDoc.History.getHistory(revId)
 		if err != nil {
 			errChannel <- err
 		} else {
