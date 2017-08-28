@@ -654,46 +654,6 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey"}})
 }
 
-// Attempt to repro root cause of https://github.com/couchbase/sync_gateway/issues/2847
-func TestIssue2847Repro(t *testing.T) {
-
-	// Try large rev tree with multiple branches
-	branchSpecs := []BranchSpec{
-		{
-			NumRevs:                 1,
-			Digest:                  "non-winning unresolved",
-			LastRevisionIsTombstone: false,
-		},
-	}
-	revTree := getMultiBranchTestRevtree1(120, 64, branchSpecs)
-	maxDepth := uint32(100)
-	log.Printf("maxDepth: %v", maxDepth)
-
-	newRevId := fmt.Sprintf("%v-%v", 2, "tombstoned")
-	parentRevId := fmt.Sprintf("1-winning")
-
-	revInfo := RevInfo{
-		ID:      newRevId,
-		Parent:  parentRevId,
-		Deleted: true,
-	}
-	revTree.addRevision(revInfo)
-
-
-	graphViz := revTree.RenderGraphvizDot()
-
-	log.Printf("graphViz: %v", graphViz)
-
-	numPruned := revTree.pruneRevisions(maxDepth, "")
-
-	log.Printf("pruned: %v", numPruned)
-
-	graphViz = revTree.RenderGraphvizDot()
-
-	log.Printf("graphViz after: %v", graphViz)
-
-}
-
 
 // Regression test for https://github.com/couchbase/sync_gateway/issues/2847
 func TestRevsHistoryInfiniteLoop(t *testing.T) {
@@ -738,6 +698,7 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 
 // TODO: add test for two tombstone branches getting pruned at once
 
+// Repro case for https://github.com/couchbase/sync_gateway/issues/2847
 func TestRevisionPruningLoop(t *testing.T) {
 
 	revsLimit := uint32(5)
@@ -781,6 +742,9 @@ func TestRevisionPruningLoop(t *testing.T) {
 		assertNoError(t, err, "Error adding tombstone 6-bar2 to tree")
 	*/
 
+	log.Printf("Tree before adding to main branch: [[%s]]", revTree.RenderGraphvizDot())
+
+
 	// Keep adding to the main branch without pruning.  Simulates old pruning algorithm,
 	// which maintained rev history due to tombstone branch
 	for generation := 6; generation <= 15; generation++ {
@@ -793,6 +757,8 @@ func TestRevisionPruningLoop(t *testing.T) {
 		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
 		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 
+		// The act of marshalling the rev tree and then unmarshalling back into a revtree data structure
+		// causes the issue.
 		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
 		treeBytes, marshalErr := revTree.MarshalJSON()
 		assertNoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
