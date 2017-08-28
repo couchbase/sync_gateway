@@ -233,7 +233,8 @@ func TestRevTreeParentAccess(t *testing.T) {
 }
 
 func TestRevTreeGetHistory(t *testing.T) {
-	history := testmap.getHistory("3-three")
+	history, err := testmap.getValidatedHistory("3-three")
+	assert.True(t, err == nil)
 	assert.DeepEquals(t, history, []string{"3-three", "2-two", "1-one"})
 }
 
@@ -432,7 +433,8 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	assert.Equals(t, len(tombstonedLeaves), 1)
 	tombstonedLeaf := tombstonedLeaves[0]
 
-	tombstonedBranch := revTree.getHistory(tombstonedLeaf)
+	tombstonedBranch, err := revTree.getValidatedHistory(tombstonedLeaf)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(tombstonedBranch), int(maxDepth))
 
 	// The generation of the longest deleted branch is 97:
@@ -665,34 +667,22 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 		t.Fatalf("Error unmarshalling doc: %v", err)
 	}
 
-
 	if err := rawDoc.History.Validate(); err != nil {
 		t.Fatalf("Doc invalid.  Err: %v", err)
 	}
 
-	time.Sleep(time.Second)
-
-	graphViz := rawDoc.History.RenderGraphvizDot()
-	log.Printf("%v", graphViz)
-
 	revId := "275-6458b32429e335f981fc12b73765833d"
-	history, err := getHistoryWithTimeout(
+	_, err = getHistoryWithTimeout(
 		rawDoc,
 		revId,
 		time.Second * 1,
 	)
-	if err != nil {
-		if strings.Contains(err.Error(), "Timeout") {
-			t.Fatalf("%v", err)
-		}
 
-		// if it's another type of error, that's probably good.
-	}
+	// This should return an error, since the history has cycles
+	assert.True(t, err != nil)
 
-	log.Printf("history: %v", history)
-
-	// TODO: add more assertions about history.  Maybe just assert that we got an error here.
-
+	// The error should *not* be a timeout error
+	assert.False(t, strings.Contains(err.Error(), "Timeout"))
 
 }
 
@@ -803,18 +793,25 @@ func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody [
 
 
 
-func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, error error) {
+func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, err error) {
 
 	historyChannel := make(chan []string)
+	errChannel := make(chan error)
 
 	go func() {
-		// TODO: should getHistory() return an error if the doc has a cycles in the rev tree?
-		historyChannel <- rawDoc.History.getHistory(revId)
+		history, err := rawDoc.History.getValidatedHistory(revId)
+		if err != nil {
+			errChannel <- err
+		} else {
+			historyChannel <- history
+		}
 	}()
 
 	select {
 	case history := <- historyChannel:
 		return history, nil
+	case err := <- errChannel:
+		return nil, err
 	case _ = <- time.After(timeout):
 		return nil, fmt.Errorf("Timeout waiting for history")
 	}

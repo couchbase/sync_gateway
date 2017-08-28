@@ -203,19 +203,6 @@ func (tree RevTree) getParent(revid string) string {
 	return info.Parent
 }
 
-// Returns the history of a revid as an array of revids in reverse chronological order.
-func (tree RevTree) getHistory(revid string) []string {
-	history := make([]string, 0, 5)
-	for revid != "" {
-		info, err := tree.getInfo(revid)
-		if err != nil {
-			break
-		}
-		history = append(history, revid)
-		revid = info.Parent
-	}
-	return history
-}
 
 // Returns the leaf revision IDs (those that have no children.)
 func (tree RevTree) GetLeaves() []string {
