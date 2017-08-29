@@ -788,7 +788,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
 
 	revBody := []byte(`{"foo":"bar"}`)
-	revTree.addRevision(RevInfo{
+	revTree.addRevision("foobar", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
@@ -801,7 +801,7 @@ func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bo
 }
 
 func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
-	revTree.addRevision(RevInfo{
+	revTree.addRevision("doc", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
