@@ -533,8 +533,6 @@ func (tree RevTree) RenderGraphvizDot() string {
 	// This function will be called back for every leaf node in tree
 	leafProcessor := func(leaf *RevInfo) {
 
-		// log.Printf("leafProcessor called with leaf: %v", leaf)
-
 		// Append the leaf to the output
 		appendNodeToResult(leaf)
 
