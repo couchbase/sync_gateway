@@ -19,8 +19,6 @@ import (
 
 	"bytes"
 
-	"log"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
