@@ -665,10 +665,6 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 		t.Fatalf("Error unmarshalling doc: %v", err)
 	}
 
-	if err := rawDoc.History.Validate(); err != nil {
-		t.Fatalf("Doc invalid.  Err: %v", err)
-	}
-
 	revId := "275-6458b32429e335f981fc12b73765833d"
 	_, err = getHistoryWithTimeout(
 		rawDoc,
