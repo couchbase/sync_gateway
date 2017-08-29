@@ -70,7 +70,12 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 	if doc.History[id.RevID].Deleted {
 		body["_deleted"] = true
 	}
-	history = encodeRevisions(doc.History.getHistory(id.RevID))
+
+	validatedHistory, getHistoryErr := doc.History.getHistory(id.RevID)
+	if getHistoryErr != nil {
+		return body, history, channels, getHistoryErr
+	}
+	history = encodeRevisions(validatedHistory)
 	channels = doc.History[id.RevID].Channels
 	return
 }
@@ -130,7 +135,11 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			body["_deleted"] = true
 		}
 		if maxHistory != 0 {
-			revisions = encodeRevisions(doc.History.getHistory(revid))
+			validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+			if getHistoryErr != nil {
+				return nil, getHistoryErr
+			}
+			revisions = encodeRevisions(validatedHistory)
 		}
 		inChannels = doc.History[revid].Channels
 	}
@@ -348,8 +357,11 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		body["_deleted"] = true
 	}
 	if listRevisions {
-		history := doc.History.getHistory(revid)
-		body["_revisions"] = encodeRevisions(history)
+		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+		if getHistoryErr != nil {
+			return nil, getHistoryErr
+		}
+		body["_revisions"] = encodeRevisions(validatedHistory)
 	}
 	return body, nil
 }
@@ -754,7 +766,10 @@ func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, cal
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
-		history := doc.History.getHistory(newRevID)
+		history, getHistoryErr := doc.History.getHistory(newRevID)
+		if getHistoryErr != nil {
+			return "", getHistoryErr
+		}
 
 		if doc.History[newRevID].Deleted {
 			body["_deleted"] = true
