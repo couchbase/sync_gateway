@@ -83,7 +83,17 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 
 	for i, revid := range rep.Revs {
-		rep.Parents[i] = revIndexes[tree[revid].Parent]
+		parentRevId := tree[revid].Parent
+		parentRevIndex, ok := revIndexes[parentRevId]
+		if ok {
+			rep.Parents[i] = parentRevIndex
+		} else {
+			// If the parent revision does not exist in the revtree due to being a dangling parent, then
+			// consider this a root node and set the parent index to -1
+			// See SG Issue #2847 for more details.
+			rep.Parents[i] = -1
+		}
+
 	}
 
 	return json.Marshal(rep)
@@ -153,20 +163,6 @@ func (tree RevTree) getParent(revid string) string {
 	return info.Parent
 }
 
-// Returns the history of a revid as an array of revids in reverse chronological order.
-func (tree RevTree) getHistory(revid string) []string {
-	history := make([]string, 0, 5)
-	for revid != "" {
-		info, err := tree.getInfo(revid)
-		if err != nil {
-			break
-		}
-		history = append(history, revid)
-		revid = info.Parent
-	}
-	return history
-}
-
 // Returns the leaf revision IDs (those that have no children.)
 func (tree RevTree) GetLeaves() []string {
 	acceptAllLeavesFilter := func(revId string) bool {
@@ -201,6 +197,7 @@ func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
 	for revid, info := range tree {
 		if !isParent[revid] {
 			callback(info)
+
 		}
 	}
 }
@@ -360,17 +357,6 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
-	// Snip dangling Parent links:
-	if pruned > 0 {
-		for _, node := range tree {
-			if node.Parent != "" {
-				if _, found := tree[node.Parent]; !found {
-					node.Parent = ""
-				}
-			}
-		}
-	}
-
 	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
 	if tombstoneGenerationThreshold != -1 {
 		for _, leafRevId := range leaves {
@@ -381,6 +367,17 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 			leafGeneration, _ := ParseRevID(leaf.ID)
 			if leafGeneration < tombstoneGenerationThreshold {
 				pruned += tree.DeleteBranch(leaf)
+			}
+		}
+	}
+
+	// Snip dangling Parent links:
+	if pruned > 0 {
+		for _, node := range tree {
+			if node.Parent != "" {
+				if _, found := tree[node.Parent]; !found {
+					node.Parent = ""
+				}
 			}
 		}
 	}
@@ -543,14 +540,23 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 		// Walk up the tree until we find a root, and append each node
 		node := leaf
+		if node.IsRoot() {
+			return
+		}
+
 		for {
-
-			node = tree[node.Parent]
-
-			// Not sure how this can happen, but in any case .. probably nothing left to do for this branch
-			if node == nil {
+			// Mark nodes with dangling parent references
+			if tree[node.Parent] == nil {
+				missingParentNode := &RevInfo{
+					ID:      node.ID,
+					Parent:  fmt.Sprintf("%s - MISSING", node.Parent),
+					Deleted: node.Deleted,
+				}
+				appendNodeToResult(missingParentNode)
 				break
 			}
+
+			node = tree[node.Parent]
 
 			// Reached a root, we're done -- there's no need
 			// to call appendNodeToResult() on the root, since
@@ -572,6 +578,26 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 	return resultBuffer.String()
 
+}
+
+// Returns the history of a revid as an array of revids in reverse chronological order.
+// Returns error if detects cycle(s) in rev tree
+func (tree RevTree) getHistory(revid string) ([]string, error) {
+	maxHistory := len(tree)
+
+	history := make([]string, 0, 5)
+	for revid != "" {
+		info, err := tree.getInfo(revid)
+		if err != nil {
+			break
+		}
+		history = append(history, revid)
+		if len(history) > maxHistory {
+			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
+		}
+		revid = info.Parent
+	}
+	return history, nil
 }
 
 //////// ENCODED REVISION LISTS (_revisions):
