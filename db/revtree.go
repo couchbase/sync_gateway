@@ -10,14 +10,12 @@
 package db
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
-
-	"errors"
-
-	"bytes"
 
 	"github.com/couchbase/sync_gateway/base"
 )
