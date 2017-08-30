@@ -5,9 +5,10 @@ import (
 
 	"fmt"
 
+	"encoding/json"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
-	"encoding/json"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -27,6 +28,12 @@ type RepairBucketParams struct {
 type RepairJobParams struct {
 	RepairJobType   RepairJobType          `json:"type"`
 	RepairJobParams map[string]interface{} `json:"params"`
+}
+
+// Record details about the result of a bucket repair that was made on a doc
+type RepairBucketResult struct {
+	DocId          string          `json:"id"`
+	RepairJobTypes []RepairJobType `json:"repair_job_type"`
 }
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
@@ -71,14 +78,14 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	return r
 }
 
-func (r RepairBucket) RepairBucket() (repairedDocIds []string, err error) {
+func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 	options := Body{"stale": false, "reduce": false}
 	options["startkey"] = []interface{}{true}
 
 	vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
 	if err != nil {
-		return repairedDocIds, err
+		return results, err
 	}
 
 	for _, row := range vres.Rows {
@@ -92,7 +99,7 @@ func (r RepairBucket) RepairBucket() (repairedDocIds []string, err error) {
 				return nil, couchbase.UpdateCancel // someone deleted it?!
 			}
 
-			updatedDoc, shouldUpdate, err := r.TransformBucketDoc(key, currentValue)
+			updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
 			if err != nil {
 				return nil, err
 			}
@@ -122,7 +129,8 @@ func (r RepairBucket) RepairBucket() (repairedDocIds []string, err error) {
 
 				}
 
-				repairedDocIds = append(repairedDocIds, key)
+				results = append(results, RepairBucketResult{DocId: key, RepairJobTypes: repairJobs})
+
 				if r.DryRun {
 					return nil, couchbase.UpdateCancel
 				} else {
@@ -136,7 +144,7 @@ func (r RepairBucket) RepairBucket() (repairedDocIds []string, err error) {
 
 	}
 
-	return repairedDocIds, nil
+	return results, nil
 }
 
 func writeDocToTempFile(docId string, doc []byte) (tmpFileName string, err error) {
@@ -161,14 +169,14 @@ func writeDocToTempFile(docId string, doc []byte) (tmpFileName string, err error
 	return tmpfile.Name(), nil
 }
 
-func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
 
 	transformed = false
 	for _, repairJob := range r.RepairJobs {
 
 		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(docId, originalCBDoc)
 		if repairDocErr != nil {
-			return nil, false, repairDocErr
+			return nil, false, repairJobs, repairDocErr
 		}
 
 		if !repairedDocTxformed {
@@ -185,9 +193,14 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 		// that the next iteration of the loop use this as input
 		originalCBDoc = repairedDoc
 
+		// Hack: since RepairRevTreeCycles is the only type of repair job, hardcode it to this
+		// In the future, this will need to be updated so that that RepairJob is based on interfaces instead of functions
+		// So that .JobType() can be called on it.  Currently there doesn't seem to be a way to do that.
+		repairJobs = append(repairJobs, RepairRevTreeCycles)
+
 	}
 
-	return transformedCBDoc, transformed, nil
+	return transformedCBDoc, transformed, repairJobs, nil
 }
 
 // Repairs rev tree cycles (see SG issue #2847)
