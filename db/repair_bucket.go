@@ -68,14 +68,14 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	return r
 }
 
-func (r RepairBucket) RepairBucket() (err error) {
+func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 
 	options := Body{"stale": false, "reduce": false}
 	options["startkey"] = []interface{}{true}
 
 	vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
 	if err != nil {
-		return err
+		return repairedDocs, err
 	}
 
 	log.Printf("view query returned vres: %+v", vres)
@@ -99,20 +99,27 @@ func (r RepairBucket) RepairBucket() (err error) {
 			if err != nil {
 				return nil, err
 			}
-			if shouldUpdate && r.DryRun {
-				// TODO: write marshalled val to temp files?
-				base.LogTo("RepairBucket", "Update disabled for dry run.  Original doc: %+v, Post-repair doc: %+v", doc, updatedDoc)
-			}
-			if shouldUpdate && !r.DryRun {
-				return json.Marshal(updatedDoc)
-			} else {
+
+			switch shouldUpdate {
+			case true:
+				repairedDocs = append(repairedDocs, updatedDoc)
+				if r.DryRun {
+					// TODO: write marshalled val to temp files?
+					base.LogTo("CRUD", "Update disabled for dry run.  Original doc: %+v, Post-repair doc: %+v", doc, updatedDoc)
+					return nil, couchbase.UpdateCancel
+				} else {
+					base.LogTo("CRUD", "Repairing doc.  Original doc: %+v, Post-repair doc: %+v", doc, updatedDoc)
+					return json.Marshal(updatedDoc)
+				}
+			default:
 				return nil, couchbase.UpdateCancel
 			}
+
 		})
 
 	}
 
-	return nil
+	return repairedDocs, nil
 }
 
 func (r RepairBucket) TransformBucketDoc(doc *document) (transformedDoc *document, transformed bool, err error) {

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -44,12 +43,9 @@ func TestRepairBucket(t *testing.T) {
 
 	base.EnableLogKey("RepairBucket")
 
-	bucket, numdocs := testBucketWithViewsAndBrokenDoc()
-
-	repairJobWaitGroup := sync.WaitGroup{}
+	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
 	repairJob := func(doc *document) (transformedDoc *document, transformed bool, err error) {
-		defer repairJobWaitGroup.Done()
 		log.Printf("repairJob called back")
 		return nil, true, nil
 	}
@@ -57,13 +53,12 @@ func TestRepairBucket(t *testing.T) {
 		SetDryRun(true).
 		AddRepairJob(repairJob)
 
-	repairJobWaitGroup.Add(numdocs)
-	err := repairBucket.RepairBucket()
+	repairedDocs, err := repairBucket.RepairBucket()
 
 	assertNoError(t, err, fmt.Sprintf("Unexpected error: %v", err))
 
-	log.Printf("waiting for waitgroup to be finished")
-	repairJobWaitGroup.Wait()
+	// Both docs will be repaired due to the repairJob function that indiscriminately repairs all docs
+	assert.True(t, len(repairedDocs) == 2)
 
 }
 
@@ -79,9 +74,10 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 		SetDryRun(false).
 		AddRepairJob(repairJob)
 
-	err := repairBucket.RepairBucket()
+	repairedDocs, err := repairBucket.RepairBucket()
 
 	assertNoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
+	assert.True(t, len(repairedDocs) == 1)
 
 	// Now get the doc from the bucket
 	var value interface{}

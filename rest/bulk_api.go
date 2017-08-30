@@ -267,7 +267,8 @@ func (h *handler) handleRepair() error {
 
 	repairBucket.InitFrom(repairBucketParams)
 
-	if err := repairBucket.RepairBucket(); err != nil {
+	_, repairDocsErr := repairBucket.RepairBucket()
+	if repairDocsErr != nil {
 		return fmt.Errorf("Error repairing bucket: %v", err)
 	}
 
