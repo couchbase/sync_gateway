@@ -138,6 +138,17 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	return
 }
 
+func (tree RevTree) ContainsCycles() bool {
+	containsCycles := false
+	for _, leafRevision := range tree.GetLeaves() {
+		_, revHistoryErr := tree.getHistory(leafRevision)
+		if revHistoryErr != nil {
+			containsCycles = true
+		}
+	}
+	return containsCycles
+}
+
 // Repair rev trees that have cycles introduced by SG Issue #2847
 func (tree RevTree) Repair() (err error) {
 
