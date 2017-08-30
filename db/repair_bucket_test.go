@@ -68,7 +68,6 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
-
 	repairBucket := NewRepairBucket(bucket)
 
 	repairBucket.InitFrom(RepairBucketParams{
@@ -99,6 +98,5 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	// Since doc was repaired, should contain no cycles
 	assert.False(t, repairedDoc.History.ContainsCycles())
-
 
 }
