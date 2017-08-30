@@ -3,20 +3,41 @@ package db
 import (
 	"encoding/json"
 
+	"log"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
-	"log"
 )
 
-type RepairBucket struct {
-	DryRun     bool
-	Bucket     base.Bucket
-	RepairJobs []DocTransformer
+// Enum for the different repair jobs (eg, repairing rev tree cycles)
+type RepairJobType string
+
+const (
+	RepairRevTreeCycles = RepairJobType("RepairRevTreeCycles")
+)
+
+// Params suitable for external (eg, HTTP) invocations to describe a RepairBucket operation
+type RepairBucketParams struct {
+	DryRun          bool
+	RepairJobParams []RepairJobParams
+}
+
+// Params suitable for external (eg, HTTP) invocations to describe a specific RepairJob operation
+type RepairJobParams struct {
+	RepairJobType   RepairJobType          `json:"repair_job_type"`
+	RepairJobParams map[string]interface{} `json:"repair_job_params"`
 }
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
 // Also return a boolean to indicate whether a transformation took place, or any errors occurred.
 type DocTransformer func(doc *document) (transformedDoc *document, transformed bool, err error)
+
+// A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
+type RepairBucket struct {
+	DryRun     bool
+	Bucket     base.Bucket
+	RepairJobs []DocTransformer
+}
 
 func NewRepairBucket(bucket base.Bucket) *RepairBucket {
 	return &RepairBucket{
@@ -34,6 +55,19 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 	return r
 }
 
+func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
+
+	r.SetDryRun(params.DryRun)
+	for _, repairJobParams := range params.RepairJobParams {
+		switch repairJobParams.RepairJobType {
+		case RepairRevTreeCycles:
+			r.AddRepairJob(RepairJobRevTreeCycles)
+		}
+	}
+
+	return r
+}
+
 func (r RepairBucket) RepairBucket() (err error) {
 
 	options := Body{"stale": false, "reduce": false}
@@ -44,7 +78,7 @@ func (r RepairBucket) RepairBucket() (err error) {
 		return err
 	}
 
-	log.Printf("view query returned vres: %+v", vres	)
+	log.Printf("view query returned vres: %+v", vres)
 
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
@@ -108,4 +142,25 @@ func (r RepairBucket) TransformBucketDoc(doc *document) (transformedDoc *documen
 	}
 
 	return transformedDoc, transformed, nil
+}
+
+// Repairs rev tree cycles (see SG issue #2847)
+func RepairJobRevTreeCycles(doc *document) (transformedDoc *document, transformed bool, err error) {
+
+	// Check if rev history has cycles
+	containsCycles := doc.History.ContainsCycles()
+
+	if !containsCycles {
+		// nothing to repair
+		return nil, false, nil
+	}
+
+	// Repair it
+	if err := doc.History.Repair(); err != nil {
+		return nil, false, err
+	}
+
+	// Return original doc pointer since it was repaired in place
+	return doc, true, nil
+
 }

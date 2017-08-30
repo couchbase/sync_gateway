@@ -1,19 +1,18 @@
 package db
 
 import (
-	"testing"
+	"encoding/json"
 	"fmt"
-	"sync"
 	"log"
+	"sync"
+	"testing"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"encoding/json"
 )
-
 
 const (
 	docIdProblematicRevTree = "docIdProblematicRevTree"
-
 )
 
 func testBucketWithViewsAndBrokenDoc() (bucket base.Bucket, numDocs int) {
@@ -74,25 +73,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
-	repairJob := func(doc *document) (transformedDoc *document, transformed bool, err error) {
-
-		// Check if rev history has cycles
-		containsCycles := doc.History.ContainsCycles()
-
-		if !containsCycles {
-			// nothing to repair
-			return nil, false, nil
-		}
-
-		// Repair it
-		if err := doc.History.Repair(); err != nil {
-			return nil, false, err
-		}
-
-		// Return original doc pointer since it was repaired in place
-		return doc, true, nil
-
-	}
+	repairJob := RepairJobRevTreeCycles
 
 	repairBucket := NewRepairBucket(bucket).
 		SetDryRun(false).
@@ -115,7 +96,5 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	// Since doc was repaired, should contain no cycles
 	assert.False(t, repairedDoc.History.ContainsCycles())
-
-
 
 }

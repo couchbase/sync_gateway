@@ -244,6 +244,37 @@ func (h *handler) handleDump() error {
 	return nil
 }
 
+
+// HTTP handler for _repair
+func (h *handler) handleRepair() error {
+
+	base.LogTo("HTTP", "Repair bucket")
+
+	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
+	defer h.requestBody.Close()
+
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	repairBucketParams := db.RepairBucketParams{}
+	if err := json.Unmarshal(body, &repairBucketParams); err != nil {
+		return fmt.Errorf("Error unmarsalling %v into RepairJobParams.  Err: %v", string(body), err)
+	}
+
+	repairBucket := db.NewRepairBucket(h.db.Bucket)
+	if err := repairBucket.InitFrom(repairBucketParams); err != nil {
+		return fmt.Errorf("Error initializing from %+v.  Error: %v", repairBucketParams, err)
+	}
+
+	if err := repairBucket.RepairBucket(); err != nil {
+		return fmt.Errorf("Error repairing bucket: %v", err)
+	}
+
+	return nil
+}
+
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
