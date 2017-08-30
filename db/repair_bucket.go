@@ -5,6 +5,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
+	"log"
 )
 
 type RepairBucket struct {
@@ -42,6 +43,8 @@ func (r RepairBucket) RepairBucket() (err error) {
 	if err != nil {
 		return err
 	}
+
+	log.Printf("view query returned vres: %+v", vres	)
 
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})

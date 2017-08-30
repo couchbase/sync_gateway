@@ -4,6 +4,7 @@ import (
 	"testing"
 	"fmt"
 	"sync"
+	"log"
 )
 
 
@@ -11,12 +12,17 @@ import (
 func TestRepairBucket(t *testing.T) {
 
 	bucket := testBucket()
-	bucket.Add("foo", 0, map[string]interface{}{"foo": "bar"})
+	log.Printf("installing views")
+	installViews(bucket)
+	log.Printf("installed views")
+	testSyncData := syncData{}
+	bucket.Add("foo", 0, map[string]interface{}{"foo": "bar", "_sync": testSyncData})
 
 	repairJobWaitGroup := sync.WaitGroup{}
 
 	repairJob := func(doc *document) (transformedDoc *document, transformed bool, err error) {
 		defer repairJobWaitGroup.Done()
+		log.Printf("repairJob called back")
 		return nil, false, nil
 	}
 	repairBucket := NewRepairBucket(bucket).
@@ -28,8 +34,7 @@ func TestRepairBucket(t *testing.T) {
 
 	assertNoError(t, err, fmt.Sprintf("Unexpected error: %v", err))
 
+	log.Printf("waiting for waitgroup to be finished")
 	repairJobWaitGroup.Wait()
-
-
 
 }
