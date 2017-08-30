@@ -18,8 +18,8 @@ const (
 
 // Params suitable for external (eg, HTTP) invocations to describe a RepairBucket operation
 type RepairBucketParams struct {
-	DryRun          bool
-	RepairJobParams []RepairJobParams
+	DryRun     bool              `json:"dry_run"`
+	RepairJobs []RepairJobParams `json:"repair_jobs"`
 }
 
 // Params suitable for external (eg, HTTP) invocations to describe a specific RepairJob operation
@@ -58,7 +58,7 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 	r.SetDryRun(params.DryRun)
-	for _, repairJobParams := range params.RepairJobParams {
+	for _, repairJobParams := range params.RepairJobs {
 		switch repairJobParams.RepairJobType {
 		case RepairRevTreeCycles:
 			r.AddRepairJob(RepairJobRevTreeCycles)
