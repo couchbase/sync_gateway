@@ -41,7 +41,7 @@ func testBucketWithViewsAndBrokenDoc() (bucket base.Bucket, numDocs int) {
 
 func TestRepairBucket(t *testing.T) {
 
-	base.EnableLogKey("RepairBucket")
+	base.EnableLogKey("CRUD")
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
@@ -64,15 +64,22 @@ func TestRepairBucket(t *testing.T) {
 
 func TestRepairBucketRevTreeCycles(t *testing.T) {
 
-	base.EnableLogKey("RepairBucket")
+	base.EnableLogKey("CRUD")
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
-	repairJob := RepairJobRevTreeCycles
 
-	repairBucket := NewRepairBucket(bucket).
-		SetDryRun(false).
-		AddRepairJob(repairJob)
+	repairBucket := NewRepairBucket(bucket)
+
+	repairBucket.InitFrom(RepairBucketParams{
+		DryRun: false,
+		RepairJobs: []RepairJobParams{
+			{
+				RepairJobType: RepairRevTreeCycles,
+			},
+		},
+	})
+	repairBucket.WriteRepairedDocsToDisk = false
 
 	repairedDocs, err := repairBucket.RepairBucket()
 
@@ -92,5 +99,6 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	// Since doc was repaired, should contain no cycles
 	assert.False(t, repairedDoc.History.ContainsCycles())
+
 
 }

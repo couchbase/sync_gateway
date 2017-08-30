@@ -3,7 +3,9 @@ package db
 import (
 	"encoding/json"
 
-	"log"
+	"io/ioutil"
+
+	"fmt"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
@@ -34,9 +36,10 @@ type DocTransformer func(doc *document) (transformedDoc *document, transformed b
 
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
-	DryRun     bool
-	Bucket     base.Bucket
-	RepairJobs []DocTransformer
+	DryRun                  bool // If true, will only output what changes it *would* have made, but not make any changes
+	WriteRepairedDocsToDisk bool // If true, write the before and after doc to temp files
+	Bucket                  base.Bucket
+	RepairJobs              []DocTransformer
 }
 
 func NewRepairBucket(bucket base.Bucket) *RepairBucket {
@@ -58,6 +61,7 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 	r.SetDryRun(params.DryRun)
+	r.WriteRepairedDocsToDisk = true
 	for _, repairJobParams := range params.RepairJobs {
 		switch repairJobParams.RepairJobType {
 		case RepairRevTreeCycles:
@@ -78,8 +82,6 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 		return repairedDocs, err
 	}
 
-	log.Printf("view query returned vres: %+v", vres)
-
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
 		docid := rowKey[1].(string)
@@ -95,20 +97,46 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 				return nil, err
 			}
 			updatedDoc, shouldUpdate, err := r.TransformBucketDoc(doc)
-			log.Printf("TransformBucketDoc returned updatedDoc: %v, shouldUpdate: %v, err: %v.  dryRun: %v", updatedDoc, shouldUpdate, err, r.DryRun)
 			if err != nil {
 				return nil, err
 			}
 
 			switch shouldUpdate {
 			case true:
+
+				if r.WriteRepairedDocsToDisk {
+					origDocTempFile, writeTempFileErr := writeDocToTempFile(doc)
+					if writeTempFileErr != nil {
+						base.Warn("Error writing orig doc to tmp file.  Doc: %v.  Error: %v", doc, writeTempFileErr)
+					}
+
+					updatedDocTempFile, writeTempFileErr := writeDocToTempFile(updatedDoc)
+					if writeTempFileErr != nil {
+						base.Warn("Error writing update doc to tmp file.  UpdatedDoc: %v.  Error: %v", updatedDoc, writeTempFileErr)
+					}
+
+					base.LogTo("CRUD", "Repair Doc (dry_run=%v).  Original doc written to: %+v, Post-repair doc written to: %+v", r.DryRun, origDocTempFile, updatedDocTempFile)
+
+				} else {
+
+					base.LogTo("CRUD", "Repair Doc (dry_run=%v)  Dumping doc contents directly into logs since WriteRepairedDocsToDisk disabled.", r.DryRun)
+
+					contentOrig, err := json.MarshalIndent(doc, "", "    ")
+					if err == nil {
+						base.LogTo("CRUD", "Original Doc before repair (dry_run=%v) %s", r.DryRun, contentOrig)
+					}
+
+					contentUpdated, err := json.MarshalIndent(doc, "", "    ")
+					if err == nil {
+						base.LogTo("CRUD", "Updated doc after repair (dry_run=%v) %s", r.DryRun, contentUpdated)
+					}
+
+				}
+
 				repairedDocs = append(repairedDocs, updatedDoc)
 				if r.DryRun {
-					// TODO: write marshalled val to temp files?
-					base.LogTo("CRUD", "Update disabled for dry run.  Original doc: %+v, Post-repair doc: %+v", doc, updatedDoc)
 					return nil, couchbase.UpdateCancel
 				} else {
-					base.LogTo("CRUD", "Repairing doc.  Original doc: %+v, Post-repair doc: %+v", doc, updatedDoc)
 					return json.Marshal(updatedDoc)
 				}
 			default:
@@ -120,6 +148,33 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 	}
 
 	return repairedDocs, nil
+}
+
+func writeDocToTempFile(doc *document) (tmpFileName string, err error) {
+
+	if doc == nil {
+		return "", fmt.Errorf("Cannot write nil doc to temp file")
+	}
+
+	tmpfile, err := ioutil.TempFile("", doc.ID)
+	if err != nil {
+		return "", err
+	}
+
+	content, err := json.MarshalIndent(doc, "", "    ")
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := tmpfile.Write(content); err != nil {
+		return "", err
+	}
+
+	if err := tmpfile.Close(); err != nil {
+		return "", err
+	}
+
+	return tmpfile.Name(), nil
 }
 
 func (r RepairBucket) TransformBucketDoc(doc *document) (transformedDoc *document, transformed bool, err error) {
