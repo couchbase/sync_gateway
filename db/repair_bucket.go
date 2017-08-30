@@ -29,8 +29,10 @@ type RepairJobParams struct {
 
 // Record details about the result of a bucket repair that was made on a doc
 type RepairBucketResult struct {
-	DocId          string          `json:"id"`
-	RepairJobTypes []RepairJobType `json:"repair_job_type"`
+	DryRun              bool            `json:"dry_run"`
+	BackupOrDryRunDocId string          `json:"backup_or_dryrun_doc_id"`
+	DocId               string          `json:"id"`
+	RepairJobTypes      []RepairJobType `json:"repair_job_type"`
 }
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
@@ -87,6 +89,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		rowKey := row.Key.([]interface{})
 		docid := rowKey[1].(string)
 		key := realDocID(docid)
+		var backupOrDryRunDocId string
 
 		err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
@@ -102,19 +105,21 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			switch shouldUpdate {
 			case true:
 
-				backupOrDryRunDocId, err := r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
+				backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
 				if err != nil {
 					base.LogTo("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
 					base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
 					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
 				}
-				if r.DryRun {
-					base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
-				} else {
-					base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+
+				result :=  RepairBucketResult{
+					DryRun: r.DryRun,
+					BackupOrDryRunDocId: backupOrDryRunDocId,
+					DocId: key,
+					RepairJobTypes: repairJobs,
 				}
 
-				results = append(results, RepairBucketResult{DocId: key, RepairJobTypes: repairJobs})
+				results = append(results, result)
 
 				if r.DryRun {
 					return nil, couchbase.UpdateCancel
@@ -126,6 +131,16 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			}
 
 		})
+
+		if err != nil {
+			return results, err
+		}
+
+		if r.DryRun {
+			base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+		} else {
+			base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+		}
 
 	}
 
