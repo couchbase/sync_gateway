@@ -119,3 +119,55 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 	assert.True(t, backupDoc.History.ContainsCycles())
 
 }
+
+// Make sure docs not modified during dry run
+func TestRepairBucketDryRun(t *testing.T) {
+
+	base.EnableLogKey("CRUD")
+
+	bucket, _ := testBucketWithViewsAndBrokenDoc()
+
+	repairBucket := NewRepairBucket(bucket)
+
+	repairBucket.InitFrom(RepairBucketParams{
+		DryRun: true,
+		RepairJobs: []RepairJobParams{
+			{
+				RepairJobType: RepairRevTreeCycles,
+			},
+		},
+	})
+
+	repairedDocs, err := repairBucket.RepairBucket()
+
+	assertNoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
+	assert.True(t, len(repairedDocs) == 2)
+
+	// Now get the doc from the bucket
+	var value interface{}
+	_, errGetDoc := bucket.Get(docIdProblematicRevTree2, &value)
+	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
+
+	marshalled, errMarshal := json.Marshal(value)
+	assertNoError(t, errMarshal, fmt.Sprintf("Error marshalling doc: %v", errMarshal))
+
+	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree2, marshalled)
+	assertNoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
+
+	// Since doc was not repaired, should still contain cycles
+	assert.True(t, repairedDoc.History.ContainsCycles())
+
+	// There should be a backup doc in the bucket with ID _sync:repair:dryrun:docIdProblematicRevTree
+	var backupDocRaw interface{}
+	_, errGetDoc = bucket.Get("_sync:repair:dryrun:docIdProblematicRevTree2", &backupDocRaw)
+	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
+
+	marshalledBackup, _ := json.MarshalIndent(backupDocRaw, "", "")
+
+	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree2, marshalledBackup)
+	assertNoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
+
+	// The dry fun fixed doc should NOT contain revtree cycles
+	assert.False(t, backupDoc.History.ContainsCycles())
+
+}
