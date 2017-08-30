@@ -148,7 +148,7 @@ func (tree RevTree) ContainsCycles() bool {
 }
 
 // Repair rev trees that have cycles introduced by SG Issue #2847
-func (tree RevTree) Repair() (err error) {
+func (tree RevTree) RepairCycles() (err error) {
 
 	// This function will be called back for every leaf node in tree
 	leafProcessor := func(leaf *RevInfo) {

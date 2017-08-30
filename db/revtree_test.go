@@ -690,7 +690,7 @@ func TestRepairRevsHistoryWithCycles(t *testing.T) {
 		t.Fatalf("Error unmarshalling doc: %v", err)
 	}
 
-	if err := rawDoc.History.Repair(); err != nil {
+	if err := rawDoc.History.RepairCycles(); err != nil {
 		t.Fatalf("Unable to repair doc.  Err: %v", err)
 	}
 

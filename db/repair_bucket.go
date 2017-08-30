@@ -226,7 +226,7 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 	}
 
 	// Repair it
-	if err := doc.History.Repair(); err != nil {
+	if err := doc.History.RepairCycles(); err != nil {
 		return nil, false, err
 	}
 
